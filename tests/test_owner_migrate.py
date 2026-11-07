@@ -429,6 +429,30 @@ def test_the_identity_moves_onto_a_labelled_volume_of_the_same_name(install, tmp
     assert d.vols["hand-data"].attrs["Labels"] is None
 
 
+def test_a_migrated_volume_keeps_the_backup_fingerprint_it_had(install, tmp_path):
+    """A confirmed backup of an identity is tied to its volume's creation time.
+    The migration makes the volume again with the same data, so it carries the
+    old time over, and the confirmation stays valid."""
+    from types import SimpleNamespace
+
+    from app import orchestrator
+    from app.constants import LABEL_STATE_CREATED
+
+    d, myst, _hand = install
+    d.vols["mysterium-data"].attrs["CreatedAt"] = "2026-03-26T11:41:03Z"
+    targets = {"/var/lib/mysterium-node": "identity"}
+    box = SimpleNamespace(
+        id="c",
+        attrs={"Mounts": [{"Type": "volume", "Name": "mysterium-data", "Destination": "/var/lib/mysterium-node"}]},
+    )
+    before = orchestrator.state_id(box, targets, d)
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    # Docker gives the volume it made again a creation time of its own.
+    d.vols["mysterium-data"].attrs["CreatedAt"] = "2026-11-07T13:44:20Z"
+    assert d.vols["mysterium-data"].attrs["Labels"] == {**OWNER, LABEL_STATE_CREATED: "2026-03-26T11:41:03Z"}
+    assert orchestrator.state_id(box, targets, d) == before
+
+
 def test_a_second_run_finds_nothing_to_do(install, tmp_path):
     d, _, _ = install
     assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
@@ -872,3 +896,51 @@ def test_a_proxied_earner_with_its_own_volume_moves_in_the_same_plan_as_its_tunn
     new_earner = d.containers.get("cashpilot-honeygain-p1")
     assert new_earner.attrs["HostConfig"]["NetworkMode"] == f"container:{new_tunnel.id}"
     assert d.data["honeygain-data"] == {"device": "id"}
+
+
+def test_earners_the_pre_worker_deploy_path_made_are_adopted_with_the_fence(install, tmp_path):
+    """deployed-by=direct counts as CashPilot's (constants.CASHPILOT_DEPLOYED).
+    Left alone, the fence would stay unlabelled and the earners would vanish
+    from the worker behind the proxy."""
+    d, myst, _ = install
+    direct = {"cashpilot.managed": "true", "cashpilot.service": "honeygain", om.OWNER_LABEL: "direct"}
+    old = d.add(Container(d, "cashpilot-honeygain", direct, networks=("cashpilot-isolated",)))
+    d.volume("earnapp-data", {"uuid": "sdk-node-1"})
+    old_vol = d.add(
+        Container(
+            d,
+            "cashpilot-earnapp",
+            {**direct, "cashpilot.service": "earnapp"},
+            [("earnapp-data", "/etc/earnapp")],
+            networks=("cashpilot-isolated",),
+            running=False,
+        )
+    )
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 0 and m.warnings == 0
+    assert om.owned(d.nets["cashpilot-isolated"].attrs["Labels"])
+    hg = d.containers.get("cashpilot-honeygain")
+    assert hg.id != old.id and hg.status == "running"
+    assert hg.labels == {**direct, **OWNER, om.RECREATED_LABEL: old.id}
+    assert hg.networks() == ["cashpilot-isolated"]
+    ea = d.containers.get("cashpilot-earnapp")
+    assert ea.id != old_vol.id and ea.status == "exited" and om.owned(ea.labels)
+    assert om.owned(d.vols["earnapp-data"].attrs["Labels"]) and d.data["earnapp-data"] == {"uuid": "sdk-node-1"}
+    again = FakeMigrator(d, om.State(tmp_path))
+    assert again.run([]) == 0 and again.copies == []
+    assert d.containers.get("cashpilot-honeygain").id == hg.id
+
+
+def test_a_stranger_in_a_direct_containers_namespace_is_named_with_it(tmp_path, caplog):
+    """No volume to name: the warning says which CashPilot container was left alone, and why."""
+    d = FakeDocker()
+    direct = {"cashpilot.managed": "true", "cashpilot.service": "honeygain", om.OWNER_LABEL: "direct"}
+    hg = d.add(Container(d, "cashpilot-honeygain", direct))
+    stranger = d.add(Container(d, "my-sidecar", {}, networks=()))
+    stranger.attrs["HostConfig"]["NetworkMode"] = f"container:{hg.id}"
+    m = FakeMigrator(d, om.State(tmp_path))
+    with caplog.at_level("WARNING", logger=om.logger.name):
+        assert m.run([]) == 0 and m.warnings == 1
+    (message,) = [r.getMessage() for r in caplog.records if "my-sidecar" in r.getMessage()]
+    assert "shares a network namespace with cashpilot-honeygain and was not deployed" in message
+    assert d.containers.get("cashpilot-honeygain") is hg

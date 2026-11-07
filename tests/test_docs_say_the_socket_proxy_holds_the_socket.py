@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Pages describing what the shipped compose file installs today. Changelogs,
 # upgrade notes and research notes describe the past on purpose.
-PAGES = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
+# CLAUDE.md is read by every agent that changes the code, so it counts too.
+PAGES = [ROOT / "README.md", ROOT / "CLAUDE.md", *sorted((ROOT / "docs").glob("*.md"))]
 
 STALE = [
     r"\btwo (docker )?containers\b",
@@ -28,6 +29,9 @@ STALE = [
     r"\bonly the worker (holds|mounts|touches) the docker socket\b",
     r"\bboth can command the docker socket\b",
     r"\bdoes not keep the containers off your lan by itself\b",
+    r"\brequiring (docker )?socket access\b",
+    r"\b(must|requires?) (have )?docker socket access\b",
+    r"\bworkers must be privileged\b",
 ]
 
 # Each entry: a page and a pattern that is true there, with the reason.
@@ -36,6 +40,8 @@ ALLOWED = {
     # worker mounts the socket); the page says so.
     ("app-stores.md", STALE[0]),
     ("app-stores.md", STALE[1]),
+    ("app-stores.md", STALE[5]),
+    ("app-stores.md", STALE[6]),
     # A proxied copy really is two containers (the earner and its tunnel).
     ("proxies.md", STALE[0]),
 }
@@ -64,7 +70,17 @@ def test_no_page_says_the_worker_holds_the_socket(page: Path):
         "A worker holds the Docker socket on its server.",
         "Only the worker\ntouches the Docker socket.",
         "It does not keep the containers off your LAN by itself.",
+        "cashpilot-worker (port 8081, Docker agent requiring socket access)",
+        "Agent running on each server. **Must have Docker socket access**.",
+        "- Worker requires Docker socket access (`/var/run/docker.sock`)",
+        "2. **Workers must be privileged.** A worker without Docker socket is useless.",
     ],
 )
 def test_the_check_catches_each_old_claim(text: str):
+    assert stale_claims("index.md", text)
+
+
+def test_the_app_store_page_may_say_its_listings_need_the_socket():
+    text = "The Unraid worker requires Docker socket access, which is root on the host."
+    assert stale_claims("app-stores.md", text) == []
     assert stale_claims("index.md", text)

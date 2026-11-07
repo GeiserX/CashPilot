@@ -40,6 +40,13 @@ CONTAINER_PREFIX = "cashpilot-"
 UNDEPLOYABLE_STATUSES = frozenset({"broken", "dead", "dropped"})
 
 
+#: On a volume the owner migration made again: the creation time of the volume
+#: it replaced. The backup fingerprint (orchestrator.state_id) reads it instead of
+#: the new volume's own, so moving the same data onto a labelled volume does not
+#: void a confirmed backup of it.
+LABEL_STATE_CREATED = "cashpilot.state-created"
+
+
 #: deployed-by values only CashPilot itself writes: "worker" by deploy_raw, and
 #: "direct" by the deploy path before workers (removed in #85), whose containers
 #: still run on old installs. "compose" is an exported file the user runs by hand.

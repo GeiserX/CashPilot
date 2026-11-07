@@ -18,6 +18,7 @@ import stat
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,7 +27,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
-from docker.errors import NotFound
+from docker.errors import APIError, ImageNotFound, NotFound
 from fastapi.testclient import TestClient
 
 from app import isolation_check, lan_fence, orchestrator, worker_api
@@ -443,7 +444,21 @@ def _docker(managed=None, earners=()):
     client.networks.get.side_effect = _get
     client.networks.create.side_effect = lambda name, **kw: nets.setdefault(name, _network(name))
     client.containers.list.return_value = list(earners)
+    client.version.return_value = {"Platform": {"Name": "Docker Engine - Community"}, "Components": []}
     client._nets = nets
+    return client
+
+
+#: /version as Podman 5 answers it on its Docker-compatible socket.
+PODMAN_VERSION = {
+    "Platform": {"Name": "linux/arm64/fedora-42"},
+    "Components": [{"Name": "Podman Engine", "Version": "5.6.1"}, {"Name": "Conmon", "Version": "2.1.13"}],
+}
+
+
+def _podman(managed=None, earners=()):
+    client = _docker(managed, earners)
+    client.version.return_value = PODMAN_VERSION
     return client
 
 
@@ -860,13 +875,13 @@ class TestTheMixedReboot:
 def test_the_helper_gets_the_egress_ip():
     lan_fence.set_egress_ip("81.61.1.9")
     client = MagicMock()
-    helper = client.containers.run.return_value
+    helper = client.containers.create.return_value
     helper.wait.return_value = {"StatusCode": 0}
     helper.logs.return_value = b'{"ok": true}'
     client.containers.get.side_effect = NotFound("gone")
     with patch.object(lan_fence, "_helper_image", return_value="img"):
         lan_fence.run_helper(client, "apply", "172.18.0.0/16")
-    assert client.containers.run.call_args.kwargs["environment"]["FENCE_EGRESS"] == "81.61.1.9"
+    assert client.containers.create.call_args.kwargs["environment"]["FENCE_EGRESS"] == "81.61.1.9"
     lan_fence.set_egress_ip("10.0.0.1")
     assert lan_fence._egress["ip"] == "81.61.1.9", "a LAN answer is a failed lookup: never dropped, the last IP kept"
 
@@ -929,12 +944,132 @@ class TestOutsideAndHelperOwnership:
         foreign = MagicMock(labels={})
         client = MagicMock()
         client.containers.get.return_value = foreign
-        lan_fence._remove_helper(client)
+        lan_fence._clear_helper(client)
         foreign.remove.assert_not_called()
-        ours = MagicMock(labels={lan_fence.PROBE_LABEL: "fence"})
+        ours = _helper_container("exited", finished=_ago(3600))
         client.containers.get.return_value = ours
-        lan_fence._remove_helper(client)
+        lan_fence._clear_helper(client)
         ours.remove.assert_called_once_with(force=True, v=True)
+
+
+def _ago(seconds):
+    return (datetime.now(UTC) - timedelta(seconds=seconds)).isoformat().replace("+00:00", "123Z")
+
+
+def _helper_container(status, created=None, finished="0001-01-01T00:00:00Z"):
+    c = MagicMock(labels={lan_fence.PROBE_LABEL: "fence"})
+    c.attrs = {
+        "Created": created or _ago(3600),
+        "State": {"Status": status, "Running": status == "running", "Restarting": False, "FinishedAt": finished},
+    }
+    return c
+
+
+def _run_helper(client):
+    mine = client.containers.create.return_value
+    mine.wait.return_value = {"StatusCode": 0}
+    mine.logs.return_value = b'{"ok": true}'
+    with patch.object(lan_fence, "_helper_image", return_value="img"), patch.object(lan_fence, "HELPER_POLL", 0):
+        return lan_fence.run_helper(client, "apply", "172.18.0.0/16"), mine
+
+
+class TestAnotherProcesssHelper:
+    """The Desktop app runs the same helper, by the same name and label, on a host that can run both."""
+
+    @pytest.mark.parametrize(
+        "theirs",
+        [
+            pytest.param(lambda: _helper_container("running"), id="running"),
+            pytest.param(lambda: _helper_container("created", created=_ago(1)), id="just-created"),
+            pytest.param(lambda: _helper_container("exited", finished=_ago(1)), id="just-exited"),
+        ],
+    )
+    def test_a_helper_still_in_use_is_waited_for_never_killed(self, theirs):
+        other = theirs()
+        client = MagicMock()
+        client.containers.get.side_effect = [other, other, NotFound("gone")]
+        result, mine = _run_helper(client)
+        assert result == {"ok": True}
+        other.remove.assert_not_called()
+        assert client.containers.get.call_count == 3, "it looked again until the other side removed it"
+        client.containers.create.assert_called_once()
+        mine.remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_leftover_is_removed(self):
+        stale = _helper_container("exited", finished=_ago(3600))
+        client = MagicMock()
+        client.containers.get.return_value = stale
+        _run_helper(client)
+        stale.remove.assert_called_once_with(force=True, v=True)
+
+    def test_one_still_there_after_the_helper_timeout_is_removed(self):
+        stuck = _helper_container("running")
+        client = MagicMock()
+        client.containers.get.return_value = stuck
+        with patch.object(lan_fence, "HELPER_TIMEOUT", 0), patch.object(lan_fence, "HELPER_GRACE", 0):
+            _run_helper(client)
+        stuck.remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_helper_that_replaced_the_one_waited_for_gets_its_own_wait(self):
+        first, second = _helper_container("running"), _helper_container("running")
+        first.id, second.id = "first", "second"
+        client = MagicMock()
+        client.containers.get.side_effect = [first, second, NotFound("gone")]
+        # first is seen at t=0; second only at t=11, past first's deadline of 10.
+        clock = iter([0.0, 0.0, 11.0, 11.0])
+        with (
+            patch.object(lan_fence, "HELPER_TIMEOUT", 10),
+            patch.object(lan_fence, "HELPER_GRACE", 0),
+            patch.object(lan_fence, "HELPER_POLL", 0),
+            patch.object(lan_fence.time, "monotonic", side_effect=lambda: next(clock, 11.0)),
+        ):
+            lan_fence._clear_helper(client)
+        second.remove.assert_not_called()
+        first.remove.assert_not_called()
+
+    def test_only_its_own_helper_is_removed_afterwards(self):
+        """By its own object: a name lookup after the run could find the other side's new helper."""
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        _, mine = _run_helper(client)
+        mine.remove.assert_called_once_with(force=True, v=True)
+        assert client.containers.get.call_count == 1, "no lookup by name after the run"
+
+    def test_a_name_conflict_from_a_racing_create_is_tried_once_more(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        mine = client.containers.create.return_value
+        response = MagicMock(status_code=409)
+        client.containers.create.side_effect = [APIError("Conflict", response=response), mine]
+        result, _ = _run_helper(client)
+        assert result == {"ok": True}
+        assert client.containers.create.call_count == 2
+
+    def test_a_helper_that_never_started_leaves_nothing_to_remove(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        client.containers.create.side_effect = APIError("boom", response=MagicMock(status_code=500))
+        with pytest.raises(APIError):
+            _run_helper(client)
+        assert client.containers.create.call_count == 1
+
+    def test_a_helper_that_fails_to_start_is_removed_by_its_id(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        mine = client.containers.create.return_value
+        mine.start.side_effect = APIError("no such image layer", response=MagicMock(status_code=500))
+        with pytest.raises(APIError):
+            _run_helper(client)
+        mine.remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_missing_image_is_pulled_once(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        mine = client.containers.create.return_value
+        client.containers.create.side_effect = [ImageNotFound("img"), mine]
+        result, _ = _run_helper(client)
+        assert result == {"ok": True}
+        client.images.pull.assert_called_once_with("img")
 
 
 class TestEnable:
@@ -964,6 +1099,97 @@ class TestEnable:
             state = lan_fence.enable()
         assert state["mode"] == "on" and state["earners_outside"] == ["earnapp"]
         assert lan_fence.NETWORK_NAME in client._nets
+
+
+class TestPodman:
+    """Podman's Docker-compatible API cannot hold the fence's network, so it is never fenced."""
+
+    @pytest.mark.parametrize(
+        ("version", "podman"),
+        [
+            (PODMAN_VERSION, True),
+            ({"Platform": {"Name": "Podman Engine"}}, True),
+            ({"Platform": {"Name": "Docker Engine - Community"}, "Components": [{"Name": "Engine"}]}, False),
+            ({}, False),
+        ],
+    )
+    def test_it_is_detected_from_the_version(self, version, podman):
+        client = MagicMock()
+        client.version.return_value = version
+        assert lan_fence.is_podman(client) is podman
+
+    def test_an_engine_that_does_not_answer_fails_closed(self):
+        client = MagicMock()
+        client.version.side_effect = OSError("no answer")
+        with pytest.raises(RuntimeError, match="cannot tell Docker from Podman"):
+            lan_fence.is_podman(client)
+
+    @pytest.mark.parametrize("setting", ["auto", "on"])
+    def test_a_deploy_is_refused_when_the_engine_cannot_be_identified(self, setting):
+        old = MagicMock()
+        old.labels = {"cashpilot.service": "honeygain"}
+        client = _docker()
+        client.version.side_effect = OSError("no answer")
+        with pytest.raises(orchestrator.ContainerNetworkError, match="cannot tell Docker from Podman"):
+            _deploy(client, setting, old=old)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+        client.containers.run.assert_not_called()
+        client.networks.create.assert_not_called()
+
+    def test_off_never_asks_for_the_version(self):
+        client = _docker()
+        client.version.side_effect = OSError("no answer")
+        assert _mode(client, "off") == lan_fence.MODE_OFF
+
+    @pytest.mark.parametrize("setting", ["auto", "on"])
+    def test_it_resolves_to_unsupported_and_records_nothing(self, setting):
+        assert _mode(_podman(), setting) == lan_fence.MODE_UNSUPPORTED
+        assert not lan_fence.ON_MARKER.exists()
+
+    def test_off_and_the_operators_network_still_win(self):
+        assert _mode(_podman(), "off") == lan_fence.MODE_OFF
+        assert _mode(_podman(), operator="mine") == lan_fence.MODE_OPERATOR
+
+    def test_a_deploy_goes_to_the_default_network_without_the_fence(self):
+        client = _podman()
+        kwargs, helper = _deploy(client, "auto")
+        assert kwargs["network"] is None
+        helper.assert_not_called()
+        client.networks.create.assert_not_called()
+
+    def test_with_isolation_on_a_deploy_is_refused_before_the_old_container_is_touched(self):
+        old = MagicMock()
+        old.labels = {"cashpilot.service": "honeygain"}
+        client = _podman()
+        with pytest.raises(orchestrator.ContainerNetworkError, match="Podman"):
+            _deploy(client, "on", old=old)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+        client.containers.run.assert_not_called()
+
+    def test_the_check_reports_it_and_runs_no_helper(self):
+        state, helper = _reconcile(_podman(), "auto")
+        helper.assert_not_called()
+        assert state["mode"] == "unsupported" and state["network"] is None
+        assert state["fence"]["state"] == "unsupported" and "Podman" in state["fence"]["error"]
+
+    def test_turning_it_on_is_refused(self):
+        client = _podman(earners=[_container("cashpilot-earnapp")])
+        with (
+            patch.object(lan_fence, "_SETTING", "auto"),
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(lan_fence, "run_helper") as helper,
+            pytest.raises(lan_fence.IsolationConflict, match="Podman"),
+        ):
+            lan_fence.enable()
+        helper.assert_not_called()
+        assert not lan_fence.ON_MARKER.exists()
+
+    def test_the_isolation_check_says_why_the_earners_are_exposed(self):
+        found = isolation_check.placement_findings([_container("cashpilot-earnapp")], "", lan_fence.MODE_UNSUPPORTED)
+        assert found[0]["kind"] == "no_isolated_network" and "Podman" in found[0]["detail"]
 
 
 class TestTheUiRoute:

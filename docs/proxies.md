@@ -12,9 +12,9 @@ under its own device name (`cashpilot-box-p3` for proxy 3).
 
 | Type | What you give it | Notes |
 |---|---|---|
-| SOCKS5 | host, port, optional user and password | Carries UDP only if the provider supports SOCKS5 UDP ASSOCIATE. |
+| SOCKS5 | host, port, optional user and password | TCP only: the tunnel lets out only TCP to the proxy's port, so SOCKS5 UDP relays are dropped. Name lookups still work (see [DNS](#dns)). |
 | HTTP CONNECT | host, port, optional user and password | TCP only. Name lookups still work (see [DNS](#dns)). |
-| Tailscale exit node | an auth key and the exit node's name or 100.x address | Traffic leaves from the exit node's connection. See [Tailscale exit nodes](#tailscale-exit-nodes). |
+| Tailscale exit node | an auth key and the exit node's name or 100.x address | Traffic leaves from the exit node's connection, UDP included. See [Tailscale exit nodes](#tailscale-exit-nodes). |
 
 Any provider works. Nothing in CashPilot is specific to one.
 
@@ -168,8 +168,9 @@ A service is refused when its catalog entry needs the host:
 - terms that forbid proxies or VPNs: `requirements.proxy_prohibited` in the
   catalog, with a link to the provider's own terms.
 
-Services that need UDP do not work through HTTP CONNECT, and through SOCKS5
-only when the provider supports UDP ASSOCIATE.
+Services that need UDP do not work through SOCKS5 or HTTP CONNECT: the
+tunnel lets out only TCP to the proxy's address and port. A Tailscale exit
+node carries UDP.
 
 ## Exit IPs and grouping
 
@@ -228,7 +229,9 @@ alert says which copy is still running.
 
 A reset, on the day or by hand, starts only the copies the cap stopped; a copy
 you stopped yourself stays stopped. The reset day is checked every hour and
-each time the app starts. Turning a cap on starts a fresh period, so
+each time the app starts. If a copy cannot be started at the reset, for example
+because its box is offline, every report from that box tries again until it
+starts or the cap holds again. Turning a cap on starts a fresh period, so
 traffic from before it existed does not count. Turning it off, or raising it
 above what this period has used, lifts the stop and starts those copies again.
 

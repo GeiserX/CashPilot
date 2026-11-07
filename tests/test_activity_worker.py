@@ -484,9 +484,11 @@ assert worker_api._activity_enabled is False, "a fresh worker must start with Ac
 with (
     patch("app.worker_api.orchestrator.docker_available", return_value=True) as docker_ok,
     patch("app.worker_api.activity.run_round", return_value=None) as run_round,
+    patch("app.worker_api.activity._client", return_value=MagicMock()),
+    patch("app.worker_api.activity.sweep", return_value=[]),
 ):
     asyncio.run(worker_api._activity_cycle())
-    assert not docker_ok.called and not run_round.called, "a round ran before any reply"
+    assert not run_round.called, "a round ran before any reply"
     reply = MagicMock()
     reply.json.return_value = {"activity": {"enabled": True}}
     worker_api._apply_activity_reply(reply, None)
@@ -523,9 +525,38 @@ class TestWorkerWiring:
         with (
             patch("app.worker_api.orchestrator.docker_available", return_value=True),
             patch("app.worker_api.activity.run_round") as run_round,
+            patch("app.worker_api.activity._client", return_value=MagicMock()),
+            patch("app.worker_api.activity.sweep", return_value=[]),
         ):
             asyncio.run(wapi._activity_cycle())
         assert not run_round.called
+
+    def test_disabled_still_sweeps_probes_other_workers_left(self, wapi):
+        """With Activity off the sweep at worker start is not the last one: a probe another
+        worker leaves later (it died and came back under a new id) holds raw addresses in
+        its log, and only a sweep removes it."""
+        wapi._activity_enabled = False
+        client = MagicMock()
+        with (
+            patch("app.worker_api.orchestrator.docker_available", return_value=True),
+            patch("app.worker_api.activity.run_round") as run_round,
+            patch("app.worker_api.activity._client", return_value=client),
+            patch("app.worker_api.activity.sweep", return_value=[]) as sweep,
+        ):
+            asyncio.run(wapi._activity_cycle())
+        sweep.assert_called_once_with(client)
+        client.close.assert_called_once()
+        assert not run_round.called
+
+    def test_disabled_without_docker_does_not_sweep(self, wapi):
+        wapi._activity_enabled = False
+        with (
+            patch("app.worker_api.orchestrator.docker_available", return_value=False),
+            patch("app.worker_api.activity._client") as make_client,
+            patch("app.worker_api.activity.sweep") as sweep,
+        ):
+            asyncio.run(wapi._activity_cycle())
+        assert not make_client.called and not sweep.called
 
     def test_enabled_runs_a_round_negative_control(self, wapi):
         """The control for the test above: the same call with the switch on runs."""

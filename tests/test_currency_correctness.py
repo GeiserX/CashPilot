@@ -139,6 +139,8 @@ class TestACryptoPriceMoveCannotFabricateEarnings:
 
         assert "ANYONE" in exchange_rates.CRYPTO_IDS
         assert exchange_rates.CRYPTO_IDS["ANYONE"] == "airtor-protocol"
+        # UpRock's payout minimum is in UPT, so its balance needs a UPT price to compare.
+        assert exchange_rates.CRYPTO_IDS["UPT"] == "uprock"
 
 
 class TestNetEarningsSubtractLikeFromLike:

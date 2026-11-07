@@ -42,6 +42,13 @@ one alone changes nothing):
   ``off`` deletes the file.
 * ``legacy``: an upgraded install whose earners are on the default bridge.
   Nothing changes until the owner turns isolation on from the fleet page.
+* ``unsupported``: a Podman engine, with the setting not ``off``. Podman's
+  Docker-compatible API keeps the interface name out of the network's options
+  and drops the masquerade and inter-container options, and netavark adds its
+  own masquerade, so none of what the fence relies on can be set or checked
+  there. Earners deploy on the default network and the fleet page says they
+  are not fenced; with CASHPILOT_ISOLATION=on, deploys are refused, since on
+  was asked for and cannot be given.
 
 The top of this module is stdlib only: the helper container imports it to
 render the rules, and the UI image imports its constants.
@@ -57,6 +64,7 @@ import os
 import re
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +84,12 @@ MODE_OPERATOR = "operator"
 MODE_OFF = "off"
 MODE_ON = "on"
 MODE_LEGACY = "legacy"
+MODE_UNSUPPORTED = "unsupported"
+
+PODMAN_UNSUPPORTED = (
+    "CashPilot cannot fence earners off the LAN on Podman yet: its Docker-compatible API does not keep "
+    "the network settings the fence relies on"
+)
 
 #: Seconds between checks that the table is still in place.
 RECHECK_SECONDS = 300
@@ -627,6 +641,26 @@ def _remember(on: bool) -> None:
             )
 
 
+def is_podman(client: Any) -> bool:
+    """A Podman engine behind the Docker-compatible API.
+
+    Podman names itself in /version ("Podman Engine"). An engine that does not
+    answer cannot be told apart, and a Podman taken for Docker gets a network
+    whose bridge is not the one the fence's rules name, so this raises
+    RuntimeError instead of guessing: isolation fails closed.
+    """
+    try:
+        version = client.version() or {}
+    except Exception as exc:  # noqa: BLE001 - re-raised as the documented RuntimeError
+        raise RuntimeError(
+            f"Could not read the container engine's /version ({exc}), so it cannot tell Docker from Podman "
+            "and the LAN fence was not applied."
+        ) from exc
+    names = [str((version.get("Platform") or {}).get("Name") or "")]
+    names += [str((c or {}).get("Name") or "") for c in version.get("Components") or []]
+    return any("podman" in n.lower() for n in names)
+
+
 def resolve_mode(client: Any) -> str:
     if _orchestrator()._CONTAINER_NETWORK:
         return MODE_OPERATOR
@@ -634,6 +668,8 @@ def resolve_mode(client: Any) -> str:
     if chosen == "off":
         _remember(False)
         return MODE_OFF
+    if is_podman(client):
+        return MODE_UNSUPPORTED
     if (
         chosen == "on"
         or _remembered_on()
@@ -770,58 +806,108 @@ def _helper_image(client: Any) -> str:
     return f"drumsergio/cashpilot-worker:{version.current()}"
 
 
-def _remove_helper(client: Any) -> None:
-    """Remove a leftover helper by name, only when it carries the helper's label.
+#: How long a helper that was just created or has just exited still belongs to
+#: the process that started it: that process starts it, then reads its logs and
+#: removes it, all within moments. HELPER_POLL is how often a busy helper is
+#: looked at again.
+HELPER_GRACE = 10.0
+HELPER_POLL = 0.25
 
-    A container someone else named cashpilot-fence is left alone; the run that
-    follows then fails on the name instead of deleting it.
+
+def _stamp_age(stamp: Any, now: float) -> float | None:
+    """Seconds since a Docker timestamp, or None when it is unset or unreadable."""
+    try:
+        when = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    if when.tzinfo is None or when.year < 2000:
+        return None
+    return now - when.timestamp()
+
+
+def _helper_busy(attrs: dict[str, Any], now: float) -> bool:
+    """A helper another process is still using: running, or created or exited within HELPER_GRACE."""
+    state = attrs.get("State") or {}
+    if state.get("Running") or state.get("Restarting"):
+        return True
+    status = state.get("Status")
+    if status == "created":
+        stamp = attrs.get("Created")
+    elif status in ("exited", "dead"):
+        stamp = state.get("FinishedAt")
+    else:
+        return False
+    age = _stamp_age(stamp, now)
+    return age is not None and age < HELPER_GRACE
+
+
+def _clear_helper(client: Any) -> None:
+    """Make room for this process's helper.
+
+    Only a container that carries the helper's label is touched: a container
+    someone else named cashpilot-fence is left alone, and the run that follows
+    fails on the name instead of deleting it.
+
+    The Desktop app runs the same helper, by the same name and label, so on a
+    host that runs both, a helper of ours can belong to another process that is
+    still waiting for its result. That one is waited for, never killed: killing
+    it would make the other side record a failed fence and refuse its deploy.
+    Only a leftover, one idle past HELPER_GRACE or still there after the helper
+    timeout, is removed.
     """
     from docker.errors import NotFound
 
+    # Per helper: one another process created after the last poll gets its own wait.
+    waiting_on, deadline = None, 0.0
+    while True:
+        try:
+            found = client.containers.get(HELPER_NAME)
+            if (getattr(found, "labels", None) or {}).get(PROBE_LABEL) != "fence":
+                return
+            if getattr(found, "id", None) != waiting_on:
+                waiting_on, deadline = getattr(found, "id", None), time.monotonic() + HELPER_TIMEOUT + HELPER_GRACE
+            if not _helper_busy(found.attrs or {}, time.time()) or time.monotonic() > deadline:
+                found.remove(force=True, v=True)
+                return
+        except NotFound:
+            return
+        except Exception as exc:  # noqa: BLE001 - logged; the run that follows fails on the name
+            logger.warning("Could not remove %s: %s", HELPER_NAME, exc)
+            return
+        time.sleep(HELPER_POLL)
+
+
+def _remove_own(container: Any) -> None:
+    """Remove the helper this process started, by its own ID, never by name."""
+    from docker.errors import NotFound
+
     try:
-        found = client.containers.get(HELPER_NAME)
-        if (getattr(found, "labels", None) or {}).get(PROBE_LABEL) == "fence":
-            found.remove(force=True, v=True)
+        container.remove(force=True, v=True)
     except NotFound:
         pass
-    except Exception as exc:  # noqa: BLE001 - logged; the next run removes it by name first
+    except Exception as exc:  # noqa: BLE001 - logged; the next run clears it as a leftover
         logger.warning("Could not remove %s: %s", HELPER_NAME, exc)
 
 
 def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> dict[str, Any]:
     """Run the helper to completion and return what it printed. Removed on every path."""
+    from docker.errors import APIError
+
     with _lock:
-        _remove_helper(client)
+        container = None
         try:
-            container = client.containers.run(
-                image=_helper_image(client),
-                name=HELPER_NAME,
-                entrypoint=["python", "-c", HELPER_SCRIPT],
-                command=[action],
-                environment={
-                    "FENCE_IFACE": BRIDGE_INTERFACE,
-                    "FENCE_SUBNET": subnet,
-                    "FENCE_FILTER": "1" if filtered else "0",
-                    "FENCE_BACKEND": _BACKEND,
-                    "FENCE_EGRESS": _egress["ip"] or "",
-                },
-                network_mode="host",
-                user="0:0",
-                read_only=True,
-                # iptables-legacy takes its lock in /run.
-                tmpfs={"/run": "size=1m"},
-                cap_drop=["ALL"],
-                # NET_RAW only matters to iptables-legacy, which talks to the
-                # kernel over a raw socket. Both run our own script, never an earner.
-                cap_add=["NET_ADMIN", "NET_RAW"],
-                security_opt=["no-new-privileges:true"],
-                privileged=False,
-                pids_limit=64,
-                mem_limit="64m",
-                healthcheck={"test": ["NONE"]},
-                labels={PROBE_LABEL: "fence"},
-                detach=True,
-            )
+            # Twice: another process can create its helper between our clear and our run.
+            for attempt in range(2):
+                _clear_helper(client)
+                try:
+                    container = _create_helper(client, action, subnet, filtered)
+                    break
+                except APIError as exc:
+                    if attempt or getattr(exc, "status_code", None) != 409:
+                        raise
+            # Created and started apart, so a start that fails still leaves an
+            # ID to remove: nothing is ever removed by name after the create.
+            container.start()
             status = container.wait(timeout=HELPER_TIMEOUT)
             text = container.logs(stdout=True, stderr=False).decode(errors="replace").strip()
             if (status or {}).get("StatusCode") != 0:
@@ -831,7 +917,51 @@ def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> 
                 )
             return json.loads(text.splitlines()[-1])
         finally:
-            _remove_helper(client)
+            if container is not None:
+                _remove_own(container)
+
+
+def _create_helper(client: Any, action: str, subnet: str, filtered: bool) -> Any:
+    """Create the helper container, not started, pulling its image once if it is missing."""
+    from docker.errors import ImageNotFound
+
+    image = _helper_image(client)
+    try:
+        return client.containers.create(image=image, **_helper_spec(action, subnet, filtered))
+    except ImageNotFound:
+        client.images.pull(image)
+        return client.containers.create(image=image, **_helper_spec(action, subnet, filtered))
+
+
+def _helper_spec(action: str, subnet: str, filtered: bool) -> dict[str, Any]:
+    """The helper's container settings: host networking, NET_ADMIN and NET_RAW, every other capability dropped."""
+    return dict(
+        name=HELPER_NAME,
+        entrypoint=["python", "-c", HELPER_SCRIPT],
+        command=[action],
+        environment={
+            "FENCE_IFACE": BRIDGE_INTERFACE,
+            "FENCE_SUBNET": subnet,
+            "FENCE_FILTER": "1" if filtered else "0",
+            "FENCE_BACKEND": _BACKEND,
+            "FENCE_EGRESS": _egress["ip"] or "",
+        },
+        network_mode="host",
+        user="0:0",
+        read_only=True,
+        # iptables-legacy takes its lock in /run.
+        tmpfs={"/run": "size=1m"},
+        cap_drop=["ALL"],
+        # NET_RAW only matters to iptables-legacy, which talks to the
+        # kernel over a raw socket. Both run our own script, never an earner.
+        cap_add=["NET_ADMIN", "NET_RAW"],
+        security_opt=["no-new-privileges:true"],
+        privileged=False,
+        pids_limit=64,
+        mem_limit="64m",
+        healthcheck={"test": ["NONE"]},
+        labels={PROBE_LABEL: "fence"},
+    )
 
 
 def _set_fence(state: str, result: dict[str, Any] | None = None, error: str = "") -> None:
@@ -904,8 +1034,17 @@ def network_for_deploy() -> str | None:
     """
     orch = _orchestrator()
     client = orch._get_client()
-    mode = resolve_mode(client)
+    try:
+        mode = resolve_mode(client)
+    except RuntimeError as exc:
+        raise orch.ContainerNetworkError(f"{exc} The running container was not touched. {_off_hint()}") from None
     _state["mode"] = mode
+    if mode == MODE_UNSUPPORTED and setting() == "on":
+        raise orch.ContainerNetworkError(
+            f"CASHPILOT_ISOLATION=on, but {PODMAN_UNSUPPORTED}. The running container was not touched. "
+            "Set CASHPILOT_ISOLATION=auto or off on this worker to deploy on Podman's default network, "
+            "without the fence (docs/isolation.md)."
+        )
     if mode != MODE_ON:
         return None
     try:
@@ -971,6 +1110,8 @@ def reconcile() -> dict[str, Any]:
         if mode == MODE_ON:
             with contextlib.suppress(RuntimeError, IsolationConflict):
                 apply_fence(client)
+        elif mode == MODE_UNSUPPORTED:
+            _set_fence("unsupported", error=PODMAN_UNSUPPORTED + ".")
         elif _needs_reduced(client, mode, orch._CONTAINER_NETWORK):
             try:
                 reduce_fence(client)
@@ -1045,6 +1186,8 @@ def enable() -> dict[str, Any]:
             "This worker has CASHPILOT_ISOLATION=off. Remove that setting and restart the worker to turn isolation on."
         )
     client = orch._get_client()
+    if is_podman(client):
+        raise IsolationConflict(PODMAN_UNSUPPORTED + ".")
     apply_fence(client)
     _remember(True)
     _state["mode"] = MODE_ON

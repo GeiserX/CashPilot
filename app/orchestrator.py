@@ -52,6 +52,7 @@ from app.constants import (  # noqa: E402
     LABEL_PROXY,
     LABEL_ROLE,
     LABEL_SERVICE,
+    LABEL_STATE_CREATED,
     LABEL_VERSION,
     drift_warnings_enabled,
 )
@@ -1216,7 +1217,7 @@ def state_id(container: Any, targets: dict[str, str] | list[str] | None, client:
     """A short fingerprint of WHERE a service's irreplaceable state lives.
 
     Built from each critical mount's type and source, plus a named volume's
-    creation time. It changes when the state can have changed under the user:
+    creation time (the replaced volume's, for one the owner migration moved). It changes when the state can have changed under the user:
     the volume was removed and made again (same name, new creation time), the
     service now points at another volume or host path, or the state sits in the
     container's own layer and the container was replaced. It does NOT change
@@ -1248,7 +1249,10 @@ def state_id(container: Any, targets: dict[str, str] | list[str] | None, client:
             name = str(mount.get("Name") or "")
             created = ""
             try:
-                created = str(((client or _get_client()).volumes.get(name).attrs or {}).get("CreatedAt") or "")
+                attrs = (client or _get_client()).volumes.get(name).attrs or {}
+                # The owner migration copies a volume's data onto a new one of the
+                # same name and keeps the old creation time in this label.
+                created = str((attrs.get("Labels") or {}).get(LABEL_STATE_CREATED) or attrs.get("CreatedAt") or "")
             except Exception as exc:  # noqa: BLE001 - unknown, not a change
                 logger.debug("Could not read volume %s for the state fingerprint: %s", name, exc)
                 return None
@@ -1738,6 +1742,44 @@ def _read_file_from_container(container: Any, path: str) -> bytes:
     raise ValueError(f"{path} is not a file in the archive")
 
 
+def _ensure_updater_image(client: docker.DockerClient) -> None:
+    """Pull the helper image if this host does not have it yet.
+
+    ``containers.run`` pulls a missing image by itself only when the daemon
+    answers "No such image". Behind the socket proxy the create is refused
+    before it reaches the daemon, with the proxy's own 404 ("owner policy
+    could not resolve image"), so ``run`` raised instead of pulling, and the
+    first in-app update on a proxied install failed with "Docker refused to
+    start the update helper". Pulling first works the same with or without
+    the proxy.
+    """
+    try:
+        client.images.get(UPDATER_IMAGE)
+        return
+    except NotFound:
+        pass
+    except APIError as exc:
+        refusal = proxy_refusal(exc)
+        if refusal:
+            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
+        logger.warning("Could not check for the update helper image: %s", exc)
+    except Exception as exc:  # noqa: BLE001 - a read timeout or a dropped socket: the pull below reports it
+        logger.warning("Could not check for the update helper image: %s", type(exc).__name__)
+    try:
+        # The client's read timeout (60 s by default) ends a pull that stalls;
+        # a slow pull that keeps sending progress goes on.
+        client.images.pull(UPDATER_IMAGE)
+    except APIError as exc:
+        logger.warning("Could not pull the update helper image %s: %s", UPDATER_IMAGE, exc)
+        refusal = proxy_refusal(exc)
+        if refusal:
+            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
+        raise RuntimeError(f"Docker could not pull the update helper image {UPDATER_IMAGE}.") from exc
+    except Exception as exc:  # noqa: BLE001 - a read timeout or a dropped socket, not a daemon answer
+        logger.warning("Pulling the update helper image %s did not finish: %s", UPDATER_IMAGE, type(exc).__name__)
+        raise RuntimeError(f"Docker could not pull the update helper image {UPDATER_IMAGE}.") from exc
+
+
 def _resolve_compose_config(
     client: docker.DockerClient,
     working_dir: str,
@@ -1907,10 +1949,17 @@ def _check_proxy_binds(working_dir: str, extra_paths: list[str]) -> None:
     """Refuse, with the line to paste, an update the proxy would not let bind its folders."""
     compose_dir = os.getenv("CASHPILOT_COMPOSE_DIR", "").strip().rstrip("/")
     if compose_dir != working_dir.rstrip("/"):
+        # working_dir is the path Compose itself ran in. Under a webhook or a
+        # deployer container (Portainer and the like) that path is inside the
+        # deployer and may not exist on this host; the helper binds it as is,
+        # so no other value would work either: the deployer has to update.
         raise SelfUpdateUnavailable(
-            "The update helper needs your compose folder, and the Docker socket proxy lets "
-            "containers bind only the folders it was told about. Add this line to the .env "
-            f"next to your compose file, then run docker compose up -d once: "
+            f"The update helper needs your compose folder, which Docker Compose recorded as "
+            f"{working_dir}, and the Docker socket proxy lets containers bind only the folders "
+            "it was told about. If Compose runs inside another container for you (a webhook, "
+            "Portainer or another deployer), that path is inside it, not on this host: update "
+            "the stack from your deployer instead. Otherwise add this line to the .env next to "
+            "your compose file, then run docker compose up -d once: "
             f"{COMPOSE_DIR_ENV}={working_dir}"
         )
     roots = _proxy_bind_roots()
@@ -2031,6 +2080,7 @@ def spawn_self_update() -> dict[str, Any]:
         logger.warning("Self-update lock check failed: %s", exc)
         raise RuntimeError("Docker refused to start the update helper.") from exc
 
+    _ensure_updater_image(client)
     cfg = _resolve_compose_config(client, working_dir, environment, services, {**project_mount, **env_mounts})
     if proxied():
         refused = _proxy_compose_refusals(cfg, services)

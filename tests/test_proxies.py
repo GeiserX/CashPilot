@@ -245,9 +245,14 @@ class TestCap:
             {"proxy_id": 1, "worker_id": 7, "slug": "b", "stopped_by_cap": 0},
         ]
         call = AsyncMock(return_value={})
+        stored = dict(proxy)
+
+        async def update(_pid, state):
+            stored["state"] = state
+
         with (
-            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=proxy),
-            patch.object(main.database, "update_proxy_state", new_callable=AsyncMock) as upd,
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, side_effect=lambda _pid: dict(stored)),
+            patch.object(main.database, "update_proxy_state", new_callable=AsyncMock, side_effect=update) as upd,
             patch.object(main.database, "clear_alerts", new_callable=AsyncMock),
             patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
             patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock),
@@ -322,6 +327,7 @@ class _CapRig:
         self.call = worker_call
         self.alerts: list[tuple] = []
         self.pushed: list[tuple] = []
+        self.mark = AsyncMock()
 
     async def heartbeat(self, worker_id, entries):
         spawned: list = []
@@ -343,7 +349,7 @@ class _CapRig:
             patch.object(main.database, "get_proxy", side_effect=get_proxy),
             patch.object(main.database, "update_proxy_state", side_effect=update_state),
             patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=self.copies),
-            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock),
+            patch.object(main.database, "set_proxied_copy_capped", self.mark),
             patch.object(main.database, "record_alert", side_effect=record_alert),
             patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
             patch.object(main, "_proxy_worker_call", self.call),
@@ -359,6 +365,7 @@ class TestCapEnforcement:
     def teardown_method(self):
         main._drop_proxy_cap_bell(1)
         main._proxy_cap_stopping.clear()
+        main._proxy_cap_starting.clear()
 
     def test_a_failed_stop_is_tried_again_on_the_next_heartbeat(self):
         fails = {8: [HTTPException(status_code=503, detail="Worker offline")]}
@@ -404,6 +411,161 @@ class TestCapEnforcement:
         rig = _CapRig([], call)
         rig.proxy["state"] = {"used_bytes": 950_000_000, "capped_at": "x", "cap_reason": "r"}
         asyncio.run(rig.heartbeat(9, [_entry(5, 0, tid="t9", status="exited", tunnel_status="exited")]))
+        assert call.call_count == 0
+
+    def test_a_copy_a_reset_could_not_start_is_started_on_the_next_heartbeat(self):
+        fails = [HTTPException(status_code=503, detail="Worker offline")]
+
+        async def worker_call(worker_id, method, path, definition, **kw):
+            if fails:
+                raise fails.pop()
+            return {}
+
+        call = AsyncMock(side_effect=worker_call)
+        rig = _CapRig(
+            [
+                {"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1},
+                {"proxy_id": 1, "worker_id": 7, "slug": "b", "stopped_by_cap": 0},
+            ],
+            call,
+        )
+        down = {"status": "exited", "tunnel_status": "exited"}
+
+        async def go():
+            # The first try fails, the copy stays the cap's, the next heartbeat tries again.
+            await rig.heartbeat(7, [_entry(0, 0, **down), _entry(0, 0, tid="tb", slug="b", **down)])
+            rig.mark.assert_not_called()
+            await rig.heartbeat(7, [_entry(0, 0, **down), _entry(0, 0, tid="tb", slug="b", **down)])
+
+        asyncio.run(go())
+        # Only the copy the cap stopped is started; the owner's stopped copy b is left alone.
+        assert [(c.args[0], c.args[2]) for c in call.call_args_list] == [
+            (7, "/api/proxied/a/1/start"),
+            (7, "/api/proxied/a/1/start"),
+        ]
+        assert [c.args for c in rig.mark.call_args_list] == [(1, 7, "a", False)]
+
+    def test_a_retry_respects_the_owner_and_a_cap_that_came_back(self):
+        uncapped = {"id": 1, "definition": dict(CAPPED), "state": {}}
+        capped = {**uncapped, "state": {"capped_at": "x", "cap_reason": "r"}}
+
+        def run(copies, proxies_seen):
+            call = AsyncMock(return_value={})
+            mark = AsyncMock()
+            with (
+                patch.object(main.database, "get_proxy", new_callable=AsyncMock, side_effect=proxies_seen),
+                patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
+                patch.object(main.database, "set_proxied_copy_capped", mark),
+                patch.object(main, "_proxy_worker_call", call),
+            ):
+                asyncio.run(main._restart_capped_copies(1, 7, {"a"}))
+            return call, mark
+
+        # The owner started or stopped it since the heartbeat: the mark is gone, no start.
+        call, mark = run([{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 0}], [uncapped])
+        assert call.call_count == 0 and mark.call_count == 0
+        # The cap came back while the start ran: the mark stays for the next stop and reset.
+        call, mark = run([{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}], [uncapped, capped])
+        assert call.call_count == 1 and mark.call_count == 0
+        assert not main._proxy_cap_starting
+
+    def test_a_reset_respects_a_cap_that_came_back(self):
+        uncapped = {"id": 1, "definition": dict(CAPPED), "state": {}}
+        capped = {**uncapped, "state": {"capped_at": "x", "cap_reason": "r"}}
+        copies = [{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}]
+
+        def run(proxies_seen):
+            call = AsyncMock(return_value={})
+            mark = AsyncMock()
+            with (
+                patch.object(main.database, "clear_alerts", new_callable=AsyncMock),
+                patch.object(main.database, "get_proxy", new_callable=AsyncMock, side_effect=proxies_seen),
+                patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
+                patch.object(main.database, "set_proxied_copy_capped", mark),
+                patch.object(main, "_proxy_worker_call", call),
+            ):
+                started = asyncio.run(main._release_capped_copies(uncapped))
+            return started, call, mark
+
+        # A heartbeat capped it again before the start: nothing is started.
+        started, call, mark = run([capped])
+        assert started == [] and call.call_count == 0 and mark.call_count == 0
+        # The cap came back while the start ran: the mark stays for the next stop and reset.
+        started, call, mark = run([uncapped, capped])
+        assert call.call_count == 1 and mark.call_count == 0
+        assert not main._proxy_cap_starting
+
+    def test_an_owner_start_rechecks_the_cap_once_it_holds_the_copy(self):
+        uncapped = {"id": 1, "definition": dict(CAPPED), "state": {}}
+        capped = {**uncapped, "state": {"capped_at": "x", "cap_reason": "P reached its cap"}}
+        call = AsyncMock(return_value={})
+        with (
+            patch.object(main, "_proxy_or_404", new_callable=AsyncMock, side_effect=[uncapped, capped]),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
+            patch.object(main, "_proxy_worker_call", call),
+            pytest.raises(HTTPException) as exc,
+        ):
+            asyncio.run(main.api_proxied_copy_command(1, 7, "a", "start", {}))
+        assert exc.value.status_code == 409 and exc.value.detail == "P reached its cap"
+        call.assert_not_called()
+        mark.assert_not_called()
+
+    def test_a_cap_stop_waits_for_an_owner_command_on_the_same_copy(self):
+        proxy = {"id": 1, "definition": dict(CAPPED), "state": {"capped_at": "x", "cap_reason": "r"}}
+        order: list[str] = []
+
+        async def worker_call(worker_id, method, path, definition, **kw):
+            order.append(path)
+            return {"was_running": True}
+
+        async def go():
+            lock = main._proxy_copy_lock(1, 7, "a")
+            await lock.acquire()
+            stop = asyncio.create_task(main._stop_capped_proxy(proxy, {(7, "a")}))
+            await asyncio.sleep(0.05)
+            order.append("owner done")
+            lock.release()
+            await stop
+
+        with (
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=proxy),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock),
+            patch.object(main.database, "record_alert", new_callable=AsyncMock, return_value=None),
+            patch.object(main, "_proxy_worker_call", AsyncMock(side_effect=worker_call)),
+        ):
+            asyncio.run(go())
+        assert order == ["owner done", "/api/proxied/a/1/stop"]
+        main._drop_proxy_cap_bell(1)
+
+    def test_a_reset_skips_a_copy_whose_start_is_already_on_its_way(self):
+        proxy = {"id": 1, "definition": dict(CAPPED), "state": {}}
+        call = AsyncMock(return_value={})
+        main._proxy_cap_starting.add((1, 7, "a"))
+        with (
+            patch.object(main.database, "clear_alerts", new_callable=AsyncMock),
+            patch.object(
+                main.database,
+                "list_proxied_copies",
+                new_callable=AsyncMock,
+                return_value=[{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}],
+            ),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock),
+            patch.object(main, "_proxy_worker_call", call),
+        ):
+            assert asyncio.run(main._release_capped_copies(proxy)) == []
+        assert call.call_count == 0
+
+    def test_a_copy_the_cap_stopped_stays_down_while_the_cap_holds(self):
+        call = AsyncMock(return_value={})
+        rig = _CapRig([{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}], call)
+        rig.proxy["state"] = {"used_bytes": 950_000_000, "capped_at": "x", "cap_reason": "r"}
+        asyncio.run(rig.heartbeat(7, [_entry(0, 0, status="exited", tunnel_status="exited")]))
+        assert call.call_count == 0
+
+    def test_a_running_copy_the_cap_stopped_is_not_started_again(self):
+        call = AsyncMock(return_value={})
+        rig = _CapRig([{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}], call)
+        asyncio.run(rig.heartbeat(7, [_entry(0, 0, status="running", tunnel_status="running")]))
         assert call.call_count == 0
 
     def test_the_bell_keeps_a_cap_that_still_holds_after_a_restart(self):
@@ -795,6 +957,125 @@ class TestProxyStateWriters:
         assert proxy["definition"].get("cap_gb") is None
         assert "capped_at" not in proxy["state"]
         assert proxy["state"]["used_bytes"] == 950_001_100
+
+
+async def _heartbeat_awaiting_spawns(worker_id, entries):
+    spawned: list = []
+    with patch.object(main, "_spawn", side_effect=spawned.append):
+        await main._account_proxy_traffic(worker_id, entries)
+    while spawned:
+        await spawned.pop(0)
+
+
+def _capped_copy(pid):
+    return database.update_proxy_state(
+        pid, {"used_bytes": 950_000_000, "capped_at": "2026-11-04T01:00:00+00:00", "cap_reason": "P hit"}
+    )
+
+
+class TestReleasedCopiesThatDidNotStart:
+    """A lifted cap whose restart failed: the copy's box starts it when it next reports."""
+
+    def test_the_boxs_next_heartbeat_starts_it(self, db):
+        offline = AsyncMock(side_effect=HTTPException(status_code=503, detail="Worker offline"))
+        online = AsyncMock(return_value={})
+
+        async def go():
+            pid = (await main.api_create_proxy(_Req(_socks(cap_gb=1)), {}))["id"]
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_capped(pid, 7, "honeygain", True)
+            await _capped_copy(pid)
+            with patch.object(main, "_proxy_to_worker", offline):
+                await main.api_update_proxy(_Req({"cap_gb": ""}), pid, {})
+            after_release = (await database.list_proxied_copies(pid))[0]["stopped_by_cap"]
+            hb = [_entry(0, 0, slug="honeygain", proxy_id=pid, status="exited", tunnel_status="exited")]
+            with patch.object(main, "_proxy_to_worker", online):
+                await _heartbeat_awaiting_spawns(7, hb)
+            return pid, after_release, (await database.list_proxied_copies(pid))[0]["stopped_by_cap"]
+
+        pid, after_release, after_heartbeat = _run(go)
+        assert after_release == 1, "the failed start keeps the copy marked"
+        assert online.call_args.args[:3] == (7, "POST", f"/api/proxied/honeygain/{pid}/start")
+        assert after_heartbeat == 0
+        assert not main._proxy_cap_starting
+
+    def test_a_retry_never_starts_a_copy_after_the_owner_stopped_it(self, db):
+        """The owner's stop is in flight when the retry fires: the retry must not undo it."""
+        calls = []
+
+        async def go():
+            gate = asyncio.Event()
+
+            async def worker_call(worker_id, method, path, definition, **kw):
+                calls.append(path)
+                if path.endswith("/stop"):
+                    await gate.wait()
+                return {}
+
+            pid = (await main.api_create_proxy(_Req(_socks(cap_gb=1)), {}))["id"]
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_capped(pid, 7, "honeygain", True)
+            with patch.object(main, "_proxy_worker_call", side_effect=worker_call):
+                stop = asyncio.create_task(main.api_proxied_copy_command(pid, 7, "honeygain", "stop", {}))
+                while not calls:
+                    await asyncio.sleep(0)
+                retry = asyncio.create_task(main._restart_capped_copies(pid, 7, {"honeygain"}))
+                for _ in range(20):
+                    await asyncio.sleep(0)
+                gate.set()
+                await asyncio.gather(stop, retry)
+            return pid
+
+        pid = _run(go)
+        assert calls == [f"/api/proxied/honeygain/{pid}/stop"], calls
+
+    @pytest.mark.parametrize(
+        ("capped", "marked", "status"),
+        [
+            pytest.param(True, True, "exited", id="capped-again"),
+            pytest.param(False, False, "exited", id="started-or-stopped-by-hand"),
+            pytest.param(False, True, "running", id="already-running"),
+        ],
+    )
+    def test_nothing_is_started_when_it_should_not_be(self, db, capped, marked, status):
+        call = AsyncMock(return_value={})
+
+        async def go():
+            pid = (await main.api_create_proxy(_Req(_socks(cap_gb=1)), {}))["id"]
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_capped(pid, 7, "honeygain", marked)
+            if capped:
+                await _capped_copy(pid)
+            hb = [_entry(0, 0, slug="honeygain", proxy_id=pid, status=status, tunnel_status=status)]
+            with patch.object(main, "_proxy_to_worker", call):
+                await _heartbeat_awaiting_spawns(7, hb)
+            return pid
+
+        pid = _run(go)
+        starts = [c for c in call.call_args_list if c.args[2] == f"/api/proxied/honeygain/{pid}/start"]
+        assert starts == []
+
+    def test_a_restart_that_fails_after_a_cap_lifted_mid_stop_is_marked(self, db):
+        """The stop landed, the cap was lifted meanwhile, and the start back up failed."""
+
+        async def worker_call(worker_id, method, path, definition, **kw):
+            if path.endswith("/start"):
+                raise HTTPException(status_code=503, detail="Worker offline")
+            return {"was_running": True}
+
+        async def go():
+            pid = (await main.api_create_proxy(_Req(_socks(cap_gb=1)), {}))["id"]
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            proxy = await database.get_proxy(pid)
+            with (
+                patch.object(main, "_proxy_worker_call", side_effect=worker_call),
+                patch.object(main, "_spawn", side_effect=_discard_spawn),
+            ):
+                await main._stop_capped_proxy(proxy, {(7, "honeygain")})
+            return (await database.list_proxied_copies(pid))[0]["stopped_by_cap"]
+
+        assert _run(go) == 1
+        main._drop_proxy_cap_bell(1)
 
 
 class TestValidationEcho:
