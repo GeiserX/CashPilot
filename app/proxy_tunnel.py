@@ -31,8 +31,10 @@ import os
 import re
 import socket
 import tarfile
+import threading
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -61,6 +63,35 @@ TUNNEL_REPOSITORY = "drumsergio/cashpilot-tunnel"
 READY_TIMEOUT = 45.0
 SECRET_DIR = "/run/cashpilot-secret"
 _FLOATING_TAGS = {"", "latest", "stable", "edge", "main", "master"}
+#: A redeploy starts the new sidecar under its tunnel name plus this suffix, next
+#: to the copy that runs now, and gives it the final name only once the old pair
+#: is gone. The heartbeat (status()) never reports a staged sidecar.
+STAGED_SUFFIX = "-next"
+# deploy() swapping the old pair for the staged one, and status(), take turns: a
+# heartbeat must not start an earner that is being removed, or read a half swap.
+_swap_lock = threading.Lock()
+# One deploy per copy at a time: a second one would take the first one's staged
+# sidecar for a leftover and remove it.
+_deploy_locks: dict[tuple[str, int], threading.Lock] = {}
+_deploy_locks_guard = threading.Lock()
+#: A staged sidecar older than this is a leftover: a deploy is past its ready
+#: timeout by then. Younger ones may belong to a deploy still running.
+STAGED_STALE_SECONDS = 300
+
+
+def _deploy_lock(slug: str, proxy_id: int) -> threading.Lock:
+    with _deploy_locks_guard:
+        return _deploy_locks.setdefault((slug, proxy_id), threading.Lock())
+
+
+def _age_seconds(container: Any) -> float:
+    """Seconds since the container was created; 0 when Docker does not say."""
+    raw = str((getattr(container, "attrs", None) or {}).get("Created") or "")
+    try:
+        created = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", raw).replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return (datetime.now(UTC) - created).total_seconds()
 
 
 class ProxyTunnelError(RuntimeError):
@@ -357,7 +388,13 @@ def _get(client: Any, name: str) -> Any | None:
 
 
 def start_sidecar(
-    client: Any, name: str, slug: str, proxy_id: int | None, proxy: dict[str, Any], own_ip: str | None
+    client: Any,
+    name: str,
+    slug: str,
+    proxy_id: int | None,
+    proxy: dict[str, Any],
+    own_ip: str | None,
+    hostname: str | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Create, provision and start a sidecar, then wait for its exit. Removed on any failure."""
     network = orchestrator.container_network("bridge")
@@ -367,7 +404,7 @@ def start_sidecar(
         client.images.pull(image)
     except APIError as exc:
         logger.warning("Could not pull %s: %s (trying the local copy)", image, exc)
-    kwargs = sidecar_kwargs(name, slug, proxy_id, network, hostname=name.removeprefix(CONTAINER_PREFIX)[:63])
+    kwargs = sidecar_kwargs(name, slug, proxy_id, network, hostname=hostname or _hostname(name))
     kwargs.pop("detach")
     container = client.containers.create(**kwargs)
     try:
@@ -384,19 +421,43 @@ def start_sidecar(
     return container, exit_info
 
 
+def _hostname(name: str) -> str:
+    return name.removeprefix(CONTAINER_PREFIX)[:63]
+
+
 def deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None) -> dict:
     """Deploy (or replace) the proxied copy of ``slug`` through proxy ``proxy_id``.
 
-    Order: the old pair goes (earner first), the sidecar starts and proves an
-    exit, and only then is the earner created inside its namespace.
+    Order: the new sidecar starts under a staged name and proves an exit while
+    the old pair keeps running; then the old pair goes (earner first), the
+    sidecar takes the final name, and only then is the earner created inside
+    its namespace. A sidecar that cannot start therefore costs nothing.
     """
+    with _deploy_lock(slug, proxy_id):
+        return _deploy(slug, proxy_id, earner, proxy, own_ip)
+
+
+def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None) -> dict:
     client = orchestrator._get_client()
-    # Checked before the old pair goes: settings that cannot work (a host that
-    # does not resolve, no tunnel image) must not cost the copy running now.
+    # Checked first: settings that cannot work (a host that does not resolve,
+    # no tunnel image) fail fast, before a sidecar is created.
     secret_files(proxy, own_ip, f"{slug}-p{proxy_id}")
     tunnel_image()
-    remove(slug, proxy_id)
-    sidecar, exit_info = start_sidecar(client, tunnel_name(slug, proxy_id), slug, proxy_id, proxy, own_ip)
+    final = tunnel_name(slug, proxy_id)
+    staged = final + STAGED_SUFFIX
+    # Left by a deploy that died midway, on this name only if it is ours.
+    if (leftover := _get(client, staged)) is not None:
+        if not _is_ours(leftover, slug, proxy_id):
+            raise ProxyTunnelError(f"A container named {staged} that CashPilot did not create is in the way")
+        _remove_quietly(leftover, 2)
+    sidecar, exit_info = start_sidecar(client, staged, slug, proxy_id, proxy, own_ip, hostname=_hostname(final))
+    try:
+        with _swap_lock:
+            remove(slug, proxy_id)
+            sidecar.rename(final)
+    except Exception:
+        _remove_quietly(sidecar, 2)
+        raise
     try:
         container_id = orchestrator.deploy_raw(
             slug=slug,
@@ -529,7 +590,8 @@ def remove_all(slug: str) -> list[str]:
 
 
 def sweep_test_tunnels() -> list[str]:
-    """Remove Test tunnels a worker that stopped mid-test left behind.
+    """Remove Test tunnels a worker that stopped mid-test left behind, and staged
+    sidecars of a deploy it stopped in.
 
     Run at worker start, when no test of this worker can be in flight.
     """
@@ -544,6 +606,16 @@ def sweep_test_tunnels() -> list[str]:
             continue
         _remove_quietly(container, 2)
         swept.append(container.name)
+    # And staged sidecars of a deploy that died: they hold the proxy login, and
+    # the heartbeat never reports them. Only stale ones, so a deploy another
+    # worker on this daemon is running keeps its sidecar.
+    staged = client.containers.list(
+        all=True, filters={"label": [f"{LABEL_MANAGED}=true", f"{LABEL_ROLE}={ROLE_TUNNEL}", LABEL_PROXY]}
+    )
+    for container in staged:
+        if str(container.name).endswith(STAGED_SUFFIX) and _age_seconds(container) >= STAGED_STALE_SECONDS:
+            _remove_quietly(container, 2)
+            swept.append(container.name)
     return swept
 
 
@@ -600,6 +672,11 @@ def status(collect_stats: bool = True) -> list[dict[str, Any]]:
     stats carry no network counters, and every byte it moves crosses the
     sidecar's eth0.
     """
+    with _swap_lock:
+        return _status(collect_stats)
+
+
+def _status(collect_stats: bool) -> list[dict[str, Any]]:
     try:
         client = orchestrator._get_client()
         found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
@@ -608,6 +685,8 @@ def status(collect_stats: bool = True) -> list[dict[str, Any]]:
         return []
     pairs: dict[tuple[str, str], dict[str, Any]] = {}
     for container in found:
+        if str(getattr(container, "name", "")).endswith(STAGED_SUFFIX):
+            continue  # a redeploy's sidecar, not promoted yet
         labels = container.labels or {}
         key = (labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, ""))
         role = "tunnel" if labels.get(LABEL_ROLE) == ROLE_TUNNEL else "earner"
