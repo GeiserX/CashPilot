@@ -46,6 +46,7 @@ nav = [
   { Home = "index.md" },
   { "Get started" = [
       { "Getting started" = "getting-started.md" },
+      { "What's new in 2.0" = "whats-new-2.0.md" },
       { "App stores" = "app-stores.md" },
       { "How it works" = "how-it-works.md" },
       { FAQ = "faq.md" },
