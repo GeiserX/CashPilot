@@ -206,7 +206,7 @@ If the worker and UI are on different subnets (e.g., connected via Tailscale):
 
 ## Offline Handling
 
-If a worker goes offline (no heartbeat for 180 seconds):
+If a worker goes offline (no heartbeat for 180 seconds; 45 minutes for an Android phone, which reports every 15 minutes):
 
 - The UI marks the worker as offline
 - Historical earnings and health data is retained
