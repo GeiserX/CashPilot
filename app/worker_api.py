@@ -944,12 +944,27 @@ def _seconds_to_next_window(now: float | None = None) -> float:
     return activity.WINDOW_SECONDS - (now % activity.WINDOW_SECONDS) + 1
 
 
+def _sweep_probes() -> None:
+    """Open a client, sweep, close it, all in one thread: a cancelled await cannot drop the client."""
+    client = activity._client()
+    try:
+        activity.sweep(client)
+    finally:
+        with contextlib.suppress(Exception):
+            client.close()
+
+
 async def _activity_cycle() -> None:
-    """One round, if the owner switched Activity on and Docker answers."""
+    """One round, if the owner switched Activity on and Docker answers.
+
+    With Activity off there is no round, but probes other workers left behind
+    are still swept: their logs hold raw addresses and nothing else removes them.
+    """
     global _pending_activity, _activity_seq
-    if not _activity_enabled:
-        return
     if not await asyncio.to_thread(orchestrator.docker_available):
+        return
+    if not _activity_enabled:
+        await asyncio.to_thread(_sweep_probes)
         return
     switches = _activity_switches
     result = await asyncio.to_thread(activity.run_round)
@@ -973,12 +988,7 @@ async def _activity_loop() -> None:
     """
     with contextlib.suppress(Exception):
         if await asyncio.to_thread(orchestrator.docker_available):
-            client = await asyncio.to_thread(activity._client)
-            try:
-                await asyncio.to_thread(activity.sweep, client)
-            finally:
-                with contextlib.suppress(Exception):
-                    client.close()
+            await asyncio.to_thread(_sweep_probes)
     while True:
         await asyncio.sleep(_seconds_to_next_window())
         try:
