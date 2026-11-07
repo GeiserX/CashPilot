@@ -48,3 +48,6 @@ docs/DEFERRED-QUESTIONS.md
 
 # scripts/socket_proxy_live_test.sh work folder
 .socket-proxy-live/
+.owner-migration-live/
+# cashpilot-migrate's records, next to the compose file (root-owned)
+cashpilot-migrate-state/

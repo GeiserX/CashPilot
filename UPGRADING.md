@@ -19,6 +19,86 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## Owner isolation: take the compose file again; two features change on the UI's host
+
+**Affects you if** your worker runs behind `cashpilot-socket-proxy`. Until now
+a compromised worker on the UI's host could read the UI's `/data`, including
+`.fernet_key`, the key that decrypts every login CashPilot stores, and the
+keys in the UI container's environment. The proxy now lets the worker reach
+only the containers, volumes and networks it created
+([what that closes](docs/security-defaults.md#docker-socket-proxy)).
+
+**What you lose.**
+
+- **The in-app update no longer updates the dashboard** on the host where the
+  UI and a worker run together. It updates the worker; the UI is not the
+  worker's to recreate. Update the dashboard with
+  `docker compose pull && docker compose up -d`. The update card says so.
+  Worker-only hosts are not affected.
+- **Earners you started yourself disappear from the worker**: one started by
+  hand, or from a compose file CashPilot exported. The worker can no longer see
+  them, so the dashboard stops listing them as external services. They keep
+  running and earning; only CashPilot's view of them goes.
+
+**What to do.**
+
+1. Take the new compose file, the same way as in
+   [the socket proxy section](#docker-socket-proxy-take-the-new-compose-file-once).
+2. Run `docker compose up -d --force-recreate` (with `-f` and your file if it
+   is not `docker-compose.yml`).
+
+That runs `cashpilot-migrate` once, before the proxy starts. Docker cannot add a
+label to an existing volume or network, so it moves your data onto labelled
+ones:
+
+- every volume of an earner the worker started is copied to a backup named
+  `<volume>-pre-isolation`, checked, recreated with the label, filled back from
+  the backup and checked again, and the earner is recreated as it was. A
+  Mysterium identity keeps its address. Each backup carries the label
+  `cashpilot.backup-of=<volume>`, and the log line
+  *Backup … holds the data of …* says which earner it belonged to;
+- the worker's own volumes are copied into new ones with `_owned` names
+  (`cashpilot_worker_data_owned`, and `cashpilot_fleet_owned` where the UI runs
+  too);
+- `cashpilot-isolated` is rebuilt with the label and its earners put back.
+
+It can take a few minutes on a node with a large volume. If it stops halfway (a
+reboot, a kill), run the same command again: it finishes from where it stopped.
+`docker logs cashpilot-migrate` shows what it did. A second run finds nothing to
+do and exits.
+
+A volume that a container you started also uses, or one with a custom driver,
+is left as it was, with a warning in that log. The earner keeps running and
+the worker still sees and controls it, but redeploying it (an update included)
+is refused while it uses that volume. Move its data to a volume CashPilot
+creates, or redeploy it on a new one.
+
+**What is left behind, and how to remove it.** Nothing is deleted for you:
+
+- each `<volume>-pre-isolation` backup (`docker volume ls --filter label=cashpilot.backup-of`);
+- the old `cashpilot_worker_data` and `cashpilot_fleet` volumes, prefixed with
+  your project name (`docker volume ls | grep -E 'cashpilot_(worker_data|fleet)$'`);
+- `cashpilot-docker-api`, the old socket volume, which held only the socket;
+- the folder `cashpilot-migrate-state` next to your compose file, the
+  migration's record (root only; it holds each earner's settings, credentials
+  included).
+
+Once the dashboard shows every earner running and earning, and a Mysterium
+node shows its old address, remove them from your compose folder. `<project>`
+is your compose project name, usually the folder's name:
+
+```sh
+docker volume ls -q --filter label=cashpilot.backup-of | xargs -r docker volume rm
+docker volume rm cashpilot-docker-api <project>_cashpilot_worker_data <project>_cashpilot_fleet \
+  && sudo rm -rf cashpilot-migrate-state
+```
+
+The folder goes only once both old volumes are gone, which is what the `&&`
+checks: while an old `cashpilot_worker_data` or `cashpilot_fleet` exists, the folder is what stops the next
+`docker compose up` from copying it over the new one again.
+
+---
+
 ## v1.72.1: take the compose file again if your worker runs behind the socket proxy
 
 **Affects you if** you took the compose file of v1.71.0, v1.71.1 or v1.72.0,

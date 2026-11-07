@@ -1520,7 +1520,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
     for source in spec.volumes:
-        if source == orchestrator.PROXY_VOLUME:
+        if source in orchestrator.PROXY_VOLUMES:
             # The volume holds the worker's own Docker socket; a container
             # given it could drive Docker exactly as the worker does.
             raise HTTPException(status_code=403, detail=f"Volume '{source}' is the worker's Docker socket")

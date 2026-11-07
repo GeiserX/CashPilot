@@ -1,6 +1,8 @@
 services:
   cashpilot:
     image: drumsergio/cashpilot:1.72.1
+    networks:
+      - cashpilot_owned
     ports:
       - ${APP_PORT}:8080
     volumes:
@@ -16,6 +18,30 @@ services:
     x-runtipi:
       internal_port: 8080
       is_main: true
+  # Runs once at every install or update, before the proxy, and exits. Older
+  # releases made service volumes and the LAN fence's network without the
+  # proxy's owner label, which Docker cannot add later: this moves each onto a
+  # labelled one, data checked, and keeps the original as <volume>-pre-isolation.
+  # It holds the raw socket only while it runs.
+  cashpilot-migrate:
+    image: drumsergio/cashpilot-worker:1.72.1
+    container_name: cashpilot-migrate
+    user: "0:0"
+    entrypoint: ["python", "-m", "app.owner_migrate"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # A folder, not a volume: the in-app update runs docker compose through
+      # the proxy, and Compose checks every volume of the worker's dependencies.
+      - ${APP_DATA_DIR}/data/migrate:/state
+    network_mode: none
+    restart: "no"
+    healthcheck:
+      disable: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
   # Holds the host's Docker socket so the worker does not have to. It serves
   # a filtered copy in the cashpilot_docker_api volume and refuses every call
   # the worker does not make: a privileged container, a bind of / or of the
@@ -64,9 +90,17 @@ services:
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
+    depends_on:
+      cashpilot-migrate:
+        condition: service_completed_successfully
 
   cashpilot-worker:
     image: drumsergio/cashpilot-worker:1.72.1
+    # The proxy's owner label, so the worker may read its own container.
+    labels:
+      cashpilot.deployed-by: worker
+    networks:
+      - cashpilot_owned
     volumes:
       # No Docker socket here: the worker starts and stops the earning
       # containers through the proxy's filtered socket in this volume.
@@ -83,7 +117,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=ec66faec71f2e7ac
+      - CASHPILOT_PROXY_POLICY=e9a30411b564dc75
       # The values the proxy gets, so the worker can say what to set before the
       # proxy refuses a host-folder bind.
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
@@ -97,11 +131,20 @@ services:
     tmpfs:
       - /tmp:size=64M
 
+networks:
+  # Carries the proxy's owner label, so the worker may use the network it is on,
+  # instead of the project's default network, which the UI shares unlabelled.
+  cashpilot_owned:
+    labels:
+      cashpilot.deployed-by: worker
+
 volumes:
   # Fixed name, as in the repository's compose files: the worker and the proxy
   # meet on the filtered socket in it.
   cashpilot_docker_api:
-    name: cashpilot-docker-api
+    name: cashpilot-docker-api-owned
+    labels:
+      cashpilot.deployed-by: worker
 
 # The Docker socket proxy's policy. scripts/socket_proxy_policy.py writes it
 # from the catalog; `$$` is how compose spells a literal `$`.
@@ -187,6 +230,19 @@ configs:
           # scope, custom IPAM and endpoint settings stay refused.
           allow_driver_options: true
           allow_disconnect_force: true
+        volume:
+          # Plain local volumes only: driver options could point one at a host folder.
+          allow_custom_drivers: false
+          allow_driver_opts: false
+      # The worker sees and touches only what carries the owner label below: what
+      # it created through this proxy, and what app/owner_migrate.py labelled. The
+      # UI's container and its data volume never carry it.
+      ownership:
+        owner: worker
+        label_key: cashpilot.deployed-by
+        # Images carry no owner: one pulled for an earner is shared with the host.
+        allow_unowned_images: true
+        allow_cross_owner_namespace_sharing: false
       rules:
         - {match: {method: GET, path: "/_ping"}, action: allow}
         - {match: {method: HEAD, path: "/_ping"}, action: allow}
@@ -218,6 +274,7 @@ configs:
         - {match: {method: POST, path: "/networks/*/connect"}, action: allow}
         - {match: {method: POST, path: "/networks/*/disconnect"}, action: allow}
         - {match: {method: DELETE, path: "/networks/*"}, action: allow}
+        - {match: {method: POST, path: "/volumes/create"}, action: allow}
         - {match: {method: GET, path: "/volumes/*"}, action: allow}
         - {match: {method: DELETE, path: "/volumes/*"}, action: allow}
         - {match: {method: "*", path: "/**"}, action: deny, reason: "the CashPilot worker does not use this Docker API call"}

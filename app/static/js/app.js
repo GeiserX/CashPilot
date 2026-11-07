@@ -4362,6 +4362,8 @@ const CP = (() => {
   // The worker whose install the card inspects/updates. Multi-worker fleets
   // get a selector; _resolve_worker_id would otherwise 400 the whole card.
   let updateCardWorkerId = null;
+  // The worker may not recreate the dashboard on its server: it updates itself only.
+  let updateCardWorkerOnly = false;
 
   async function loadUpdateCard() {
     const container = document.getElementById('update-card-container');
@@ -4390,6 +4392,7 @@ const CP = (() => {
   }
 
   function renderUpdateCard(info, onlineWorkers) {
+    updateCardWorkerOnly = !!info.ui_by_hand;
     const container = document.getElementById('update-card-container');
     if (!container) return;
     const current = info.current_display || info.current || 'dev';
@@ -4434,6 +4437,9 @@ const CP = (() => {
           ? 'You are on the newest known release. The button re-runs the documented pull anyway.'
           : 'The newest release is unknown; the button still runs the documented pull for your pinned series.';
       }
+      if (info.ui_by_hand) {
+        note += ' It updates the worker only: the worker may not touch the dashboard\'s container on this server, so update the dashboard there with docker compose pull && docker compose up -d.';
+      }
       action = `
       <div class="kv-actions">
         <button class="btn btn-primary" data-action="runSelfUpdate">${escapeHtml(label)}</button>
@@ -4447,14 +4453,21 @@ const CP = (() => {
   }
 
   async function runSelfUpdate() {
-    if (!confirm('Update CashPilot now? This pulls the newest images of your pinned series and recreates the CashPilot containers — the dashboard will briefly go away.')) return;
+    const question = updateCardWorkerOnly
+      ? 'Update the worker now? This pulls the newest worker image of your pinned series and recreates the worker. The dashboard stays as it is; update it with docker compose pull && docker compose up -d.'
+      : 'Update CashPilot now? This pulls the newest images of your pinned series and recreates the CashPilot containers — the dashboard will briefly go away.';
+    if (!confirm(question)) return;
     const status = document.getElementById('update-run-status');
     if (status) status.textContent = 'Starting update…';
     try {
       // Same worker the card inspected — info and action must not diverge.
       const q = updateCardWorkerId != null ? `?worker_id=${updateCardWorkerId}` : '';
       await api(`/api/update${q}`, { method: 'POST' });
-      if (status) status.textContent = 'Update started — the dashboard will restart. Reload this page in a minute.';
+      if (status) {
+        status.textContent = updateCardWorkerOnly
+          ? 'Update started — the worker will restart. Reload this page in a minute.'
+          : 'Update started — the dashboard will restart. Reload this page in a minute.';
+      }
     } catch (err) {
       // A 409 carries the worker's honest refusal (e.g. not compose-managed,
       // or an update already running) — show it verbatim, it IS the answer.

@@ -105,7 +105,7 @@ The shipped compose files (`docker-compose.yml`, `docker-compose.fleet.yml`,
 `cashpilot-socket-proxy`, pinned by digest
 (`codeswhat/sockguard:2.4.5@sha256:d15f93e856626ff21f48400034d887874a4dafbbf6bb1e31799511beea07d84c`).
 It holds the socket read-only, runs as root with every capability dropped and no
-network, and serves a filtered socket in the `cashpilot-docker-api` volume. The
+network, and serves a filtered socket in the `cashpilot-docker-api-owned` volume. The
 worker mounts that volume and sets `DOCKER_HOST` to it. It has no Docker socket
 of its own.
 
@@ -150,22 +150,22 @@ When the proxy refuses a deploy, the dashboard shows its reason, for example
 source "/mnt/user/storj" is not allowlisted.* `docker logs cashpilot-socket-proxy`
 has one line per call, refusals included.
 
-**Not yet a root boundary.** The proxy closes the one-call ways to root: a
-privileged container, a bind of `/` or of the socket, an added capability. It
-does not yet stop a compromised worker that takes two steps, because sockguard
-2.4.5 has no setting for either of these:
+**Owner isolation.** The proxy stamps the label `cashpilot.deployed-by=worker`
+on every container, volume and network the worker creates, and refuses the
+worker everything that does not carry it. The worker cannot inspect, read
+files from, stop or remove a container it did not start, cannot mount or delete
+a volume it did not create, and cannot join the namespace of a container it
+does not own. The UI, the proxy itself, a dashboard or auto-updater that holds
+the Docker socket, and every container you started by hand are out of its
+reach. The worker also lists only its own containers, so it no longer sees
+those. Images are not scoped: a custom service can still pull any image.
 
-- **Joining another container's process namespace.** sockguard refuses
-  `PidMode: host` but lets `container:<name>` through for the PID and IPC
-  namespaces. The only switch that refuses it also refuses
-  `NetworkMode: container:<id>`, which the tunnel sidecar, the activity
-  reader and the isolation check depend on. A container that joins a root
-  container's PID namespace can read that container's files through
-  `/proc/1/root`. The proxy itself is protected: it holds one capability
-  (`WAKE_ALARM`) that no created container may ask for, so the kernel refuses
-  the joiner its files. Any other container on the host that holds the Docker
-  socket (a dashboard, an auto-updater) is not, and the UI's files are
-  readable this way when the UI runs on the same host.
+**Not yet a root boundary.** The proxy closes the one-call ways to root: a
+privileged container, a bind of `/` or of the socket, an added capability.
+Owner isolation closes joining another container's process namespace, which
+read a root container's files through `/proc/1/root`. One two-step way is
+left, because sockguard 2.4.5 has no setting for it:
+
 - **A symlink in an allowed folder.** sockguard checks a bind's source as a
   string; Docker follows symlinks when it mounts. A container that binds an
   allowed folder can plant `evil -> /` in it, and a second container that
@@ -175,37 +175,35 @@ does not yet stop a compromised worker that takes two steps, because sockguard
   compose file uses for them are paths under the null device, where Docker
   cannot create a folder, so nothing can be planted there.
 
-Both need a change in sockguard (a per-namespace switch, and binds that are
-exact or symlink-free). Until then, an install that keeps both variables unset
-and runs no other socket-holding container on the host is the one where the
-proxy stands between the worker and root.
+It needs a change in sockguard (binds that are exact or symlink-free). Until
+then, an install that keeps both variables unset is the one where the proxy
+stands between the worker and root.
 
 **What a compromised worker can still do** even once those are closed:
 
-- Stop, remove, inspect and read the logs and files of **any** container on the
-  host, not only CashPilot's, and read their environment variables.
-- Run the allowed reader commands in any container.
-- Delete any named volume. The worker refuses to delete the ones the catalog
-  marks critical (Mysterium's keystore, Storj's identity), but the proxy
-  does not know about them, so a compromised worker can delete them, and the
-  UI's `cashpilot_data`, directly.
-- Mount any named volume into a new container, including the UI's
-  `cashpilot_data` when the UI runs on the same host.
+- Stop, remove, inspect and read the logs, files and environment variables of
+  the containers it started: every earner on its host.
+- Run the allowed reader commands in those containers.
+- Delete or mount the volumes it created. The worker refuses to delete the ones
+  the catalog marks critical (Mysterium's keystore, Storj's identity), but the
+  proxy does not know about them, so a compromised worker can delete them
+  directly.
 - Start a container on host networking with `NET_ADMIN`, `NET_RAW` and
   `/dev/net/tun`, which can reconfigure the host's network but not reach its
   files.
 - Write into your compose folder, through a container that binds it. A change
   there takes effect the next time you run `docker compose up` yourself, which
-  uses the raw socket. Leave `CASHPILOT_COMPOSE_DIR` unset if you update by
-  hand, and the folder is not bindable at all.
-- Create, attach, detach and delete Docker networks. The LAN fence needs this
-  to build `cashpilot-isolated` and move earners onto it, and sockguard 2.4.5
-  cannot limit it to that one network. The proxy lets bridge driver options and
+  uses the raw socket, and the folder's `.env` holds whatever keys you put
+  there. Leave `CASHPILOT_COMPOSE_DIR` unset if you update by hand, and the
+  folder is not bindable at all.
+- Create Docker networks, and attach, detach and delete the ones it created.
+  The LAN fence needs this to build `cashpilot-isolated` and move earners onto
+  it, and sockguard 2.4.5 cannot limit it to that one network. The proxy lets bridge driver options and
   a forced disconnect through, because the fence uses both; custom drivers,
   swarm scope, custom address plans and endpoint settings stay refused, except
   network aliases, which sockguard always lets through. It adds little reach, since the worker
   can already start a container on host networking, but a compromised worker
-  can take an earner off the fence or delete a network another app uses.
+  can take an earner off the fence.
 - Start a container in the host's cgroup namespace. The Activity reader of a
   host-network earner such as Mysterium needs it to tell that earner's
   sockets from the host's. The cgroup tree it shows is read-only and names
@@ -214,15 +212,16 @@ proxy stands between the worker and root.
   sysctls on its own containers (the tunnel sidecar needs it).
 
 **What that means for the default install.** `docker-compose.yml` runs the UI
-and a worker on the same host. A compromised worker there can read the UI's
-`/data` (through a file read, or a new container that mounts
-`cashpilot_data`), including `.fernet_key`, the key that decrypts every
-service login CashPilot stores. It can also read `CASHPILOT_SECRET_KEY`, `CASHPILOT_API_KEY` and
-`CASHPILOT_ADMIN_API_KEY` from the UI container's environment when they are set
-there. Even where the proxy keeps the worker off the host's root (both bind
-variables unset, no other socket-holding container, as above), it does not keep
-it out of the UI. To keep the stored logins out of a worker's reach, run the UI
-on a host with no worker and put the earners behind
+and a worker on the same host. Owner isolation keeps a compromised worker out
+of the UI: it cannot read the UI's `/data` (`.fernet_key`, the key that
+decrypts every service login CashPilot stores), mount `cashpilot_data` into a
+container, or read `CASHPILOT_SECRET_KEY`, `CASHPILOT_API_KEY` and
+`CASHPILOT_ADMIN_API_KEY` from the UI container's environment. Two ways in are
+left. With `CASHPILOT_COMPOSE_DIR` set, it can read the `.env` in your compose
+folder and change the compose file, which takes effect at your next
+`docker compose up`. And the symlink gap above, with either bind variable set,
+reaches the host's root. For a boundary that holds without those conditions,
+run the UI on a host with no worker and put the earners behind
 `docker-compose.worker.yml` on other hosts, as [Fleet](fleet.md) describes.
 A worker still receives the logins of the services you deploy to it, so a
 compromised worker leaks those, but not the rest. That holds only while
@@ -234,12 +233,26 @@ services. Commands and heartbeats both travel over plain HTTP, carrying the
 worker's key and those logins, so keep both directions on a LAN you trust or
 inside a VPN such as Tailscale, never on the open internet.
 
-sockguard can also scope every call to containers, volumes and networks that
-carry its owner label, which would close the first three. CashPilot does not
-turn that on yet: labels cannot be added to an existing volume, so every
-Mysterium identity, EarnApp device id and compose volume created before it
-would become unusable through the proxy, and Compose offers to delete and
-recreate a volume whose labels change.
+**What owner isolation costs.** On the UI's host, the in-app update updates
+the worker only: the UI is not the worker's to recreate, so the dashboard is
+updated with `docker compose pull && docker compose up -d`, and the update card
+says so. And an earner you started by hand, or from a compose file CashPilot
+exported, is invisible to the worker, so the dashboard no longer shows it as an
+external service.
+
+**Moving an existing install.** Docker cannot add a label to an existing
+volume or network, so the compose files run a one-shot `cashpilot-migrate`
+service before the proxy starts. It holds the raw socket only while it runs.
+For each earner the worker started it copies every unlabelled volume to a
+backup (`<volume>-pre-isolation`) and checks the copy, recreates the volume
+with the label, copies the data back and checks it against the backup, then
+recreates the earner as it was. It rebuilds `cashpilot-isolated` with the label
+and puts its members back. Its record of each finished step is a root-only
+folder, `cashpilot-migrate-state`, next to the compose file, so a run killed
+at any step is finished by the next one. It never deletes a backup. A volume
+another container also uses, or one with a driver or driver options, is left
+as it was with a warning. The worker still controls the earner, but refuses
+to redeploy it on that volume until you move the data yourself.
 
 Two upstream gaps are not exploitable on current Docker: sockguard does not
 decode `HostConfig.Capabilities` (Docker 29 drops that field), and a lowercase

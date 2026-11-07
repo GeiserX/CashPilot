@@ -139,15 +139,17 @@ the compose folder through the proxy.
 ## Why the UI and worker have separate data directories
 
 The shipped compose files give each its own `/data` volume (`cashpilot_data`
-for the UI, `cashpilot_worker_data` for the worker), and that is a security
+for the UI, `cashpilot_worker_data_owned` for the worker), and that is a security
 boundary, not tidiness.
 
 The worker drives Docker. With the raw socket **that is root on the host**:
 anything that can talk to it can start a privileged container and read any file
 on the machine. The shipped compose files put a
 [socket proxy](security-defaults.md#docker-socket-proxy) in between, which
-refuses that, but the worker can still read the files of any container on the
-host. The UI's `/data` holds `cashpilot.db` and `.fernet_key`: the credential
+refuses that and, with owner isolation, keeps the worker to the containers and
+volumes it created, so it cannot read the UI's files or mount its volume
+([what it can still reach](security-defaults.md#docker-socket-proxy)). The
+UI's `/data` holds `cashpilot.db` and `.fernet_key`: the credential
 store and the only key that can decrypt it.
 
 Keeping them apart means a compromised or misbehaving worker cannot simply read

@@ -156,8 +156,13 @@ def _get_client() -> docker.DockerClient:
 #: Where the proxy's socket is mounted, in the worker and in the update helper.
 PROXY_SOCKET_DIR = "/run/cashpilot-docker"
 #: The named volume that carries it. Fixed name (`name:` in compose), so the
-#: update helper can mount it whatever the compose project is called.
-PROXY_VOLUME = "cashpilot-docker-api"
+#: update helper can mount it whatever the compose project is called. It
+#: carries the proxy's owner label, so the helper may mount it; the name moved
+#: from cashpilot-docker-api because Compose never relabels a volume.
+PROXY_VOLUME = "cashpilot-docker-api-owned"
+#: Every name the socket volume has had. A worker on this image whose compose
+#: file is older still uses the first one, so neither may go to a container.
+PROXY_VOLUMES = (PROXY_VOLUME, "cashpilot-docker-api")
 #: The proxy's compose service and container name.
 PROXY_SERVICE = "cashpilot-socket-proxy"
 #: Host paths the proxy lets the worker bind, as the compose file passes them.
@@ -841,6 +846,7 @@ def deploy_raw(
                 f"container was not touched. Add the folder to {BIND_MOUNTS_ENV} in the .env next to your "
                 "compose file (comma-separated), then run docker compose up -d."
             )
+        _ensure_volumes(client, volumes)
         # Stop it the way stop and restart do, with the catalog's timeout, before
         # removing it. remove(force=True) alone is SIGKILL: a storage node gets no
         # chance to flush (storj declares 300 s for that reason) and pays for it
@@ -853,7 +859,7 @@ def deploy_raw(
         logger.info("Removing existing container %s", name)
         _remove_container(old, slug)
     except NotFound:
-        pass
+        _ensure_volumes(client, volumes)
 
     all_labels = {
         LABEL_SERVICE: slug,
@@ -934,6 +940,47 @@ def deploy_raw(
 
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
+
+
+def _named_volumes(volumes: dict[str, Any] | list[str] | None) -> list[str]:
+    """The named volumes (not host folders) a deploy mounts."""
+    if not volumes:
+        return []
+    sources = [str(v).split(":", 1)[0] for v in volumes] if isinstance(volumes, list) else [str(v) for v in volumes]
+    return [src for src in sources if src and not src.startswith("/")]
+
+
+def _ensure_volumes(client: Any, volumes: dict[str, Any] | list[str] | None) -> None:
+    """Create each named volume the deploy mounts, before any container is touched.
+
+    Behind the proxy's owner isolation a container may only name a volume that
+    exists and carries the owner label, and Docker's own create-on-first-use
+    makes one without it. A volume made through the proxy gets the label; one
+    an older release made without it (its migration has not run) is refused
+    here, with the reason, while the running container is still running.
+    """
+    for vol in _named_volumes(volumes):
+        try:
+            client.volumes.get(vol)
+        except NotFound:
+            try:
+                client.volumes.create(name=vol)
+            except APIError as exc:
+                # A proxy from an older compose file refuses the call, and has
+                # no owner isolation either: Docker makes the volume with the
+                # container, as it always did.
+                if proxy_refusal(exc) is None:
+                    raise
+        except APIError as exc:
+            refusal = proxy_refusal(exc)
+            if refusal is None:
+                raise
+            raise ContainerRuntimeError(
+                f"The volume {vol} was not made by this worker, so the Docker socket proxy will not let a "
+                f"container use it ({refusal}). The running container was not touched. Run docker compose up -d "
+                "with the current compose file once: its cashpilot-migrate step moves the volume over, data "
+                "included (UPGRADING.md)."
+            ) from None
 
 
 # The main process of an image built to boot like a machine. Almost always
@@ -1632,9 +1679,16 @@ def self_update_info() -> dict[str, Any]:
         info["working_dir"] = project["working_dir"]
         info["project"] = project["project"]
         info["worker_image"] = (me.attrs.get("Config", {}) or {}).get("Image") or ""
-    with contextlib.suppress(NotFound, APIError):
+    try:
         ui = client.containers.get("cashpilot-ui")
         info["ui_image"] = (ui.attrs.get("Config", {}) or {}).get("Image") or ""
+    except NotFound:
+        pass
+    except APIError as exc:
+        # The proxy's owner isolation keeps the worker away from the dashboard's
+        # container, so the update below recreates the worker only and the
+        # dashboard on this server is updated by hand.
+        info["ui_by_hand"] = proxy_refusal(exc) is not None
     with contextlib.suppress(NotFound, APIError):
         updater = client.containers.get(UPDATER_NAME)
         info["updater_running"] = updater.status == "running"
@@ -1826,6 +1880,19 @@ def _proxy_compose_refusals(cfg: dict[str, Any], services: list[str]) -> list[st
     return found
 
 
+def _proxy_volume(me: Any) -> str:
+    """The socket volume this worker mounts, whatever its compose file calls it.
+
+    A worker updated to this image from an older compose file still has the
+    proxy's socket in cashpilot-docker-api; mounting the new name there would
+    hand the helper an empty volume and no Docker.
+    """
+    for mount in (getattr(me, "attrs", None) or {}).get("Mounts") or []:
+        if mount.get("Type") == "volume" and mount.get("Destination") == PROXY_SOCKET_DIR and mount.get("Name"):
+            return str(mount["Name"])
+    return PROXY_VOLUME
+
+
 def _check_proxy_binds(working_dir: str, extra_paths: list[str]) -> None:
     """Refuse, with the line to paste, an update the proxy would not let bind its folders."""
     compose_dir = os.getenv("CASHPILOT_COMPOSE_DIR", "").strip().rstrip("/")
@@ -1983,7 +2050,7 @@ def spawn_self_update() -> dict[str, Any]:
         # The helper gets what the worker has: the filtered socket, never the
         # host's. Its compose pull and up then pass the same policy, and
         # --no-deps keeps it from recreating the proxy it is talking through.
-        docker_mount = {PROXY_VOLUME: {"bind": PROXY_SOCKET_DIR, "mode": "rw"}}
+        docker_mount = {_proxy_volume(me): {"bind": PROXY_SOCKET_DIR, "mode": "rw"}}
         helper_env = {**environment, "DOCKER_HOST": os.environ["DOCKER_HOST"].strip()}
     else:
         docker_mount = {"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}}

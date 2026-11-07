@@ -24,7 +24,7 @@ services:
       TZ: $TZ
       CASHPILOT_SECRET_KEY: ""
     networks:
-      - cashpilot-network
+      - cashpilot_owned
     init: true
     security_opt:
       - no-new-privileges:true
@@ -50,6 +50,31 @@ services:
         - container: /fleet
           description:
             en_US: Enrolment key shared between the UI and the worker
+
+  # Runs once at every install or update, before the proxy, and exits. Older
+  # releases made service volumes and the LAN fence's network without the
+  # proxy's owner label, which Docker cannot add later: this moves each onto a
+  # labelled one, data checked, and keeps the original as <volume>-pre-isolation.
+  # It holds the raw socket only while it runs.
+  cashpilot-migrate:
+    image: drumsergio/cashpilot-worker:1.72.1
+    container_name: cashpilot-migrate
+    user: "0:0"
+    entrypoint: ["python", "-m", "app.owner_migrate"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # A folder, not a volume, so Compose never asks the proxy about it.
+      - type: bind
+        source: /DATA/AppData/$AppID/migrate-state
+        target: /state
+    network_mode: none
+    restart: "no"
+    healthcheck:
+      disable: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   # Holds the host's Docker socket so the worker does not have to. It serves
   # a filtered copy in the cashpilot_docker_api volume and refuses every call
@@ -100,6 +125,9 @@ services:
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
+    depends_on:
+      cashpilot-migrate:
+        condition: service_completed_successfully
     x-casaos:
       envs:
         - container: SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS
@@ -108,6 +136,9 @@ services:
 
   cashpilot-worker:
     image: drumsergio/cashpilot-worker:1.72.1
+    # The proxy's owner label, so the worker may read its own container.
+    labels:
+      cashpilot.deployed-by: worker
     container_name: cashpilot-worker
     deploy:
       resources:
@@ -135,7 +166,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=ec66faec71f2e7ac
+      - CASHPILOT_PROXY_POLICY=e9a30411b564dc75
       # The folders the proxy allows, so the worker can say what to set before
       # the proxy refuses a host-folder bind. Empty means none.
       - CASHPILOT_COMPOSE_DIR=
@@ -143,7 +174,7 @@ services:
     depends_on:
       - cashpilot-socket-proxy
     networks:
-      - cashpilot-network
+      - cashpilot_owned
     init: true
     security_opt:
       - no-new-privileges:true
@@ -175,14 +206,20 @@ services:
             en_US: Enrolment key shared between the UI and the worker
 
 networks:
-  cashpilot-network:
-    name: cashpilot-network
+  # Carries the proxy's owner label, so the worker may use the network it is on.
+  # A new name: Compose never adds a label to a network that exists.
+  cashpilot_owned:
+    name: cashpilot-owned
+    labels:
+      cashpilot.deployed-by: worker
 
 volumes:
   # Fixed name, as in the repository's compose files: the worker and the proxy
   # meet on the filtered socket in it.
   cashpilot_docker_api:
-    name: cashpilot-docker-api
+    name: cashpilot-docker-api-owned
+    labels:
+      cashpilot.deployed-by: worker
 
 # The Docker socket proxy's policy. scripts/socket_proxy_policy.py writes it
 # from the catalog. Each `$` is written four times because CasaOS interpolates
@@ -269,6 +306,19 @@ configs:
           # scope, custom IPAM and endpoint settings stay refused.
           allow_driver_options: true
           allow_disconnect_force: true
+        volume:
+          # Plain local volumes only: driver options could point one at a host folder.
+          allow_custom_drivers: false
+          allow_driver_opts: false
+      # The worker sees and touches only what carries the owner label below: what
+      # it created through this proxy, and what app/owner_migrate.py labelled. The
+      # UI's container and its data volume never carry it.
+      ownership:
+        owner: worker
+        label_key: cashpilot.deployed-by
+        # Images carry no owner: one pulled for an earner is shared with the host.
+        allow_unowned_images: true
+        allow_cross_owner_namespace_sharing: false
       rules:
         - {match: {method: GET, path: "/_ping"}, action: allow}
         - {match: {method: HEAD, path: "/_ping"}, action: allow}
@@ -300,6 +350,7 @@ configs:
         - {match: {method: POST, path: "/networks/*/connect"}, action: allow}
         - {match: {method: POST, path: "/networks/*/disconnect"}, action: allow}
         - {match: {method: DELETE, path: "/networks/*"}, action: allow}
+        - {match: {method: POST, path: "/volumes/create"}, action: allow}
         - {match: {method: GET, path: "/volumes/*"}, action: allow}
         - {match: {method: DELETE, path: "/volumes/*"}, action: allow}
         - {match: {method: "*", path: "/**"}, action: deny, reason: "the CashPilot worker does not use this Docker API call"}

@@ -93,12 +93,21 @@ def _services(compose: Path) -> dict[str, dict]:
     return {k: v for k, v in (_load(compose).get("services") or {}).items() if isinstance(v, dict)}
 
 
+def _is_migration(service: dict) -> bool:
+    """The one-shot owner-label migration: the worker image, another entrypoint."""
+    return service.get("entrypoint") == ["python", "-m", "app.owner_migrate"]
+
+
 def _is_worker(service: dict) -> bool:
-    return str(service.get("image", "")).startswith("drumsergio/cashpilot-worker")
+    return str(service.get("image", "")).startswith("drumsergio/cashpilot-worker") and not _is_migration(service)
 
 
 def _is_proxy(service: dict) -> bool:
     return str(service.get("image", "")).startswith("codeswhat/sockguard:")
+
+
+def _proxy_name(services: dict) -> str:
+    return next(name for name, svc in services.items() if _is_proxy(svc))
 
 
 def _env(service: dict) -> dict[str, str]:
@@ -124,12 +133,37 @@ def test_only_the_socket_proxy_holds_the_docker_socket(compose):
             assert "/var/run/docker.sock:/var/run/docker.sock:ro" in (svc.get("volumes") or []), (
                 f"{compose}: the proxy {name} must hold the socket read-only"
             )
+        elif _is_migration(svc):
+            # It exits before the proxy starts.
+            assert svc.get("restart") == "no" and svc.get("network_mode") == "none", (
+                f"{compose}: the migration {name} must run once, with no network"
+            )
+            assert services[_proxy_name(services)]["depends_on"] == {
+                name: {"condition": "service_completed_successfully"}
+            }, f"{compose}: the proxy must start only after the migration finished"
+            # It moves volumes and recreates containers, so it needs the raw socket.
+            assert sockets == [("/var/run/docker.sock", "/var/run/docker.sock")], (
+                f"{compose}: the migration {name} cannot reach Docker"
+            )
         else:
             assert not sockets, f"{compose}: {name} mounts the Docker socket; only the proxy may"
     for name in workers:
         assert _env(services[name]).get("DOCKER_HOST") == "unix:///run/cashpilot-docker/docker.sock", (
             f"{compose}: worker {name} does not reach Docker through the proxy"
         )
+
+
+@pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
+def test_the_worker_joins_only_networks_that_carry_the_owner_label(compose):
+    # The migration moves every network a worker container is on; one shared
+    # with the unlabelled UI it can only warn about, at every start.
+    doc = _load(compose)
+    worker = next(s for s in doc["services"].values() if _is_worker(s))
+    nets = worker.get("networks")
+    assert nets, f"{compose}: the worker would join the project's unlabelled default network"
+    for net in nets:
+        labels = ((doc.get("networks") or {}).get(net) or {}).get("labels") or {}
+        assert labels.get("cashpilot.deployed-by") == "worker", f"{compose}: {net}"
 
 
 @pytest.mark.parametrize("compose", COMPOSE, ids=_ids(COMPOSE))
