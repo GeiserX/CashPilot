@@ -429,6 +429,30 @@ def test_the_identity_moves_onto_a_labelled_volume_of_the_same_name(install, tmp
     assert d.vols["hand-data"].attrs["Labels"] is None
 
 
+def test_a_migrated_volume_keeps_the_backup_fingerprint_it_had(install, tmp_path):
+    """A confirmed backup of an identity is tied to its volume's creation time.
+    The migration makes the volume again with the same data, so it carries the
+    old time over, and the confirmation stays valid."""
+    from types import SimpleNamespace
+
+    from app import orchestrator
+    from app.constants import LABEL_STATE_CREATED
+
+    d, myst, _hand = install
+    d.vols["mysterium-data"].attrs["CreatedAt"] = "2026-03-26T11:41:03Z"
+    targets = {"/var/lib/mysterium-node": "identity"}
+    box = SimpleNamespace(
+        id="c",
+        attrs={"Mounts": [{"Type": "volume", "Name": "mysterium-data", "Destination": "/var/lib/mysterium-node"}]},
+    )
+    before = orchestrator.state_id(box, targets, d)
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    # Docker gives the volume it made again a creation time of its own.
+    d.vols["mysterium-data"].attrs["CreatedAt"] = "2026-11-07T13:44:20Z"
+    assert d.vols["mysterium-data"].attrs["Labels"] == {**OWNER, LABEL_STATE_CREATED: "2026-03-26T11:41:03Z"}
+    assert orchestrator.state_id(box, targets, d) == before
+
+
 def test_a_second_run_finds_nothing_to_do(install, tmp_path):
     d, _, _ = install
     assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0

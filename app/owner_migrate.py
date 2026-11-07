@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from app.constants import LABEL_STATE_CREATED
 from app.socket_policy import OWNER, OWNER_LABEL
 
 logger = logging.getLogger("cashpilot.migrate")
@@ -690,6 +691,8 @@ class Migrator:
             "backup": backup,
             "used_by": used_by,
             "labels": attrs.get("Labels") or {},
+            # Kept on the new volume, so a confirmed backup of this data stays confirmed.
+            "created": attrs.get("CreatedAt") or "",
             "digest": result,
             "backed_up": True,
             "restored": False,
@@ -722,7 +725,11 @@ class Migrator:
             current.remove()
             current = None
         if current is None:
-            self.client.volumes.create(vol, driver="local", labels={**record["labels"], OWNER_LABEL: OWNER})
+            labels = {**record["labels"], OWNER_LABEL: OWNER}
+            if record.get("created"):
+                # A label the old volume already had is the older, truer time.
+                labels.setdefault(LABEL_STATE_CREATED, record["created"])
+            self.client.volumes.create(vol, driver="local", labels=labels)
         result = self.copy(record["backup"], vol)
         if result["digest"] != record["digest"]["digest"]:
             raise MigrationError(
