@@ -496,19 +496,24 @@ _LIVE = ("running", "restarting")
 
 
 def stop(slug: str, proxy_id: int) -> bool:
-    """Stop the earner, then its tunnel. Returns whether either was running.
+    """Stop the tunnel, then its earner. Returns whether either was running.
 
     Docker answers a stop of a stopped container with success, so the cap asks
     this to tell a copy it stopped from one the owner had already stopped.
+
+    The tunnel goes first so a stop that fails halfway never leaves a ready
+    tunnel beside a stopped earner: the heartbeat starts an earner in that
+    state (earner_action), which would undo the stop. An earner left running
+    after its tunnel stopped has no way out, and earner_action leaves it alone.
     """
     earner, sidecar = _pair(slug, proxy_id)
     if not _is_ours(earner, slug, proxy_id) and not _is_ours(sidecar, slug, proxy_id):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
     was_running = any(_is_ours(c, slug, proxy_id) and getattr(c, "status", "") in _LIVE for c in (earner, sidecar))
-    if _is_ours(earner, slug, proxy_id):
-        earner.stop(timeout=orchestrator._get_stop_timeout(slug))
     if _is_ours(sidecar, slug, proxy_id):
         sidecar.stop(timeout=10)
+    if _is_ours(earner, slug, proxy_id):
+        earner.stop(timeout=orchestrator._get_stop_timeout(slug))
     return was_running
 
 

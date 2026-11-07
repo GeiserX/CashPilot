@@ -773,14 +773,33 @@ class TestPairOps:
         tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel", status=tunnel_status)
         return earner, tunnel
 
-    def test_stop_takes_the_earner_before_its_tunnel(self):
+    def test_stop_takes_the_tunnel_before_its_earner(self):
         earner, tunnel = self._pair()
         order = MagicMock()
         order.attach_mock(earner.stop, "earner")
         order.attach_mock(tunnel.stop, "tunnel")
         with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
             proxy_tunnel.stop("x", 1)
-        assert [c[0] for c in order.mock_calls] == ["earner", "tunnel"]
+        assert [c[0] for c in order.mock_calls] == ["tunnel", "earner"]
+
+    def test_a_stop_that_fails_halfway_is_not_undone_by_the_heartbeat(self):
+        """A ready tunnel beside a stopped earner is what the heartbeat starts
+        again, so a failed stop must never leave that state."""
+        for failing in ("tunnel", "earner"):
+            earner, tunnel = self._pair()
+
+            def stopped(c):
+                return lambda **_kw: setattr(c, "status", "exited")
+
+            earner.stop.side_effect = stopped(earner)
+            tunnel.stop.side_effect = stopped(tunnel)
+            (tunnel if failing == "tunnel" else earner).stop.side_effect = RuntimeError("daemon timeout")
+            with (
+                patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+                pytest.raises(RuntimeError),
+            ):
+                proxy_tunnel.stop("x", 1)
+            assert proxy_tunnel.earner_action(earner, tunnel, ready=True) is None, failing
 
     def test_stop_and_start_refuse_a_copy_that_is_not_ours(self):
         stranger = _container("cashpilot-x-p1", "y", proxy=1)
