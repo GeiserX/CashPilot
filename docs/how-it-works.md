@@ -14,7 +14,7 @@ There is **no standalone mode**. Every server that runs Docker containers needs 
 ## Design Principles
 
 1. **Separation of concerns.** UI handles: dashboard, earnings collection, scheduling, user auth. Workers handle: Docker container lifecycle, health reporting. They never overlap.
-2. **Workers need Docker, through the socket proxy.** A worker without Docker access is useless, but it never gets the raw socket: it reaches Docker through `cashpilot-socket-proxy`. If you don't need Docker management, just run the UI alone to track earnings.
+2. **Workers need Docker, through the socket proxy.** A worker without Docker access is useless. With the shipped compose files it never gets the raw socket: it reaches Docker through `cashpilot-socket-proxy`. The Unraid and TrueNAS listings still mount the raw socket ([app stores](app-stores.md)). If you don't need Docker management, just run the UI alone to track earnings.
 3. **Single source of truth.** The UI instance is the only one that collects earnings, stores historical data, and serves the dashboard. Workers never collect earnings.
 4. **Earnings are never duplicated.** Since only the UI collects, there is no risk of the same account being counted twice.
 5. **Workers are stateless satellites.** A worker knows which containers to keep running and the UI URL to report to. It persists only its own id and fleet key to local files (`.worker_id`, `.worker_key`; no database, no earnings data).
