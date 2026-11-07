@@ -884,6 +884,7 @@ def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> 
 
 
 def _create_helper(client: Any, action: str, subnet: str, filtered: bool) -> Any:
+    """Create the helper container, not started, pulling its image once if it is missing."""
     from docker.errors import ImageNotFound
 
     image = _helper_image(client)
@@ -895,6 +896,7 @@ def _create_helper(client: Any, action: str, subnet: str, filtered: bool) -> Any
 
 
 def _helper_spec(action: str, subnet: str, filtered: bool) -> dict[str, Any]:
+    """The helper's container settings: host networking, NET_ADMIN and NET_RAW, every other capability dropped."""
     return dict(
         name=HELPER_NAME,
         entrypoint=["python", "-c", HELPER_SCRIPT],
