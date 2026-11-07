@@ -42,6 +42,13 @@ one alone changes nothing):
   ``off`` deletes the file.
 * ``legacy``: an upgraded install whose earners are on the default bridge.
   Nothing changes until the owner turns isolation on from the fleet page.
+* ``unsupported``: a Podman engine, with the setting not ``off``. Podman's
+  Docker-compatible API keeps the interface name out of the network's options
+  and drops the masquerade and inter-container options, and netavark adds its
+  own masquerade, so none of what the fence relies on can be set or checked
+  there. Earners deploy on the default network and the fleet page says they
+  are not fenced; with CASHPILOT_ISOLATION=on, deploys are refused, since on
+  was asked for and cannot be given.
 
 The top of this module is stdlib only: the helper container imports it to
 render the rules, and the UI image imports its constants.
@@ -76,6 +83,12 @@ MODE_OPERATOR = "operator"
 MODE_OFF = "off"
 MODE_ON = "on"
 MODE_LEGACY = "legacy"
+MODE_UNSUPPORTED = "unsupported"
+
+PODMAN_UNSUPPORTED = (
+    "CashPilot cannot fence earners off the LAN on Podman yet: its Docker-compatible API does not keep "
+    "the network settings the fence relies on"
+)
 
 #: Seconds between checks that the table is still in place.
 RECHECK_SECONDS = 300
@@ -627,6 +640,22 @@ def _remember(on: bool) -> None:
             )
 
 
+def is_podman(client: Any) -> bool:
+    """A Podman engine behind the Docker-compatible API.
+
+    Podman names itself in /version ("Podman Engine"). An engine that does not
+    answer is taken for Docker: the fence's own checks still refuse a network
+    it cannot hold.
+    """
+    try:
+        version = client.version() or {}
+    except Exception:  # noqa: BLE001 - taken for Docker, as above
+        return False
+    names = [str((version.get("Platform") or {}).get("Name") or "")]
+    names += [str((c or {}).get("Name") or "") for c in version.get("Components") or []]
+    return any("podman" in n.lower() for n in names)
+
+
 def resolve_mode(client: Any) -> str:
     if _orchestrator()._CONTAINER_NETWORK:
         return MODE_OPERATOR
@@ -634,6 +663,8 @@ def resolve_mode(client: Any) -> str:
     if chosen == "off":
         _remember(False)
         return MODE_OFF
+    if is_podman(client):
+        return MODE_UNSUPPORTED
     if (
         chosen == "on"
         or _remembered_on()
@@ -906,6 +937,12 @@ def network_for_deploy() -> str | None:
     client = orch._get_client()
     mode = resolve_mode(client)
     _state["mode"] = mode
+    if mode == MODE_UNSUPPORTED and setting() == "on":
+        raise orch.ContainerNetworkError(
+            f"CASHPILOT_ISOLATION=on, but {PODMAN_UNSUPPORTED}. The running container was not touched. "
+            "Set CASHPILOT_ISOLATION=auto or off on this worker to deploy on Podman's default network, "
+            "without the fence (docs/isolation.md)."
+        )
     if mode != MODE_ON:
         return None
     try:
@@ -971,6 +1008,8 @@ def reconcile() -> dict[str, Any]:
         if mode == MODE_ON:
             with contextlib.suppress(RuntimeError, IsolationConflict):
                 apply_fence(client)
+        elif mode == MODE_UNSUPPORTED:
+            _set_fence("unsupported", error=PODMAN_UNSUPPORTED + ".")
         elif _needs_reduced(client, mode, orch._CONTAINER_NETWORK):
             try:
                 reduce_fence(client)
@@ -1045,6 +1084,8 @@ def enable() -> dict[str, Any]:
             "This worker has CASHPILOT_ISOLATION=off. Remove that setting and restart the worker to turn isolation on."
         )
     client = orch._get_client()
+    if is_podman(client):
+        raise IsolationConflict(PODMAN_UNSUPPORTED + ".")
     apply_fence(client)
     _remember(True)
     _state["mode"] = MODE_ON
