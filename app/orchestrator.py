@@ -1947,10 +1947,17 @@ def _check_proxy_binds(working_dir: str, extra_paths: list[str]) -> None:
     """Refuse, with the line to paste, an update the proxy would not let bind its folders."""
     compose_dir = os.getenv("CASHPILOT_COMPOSE_DIR", "").strip().rstrip("/")
     if compose_dir != working_dir.rstrip("/"):
+        # working_dir is the path Compose itself ran in. Under a webhook or a
+        # deployer container (Portainer and the like) that path is inside the
+        # deployer and may not exist on this host; the helper binds it as is,
+        # so no other value would work either: the deployer has to update.
         raise SelfUpdateUnavailable(
-            "The update helper needs your compose folder, and the Docker socket proxy lets "
-            "containers bind only the folders it was told about. Add this line to the .env "
-            f"next to your compose file, then run docker compose up -d once: "
+            f"The update helper needs your compose folder, which Docker Compose recorded as "
+            f"{working_dir}, and the Docker socket proxy lets containers bind only the folders "
+            "it was told about. If Compose runs inside another container for you (a webhook, "
+            "Portainer or another deployer), that path is inside it, not on this host: update "
+            "the stack from your deployer instead. Otherwise add this line to the .env next to "
+            "your compose file, then run docker compose up -d once: "
             f"{COMPOSE_DIR_ENV}={working_dir}"
         )
     roots = _proxy_bind_roots()

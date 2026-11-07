@@ -611,6 +611,25 @@ def test_proxied_a_compose_folder_the_proxy_does_not_know_is_refused_with_the_li
     client.containers.run.assert_not_called()
 
 
+def test_proxied_under_a_deployer_container_the_refusal_does_not_pass_its_path_off_as_the_hosts(monkeypatch):
+    """Compose run by a webhook or Portainer records the deployer's own path
+    (/data/compose/12), which need not exist on the host. The advice must say
+    so and send the operator to the deployer, not only to that path."""
+    _proxied_env(monkeypatch, compose_dir="")
+    labels = {**tuf._COMPOSE_LABELS, "com.docker.compose.project.working_dir": "/data/compose/12"}
+    client = tuf._fake_docker(me=tuf._fake_container(labels=labels))
+    tuf._wire_runs(client)
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        pytest.raises(orchestrator.SelfUpdateUnavailable) as refused,
+    ):
+        orchestrator.spawn_self_update()
+    message = str(refused.value)
+    assert "recorded as /data/compose/12" in message
+    assert "not on this host" in message and "update the stack from your deployer" in message
+    client.containers.run.assert_not_called()
+
+
 def test_proxied_a_trailing_slash_is_the_same_folder(monkeypatch):
     _proxied_env(monkeypatch, compose_dir="/srv/cashpilot/")
     client, result = _run_update()
