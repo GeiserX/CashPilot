@@ -83,7 +83,7 @@ Setup and configuration for every service CashPilot supports.
 | [Teneo Protocol](teneo.md) | Residential IP | App only | — | active |
 | [Theta Edge Node](theta-edge.md) | — | App only | — | active |
 | [Titan Network](titan.md) | Residential IP, Storage 50GB | App only | — | active |
-| [Uprock](uprock.md) | Residential IP | App only | $5 | active |
+| [Uprock](uprock.md) | Residential IP | App only | 250 UPT | active |
 | [Wipter](wipter.md) | Residential IP | App only | $20 | dead |
 
 ## GPU Compute
