@@ -172,6 +172,7 @@ class TestSidecar:
         assert "environment" not in kw and "command" not in kw
         assert kw["log_config"] == {"type": "json-file", "config": {"max-size": "1m", "max-file": "2"}}
 
+    @patch.object(orchestrator, "_CONTAINER_DNS", "1.1.1.1,9.9.9.9")
     def test_a_tunnel_on_the_isolated_bridge_gets_its_resolvers(self):
         # The bridge's rules refuse the daemon's LAN resolver, so the tunnel
         # needs the same resolvers every earner on it gets (container_dns).

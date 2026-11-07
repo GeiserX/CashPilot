@@ -4197,6 +4197,26 @@ def _proxy_state_lock(proxy_id: int) -> asyncio.Lock:
     return locks.setdefault(proxy_id, asyncio.Lock())
 
 
+# One lock per copy, held by the owner's start or stop and by the cap's own starts
+# from the mark check to the mark update, so a start the cap decided on can never
+# land after the owner's stop.
+_proxy_copy_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[tuple[int, int, str], asyncio.Lock]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _proxy_copy_lock(proxy_id: int, worker_id: int, slug: str) -> asyncio.Lock:
+    locks = _proxy_copy_locks.setdefault(asyncio.get_running_loop(), {})
+    return locks.setdefault((proxy_id, worker_id, slug), asyncio.Lock())
+
+
+async def _copy_marked_by_cap(proxy_id: int, worker_id: int, slug: str) -> bool:
+    return any(
+        c["worker_id"] == worker_id and c["slug"] == slug and c.get("stopped_by_cap")
+        for c in await database.list_proxied_copies(proxy_id)
+    )
+
+
 @app.post("/api/proxies/{proxy_id}/copies")
 async def api_add_proxied_copy(
     proxy_id: int, body: ProxyCopyRequest, _auth: dict[str, Any] = Depends(_require_owner)
@@ -4291,17 +4311,18 @@ async def api_proxied_copy_command(
     proxy = await _proxy_or_404(proxy_id)
     if command == "start" and proxy["state"].get("capped_at"):
         raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap")
-    result = await _proxy_worker_call(
-        worker_id,
-        "POST",
-        f"/api/proxied/{slug}/{proxy_id}/{command}",
-        proxy["definition"],
-        # The proxy as stored now, so an edit since the deploy reaches the copy.
-        json={"proxy": proxies.worker_proxy_spec(proxy["definition"])} if command == "start" else None,
-        timeout=90,
-    )
-    # A start or stop by hand is the owner's decision; a later reset must not undo it.
-    await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
+    async with _proxy_copy_lock(proxy_id, worker_id, slug):
+        result = await _proxy_worker_call(
+            worker_id,
+            "POST",
+            f"/api/proxied/{slug}/{proxy_id}/{command}",
+            proxy["definition"],
+            # The proxy as stored now, so an edit since the deploy reaches the copy.
+            json={"proxy": proxies.worker_proxy_spec(proxy["definition"])} if command == "start" else None,
+            timeout=90,
+        )
+        # A start or stop by hand is the owner's decision; a later reset must not undo it.
+        await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
     return result
 
 
@@ -4351,8 +4372,12 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
             continue
         _proxy_cap_starting.add(key)
         try:
-            await _start_proxied_copy(proxy, copy["worker_id"], copy["slug"])
-            await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], False)
+            async with _proxy_copy_lock(*key):
+                # The owner may have started or stopped it since the list was read.
+                if not await _copy_marked_by_cap(*key):
+                    continue
+                await _start_proxied_copy(proxy, copy["worker_id"], copy["slug"])
+                await database.set_proxied_copy_capped(proxy["id"], copy["worker_id"], copy["slug"], False)
             started.append(f"{copy['slug']} on worker {copy['worker_id']}")
         except HTTPException as exc:
             logger.warning(
@@ -4462,29 +4487,30 @@ async def _restart_capped_copies(proxy_id: int, worker_id: int, slugs: set[str])
     """Start copies the cap stopped and a reset could not start, unless the cap is back."""
     try:
         for slug in sorted(slugs):
-            async with _proxy_state_lock(proxy_id):
-                fresh = await database.get_proxy(proxy_id)
-                # The owner may have started or stopped it since the heartbeat; that
-                # clears the mark, and the owner's decision stands.
-                marked = any(
-                    c["worker_id"] == worker_id and c["slug"] == slug and c.get("stopped_by_cap")
-                    for c in await database.list_proxied_copies(proxy_id)
-                )
-            if not fresh or fresh["state"].get("capped_at"):
-                return
-            if not marked:
-                continue
-            try:
-                await _start_proxied_copy(fresh, worker_id, slug)
-            except HTTPException as exc:
-                logger.warning("Could not restart %s through proxy %s after a reset: %s", slug, proxy_id, exc.detail)
-                continue
-            # The cap may have come back while the start ran. Then the mark stays, so
-            # the next heartbeat stops the copy again and the next reset starts it.
-            async with _proxy_state_lock(proxy_id):
-                again = await database.get_proxy(proxy_id)
-                if again and not again["state"].get("capped_at"):
-                    await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
+            async with _proxy_copy_lock(proxy_id, worker_id, slug):
+                async with _proxy_state_lock(proxy_id):
+                    fresh = await database.get_proxy(proxy_id)
+                    # The owner may have started or stopped it since the heartbeat; that
+                    # clears the mark, and the owner's decision stands. The copy lock
+                    # keeps that true until this start has landed.
+                    marked = await _copy_marked_by_cap(proxy_id, worker_id, slug)
+                if not fresh or fresh["state"].get("capped_at"):
+                    return
+                if not marked:
+                    continue
+                try:
+                    await _start_proxied_copy(fresh, worker_id, slug)
+                except HTTPException as exc:
+                    logger.warning(
+                        "Could not restart %s through proxy %s after a reset: %s", slug, proxy_id, exc.detail
+                    )
+                    continue
+                # The cap may have come back while the start ran. Then the mark stays, so
+                # the next heartbeat stops the copy again and the next reset starts it.
+                async with _proxy_state_lock(proxy_id):
+                    again = await database.get_proxy(proxy_id)
+                    if again and not again["state"].get("capped_at"):
+                        await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
     finally:
         _proxy_cap_starting.difference_update((proxy_id, worker_id, slug) for slug in slugs)
 

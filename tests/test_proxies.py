@@ -926,6 +926,36 @@ class TestReleasedCopiesThatDidNotStart:
         assert after_heartbeat == 0
         assert not main._proxy_cap_starting
 
+    def test_a_retry_never_starts_a_copy_after_the_owner_stopped_it(self, db):
+        """The owner's stop is in flight when the retry fires: the retry must not undo it."""
+        calls = []
+
+        async def go():
+            gate = asyncio.Event()
+
+            async def worker_call(worker_id, method, path, definition, **kw):
+                calls.append(path)
+                if path.endswith("/stop"):
+                    await gate.wait()
+                return {}
+
+            pid = (await main.api_create_proxy(_Req(_socks(cap_gb=1)), {}))["id"]
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_capped(pid, 7, "honeygain", True)
+            with patch.object(main, "_proxy_worker_call", side_effect=worker_call):
+                stop = asyncio.create_task(main.api_proxied_copy_command(pid, 7, "honeygain", "stop", {}))
+                while not calls:
+                    await asyncio.sleep(0)
+                retry = asyncio.create_task(main._restart_capped_copies(pid, 7, {"honeygain"}))
+                for _ in range(20):
+                    await asyncio.sleep(0)
+                gate.set()
+                await asyncio.gather(stop, retry)
+            return pid
+
+        pid = _run(go)
+        assert calls == [f"/api/proxied/honeygain/{pid}/stop"], calls
+
     @pytest.mark.parametrize(
         ("capped", "marked", "status"),
         [
