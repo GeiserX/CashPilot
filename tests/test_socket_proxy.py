@@ -31,7 +31,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import socket_proxy_policy as spp  # noqa: E402
 
-PINNED = "codeswhat/sockguard:2.4.5@sha256:d15f93e856626ff21f48400034d887874a4dafbbf6bb1e31799511beea07d84c"
+# Read from docker-compose.yml, not typed here, so a Dependabot bump of the
+# compose files is not red on this line alone. Every other compose file must
+# carry exactly this string, and the docs must name its version.
+PINNED = yaml.safe_load((ROOT / "docker-compose.yml").read_text())["services"]["cashpilot-socket-proxy"]["image"]
+assert re.fullmatch(r"codeswhat/sockguard:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}", PINNED), PINNED
 PROXY_SOCKET = f"unix://{orchestrator.PROXY_SOCKET_DIR}/docker.sock"
 
 
