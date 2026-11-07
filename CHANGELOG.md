@@ -10,6 +10,22 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [1.73.4] - 2026-11-07
+
+### Fixes
+
+- Check the cap reset day at startup, so a UI restarted hourly still restarts capped copies (#629)
+
+## [1.73.3] - 2026-11-07
+
+### Dependencies
+
+- Move the socket proxy to sockguard 2.4.6, which stops a malformed zstd frame crashing it (#631)
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#647)
+
 ## [1.73.2] - 2026-11-07
 
 ### CI
