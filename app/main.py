@@ -2072,15 +2072,15 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         misfire_grace_time=300,
     )
-    # Hourly tick, daily fetch: refresh() asks GitHub once a day after a check
+    # Frequent tick, daily fetch: refresh() asks GitHub once a day after a check
     # that worked and an hour after one that failed, so a rate-limited startup
-    # check no longer leaves the release unknown for a whole day. Every failure
-    # mode inside refresh() lands on UNKNOWN, so a firewalled install produces
-    # no noise at all.
+    # check no longer leaves the release unknown for a whole day. A tick that
+    # is not due fetches nothing. Every failure mode inside refresh() lands on
+    # UNKNOWN, so a firewalled install produces no noise at all.
     scheduler.add_job(
         update_check.refresh,
         "interval",
-        hours=1,
+        seconds=update_check.SCHEDULER_TICK_SECONDS,
         id="update_check",
         max_instances=1,
         coalesce=True,
@@ -2095,7 +2095,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         update_check.refresh_android,
         "interval",
-        hours=1,
+        seconds=update_check.SCHEDULER_TICK_SECONDS,
         id="update_check_android",
         max_instances=1,
         coalesce=True,

@@ -60,9 +60,16 @@ CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 #: per public IP) with everything else in the house, so the one check made at
 #: startup is often refused with a 403; waiting a full day after that left the
 #: release unknown, and every phone unjudged, for 24 hours after each restart.
-#: The scheduler calls refresh() hourly; refresh() decides whether a fetch is
-#: due, so a working install still asks GitHub once a day.
+#: A reply with no usable release tag counts as a failure too, and keeps the
+#: tag already known. The scheduler calls refresh() every
+#: SCHEDULER_TICK_SECONDS; refresh() decides whether a fetch is due, so a
+#: working install still asks GitHub once a day.
 RETRY_AFTER_FAILURE_SECONDS = 60 * 60
+
+#: How often the scheduler calls refresh(). Well under the retry window, so a
+#: tick that lands a few seconds before a cooldown ends does not push the retry
+#: back by a whole extra window. A tick that is not due fetches nothing.
+SCHEDULER_TICK_SECONDS = 15 * 60
 
 _HTTP_TIMEOUT = 10.0
 
@@ -130,6 +137,8 @@ async def refresh(*, force: bool = False) -> str | None:
             response = await client.get(LATEST_URL, headers={"Accept": "application/vnd.github+json"})
             response.raise_for_status()
             tag = _parse_tag(response.json())
+        if tag is None:
+            raise ValueError("no release tag in the reply")
     except Exception as exc:  # noqa: BLE001 - every failure means the same thing
         # DEBUG, not WARNING. A firewalled install would otherwise log a warning
         # every day forever about a feature its operator never asked for, and a
@@ -142,8 +151,7 @@ async def refresh(*, force: bool = False) -> str | None:
     _latest_tag = tag
     _checked_at = time.time()
     _last_failed = False
-    if tag:
-        logger.debug("Newest published release is %s", tag)
+    logger.debug("Newest published release is %s", tag)
     return tag
 
 
@@ -167,6 +175,8 @@ async def refresh_android(*, force: bool = False) -> str | None:
             response = await client.get(ANDROID_LATEST_URL, headers={"Accept": "application/vnd.github+json"})
             response.raise_for_status()
             tag = _parse_tag(response.json())
+        if tag is None:
+            raise ValueError("no release tag in the reply")
     except Exception as exc:  # noqa: BLE001 - every failure means the same thing
         logger.debug("Android update check could not reach %s: %s", ANDROID_LATEST_URL, exc)
         _android_checked_at = time.time()
