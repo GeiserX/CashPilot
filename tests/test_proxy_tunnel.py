@@ -172,6 +172,15 @@ class TestSidecar:
         assert "environment" not in kw and "command" not in kw
         assert kw["log_config"] == {"type": "json-file", "config": {"max-size": "1m", "max-file": "2"}}
 
+    def test_a_tunnel_on_the_isolated_bridge_gets_its_resolvers(self):
+        # The bridge's rules refuse the daemon's LAN resolver, so the tunnel
+        # needs the same resolvers every earner on it gets (container_dns).
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": "drumsergio/cashpilot-tunnel:1.64.0"}):
+            fenced = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-x-p1", "x", 1, "cp-isolated", "x-p1")
+            plain = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-x-p1", "x", 1, None, "x-p1")
+        assert fenced["dns"] == orchestrator.container_dns("cp-isolated") == ["1.1.1.1", "9.9.9.9"]
+        assert plain["dns"] is None
+
     def test_secret_goes_only_into_the_archive(self):
         client = MagicMock()
         created = MagicMock(id="sidecar-id", status="running")
