@@ -2072,13 +2072,15 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         misfire_grace_time=300,
     )
-    # Once a day. A release is not urgent, and a self-hosted app polling a third
-    # party more often than that is rude. Every failure mode inside refresh()
-    # lands on UNKNOWN, so a firewalled install produces no noise at all.
+    # Frequent tick, daily fetch: refresh() asks GitHub once a day after a check
+    # that worked and an hour after one that failed, so a rate-limited startup
+    # check no longer leaves the release unknown for a whole day. A tick that
+    # is not due fetches nothing. Every failure mode inside refresh() lands on
+    # UNKNOWN, so a firewalled install produces no noise at all.
     scheduler.add_job(
         update_check.refresh,
         "interval",
-        hours=24,
+        seconds=update_check.SCHEDULER_TICK_SECONDS,
         id="update_check",
         max_instances=1,
         coalesce=True,
@@ -2087,13 +2089,13 @@ async def lifespan(app: FastAPI):
         # convention a test enforces uniformly.
         misfire_grace_time=300,
     )
-    # The Android client's own release track, on the same daily cadence and with
+    # The Android client's own release track, on the same cadence and with
     # the same failure contract. Separate job rather than folded into the one
     # above so a GitHub hiccup fetching one cannot suppress the other.
     scheduler.add_job(
         update_check.refresh_android,
         "interval",
-        hours=24,
+        seconds=update_check.SCHEDULER_TICK_SECONDS,
         id="update_check_android",
         max_instances=1,
         coalesce=True,
