@@ -116,8 +116,9 @@ dangerous containers, not only dangerous URLs:
   swarm, services, secrets, plugins, builds, commit, export, events, attach,
   container update, prune, image push or load. The allow list is the set of
   calls the live test recorded from the worker, its update helper and Compose.
-- **Containers.** No privileged mode, no host PID, IPC, user or cgroup
-  namespace, `no-new-privileges` required, no unconfined seccomp, AppArmor or
+- **Containers.** No privileged mode, no host PID, IPC or user namespace
+  (host networking and the host cgroup namespace are allowed, see *What a
+  compromised worker can still do* below), `no-new-privileges` required, no unconfined seccomp, AppArmor or
   system paths. Added capabilities only from `NET_ADMIN`, `NET_RAW`, `SETUID`,
   `SETGID` (what the catalog declares), devices only `/dev/net/tun`, runtimes
   only `runc` and the gVisor ones (the worker refuses any other runtime itself,
