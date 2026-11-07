@@ -945,11 +945,21 @@ def _seconds_to_next_window(now: float | None = None) -> float:
 
 
 async def _activity_cycle() -> None:
-    """One round, if the owner switched Activity on and Docker answers."""
+    """One round, if the owner switched Activity on and Docker answers.
+
+    With Activity off there is no round, but probes other workers left behind
+    are still swept: their logs hold raw addresses and nothing else removes them.
+    """
     global _pending_activity, _activity_seq
-    if not _activity_enabled:
-        return
     if not await asyncio.to_thread(orchestrator.docker_available):
+        return
+    if not _activity_enabled:
+        client = await asyncio.to_thread(activity._client)
+        try:
+            await asyncio.to_thread(activity.sweep, client)
+        finally:
+            with contextlib.suppress(Exception):
+                client.close()
         return
     switches = _activity_switches
     result = await asyncio.to_thread(activity.run_round)
