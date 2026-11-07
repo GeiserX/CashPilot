@@ -443,7 +443,21 @@ def _docker(managed=None, earners=()):
     client.networks.get.side_effect = _get
     client.networks.create.side_effect = lambda name, **kw: nets.setdefault(name, _network(name))
     client.containers.list.return_value = list(earners)
+    client.version.return_value = {"Platform": {"Name": "Docker Engine - Community"}, "Components": []}
     client._nets = nets
+    return client
+
+
+#: /version as Podman 5 answers it on its Docker-compatible socket.
+PODMAN_VERSION = {
+    "Platform": {"Name": "linux/arm64/fedora-42"},
+    "Components": [{"Name": "Podman Engine", "Version": "5.6.1"}, {"Name": "Conmon", "Version": "2.1.13"}],
+}
+
+
+def _podman(managed=None, earners=()):
+    client = _docker(managed, earners)
+    client.version.return_value = PODMAN_VERSION
     return client
 
 
@@ -964,6 +978,78 @@ class TestEnable:
             state = lan_fence.enable()
         assert state["mode"] == "on" and state["earners_outside"] == ["earnapp"]
         assert lan_fence.NETWORK_NAME in client._nets
+
+
+class TestPodman:
+    """Podman's Docker-compatible API cannot hold the fence's network, so it is never fenced."""
+
+    @pytest.mark.parametrize(
+        ("version", "podman"),
+        [
+            (PODMAN_VERSION, True),
+            ({"Platform": {"Name": "Podman Engine"}}, True),
+            ({"Platform": {"Name": "Docker Engine - Community"}, "Components": [{"Name": "Engine"}]}, False),
+            ({}, False),
+        ],
+    )
+    def test_it_is_detected_from_the_version(self, version, podman):
+        client = MagicMock()
+        client.version.return_value = version
+        assert lan_fence.is_podman(client) is podman
+
+    def test_an_engine_that_does_not_answer_is_taken_for_docker(self):
+        client = MagicMock()
+        client.version.side_effect = OSError("no answer")
+        assert lan_fence.is_podman(client) is False
+
+    @pytest.mark.parametrize("setting", ["auto", "on"])
+    def test_it_resolves_to_unsupported_and_records_nothing(self, setting):
+        assert _mode(_podman(), setting) == lan_fence.MODE_UNSUPPORTED
+        assert not lan_fence.ON_MARKER.exists()
+
+    def test_off_and_the_operators_network_still_win(self):
+        assert _mode(_podman(), "off") == lan_fence.MODE_OFF
+        assert _mode(_podman(), operator="mine") == lan_fence.MODE_OPERATOR
+
+    def test_a_deploy_goes_to_the_default_network_without_the_fence(self):
+        client = _podman()
+        kwargs, helper = _deploy(client, "auto")
+        assert kwargs["network"] is None
+        helper.assert_not_called()
+        client.networks.create.assert_not_called()
+
+    def test_with_isolation_on_a_deploy_is_refused_before_the_old_container_is_touched(self):
+        old = MagicMock()
+        old.labels = {"cashpilot.service": "honeygain"}
+        client = _podman()
+        with pytest.raises(orchestrator.ContainerNetworkError, match="Podman"):
+            _deploy(client, "on", old=old)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+        client.containers.run.assert_not_called()
+
+    def test_the_check_reports_it_and_runs_no_helper(self):
+        state, helper = _reconcile(_podman(), "auto")
+        helper.assert_not_called()
+        assert state["mode"] == "unsupported" and state["network"] is None
+        assert state["fence"]["state"] == "unsupported" and "Podman" in state["fence"]["error"]
+
+    def test_turning_it_on_is_refused(self):
+        client = _podman(earners=[_container("cashpilot-earnapp")])
+        with (
+            patch.object(lan_fence, "_SETTING", "auto"),
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(lan_fence, "run_helper") as helper,
+            pytest.raises(lan_fence.IsolationConflict, match="Podman"),
+        ):
+            lan_fence.enable()
+        helper.assert_not_called()
+        assert not lan_fence.ON_MARKER.exists()
+
+    def test_the_isolation_check_says_why_the_earners_are_exposed(self):
+        found = isolation_check.placement_findings([_container("cashpilot-earnapp")], "", lan_fence.MODE_UNSUPPORTED)
+        assert found[0]["kind"] == "no_isolated_network" and "Podman" in found[0]["detail"]
 
 
 class TestTheUiRoute:
