@@ -15,9 +15,11 @@
 #   2. red control: through that install's worker, the three attacks on the
 #      UI's data succeed; then its Update button brings this checkout's worker
 #      image onto the old compose file, which must still deploy and update;
-#   3. upgrades with this checkout's compose file and `up -d --force-recreate`,
-#      kills the migration while it copies the identity, shows what the kill
-#      left, and runs the upgrade again, which must finish;
+#   3. starts only the migration from this checkout's compose file, so the old
+#      worker is still up and writing (the migration must stop it before it
+#      copies the worker's volume), kills the migration while it copies the
+#      identity, shows what the kill left, and runs the whole upgrade with
+#      `up -d --force-recreate`, which must finish;
 #   4. checks the identity has the same sha256, the earner runs on the fence,
 #      the attacks are refused, the hand-started earner is untouched and
 #      invisible, the worker can restart, back up and redeploy the earner, a
@@ -257,8 +259,11 @@ else
     pass "the update used the socket volume the worker has"
 fi
 
-echo "== 3. upgrade with the new compose file, and kill the migration while it copies the identity"
+echo "== 3. start the new migration with the old worker still writing, and kill it while it copies the identity"
 use_compose "$ROOT" new
+# The new volumes, as an earlier partial run leaves them; the old containers stay up.
+compose create --no-recreate >"$WORK_DIR/create.log" 2>&1 || { fail "compose create failed"; tail -5 "$WORK_DIR/create.log"; }
+[ "$(docker inspect -f '{{.State.Running}}' cashpilot-worker)" = true ] || fail "compose create stopped the old worker"
 # The old worker keeps writing into its old volume until something stops it;
 # the last write that went through must reach the new volume.
 (
@@ -270,7 +275,9 @@ use_compose "$ROOT" new
 ) &
 writer=$!
 sleep 1
-(compose up -d --force-recreate >"$WORK_DIR/up1.log" 2>&1; echo "exit $?" >>"$WORK_DIR/up1.log") &
+# Only the migration: Compose leaves the old worker running, as a hand-run
+# `up -d cashpilot-migrate` would. (A whole `up` stops the worker itself first.)
+(compose up -d cashpilot-migrate >"$WORK_DIR/up1.log" 2>&1; echo "exit $?" >>"$WORK_DIR/up1.log") &
 upgrade=$!
 killed=""
 for _ in $(seq 1 600); do
@@ -351,9 +358,10 @@ for pair in "cashpilot_fleet:live-fleet-key:the-enrolment-key" "cashpilot_worker
         || fail "the old ${PROJECT}_${key} is gone"
 done
 got=$(docker run --rm -v "${PROJECT}_cashpilot_worker_data_owned:/v:ro" "$ALPINE" cat /v/live-late-write 2>&1 || true)
-[ "$last_write" != none ] && [ "$got" = "$last_write" ] \
-    && pass "the old worker's last write ($last_write) reached cashpilot_worker_data_owned" \
-    || fail "cashpilot_worker_data_owned holds write $got, the old worker's last was $last_write"
+# At least the last write the worker confirmed: one the stop cut off may have landed too.
+[ "$last_write" != none ] && [ "$got" -ge "$last_write" ] 2>/dev/null \
+    && pass "cashpilot_worker_data_owned holds write $got, the old worker's last confirmed was $last_write" \
+    || fail "cashpilot_worker_data_owned holds write $got, the old worker's last confirmed was $last_write"
 [ "$(docker inspect -f '{{.Id}} {{.State.Running}}' "$HAND")" = "$hand_before true" ] \
     && pass "the hand-started earner is the same container, still running" || fail "the hand-started earner was touched"
 [ "$(docker volume inspect -f '{{json .Labels}}' "$HAND-data")" = null ] \
