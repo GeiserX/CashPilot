@@ -15,7 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 TUNNEL = ROOT / "tunnel" / "cp-tunnel"
 PAGE = ROOT / "docs" / "proxies.md"
 
-UDP_PROMISE = re.compile(r"(carries|works?|through) [^.|]*udp associate", re.IGNORECASE)
+UDP_PROMISE = re.compile(
+    r"(carries|works?|through) [^.|]*udp associate|(socks5|http connect)[^.|]*\bcarr(y|ies) udp",
+    re.IGNORECASE,
+)
 
 
 def _socks_egress_rule() -> str:
@@ -42,3 +45,9 @@ def test_the_page_does_not_promise_udp_through_socks5():
 def test_the_check_catches_the_old_claims():
     assert promises_udp("| SOCKS5 | host | Carries UDP only if the provider supports SOCKS5 UDP ASSOCIATE. |")
     assert promises_udp("and through SOCKS5\nonly when the provider supports UDP ASSOCIATE.")
+    assert promises_udp("SOCKS5 carries UDP.")
+    assert promises_udp("An HTTP CONNECT proxy carries UDP too.")
+
+
+def test_the_check_accepts_the_true_claims():
+    assert not promises_udp("SOCKS5 or HTTP CONNECT: the tunnel lets out only TCP. A Tailscale exit node carries UDP.")
