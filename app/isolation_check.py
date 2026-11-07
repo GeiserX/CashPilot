@@ -413,6 +413,12 @@ def placement_findings(earners: list[Any], network: str, mode: str | None = None
                 "and can reach your LAN and this host. Turn it on with the button on this worker's row",
                 ISOLATION_PAGE,
             )
+        elif mode == lan_fence.MODE_UNSUPPORTED:
+            why, docs = (
+                "This worker runs on Podman, which CashPilot cannot fence yet, so these earners sit on Podman's "
+                "default network and can reach your LAN and this host",
+                ISOLATION_PAGE,
+            )
         elif mode == lan_fence.MODE_OFF:
             why, docs = (
                 "Isolation is turned off on this worker with CASHPILOT_ISOLATION=off, so these earners sit on "

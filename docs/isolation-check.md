@@ -105,7 +105,8 @@ What CashPilot's own fence has been tested on:
 | Linux Docker with nf_tables (tested on Ubuntu 24.04, Docker 29.5, inside colima) | tested: LAN, host, tailnet and metadata blocked, internet works, fails closed without the table |
 | The same host forced onto `iptables-legacy` (older NAS kernels) | tested, same results |
 | Docker Desktop on Windows and macOS | not tested. It uses the same VM model as colima, so it is expected to work, unless Enhanced Container Isolation blocks the helper |
-| Rootless Docker, Podman | not tested |
+| Rootless Docker | not tested |
+| Podman | not fenced: detected, earners stay on its default network, and the fleet page says so |
 | Unraid, Synology, QNAP | not tested |
 
 When the fence cannot be written on a host, the worker refuses deploys and says

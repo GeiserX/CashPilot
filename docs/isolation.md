@@ -114,6 +114,7 @@ otherwise (older NAS kernels). Both write the same rules.
 |---|---|---|
 | on | a new install, `CASHPILOT_ISOLATION=on`, the `cashpilot-isolated` network CashPilot created exists, an earner is still bound to it after Unraid removed it, or the worker recorded it in `.isolation_on` in its data folder (`CASHPILOT_DATA_DIR`, `/data` by default) | earners join the fenced network |
 | legacy | an upgraded install whose earners already sit on Docker's default bridge | nothing changes on upgrade; the fleet page offers **Turn on isolation** |
+| unsupported | a Podman engine, with `CASHPILOT_ISOLATION` not `off` | earners deploy on Podman's default network, not fenced, and the fleet page says so; with `CASHPILOT_ISOLATION=on`, deploys are refused, since the fence was asked for and cannot be given |
 | off | `CASHPILOT_ISOLATION=off` | Docker's default bridge, as before; earners left on the fenced network keep their internet until you redeploy them |
 | your own network | `CASHPILOT_CONTAINER_NETWORK` is set | that network, with your own rules, as before; CashPilot writes no table, except the NAT alone while earners are still on `cashpilot-isolated`, so they keep their internet, without the fence's drops, until you redeploy them |
 
@@ -169,7 +170,10 @@ off button on purpose: one click should not take the fence down.
   host) is not dropped. Use a VLAN or your own rules.
 - Tested on Linux Docker 29 with nf_tables (colima on macOS, the same VM model
   as Docker Desktop), including the `iptables-legacy` fallback. Docker Desktop
-  itself, rootless Docker, Podman and Unraid are not tested yet. On Docker
+  itself, rootless Docker and Unraid are not tested yet. Podman is not fenced:
+  its Docker-compatible API drops the network settings the fence relies on
+  (the interface name, masquerade off, inter-container traffic off), so the
+  worker detects it and leaves earners on its default network. On Docker
   Desktop, the Enhanced Container Isolation setting may block the helper; the
   deploy is then refused with the opt-out in the message.
 

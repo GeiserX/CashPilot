@@ -480,7 +480,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
       ? ` <button class="btn btn-primary btn-sm btn-fence-on" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}">${text}</button>`
       : '';
     let line = '';
-    if (iso.mode === 'legacy') {
+    if (iso.mode === 'unsupported') {
+      line = '<span class="text-warn">This worker runs on Podman, which CashPilot cannot fence yet, so its earners sit on Podman\'s default network and can reach your LAN and this host.</span>';
+    } else if (iso.mode === 'legacy') {
       line = `<span class="text-warn">Earners on this worker can reach your LAN and this host: ${esc(outside.join(', ') || 'none running')}.</span>${button('Turn on isolation')}${stoppedNote}`;
     } else if (iso.mode === 'on' && fence.state === 'failed') {
       line = `<span class="text-fail">The LAN fence is not in place on this worker: ${esc(fence.error || 'unknown error')}. While it is missing, earners on its network can reach this host's own services, and they may still reach the internet if another masquerade rule on the host covers them. Deploys are refused until it is back. To run without the fence, set CASHPILOT_ISOLATION=off on the worker.</span>`;
