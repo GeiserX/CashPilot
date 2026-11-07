@@ -22,8 +22,9 @@ TrueNAS app is maintained in https://github.com/truenas/apps under
 - The UI and the worker carry the same tag. A UI and a worker on different
   versions is a support problem.
 - Only `cashpilot-socket-proxy` mounts `/var/run/docker.sock`, read-only, as in
-  the repository's `docker-compose.yml`, plus the one-shot `cashpilot-migrate`,
-  which exits before the proxy starts (the proxy depends on it). The worker reaches Docker through the
+  the repository's `docker-compose.yml`. The one-shot `cashpilot-migrate` also
+  mounts it, read-write, because it moves volumes and recreates containers; it
+  exits before the proxy starts (the proxy depends on it). The worker reaches Docker through the
   proxy's filtered socket (`DOCKER_HOST`), never the raw one, which is root on
   the host. `scripts/socket_proxy_policy.py` writes the proxy's policy into
   these files along with the shipped compose files.

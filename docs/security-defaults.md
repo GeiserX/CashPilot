@@ -251,8 +251,8 @@ and puts its members back. Its record of each finished step is a root-only
 folder, `cashpilot-migrate-state`, next to the compose file, so a run killed
 at any step is finished by the next one. It never deletes a backup. A volume
 another container also uses, or one with a driver or driver options, is left
-as it was with a warning, and the earner on it stays unreachable through the
-proxy until you move it yourself.
+as it was with a warning. The worker still controls the earner, but refuses
+to redeploy it on that volume until you move the data yourself.
 
 Two upstream gaps are not exploitable on current Docker: sockguard does not
 decode `HostConfig.Capabilities` (Docker 29 drops that field), and a lowercase

@@ -146,8 +146,10 @@ The worker drives Docker. With the raw socket **that is root on the host**:
 anything that can talk to it can start a privileged container and read any file
 on the machine. The shipped compose files put a
 [socket proxy](security-defaults.md#docker-socket-proxy) in between, which
-refuses that, but the worker can still read the files of any container on the
-host. The UI's `/data` holds `cashpilot.db` and `.fernet_key`: the credential
+refuses that and, with owner isolation, keeps the worker to the containers and
+volumes it created, so it cannot read the UI's files or mount its volume
+([what it can still reach](security-defaults.md#docker-socket-proxy)). The
+UI's `/data` holds `cashpilot.db` and `.fernet_key`: the credential
 store and the only key that can decrypt it.
 
 Keeping them apart means a compromised or misbehaving worker cannot simply read

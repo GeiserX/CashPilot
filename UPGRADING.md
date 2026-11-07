@@ -68,8 +68,10 @@ reboot, a kill), run the same command again: it finishes from where it stopped.
 do and exits.
 
 A volume that a container you started also uses, or one with a custom driver,
-is left as it was, with a warning in that log. The earner on it stays out of
-the worker's reach until you redeploy it from CashPilot on a new volume.
+is left as it was, with a warning in that log. The earner keeps running and
+the worker still sees and controls it, but redeploying it (an update included)
+is refused while it uses that volume. Move its data to a volume CashPilot
+creates, or redeploy it on a new one.
 
 **What is left behind, and how to remove it.** Nothing is deleted for you:
 
@@ -87,12 +89,12 @@ is your compose project name, usually the folder's name:
 
 ```sh
 docker volume ls -q --filter label=cashpilot.backup-of | xargs -r docker volume rm
-docker volume rm cashpilot-docker-api <project>_cashpilot_worker_data <project>_cashpilot_fleet
-sudo rm -rf cashpilot-migrate-state
+docker volume rm cashpilot-docker-api <project>_cashpilot_worker_data <project>_cashpilot_fleet \
+  && sudo rm -rf cashpilot-migrate-state
 ```
 
-Remove the folder last, never on its own: while an old `cashpilot_worker_data`
-or `cashpilot_fleet` exists, the folder is what stops the next
+The folder goes only once both old volumes are gone, which is what the `&&`
+checks: while an old `cashpilot_worker_data` or `cashpilot_fleet` exists, the folder is what stops the next
 `docker compose up` from copying it over the new one again.
 
 ---
