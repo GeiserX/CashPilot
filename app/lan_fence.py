@@ -57,6 +57,7 @@ import os
 import re
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -770,58 +771,105 @@ def _helper_image(client: Any) -> str:
     return f"drumsergio/cashpilot-worker:{version.current()}"
 
 
-def _remove_helper(client: Any) -> None:
-    """Remove a leftover helper by name, only when it carries the helper's label.
+#: How long a helper that was just created or has just exited still belongs to
+#: the process that started it: that process starts it, then reads its logs and
+#: removes it, all within moments. HELPER_POLL is how often a busy helper is
+#: looked at again.
+HELPER_GRACE = 10.0
+HELPER_POLL = 0.25
 
-    A container someone else named cashpilot-fence is left alone; the run that
-    follows then fails on the name instead of deleting it.
+
+def _stamp_age(stamp: Any, now: float) -> float | None:
+    """Seconds since a Docker timestamp, or None when it is unset or unreadable."""
+    try:
+        when = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    if when.tzinfo is None or when.year < 2000:
+        return None
+    return now - when.timestamp()
+
+
+def _helper_busy(attrs: dict[str, Any], now: float) -> bool:
+    """A helper another process is still using: running, or created or exited within HELPER_GRACE."""
+    state = attrs.get("State") or {}
+    if state.get("Running") or state.get("Restarting"):
+        return True
+    status = state.get("Status")
+    if status == "created":
+        stamp = attrs.get("Created")
+    elif status in ("exited", "dead"):
+        stamp = state.get("FinishedAt")
+    else:
+        return False
+    age = _stamp_age(stamp, now)
+    return age is not None and age < HELPER_GRACE
+
+
+def _clear_helper(client: Any) -> None:
+    """Make room for this process's helper.
+
+    Only a container that carries the helper's label is touched: a container
+    someone else named cashpilot-fence is left alone, and the run that follows
+    fails on the name instead of deleting it.
+
+    The Desktop app runs the same helper, by the same name and label, so on a
+    host that runs both, a helper of ours can belong to another process that is
+    still waiting for its result. That one is waited for, never killed: killing
+    it would make the other side record a failed fence and refuse its deploy.
+    Only a leftover, one idle past HELPER_GRACE or still there after the helper
+    timeout, is removed.
     """
     from docker.errors import NotFound
 
+    deadline = time.monotonic() + HELPER_TIMEOUT + HELPER_GRACE
+    while True:
+        try:
+            found = client.containers.get(HELPER_NAME)
+            if (getattr(found, "labels", None) or {}).get(PROBE_LABEL) != "fence":
+                return
+            if not _helper_busy(found.attrs or {}, time.time()) or time.monotonic() > deadline:
+                found.remove(force=True, v=True)
+                return
+        except NotFound:
+            return
+        except Exception as exc:  # noqa: BLE001 - logged; the run that follows fails on the name
+            logger.warning("Could not remove %s: %s", HELPER_NAME, exc)
+            return
+        time.sleep(HELPER_POLL)
+
+
+def _remove_own(container: Any) -> None:
+    """Remove the helper this process started, by its own ID, never by name."""
+    from docker.errors import NotFound
+
     try:
-        found = client.containers.get(HELPER_NAME)
-        if (getattr(found, "labels", None) or {}).get(PROBE_LABEL) == "fence":
-            found.remove(force=True, v=True)
+        container.remove(force=True, v=True)
     except NotFound:
         pass
-    except Exception as exc:  # noqa: BLE001 - logged; the next run removes it by name first
+    except Exception as exc:  # noqa: BLE001 - logged; the next run clears it as a leftover
         logger.warning("Could not remove %s: %s", HELPER_NAME, exc)
 
 
 def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> dict[str, Any]:
     """Run the helper to completion and return what it printed. Removed on every path."""
+    from docker.errors import APIError
+
     with _lock:
-        _remove_helper(client)
+        container = None
         try:
-            container = client.containers.run(
-                image=_helper_image(client),
-                name=HELPER_NAME,
-                entrypoint=["python", "-c", HELPER_SCRIPT],
-                command=[action],
-                environment={
-                    "FENCE_IFACE": BRIDGE_INTERFACE,
-                    "FENCE_SUBNET": subnet,
-                    "FENCE_FILTER": "1" if filtered else "0",
-                    "FENCE_BACKEND": _BACKEND,
-                    "FENCE_EGRESS": _egress["ip"] or "",
-                },
-                network_mode="host",
-                user="0:0",
-                read_only=True,
-                # iptables-legacy takes its lock in /run.
-                tmpfs={"/run": "size=1m"},
-                cap_drop=["ALL"],
-                # NET_RAW only matters to iptables-legacy, which talks to the
-                # kernel over a raw socket. Both run our own script, never an earner.
-                cap_add=["NET_ADMIN", "NET_RAW"],
-                security_opt=["no-new-privileges:true"],
-                privileged=False,
-                pids_limit=64,
-                mem_limit="64m",
-                healthcheck={"test": ["NONE"]},
-                labels={PROBE_LABEL: "fence"},
-                detach=True,
-            )
+            # Twice: another process can create its helper between our clear and our run.
+            for attempt in range(2):
+                _clear_helper(client)
+                try:
+                    container = _create_helper(client, action, subnet, filtered)
+                    break
+                except APIError as exc:
+                    if attempt or getattr(exc, "status_code", None) != 409:
+                        raise
+            # Created and started apart, so a start that fails still leaves an
+            # ID to remove: nothing is ever removed by name after the create.
+            container.start()
             status = container.wait(timeout=HELPER_TIMEOUT)
             text = container.logs(stdout=True, stderr=False).decode(errors="replace").strip()
             if (status or {}).get("StatusCode") != 0:
@@ -831,7 +879,49 @@ def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> 
                 )
             return json.loads(text.splitlines()[-1])
         finally:
-            _remove_helper(client)
+            if container is not None:
+                _remove_own(container)
+
+
+def _create_helper(client: Any, action: str, subnet: str, filtered: bool) -> Any:
+    from docker.errors import ImageNotFound
+
+    image = _helper_image(client)
+    try:
+        return client.containers.create(image=image, **_helper_spec(action, subnet, filtered))
+    except ImageNotFound:
+        client.images.pull(image)
+        return client.containers.create(image=image, **_helper_spec(action, subnet, filtered))
+
+
+def _helper_spec(action: str, subnet: str, filtered: bool) -> dict[str, Any]:
+    return dict(
+        name=HELPER_NAME,
+        entrypoint=["python", "-c", HELPER_SCRIPT],
+        command=[action],
+        environment={
+            "FENCE_IFACE": BRIDGE_INTERFACE,
+            "FENCE_SUBNET": subnet,
+            "FENCE_FILTER": "1" if filtered else "0",
+            "FENCE_BACKEND": _BACKEND,
+            "FENCE_EGRESS": _egress["ip"] or "",
+        },
+        network_mode="host",
+        user="0:0",
+        read_only=True,
+        # iptables-legacy takes its lock in /run.
+        tmpfs={"/run": "size=1m"},
+        cap_drop=["ALL"],
+        # NET_RAW only matters to iptables-legacy, which talks to the
+        # kernel over a raw socket. Both run our own script, never an earner.
+        cap_add=["NET_ADMIN", "NET_RAW"],
+        security_opt=["no-new-privileges:true"],
+        privileged=False,
+        pids_limit=64,
+        mem_limit="64m",
+        healthcheck={"test": ["NONE"]},
+        labels={PROBE_LABEL: "fence"},
+    )
 
 
 def _set_fence(state: str, result: dict[str, Any] | None = None, error: str = "") -> None:

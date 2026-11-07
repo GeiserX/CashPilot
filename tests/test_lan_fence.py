@@ -18,6 +18,7 @@ import stat
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,7 +27,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
-from docker.errors import NotFound
+from docker.errors import APIError, ImageNotFound, NotFound
 from fastapi.testclient import TestClient
 
 from app import isolation_check, lan_fence, orchestrator, worker_api
@@ -860,13 +861,13 @@ class TestTheMixedReboot:
 def test_the_helper_gets_the_egress_ip():
     lan_fence.set_egress_ip("81.61.1.9")
     client = MagicMock()
-    helper = client.containers.run.return_value
+    helper = client.containers.create.return_value
     helper.wait.return_value = {"StatusCode": 0}
     helper.logs.return_value = b'{"ok": true}'
     client.containers.get.side_effect = NotFound("gone")
     with patch.object(lan_fence, "_helper_image", return_value="img"):
         lan_fence.run_helper(client, "apply", "172.18.0.0/16")
-    assert client.containers.run.call_args.kwargs["environment"]["FENCE_EGRESS"] == "81.61.1.9"
+    assert client.containers.create.call_args.kwargs["environment"]["FENCE_EGRESS"] == "81.61.1.9"
     lan_fence.set_egress_ip("10.0.0.1")
     assert lan_fence._egress["ip"] == "81.61.1.9", "a LAN answer is a failed lookup: never dropped, the last IP kept"
 
@@ -929,12 +930,115 @@ class TestOutsideAndHelperOwnership:
         foreign = MagicMock(labels={})
         client = MagicMock()
         client.containers.get.return_value = foreign
-        lan_fence._remove_helper(client)
+        lan_fence._clear_helper(client)
         foreign.remove.assert_not_called()
-        ours = MagicMock(labels={lan_fence.PROBE_LABEL: "fence"})
+        ours = _helper_container("exited", finished=_ago(3600))
         client.containers.get.return_value = ours
-        lan_fence._remove_helper(client)
+        lan_fence._clear_helper(client)
         ours.remove.assert_called_once_with(force=True, v=True)
+
+
+def _ago(seconds):
+    return (datetime.now(UTC) - timedelta(seconds=seconds)).isoformat().replace("+00:00", "123Z")
+
+
+def _helper_container(status, created=None, finished="0001-01-01T00:00:00Z"):
+    c = MagicMock(labels={lan_fence.PROBE_LABEL: "fence"})
+    c.attrs = {
+        "Created": created or _ago(3600),
+        "State": {"Status": status, "Running": status == "running", "Restarting": False, "FinishedAt": finished},
+    }
+    return c
+
+
+def _run_helper(client):
+    mine = client.containers.create.return_value
+    mine.wait.return_value = {"StatusCode": 0}
+    mine.logs.return_value = b'{"ok": true}'
+    with patch.object(lan_fence, "_helper_image", return_value="img"), patch.object(lan_fence, "HELPER_POLL", 0):
+        return lan_fence.run_helper(client, "apply", "172.18.0.0/16"), mine
+
+
+class TestAnotherProcesssHelper:
+    """The Desktop app runs the same helper, by the same name and label, on a host that can run both."""
+
+    @pytest.mark.parametrize(
+        "theirs",
+        [
+            pytest.param(lambda: _helper_container("running"), id="running"),
+            pytest.param(lambda: _helper_container("created", created=_ago(1)), id="just-created"),
+            pytest.param(lambda: _helper_container("exited", finished=_ago(1)), id="just-exited"),
+        ],
+    )
+    def test_a_helper_still_in_use_is_waited_for_never_killed(self, theirs):
+        other = theirs()
+        client = MagicMock()
+        client.containers.get.side_effect = [other, other, NotFound("gone")]
+        result, mine = _run_helper(client)
+        assert result == {"ok": True}
+        other.remove.assert_not_called()
+        assert client.containers.get.call_count == 3, "it looked again until the other side removed it"
+        client.containers.create.assert_called_once()
+        mine.remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_leftover_is_removed(self):
+        stale = _helper_container("exited", finished=_ago(3600))
+        client = MagicMock()
+        client.containers.get.return_value = stale
+        _run_helper(client)
+        stale.remove.assert_called_once_with(force=True, v=True)
+
+    def test_one_still_there_after_the_helper_timeout_is_removed(self):
+        stuck = _helper_container("running")
+        client = MagicMock()
+        client.containers.get.return_value = stuck
+        with patch.object(lan_fence, "HELPER_TIMEOUT", 0), patch.object(lan_fence, "HELPER_GRACE", 0):
+            _run_helper(client)
+        stuck.remove.assert_called_once_with(force=True, v=True)
+
+    def test_only_its_own_helper_is_removed_afterwards(self):
+        """By its own object: a name lookup after the run could find the other side's new helper."""
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        _, mine = _run_helper(client)
+        mine.remove.assert_called_once_with(force=True, v=True)
+        assert client.containers.get.call_count == 1, "no lookup by name after the run"
+
+    def test_a_name_conflict_from_a_racing_create_is_tried_once_more(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        mine = client.containers.create.return_value
+        response = MagicMock(status_code=409)
+        client.containers.create.side_effect = [APIError("Conflict", response=response), mine]
+        result, _ = _run_helper(client)
+        assert result == {"ok": True}
+        assert client.containers.create.call_count == 2
+
+    def test_a_helper_that_never_started_leaves_nothing_to_remove(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        client.containers.create.side_effect = APIError("boom", response=MagicMock(status_code=500))
+        with pytest.raises(APIError):
+            _run_helper(client)
+        assert client.containers.create.call_count == 1
+
+    def test_a_helper_that_fails_to_start_is_removed_by_its_id(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        mine = client.containers.create.return_value
+        mine.start.side_effect = APIError("no such image layer", response=MagicMock(status_code=500))
+        with pytest.raises(APIError):
+            _run_helper(client)
+        mine.remove.assert_called_once_with(force=True, v=True)
+
+    def test_a_missing_image_is_pulled_once(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        mine = client.containers.create.return_value
+        client.containers.create.side_effect = [ImageNotFound("img"), mine]
+        result, _ = _run_helper(client)
+        assert result == {"ok": True}
+        client.images.pull.assert_called_once_with("img")
 
 
 class TestEnable:
