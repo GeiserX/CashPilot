@@ -553,25 +553,28 @@ class Migrator:
             owner = by_ref.get(_namespace_of(c.attrs or {}) or "")
             if owner is not None:
                 joiners.setdefault(owner.id, []).append(c)
-        pending, done = list(groups), []
-        while pending:
-            cids, vols = pending.pop()
-            grew = True
-            while grew:
-                grew = False
-                for owner_id in list(cids):
-                    for joiner in joiners.get(owner_id, []):
-                        if joiner.id in cids or joiner.id in held:
-                            continue
-                        cids.add(joiner.id)
-                        attrs[joiner.id] = joiner.attrs
-                        grew = True
-                        for other in [g for g in pending if joiner.id in g[0]]:
-                            pending.remove(other)
-                            cids |= other[0]
-                            vols |= other[1]
-            done.append((cids, vols))
-        return done
+        groups = list(groups)
+        while True:
+            pull = next(
+                (
+                    (group, joiner)
+                    for group in groups
+                    for owner_id in group[0]
+                    for joiner in joiners.get(owner_id, [])
+                    if joiner.id not in group[0] and joiner.id not in held
+                ),
+                None,
+            )
+            if pull is None:
+                return groups
+            (cids, vols), joiner = pull
+            attrs[joiner.id] = joiner.attrs
+            cids.add(joiner.id)
+            # The joiner's own group, if it has one, whichever came first: one plan, never two.
+            for other in [g for g in groups if g[0] is not cids and joiner.id in g[0]]:
+                groups.remove(other)
+                cids |= other[0]
+                vols |= other[1]
 
     def _outside_users(self, vols: set[str], cids: set[str]) -> list[str]:
         found = []

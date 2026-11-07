@@ -808,3 +808,23 @@ def test_an_earner_on_two_networks_is_recreated_on_both_on_an_engine_that_takes_
     new = d.containers.get("cashpilot-two")
     assert sorted(new.networks()) == ["first", "second"] and new.status == "running"
     assert new.attrs["NetworkSettings"]["Networks"]["second"]["IPAMConfig"] == {"IPv4Address": "10.9.0.5"}
+
+
+@pytest.mark.parametrize("earner_first", [True, False], ids=["earner listed first", "tunnel listed first"])
+def test_a_proxied_earner_with_its_own_volume_moves_in_the_same_plan_as_its_tunnel(tmp_path, earner_first):
+    d = FakeDocker()
+    secrets = "b" * 64
+    d.volume(secrets, {"settings": "the proxy"})
+    d.volume("honeygain-data", {"device": "id"})
+    tunnel = Container(d, "cashpilot-tunnel-honeygain-p1", WORKER_LABELS, [(secrets, "/run/secrets")])
+    earner = Container(d, "cashpilot-honeygain-p1", WORKER_LABELS, [("honeygain-data", "/data")], networks=())
+    earner.attrs["HostConfig"]["NetworkMode"] = f"container:{tunnel.id}"
+    for c in (earner, tunnel) if earner_first else (tunnel, earner):
+        d.add(c)
+    state = om.State(tmp_path)
+    assert FakeMigrator(d, state).run([]) == 0
+    assert len(state.all("plans")) == 1
+    new_tunnel = d.containers.get("cashpilot-tunnel-honeygain-p1")
+    new_earner = d.containers.get("cashpilot-honeygain-p1")
+    assert new_earner.attrs["HostConfig"]["NetworkMode"] == f"container:{new_tunnel.id}"
+    assert d.data["honeygain-data"] == {"device": "id"}

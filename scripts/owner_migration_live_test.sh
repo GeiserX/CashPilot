@@ -94,7 +94,7 @@ cleanup() {
     for v in "$IDENTITY" "$BACKUP" "$HAND-data" cashpilot-docker-api cashpilot-docker-api-owned \
         "${PROJECT}_cashpilot_data" "${PROJECT}_cashpilot_worker_data" "${PROJECT}_cashpilot_fleet" \
         "${PROJECT}_cashpilot_worker_data_owned" "${PROJECT}_cashpilot_fleet_owned" "$P-multi-data" \
-        "$P-multi-data-pre-isolation" $(cat "$WORK_DIR/tunnel-volume" 2>/dev/null) \
+        "$P-multi-data-pre-isolation" "$P-proxied-data" "$P-proxied-data-pre-isolation" $(cat "$WORK_DIR/tunnel-volume" 2>/dev/null) \
         $(sed 's/$/-pre-isolation/' "$WORK_DIR/tunnel-volume" 2>/dev/null); do
         docker volume rm -f "$v" >/dev/null 2>&1 || true
     done
@@ -213,7 +213,8 @@ docker create --name "$P-stopped" $W --network cashpilot-isolated "$ALPINE" slee
 # shellcheck disable=SC2086
 docker run -d --name "$P-tunnel" $W -v /run/secrets "$ALPINE" sh -c 'echo the-proxy > /run/secrets/settings; exec sleep infinity' >/dev/null
 # shellcheck disable=SC2086
-docker run -d --name "$P-proxied" $W --network "container:$(docker inspect -f '{{.Id}}' "$P-tunnel")" "$ALPINE" sleep infinity >/dev/null
+docker run -d --name "$P-proxied" $W --network "container:$(docker inspect -f '{{.Id}}' "$P-tunnel")" \
+    -v "$P-proxied-data:/d" "$ALPINE" sh -c 'echo the-device > /d/id; exec sleep infinity' >/dev/null
 docker inspect -f '{{range .Mounts}}{{.Name}}{{end}}' "$P-tunnel" >"$WORK_DIR/tunnel-volume"
 docker network create --label cashpilot.deployed-by=worker --label "$P=1" --subnet 172.31.250.0/24 "$P-second" >/dev/null
 # shellcheck disable=SC2086
@@ -398,6 +399,8 @@ tunnel_now=$(docker inspect -f '{{.Id}}' "$P-tunnel")
     && pass "the proxied earner is in the new tunnel's namespace, left for the worker to start" \
     || fail "the proxied earner: $(docker inspect -f '{{.HostConfig.NetworkMode}} {{.State.Running}}' "$P-proxied")"
 docker start "$P-proxied" >/dev/null 2>&1 && pass "and it starts" || fail "the proxied earner does not start"
+[ "$(docker exec "$P-proxied" cat /d/id 2>&1)" = the-device ] && pass "with its own volume's data" \
+    || fail "the proxied earner lost its data"
 nets=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}{{.State.Running}}' "$P-multi")
 [ "$nets" = "cashpilot-isolated $P-second true" ] && pass "the two-network earner is back on both, running" \
     || fail "the two-network earner: $nets"
