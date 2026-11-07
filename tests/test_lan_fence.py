@@ -1010,6 +1010,23 @@ class TestAnotherProcesssHelper:
             _run_helper(client)
         stuck.remove.assert_called_once_with(force=True, v=True)
 
+    def test_a_helper_that_replaced_the_one_waited_for_gets_its_own_wait(self):
+        first, second = _helper_container("running"), _helper_container("running")
+        first.id, second.id = "first", "second"
+        client = MagicMock()
+        client.containers.get.side_effect = [first, second, NotFound("gone")]
+        # first is seen at t=0; second only at t=11, past first's deadline of 10.
+        clock = iter([0.0, 0.0, 11.0, 11.0])
+        with (
+            patch.object(lan_fence, "HELPER_TIMEOUT", 10),
+            patch.object(lan_fence, "HELPER_GRACE", 0),
+            patch.object(lan_fence, "HELPER_POLL", 0),
+            patch.object(lan_fence.time, "monotonic", side_effect=lambda: next(clock, 11.0)),
+        ):
+            lan_fence._clear_helper(client)
+        second.remove.assert_not_called()
+        first.remove.assert_not_called()
+
     def test_only_its_own_helper_is_removed_afterwards(self):
         """By its own object: a name lookup after the run could find the other side's new helper."""
         client = MagicMock()
@@ -1101,10 +1118,29 @@ class TestPodman:
         client.version.return_value = version
         assert lan_fence.is_podman(client) is podman
 
-    def test_an_engine_that_does_not_answer_is_taken_for_docker(self):
+    def test_an_engine_that_does_not_answer_fails_closed(self):
         client = MagicMock()
         client.version.side_effect = OSError("no answer")
-        assert lan_fence.is_podman(client) is False
+        with pytest.raises(RuntimeError, match="cannot tell Docker from Podman"):
+            lan_fence.is_podman(client)
+
+    @pytest.mark.parametrize("setting", ["auto", "on"])
+    def test_a_deploy_is_refused_when_the_engine_cannot_be_identified(self, setting):
+        old = MagicMock()
+        old.labels = {"cashpilot.service": "honeygain"}
+        client = _docker()
+        client.version.side_effect = OSError("no answer")
+        with pytest.raises(orchestrator.ContainerNetworkError, match="cannot tell Docker from Podman"):
+            _deploy(client, setting, old=old)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+        client.containers.run.assert_not_called()
+        client.networks.create.assert_not_called()
+
+    def test_off_never_asks_for_the_version(self):
+        client = _docker()
+        client.version.side_effect = OSError("no answer")
+        assert _mode(client, "off") == lan_fence.MODE_OFF
 
     @pytest.mark.parametrize("setting", ["auto", "on"])
     def test_it_resolves_to_unsupported_and_records_nothing(self, setting):

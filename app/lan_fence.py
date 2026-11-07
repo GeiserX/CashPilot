@@ -645,14 +645,17 @@ def is_podman(client: Any) -> bool:
     """A Podman engine behind the Docker-compatible API.
 
     Podman names itself in /version ("Podman Engine"). An engine that does not
-    answer is taken for Docker: the fence's own checks still refuse a network
-    it cannot hold.
+    answer cannot be told apart, and a Podman taken for Docker gets a network
+    whose bridge is not the one the fence's rules name, so this raises
+    RuntimeError instead of guessing: isolation fails closed.
     """
     try:
         version = client.version() or {}
-    except Exception as exc:  # noqa: BLE001 - taken for Docker, as above
-        logger.debug("Could not read the engine's /version, so it is taken for Docker: %s", exc)
-        return False
+    except Exception as exc:  # noqa: BLE001 - re-raised as the documented RuntimeError
+        raise RuntimeError(
+            f"Could not read the container engine's /version ({exc}), so it cannot tell Docker from Podman "
+            "and the LAN fence was not applied."
+        ) from exc
     names = [str((version.get("Platform") or {}).get("Name") or "")]
     names += [str((c or {}).get("Name") or "") for c in version.get("Components") or []]
     return any("podman" in n.lower() for n in names)
@@ -854,12 +857,15 @@ def _clear_helper(client: Any) -> None:
     """
     from docker.errors import NotFound
 
-    deadline = time.monotonic() + HELPER_TIMEOUT + HELPER_GRACE
+    # Per helper: one another process created after the last poll gets its own wait.
+    waiting_on, deadline = None, 0.0
     while True:
         try:
             found = client.containers.get(HELPER_NAME)
             if (getattr(found, "labels", None) or {}).get(PROBE_LABEL) != "fence":
                 return
+            if getattr(found, "id", None) != waiting_on:
+                waiting_on, deadline = getattr(found, "id", None), time.monotonic() + HELPER_TIMEOUT + HELPER_GRACE
             if not _helper_busy(found.attrs or {}, time.time()) or time.monotonic() > deadline:
                 found.remove(force=True, v=True)
                 return
@@ -1028,7 +1034,10 @@ def network_for_deploy() -> str | None:
     """
     orch = _orchestrator()
     client = orch._get_client()
-    mode = resolve_mode(client)
+    try:
+        mode = resolve_mode(client)
+    except RuntimeError as exc:
+        raise orch.ContainerNetworkError(f"{exc} The running container was not touched. {_off_hint()}") from None
     _state["mode"] = mode
     if mode == MODE_UNSUPPORTED and setting() == "on":
         raise orch.ContainerNetworkError(
