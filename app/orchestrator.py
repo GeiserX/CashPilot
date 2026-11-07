@@ -1755,14 +1755,22 @@ def _ensure_updater_image(client: docker.DockerClient) -> None:
     except NotFound:
         pass
     except APIError as exc:
+        refusal = proxy_refusal(exc)
+        if refusal:
+            raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
         logger.warning("Could not check for the update helper image: %s", exc)
     try:
+        # The client's read timeout (60 s by default) ends a pull that stalls;
+        # a slow pull that keeps sending progress goes on.
         client.images.pull(UPDATER_IMAGE)
     except APIError as exc:
         logger.warning("Could not pull the update helper image %s: %s", UPDATER_IMAGE, exc)
         refusal = proxy_refusal(exc)
         if refusal:
             raise SelfUpdateUnavailable(f"Not updating. {refusal}") from exc
+        raise RuntimeError(f"Docker could not pull the update helper image {UPDATER_IMAGE}.") from exc
+    except Exception as exc:  # noqa: BLE001 - a read timeout or a dropped socket, not a daemon answer
+        logger.warning("Pulling the update helper image %s did not finish: %s", UPDATER_IMAGE, type(exc).__name__)
         raise RuntimeError(f"Docker could not pull the update helper image {UPDATER_IMAGE}.") from exc
 
 
