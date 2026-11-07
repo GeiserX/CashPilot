@@ -1681,7 +1681,6 @@ async def _check_stale_workers() -> None:
         logger.warning("Stale worker check error: %s", exc)
         return
     now = datetime.now(UTC)
-    cutoff = now - timedelta(seconds=STALE_WORKER_SECONDS)
     purge_cutoff = now - timedelta(hours=1)
     global _collector_alerts
     for w in workers:
@@ -1691,6 +1690,7 @@ async def _check_stale_workers() -> None:
                 continue
             cid = w.get("client_id") or w["name"]
             last = datetime.fromisoformat(last_hb).replace(tzinfo=UTC)
+            cutoff = now - timedelta(seconds=_stale_after_seconds(w))
             if w["status"] == "online" and last < cutoff:
                 _worker_online_streak.pop(cid, None)
                 # Conditional on the heartbeat the decision was based on: a
@@ -1871,7 +1871,7 @@ async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
     """
     cid = w.get("client_id") or w["name"]
     msg = (
-        f"Worker '{w['name']}': no heartbeat for over {STALE_WORKER_SECONDS // 60} minutes. Its "
+        f"Worker '{w['name']}': no heartbeat for over {_stale_after_seconds(w) // 60} minutes. Its "
         "containers keep running and earning, but CashPilot cannot see or manage them until it reconnects."
     )
     if alert_id := await database.record_alert("worker", cid, msg):
@@ -1909,6 +1909,20 @@ FLEET_API_KEY = fleet_key.resolve_fleet_key()
 HOSTNAME_PREFIX = os.getenv("CASHPILOT_HOSTNAME_PREFIX", "cashpilot")
 COLLECT_INTERVAL_MIN = int(os.getenv("CASHPILOT_COLLECT_INTERVAL", "60"))
 STALE_WORKER_SECONDS = 180  # Mark worker offline after 3 missed heartbeats
+# A phone reports from Android's WorkManager, whose shortest period is 15
+# minutes, so 180 s would show every phone offline between two reports.
+# Three missed periods, the same rule as the 60 s Docker workers.
+STALE_ANDROID_WORKER_SECONDS = 45 * 60
+
+
+def _stale_after_seconds(w: dict[str, Any]) -> int:
+    """How long this worker may stay silent before it is marked offline."""
+    info = w.get("system_info") or {}
+    if not isinstance(info, dict):  # raw DB rows carry it as JSON text
+        info = _safe_json(info, {})
+    if placement.is_android(info):
+        return STALE_ANDROID_WORKER_SECONDS
+    return STALE_WORKER_SECONDS
 
 
 async def _warm_session_epochs() -> None:
@@ -2125,6 +2139,10 @@ async def lifespan(app: FastAPI):
     # The Activity purge too: its hourly timer restarts with the process, so a
     # UI restarted more often than hourly would keep addresses past a day.
     _spawn(_run_activity_purge())
+    # And the proxy cap reset: its hourly timer restarts with the process too, so
+    # a UI restarted more often than hourly would leave a capped proxy's copies
+    # stopped past its reset day.
+    _spawn(_run_proxy_cap_resets())
     _spawn(_run_collection())
     _spawn(_check_windowed_signals())
     logger.info("CashPilot UI started (container ops via workers)")

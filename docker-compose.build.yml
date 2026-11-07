@@ -95,7 +95,7 @@ services:
   # Pinned by digest and bumped on purpose; the in-app update never recreates
   # it (it runs `up --no-deps` on the UI and worker only).
   cashpilot-socket-proxy:
-    image: codeswhat/sockguard:2.4.5@sha256:d15f93e856626ff21f48400034d887874a4dafbbf6bb1e31799511beea07d84c
+    image: codeswhat/sockguard:2.4.6@sha256:9a7142d9f8254e7fde7543e046eff920463f5df27b36d959915b44fb4878d06f
     container_name: cashpilot-socket-proxy
     # Root with no capabilities: uid 0 opens the root-owned host socket, and
     # group 1000 (the worker's) lets it give the worker its socket.

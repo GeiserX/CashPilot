@@ -19,6 +19,24 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## Socket proxy on sockguard 2.4.6: take the new proxy line
+
+**Affects you if** your worker runs behind `cashpilot-socket-proxy`. sockguard
+2.4.5 panics when it decodes a malformed zstd frame (GO-2026-6865 /
+CVE-2026-116591); 2.4.6 fixes it. Your compose file pins the proxy image, so
+pulling new CashPilot images, or an in-app update, leaves 2.4.5 running.
+
+**What to do**, on every host that runs a worker:
+
+1. In your compose file, set the proxy's image to
+   `codeswhat/sockguard:2.4.6@sha256:9a7142d9f8254e7fde7543e046eff920463f5df27b36d959915b44fb4878d06f`,
+   or take the compose file of this release.
+2. Run `docker compose up -d cashpilot-socket-proxy` (with `-f` and your file
+   if it is not `docker-compose.yml`), then check with
+   `docker inspect -f '{{.Config.Image}}' cashpilot-socket-proxy`.
+
+---
+
 ## Owner isolation: take the compose file again; two features change on the UI's host
 
 **Affects you if** your worker runs behind `cashpilot-socket-proxy`. Until now
