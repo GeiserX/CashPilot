@@ -872,3 +872,36 @@ def test_a_proxied_earner_with_its_own_volume_moves_in_the_same_plan_as_its_tunn
     new_earner = d.containers.get("cashpilot-honeygain-p1")
     assert new_earner.attrs["HostConfig"]["NetworkMode"] == f"container:{new_tunnel.id}"
     assert d.data["honeygain-data"] == {"device": "id"}
+
+
+def test_earners_the_pre_worker_deploy_path_made_are_adopted_with_the_fence(install, tmp_path):
+    """deployed-by=direct counts as CashPilot's (constants.CASHPILOT_DEPLOYED).
+    Left alone, the fence would stay unlabelled and the earners would vanish
+    from the worker behind the proxy."""
+    d, myst, _ = install
+    direct = {"cashpilot.managed": "true", "cashpilot.service": "honeygain", om.OWNER_LABEL: "direct"}
+    old = d.add(Container(d, "cashpilot-honeygain", direct, networks=("cashpilot-isolated",)))
+    d.volume("earnapp-data", {"uuid": "sdk-node-1"})
+    old_vol = d.add(
+        Container(
+            d,
+            "cashpilot-earnapp",
+            {**direct, "cashpilot.service": "earnapp"},
+            [("earnapp-data", "/etc/earnapp")],
+            networks=("cashpilot-isolated",),
+            running=False,
+        )
+    )
+    m = FakeMigrator(d, om.State(tmp_path))
+    assert m.run([]) == 0 and m.warnings == 0
+    assert om.owned(d.nets["cashpilot-isolated"].attrs["Labels"])
+    hg = d.containers.get("cashpilot-honeygain")
+    assert hg.id != old.id and hg.status == "running"
+    assert hg.labels == {**direct, **OWNER, om.RECREATED_LABEL: old.id}
+    assert hg.networks() == ["cashpilot-isolated"]
+    ea = d.containers.get("cashpilot-earnapp")
+    assert ea.id != old_vol.id and ea.status == "exited" and om.owned(ea.labels)
+    assert om.owned(d.vols["earnapp-data"].attrs["Labels"]) and d.data["earnapp-data"] == {"uuid": "sdk-node-1"}
+    again = FakeMigrator(d, om.State(tmp_path))
+    assert again.run([]) == 0 and again.copies == []
+    assert d.containers.get("cashpilot-honeygain").id == hg.id
