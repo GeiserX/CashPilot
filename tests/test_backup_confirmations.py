@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 
 from app import main, orchestrator, payout_registry
 from app import state_backup as sb
+from app.constants import LABEL_STATE_CREATED
 
 ROOT = Path(__file__).resolve().parent.parent
 NOW = datetime(2026, 10, 31, 12, 0, tzinfo=UTC)
@@ -206,6 +207,22 @@ class TestStateId:
         a = orchestrator.state_id(_container(VOLUME), TARGETS, _client({"mysterium-data": "2026-03-26T11:41:03Z"}))
         b = orchestrator.state_id(_container(VOLUME), TARGETS, _client({"mysterium-data": "2026-10-30T13:00:36Z"}))
         assert a != b
+
+    def test_a_volume_the_owner_migration_made_again_keeps_it(self):
+        """The migration copies the data onto a new volume of the same name and
+        keeps the old creation time in a label; the fingerprint reads that."""
+        before = orchestrator.state_id(_container(VOLUME), TARGETS, _client({"mysterium-data": "2026-03-26T11:41:03Z"}))
+        migrated = SimpleNamespace(
+            volumes=SimpleNamespace(
+                get=lambda name: SimpleNamespace(
+                    attrs={
+                        "CreatedAt": "2026-11-07T13:44:20Z",
+                        "Labels": {LABEL_STATE_CREATED: "2026-03-26T11:41:03Z", "cashpilot.deployed-by": "worker"},
+                    }
+                )
+            )
+        )
+        assert orchestrator.state_id(_container(VOLUME), TARGETS, migrated) == before
 
     def test_a_bind_mount_moved_to_another_folder_changes_it(self):
         mount = {"Type": "bind", "Source": "/mnt/a", "Destination": "/app/identity"}
