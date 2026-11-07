@@ -34,6 +34,7 @@ import tarfile
 import threading
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -69,6 +70,28 @@ STAGED_SUFFIX = "-next"
 # deploy() swapping the old pair for the staged one, and status(), take turns: a
 # heartbeat must not start an earner that is being removed, or read a half swap.
 _swap_lock = threading.Lock()
+# One deploy per copy at a time: a second one would take the first one's staged
+# sidecar for a leftover and remove it.
+_deploy_locks: dict[tuple[str, int], threading.Lock] = {}
+_deploy_locks_guard = threading.Lock()
+#: A staged sidecar older than this is a leftover: a deploy is past its ready
+#: timeout by then. Younger ones may belong to a deploy still running.
+STAGED_STALE_SECONDS = 300
+
+
+def _deploy_lock(slug: str, proxy_id: int) -> threading.Lock:
+    with _deploy_locks_guard:
+        return _deploy_locks.setdefault((slug, proxy_id), threading.Lock())
+
+
+def _age_seconds(container: Any) -> float:
+    """Seconds since the container was created; 0 when Docker does not say."""
+    raw = str((getattr(container, "attrs", None) or {}).get("Created") or "")
+    try:
+        created = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", raw).replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return (datetime.now(UTC) - created).total_seconds()
 
 
 class ProxyTunnelError(RuntimeError):
@@ -410,6 +433,11 @@ def deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, An
     sidecar takes the final name, and only then is the earner created inside
     its namespace. A sidecar that cannot start therefore costs nothing.
     """
+    with _deploy_lock(slug, proxy_id):
+        return _deploy(slug, proxy_id, earner, proxy, own_ip)
+
+
+def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None) -> dict:
     client = orchestrator._get_client()
     # Checked first: settings that cannot work (a host that does not resolve,
     # no tunnel image) fail fast, before a sidecar is created.
@@ -578,13 +606,14 @@ def sweep_test_tunnels() -> list[str]:
             continue
         _remove_quietly(container, 2)
         swept.append(container.name)
-    # And staged sidecars of a deploy the worker died in: they hold the proxy
-    # login, and the heartbeat never reports them.
+    # And staged sidecars of a deploy that died: they hold the proxy login, and
+    # the heartbeat never reports them. Only stale ones, so a deploy another
+    # worker on this daemon is running keeps its sidecar.
     staged = client.containers.list(
         all=True, filters={"label": [f"{LABEL_MANAGED}=true", f"{LABEL_ROLE}={ROLE_TUNNEL}", LABEL_PROXY]}
     )
     for container in staged:
-        if str(container.name).endswith(STAGED_SUFFIX):
+        if str(container.name).endswith(STAGED_SUFFIX) and _age_seconds(container) >= STAGED_STALE_SECONDS:
             _remove_quietly(container, 2)
             swept.append(container.name)
     return swept

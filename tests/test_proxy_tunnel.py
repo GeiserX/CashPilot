@@ -964,6 +964,39 @@ class TestReviewFollowUps:
             assert proxy_tunnel.sweep_test_tunnels() == ["cashpilot-tunnel-x-p1-next"]
         live.remove.assert_not_called()
 
+    def test_a_young_staged_sidecar_is_left_to_its_deploy(self):
+        from datetime import UTC, datetime
+
+        young = _container("cashpilot-tunnel-x-p1-next", "x", proxy=1, role="tunnel")
+        young.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "123Z")
+        client = MagicMock()
+        client.containers.list.side_effect = [[], [young]]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert proxy_tunnel.sweep_test_tunnels() == []
+        young.remove.assert_not_called()
+
+    def test_two_deploys_of_one_copy_take_turns(self):
+        import threading
+
+        inside, overlap = [], []
+        gate = threading.Event()
+
+        def slow(*_a, **_kw):
+            if inside:
+                overlap.append(True)
+            inside.append(True)
+            gate.wait(0.2)
+            inside.pop()
+            return {}
+
+        with patch.object(proxy_tunnel, "_deploy", side_effect=slow):
+            threads = [threading.Thread(target=proxy_tunnel.deploy, args=("x", 1, {}, {}, None)) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        assert not overlap
+
     def test_a_probe_answer_that_is_not_an_ip_is_not_ready(self):
         sidecar = MagicMock(status="running")
         sidecar.exec_run.return_value = (0, b'{"ip":"e","country":""}\n')
