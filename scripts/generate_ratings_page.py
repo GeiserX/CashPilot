@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import html
 import sys
 from pathlib import Path
 
@@ -75,21 +76,23 @@ def _method(rules: dict) -> list[str]:
 
 
 def _summary(rows: list[tuple[dict, dict]]) -> list[str]:
-    # The wrapper lets docs/stylesheets/theme.css keep the short columns narrow,
-    # so the worst con gets the width.
+    # The wrapper lets docs/stylesheets/theme.css fix the short columns' widths
+    # and clamp the worst con to three lines; the full text is in its tooltip
+    # and in the provider's own section.
     out = [
         "## All providers",
         "",
         '<div class="ratings-summary" markdown>',
         "",
-        "| Provider | Grade | Score | Unchecked | Reviewed | Worst con |",
+        "| Provider | Grade | Score | Unchecked | Worst con | Reviewed |",
         "|---|:---:|:---:|:---:|---|---|",
     ]
     for svc, r in rows:
         worst = r["cons"][0]["text"] if r["cons"] else "None found"
         out.append(
             f'| <a href="#{svc["slug"]}">{_cell(svc["name"])}</a> | {r["grade"]} | {r["score"]} of {r["max"]} '
-            f"| {r['unknown_count']} | {r['reviewed_on']} | {_cell(worst)} |"
+            f'| {r["unknown_count"]} | <span class="ratings-con" title="{html.escape(_cell(worst))}">{html.escape(_cell(worst), quote=False)}</span> '
+            f"| {r['reviewed_on']} |"
         )
     out += ["", "</div>"]
     return out
