@@ -217,6 +217,15 @@ link = "https://hub.docker.com/r/drumsergio/cashpilot"
 [project.plugins.llmstxt.sections]
 Documentation = ["*.md", "*/*.md"]
 
+# A preview image per page for links shared on chat apps and social sites
+# (og:image and twitter:image). The card takes the site's own colours from
+# docs/stylesheets/theme.css: the banner sky #000010 and the wordmark rose
+# #fb7185; the logo is theme.logo. The font comes from Google Fonts at build
+# time, which is why the docs workflow retries a failed font download.
+[project.plugins.social]
+cards_layout_options.background_color = "#000010"
+cards_layout_options.color = "#fb7185"
+
 [project.markdown_extensions]
 admonition = {}
 "pymdownx.details" = {}
