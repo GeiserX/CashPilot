@@ -298,21 +298,94 @@ class TestOrder:
             assert "ports" not in kw and "volumes" not in kw
             return "earner-id"
 
+        sidecar.rename.side_effect = lambda name: calls.append(f"renamed {name}")
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
         with (
-            patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+            patch.object(orchestrator, "_get_client", return_value=client),
             patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
             patch.object(proxy_tunnel, "remove", side_effect=lambda *a: calls.append("old-removed") or []),
-            patch.object(proxy_tunnel, "start_sidecar", side_effect=fake_start_sidecar),
+            patch.object(proxy_tunnel, "start_sidecar", side_effect=fake_start_sidecar) as start,
             patch.object(orchestrator, "deploy_raw", side_effect=fake_deploy_raw),
         ):
             result = proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
-        assert calls == ["old-removed", "sidecar-ready", "earner"]
+        # The new sidecar proves its exit while the old pair still runs, under a staged name.
+        assert calls == ["sidecar-ready", "old-removed", "renamed cashpilot-tunnel-honeygain-p3", "earner"]
+        assert start.call_args.args[1] == "cashpilot-tunnel-honeygain-p3-next"
+        assert start.call_args.kwargs["hostname"] == "tunnel-honeygain-p3"
         assert result["container_id"] == "earner-id"
+
+    def test_a_sidecar_that_cannot_start_keeps_the_running_copy(self):
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
+            patch.object(proxy_tunnel, "remove") as remove,
+            patch.object(proxy_tunnel, "start_sidecar", side_effect=proxy_tunnel.ProxyTunnelError("No such image")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
+        remove.assert_not_called()
+
+    def test_a_failed_promotion_removes_the_staged_sidecar(self):
+        sidecar = MagicMock(id="sidecar-id")
+        sidecar.rename.side_effect = RuntimeError("409 Conflict")
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
+            patch.object(proxy_tunnel, "remove", return_value=[]),
+            patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
+            patch.object(orchestrator, "deploy_raw") as deploy_raw,
+            pytest.raises(RuntimeError),
+        ):
+            proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
+        sidecar.remove.assert_called_once_with(force=True, v=True)
+        deploy_raw.assert_not_called()
+
+    def test_a_staged_sidecar_left_behind_is_replaced_but_never_a_stranger(self):
+        leftover = _container("cashpilot-tunnel-honeygain-p3-next", "honeygain", proxy=3, role="tunnel")
+        stranger = _container("cashpilot-tunnel-honeygain-p3-next", "other")
+        sidecar = MagicMock(id="sidecar-id")
+        for found, ok in ((leftover, True), (stranger, False)):
+            client = MagicMock()
+            client.containers.get.return_value = found
+            with (
+                patch.object(orchestrator, "_get_client", return_value=client),
+                patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
+                patch.object(proxy_tunnel, "remove", return_value=[]),
+                patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
+                patch.object(orchestrator, "deploy_raw", return_value="earner-id"),
+            ):
+                if ok:
+                    proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
+                else:
+                    with pytest.raises(proxy_tunnel.ProxyTunnelError, match="did not create"):
+                        proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
+            assert found.remove.called is ok
+
+    def test_the_heartbeat_never_reports_a_staged_sidecar(self):
+        earner = _container("cashpilot-x-p1", "x", proxy=1)
+        tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
+        staged = _container("cashpilot-tunnel-x-p1-next", "x", proxy=1, role="tunnel")
+        staged.id = "id-staged"
+        client = MagicMock()
+        client.containers.list.return_value = [earner, tunnel, staged]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(proxy_tunnel, "_read_exit", return_value=None),
+        ):
+            entries = proxy_tunnel.status(collect_stats=False)
+        assert [(e["slug"], e["tunnel_container_id"]) for e in entries] == [("x", tunnel.short_id)]
 
     def test_earner_failure_removes_the_sidecar(self):
         sidecar = MagicMock(id="sidecar-id")
+        client = MagicMock()
+        client.containers.get.side_effect = NotFound("gone")
         with (
-            patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+            patch.object(orchestrator, "_get_client", return_value=client),
             patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
             patch.object(proxy_tunnel, "remove", return_value=[]),
             patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
@@ -881,6 +954,15 @@ class TestReviewFollowUps:
             assert proxy_tunnel.sweep_test_tunnels() == ["cashpilot-tunnel-test-ab"]
         leftover.remove.assert_called_once_with(force=True, v=True)
         copy_tunnel.remove.assert_not_called()
+
+    def test_a_staged_sidecar_of_a_deploy_that_died_is_swept(self):
+        staged = _container("cashpilot-tunnel-x-p1-next", "x", proxy=1, role="tunnel")
+        live = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
+        client = MagicMock()
+        client.containers.list.side_effect = [[], [staged, live]]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert proxy_tunnel.sweep_test_tunnels() == ["cashpilot-tunnel-x-p1-next"]
+        live.remove.assert_not_called()
 
     def test_a_probe_answer_that_is_not_an_ip_is_not_ready(self):
         sidecar = MagicMock(status="running")
