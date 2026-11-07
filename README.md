@@ -14,6 +14,13 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention (an offline box, a stopped container, a balance it could not read, a payout to confirm), which service runs on which box, earnings per day, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
+## New in 2.0
+
+- **The worker is boxed in.** It reaches Docker only through a pinned socket proxy, and only the containers, volumes and networks it created, so a compromised worker cannot read the dashboard's data or its encryption key ([security defaults](https://geiserx.github.io/CashPilot/security-defaults/#docker-socket-proxy)).
+- **Earners are fenced off your LAN**, host, tailnet and cloud metadata on new installs; host-networked Mysterium is the exception ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
+- **One box, several IPs.** Proxied copies run an earner through SOCKS5, HTTP CONNECT or a Tailscale exit node, and stop instead of leaking when the proxy dies ([proxied copies](https://geiserx.github.io/CashPilot/proxies/)).
+- Coming from 1.x? Read [What's new in 2.0](https://geiserx.github.io/CashPilot/whats-new-2.0/#upgrading-from-1x) before you change the image tags.
+
 ## Features
 
 - Starts a Docker service with one click from the catalog; no compose file to write, no YAML to edit.

@@ -20,6 +20,9 @@ hide:
 
 **CashPilot** runs passive income services on your own servers and shows what they earn in one dashboard. It is a UI that holds the catalog, the credentials and the earnings history, and on each server a worker that starts and watches the service containers through a Docker socket proxy. Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
 
+!!! tip "New in 2.0"
+    The worker reaches Docker only through a socket proxy and only the containers, volumes and networks it created; earners are fenced off your LAN by default; and proxied copies let one box earn on several IPs. Upgrading from 1.x means changing the image tags: [What's new in 2.0](whats-new-2.0.md) lists what changed and how to upgrade.
+
 <div class="grid cards" markdown>
 
 -   :material-docker: **[Getting started](getting-started.md)**
@@ -141,6 +144,7 @@ graph LR
 - Every service container runs with all Linux capabilities dropped (a few services add back only the ones they declare), `no-new-privileges` set and a PID limit.
 - Stored credentials are encrypted at rest with a Fernet key at `/data/.fernet_key`. Back that file up: without it nothing can be decrypted. `CASHPILOT_ENCRYPTION_KEY` is adopted only when that file is absent, so on an instance that already has a key the variable changes nothing. It is not `CASHPILOT_SECRET_KEY`, which only signs login sessions.
 - With the shipped compose files, only the socket proxy holds the Docker socket, and the worker reaches Docker only through it ([Security defaults](security-defaults.md)). The [app-store listings](app-stores.md) do not include the proxy yet, so there the worker mounts the socket itself. The UI is published on loopback by default, and the worker's port 8081 is never published, because either could start containers on the host.
+- The proxy also limits the worker to the containers, volumes and networks it created, so a compromised worker cannot read the UI's `/data`, its encryption key or the keys in its environment ([owner isolation](security-defaults.md#docker-socket-proxy)).
 - [Security defaults](security-defaults.md) lists what ships enabled, [Protecting your home network](home-network-security.md) and [Network isolation](isolation.md) show how to keep the earners away from your LAN, router and host.
 - To report a security problem, follow the [security policy](https://github.com/GeiserX/CashPilot/blob/main/SECURITY.md) and do not open a public issue.
 
