@@ -61,15 +61,31 @@ class Network:
     def disconnect(self, cid, force=False):
         self.docker.cs[cid].attrs["NetworkSettings"]["Networks"].pop(self.name)
 
-    def connect(self, name, aliases=None, ipv4_address=None, ipv6_address=None):
+    def connect(
+        self,
+        name,
+        aliases=None,
+        ipv4_address=None,
+        ipv6_address=None,
+        *,
+        links=None,
+        link_local_ips=None,
+        driver_opt=None,
+        mac_address=None,
+    ):
         c = self.docker.containers.get(name)
-        ipam = {k: v for k, v in (("IPv4Address", ipv4_address), ("IPv6Address", ipv6_address)) if v}
+        ipam = {
+            k: v
+            for k, v in (("IPv4Address", ipv4_address), ("IPv6Address", ipv6_address), ("LinkLocalIPs", link_local_ips))
+            if v
+        }
         if self.name in c.attrs["NetworkSettings"]["Networks"]:
             raise APIError(f"endpoint with name {c.name} already exists in network {self.name}")
         c.attrs["NetworkSettings"]["Networks"][self.name] = {
             "Aliases": aliases,
             "IPAMConfig": ipam or None,
             "NetworkID": self.id,
+            **{k: v for k, v in (("Links", links), ("DriverOpts", driver_opt), ("MacAddress", mac_address)) if v},
         }
         self.docker.connects.append((self.name, name))
 
@@ -247,9 +263,28 @@ class Api:
     def _url(self, path):
         return path
 
-    def connect_container_to_network(self, container, net_id, aliases=None, ipv4_address=None, ipv6_address=None, **kw):
+    def connect_container_to_network(
+        self,
+        container,
+        net_id,
+        ipv4_address=None,
+        ipv6_address=None,
+        aliases=None,
+        links=None,
+        link_local_ips=None,
+        driver_opt=None,
+        mac_address=None,
+    ):
+        # docker-py's own signature, so a misspelled keyword fails here as it would there.
         self.docker.nets[net_id].connect(
-            container, aliases=aliases, ipv4_address=ipv4_address, ipv6_address=ipv6_address
+            container,
+            aliases=aliases,
+            ipv4_address=ipv4_address,
+            ipv6_address=ipv6_address,
+            links=links,
+            link_local_ips=link_local_ips,
+            driver_opt=driver_opt,
+            mac_address=mac_address,
         )
 
     def _post_json(self, url, data, params):
@@ -797,17 +832,26 @@ def test_a_failed_tunnel_backup_restarts_the_tunnel_and_leaves_its_earner_for_th
     assert d.containers.get("cashpilot-honeygain-p1") is earner
 
 
-def test_an_earner_on_two_networks_is_recreated_on_both_on_an_engine_that_takes_one_at_create(tmp_path):
+@pytest.mark.parametrize("api_version", ["1.44", "1.43"])
+def test_an_earner_on_two_networks_is_recreated_on_both_on_an_engine_that_takes_one_at_create(tmp_path, api_version):
     d = FakeDocker()
+    d.api._version = api_version
     d.nets["first"] = Network(d, "first", OWNER, {})
     d.nets["second"] = Network(d, "second", OWNER, {})
     d.volume("two-data", {"f": "1"})
     c = d.add(Container(d, "cashpilot-two", WORKER_LABELS, [("two-data", "/d")], networks=("first", "second")))
-    c.attrs["NetworkSettings"]["Networks"]["second"]["IPAMConfig"] = {"IPv4Address": "10.9.0.5"}
+    second = c.attrs["NetworkSettings"]["Networks"]["second"]
+    second["IPAMConfig"] = {"IPv4Address": "10.9.0.5", "LinkLocalIPs": ["169.254.9.5"]}
+    second.update(Links=["cashpilot-db:db"], DriverOpts={"com.example.opt": "1"}, MacAddress="02:42:0a:09:00:05")
     assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
     new = d.containers.get("cashpilot-two")
     assert sorted(new.networks()) == ["first", "second"] and new.status == "running"
-    assert new.attrs["NetworkSettings"]["Networks"]["second"]["IPAMConfig"] == {"IPv4Address": "10.9.0.5"}
+    endpoint = new.attrs["NetworkSettings"]["Networks"]["second"]
+    assert endpoint["IPAMConfig"] == {"IPv4Address": "10.9.0.5", "LinkLocalIPs": ["169.254.9.5"]}
+    assert endpoint["Aliases"] == ["cashpilot-two"]
+    assert endpoint["Links"] == ["cashpilot-db:db"] and endpoint["DriverOpts"] == {"com.example.opt": "1"}
+    # Engines before API 1.44 refuse a MAC address on connect.
+    assert endpoint.get("MacAddress") == ("02:42:0a:09:00:05" if api_version == "1.44" else None)
 
 
 @pytest.mark.parametrize("earner_first", [True, False], ids=["earner listed first", "tunnel listed first"])
