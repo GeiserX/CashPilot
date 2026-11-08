@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -227,14 +228,51 @@ def copy_device_id(device_id: str, proxy_id: int, pattern: str | None = None) ->
     still match the catalog's ``pattern`` when there is one. Any other format
     raises ValueError: a copy is refused rather than given a cloned identity.
     """
+    return derive_device_id(device_id, f"p{proxy_id}", pattern)
+
+
+def derive_device_id(device_id: str, seed: str, pattern: str | None = None) -> str:
+    """The device id of a copy, from the original and ``seed``: "p<proxy id>" for a
+    proxied copy, "<n>" for copy n on the box. See :func:`copy_device_id`.
+
+    CashPilot Desktop derives the same ids (internal/runtime/deviceid.go), so a
+    copy deployed from either app is the same device.
+    """
     if not re.fullmatch(r"[0-9a-f]+|[0-9A-F]+", device_id):
         raise ValueError("its device id is not in a format a copy can derive its own from")
-    digest = hashlib.shake_256(f"{device_id}-p{proxy_id}".encode()).hexdigest((len(device_id) + 1) // 2)
+    digest = hashlib.shake_256(f"{device_id}-{seed}".encode()).hexdigest((len(device_id) + 1) // 2)
     digest = digest[: len(device_id)]
     new_id = digest.upper() if device_id.isupper() else digest
     if pattern and not re.fullmatch(pattern, new_id):
         raise ValueError("the device id derived for the copy does not match the catalog's format for it")
     return new_id
+
+
+def device_id_renamer(env: dict[str, Any], docker_conf: dict[str, Any], seed: str) -> Callable[[Any], Any]:
+    """A function that puts a copy's own device ids in place of the original's.
+
+    Every env value the catalog marks ``per_device`` gets an id derived with
+    ``seed`` (:func:`derive_device_id`), and the returned function replaces the
+    original id wherever it appears in a string. Raises ValueError when a
+    required id is missing or one cannot be derived: the copy is refused.
+    """
+    renamed: dict[str, str] = {}
+    for var in docker_conf.get("env", []):
+        old_id = str(env.get(var.get("key")) or "") if var.get("per_device") else ""
+        if var.get("per_device") and var.get("required") and not old_id:
+            # Empty is only safe where the service makes its own id when given none.
+            raise ValueError(f"its deployment has no {var.get('key')}, so the copy cannot be given one of its own")
+        if old_id:
+            renamed[old_id] = derive_device_id(old_id, seed, var.get("pattern"))
+
+    def rename(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        for old_id, new_id in renamed.items():
+            value = value.replace(old_id, new_id)
+        return value
+
+    return rename
 
 
 def earner_spec(recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id: int) -> dict[str, Any]:
@@ -253,22 +291,7 @@ def earner_spec(recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id:
         key: (f"{value}-{suffix}" if key in named and value else value)
         for key, value in (recorded.get("env") or {}).items()
     }
-    renamed: dict[str, str] = {}
-    for var in docker_conf.get("env", []):
-        old_id = str(env.get(var.get("key")) or "") if var.get("per_device") else ""
-        if var.get("per_device") and var.get("required") and not old_id:
-            # Empty is only safe where the service makes its own id when given none.
-            raise ValueError(f"its deployment has no {var.get('key')}, so the copy cannot be given one of its own")
-        if old_id:
-            renamed[old_id] = copy_device_id(old_id, proxy_id, var.get("pattern"))
-
-    def rename(value: Any) -> Any:
-        if not isinstance(value, str):
-            return value
-        for old_id, new_id in renamed.items():
-            value = value.replace(old_id, new_id)
-        return value
-
+    rename = device_id_renamer(env, docker_conf, f"p{proxy_id}")
     env = {key: rename(value) for key, value in env.items()}
     spec: dict[str, Any] = {
         "image": recorded.get("custom_image") or recorded.get("image"),

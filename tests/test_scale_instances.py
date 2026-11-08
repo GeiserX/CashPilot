@@ -472,3 +472,50 @@ class TestTheDashboardCopies:
         }
         rows = asyncio.run(main._get_all_worker_containers([worker]))
         assert sorted(r["instance"] for r in rows) == [1, 2]
+
+
+# A service whose device id is per_device but which has no device_link, so it may
+# run more than one copy on a box (SpeedShare's shape). Every copy reused the
+# original's id, so the provider saw one device.
+PER_DEVICE = {
+    **SCALABLE,
+    "docker": {
+        **SCALABLE["docker"],
+        "env": [
+            {"key": "TOKEN", "required": True, "label": "Token"},
+            {"key": "NODE_ID", "required": True, "per_device": True, "label": "Node id"},
+            {"key": "DEVICE", "default": "cashpilot-{hostname}", "label": "Device name"},
+        ],
+    },
+}
+NODE_ID = "a3f9c2e1b4d5" * 5 + "abcd"
+
+
+class TestPerDeviceIdsOnTheBox:
+    def test_each_copy_gets_its_own_device_id_matching_desktop(self):
+        spec = {"image": "demo/demo", "env": {"TOKEN": "t", "NODE_ID": NODE_ID, "DEVICE": f"box-{NODE_ID}"}}
+        copy = main._instance_spec(spec, 2, PER_DEVICE["docker"])
+        # The value CashPilot Desktop derives for copy 2 of this id
+        # (internal/runtime/deviceid_test.go), so both apps make the same device.
+        own = "cf0ecaaa0e300509c26385f03c445733d09df783df4e52777803631c7d493e56"
+        assert copy["env"]["NODE_ID"] == own
+        assert copy["env"]["DEVICE"] == f"box-{own}-2"
+        assert copy["env"]["TOKEN"] == "t"
+        assert spec["env"]["NODE_ID"] == NODE_ID, "the first copy keeps its id"
+        assert main._instance_spec(spec, 2, PER_DEVICE["docker"])["env"] == copy["env"], "stable across redeploys"
+
+    def test_an_id_a_copy_cannot_derive_refuses_the_copy(self):
+        with pytest.raises(ValueError, match="derive its own"):
+            main._instance_spec({"env": {"TOKEN": "t", "NODE_ID": "sdk-node-" + "0" * 32}}, 2, PER_DEVICE["docker"])
+        with pytest.raises(ValueError, match="has no NODE_ID"):
+            main._instance_spec({"env": {"TOKEN": "t"}}, 2, PER_DEVICE["docker"])
+
+    def test_a_refused_copy_stops_the_deploy_before_anything_is_replaced(self):
+        with pytest.raises(HTTPException) as exc:
+            _deploy(2, svc=PER_DEVICE, env={"TOKEN": "t", "NODE_ID": "not-hex"})
+        assert exc.value.status_code == 400 and "copy 2" in exc.value.detail
+
+    def test_a_deploy_of_two_copies_gives_each_its_own_id(self):
+        deploys, _, _ = _deploy(2, svc=PER_DEVICE, env={"TOKEN": "t", "NODE_ID": NODE_ID})
+        ids = [d["env"]["NODE_ID"] for d in deploys]
+        assert ids[0] == NODE_ID and ids[1] != NODE_ID and len(ids[1]) == len(NODE_ID)
