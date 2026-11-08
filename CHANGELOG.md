@@ -10,6 +10,33 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## Unreleased
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#661)
+
+## [2.0.3] - 2026-11-08
+
+### Fixes
+
+- Count USDT and USDC cash-outs in the totals (#660)
+
+## [2.0.2] - 2026-11-08
+
+### Documentation
+
+- Warn that commercial proxies can refuse earners, so a passing Test does not mean a copy earns (#657)
+- Regenerate CHANGELOG.md (#655)
+
+### Fixes
+
+- Give a proxied copy of ProxyRack its own device id, so it earns as a second device (#659)
+
+### Testing
+
+- Stop flagging the 2.0 release feature as changelog bookkeeping (#658)
+
 ## [2.0.1] - 2026-11-07
 
 ### Fixes
