@@ -124,6 +124,41 @@ before. The worker cannot read the host's setting (it runs on its own network,
 which has its own copy), so the Fleet warning about the range stays after you
 reserve it; once the range is reserved, redeploy anyway.
 
+**Another sysctl file can undo the reservation at boot.** The files are read
+in order and the last one to set `net.ipv4.ip_local_reserved_ports` wins. If a
+file that sorts later, such as `99-something.conf`, also sets it for another
+program, your reservation is gone after the next reboot, with nothing saying
+so. Find every file that sets it:
+
+```bash
+systemd-sysctl --cat-config | grep reserved_ports
+# without systemd-sysctl:
+grep -rn reserved_ports /etc/sysctl.conf /etc/sysctl.d/ /usr/lib/sysctl.d/ /run/sysctl.d/ 2>/dev/null
+```
+
+Put the whole combined list in one file, comment out the line in every other
+file that sets it, and read `sysctl net.ipv4.ip_local_reserved_ports` again
+after the next reboot.
+
+**A firewall of your own in `DOCKER-USER` can drop the sessions.** Once the
+node is on CashPilot's bridge, customer packets to its UDP range are forwarded
+to a container, no longer delivered to the host itself. They pass Docker's
+`DOCKER-USER` chain. If yours ends with a rule that drops what comes in from
+the internet, such as `-i <wan interface> -j DROP`, every session to the
+forwarded range is dropped there. Add an accept above that drop, with your
+own interface and range. `cp-isolated` is the bridge CashPilot creates; on a
+network of your own (`CASHPILOT_CONTAINER_NETWORK`), use that network's bridge:
+
+```bash
+sudo iptables -I DOCKER-USER -i <wan interface> -o cp-isolated -p udp --dport <start>:<end> -j ACCEPT
+```
+
+Then save it wherever your rules are kept (for example `/etc/iptables/rules.v4`),
+or it is gone after a reboot. Check the saved file against the live chain
+(`sudo iptables -S DOCKER-USER`); they can drift apart. The node's own check
+confirms it: `docker logs cashpilot-mysterium 2>&1 | grep 'are reachable'`
+should show `All ports [...] are reachable` once a session starts.
+
 **Check it.** After a few sessions, on the machine running the node:
 
 ```bash
