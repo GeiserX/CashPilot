@@ -1719,6 +1719,9 @@ class TestTheMoveAdvice:
             assert "sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in text, doc
             assert "net.ipv4.ip_local_reserved_ports = 56000-56100" in text, doc
             assert "/etc/sysctl.d/" in text, doc
+        guide = (ROOT / "docs" / "guides" / "mysterium.md").read_text(encoding="utf-8")
+        # Read before the write: the sysctl -w replaces the whole list.
+        assert guide.index("read\n`sysctl net.ipv4.ip_local_reserved_ports`") < guide.index("sudo sysctl -w")
 
     def test_the_guide_no_longer_says_the_node_runs_on_the_host_network(self):
         guide = (ROOT / "docs" / "guides" / "mysterium.md").read_text(encoding="utf-8")
