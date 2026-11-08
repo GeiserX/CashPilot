@@ -1201,6 +1201,24 @@ class TestTheMoveNeedsTheOldIdentity:
         assert orchestrator._MISMATCH_HELD.get("cashpilot-mysterium") == "its identity is 0xb, not 0xa"
         assert "0xb" in orchestrator.identity_problem(_node(status="exited"))
 
+    def test_the_refusal_leaves_the_record_on_disk_alone(self, markers):
+        # Written by someone else while the deploy ran: the refusal must not undo it.
+        old = _node()
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        real = orchestrator.read_node_identity
+
+        def read_and_race(container, slug):
+            orchestrator._remember_identity("cashpilot-mysterium", "MISMATCH written meanwhile")
+            return real(container, slug)
+
+        with (
+            patch.object(orchestrator, "read_node_identity", side_effect=read_and_race),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="not touched"),
+        ):
+            _raw_deploy(old=old)
+        assert orchestrator._identity_snapshot("cashpilot-mysterium") == "MISMATCH written meanwhile"
+
     def test_control_a_stopped_node_is_replaced_without_the_check(self, markers):
         old = _node(status="exited")
         old.exec_run.return_value = (1, b"")
@@ -1685,6 +1703,8 @@ class TestTheMoveAdvice:
         assert "sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in warning
         assert "net.ipv4.ip_local_reserved_ports = 56000-56100 in a file under /etc/sysctl.d/" in warning
         assert "add it to any ranges already listed there" in warning
+        # The kernel keeps it from automatic picks only; an explicit bind still takes the port.
+        assert "stops automatic picks only" in warning and "binds one of these ports by number" in warning
         # The worker cannot read the host's reservation, so it says when to ignore the warning.
         assert warning.endswith("If you've reserved this range on the host, you can redeploy.")
 

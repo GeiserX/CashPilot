@@ -115,7 +115,9 @@ echo 'net.ipv4.ip_local_reserved_ports = 56000-56100' | sudo tee /etc/sysctl.d/9
 
 If `sysctl net.ipv4.ip_local_reserved_ports` already lists ranges, add yours
 to them, comma-separated, in both places. The file under `/etc/sysctl.d/`
-keeps it after a reboot. The worker cannot read the host's setting (it runs
+keeps it after a reboot. A reservation only stops the kernel handing those
+ports out on its own: a program on the machine that binds one of them by
+number still takes it, and the node's start fails as before. The worker cannot read the host's setting (it runs
 on its own network, which has its own copy), so the Fleet warning about the
 range stays after you reserve it; once the range is reserved, redeploy anyway.
 

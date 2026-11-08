@@ -179,7 +179,8 @@ def move_advice(
             f"Or keep this range and reserve it on the host, so no program there takes one of its ports: run "
             f"sysctl -w {RESERVED_PORTS_SYSCTL}={m[1]}-{m[2]} (add it to any ranges already listed there, "
             f"comma-separated), and put the line {RESERVED_PORTS_SYSCTL} = {m[1]}-{m[2]} in a file under "
-            "/etc/sysctl.d/ so it survives a reboot. If you've reserved this range on the host, you can redeploy."
+            "/etc/sysctl.d/ so it survives a reboot. That stops automatic picks only: a program that binds one of "
+            "these ports by number still fails the start. If you've reserved this range on the host, you can redeploy."
         )
     return advice
 

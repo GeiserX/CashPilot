@@ -56,7 +56,8 @@ drift, and **Check isolation** fails on it.
    change: `sudo sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100` (use
    your range, with a dash, added to any ranges already listed there), and the
    line `net.ipv4.ip_local_reserved_ports = 56000-56100` in a file under
-   `/etc/sysctl.d/` so it survives a reboot. The worker cannot see the host's
+   `/etc/sysctl.d/` so it survives a reboot. It stops automatic picks only; a
+   program that binds one of the ports by number still fails the start. The worker cannot see the host's
    reservation, so Fleet keeps warning about the range; once it is reserved,
    redeploy anyway.
    The worker publishes the range 1:1 through Docker, and a node's range on
