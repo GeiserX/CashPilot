@@ -76,7 +76,15 @@ full table.
 Both, and the worker that runs Mysterium in particular. The dashboard refuses
 to redeploy Mysterium onto an older worker.
 
-### 5. Check the UDP range is free
+### 5. Check how you reach the WebUI
+
+If `UI_ADDRESS` holds only `127.0.0.1`, skip this. If it holds a LAN address
+for a reverse proxy on another machine, know that after the move port 4449 is
+published through Docker's forwarding, so a host `INPUT` rule no longer limits
+who reaches it. Add a `DOCKER-USER` rule or keep the proxy on the same machine
+before you move ([WebUI address](guides/mysterium.md#webui-address)).
+
+### 6. Check the UDP range is free
 
 See [Choosing the UDP port range](#choosing-the-udp-port-range) below. One port
 in the range held by another program on the host is enough to stop the node
@@ -220,8 +228,10 @@ start.
     sudo ss -uanp '( sport >= :<start> and sport <= :<end> )'
     ```
 
-    No output means the range is free. Once the node runs, its own
-    `docker-proxy` processes show here, which is expected.
+    No output means the range is free. Two holders are expected: an old
+    node still on the host's network shows as `myst`, and its sockets close
+    when the move stops it; a node already on the bridge shows as
+    `docker-proxy`. Any other program in the list means a different range.
 
 3. **Keep it small.** Each session uses about two ports, so 20 to 30 ports
    carry 10 to 15 sessions at once, more than a home node usually gets. See the
