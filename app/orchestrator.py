@@ -1258,6 +1258,12 @@ def _identity_file(name: str) -> str:
     return os.path.join(IDENTITY_DIR, re.sub(r"[^A-Za-z0-9_.-]", "_", name))
 
 
+#: Mismatch holds by container name, kept in memory as well as on disk: a hold
+#: whose record could not be written must still hold, or the stopped node
+#: would read as unchecked and the guard would start it again every pass.
+_MISMATCH_HELD: dict[str, str] = {}
+
+
 def _pending_identity(name: str) -> str | None:
     """The identity a replacement still has to match, or None (no record, or a held mismatch)."""
     try:
@@ -1269,6 +1275,9 @@ def _pending_identity(name: str) -> str | None:
 
 
 def _remember_identity(name: str, identity: str | None) -> None:
+    if not str(identity or "").startswith("MISMATCH "):
+        # A deploy rewrites the record: the owner's way out of a hold.
+        _MISMATCH_HELD.pop(name, None)
     path = _identity_file(name)
     try:
         if identity:
@@ -1287,6 +1296,8 @@ def identity_problem(container: Any) -> str | None:
     None while there is nothing to compare (no record, or the node not
     answering yet) and once it matches, when the record is deleted.
     """
+    if held_reason := _MISMATCH_HELD.get(container.name):
+        return held_reason
     path = _identity_file(container.name)
     try:
         with open(path, encoding="utf-8") as fh:
@@ -1312,6 +1323,7 @@ def identity_problem(container: Any) -> str | None:
         f"its identity is {current}, not {expected} as before the redeploy, so it is not running on the data "
         "volume that holds its keystore. It stays stopped: restore that volume, then redeploy"
     )
+    _MISMATCH_HELD[container.name] = reason
     _remember_identity(container.name, f"MISMATCH {reason}")
     return reason
 

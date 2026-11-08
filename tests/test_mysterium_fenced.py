@@ -271,6 +271,7 @@ class TestTheWorkerRefuses:
 def markers(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrator, "STOPPED_MARKER", str(tmp_path / "stopped"))
     monkeypatch.setattr(orchestrator, "IDENTITY_DIR", str(tmp_path / "identity"))
+    monkeypatch.setattr(orchestrator, "_MISMATCH_HELD", {}, raising=False)
     return tmp_path
 
 
@@ -1062,3 +1063,42 @@ def test_the_fleet_page_offers_the_move_and_says_isolation_first():
     assert "to move behind the fence</button>" in fleet
     assert "Switch isolation on first, then redeploy it once" in fleet
     assert "moveBehindFence(" in fleet
+
+
+class TestAHoldThatCannotBeWritten:
+    """Found in the lab: a pending record the worker could not overwrite let the guard restart the node each pass."""
+
+    def _unwritable(self, markers):
+        orchestrator._remember_identity("cashpilot-mysterium", IDENTITY_A)
+        (markers / "identity").chmod(0o500)
+        (markers / "identity" / "cashpilot-mysterium").chmod(0o400)
+
+    def test_the_hold_survives_and_the_node_is_not_started_again(self, markers):
+        self._unwritable(markers)
+        try:
+            new = _node()
+            new.exec_run.return_value = _says(IDENTITY_B)
+            _guard([new])
+            new.stop.assert_called_once()
+            stopped = _node(status="exited")
+            held, _ = _guard([stopped])
+            stopped.start.assert_not_called()
+            assert IDENTITY_B in held["cashpilot-mysterium"]
+            with pytest.raises(orchestrator.ContainerNetworkError, match="identity"):
+                _start(_node(status="exited"))
+        finally:
+            (markers / "identity").chmod(0o700)
+
+    def test_control_a_redeploy_lifts_the_hold(self, markers):
+        self._unwritable(markers)
+        try:
+            new = _node()
+            new.exec_run.return_value = _says(IDENTITY_B)
+            _guard([new])
+        finally:
+            (markers / "identity").chmod(0o700)
+            (markers / "identity" / "cashpilot-mysterium").chmod(0o600)
+        orchestrator._remember_identity("cashpilot-mysterium", None)
+        stopped = _node(status="exited")
+        _guard([stopped])
+        stopped.start.assert_called_once()

@@ -508,7 +508,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
         ? 'It keeps running as it is until you redeploy it once, which moves it behind the fence and keeps its identity.'
         : iso.mode === 'unsupported'
           ? 'It keeps running as it is. Podman cannot be fenced: run it on Docker with isolation on, or on your own network (CASHPILOT_CONTAINER_NETWORK).'
-          : 'It keeps running as it is. Switch isolation on first, then redeploy it once to move it behind the fence.';
+          : iso.mode === 'off'
+            ? 'It keeps running as it is. Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy it once to move it behind the fence.'
+            : 'It keeps running as it is. Switch isolation on first, then redeploy it once to move it behind the fence.';
       const redeploy = _isOwner && fenced && !(sw && sw.busy)
         ? unfenced.map((u) => ` <button class="btn btn-primary btn-sm btn-unfenced-redeploy" data-worker-id="${w.id}" data-slug="${esc(u.slug)}" data-service="${esc(u.service || u.slug)}">Redeploy ${esc(u.service || u.slug)} to move behind the fence</button>`).join('')
         : '';
