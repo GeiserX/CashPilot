@@ -917,6 +917,11 @@ def deploy_raw(
             identity = read_node_identity(old, slug) if running else None
             if running and identity is None and _reads_identity(slug):
                 # Without it the new node could run on another keystore unchecked.
+                # Nothing is replaced, so the hold popped above comes back. Only
+                # the memory moved: the record on disk is left as it is, and a
+                # hold set meanwhile is newer than the one popped, so it stays.
+                if held_before is not None:
+                    _MISMATCH_HELD.setdefault(name, held_before)
                 raise ContainerRuntimeError(
                     f"{name} was not replaced: its identity could not be read from the running node, so the new "
                     "one could not be checked against it. The running container was not touched. Try again in a "
