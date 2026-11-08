@@ -172,6 +172,25 @@ Services that need UDP do not work through SOCKS5 or HTTP CONNECT: the
 tunnel lets out only TCP to the proxy's address and port. A Tailscale exit
 node carries UDP.
 
+### Commercial proxy services
+
+A copy that CashPilot starts can still earn nothing, because the proxy
+service decides what it will carry. Many commercial residential and ISP
+proxy services refuse to connect to other bandwidth-sharing services, so
+the earner never reaches its own servers. Some also connect only to ports 80
+and 443, and several earners talk to their servers on other ports.
+
+**Test** checks that the tunnel reaches the internet through the proxy with a
+public exit IP that is not the worker's own. It does not check that a given
+earner's servers can be reached. After you start a copy, read its logs. An
+earner that keeps retrying its login or connection earns nothing: the proxy
+refusing it is one cause, wrong earner credentials are another, so read the
+error before blaming either.
+
+A Tailscale exit node on a connection you own has none of the proxy service's
+limits: it carries any port, UDP included. The exit's own network can still
+block a port, the same as for an earner running there.
+
 ## Exit IPs and grouping
 
 The exit IP a copy shows is the one the tunnel saw when it came up. Copies are
