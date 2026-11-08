@@ -404,6 +404,8 @@ class TestTheDeviceCeilingIsDocumentedWhereItIsEnforced:
             patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            # Mysterium deploys only to a worker that runs it behind the fence.
+            patch("app.main._worker_features", new_callable=AsyncMock, return_value={"fence_gated"}),
         ):
             asyncio.run(main_module.api_deploy(_FakeRequest(), "mysterium", body, worker_id=1))
 

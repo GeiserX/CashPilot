@@ -295,12 +295,43 @@ What works here:
 The test in section 1 still works on Docker Desktop, so you can see what an
 earner reaches before and after.
 
-### Mysterium, which uses host networking
+### Mysterium
 
-A Mysterium node runs with `network_mode: host`. Its customers' traffic does not
-leave through a Docker bridge. It arrives through WireGuard interfaces named
-`myst0`, `myst1` and so on, which exist only while a session is open, and the
-host forwards it. Two layers apply.
+After 2.0.6 a Mysterium node CashPilot deploys runs in its own network
+namespace on `cashpilot-isolated`, like every other earner, with its UDP range
+published ([Mysterium on the fenced bridge](isolation.md#mysterium-on-the-fenced-bridge)).
+Its customers' traffic arrives through WireGuard interfaces inside that
+namespace, and leaves it through the bridge, where the fence drops anything
+headed for your LAN, the host, a tailnet or cloud metadata. Two layers apply,
+and **Check isolation** reads both.
+
+**The host's fence, and a red line for the old setup.** The check fails with
+"These containers hold firewall capabilities in this host's own network
+namespace" for any CashPilot container on host networking that holds
+`NET_ADMIN` or `SYS_ADMIN`, or runs privileged. Such a container can rewrite
+the host's firewall, so no probe result can make it safe. A node deployed
+through 2.0.6 shows it until you redeploy it from the dashboard (UPGRADING.md).
+
+To see the fence hold from the node's own namespace, join it with a probe that
+has no capabilities. A target nothing listens on prints `blocked` with or
+without a fence, so pick targets that answer on your network (your router's
+web page, this machine's SSH on its LAN address, a tailnet DNS if you run one)
+and run the same loop from Docker's default bridge first, as the control:
+
+```sh
+T='192.168.1.1:80 192.168.1.20:22 100.100.100.100:53 1.1.1.1:443'   # yours
+P='for t in '"$T"'; do nc -z -w 3 ${t%:*} ${t#*:} && echo "REACHED $t" || echo "blocked $t"; done'
+docker run --rm --network bridge --cap-drop ALL --read-only busybox sh -c "$P"          # control
+docker run --rm --network container:cashpilot-mysterium --cap-drop ALL --read-only busybox sh -c "$P"
+```
+
+Only a target the control reached counts. From the node, each of those but
+`1.1.1.1:443` should be blocked, and the fence's drop counters on the host
+should go up between a run and the next: `sudo nft list table ip cashpilot` on
+the nftables backend, or `sudo iptables-legacy -t mangle -L CP-FWD -v -n` and
+`sudo iptables-legacy -t mangle -L CP-IN -v -n` on the `iptables-legacy` one
+(the worker's log says which: "LAN fence applied (nft backend" or "(legacy
+backend").
 
 **The node's own list.** Mysterium blocks some destinations for its customers
 itself. Its default list is `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
@@ -308,7 +339,8 @@ itself. Its default list is `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
 that Tailscale uses. Since 1.46.0 CashPilot's catalog starts the node with the
 full list, `--firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16`.
 A node deployed before that keeps the default list until you redeploy it from
-the dashboard; the identity lives in its data volume and is kept. For a node
+the dashboard; the identity lives in its data volume and is kept. Inside its
+own namespace the list stays as a second layer behind the host's fence. For a node
 you run outside CashPilot, add the ranges in its config file
 (`/var/lib/mysterium-node/config-mainnet.toml` inside the container) and
 restart it:
@@ -323,11 +355,19 @@ when a range is missing. When the next customer connects, the node's NAT rules
 should list the new ranges:
 
 ```sh
-sudo iptables -t nat -S MYST | grep 240.0.0.1      # Unraid: iptables-nft -t nat -S MYST
+docker exec cashpilot-mysterium sudo -n iptables -t nat -S MYST | grep 240.0.0.1
 ```
 
-**A host rule as a backstop.** The node's list only applies while the node is
-running and configured. Add these lines to the end of the `mangle` script. The
+Those rules live in the node's own namespace, so the host's `iptables` does
+not show them. Only a node still on the host's network (2.0.6 or earlier, or
+one you run yourself that way) has them on the host:
+`sudo iptables -t nat -S MYST` (Unraid: `iptables-nft`).
+
+**A node you run yourself on host networking.** Everything from here on is
+for a node outside CashPilot that still shares the host's network. Prefer the
+setup above: on the host's network the node holds `NET_ADMIN` in the host's own
+namespace and can rewrite any rule below. The node's list only applies while
+the node is running and configured. Add these lines to the end of the `mangle` script. The
 script rebuilds `EARNER-IN` on every run, so the two DNS lines are added fresh
 each time, just ahead of its final drop. They are the one exception: the node
 answers its customers' DNS on port 11253 of the host (its `MYST` NAT chain shows

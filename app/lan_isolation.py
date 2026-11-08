@@ -21,9 +21,10 @@ downside; burying it is what makes people distrust the whole category.
 **It names every exception.** The worker fences bridge earners off the LAN by
 default (app/lan_fence.py): its own bridge plus one firewall table, with replies
 to published ports still allowed, so Storj keeps its inbound port and its
-dashboard. What a bridge cannot cover is said here per service: Mysterium runs
-on the host network, where no bridge applies at all. Operators who run their own
-rules (CASHPILOT_CONTAINER_NETWORK) get the same list to write them from.
+dashboard. What a bridge cannot cover is said here per service. No catalog
+service runs on the host network any more: Mysterium moved onto the fenced
+bridge in its own namespace, with its UDP range published. Operators who run
+their own rules (CASHPILOT_CONTAINER_NETWORK) get the same list to write them from.
 """
 
 from __future__ import annotations
@@ -77,6 +78,22 @@ def published_ports(service: dict[str, Any] | None) -> list[str]:
         if isinstance(binding, list) and ipaddress.ip_address(binding[0]).is_loopback:
             continue
         found.append(str(mapping))
+    ui = _docker(service).get("ui_port")
+    if isinstance(ui, dict):
+        default = next(
+            (str(v.get("default") or "") for v in _docker(service).get("env") or [] if v.get("key") == ui.get("env")),
+            "",
+        )
+        if not all(_loopback(a) for a in default.split(",")):
+            found.append(f"{default}:{ui.get('port')}")
+    rng = _docker(service).get("udp_port_range")
+    if isinstance(rng, dict):
+        default = next(
+            (str(v.get("default") or "") for v in _docker(service).get("env") or [] if v.get("key") == rng.get("env")),
+            "",
+        )
+        if default:
+            found.append(f"{default}/udp")
     return found
 
 
@@ -258,3 +275,14 @@ def compose_snippet(network_name: str = DEFAULT_NETWORK_NAME, bridge_interface: 
         f"# ...while still allowing the exceptions listed for each service, or the\n"
         f"# services that need inbound ports will silently stop earning.\n"
     )
+
+
+def _loopback(address: str) -> bool:
+    """Blank, ``localhost`` or any loopback address: published to this machine only."""
+    address = address.strip()
+    if address in ("", "localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return False

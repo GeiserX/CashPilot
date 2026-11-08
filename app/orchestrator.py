@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import functools
 import hashlib
 import ipaddress
 import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -400,6 +402,7 @@ def _shape(container: Any) -> dict[str, Any]:
         "mounts": sorted({str(m.get("Destination") or "").rstrip("/") for m in mounts if isinstance(m, dict)} - {""}),
         "env_keys": sorted({str(item).split("=", 1)[0] for item in config.get("Env") or []}),
         "entrypoint": [str(part) for part in entrypoint] if isinstance(entrypoint, list) else None,
+        "restart_policy": str((host.get("RestartPolicy") or {}).get("Name") or "no"),
     }
 
 
@@ -707,15 +710,22 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
     """The runtime a new container runs under, or None for Docker's default.
 
     A runtime named in the deploy request wins; the worker API has already
-    checked it against the daemon. Otherwise a container on bridge networking
-    takes the service's override or the worker's default. Host and none
-    networking keep Docker's default: a sandbox gains little on the host's own
-    network stack, and Mysterium's TUN device does not work under gVisor.
+    checked it against the daemon. A runtime the service's catalog entry
+    requires wins over both. Otherwise a container on bridge networking takes
+    the service's override or the worker's default. Host and none networking
+    keep Docker's default: a sandbox gains little on the host's own network
+    stack. Mysterium's catalog entry requires runc: a TUN device works under
+    gVisor, but iptables-nft and kernel WireGuard do not.
 
     Like container_network, a runtime the daemon does not provide is refused
     here, BEFORE the running container is stopped, so a typo in the compose
     file cannot take a service down.
     """
+    if required := catalog_runtime(slug):
+        # The service's own catalog entry names the one runtime it works under
+        # (Mysterium: runc, since gVisor has no iptables-nft or kernel WireGuard).
+        # Neither the request nor the operator's default can change it.
+        return _proxy_allows_runtime(slug, required)
     if requested:
         return _proxy_allows_runtime(slug, requested)
     if (network_mode or "bridge") not in ("bridge", "default"):
@@ -738,6 +748,28 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
     return runtime
 
 
+#: Held while deploy_raw replaces a fence-gated container (Mysterium). The
+#: guard (lan_fence.guard) takes it for each pass, and while a deploy holds it
+#: the guard only stops: it starts nothing and reads no identity. Otherwise a
+#: pass could start the old node between its stop and its removal, or read the
+#: old node's identity, match the record deploy_raw just wrote, and delete it,
+#: so the new node would never be compared.
+GATED_DEPLOY_LOCK = threading.Lock()
+
+
+def _holds_gated_lock(fn: Any) -> Any:
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        slug = kwargs.get("slug", args[0] if args else "")
+        if not fence_gated(str(slug)):
+            return fn(*args, **kwargs)
+        with GATED_DEPLOY_LOCK:
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+@_holds_gated_lock
 def deploy_raw(
     slug: str,
     image: str,
@@ -780,6 +812,7 @@ def deploy_raw(
     client = _get_client()
     name = name or _container_name(slug, instance)
     joined = (network_mode or "").startswith("container:")
+    gated = fence_gated(slug)
 
     # Decided before the old container is touched: a network or runtime that
     # cannot be used must fail the deploy while the running service is still running.
@@ -787,6 +820,13 @@ def deploy_raw(
     network = container_network(network_mode)
     runtime = container_runtime(slug, network_mode, runtime)
     dns = container_dns(network)
+    if gated:
+        from app import lan_fence
+
+        # A mode that cannot run it at all (off, legacy) is refused here too,
+        # while the running node is still running.
+        if problem := lan_fence.mode_problem(lan_fence.resolve_mode(client), service_name(slug)):
+            raise ContainerNetworkError(f"{slug} was not deployed: {problem} The running container was not touched.")
 
     # The pull is on this side of the line for the same reason: a registry outage
     # or a typo'd image must not cost the running container. And once the image
@@ -853,6 +893,14 @@ def deploy_raw(
         # chance to flush (storj declares 300 s for that reason) and pays for it
         # with an unclean-shutdown recovery. A stop that fails is not a reason to
         # abandon the deploy - the forced removal below is what ran before.
+        if gated and not _pending_identity(name):
+            # Read while it still runs; the guard compares the new one with it.
+            # A redeploy over a stopped node clears the record instead. A record
+            # still pending is kept: the container being replaced is itself a
+            # replacement whose identity was never confirmed, so this retry is
+            # compared with the node as it was before the first redeploy.
+            identity = read_node_identity(old, slug) if getattr(old, "status", "") == "running" else None
+            _remember_identity(name, identity)
         try:
             old.stop(timeout=_get_stop_timeout(slug))
         except APIError as exc:
@@ -871,6 +919,10 @@ def deploy_raw(
     }
     if labels:
         all_labels.update(labels)
+        # What the guard, the owner checks and every lookup find a container by:
+        # never the caller's to change.
+        all_labels[LABEL_SERVICE] = slug
+        all_labels[LABEL_MANAGED] = "true"
     if instance > 1:
         all_labels[LABEL_INSTANCE] = str(instance)
 
@@ -890,7 +942,9 @@ def deploy_raw(
     # This line makes `docker logs cashpilot-worker` state what THIS worker
     # applied, so an operator comparing against the catalog can see the gap.
     logger.info("Creating container %s from %s (resources: %s)", name, image, resource_kwargs or "docker defaults")
-    container = client.containers.run(
+    # A fence-gated container is created, then started only once the fence is
+    # confirmed again: containers.run would start it in the same call.
+    run_kwargs: dict[str, Any] = dict(
         image=image,
         name=name,
         environment=env or {},
@@ -927,18 +981,27 @@ def deploy_raw(
         stop_timeout=_get_stop_timeout(slug),
         labels=all_labels,
         hostname=None if joined else (hostname or name),
-        detach=True,
         # A container inside another's namespace is never started by Docker on
         # its own: after a reboot or a daemon restart it would join the tunnel's
         # namespace before the tunnel's firewall is loaded. The worker starts it
         # once the tunnel says it is ready (proxy_tunnel.status).
-        restart_policy={"Name": "no"} if joined else {"Name": "unless-stopped"},
+        # A fence-gated one (Mysterium) neither: Docker would start it after a
+        # reboot before this worker has put the fence back. The worker's guard
+        # starts it once the fence is confirmed (lan_fence.guard).
+        restart_policy={"Name": "no"} if joined or gated else {"Name": "unless-stopped"},
         # None means Docker's default runtime. See container_runtime for when
         # the operator's CASHPILOT_CONTAINER_RUNTIME applies instead.
         runtime=runtime or None,
         **resource_kwargs,
     )
+    container = client.containers.create(**run_kwargs) if gated else client.containers.run(detach=True, **run_kwargs)
 
+    if gated:
+        _mark_stopped(name, False)
+        # Left created, not started, when the fence is not confirmed: the guard
+        # starts it as soon as it is, and nothing runs before that.
+        _require_fence(slug)
+        container.start()
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
 
@@ -1065,18 +1128,272 @@ def _get_stop_timeout(slug: str) -> int:
     return 30
 
 
+def fence_gated(slug: str) -> bool:
+    """Whether this worker's own catalog starts ``slug`` only behind a confirmed fence."""
+    if not get_service:
+        return False
+    return ((get_service(slug) or {}).get("docker") or {}).get("fence_gated") is True
+
+
+def catalog_runtime(slug: str) -> str | None:
+    """The runtime this worker's own catalog requires for ``slug``, if any."""
+    if not get_service:
+        return None
+    runtime = ((get_service(slug) or {}).get("docker") or {}).get("runtime")
+    return runtime.strip() if isinstance(runtime, str) and runtime.strip() else None
+
+
+#: Names of the fence-gated containers the owner stopped. Docker restarts none
+#: of them (restart policy "no"), so the worker's guard starts each one that is
+#: not running, except these: a Stop from the dashboard must stay a stop.
+STOPPED_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".fence_gated_stopped")
+
+
+def user_stopped() -> set[str]:
+    try:
+        with open(STOPPED_MARKER, encoding="utf-8") as fh:
+            return {line.strip() for line in fh if line.strip()}
+    except OSError:
+        return set()
+
+
+def _mark_stopped(name: str, stopped: bool, *, strict: bool = False) -> None:
+    """Record or clear an owner's Stop. ``strict`` raises when it cannot be written.
+
+    A Stop that is not recorded is undone by the guard's next pass, so Stop is
+    strict. A Start or a deploy that cannot clear the record only leaves the
+    node stopped, which is safe, so they log it.
+    """
+    names = user_stopped()
+    if (name in names) == stopped:
+        return
+    names = names | {name} if stopped else names - {name}
+    try:
+        with open(STOPPED_MARKER, "w", encoding="utf-8") as fh:
+            fh.write("".join(f"{n}\n" for n in sorted(names)))
+    except OSError as exc:
+        if strict:
+            raise ContainerRuntimeError(
+                f"{name} was not stopped: the stop could not be recorded ({exc}), and without that record the "
+                "worker would start it again within a minute."
+            ) from None
+        logger.warning("Could not record that %s was %s: %s", name, "stopped" if stopped else "started", exc)
+
+
+def predates_fence(container: Any) -> bool:
+    """A fence-gated service's container from 2.0.6 or earlier: on the host's network.
+
+    Every Mysterium through 2.0.6 runs this way, and keeps running exactly as
+    it is until its owner redeploys it: the guard neither stops nor starts it,
+    and Start, Stop and Restart treat it as before. Drift and the isolation
+    check flag it, and the redeploy moves it onto the fenced bridge.
+    """
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    return str(host.get("NetworkMode") or "") == "host"
+
+
+def _gated_container(slug: str, container: Any) -> bool:
+    return fence_gated(slug) and not predates_fence(container)
+
+
+def service_name(slug: str) -> str:
+    """The catalog's display name for ``slug``, or the slug itself."""
+    return str(((get_service(slug) if get_service else None) or {}).get("name") or slug)
+
+
 def stop_service(slug: str, instance: int = 1) -> None:
     """Stop the container for a service."""
     container = _find_container(slug, instance)
-    container.stop(timeout=_get_stop_timeout(slug))
+    if _gated_container(slug, container):
+        # Recorded before the stop, under the guard's lock: a guard pass that
+        # read the records before this Stop would otherwise start it after.
+        with GATED_DEPLOY_LOCK:
+            _mark_stopped(container.name, True, strict=True)
+            container.stop(timeout=_get_stop_timeout(slug))
+    else:
+        container.stop(timeout=_get_stop_timeout(slug))
     logger.info("Stopped container %s", container.name)
 
 
 def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
     container = _find_container(slug, instance)
+    if _gated_container(slug, container):
+        _require_startable(container, slug)
+        _mark_stopped(container.name, False)
     container.restart(timeout=_get_stop_timeout(slug))
     logger.info("Restarted container %s", container.name)
+
+
+#: The node identity a fence-gated container had before a redeploy replaced
+#: it, one file per container name. The guard reads the new container's
+#: identity until it matches, then deletes the file; a different identity
+#: holds the node stopped (lan_fence.guard), since its data volume is not the
+#: one it ran on.
+IDENTITY_DIR = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".fence_gated_identity")
+
+
+def read_node_identity(container: Any, slug: str) -> str | None:
+    """The node's own identity from inside it (collector.node_read), or None.
+
+    Mysterium answers its TequilAPI identity on the node's loopback; the
+    command and the pattern are the catalog's, the same the earnings read uses.
+    """
+    svc = (get_service(slug) if get_service else None) or {}
+    spec = (svc.get("collector") or {}).get("node_read") or {}
+    command, pattern = spec.get("command"), spec.get("node")
+    if not (isinstance(command, list) and command and isinstance(pattern, str)):
+        return None
+    try:
+        code, output = container.exec_run(command)
+        match = re.search(pattern, (output or b"").decode(errors="replace")) if code == 0 else None
+    except Exception as exc:  # noqa: BLE001 - unknown, not different
+        logger.debug("Could not read the identity of %s: %s", getattr(container, "name", "?"), exc)
+        return None
+    return match.group(1) if match else None
+
+
+def _identity_file(name: str) -> str:
+    return os.path.join(IDENTITY_DIR, re.sub(r"[^A-Za-z0-9_.-]", "_", name))
+
+
+def _pending_identity(name: str) -> str | None:
+    """The identity a replacement still has to match, or None (no record, or a held mismatch)."""
+    try:
+        with open(_identity_file(name), encoding="utf-8") as fh:
+            recorded = fh.read().strip()
+    except OSError:
+        return None
+    return None if not recorded or recorded.startswith("MISMATCH ") else recorded
+
+
+def _remember_identity(name: str, identity: str | None) -> None:
+    path = _identity_file(name)
+    try:
+        if identity:
+            os.makedirs(IDENTITY_DIR, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(identity)
+        elif os.path.exists(path):
+            os.remove(path)
+    except OSError as exc:
+        logger.warning("Could not record the identity of %s: %s", name, exc)
+
+
+def identity_problem(container: Any) -> str | None:
+    """Why a fence-gated node must stop: a different identity than before its redeploy.
+
+    None while there is nothing to compare (no record, or the node not
+    answering yet) and once it matches, when the record is deleted.
+    """
+    path = _identity_file(container.name)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            expected = fh.read().strip()
+    except OSError:
+        return None
+    held, _, rest = expected.partition(" ")
+    if held == "MISMATCH":
+        # Sticky until the next deploy rewrites the record: a stopped node
+        # reads no identity, and must not be started again because of that.
+        return rest
+    if getattr(container, "status", "") != "running":
+        return None
+    slug = str((getattr(container, "labels", None) or {}).get(LABEL_SERVICE) or "")
+    current = read_node_identity(container, slug)
+    if current is None:
+        return None
+    if current.lower() == expected.lower():
+        _remember_identity(container.name, None)
+        logger.info("%s kept its identity %s across the redeploy", container.name, current)
+        return None
+    reason = (
+        f"its identity is {current}, not {expected} as before the redeploy, so it is not running on the data "
+        "volume that holds its keystore. It stays stopped: restore that volume, then redeploy"
+    )
+    _remember_identity(container.name, f"MISMATCH {reason}")
+    return reason
+
+
+def _require_fence(slug: str) -> None:
+    """Refuse to start a fence-gated service unless the fence is confirmed now.
+
+    Raises ContainerNetworkError with the reason. Outside ``on`` mode there is
+    no fence of ours to wait for: the operator's network carries their own
+    rules, and ``off`` or ``legacy`` was the owner's choice.
+    """
+    from app import lan_fence
+
+    problem = lan_fence.fence_problem(_get_client(), service_name(slug))
+    if problem:
+        raise ContainerNetworkError(f"{slug} was not started: {problem}")
+
+
+def _require_startable(container: Any, slug: str) -> None:
+    """Refuse Start or Restart of an existing fence-gated container the guard would stop.
+
+    The fence first, then what the guard also holds against the container
+    itself: its shape (host network, privileged, a capability, an image or a
+    restart policy the catalog does not give it) and a different identity
+    than before its last redeploy. Without this the dashboard reported it
+    started, and it ran until the guard's next pass stopped it again.
+    """
+    from app import lan_fence
+
+    _require_fence(slug)
+    try:
+        mode = lan_fence.resolve_mode(_get_client())
+    except RuntimeError as exc:
+        raise ContainerNetworkError(f"{slug} was not started: the isolation mode could not be read ({exc})") from None
+    problem = gated_spec_problem(container, mode) or identity_problem(container)
+    if problem:
+        raise ContainerNetworkError(f"{slug} was not started: {problem}")
+
+
+def gated_spec_problem(container: Any, mode: str | None = None) -> str | None:
+    """Why a fence-gated container must not run as it is, or None.
+
+    Read from the live container, so a container someone recreated by hand, or
+    a worker of an older release made, is judged on what it is: on the host
+    network, privileged, with a capability its catalog entry does not grant,
+    started by Docker on its own, or on an image other than the pinned one.
+    """
+    labels = getattr(container, "labels", None) or {}
+    slug = str(labels.get(LABEL_SERVICE) or "")
+    svc = (get_service(slug) if get_service else None) or {}
+    docker_conf = svc.get("docker") or {}
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    config = attrs.get("Config") if isinstance(attrs.get("Config"), dict) else {}
+    network_mode = str(host.get("NetworkMode") or "")
+    if network_mode == "host":
+        return "it shares the host's network, where its NET_ADMIN would reach the host's firewall"
+    if host.get("Privileged"):
+        return "it runs privileged"
+    want_caps = {str(c).upper().removeprefix("CAP_") for c in docker_conf.get("cap_add") or []}
+    have_caps = {str(c).upper().removeprefix("CAP_") for c in host.get("CapAdd") or []}
+    if extra := sorted(have_caps - want_caps):
+        return f"it holds {', '.join(extra)}, which its catalog entry does not grant"
+    policy = str((host.get("RestartPolicy") or {}).get("Name") or "no")
+    if policy != "no":
+        return f"Docker would start it on its own (restart policy {policy}), before the fence is confirmed"
+    pinned = {docker_conf.get("image")} | set((docker_conf.get("image_by_arch") or {}).values())
+    pinned -= {None, ""}
+    if pinned and str(config.get("Image") or "") not in pinned:
+        return f"it runs {config.get('Image') or 'an unknown image'}, not the image the catalog pins"
+    from app import lan_fence
+
+    if mode == lan_fence.MODE_ON and network_mode != lan_fence.NETWORK_NAME:
+        return f"it is not on {lan_fence.NETWORK_NAME}, so the fence does not cover it"
+    if mode == lan_fence.MODE_OPERATOR and network_mode != _CONTAINER_NETWORK:
+        return f"it is not on {_CONTAINER_NETWORK}, the network whose rules this worker runs earners under"
+    if mode in (lan_fence.MODE_ON, lan_fence.MODE_OPERATOR):
+        settings = attrs.get("NetworkSettings") if isinstance(attrs.get("NetworkSettings"), dict) else {}
+        attached = settings.get("Networks") if isinstance(settings.get("Networks"), dict) else {}
+        if extra := sorted(set(attached) - {network_mode}):
+            return f"it is also attached to {', '.join(extra)}, where the fence does not cover it"
+    return None
 
 
 def _keep_live_mounts(
@@ -1489,6 +1806,9 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
 def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
     container = _find_container(slug, instance)
+    if _gated_container(slug, container):
+        _require_startable(container, slug)
+        _mark_stopped(container.name, False)
     container.start()
     logger.info("Started container %s", container.name)
 

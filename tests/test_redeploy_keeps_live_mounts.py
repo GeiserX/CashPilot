@@ -49,10 +49,16 @@ def _deploy(old, **kwargs):
     else:
         client.containers.get.return_value = old
     client.containers.run.return_value = container
+    client.containers.create.return_value = container
     kept: list[dict[str, str]] = []
-    with patch.object(orchestrator, "_get_client", return_value=client):
+    # Mysterium is fence-gated: created, then started once the fence reads complete.
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch("app.lan_fence.fence_problem", return_value=None),
+    ):
         orchestrator.deploy_raw(slug="mysterium", image="img", kept_mounts=kept, **kwargs)
-    return client.containers.run.call_args.kwargs["volumes"], kept
+    call = client.containers.create.call_args or client.containers.run.call_args
+    return call.kwargs["volumes"], kept
 
 
 class TestTheRunningContainerDecidesWhereItsDataLives:
@@ -194,7 +200,7 @@ def _mysterium_spec():
     return {
         "image": docker["image"],
         "volumes": CATALOG_VOLUMES,
-        "network_mode": docker["network_mode"],
+        "network_mode": docker.get("network_mode"),
         "cap_add": docker["cap_add"],
         "devices": docker["devices"],
     }

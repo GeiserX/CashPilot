@@ -71,9 +71,19 @@ class TestAgainstTheRealCatalog:
 
 class TestWhatCanActuallyBeIsolated:
     def test_a_host_networked_service_cannot_be_confined_by_a_bridge(self):
-        out = li.assess(catalog.get_service("mysterium"))
+        svc = {"slug": "x", "name": "X", "docker": {"network_mode": "host"}}
+        out = li.assess(svc)
         assert out["verdict"] == li.NOT_ISOLATABLE
         assert "VLAN or a separate machine" in out["summary"]
+
+    def test_mysterium_is_fenced_with_its_udp_range_as_the_exception(self):
+        """After 2.0.6 it runs on the fenced bridge in its own namespace."""
+        out = li.assess(catalog.get_service("mysterium"))
+        assert out["verdict"] == li.NEEDS_EXCEPTIONS
+        details = " ".join(e["detail"] for e in out["exceptions"])
+        assert "56000:56029/udp" in details
+        assert "host network" not in details
+        assert "4449" not in details, "the WebUI is published on loopback by default"
 
     def test_a_service_needing_inbound_ports_needs_exceptions(self):
         """Missing these costs a storage node its held payout balance."""
@@ -158,7 +168,7 @@ class TestEndpoints:
 
         out = self._call(main.api_deploy_risk, "mysterium")
         assert out["attribution"]["documented"] is True
-        assert out["isolation"]["verdict"] == li.NOT_ISOLATABLE
+        assert out["isolation"]["verdict"] == li.NEEDS_EXCEPTIONS
 
     def test_deploy_risk_for_a_storage_node_has_no_attribution_notice(self):
         from app import main
@@ -179,7 +189,8 @@ class TestEndpoints:
 
         out = self._call(main.api_isolation_guide)
         assert "honeygain" in out["isolatable"]
-        assert any(s["slug"] == "mysterium" for s in out["not_isolatable"])
+        assert any(s["slug"] == "mysterium" for s in out["needs_exceptions"])
+        assert not out["not_isolatable"], "no catalog service shares the host's network"
         assert any(s["slug"] == "storj" for s in out["needs_exceptions"])
 
     def test_the_guide_hands_back_a_pasteable_snippet(self):

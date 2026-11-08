@@ -74,6 +74,131 @@ def parse_port(mapping: object) -> tuple[str, int | list[str | int]]:
     return key, [address, host]
 
 
+#: Capabilities that reach a network namespace's firewall, routes and
+#: interfaces (SYS_ADMIN reaches far more). Held in the host's namespace they
+#: rewrite the host firewall, the LAN fence included, so a service asking for
+#: one must run in a namespace of its own and on an image named exactly.
+NETNS_CAPABILITIES = frozenset({"NET_ADMIN", "SYS_ADMIN"})
+
+#: The most UDP ports one udp_port_range may publish. Each published port is a
+#: rule and, with Docker's userland proxy, a process on the host.
+MAX_UDP_PORTS = 1000
+
+
+def is_port_range(value: str) -> bool:
+    """A blank value, or "start:end" with 1 <= start <= end <= 65535.
+
+    A pattern can check the shape but not the order, and Mysterium refuses to
+    start on a reversed or out-of-range --udp.ports, so the node stops earning.
+    """
+    if not value:
+        return True
+    start, sep, end = value.partition(":")
+    if not (sep and start.isascii() and start.isdigit() and end.isascii() and end.isdigit()):
+        return False
+    return 1 <= int(start) <= int(end) <= 65535
+
+
+def expand_udp_range(value: str, cap: int = MAX_UDP_PORTS) -> dict[str, int]:
+    """``"56000:56100"`` as Docker port bindings published 1:1: ``{"56000/udp": 56000, ...}``.
+
+    A NAT traversal range only works when each port reaches the same port in
+    the container. Raises ValueError for a value that is not a range, a
+    reversed one, or one wider than ``cap``. A blank value publishes nothing.
+    """
+    value = str(value or "").strip()
+    if not value:
+        return {}
+    if not is_port_range(value):
+        raise ValueError(f"{value!r} is not a port range start:end with start <= end <= 65535")
+    start, _, end = value.partition(":")
+    first, last = int(start), int(end)
+    if last - first + 1 > cap:
+        raise ValueError(f"{value!r} spans {last - first + 1} ports; at most {cap} can be published")
+    return {f"{port}/udp": port for port in range(first, last + 1)}
+
+
+def ui_bindings(value: str, port: int) -> list[list[str | int]]:
+    """``[[address, port], ...]`` for each address in a comma-separated list.
+
+    ``localhost`` becomes 127.0.0.1, since Docker binds addresses, not names.
+    Raises ValueError for anything that is not an IPv4 address.
+    """
+    found: list[list[str | int]] = []
+    for raw in str(value or "").split(","):
+        address = raw.strip()
+        if not address:
+            continue
+        if address == "localhost":
+            address = "127.0.0.1"
+        try:
+            ipaddress.IPv4Address(address)
+        except ValueError:
+            raise ValueError(f"{address!r} is not an IPv4 address") from None
+        if [address, port] not in found:
+            found.append([address, port])
+    return found
+
+
+def fence_gated(svc: dict[str, Any] | None) -> bool:
+    """Whether the worker starts this service only behind a confirmed LAN fence."""
+    return bool(((svc or {}).get("docker") or {}).get("fence_gated") is True)
+
+
+def _validate_network_shape(docker: dict[str, Any], name: str) -> list[str]:
+    """The keys that decide where a service's network namespace lives."""
+    errors: list[str] = []
+    env_vars = {v.get("key"): v for v in docker.get("env") or [] if isinstance(v, dict)}
+    rng = docker.get("udp_port_range")
+    if rng is not None:
+        if not isinstance(rng, dict) or not isinstance(rng.get("env"), str):
+            errors.append(f"{name}: docker.udp_port_range must be a mapping with an env key")
+        else:
+            var = env_vars.get(rng["env"])
+            if not var or var.get("port_range") is not True:
+                errors.append(f"{name}: docker.udp_port_range.env must name a docker.env key with port_range: true")
+            cap = rng.get("max_ports", MAX_UDP_PORTS)
+            if isinstance(cap, bool) or not isinstance(cap, int) or not 1 <= cap <= MAX_UDP_PORTS:
+                errors.append(f"{name}: docker.udp_port_range.max_ports must be 1 to {MAX_UDP_PORTS}")
+            elif var and str(var.get("default") or ""):
+                try:
+                    expand_udp_range(str(var["default"]), cap)
+                except ValueError as exc:
+                    errors.append(f"{name}: docker.udp_port_range default: {exc}")
+    ui = docker.get("ui_port")
+    if ui is not None:
+        port = ui.get("port") if isinstance(ui, dict) else None
+        if (
+            not isinstance(ui, dict)
+            or ui.get("env") not in env_vars
+            or isinstance(port, bool)
+            or not isinstance(port, int)
+            or not 1 <= port <= 65535
+        ):
+            errors.append(f"{name}: docker.ui_port must name a docker.env key and a port 1-65535")
+    if "fence_gated" in docker and not isinstance(docker["fence_gated"], bool):
+        errors.append(f"{name}: docker.fence_gated must be a boolean")
+    runtime = docker.get("runtime")
+    if runtime is not None and (not isinstance(runtime, str) or not runtime.strip()):
+        errors.append(f"{name}: docker.runtime must be a runtime name")
+    caps = {str(c).upper().removeprefix("CAP_") for c in docker.get("cap_add") or []}
+    if held := sorted(caps & NETNS_CAPABILITIES):
+        # The threat class this rule closes: a container with these in the host's
+        # namespace can rewrite the host firewall, the LAN fence included, and
+        # no host rule holds against it. Mysterium ran that way through 2.0.6.
+        if str(docker.get("network_mode") or "").strip().lower() == "host":
+            errors.append(
+                f"{name}: a service with {', '.join(held)} cannot use network_mode: host; it would hold them "
+                "in the host's network namespace"
+            )
+        images = [docker.get("image")] + list((docker.get("image_by_arch") or {}).values())
+        if not all(isinstance(i, str) and re.search(r"@sha256:[0-9a-f]{64}$", i) for i in images if i):
+            errors.append(f"{name}: a service with {', '.join(held)} must pin its image by @sha256: digest")
+        if docker.get("fence_gated") is not True:
+            errors.append(f"{name}: a service with {', '.join(held)} must be fence_gated: true")
+    return errors
+
+
 def _validate(data: dict[str, Any], path: Path) -> list[str]:
     """Return a list of validation errors (empty = OK).
 
@@ -206,6 +331,7 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         f"(already docker.ports[{seen[key]}])"
                     )
                 seen.setdefault(key, i)
+        errors.extend(_validate_network_shape(docker, path.name))
 
     reqs = data.get("requirements")
     if isinstance(reqs, dict):

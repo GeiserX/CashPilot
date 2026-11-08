@@ -57,7 +57,7 @@ class TestTheDefault:
 
     @pytest.mark.parametrize("mode", ["host", "none"])
     def test_host_and_none_networking_keep_dockers_default(self, mode):
-        kwargs = _deploy(_client(), default="runsc-hostnet", slug="mysterium", network_mode=mode)
+        kwargs = _deploy(_client(), default="runsc-hostnet", slug="honeygain", network_mode=mode)
         assert kwargs["runtime"] is None
 
     def test_a_runtime_named_in_the_request_wins(self):

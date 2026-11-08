@@ -21,11 +21,16 @@ def _client(old=None):
     else:
         client.containers.get.return_value = old
     client.containers.run.return_value = MagicMock(id="cid")
+    client.containers.create.return_value = MagicMock(id="cid")
     return client
 
 
 def _deploy(client, **kwargs):
-    with patch.object(orchestrator, "_get_client", return_value=client):
+    # Mysterium is fence-gated: created, then started once the fence reads complete.
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch("app.lan_fence.fence_problem", return_value=None),
+    ):
         return orchestrator.deploy_raw(slug="mysterium", image="img", **kwargs)
 
 
@@ -34,7 +39,7 @@ def test_a_missing_named_volume_is_created_before_the_container():
     client.volumes.get.side_effect = orchestrator.NotFound("no volume")
     calls = []
     client.volumes.create.side_effect = lambda name: calls.append(("create", name))
-    client.containers.run.side_effect = lambda **kw: calls.append(("run", kw["name"])) or MagicMock(id="cid")
+    client.containers.create.side_effect = lambda **kw: calls.append(("run", kw["name"])) or MagicMock(id="cid")
     _deploy(client, volumes=VOLUMES)
     # Only the named volume: a host folder is not a volume.
     assert calls == [("create", "mysterium-data"), ("run", "cashpilot-mysterium")]
@@ -61,7 +66,7 @@ def test_a_volume_the_proxy_will_not_let_the_worker_use_stops_the_redeploy_befor
     assert "cashpilot-migrate" in str(err.value)
     old.stop.assert_not_called()
     old.remove.assert_not_called()
-    client.containers.run.assert_not_called()
+    client.containers.create.assert_not_called()
 
 
 def test_behind_a_proxy_from_an_older_compose_file_docker_still_makes_the_volume():
@@ -72,7 +77,7 @@ def test_behind_a_proxy_from_an_older_compose_file_docker_still_makes_the_volume
         403, {**SOCKGUARD_403, "reason": "the CashPilot worker does not use this Docker API call"}
     )
     _deploy(client, volumes=VOLUMES)
-    client.containers.run.assert_called_once()
+    client.containers.create.assert_called_once()
 
 
 def test_any_other_docker_error_is_not_dressed_up_as_a_proxy_refusal():

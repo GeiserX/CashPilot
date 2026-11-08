@@ -120,11 +120,14 @@ response:
 request_body:
   container_create:
     allow_privileged: false
-    allow_host_network: true          # Mysterium runs on host networking
+    # The LAN fence helper and the isolation check's control probe run on the
+    # host network; no earner does (the worker refuses it for every catalog
+    # service, and the catalog refuses it to any service with NET_ADMIN).
+    allow_host_network: true
     allow_host_pid: false
     allow_host_ipc: false
     allow_host_userns: false
-    allow_host_cgroupns: true         # the Activity probe of a host-network earner (app/activity.py)
+    allow_host_cgroupns: false
     allowed_capabilities: [{capabilities}]
     allowed_devices: [{devices}]
     allowed_runtimes: [{runtimes}]

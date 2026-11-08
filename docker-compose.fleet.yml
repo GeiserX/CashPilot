@@ -221,7 +221,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=e9a30411b564dc75
+      - CASHPILOT_PROXY_POLICY=4c547983d8a0aaa1
       # The same two values the proxy gets, so the worker can say what to set
       # before the proxy refuses (the in-app update, a host-folder bind).
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
@@ -309,11 +309,14 @@ configs:
       request_body:
         container_create:
           allow_privileged: false
-          allow_host_network: true          # Mysterium runs on host networking
+          # The LAN fence helper and the isolation check's control probe run on the
+          # host network; no earner does (the worker refuses it for every catalog
+          # service, and the catalog refuses it to any service with NET_ADMIN).
+          allow_host_network: true
           allow_host_pid: false
           allow_host_ipc: false
           allow_host_userns: false
-          allow_host_cgroupns: true         # the Activity probe of a host-network earner (app/activity.py)
+          allow_host_cgroupns: false
           allowed_capabilities: [NET_ADMIN, NET_RAW, SETUID, SETGID]
           allowed_devices: [/dev/net/tun]
           allowed_runtimes: [runc, runsc, runsc-hostnet, runsc-hostnet-raw]

@@ -82,10 +82,13 @@ def policy_problems(policy: dict, catalog: list[dict]) -> list[str]:
     for key in ("allow_host_pid", "allow_host_ipc", "allow_host_userns"):
         if create.get(key):
             problems.append(f"{key} on")
-    # The Activity reader of a host-network earner joins the host cgroup
-    # namespace to tell that earner's sockets from the host's (app/activity.py).
-    if not create.get("allow_host_cgroupns"):
-        problems.append("allow_host_cgroupns off: the host-network Activity probe needs it")
+    # Only the Activity reader of a host-network earner joined the host cgroup
+    # namespace (app/activity.py). No catalog earner shares the host's network
+    # since Mysterium moved onto the fenced bridge, so nothing needs it.
+    if create.get("allow_host_cgroupns"):
+        problems.append("allow_host_cgroupns on: no earner shares the host's network")
+    if any((svc.get("docker") or {}).get("network_mode") == "host" for svc in catalog):
+        problems.append("a catalog earner shares the host's network")
     # The LAN fence creates its bridge with driver options and moves earners
     # with a forced disconnect (app/lan_fence.py); nothing else may open up.
     network = policy["request_body"].get("network") or {}
@@ -328,7 +331,7 @@ MUTATIONS = {
     "privileged": lambda p: p["request_body"]["container_create"].update(allow_privileged=True),
     "no nnp": lambda p: p["request_body"]["container_create"].update(require_no_new_privileges=False),
     "host pid": lambda p: p["request_body"]["container_create"].update(allow_host_pid=True),
-    "no host cgroupns": lambda p: p["request_body"]["container_create"].update(allow_host_cgroupns=False),
+    "host cgroupns": lambda p: p["request_body"]["container_create"].update(allow_host_cgroupns=True),
     "no network driver options": lambda p: p["request_body"]["network"].update(allow_driver_options=False),
     "no forced disconnect": lambda p: p["request_body"]["network"].pop("allow_disconnect_force"),
     "custom network drivers": lambda p: p["request_body"]["network"].update(allow_custom_drivers=True),
@@ -706,21 +709,30 @@ def test_proxy_bind_mounts_also_open_the_worker_allowlist():
 MYST_TARGET = "/var/lib/mysterium-node"
 
 
-def _redeploy(monkeypatch, old_mounts, **kwargs):
-    """deploy_raw over a running mysterium container; returns (client, old, error)."""
+def _redeploy(monkeypatch, old_mounts, slug="mysterium", **kwargs):
+    """deploy_raw over a running container of ``slug``; returns (client, old, error)."""
     old = MagicMock()
-    old.labels = {"cashpilot.service": "mysterium"}
+    old.labels = {"cashpilot.service": slug}
     old.attrs = {"Mounts": old_mounts}
     client = MagicMock()
     client.containers.get.return_value = old
     client.containers.run.return_value = MagicMock(id="cid")
+    client.containers.create.return_value = MagicMock(id="cid")
     error = None
-    with patch.object(orchestrator, "_get_client", return_value=client):
+    # Mysterium is fence-gated: created, then started once the fence reads complete.
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch("app.lan_fence.fence_problem", return_value=None),
+    ):
         try:
-            orchestrator.deploy_raw(slug="mysterium", image="img", **kwargs)
+            orchestrator.deploy_raw(slug=slug, image="img", **kwargs)
         except orchestrator.ContainerRuntimeError as exc:
             error = exc
     return client, old, error
+
+
+def _created(client):
+    return (client.containers.create.call_args or client.containers.run.call_args).kwargs
 
 
 def test_proxied_a_kept_host_folder_the_proxy_refuses_leaves_the_node_running(monkeypatch):
@@ -750,7 +762,7 @@ def test_proxied_a_kept_host_folder_inside_an_allowed_one_redeploys(monkeypatch)
     )
     assert error is None
     old.remove.assert_called_once()
-    assert client.containers.run.call_args.kwargs["volumes"] == [f"/srv/allowed/myst:{MYST_TARGET}:rw"]
+    assert _created(client)["volumes"] == [f"/srv/allowed/myst:{MYST_TARGET}:rw"]
 
 
 def test_with_the_raw_socket_a_kept_host_folder_is_not_the_proxys_business(monkeypatch):
@@ -769,7 +781,8 @@ def test_with_the_raw_socket_a_kept_host_folder_is_not_the_proxys_business(monke
 @pytest.mark.parametrize("runtime", ["io.containerd.runc.v2", "nvidia", "crun", "sysbox-runc"])
 def test_proxied_a_runtime_the_proxy_refuses_leaves_the_service_running(monkeypatch, runtime):
     _proxied_env(monkeypatch)
-    client, old, error = _redeploy(monkeypatch, [], runtime=runtime)
+    # Not Mysterium: its catalog entry requires runc, which wins over any request.
+    client, old, error = _redeploy(monkeypatch, [], slug="honeygain", runtime=runtime)
     assert error is not None and runtime in str(error)
     old.stop.assert_not_called()
     old.remove.assert_not_called()

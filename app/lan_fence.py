@@ -93,6 +93,9 @@ PODMAN_UNSUPPORTED = (
 
 #: Seconds between checks that the table is still in place.
 RECHECK_SECONDS = 300
+#: Seconds between the guard's checks while a fence-gated service (one that
+#: holds NET_ADMIN in its own namespace, Mysterium) is deployed on this worker.
+GUARD_SECONDS = 30
 
 #: (rule name, destination, sentinel address the isolation check connects to).
 #: A sentinel is an address nobody uses, so the only evidence a connect to it
@@ -524,6 +527,8 @@ _state: dict[str, Any] = {
     "fence": {"state": "n/a", "backend": None, "error": "", "applied_at": None},
     "earners_outside": [],
     "earners_outside_stopped": [],
+    # Fence-gated containers the guard holds stopped, by name, with the reason.
+    "guard": {},
 }
 #: The worker's public egress IP, set from the heartbeat's detection
 #: (app/worker_api.py). The next apply adds its drop.
@@ -1008,10 +1013,16 @@ def apply_fence(client: Any) -> dict[str, Any]:
 
 
 def read_fence(client: Any) -> dict[str, Any] | None:
-    """The table's per-rule counters, or None when our network does not exist."""
+    """The table's per-rule counters, or None when our network does not exist.
+
+    Raises IsolationConflict when the network no longer has the settings the
+    rules depend on: they match its interface by name, so a copy recreated
+    under another interface would read complete and cover nothing.
+    """
     net = managed_network(client)
     if net is None:
         return None
+    _check_managed(net)
     return run_helper(client, "read", _subnet(net), filtered=True)
 
 
@@ -1053,6 +1064,138 @@ def network_for_deploy() -> str | None:
         raise orch.ContainerNetworkError(f"{exc} The running container was not touched. {_off_hint()}") from None
     _state["network"] = NETWORK_NAME
     return NETWORK_NAME
+
+
+def mode_problem(mode: str, service: str = "this service") -> str | None:
+    """Why a fence-gated service cannot run in this isolation mode at all, or None.
+
+    Only ``on`` (behind our fence) and ``operator`` (on the operator's own
+    network, under their rules) qualify. In ``off``, ``legacy`` and
+    ``unsupported`` the node would sit on Docker's default bridge, where every
+    other earner reaches its WebUI and nothing keeps it off the LAN.
+    ``service`` is the catalog name the message gives.
+    """
+    if mode in (MODE_ON, MODE_OPERATOR):
+        return None
+    what = {
+        MODE_LEGACY: f"Switch isolation on in Fleet, then redeploy {service}.",
+        MODE_OFF: f"Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy {service}.",
+        MODE_UNSUPPORTED: "Run it on Docker with isolation on, or on your own network (CASHPILOT_CONTAINER_NETWORK).",
+    }.get(mode, f"Switch isolation on in Fleet, then redeploy {service}.")
+    return f"isolation is {mode} on this worker, and {service} runs only behind the LAN fence. {what}"
+
+
+def fence_problem(client: Any, service: str = "this service") -> str | None:
+    """Why a fence-gated container must not start now, or None.
+
+    In ``on`` mode the table is read back by the helper and every rule it
+    should hold must be there, IPv6 drops included. On the operator's own
+    network there is no fence of ours to wait for: it carries their rules. Any
+    other mode does not run the node at all (mode_problem).
+    """
+    try:
+        mode = resolve_mode(client)
+    except RuntimeError as exc:
+        return f"the isolation mode could not be read ({exc})"
+    if mode != MODE_ON:
+        return mode_problem(mode, service)
+    try:
+        result = read_fence(client)
+    except Exception as exc:  # noqa: BLE001 - the reason is the answer
+        return f"the LAN fence could not be read ({exc})"
+    if result is None:
+        return f"the {NETWORK_NAME} network does not exist, so the LAN fence is not in place"
+    if not result.get("present") or not result.get("matches"):
+        return "the LAN fence is not complete on this host, so the node stays stopped until the worker restores it"
+    return None
+
+
+def _gated(client: Any) -> list[Any]:
+    orch = _orchestrator()
+    from app.constants import LABEL_SERVICE
+
+    return [
+        c
+        for c in _managed(client)
+        if orch.fence_gated(str((c.labels or {}).get(LABEL_SERVICE) or ""))
+        and not orch.is_proxied(c)
+        # A node from 2.0.6 or earlier, on the host's network, is left exactly
+        # as it is until its owner redeploys it (orchestrator.predates_fence).
+        and not orch.predates_fence(c)
+    ]
+
+
+def guard() -> dict[str, str]:
+    """Every GUARD_SECONDS: hold each fence-gated container to the fence. Never raises.
+
+    A fence-gated service has no Docker restart policy, so this is what starts
+    it: after a deploy that left it created, after a reboot or a daemon
+    restart, after a crash. It starts one only when the fence is confirmed and
+    the container's shape is the catalog's, and never one the owner stopped.
+
+    It also stops one within GUARD_SECONDS when either goes: a rule deleted
+    from the table, the container recreated on the host network, privileged,
+    with a capability or an image the catalog does not give it. The fence is
+    then applied again; the next pass starts the container once it reads
+    complete. Returns the containers held stopped, with the reason.
+    """
+    orch = _orchestrator()
+    held: dict[str, str] = {}
+    try:
+        if not orch.docker_available():
+            return {}
+        client = orch._get_client()
+        gated = _gated(client)
+        if not gated:
+            _state["guard"] = {}
+            return {}
+        # A deploy replacing a gated container holds this lock: the pass then
+        # only stops (orchestrator.GATED_DEPLOY_LOCK says why).
+        deploying = not orch.GATED_DEPLOY_LOCK.acquire(blocking=False)
+        try:
+            try:
+                mode: str | None = resolve_mode(client)
+                fence = fence_problem(client)
+            except RuntimeError as exc:
+                # Not knowing the mode is not knowing the fence is there.
+                mode, fence = None, f"the isolation mode could not be read ({exc})"
+            # Container.status is read-only in docker-py; what this pass stopped is kept apart.
+            stopped_now: set[str] = set()
+            if fence and mode in (MODE_ON, None):
+                # Stop first, so nothing runs while the table is put back.
+                for c in gated:
+                    if c.status == "running":
+                        _guard_stop(c, fence)
+                        stopped_now.add(c.name)
+                if mode == MODE_ON:
+                    with contextlib.suppress(RuntimeError, IsolationConflict):
+                        apply_fence(client)
+            stopped = orch.user_stopped()
+            for c in gated:
+                running = c.status == "running" and c.name not in stopped_now
+                problem = fence or orch.gated_spec_problem(c, mode) or (None if deploying else orch.identity_problem(c))
+                if problem:
+                    held[c.name] = problem
+                    if running:
+                        _guard_stop(c, problem)
+                elif not deploying and c.status in ("exited", "created") and c.name not in stopped:
+                    c.start()
+                    logger.info("Started %s: the LAN fence is confirmed", c.name)
+        finally:
+            if not deploying:
+                orch.GATED_DEPLOY_LOCK.release()
+    except Exception as exc:  # noqa: BLE001 - the next pass tries again
+        logger.warning("Fence guard pass failed: %s", exc)
+    _state["guard"] = held
+    return held
+
+
+def _guard_stop(container: Any, reason: str) -> None:
+    from app.constants import LABEL_SERVICE
+
+    slug = str((container.labels or {}).get(LABEL_SERVICE) or "")
+    logger.warning("Stopping %s: %s", container.name, reason)
+    container.stop(timeout=_orchestrator()._get_stop_timeout(slug))
 
 
 def effective_network(client: Any) -> tuple[str, str]:
@@ -1204,6 +1347,7 @@ def status() -> dict[str, Any]:
         "fence": dict(_state["fence"]),
         "earners_outside": list(_state["earners_outside"]),
         "earners_outside_stopped": list(_state.get("earners_outside_stopped") or []),
+        "guard": dict(_state.get("guard") or {}),
     }
 
 

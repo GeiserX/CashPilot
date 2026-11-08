@@ -7,8 +7,9 @@ description: >
   MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on
   blockchain technology. You earn MYST tokens by running a node that provides VPN,
   proxy, and data scraping services to users. Requires NET_ADMIN, SETUID and SETGID capabilities and
-  host networking for full functionality. Includes a built-in web UI for node
-  management. Works on both residential and VPS connections.
+  a TUN device, which it uses inside its own network namespace on the fenced
+  earner bridge. Includes a built-in web UI for node management. Works on both
+  residential and VPS connections.
 short_description: Decentralized VPN node - blockchain-based, works on VPS
 
 referral:
@@ -16,7 +17,12 @@ referral:
   code: "do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE"
 
 docker:
-  image: mysteriumnetwork/myst
+  # Pinned by digest: the node holds NET_ADMIN, so the catalog refuses it any
+  # image it has not named exactly (app/catalog.py). Bump tag and digest together.
+  image: "mysteriumnetwork/myst:1.39.9-alpine@sha256:f89347d244efeeaf29555e876404cf8aebcd41561c5cbed06c365ba64beb8564"
+  # gVisor cannot run this node (no iptables-nft, no kernel WireGuard), so an
+  # operator default of CASHPILOT_CONTAINER_RUNTIME=runsc must not reach it.
+  runtime: runc
   platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "768m"
@@ -27,13 +33,13 @@ docker:
       required: false
       secret: false
       description: >-
-        Where the node's WebUI (port 4449) listens. 127.0.0.1 keeps it on this
-        machine. To reach it through a reverse proxy, add the address the proxy
-        connects to, comma separated with no spaces: 127.0.0.1,172.18.0.1.
+        The host addresses the node's WebUI (port 4449) is published on.
+        127.0.0.1 keeps it on this machine. To reach it through a reverse proxy,
+        add the address the proxy connects to, comma separated with no spaces:
+        127.0.0.1,172.18.0.1.
       default: "127.0.0.1"
-      # The value lands on the node's command line, so anything but addresses
-      # would become an argument: "127.0.0.1, 10.0.0.1" puts a stray word before
-      # `service`, the node refuses to start and stops earning.
+      # Each address becomes one host binding of port 4449 (ui_port below), so
+      # anything but addresses would fail the deploy.
       # Each octet 0 to 255, ASCII digits only ([0-9], not \d, which in Python also
       # matches other scripts' digits): 256.0.0.1 is not an address, and the WebUI
       # listener would fail to bind while the node kept running.
@@ -44,15 +50,32 @@ docker:
       secret: false
       description: >-
         The UDP ports the node uses for VPN sessions, as start:end. Forward this
-        same range on your router.
-      default: "56000:56100"
-      # Without it the node picks from 10000:60000, so a forwarded 56000-56100
-      # is never used and every session falls back to hole punching.
+        same range on your router. Each session takes about two ports, so the
+        default 30 carry about 15 sessions at once, more than a home node gets.
+        Every published port costs about 2.5 MB of memory in Docker's port
+        proxy, so a wider range only costs more. A forward you already have for
+        a wider range that contains this one (56000-56100) keeps working.
+      default: "56000:56029"
+      # Without it the node picks from 10000:60000, so a forwarded range is
+      # never used and every session falls back to hole punching. 30 ports, a
+      # sub-range of the 56000:56100 default through 2.0.6, so the router
+      # forwards made for that one stay valid.
       # ASCII digits only, as above; port_range checks start <= end <= 65535.
       pattern: '[0-9]{4,5}:[0-9]{4,5}'
       port_range: true
-  ports:
-    - "4449:4449"
+  # No static ports. The WebUI is published on each UI_ADDRESS address, and the
+  # VPN range 1:1 on every address, from the env (app/catalog.py).
+  ui_port:
+    env: UI_ADDRESS
+    port: 4449
+  udp_port_range:
+    env: UDP_PORTS
+    max_ports: 1000
+  # Docker never starts this node on its own (restart policy "no"). The worker
+  # starts it only after it has confirmed the LAN fence is in place, at deploy,
+  # after a reboot and after a crash, and stops it within 30 s if the fence or
+  # the container's shape changes (app/lan_fence.py guard).
+  fence_gated: true
   volumes:
     - "mysterium-data:/var/lib/mysterium-node"
   critical_volumes:
@@ -60,19 +83,20 @@ docker:
       holds: >-
         Node identity keystore. Destroying it creates a brand-new identity: the
         node loses its reputation and any earnings still held against the old one.
-  # Loopback by default, on purpose. With host networking, 0.0.0.0 publishes
-  # the node's WebUI (4449) and Tequila API (4050) on every interface of the
-  # machine, and nothing off the machine needs them: the worker reads the
-  # node's earnings from inside the container (collector.node_read below), not
-  # over the network. Reach the WebUI from
-  # another machine over an SSH tunnel (ssh -L 4449:127.0.0.1:4449 <host>), or
-  # put a reverse proxy in front by adding the one address it connects to in
-  # UI_ADDRESS (the node binds every address in the comma-separated list). The
-  # Tequila API stays on loopback: the WebUI proxies to it from inside the node.
+  # The node runs in its own network namespace on the fenced earner bridge, so
+  # 0.0.0.0 inside it reaches only that namespace: the WebUI (4449) is
+  # reachable from the host only where ui_port publishes it, loopback by
+  # default. Nothing off the machine needs it: the worker reads the node's
+  # earnings from inside the container (collector.node_read below). Reach the
+  # WebUI from another machine over an SSH tunnel (ssh -L 4449:127.0.0.1:4449
+  # <host>), or add the one address a reverse proxy connects to in UI_ADDRESS.
+  # The Tequila API stays on the node's own loopback: the WebUI proxies to it
+  # from inside the node.
   # --firewall.protected.networks: the node blackholes these for its customers.
   # Its default leaves out 100.64.0.0/10 (CGNAT and Tailscale) and
-  # 169.254.0.0/16 (cloud metadata), so a VPN customer could reach the tailnet.
-  command: "--ui.address=${UI_ADDRESS} --tequilapi.address=127.0.0.1 --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 --udp.ports=${UDP_PORTS} service --agreed-terms-and-conditions"
+  # 169.254.0.0/16 (cloud metadata). It stays as a second layer inside the
+  # node's namespace; the host's fence is the first.
+  command: "--ui.address=0.0.0.0 --tequilapi.address=127.0.0.1 --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 --udp.ports=${UDP_PORTS} service --agreed-terms-and-conditions"
   # The node's own firewall for its customers, read by the worker's isolation
   # check: the ranges in this flag of `command` go to the nat chain MYST, which
   # sends each one to the blackhole address.
@@ -80,7 +104,6 @@ docker:
     flag: "--firewall.protected.networks="
     chain: MYST
     blackhole: "240.0.0.1"
-  network_mode: "host"
   # SETUID and SETGID are for sudo. The node runs as root and still configures
   # its interface and firewall through `sudo ip ...` / `sudo iptables ...`, and
   # sudo switches uid and gid on the way (setresuid, setgroups). Every container
@@ -88,6 +111,11 @@ docker:
   # "sudo: PERM_SUDOERS: setresuid(-1, 1, -1): Operation not permitted", every
   # session dies at setup, and the node keeps registering and looking healthy.
   # no-new-privileges stays on: the node is already root, so it blocks nothing here.
+  # NET_ADMIN reaches only the node's own network namespace: its tun and wg
+  # interfaces, its routes and its own NAT. It cannot touch the host's
+  # firewall, routes or interfaces, and the host's fence on the bridge drops
+  # what the node sends to the LAN, the host, the tailnet and cloud metadata
+  # whatever the node does to its own tables.
   cap_add: [NET_ADMIN, SETUID, SETGID]
   # Wireguard/dvpn need a TUN device. Without it the node starts, registers and
   # advertises itself to the network but carries no traffic - it looks healthy
@@ -147,7 +175,7 @@ earnings:
   monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management. VPS accepted. Port forwarding UDP 56000-56100 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 (loopback by default) for management. VPS accepted. Port forwarding UDP 56000-56029 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
 
 cashout:
   method: auto

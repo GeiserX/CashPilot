@@ -2,10 +2,11 @@
 
 1.37.4 bound the node's WebUI to 127.0.0.1 so host networking stopped
 publishing it on every interface. That also cut off any reverse proxy in front
-of it, and the command had no way to say "loopback, plus the one address my
-proxy connects to". UI_ADDRESS is that way: the default is unchanged, and the
-value is checked before it reaches the command line, where a stray space turns
-into an argument and the node refuses to start.
+of it, so UI_ADDRESS said "loopback, plus the one address my proxy connects
+to". After 2.0.6 the node runs in its own namespace on the fenced bridge: it
+listens on 0.0.0.0 there, which reaches only that namespace, and UI_ADDRESS is
+the host addresses port 4449 is published on. The value is still checked
+before a deploy, and the default is still loopback.
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from unittest.mock import AsyncMock, patch
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
-import yaml
 from fastapi.testclient import TestClient
 
 from app import catalog, compose_generator
@@ -27,6 +27,9 @@ PROTECTED = (
     "--firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16"
 )
 LOOPBACK = f"--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 {PROTECTED} --udp.ports=56000:56100 service --agreed-terms-and-conditions"
+#: What every node runs after 2.0.6: the WebUI on its own namespace, published by Docker.
+COMMAND = f"--ui.address=0.0.0.0 --tequilapi.address=127.0.0.1 {PROTECTED} --udp.ports=56000:56029 service --agreed-terms-and-conditions"
+UI = "4449/tcp"
 
 
 @asynccontextmanager
@@ -45,7 +48,13 @@ def client():
 
 def _deploy(client, body, recorded=None):
     """Deploy the REAL catalog entry; return (response, spec sent to the worker)."""
-    worker = {"id": 1, "name": "w1", "status": "online", "url": "http://192.168.1.10:8081"}
+    worker = {
+        "id": 1,
+        "name": "w1",
+        "status": "online",
+        "url": "http://192.168.1.10:8081",
+        "system_info": '{"features": ["fence_gated"]}',
+    }
     sent: dict = {}
 
     async def _fake_deploy(worker_id, slug, spec):
@@ -73,45 +82,48 @@ def _record(env):
 def test_a_first_deploy_stays_on_loopback(client):
     resp, sent = _deploy(client, {"env": {}})
     assert resp.status_code == 200, resp.text
-    assert sent["command"] == LOOPBACK
+    assert sent["command"] == COMMAND
+    assert sent["ports"][UI] == ["127.0.0.1", 4449]
 
 
 def test_the_form_posting_its_prefilled_default_stays_on_loopback(client):
     resp, sent = _deploy(client, {"env": {"UI_ADDRESS": "127.0.0.1"}})
     assert resp.status_code == 200, resp.text
-    assert sent["command"] == LOOPBACK
+    assert sent["ports"][UI] == ["127.0.0.1", 4449]
 
 
 def test_a_node_deployed_before_the_setting_existed_stays_on_loopback(client):
     """The 1.37.4 fleet: recorded env has no UI_ADDRESS at all."""
     resp, sent = _deploy(client, {"env": {}}, recorded=_record({}))
     assert resp.status_code == 200, resp.text
-    assert sent["command"] == LOOPBACK
+    assert sent["command"] == COMMAND
+    assert sent["ports"][UI] == ["127.0.0.1", 4449]
 
 
 def test_an_added_address_reaches_the_webui_and_never_the_api(client):
     resp, sent = _deploy(client, {"env": {"UI_ADDRESS": "127.0.0.1,172.18.0.1"}})
     assert resp.status_code == 200, resp.text
-    assert sent["command"] == (
-        f"--ui.address=127.0.0.1,172.18.0.1 --tequilapi.address=127.0.0.1 {PROTECTED} --udp.ports=56000:56100 service --agreed-terms-and-conditions"
-    )
+    assert sent["ports"][UI] == [["127.0.0.1", 4449], ["172.18.0.1", 4449]]
+    # The API is never published: it stays on the node's own loopback.
+    assert "4050/tcp" not in sent["ports"]
+    assert "--tequilapi.address=127.0.0.1 " in sent["command"]
 
 
 def test_a_blank_redeploy_keeps_the_address_this_machine_was_given(client):
     resp, sent = _deploy(client, {"env": {}}, recorded=_record({"UI_ADDRESS": "127.0.0.1,172.18.0.1"}))
     assert resp.status_code == 200, resp.text
-    assert "--ui.address=127.0.0.1,172.18.0.1 " in sent["command"]
+    assert sent["ports"][UI] == [["127.0.0.1", 4449], ["172.18.0.1", 4449]]
 
 
 def test_localhost_takes_a_machine_back_to_loopback(client):
     """The way out: the prefilled 127.0.0.1 is not a decision, so it cannot undo one."""
     recorded = _record({"UI_ADDRESS": "127.0.0.1,172.18.0.1"})
     resp, sent = _deploy(client, {"env": {"UI_ADDRESS": "127.0.0.1"}}, recorded=recorded)
-    assert "--ui.address=127.0.0.1,172.18.0.1 " in sent["command"]
+    assert sent["ports"][UI] == [["127.0.0.1", 4449], ["172.18.0.1", 4449]]
 
     resp, sent = _deploy(client, {"env": {"UI_ADDRESS": "localhost"}}, recorded=recorded)
     assert resp.status_code == 200, resp.text
-    assert sent["command"].startswith("--ui.address=localhost --tequilapi.address=127.0.0.1 ")
+    assert sent["ports"][UI] == ["127.0.0.1", 4449]
 
 
 @pytest.mark.parametrize(
@@ -135,10 +147,12 @@ def test_anything_but_addresses_is_refused_before_a_deploy(client, value):
     assert not sent, "nothing may reach the worker"
 
 
-def test_the_exported_compose_file_stays_on_loopback():
-    exported = yaml.safe_load(compose_generator.generate_compose_single("mysterium"))
-    service = exported["services"]["cashpilot-mysterium"]
-    assert service["command"] == LOOPBACK
+def test_the_compose_rendering_stays_on_loopback():
+    """Mysterium has no Compose export (it is fence-gated); the rendering is kept for a ui_port service."""
+    service = compose_generator._service_to_compose(catalog.get_service("mysterium"), None, None, None)
+    assert service["command"] == COMMAND
+    assert "127.0.0.1:4449:4449" in service["ports"]
+    assert "network_mode" not in service
 
 
 def test_a_pattern_that_does_not_compile_is_a_catalog_error(tmp_path):

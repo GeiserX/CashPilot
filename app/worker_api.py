@@ -722,6 +722,9 @@ async def _send_heartbeat() -> None:
         # This worker fences its earners off the LAN by itself and takes
         # POST /api/isolation to switch an upgraded install over (app/lan_fence.py).
         payload["system_info"]["features"].append("isolation_default")
+        # Starts a fence_gated service (Mysterium) only behind a confirmed fence,
+        # on the bridge, with its port range and several WebUI addresses.
+        payload["system_info"]["features"].append("fence_gated")
     # Only what the owner asked for, and only a finished round.
     sent_seq = _activity_seq
     if _activity_enabled and _pending_activity is not None:
@@ -897,6 +900,24 @@ async def _fence_loop() -> None:
         await _check_fence()
 
 
+_guard_task: asyncio.Task | None = None
+
+
+async def _guard_once() -> None:
+    """One pass of the fence guard (lan_fence.guard). Never raises."""
+    try:
+        await asyncio.wait_for(asyncio.to_thread(lan_fence.guard), FENCE_STARTUP_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001 - the next pass tries again
+        logger.warning("Fence guard pass did not finish: %s", exc)
+
+
+async def _guard_loop() -> None:
+    """Every GUARD_SECONDS: start fence-gated services behind a confirmed fence, stop them without one."""
+    while True:
+        await asyncio.sleep(lan_fence.GUARD_SECONDS)
+        await _guard_once()
+
+
 def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
     """Follow the UI's activity switch, and drop a round it has stored.
 
@@ -1019,7 +1040,7 @@ def _get_local_ip() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _heartbeat_task, _fence_task, _activity_task
+    global _heartbeat_task, _fence_task, _activity_task, _guard_task
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
@@ -1040,6 +1061,11 @@ async def lifespan(app: FastAPI):
     await _check_fence(startup=True)
     _fence_task = asyncio.create_task(_fence_loop())
     if docker_mode == "direct":
+        # Right after the fence: a fence-gated node (Mysterium) has no restart
+        # policy, so after a reboot this is what starts it, and only now.
+        await _guard_once()
+        _guard_task = asyncio.create_task(_guard_loop())
+    if docker_mode == "direct":
         # A proxy Test tunnel this worker left behind when it stopped mid-test.
         try:
             if swept := await asyncio.to_thread(proxy_tunnel.sweep_test_tunnels):
@@ -1058,7 +1084,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for task in (_heartbeat_task, _fence_task, _activity_task):
+    for task in (_heartbeat_task, _fence_task, _activity_task, _guard_task):
         if task and not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1213,9 +1239,11 @@ class ResourceSpec(BaseModel):
 class DeploySpec(BaseModel):
     image: str
     env: dict[str, str] = {}
-    # A host port, or (host address, host port) for a bind to one interface.
-    # Docker reads a list as several bindings, so the pair must be a tuple.
-    ports: dict[str, int | tuple[str, int]] = {}
+    # A host port, or (host address, host port) for a bind to one interface, or
+    # several of those pairs for one container port published on several
+    # addresses (Mysterium's WebUI on each UI_ADDRESS). Docker reads a list as
+    # several bindings, so each pair must be a tuple.
+    ports: dict[str, int | tuple[str, int] | list[tuple[str, int]]] = {}
     volumes: dict[str, dict[str, str]] = {}
     # Mount targets the operator relocated on purpose this deploy. Every other
     # mount of a container being replaced is kept where it is.
@@ -1500,9 +1528,39 @@ def _validate_instance(instance: int) -> None:
         raise HTTPException(status_code=400, detail=f"instance must be between 1 and {MAX_INSTANCES}")
 
 
+#: The most container ports one deploy may publish: a 1000-port UDP range
+#: (catalog.MAX_UDP_PORTS) plus a handful of TCP ones.
+MAX_PUBLISHED_PORTS = 1024
+
+
+def _catalog_service(slug: str | None) -> dict[str, Any] | None:
+    if not _catalog_get_services or not slug:
+        return None
+    return next((svc for svc in _catalog_get_services() if svc.get("slug") == slug), None)
+
+
+def _validate_fence_gated(spec: DeploySpec, slug: str | None) -> None:
+    """A fence-gated service runs exactly as this worker's own catalog says.
+
+    Decided here from the worker's catalog, never from the request: the image
+    must be the pinned one and the network a bridge, so a caller cannot put a
+    NET_ADMIN service back on the host network or swap its image.
+    """
+    docker_conf = (_catalog_service(slug) or {}).get("docker") or {}
+    if docker_conf.get("fence_gated") is not True:
+        return
+    pinned = {docker_conf.get("image")} | set((docker_conf.get("image_by_arch") or {}).values())
+    if spec.image not in pinned - {None, ""}:
+        raise HTTPException(status_code=403, detail=f"'{slug}' runs only the image this worker's catalog pins")
+    if (spec.network_mode or "bridge") not in ("bridge", "default"):
+        raise HTTPException(status_code=403, detail=f"'{slug}' runs only on the fenced bridge")
+
+
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
     _validate_instance(spec.instance)
+    if len(spec.ports) > MAX_PUBLISHED_PORTS:
+        raise HTTPException(status_code=400, detail=f"At most {MAX_PUBLISHED_PORTS} ports can be published")
     if spec.instance > 1 and (spec.volumes or spec.ports):
         # Two copies would share the same host directories and fight over the
         # same host ports. The UI refuses this first; this is the backstop.
@@ -1528,6 +1586,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         raise HTTPException(status_code=403, detail=f"Network mode '{spec.network_mode}' is not allowed")
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
+    _validate_fence_gated(spec, slug)
     proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
     for source in spec.volumes:
         if source in orchestrator.PROXY_VOLUMES:

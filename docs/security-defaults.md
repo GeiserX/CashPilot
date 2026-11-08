@@ -117,8 +117,8 @@ dangerous containers, not only dangerous URLs:
   container update, prune, image push or load. The allow list is the set of
   calls the live test recorded from the worker, its update helper and Compose.
 - **Containers.** No privileged mode, no host PID, IPC or user namespace
-  (host networking and the host cgroup namespace are allowed, see *What a
-  compromised worker can still do* below), `no-new-privileges` required, no unconfined seccomp, AppArmor or
+  (host networking is allowed, see *What a compromised worker can still do*
+  below; the host cgroup namespace is not), `no-new-privileges` required, no unconfined seccomp, AppArmor or
   system paths. Added capabilities only from `NET_ADMIN`, `NET_RAW`, `SETUID`,
   `SETGID` (what the catalog declares), devices only `/dev/net/tun`, runtimes
   only `runc` and the gVisor ones (the worker refuses any other runtime itself,
@@ -206,10 +206,13 @@ stands between the worker and root.
   network aliases, which sockguard always lets through. It adds little reach, since the worker
   can already start a container on host networking, but a compromised worker
   can take an earner off the fence.
-- Start a container in the host's cgroup namespace. The Activity reader of a
-  host-network earner such as Mysterium needs it to tell that earner's
-  sockets from the host's. The cgroup tree it shows is read-only and names
-  the host's containers and services, which the worker can list anyway.
+- Start a container on host networking. The LAN fence's helper and the
+  isolation check's control probe need it. The worker itself refuses host
+  networking to every earner, and the catalog refuses it to any service with
+  `NET_ADMIN`, so only those two use it. The proxy no longer allows the host's
+  cgroup namespace: only the Activity reader of a host-network earner needed
+  it, and no earner shares the host's network since Mysterium moved onto the
+  fenced bridge.
 - Pull images from any registry (custom services need it) and set namespaced
   sysctls on its own containers (the tunnel sidecar needs it).
 

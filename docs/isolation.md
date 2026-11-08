@@ -72,8 +72,9 @@ How it works:
   it an earner could reach any host service listening on `[::]`.
 - Every service the worker deploys onto a bridge joins that network, with DNS
   servers `1.1.1.1` and `9.9.9.9` (`CASHPILOT_CONTAINER_DNS` changes them).
-  Services on host networking, such as Mysterium, are not covered: see
-  [Mysterium, which uses host networking](isolation-check.md#mysterium-which-uses-host-networking).
+  No catalog service runs on host networking. Mysterium joins the network
+  too, in its own network namespace: see
+  [Mysterium on the fenced bridge](#mysterium-on-the-fenced-bridge).
 
 **It fails closed, with three conditions.** The NAT and the drops live in the
 same table. When something removes the table (a reboot, `nft flush ruleset`, a
@@ -146,9 +147,101 @@ Set `CASHPILOT_ISOLATION=off` on the worker and recreate the worker, then
 redeploy the earners to move them back to Docker's default bridge. There is no
 off button on purpose: one click should not take the fence down.
 
+### Mysterium on the fenced bridge
+
+Mysterium is a VPN exit node. It needs `NET_ADMIN` to build its WireGuard
+interfaces, routes and NAT for its customers. Through 2.0.6 it ran on the host's
+network, so it held `NET_ADMIN` in the host's own namespace. From there a
+compromised node, or a malicious image update, could rewrite the host's
+firewall (this fence included), add routes and addresses, bind any port on
+every host address, and reach your LAN, your tailnet, cloud metadata and every
+other container. No host rule holds against a process that can rewrite the
+host's rules: a seccomp filter leaves netlink open, and a table owned by a
+process stops filtering when that process exits.
+
+So the node now runs in its own network namespace on `cashpilot-isolated`, like
+every other earner:
+
+- Its `NET_ADMIN` reaches only its own interfaces, routes and tables. The
+  fence matches on the bridge's interface, so whatever the node does inside
+  its namespace (flush its tables, take a LAN address, add a LAN route), what
+  it sends to your LAN, the host, a tailnet or cloud metadata is dropped on
+  the host.
+- Its UDP range (`UDP_PORTS`, 56000:56029 by default, inside the 56000:56100
+  default through 2.0.6) is published 1:1, so the forward on your router stays
+  valid. Each port goes to the same port in
+  the node, with the customer's own source address. At most 1000 ports.
+- Its WebUI listens on `0.0.0.0` inside its namespace and is published only
+  on the host addresses in `UI_ADDRESS`, `127.0.0.1` by default. The Tequila
+  API is never published.
+- Its resolvers are the bridge's (`CASHPILOT_CONTAINER_DNS`), so customers no
+  longer resolve names through a tailnet's or a LAN's DNS.
+- Its own `--firewall.protected.networks` list stays in place, as a second
+  layer inside its namespace.
+- The image is pinned by digest, and the node always runs under `runc`, since
+  gVisor has no `iptables-nft` or kernel WireGuard.
+
+The catalog refuses any service that asks for `NET_ADMIN` or `SYS_ADMIN` with
+host networking, or without an image pinned by digest, or without
+`fence_gated: true`. The worker refuses host networking and any other image for
+it, from its own catalog, whatever the request says.
+
+**Started only behind the fence.** Docker gives the node no restart policy, so
+it never starts it on its own after a reboot or a daemon restart, before the
+worker has put the table back. The worker starts it once it has read the table
+back with every rule in place: at deploy, when the worker starts, and after a
+crash. Every 30 seconds it checks again, and it stops the node when a rule is
+missing, or when the container was recreated privileged, with a capability or
+an image its catalog entry does not give it, with a restart policy, or off the
+network the mode puts it on. It then writes the table again, and starts the node on the next
+check once the table reads complete. A node you stopped from the dashboard
+stays stopped. The fleet page names a node held stopped and says why. In the
+lab, a deleted rule stopped the node within 30 seconds, and after a Docker
+restart with the table deleted the node stayed stopped until the worker had
+written the table back.
+
+**The identity is checked when it can be read.** On a redeploy of a running
+node the worker reads the node's identity before it removes the old container,
+and reads it again from the new one. If they differ, the new node is not
+running on the data volume that holds its keystore: the worker stops it and
+keeps it stopped until the next redeploy. The check needs both reads: a node
+that was already stopped, or that did not answer, leaves nothing to compare,
+and the new node runs. It is a safety net, not a backup: keep a copy of the
+keystore ([Backing up node identities](backup.md)) and check the data mount
+before a redeploy.
+
+On your own network (`CASHPILOT_CONTAINER_NETWORK`) there is no fence of
+CashPilot's to wait for: the node starts as soon as it is deployed, under your
+rules, and keeping other containers off its WebUI is up to those rules too. In
+`off` and `legacy` mode, and on Podman, the worker does not run the node at
+all: on Docker's default bridge every other earner could reach its WebUI and
+change its payout wallet, and nothing would keep it off your LAN. A deploy is
+refused before the running node is touched, with the order to follow: switch
+isolation on in Fleet, then redeploy Mysterium. A fenced node already running
+in such a mode is stopped.
+
+**A node from 2.0.6 or earlier keeps running as it is.** A Mysterium container
+on the host's network, which is what every node deployed through 2.0.6 is, is
+left exactly as it is in every mode until you redeploy it: the guard neither
+stops nor starts it, and Start, Stop and Restart work on it as before. Drift
+and **Check isolation** keep flagging it. It moves onto the fenced bridge on
+its redeploy; see UPGRADING.md.
+
 ### Limits
 
-- Host-networked services (Mysterium) are not covered.
+- The node still holds `NET_ADMIN` inside its own namespace, so the kernel's
+  netlink, nf_tables, WireGuard and tun code is reachable from it. A kernel bug
+  there would reach the host. Running the node in userspace mode without
+  `NET_ADMIN` is the next step.
+- Docker's userland proxy starts two processes per published UDP port.
+  Measured with 101 ports: 205 processes, about 250 MB of memory in total
+  (proportional set size), so about 2.5 MB per port. The default range is 30
+  ports for that reason (about 60 processes, 75 MB), which carries about 15
+  sessions at once; 20 to 30 ports is enough for a home node. A node with a
+  wider range on record keeps it until you narrow `UDP_PORTS` and redeploy;
+  a router forward for the wider range keeps working.
+- UPnP on the router no longer works for the node, since the fence drops the
+  router. Forward the range by hand.
 - IPv6: the fenced network has IPv6 off. On Docker 26 and later the earners
   get no IPv6 address at all; on older engines they get a link-local one,
   which the IPv6 table drops. A host booted with IPv6 disabled gets no IPv6
@@ -190,9 +283,10 @@ allowed through: `GET /api/fleet/isolation-guide`.
 | **needs exceptions** | It can be confined, but specific things must stay reachable. |
 | **not isolatable** | It runs on the host network, so a container bridge does not apply. Use a VLAN or a separate machine. |
 
-Today `mysterium` is the third case (it declares `network_mode: "host"`), and
-`storj` is the second: it needs its inbound port **and** its local dashboard
-reachable, because that dashboard is where CashPilot reads its earnings.
+No catalog service is the third case today. `storj` is the second: it needs
+its inbound port **and** its local dashboard reachable, because that dashboard
+is where CashPilot reads its earnings. So is `mysterium`, whose UDP range must
+accept inbound packets.
 
 ## Running your own rules
 

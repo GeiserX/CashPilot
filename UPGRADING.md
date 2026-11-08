@@ -19,6 +19,64 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## After 2.0.6: redeploy Mysterium once to move it off the host network
+
+**Affects you if** you run Mysterium through CashPilot. Through 2.0.6 the node
+ran on the host's network with `NET_ADMIN`, so a compromised node or a
+malicious image update could rewrite the host's firewall, the LAN fence
+included, and reach your LAN, your tailnet and every other container. Later
+releases run it in its own network namespace on `cashpilot-isolated`, behind
+the fence, and the worker starts it only once the fence is in place
+([Mysterium on the fenced bridge](docs/isolation.md#mysterium-on-the-fenced-bridge)).
+
+A running node keeps working exactly as it is until you redeploy it, in any
+isolation mode: the upgraded worker does not stop, start or change it. The
+dashboard lists it under drift ("shares the host's network, where its
+NET_ADMIN reaches the host's firewall. Switch isolation on in Fleet, then
+redeploy Mysterium once"), and **Check isolation** fails on it.
+
+**What to do, in this order.**
+
+1. Upgrade the UI **and the worker that runs Mysterium**. The dashboard refuses
+   to redeploy Mysterium onto an older worker.
+2. Switch isolation on in Fleet: if the Fleet page offers **Turn on
+   isolation**, press it. A worker with `CASHPILOT_ISOLATION=off` needs it set
+   to `auto` and a restart. In `off` or `legacy` mode, and on Podman, the
+   worker refuses to redeploy Mysterium, since on Docker's default bridge the
+   other earners could reach its WebUI; the running node is left as it is. On
+   your own network (`CASHPILOT_CONTAINER_NETWORK`) it runs under your rules.
+3. Redeploy Mysterium once from the dashboard. It keeps its data volume or
+   data folder, so it keeps its identity and its earnings: the worker reads
+   the identity from the running node before it removes it, compares it with
+   the new one's, and stops the new node if they differ. That needs both
+   reads, so back up the keystore first anyway
+   ([Backing up node identities](docs/backup.md)) and check the identity after
+   (`docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities`).
+4. Nothing changes on the router: the worker publishes the UDP range 1:1. The
+   default range is now `56000:56029`, inside the old `56000:56100`, so the
+   old forward keeps working. A node with `56000:56100` on record keeps it;
+   setting `UDP_PORTS` to `56000:56029` before the redeploy saves about 175 MB
+   of memory in Docker's port proxy. UPnP no longer works for the node, so
+   forward the range by hand if you relied on it.
+
+**If you reach the WebUI through a reverse proxy.** `UI_ADDRESS` is now the
+host addresses port 4449 is published on. A Docker network gateway in it is
+published as before. A LAN address is published too, but a host `INPUT` rule
+no longer restricts it, since published ports go through Docker's forwarding:
+use a `DOCKER-USER` rule or keep the proxy on the same machine.
+
+**If the worker runs gVisor by default** (`CASHPILOT_CONTAINER_RUNTIME=runsc`):
+nothing to do. Mysterium's catalog entry requires `runc` and wins over it.
+
+**To go back** to 2.0.6, a redeploy is not enough: 2.0.6 keeps the network on
+record, so the node would stay on the bridge with its WebUI listening only
+inside its own namespace. Remove Mysterium from 2.0.6's dashboard, keeping its
+data volume (the default), then deploy it again: a fresh deploy uses 2.0.6's
+catalog, host network and UDP range included, on the same data volume or
+folder. Back it up first, as for the redeploy.
+
+---
+
 ## 2.0: change the image tags
 
 **Affects everyone on 1.x.** The compose files pin a release series, so
@@ -276,7 +334,7 @@ ranges, and **Check isolation** on the Fleet page flags it.
 
 **What to do.** Upgrade the UI and the worker that runs Mysterium, then redeploy
 Mysterium from the dashboard. The identity stays in its data volume. Details:
-[Mysterium, which uses host networking](docs/isolation-check.md#mysterium-which-uses-host-networking).
+[Mysterium](docs/isolation-check.md#mysterium).
 
 ---
 

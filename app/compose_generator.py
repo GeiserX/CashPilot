@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from app import arch as arch_mod
-from app.catalog import get_service, get_services
+from app.catalog import fence_gated, get_service, get_services
 from app.constants import (
     CONTAINER_PREFIX,
     LABEL_CATEGORY,
@@ -171,9 +171,21 @@ def _service_to_compose(
         compose_svc["environment"] = {key: _escape_value(value) for key, value in env.items()}
 
     # Ports
-    ports = docker_conf.get("ports", [])
+    ports = [str(p) for p in docker_conf.get("ports", [])]
+    # Mysterium's WebUI on each UI_ADDRESS address and its UDP range 1:1, as the
+    # worker publishes them; Compose takes a range in one line.
+    ui = docker_conf.get("ui_port")
+    if isinstance(ui, dict):
+        for address in str(env.get(ui.get("env")) or "127.0.0.1").split(","):
+            address = "127.0.0.1" if address.strip() == "localhost" else address.strip()
+            if address:
+                ports.append(f"{address}:{ui.get('port')}:{ui.get('port')}")
+    rng = docker_conf.get("udp_port_range")
+    if isinstance(rng, dict) and env.get(rng.get("env")):
+        span = str(env[rng["env"]]).replace(":", "-")
+        ports.append(f"{span}:{span}/udp")
     if ports:
-        compose_svc["ports"] = [str(p) for p in ports]
+        compose_svc["ports"] = ports
 
     # Volumes — fill ${VAR} host paths from known values, escape whatever remains.
     #
@@ -251,6 +263,13 @@ def generate_compose_single(
         # something that cannot earn — the export must refuse like the deploy
         # route does, not hand the user a working-looking YAML.
         raise ValueError(f"Service {slug} is no longer available ({svc.get('status')})")
+    if fence_gated(svc):
+        # Compose would start it on Docker's say-so, before any LAN fence is in
+        # place, on a network the other services share.
+        raise ValueError(
+            f"{svc.get('name') or slug} runs only behind a CashPilot worker's LAN fence, so it has no Compose "
+            "export. Deploy it from the dashboard."
+        )
 
     compose_svc = _service_to_compose(svc, env_vars, hostname, arch)
     if not compose_svc:
@@ -279,7 +298,7 @@ def generate_compose_multi(
         svc = get_service(slug)
         if not svc:
             continue
-        if svc.get("status") in UNDEPLOYABLE_STATUSES:
+        if svc.get("status") in UNDEPLOYABLE_STATUSES or fence_gated(svc):
             continue
         compose_svc = _service_to_compose(svc, env_map.get(slug), hostname, arch)
         if compose_svc:

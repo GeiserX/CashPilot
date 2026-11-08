@@ -55,7 +55,10 @@ class TestPerSlugScoping:
 
 class TestValidationRefuses:
     def _spec(self, **kw):
-        return DeploySpec(image="x", **kw)
+        # Mysterium's pinned image: the worker refuses it any other.
+        from app import catalog
+
+        return DeploySpec(image=catalog.get_service("mysterium")["docker"]["image"], **kw)
 
     def test_the_declared_device_is_accepted(self):
         _validate_deploy_spec(self._spec(devices=["/dev/net/tun"]), slug="mysterium")

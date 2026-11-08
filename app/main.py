@@ -549,6 +549,12 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
     codes = sorted({c["exit_code"] for c in copies if isinstance(c.get("exit_code"), int)})
     how = f" (exit code {', '.join(str(code) for code in codes)})" if codes else ""
     message = f"{name} has not been running since {since} UTC on {nodes}{how}, so it is not earning."
+    if catalog.fence_gated(catalog.get_service(slug)):
+        # No restart policy on purpose: the worker starts it once the LAN fence is confirmed.
+        return message + (
+            " The worker starts it as soon as the LAN fence is confirmed; while it stays down, the Fleet page "
+            "says what holds it. If you stopped it on purpose, start it from the dashboard when you want it back."
+        )
     policies = sorted({str(c["restart_policy"]) for c in copies if c.get("restart_policy")} - set(_RESTARTING_POLICIES))
     if policies:
         message += (
@@ -3494,6 +3500,8 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     ]
     if invalid:
         raise HTTPException(status_code=400, detail=f"Invalid value for: {', '.join(invalid)}")
+    if catalog.fence_gated(svc):
+        spec = await _fence_gated_spec(spec, docker_conf, merged_env, worker_id, slug, divergence, custom_image)
 
     if raw_command:
         spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: merged_env.get(m.group(1), m.group(0)), raw_command)
@@ -3574,18 +3582,75 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     return response
 
 
-def _is_port_range(value: str) -> bool:
-    """A blank value, or "start:end" with 1 <= start <= end <= 65535.
+_is_port_range = catalog.is_port_range
 
-    A pattern can check the shape but not the order, and Mysterium refuses to
-    start on a reversed or out-of-range --udp.ports, so the node stops earning.
+
+def fence_gated_ports(docker_conf: dict[str, Any], env: dict[str, Any]) -> dict[str, Any]:
+    """The ports of a fence-gated service, always from the catalog and the env.
+
+    The catalog's static ports, the WebUI port on each address ``ui_port.env``
+    lists (one binding, or several), and the UDP range ``udp_port_range.env``
+    names, published 1:1. Raises ValueError naming what is wrong.
     """
-    if not value:
-        return True
-    start, sep, end = value.partition(":")
-    if not (sep and start.isascii() and start.isdigit() and end.isascii() and end.isdigit()):
-        return False
-    return 1 <= int(start) <= int(end) <= 65535
+    ports: dict[str, Any] = {}
+    for mapping in docker_conf.get("ports") or []:
+        key, binding = catalog.parse_port(mapping)
+        ports[key] = binding
+    ui = docker_conf.get("ui_port")
+    if isinstance(ui, dict):
+        bindings = catalog.ui_bindings(str(env.get(ui["env"]) or "127.0.0.1"), int(ui["port"]))
+        # One binding travels as [address, port], which every worker reads; a
+        # list of them only to a worker that can publish one port several times.
+        ports[f"{int(ui['port'])}/tcp"] = bindings[0] if len(bindings) == 1 else bindings
+    rng = docker_conf.get("udp_port_range")
+    if isinstance(rng, dict):
+        ports.update(catalog.expand_udp_range(str(env.get(rng["env"]) or ""), int(rng.get("max_ports") or 1000)))
+    return ports
+
+
+async def _fence_gated_spec(
+    spec: dict[str, Any],
+    docker_conf: dict[str, Any],
+    env: dict[str, Any],
+    worker_id: int,
+    slug: str,
+    divergence: list[str],
+    custom_image: str,
+) -> dict[str, Any]:
+    """Where a fence-gated service's network namespace lives is the catalog's alone.
+
+    The record wins for an ordinary service's network mode and ports, so a
+    redeploy reproduces them. Here they are the fence: a node recorded on the
+    host network (every Mysterium through 2.0.6) must move onto the fenced
+    bridge on its next redeploy, with its ports rebuilt for it, or the redeploy
+    would carry NET_ADMIN back into the host's namespace. The identity volume is
+    a mount, so it is kept as before.
+    """
+    if custom_image:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{slug} runs only the image the catalog pins, since it holds NET_ADMIN in its own namespace",
+        )
+    if "fence_gated" not in await _worker_features(worker_id):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This worker is too old to run {slug} behind the LAN fence. Update the worker first; the node "
+                "keeps running as it is until then."
+            ),
+        )
+    try:
+        ports = fence_gated_ports(docker_conf, env)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid value for {slug}: {exc}") from None
+    merged = dict(spec)
+    # The record's network mode and ports do not win here, so saying they were kept would be false.
+    divergence[:] = [d for d in divergence if not d.startswith(("network_mode: keeping", "ports: keeping"))]
+    if (merged.get("network_mode") or None) != (docker_conf.get("network_mode") or None):
+        divergence.append("network_mode: moving to the fenced bridge the catalog declares now")
+    merged["network_mode"] = docker_conf.get("network_mode") or None
+    merged["ports"] = ports
+    return merged
 
 
 def _merge_recorded_spec(
