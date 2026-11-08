@@ -77,7 +77,7 @@ class TestWhatCanActuallyBeIsolated:
         assert "VLAN or a separate machine" in out["summary"]
 
     def test_mysterium_is_fenced_with_its_udp_range_as_the_exception(self):
-        """After 2.0.3 it runs on the fenced bridge in its own namespace."""
+        """After 2.0.6 it runs on the fenced bridge in its own namespace."""
         out = li.assess(catalog.get_service("mysterium"))
         assert out["verdict"] == li.NEEDS_EXCEPTIONS
         details = " ".join(e["detail"] for e in out["exceptions"])

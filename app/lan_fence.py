@@ -1013,10 +1013,16 @@ def apply_fence(client: Any) -> dict[str, Any]:
 
 
 def read_fence(client: Any) -> dict[str, Any] | None:
-    """The table's per-rule counters, or None when our network does not exist."""
+    """The table's per-rule counters, or None when our network does not exist.
+
+    Raises IsolationConflict when the network no longer has the settings the
+    rules depend on: they match its interface by name, so a copy recreated
+    under another interface would read complete and cover nothing.
+    """
     net = managed_network(client)
     if net is None:
         return None
+    _check_managed(net)
     return run_helper(client, "read", _subnet(net), filtered=True)
 
 
@@ -1060,25 +1066,26 @@ def network_for_deploy() -> str | None:
     return NETWORK_NAME
 
 
-def mode_problem(mode: str) -> str | None:
+def mode_problem(mode: str, service: str = "this service") -> str | None:
     """Why a fence-gated service cannot run in this isolation mode at all, or None.
 
     Only ``on`` (behind our fence) and ``operator`` (on the operator's own
     network, under their rules) qualify. In ``off``, ``legacy`` and
     ``unsupported`` the node would sit on Docker's default bridge, where every
     other earner reaches its WebUI and nothing keeps it off the LAN.
+    ``service`` is the catalog name the message gives.
     """
     if mode in (MODE_ON, MODE_OPERATOR):
         return None
     what = {
-        MODE_LEGACY: "Switch isolation on in Fleet, then redeploy Mysterium.",
-        MODE_OFF: "Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy Mysterium.",
+        MODE_LEGACY: f"Switch isolation on in Fleet, then redeploy {service}.",
+        MODE_OFF: f"Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy {service}.",
         MODE_UNSUPPORTED: "Run it on Docker with isolation on, or on your own network (CASHPILOT_CONTAINER_NETWORK).",
-    }.get(mode, "Switch isolation on in Fleet, then redeploy Mysterium.")
-    return f"isolation is {mode} on this worker, and Mysterium runs only behind the LAN fence. {what}"
+    }.get(mode, f"Switch isolation on in Fleet, then redeploy {service}.")
+    return f"isolation is {mode} on this worker, and {service} runs only behind the LAN fence. {what}"
 
 
-def fence_problem(client: Any) -> str | None:
+def fence_problem(client: Any, service: str = "this service") -> str | None:
     """Why a fence-gated container must not start now, or None.
 
     In ``on`` mode the table is read back by the helper and every rule it
@@ -1091,7 +1098,7 @@ def fence_problem(client: Any) -> str | None:
     except RuntimeError as exc:
         return f"the isolation mode could not be read ({exc})"
     if mode != MODE_ON:
-        return mode_problem(mode)
+        return mode_problem(mode, service)
     try:
         result = read_fence(client)
     except Exception as exc:  # noqa: BLE001 - the reason is the answer
@@ -1112,7 +1119,7 @@ def _gated(client: Any) -> list[Any]:
         for c in _managed(client)
         if orch.fence_gated(str((c.labels or {}).get(LABEL_SERVICE) or ""))
         and not orch.is_proxied(c)
-        # A node from 2.0.3 or earlier, on the host's network, is left exactly
+        # A node from 2.0.6 or earlier, on the host's network, is left exactly
         # as it is until its owner redeploys it (orchestrator.predates_fence).
         and not orch.predates_fence(c)
     ]
@@ -1146,18 +1153,23 @@ def guard() -> dict[str, str]:
         # only stops (orchestrator.GATED_DEPLOY_LOCK says why).
         deploying = not orch.GATED_DEPLOY_LOCK.acquire(blocking=False)
         try:
-            mode = resolve_mode(client)
-            fence = fence_problem(client)
+            try:
+                mode: str | None = resolve_mode(client)
+                fence = fence_problem(client)
+            except RuntimeError as exc:
+                # Not knowing the mode is not knowing the fence is there.
+                mode, fence = None, f"the isolation mode could not be read ({exc})"
             # Container.status is read-only in docker-py; what this pass stopped is kept apart.
             stopped_now: set[str] = set()
-            if fence and mode == MODE_ON:
+            if fence and mode in (MODE_ON, None):
                 # Stop first, so nothing runs while the table is put back.
                 for c in gated:
                     if c.status == "running":
                         _guard_stop(c, fence)
                         stopped_now.add(c.name)
-                with contextlib.suppress(RuntimeError, IsolationConflict):
-                    apply_fence(client)
+                if mode == MODE_ON:
+                    with contextlib.suppress(RuntimeError, IsolationConflict):
+                        apply_fence(client)
             stopped = orch.user_stopped()
             for c in gated:
                 running = c.status == "running" and c.name not in stopped_now

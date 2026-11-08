@@ -10,10 +10,9 @@ the range on the command line, defaulting to the one the guide names.
 from __future__ import annotations
 
 import pytest
-import yaml
 from fastapi.testclient import TestClient
 
-from app import compose_generator
+from app import catalog, compose_generator
 from tests.test_mysterium_ui_address import _deploy, _record, app
 
 
@@ -82,8 +81,7 @@ def test_a_recorded_reversed_range_is_refused_too(client):
     assert not sent
 
 
-def test_the_exported_compose_file_uses_the_default_range():
-    exported = yaml.safe_load(compose_generator.generate_compose_single("mysterium"))
-    service = exported["services"]["cashpilot-mysterium"]
+def test_the_compose_rendering_uses_the_default_range():
+    service = compose_generator._service_to_compose(catalog.get_service("mysterium"), None, None, None)
     assert " --udp.ports=56000:56029 service " in service["command"]
     assert "56000-56029:56000-56029/udp" in service["ports"]

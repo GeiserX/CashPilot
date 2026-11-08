@@ -241,7 +241,7 @@ We checked that these rules load, but tested the blocking only for IPv4.
 
 **What it cannot cover.** A service on host networking uses the host's own
 interfaces, so a rule on a bridge does not apply to it. No catalog service runs
-that way: after 2.0.3 Mysterium sits on the bridge in its own network
+that way: after 2.0.6 Mysterium sits on the bridge in its own network
 namespace, with its UDP range published
 ([Mysterium on the fenced bridge](isolation.md#mysterium-on-the-fenced-bridge)).
 For a node you run yourself on host networking, use a separate segment, or

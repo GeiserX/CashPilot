@@ -1,6 +1,6 @@
 """Mysterium is fenced like every other earner, and Docker never starts it unfenced.
 
-Through 2.0.3 the node ran with ``network_mode: host`` and NET_ADMIN. That put
+Through 2.0.6 the node ran with ``network_mode: host`` and NET_ADMIN. That put
 NET_ADMIN in the host's own network namespace: the node, or a malicious image
 update, could rewrite the host's firewall (the LAN fence included), add routes
 and addresses, bind any port on every host address and reach the LAN, the
@@ -117,7 +117,7 @@ class TestTheUdpRange:
         assert len(ports) == 30
         assert ports["56000/udp"] == 56000 and ports["56029/udp"] == 56029
 
-    def test_the_default_stays_inside_the_range_routers_forward_since_2_0_3(self):
+    def test_the_default_stays_inside_the_range_routers_forward_since_2_0_6(self):
         default = next(e["default"] for e in MYST["docker"]["env"] if e["key"] == "UDP_PORTS")
         assert set(catalog.expand_udp_range(default)) <= set(catalog.expand_udp_range("56000:56100"))
 
@@ -184,7 +184,7 @@ def _ui_deploy(client, body, recorded=None, features=("fence_gated",)):
     return resp, sent
 
 
-#: What every Mysterium deployed through 2.0.3 has on record.
+#: What every Mysterium deployed through 2.0.6 has on record.
 HOST_RECORD = {
     "image": "mysteriumnetwork/myst",
     "env": {"UI_ADDRESS": "127.0.0.1", "UDP_PORTS": "56000:56100"},
@@ -275,6 +275,7 @@ def markers(tmp_path, monkeypatch):
 
 
 def _raw_deploy(problem=None, slug="mysterium", old=None, mode=lan_fence.MODE_ON, **kwargs):
+    real = lan_fence.mode_problem
     created = MagicMock(id="new", short_id="new")
     client = MagicMock()
     if old is None:
@@ -288,7 +289,7 @@ def _raw_deploy(problem=None, slug="mysterium", old=None, mode=lan_fence.MODE_ON
         patch.object(orchestrator, "_CONTAINER_RUNTIME", "runsc"),
         patch.object(orchestrator, "available_runtimes", return_value={"runc", "runsc"}),
         patch("app.lan_fence.fence_problem", return_value=problem),
-        patch("app.lan_fence.mode_problem", return_value=lan_fence.mode_problem(mode)),
+        patch("app.lan_fence.mode_problem", side_effect=lambda _mode, service="this service": real(mode, service)),
     ):
         orchestrator.deploy_raw(slug=slug, image=PINNED, **kwargs)
     return client, created
@@ -366,14 +367,21 @@ def test_the_socket_policy_keeps_host_cgroupns_off():
 # ---------------------------------------------------------------------------
 
 
-def _shape(network_mode="cashpilot-isolated", restart="no", image=PINNED):
+#: The 30-port default range, published 1:1 as the worker does.
+UDP_BINDINGS = {f"{p}/udp": [{"HostIp": "", "HostPort": str(p)}] for p in range(56000, 56030)}
+
+
+def _shape(network_mode="cashpilot-isolated", restart="no", image=PINNED, udp=True):
     attrs = {
-        "Config": {"Image": image, "Env": ["UI_ADDRESS=127.0.0.1", "UDP_PORTS=56000:56100"]},
+        "Config": {"Image": image, "Env": ["UI_ADDRESS=127.0.0.1", "UDP_PORTS=56000:56029"]},
         "HostConfig": {
             "CapAdd": ["NET_ADMIN", "SETUID", "SETGID"],
             "NetworkMode": network_mode,
             "Devices": [{"PathInContainer": "/dev/net/tun"}],
-            "PortBindings": {"4449/tcp": [{"HostIp": "127.0.0.1", "HostPort": "4449"}]},
+            "PortBindings": {
+                "4449/tcp": [{"HostIp": "127.0.0.1", "HostPort": "4449"}],
+                **(UDP_BINDINGS if udp else {}),
+            },
             "RestartPolicy": {"Name": restart},
         },
         "Mounts": [{"Destination": "/var/lib/mysterium-node"}],
@@ -687,12 +695,12 @@ class TestStartRefusesAHeldNode:
 
 
 # ---------------------------------------------------------------------------
-# (k) A node from 2.0.3 or earlier keeps running untouched until its redeploy
+# (k) A node from 2.0.6 or earlier keeps running untouched until its redeploy
 # ---------------------------------------------------------------------------
 
 
 def _old_node(status="running"):
-    """What every Mysterium through 2.0.3 is: host network, unless-stopped, an unpinned image."""
+    """What every Mysterium through 2.0.6 is: host network, unless-stopped, an unpinned image."""
     c = _node(status=status, network_mode="host", image="mysteriumnetwork/myst")
     c.attrs["HostConfig"]["RestartPolicy"] = {"Name": "unless-stopped"}
     return c
@@ -741,15 +749,235 @@ class TestAnOldHostNetworkNode:
         old = _old_node()
         with pytest.raises(orchestrator.ContainerNetworkError) as refused:
             _raw_deploy(old=old, mode=lan_fence.MODE_LEGACY)
-        assert "Switch isolation on in Fleet, then redeploy Mysterium." in str(refused.value)
+        # The catalog's name, the one on the dashboard card the owner redeploys from.
+        assert f"Switch isolation on in Fleet, then redeploy {MYST['name']}." in str(refused.value)
         old.stop.assert_not_called()
         old.remove.assert_not_called()
 
     def test_drift_still_flags_it_and_gives_the_order(self):
         found = " ".join(drift.container_drift(MYST, _shape(network_mode="host"), HOST_RECORD))
-        assert "Switch isolation on in Fleet, then redeploy Mysterium once" in found
+        assert f"Switch isolation on in Fleet, then redeploy {MYST['name']} once" in found
 
     def test_control_a_fence_gated_one_in_legacy_mode_is_stopped(self, markers):
         node = _node(network_mode="bridge")
         _guard([node], problem=lan_fence.mode_problem(lan_fence.MODE_LEGACY), mode=lan_fence.MODE_LEGACY)
         node.stop.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# (l) Review round: the guard fails closed, Stop stays a stop, nothing escapes it
+# ---------------------------------------------------------------------------
+
+
+class TestStopStaysAStop:
+    def test_stop_holds_the_guards_lock_and_records_first(self, markers):
+        node = _node()
+        seen = {}
+
+        def stopping(**_):
+            seen["locked"] = orchestrator.GATED_DEPLOY_LOCK.locked()
+            seen["recorded"] = "cashpilot-mysterium" in orchestrator.user_stopped()
+
+        node.stop.side_effect = stopping
+        with patch.object(orchestrator, "_find_container", return_value=node):
+            orchestrator.stop_service("mysterium")
+        assert seen == {"locked": True, "recorded": True}
+        assert not orchestrator.GATED_DEPLOY_LOCK.locked()
+
+    def test_a_guard_pass_that_read_the_records_first_cannot_start_it_after(self, markers):
+        """The guard holds the lock from reading the records to its start, so Stop waits for it."""
+        node = _node(status="exited")
+        with patch.object(orchestrator, "_find_container", return_value=node):
+            orchestrator.GATED_DEPLOY_LOCK.acquire()
+            try:
+                import threading
+
+                stopper = threading.Thread(target=orchestrator.stop_service, args=("mysterium",))
+                stopper.start()
+                stopper.join(0.3)
+                assert stopper.is_alive(), "Stop must wait for the guard pass"
+                assert orchestrator.user_stopped() == set()
+            finally:
+                orchestrator.GATED_DEPLOY_LOCK.release()
+            stopper.join(5)
+        assert orchestrator.user_stopped() == {"cashpilot-mysterium"}
+
+    def test_a_stop_that_cannot_be_recorded_fails_and_says_so(self, markers, monkeypatch):
+        monkeypatch.setattr(orchestrator, "STOPPED_MARKER", str(markers / "missing-dir" / "stopped"))
+        node = _node()
+        with (
+            patch.object(orchestrator, "_find_container", return_value=node),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="could not be recorded"),
+        ):
+            orchestrator.stop_service("mysterium")
+        node.stop.assert_not_called()
+
+    def test_control_an_ordinary_earner_stops_without_a_record(self, markers, monkeypatch):
+        monkeypatch.setattr(orchestrator, "STOPPED_MARKER", str(markers / "missing-dir" / "stopped"))
+        node = MagicMock()
+        node.name = "cashpilot-honeygain"
+        with patch.object(orchestrator, "_find_container", return_value=node):
+            orchestrator.stop_service("honeygain")
+        node.stop.assert_called_once()
+
+
+class TestTheGuardFailsClosed:
+    def test_a_mode_it_cannot_read_stops_the_node(self, markers):
+        node = _node()
+        client = MagicMock()
+        client.containers.list.return_value = [node]
+        with (
+            patch.object(orchestrator, "docker_available", return_value=True),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(lan_fence, "resolve_mode", side_effect=RuntimeError("docker info failed")),
+            patch.object(lan_fence, "apply_fence") as apply,
+        ):
+            held = lan_fence.guard()
+        node.stop.assert_called_once()
+        node.start.assert_not_called()
+        apply.assert_not_called()
+        assert "could not be read" in held["cashpilot-mysterium"]
+
+    def test_control_a_mode_it_reads_leaves_a_fenced_node_running(self, markers):
+        node = _node()
+        _guard([node])
+        node.stop.assert_not_called()
+
+    def test_a_node_also_attached_to_another_network_is_stopped(self, markers):
+        node = _node()
+        node.attrs["NetworkSettings"] = {"Networks": {"cashpilot-isolated": {}, "bridge": {}}}
+        held, _ = _guard([node])
+        node.stop.assert_called_once()
+        assert "bridge" in held["cashpilot-mysterium"]
+
+    def test_control_a_node_on_its_one_network_is_left_alone(self, markers):
+        node = _node()
+        node.attrs["NetworkSettings"] = {"Networks": {"cashpilot-isolated": {}}}
+        _guard([node])
+        node.stop.assert_not_called()
+
+
+class TestTheFenceReadChecksTheNetwork:
+    def _net(self, **options):
+        opts = dict(lan_fence._REQUIRED_OPTIONS, **options)
+        return SimpleNamespace(attrs={"Driver": "bridge", "Options": opts})
+
+    def test_a_network_recreated_on_another_interface_is_not_a_fence(self):
+        net = self._net(**{"com.docker.network.bridge.name": "br-other"})
+        with (
+            patch.object(lan_fence, "resolve_mode", return_value=lan_fence.MODE_ON),
+            patch.object(lan_fence, "managed_network", return_value=net),
+            patch.object(lan_fence, "run_helper", return_value={"present": True, "matches": True}) as helper,
+        ):
+            problem = lan_fence.fence_problem(MagicMock())
+        assert problem and "bridge.name" in problem
+        helper.assert_not_called()
+
+    def test_control_the_network_as_created_reads_the_table(self):
+        with (
+            patch.object(lan_fence, "resolve_mode", return_value=lan_fence.MODE_ON),
+            patch.object(lan_fence, "managed_network", return_value=self._net()),
+            patch.object(lan_fence, "_subnet", return_value="172.30.0.0/24"),
+            patch.object(lan_fence, "run_helper", return_value={"present": True, "matches": True}) as helper,
+        ):
+            assert lan_fence.fence_problem(MagicMock()) is None
+        helper.assert_called_once()
+
+
+class TestTheDeployKeepsWhatTheGuardReliesOn:
+    def test_a_caller_cannot_relabel_the_node_out_of_the_guards_sight(self, markers):
+        client, _ = _raw_deploy(labels={"cashpilot.service": "other", "cashpilot.managed": "false", "x": "1"})
+        labels = client.containers.create.call_args.kwargs["labels"]
+        assert labels["cashpilot.service"] == "mysterium"
+        assert labels["cashpilot.managed"] == "true"
+        assert labels["x"] == "1"
+
+    def _replacement(self, status):
+        old = MagicMock()
+        old.name = "cashpilot-mysterium"
+        old.status = status
+        old.labels = dict(LABELS)
+        old.attrs = {"Mounts": []}
+        old.exec_run.return_value = (1, b"")
+        return old
+
+    def test_a_retry_over_an_unconfirmed_replacement_keeps_the_identity_to_match(self, markers):
+        orchestrator._remember_identity("cashpilot-mysterium", "0xa")
+        _raw_deploy(old=self._replacement("created"))
+        assert orchestrator._pending_identity("cashpilot-mysterium") == "0xa"
+
+    def test_a_retry_over_a_running_replacement_keeps_it_too(self, markers):
+        orchestrator._remember_identity("cashpilot-mysterium", "0xa")
+        _raw_deploy(old=self._replacement("running"))
+        assert orchestrator._pending_identity("cashpilot-mysterium") == "0xa"
+
+    def test_control_a_redeploy_over_a_held_mismatch_clears_it(self, markers):
+        """The owner's way out once they restored the volume, as the hold says."""
+        orchestrator._remember_identity("cashpilot-mysterium", "MISMATCH its identity is 0xb, not 0xa")
+        _raw_deploy(old=self._replacement("exited"))
+        assert orchestrator.identity_problem(self._replacement("exited")) is None
+
+    def test_control_a_redeploy_over_a_stopped_node_with_no_record_records_nothing(self, markers):
+        _raw_deploy(old=self._replacement("exited"))
+        assert orchestrator._pending_identity("cashpilot-mysterium") is None
+
+
+class TestNoComposeExport:
+    def test_mysterium_has_no_compose_export(self):
+        from app import compose_generator
+
+        with pytest.raises(ValueError, match="LAN fence"):
+            compose_generator.generate_compose_single("mysterium")
+
+    def test_a_multi_export_leaves_it_out(self):
+        from app import compose_generator
+
+        exported = yaml.safe_load(compose_generator.generate_compose_multi(["mysterium", "bitping"]))
+        assert list(exported["services"]) == ["cashpilot-bitping"]
+
+
+class TestTheMessagesNameTheService:
+    def test_the_mode_refusal_names_the_service_it_is_given(self):
+        problem = lan_fence.mode_problem(lan_fence.MODE_LEGACY, "Other")
+        assert "Other runs only behind the LAN fence" in problem
+        assert problem.endswith("Switch isolation on in Fleet, then redeploy Other.")
+
+    def test_drift_names_the_service_and_claims_no_capability_it_lacks(self):
+        other = {**MYST, "name": "Other", "docker": {**MYST["docker"], "cap_add": []}}
+        shape = _shape(network_mode="host")
+        shape["cap_add"] = []
+        found = " ".join(drift.container_drift(other, shape, None))
+        assert "redeploy Other once" in found
+        assert "NET_ADMIN" not in found
+
+    def test_drift_flags_a_node_that_publishes_its_webui_but_not_its_range(self):
+        found = drift.container_drift(MYST, _shape(udp=False), None)
+        assert any("does not publish port" in f and "56000/udp" in f for f in found)
+
+    def test_drift_judges_the_range_on_record(self):
+        record = {"env": {"UDP_PORTS": "56000:56100"}}
+        found = drift.container_drift(MYST, _shape(), record)
+        assert any("56100/udp" in f for f in found)
+
+    def test_the_container_down_alert_does_not_promise_a_restart_policy(self):
+        from datetime import UTC, datetime
+
+        from app import main as main_mod
+
+        copies = [{"_down_since": datetime.now(UTC), "_node": "w1", "restart_policy": "no", "exit_code": 0}]
+        message = main_mod._container_down_message("mysterium", copies)
+        assert "unless-stopped" not in message
+        assert "LAN fence" in message
+        control = main_mod._container_down_message("honeygain", copies)
+        assert "sets unless-stopped" in control
+
+
+def test_a_ui_default_on_any_loopback_address_is_no_inbound_exception():
+    from app import lan_isolation
+
+    def svc(default):
+        return {"docker": {"ui_port": {"env": "UI", "port": 4449}, "env": [{"key": "UI", "default": default}]}}
+
+    assert lan_isolation.published_ports(svc("127.0.0.2")) == []
+    assert lan_isolation.published_ports(svc("::1,localhost")) == []
+    assert lan_isolation.published_ports(svc("192.168.1.5")) == ["192.168.1.5:4449"]

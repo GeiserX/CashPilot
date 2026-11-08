@@ -150,7 +150,7 @@ off button on purpose: one click should not take the fence down.
 ### Mysterium on the fenced bridge
 
 Mysterium is a VPN exit node. It needs `NET_ADMIN` to build its WireGuard
-interfaces, routes and NAT for its customers. Through 2.0.3 it ran on the host's
+interfaces, routes and NAT for its customers. Through 2.0.6 it ran on the host's
 network, so it held `NET_ADMIN` in the host's own namespace. From there a
 compromised node, or a malicious image update, could rewrite the host's
 firewall (this fence included), add routes and addresses, bind any port on
@@ -168,7 +168,7 @@ every other earner:
   it sends to your LAN, the host, a tailnet or cloud metadata is dropped on
   the host.
 - Its UDP range (`UDP_PORTS`, 56000:56029 by default, inside the 56000:56100
-  default through 2.0.3) is published 1:1, so the forward on your router stays
+  default through 2.0.6) is published 1:1, so the forward on your router stays
   valid. Each port goes to the same port in
   the node, with the customer's own source address. At most 1000 ports.
 - Its WebUI listens on `0.0.0.0` inside its namespace and is published only
@@ -220,8 +220,8 @@ refused before the running node is touched, with the order to follow: switch
 isolation on in Fleet, then redeploy Mysterium. A fenced node already running
 in such a mode is stopped.
 
-**A node from 2.0.3 or earlier keeps running as it is.** A Mysterium container
-on the host's network, which is what every node deployed through 2.0.3 is, is
+**A node from 2.0.6 or earlier keeps running as it is.** A Mysterium container
+on the host's network, which is what every node deployed through 2.0.6 is, is
 left exactly as it is in every mode until you redeploy it: the guard neither
 stops nor starts it, and Start, Stop and Restart work on it as before. Drift
 and **Check isolation** keep flagging it. It moves onto the fenced bridge on

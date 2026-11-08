@@ -19,9 +19,9 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
-## After 2.0.3: redeploy Mysterium once to move it off the host network
+## After 2.0.6: redeploy Mysterium once to move it off the host network
 
-**Affects you if** you run Mysterium through CashPilot. Through 2.0.3 the node
+**Affects you if** you run Mysterium through CashPilot. Through 2.0.6 the node
 ran on the host's network with `NET_ADMIN`, so a compromised node or a
 malicious image update could rewrite the host's firewall, the LAN fence
 included, and reach your LAN, your tailnet and every other container. Later
@@ -68,8 +68,12 @@ use a `DOCKER-USER` rule or keep the proxy on the same machine.
 **If the worker runs gVisor by default** (`CASHPILOT_CONTAINER_RUNTIME=runsc`):
 nothing to do. Mysterium's catalog entry requires `runc` and wins over it.
 
-**To go back**, redeploy with the previous release's UI and worker. The data
-volume or folder is the same in both directions.
+**To go back** to 2.0.6, a redeploy is not enough: 2.0.6 keeps the network on
+record, so the node would stay on the bridge with its WebUI listening only
+inside its own namespace. Remove Mysterium from 2.0.6's dashboard, keeping its
+data volume (the default), then deploy it again: a fresh deploy uses 2.0.6's
+catalog, host network and UDP range included, on the same data volume or
+folder. Back it up first, as for the redeploy.
 
 ---
 

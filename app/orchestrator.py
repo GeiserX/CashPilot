@@ -825,7 +825,7 @@ def deploy_raw(
 
         # A mode that cannot run it at all (off, legacy) is refused here too,
         # while the running node is still running.
-        if problem := lan_fence.mode_problem(lan_fence.resolve_mode(client)):
+        if problem := lan_fence.mode_problem(lan_fence.resolve_mode(client), service_name(slug)):
             raise ContainerNetworkError(f"{slug} was not deployed: {problem} The running container was not touched.")
 
     # The pull is on this side of the line for the same reason: a registry outage
@@ -893,9 +893,12 @@ def deploy_raw(
         # chance to flush (storj declares 300 s for that reason) and pays for it
         # with an unclean-shutdown recovery. A stop that fails is not a reason to
         # abandon the deploy - the forced removal below is what ran before.
-        if gated:
+        if gated and not _pending_identity(name):
             # Read while it still runs; the guard compares the new one with it.
-            # A redeploy over a stopped node clears the record instead.
+            # A redeploy over a stopped node clears the record instead. A record
+            # still pending is kept: the container being replaced is itself a
+            # replacement whose identity was never confirmed, so this retry is
+            # compared with the node as it was before the first redeploy.
             identity = read_node_identity(old, slug) if getattr(old, "status", "") == "running" else None
             _remember_identity(name, identity)
         try:
@@ -916,6 +919,10 @@ def deploy_raw(
     }
     if labels:
         all_labels.update(labels)
+        # What the guard, the owner checks and every lookup find a container by:
+        # never the caller's to change.
+        all_labels[LABEL_SERVICE] = slug
+        all_labels[LABEL_MANAGED] = "true"
     if instance > 1:
         all_labels[LABEL_INSTANCE] = str(instance)
 
@@ -1150,7 +1157,13 @@ def user_stopped() -> set[str]:
         return set()
 
 
-def _mark_stopped(name: str, stopped: bool) -> None:
+def _mark_stopped(name: str, stopped: bool, *, strict: bool = False) -> None:
+    """Record or clear an owner's Stop. ``strict`` raises when it cannot be written.
+
+    A Stop that is not recorded is undone by the guard's next pass, so Stop is
+    strict. A Start or a deploy that cannot clear the record only leaves the
+    node stopped, which is safe, so they log it.
+    """
     names = user_stopped()
     if (name in names) == stopped:
         return
@@ -1159,13 +1172,18 @@ def _mark_stopped(name: str, stopped: bool) -> None:
         with open(STOPPED_MARKER, "w", encoding="utf-8") as fh:
             fh.write("".join(f"{n}\n" for n in sorted(names)))
     except OSError as exc:
+        if strict:
+            raise ContainerRuntimeError(
+                f"{name} was not stopped: the stop could not be recorded ({exc}), and without that record the "
+                "worker would start it again within a minute."
+            ) from None
         logger.warning("Could not record that %s was %s: %s", name, "stopped" if stopped else "started", exc)
 
 
 def predates_fence(container: Any) -> bool:
-    """A fence-gated service's container from 2.0.3 or earlier: on the host's network.
+    """A fence-gated service's container from 2.0.6 or earlier: on the host's network.
 
-    Every Mysterium through 2.0.3 runs this way, and keeps running exactly as
+    Every Mysterium through 2.0.6 runs this way, and keeps running exactly as
     it is until its owner redeploys it: the guard neither stops nor starts it,
     and Start, Stop and Restart treat it as before. Drift and the isolation
     check flag it, and the redeploy moves it onto the fenced bridge.
@@ -1179,13 +1197,22 @@ def _gated_container(slug: str, container: Any) -> bool:
     return fence_gated(slug) and not predates_fence(container)
 
 
+def service_name(slug: str) -> str:
+    """The catalog's display name for ``slug``, or the slug itself."""
+    return str(((get_service(slug) if get_service else None) or {}).get("name") or slug)
+
+
 def stop_service(slug: str, instance: int = 1) -> None:
     """Stop the container for a service."""
     container = _find_container(slug, instance)
     if _gated_container(slug, container):
-        # Before the stop: the guard must not start it again in between.
-        _mark_stopped(container.name, True)
-    container.stop(timeout=_get_stop_timeout(slug))
+        # Recorded before the stop, under the guard's lock: a guard pass that
+        # read the records before this Stop would otherwise start it after.
+        with GATED_DEPLOY_LOCK:
+            _mark_stopped(container.name, True, strict=True)
+            container.stop(timeout=_get_stop_timeout(slug))
+    else:
+        container.stop(timeout=_get_stop_timeout(slug))
     logger.info("Stopped container %s", container.name)
 
 
@@ -1229,6 +1256,16 @@ def read_node_identity(container: Any, slug: str) -> str | None:
 
 def _identity_file(name: str) -> str:
     return os.path.join(IDENTITY_DIR, re.sub(r"[^A-Za-z0-9_.-]", "_", name))
+
+
+def _pending_identity(name: str) -> str | None:
+    """The identity a replacement still has to match, or None (no record, or a held mismatch)."""
+    try:
+        with open(_identity_file(name), encoding="utf-8") as fh:
+            recorded = fh.read().strip()
+    except OSError:
+        return None
+    return None if not recorded or recorded.startswith("MISMATCH ") else recorded
 
 
 def _remember_identity(name: str, identity: str | None) -> None:
@@ -1288,7 +1325,7 @@ def _require_fence(slug: str) -> None:
     """
     from app import lan_fence
 
-    problem = lan_fence.fence_problem(_get_client())
+    problem = lan_fence.fence_problem(_get_client(), service_name(slug))
     if problem:
         raise ContainerNetworkError(f"{slug} was not started: {problem}")
 
@@ -1351,6 +1388,11 @@ def gated_spec_problem(container: Any, mode: str | None = None) -> str | None:
         return f"it is not on {lan_fence.NETWORK_NAME}, so the fence does not cover it"
     if mode == lan_fence.MODE_OPERATOR and network_mode != _CONTAINER_NETWORK:
         return f"it is not on {_CONTAINER_NETWORK}, the network whose rules this worker runs earners under"
+    if mode in (lan_fence.MODE_ON, lan_fence.MODE_OPERATOR):
+        settings = attrs.get("NetworkSettings") if isinstance(attrs.get("NetworkSettings"), dict) else {}
+        attached = settings.get("Networks") if isinstance(settings.get("Networks"), dict) else {}
+        if extra := sorted(set(attached) - {network_mode}):
+            return f"it is also attached to {', '.join(extra)}, where the fence does not cover it"
     return None
 
 

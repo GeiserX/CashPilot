@@ -58,7 +58,7 @@ docker:
       default: "56000:56029"
       # Without it the node picks from 10000:60000, so a forwarded range is
       # never used and every session falls back to hole punching. 30 ports, a
-      # sub-range of the 56000:56100 default through 2.0.3, so the router
+      # sub-range of the 56000:56100 default through 2.0.6, so the router
       # forwards made for that one stay valid.
       # ASCII digits only, as above; port_range checks start <= end <= 65535.
       pattern: '[0-9]{4,5}:[0-9]{4,5}'

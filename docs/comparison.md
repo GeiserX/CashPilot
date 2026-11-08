@@ -30,7 +30,7 @@ Left out: [earning-machine](https://github.com/jf-m/earning-machine) and [passiv
 
 ## Side by side
 
-CashPilot's column describes v1.64.0, except the proxy, Docker socket and LAN isolation rows, which describe v1.71.1 (`0170dee`, 2026-11-06), and Mysterium's network in the container settings row, which describes the release after 2.0.3 (`01e7310`). The other columns describe the commits in the table above.
+CashPilot's column describes v1.64.0, except the proxy, Docker socket and LAN isolation rows, which describe v1.71.1 (`0170dee`, 2026-11-06), and Mysterium's network in the container settings row, which describes the release after 2.0.6 (`01e7310`). The other columns describe the commits in the table above.
 
 | | CashPilot | money4band 5.0.0 | IGM | InternetIncome | CashFactory | HA add-ons |
 |---|---|---|---|---|---|---|

@@ -185,7 +185,7 @@ def _validate_network_shape(docker: dict[str, Any], name: str) -> list[str]:
     if held := sorted(caps & NETNS_CAPABILITIES):
         # The threat class this rule closes: a container with these in the host's
         # namespace can rewrite the host firewall, the LAN fence included, and
-        # no host rule holds against it. Mysterium ran that way through 2.0.3.
+        # no host rule holds against it. Mysterium ran that way through 2.0.6.
         if str(docker.get("network_mode") or "").strip().lower() == "host":
             errors.append(
                 f"{name}: a service with {', '.join(held)} cannot use network_mode: host; it would hold them "

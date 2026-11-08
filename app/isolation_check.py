@@ -70,7 +70,7 @@ TAILSCALE_DNS = "100.100.100.100"
 #: Reads a node's own nat chain from every iptables backend without creating
 #: anything. The chain name and the blackhole address come from the service's
 #: ``docker.node_firewall`` in the catalog. The node runs as root with
-#: NET_ADMIN (in its own namespace after 2.0.3, in the host's before), so a
+#: NET_ADMIN (in its own namespace after 2.0.6, in the host's before), so a
 #: legacy lookup of a nat table that does not exist would make the kernel load
 #: ``iptable_nat`` and register an empty legacy table there.
 #: The legacy backend is asked only when the host already has its nat table;
@@ -411,7 +411,7 @@ def host_netns_findings(containers: list[Any]) -> list[dict[str, Any]]:
     Such a container can rewrite the host's firewall, the LAN fence included,
     add routes and addresses, and bind any port on every host address. No host
     rule holds against it, so it is an exposure on its own, whatever the probes
-    find. Mysterium ran this way through 2.0.3; a redeploy moves it onto the
+    find. Mysterium ran this way through 2.0.6; a redeploy moves it onto the
     fenced bridge.
     """
     held = []

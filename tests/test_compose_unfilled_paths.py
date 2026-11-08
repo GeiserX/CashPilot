@@ -39,8 +39,8 @@ def test_supplied_paths_are_written_as_they_are():
 
 
 def test_a_real_named_volume_is_still_declared():
-    compose = yaml.safe_load(compose_generator.generate_compose_single("mysterium"))
-    assert "mysterium-data" in compose["volumes"]
+    compose = yaml.safe_load(compose_generator.generate_compose_single("bitping"))
+    assert "bitping-data" in compose["volumes"]
 
 
 def test_the_message_cannot_break_out_of_the_variable():

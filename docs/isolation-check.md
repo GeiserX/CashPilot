@@ -297,7 +297,7 @@ earner reaches before and after.
 
 ### Mysterium
 
-After 2.0.3 a Mysterium node CashPilot deploys runs in its own network
+After 2.0.6 a Mysterium node CashPilot deploys runs in its own network
 namespace on `cashpilot-isolated`, like every other earner, with its UDP range
 published ([Mysterium on the fenced bridge](isolation.md#mysterium-on-the-fenced-bridge)).
 Its customers' traffic arrives through WireGuard interfaces inside that
@@ -310,7 +310,7 @@ and **Check isolation** reads both.
 namespace" for any CashPilot container on host networking that holds
 `NET_ADMIN` or `SYS_ADMIN`, or runs privileged. Such a container can rewrite
 the host's firewall, so no probe result can make it safe. A node deployed
-through 2.0.3 shows it until you redeploy it from the dashboard (UPGRADING.md).
+through 2.0.6 shows it until you redeploy it from the dashboard (UPGRADING.md).
 
 To see the fence hold from the node's own namespace, join it with a probe that
 has no capabilities. A target nothing listens on prints `blocked` with or
@@ -355,8 +355,13 @@ when a range is missing. When the next customer connects, the node's NAT rules
 should list the new ranges:
 
 ```sh
-sudo iptables -t nat -S MYST | grep 240.0.0.1      # Unraid: iptables-nft -t nat -S MYST
+docker exec cashpilot-mysterium sudo -n iptables -t nat -S MYST | grep 240.0.0.1
 ```
+
+Those rules live in the node's own namespace, so the host's `iptables` does
+not show them. Only a node still on the host's network (2.0.6 or earlier, or
+one you run yourself that way) has them on the host:
+`sudo iptables -t nat -S MYST` (Unraid: `iptables-nft`).
 
 **A node you run yourself on host networking.** Everything from here on is
 for a node outside CashPilot that still shares the host's network. Prefer the

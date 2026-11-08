@@ -82,7 +82,7 @@ network and writes one firewall table that drops traffic from them to:
 An upgraded install turns it on with **Turn on isolation** on the Fleet page,
 and **Check isolation** starts two short-lived containers to test that it holds.
 
-Limits: through 2.0.3 Mysterium ran on host networking and was not covered by
+Limits: through 2.0.6 Mysterium ran on host networking and was not covered by
 the fence; later releases move it onto the fenced bridge in its own network
 namespace on its next redeploy, and run it only with isolation on or on your
 own network

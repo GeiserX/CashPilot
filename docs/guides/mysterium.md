@@ -93,7 +93,7 @@ Each session takes about two ports, so the default 30 ports carry about 15
 sessions at once, more than a home node gets. Every published port costs about
 2.5 MB of memory on the machine (Docker starts two small proxy processes per
 port; 101 ports measured about 250 MB), so a wider range only costs more. A
-range of 20 to 30 ports is enough. Through 2.0.3 the default was
+range of 20 to 30 ports is enough. Through 2.0.6 the default was
 `56000:56100`: a router forward for that range keeps working, since the new
 default is inside it. A node that has `56000:56100` on record keeps it on a
 redeploy; to save the memory, set `UDP_PORTS` to `56000:56029` and redeploy,
@@ -238,7 +238,7 @@ different one starts a new node identity.
 
 ```bash
 docker create --name cashpilot-mysterium \
-  --network cashpilot-isolated --restart no \
+  --network cashpilot-isolated --restart no --runtime runc \
   -p 127.0.0.1:4449:4449 -p 56000-56029:56000-56029/udp \
   --cap-drop ALL --cap-add NET_ADMIN --cap-add SETUID --cap-add SETGID \
   --device /dev/net/tun \
@@ -265,8 +265,11 @@ sudo nft list table ip cashpilot 2>/dev/null | grep -q 'comment "host"' \
 ```
 
 This checks that the table is there, not every rule in it, as the worker
-does. Redeploying the node from the dashboard hands it to the worker, which
-checks the whole table, starts it only then and stops it if a rule goes.
+does. A redeploy from the dashboard does not take this container over: behind
+the Docker socket proxy the worker cannot stop or remove a container it did
+not start, so the redeploy fails until you remove this one yourself. A node
+the worker deploys keeps its identity on the `mysterium-data` volume, so it is
+a new node unless that volume already holds this node's data.
 
 Verify it took:
 

@@ -84,7 +84,7 @@ def published_ports(service: dict[str, Any] | None) -> list[str]:
             (str(v.get("default") or "") for v in _docker(service).get("env") or [] if v.get("key") == ui.get("env")),
             "",
         )
-        if any(a.strip() not in ("", "127.0.0.1", "localhost") for a in default.split(",")):
+        if not all(_loopback(a) for a in default.split(",")):
             found.append(f"{default}:{ui.get('port')}")
     rng = _docker(service).get("udp_port_range")
     if isinstance(rng, dict):
@@ -275,3 +275,14 @@ def compose_snippet(network_name: str = DEFAULT_NETWORK_NAME, bridge_interface: 
         f"# ...while still allowing the exceptions listed for each service, or the\n"
         f"# services that need inbound ports will silently stop earning.\n"
     )
+
+
+def _loopback(address: str) -> bool:
+    """Blank, ``localhost`` or any loopback address: published to this machine only."""
+    address = address.strip()
+    if address in ("", "localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return False

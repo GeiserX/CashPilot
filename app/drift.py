@@ -17,6 +17,7 @@ are pinned in the catalog, so a different tag there is.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -183,13 +184,18 @@ def container_drift(
     want_host = network_mode == "host"
     have_host = shape.get("network_mode") == "host"
     if want_host != have_host:
+        reach = (
+            "its NET_ADMIN reaches the host's firewall"
+            if "NET_ADMIN" in have_caps
+            else "the LAN fence does not cover it"
+        )
         found.append(
             "uses its own network, but should share the host's"
             if want_host
             else "shares the host's network"
             + (
-                ", where its NET_ADMIN reaches the host's firewall. Switch isolation on in Fleet, then redeploy "
-                "Mysterium once to move it onto the fenced bridge"
+                f", where {reach}. Switch isolation on in Fleet, then redeploy {svc.get('name') or 'it'} once to "
+                "move it onto the fenced bridge"
                 if gated
                 else ""
             )
@@ -199,6 +205,14 @@ def container_drift(
         want_ports = set(recorded_ports) if recorded_ports else _catalog_port_keys(docker_conf)
         if gated and isinstance(docker_conf.get("ui_port"), dict):
             want_ports.add(f"{docker_conf['ui_port'].get('port')}/tcp")
+        rng = docker_conf.get("udp_port_range")
+        if gated and isinstance(rng, dict):
+            # The range a redeploy publishes: the recorded value, else the catalog default.
+            value = (rec.get("env") or {}).get(rng.get("env")) or next(
+                (v.get("default") for v in docker_conf.get("env") or [] if v.get("key") == rng.get("env")), ""
+            )
+            with contextlib.suppress(ValueError):
+                want_ports |= set(catalog.expand_udp_range(str(value or ""), int(rng.get("max_ports") or 1000)))
         if missing := want_ports - set(shape.get("ports") or []):
             found.append(f"does not publish port {_names(missing)}")
     if gated and shape.get("restart_policy") not in (None, "no"):

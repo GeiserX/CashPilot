@@ -549,6 +549,12 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
     codes = sorted({c["exit_code"] for c in copies if isinstance(c.get("exit_code"), int)})
     how = f" (exit code {', '.join(str(code) for code in codes)})" if codes else ""
     message = f"{name} has not been running since {since} UTC on {nodes}{how}, so it is not earning."
+    if catalog.fence_gated(catalog.get_service(slug)):
+        # No restart policy on purpose: the worker starts it once the LAN fence is confirmed.
+        return message + (
+            " The worker starts it as soon as the LAN fence is confirmed; while it stays down, the Fleet page "
+            "says what holds it. If you stopped it on purpose, start it from the dashboard when you want it back."
+        )
     policies = sorted({str(c["restart_policy"]) for c in copies if c.get("restart_policy")} - set(_RESTARTING_POLICIES))
     if policies:
         message += (
@@ -3615,7 +3621,7 @@ async def _fence_gated_spec(
 
     The record wins for an ordinary service's network mode and ports, so a
     redeploy reproduces them. Here they are the fence: a node recorded on the
-    host network (every Mysterium through 2.0.3) must move onto the fenced
+    host network (every Mysterium through 2.0.6) must move onto the fenced
     bridge on its next redeploy, with its ports rebuilt for it, or the redeploy
     would carry NET_ADMIN back into the host's namespace. The identity volume is
     a mount, so it is kept as before.

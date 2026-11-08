@@ -3,7 +3,7 @@
 1.37.4 bound the node's WebUI to 127.0.0.1 so host networking stopped
 publishing it on every interface. That also cut off any reverse proxy in front
 of it, so UI_ADDRESS said "loopback, plus the one address my proxy connects
-to". After 2.0.3 the node runs in its own namespace on the fenced bridge: it
+to". After 2.0.6 the node runs in its own namespace on the fenced bridge: it
 listens on 0.0.0.0 there, which reaches only that namespace, and UI_ADDRESS is
 the host addresses port 4449 is published on. The value is still checked
 before a deploy, and the default is still loopback.
@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, patch
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest
-import yaml
 from fastapi.testclient import TestClient
 
 from app import catalog, compose_generator
@@ -28,7 +27,7 @@ PROTECTED = (
     "--firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16"
 )
 LOOPBACK = f"--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 {PROTECTED} --udp.ports=56000:56100 service --agreed-terms-and-conditions"
-#: What every node runs after 2.0.3: the WebUI on its own namespace, published by Docker.
+#: What every node runs after 2.0.6: the WebUI on its own namespace, published by Docker.
 COMMAND = f"--ui.address=0.0.0.0 --tequilapi.address=127.0.0.1 {PROTECTED} --udp.ports=56000:56029 service --agreed-terms-and-conditions"
 UI = "4449/tcp"
 
@@ -148,9 +147,9 @@ def test_anything_but_addresses_is_refused_before_a_deploy(client, value):
     assert not sent, "nothing may reach the worker"
 
 
-def test_the_exported_compose_file_stays_on_loopback():
-    exported = yaml.safe_load(compose_generator.generate_compose_single("mysterium"))
-    service = exported["services"]["cashpilot-mysterium"]
+def test_the_compose_rendering_stays_on_loopback():
+    """Mysterium has no Compose export (it is fence-gated); the rendering is kept for a ui_port service."""
+    service = compose_generator._service_to_compose(catalog.get_service("mysterium"), None, None, None)
     assert service["command"] == COMMAND
     assert "127.0.0.1:4449:4449" in service["ports"]
     assert "network_mode" not in service
