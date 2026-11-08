@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.1.2] - 2026-11-08
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#676)
+
+### Fixes
+
+- Give each isolation mode the one step that moves a host-network node (#677)
+
 ## [2.1.1] - 2026-11-08
 
 ### Documentation
