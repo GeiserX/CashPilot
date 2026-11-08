@@ -10,6 +10,17 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.1.5] - 2026-11-08
+
+### Documentation
+
+- Warn that a later sysctl file or a DOCKER-USER drop can silently undo the port setup (#684)
+- Regenerate CHANGELOG.md (#685)
+
+### Fixes
+
+- Stop a slow worker leaving a removed copy's record behind to block its proxy (#683)
+
 ## [2.1.4] - 2026-11-08
 
 ### Documentation
