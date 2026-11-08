@@ -1160,6 +1160,7 @@ def guard() -> dict[str, str]:
     held: dict[str, str] = {}
     try:
         if not orch.docker_available():
+            _state["unfenced"] = []
             return {}
         client = orch._get_client()
         _state["unfenced"] = _unfenced(client)
@@ -1204,6 +1205,8 @@ def guard() -> dict[str, str]:
                 orch.GATED_DEPLOY_LOCK.release()
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
         logger.warning("Fence guard pass failed: %s", exc)
+        # Not a fresh scan: no Fleet button on a report that may be stale.
+        _state["unfenced"] = []
     _state["guard"] = held
     return held
 

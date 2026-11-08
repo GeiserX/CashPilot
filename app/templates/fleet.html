@@ -460,6 +460,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
   // Turning isolation on, per worker id: {busy}, {done}, or {error}.
   const _fenceSwitch = {};
+  const _movedBehindFence = new Set();
 
   // The LAN fence of one worker (app/lan_fence.py), from its heartbeat. Says
   // nothing when the fence holds and every earner sits behind it.
@@ -500,7 +501,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
     // A Mysterium from 2.0.6 or earlier, still on the host's network: left
     // running until its owner redeploys it, which moves it behind the fence.
-    const unfenced = iso.unfenced || [];
+    // A node moved from this page stays hidden until the worker stops reporting
+    // it: a heartbeat sent before the move must not offer the move again.
+    for (const key of [..._movedBehindFence]) {
+      if (key.startsWith(`${w.id}:`) && !(iso.unfenced || []).some((u) => key === `${w.id}:${u.slug}`)) _movedBehindFence.delete(key);
+    }
+    const unfenced = (iso.unfenced || []).filter((u) => !_movedBehindFence.has(`${w.id}:${u.slug}`));
     if (unfenced.length) {
       const fenced = iso.mode === 'on' || iso.mode === 'operator';
       const what = unfenced.map((u) => esc(u.service || u.slug)).join(', ');
@@ -533,6 +539,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     try {
       // An empty body redeploys from the recorded spec; a fence-gated service lands on the fenced bridge.
       await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: {} });
+      _movedBehindFence.add(`${workerId}:${slug}`);
       _fenceSwitch[workerId] = { done: `${service} was redeployed behind the fence.` };
     } catch (err) {
       _fenceSwitch[workerId] = { error: `${service} was not moved: ${err.message}` };

@@ -1102,3 +1102,23 @@ class TestAHoldThatCannotBeWritten:
         stopped = _node(status="exited")
         _guard([stopped])
         stopped.start.assert_called_once()
+
+
+def test_a_failed_scan_drops_the_unfenced_report(markers):
+    """No Fleet button on a report the worker could not refresh."""
+    _guard([_old_node()])
+    assert lan_fence.status()["unfenced"]
+    client = MagicMock()
+    client.containers.list.side_effect = RuntimeError("docker is gone")
+    with (
+        patch.object(orchestrator, "docker_available", return_value=True),
+        patch.object(orchestrator, "_get_client", return_value=client),
+    ):
+        lan_fence.guard()
+    assert lan_fence.status()["unfenced"] == []
+
+
+def test_the_fleet_page_does_not_offer_a_move_it_just_made():
+    fleet = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+    assert "_movedBehindFence.add(" in fleet
+    assert "!_movedBehindFence.has(" in fleet
