@@ -1388,7 +1388,46 @@ class TestARefusedDeployPutsTheOldNodeBack:
         node.start.assert_called_once()
 
 
+class TestAMoveAsideThatFails:
+    def test_an_old_node_that_can_neither_move_nor_go_runs_again(self, markers):
+        old = _running_old()
+        old.remove_error = _api_error("removal of container is already in progress")
+        docker = _FakeDocker(old)
+        old.rename.side_effect = _api_error("rename refused")
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not replaced and is running again"):
+            _raw_deploy(client=docker.client, old=old)
+        old.start.assert_called_once()
+        docker.client.containers.create.assert_not_called()
+        assert orchestrator._identity_snapshot("cashpilot-mysterium") is None
+
+    def test_a_removed_old_node_is_not_reported_as_never_there(self, markers):
+        old = _running_old()
+        docker = _FakeDocker(old)
+        old.rename.side_effect = _api_error("rename refused")
+        docker.create_error = _api_error("Conflict. The container name is already in use")
+        with pytest.raises(orchestrator.ContainerRuntimeError) as refused:
+            _raw_deploy(client=docker.client, old=old)
+        assert "could not be moved aside, so it was removed" in str(refused.value)
+        assert "No container ran" not in str(refused.value)
+
+    def test_a_leftover_that_cannot_go_does_not_fail_a_deploy_that_runs(self, markers):
+        orchestrator._mark_failed("cashpilot-mysterium", True)
+        old = _running_old()
+        old.remove_error = _api_error("removal of container is already in progress")
+        docker = _FakeDocker(old)
+        _raw_deploy(client=docker.client, old=old)
+        docker.created.start.assert_called_once()
+        assert orchestrator.deploy_failed() == set()
+        assert docker.get("cashpilot-mysterium-replaced") is old
+
+
 class TestTheGuardStartsOnlyAWholeNode:
+    def test_never_the_old_node_a_deploy_moved_aside(self, markers):
+        aside = _node(status="exited")
+        aside.name = "cashpilot-mysterium-replaced"
+        _guard([aside])
+        aside.start.assert_not_called()
+
     def test_never_a_container_a_failed_deploy_left(self, markers):
         orchestrator._mark_failed("cashpilot-mysterium", True)
         node = _node(status="exited")

@@ -858,11 +858,13 @@ def deploy_raw(
     # one goes back as it was (_roll_back).
     replaced = None
     replaced_running = False
+    had_old = False
     identity_before = _identity_snapshot(name)
     held_before = _MISMATCH_HELD.get(name)
     stopped_before = name in user_stopped()
     try:
         old = client.containers.get(name)
+        had_old = True
         # The name alone is not proof the container is this copy of this
         # service: copy 2 of "foo" and copy 1 of a service slugged "foo-2" are
         # both cashpilot-foo-2. Replacing another service's container would
@@ -927,7 +929,20 @@ def deploy_raw(
             old.stop(timeout=_get_stop_timeout(slug))
         except APIError as exc:
             logger.warning("Could not stop %s cleanly before replacing it: %s", name, exc)
-        replaced = _move_aside(client, old, name, slug)
+        try:
+            replaced = _move_aside(client, old, name, slug)
+        except APIError as exc:
+            # Neither renamed nor removed: it still holds its name, so it runs again as it was.
+            _restore_identity(name, identity_before, held_before)
+            restored = "The previous container was not replaced and is as it was."
+            if replaced_running:
+                try:
+                    old.start()
+                    restored = "The previous container was not replaced and is running again."
+                except Exception as start_exc:  # noqa: BLE001 - reported to the caller
+                    logger.warning("Could not start %s again: %s", name, start_exc)
+                    restored = f"The previous container was not replaced but could not be started again ({start_exc})."
+            raise _deploy_failure(exc, restored) from exc
     except NotFound:
         _ensure_volumes(client, volumes)
 
@@ -1045,13 +1060,18 @@ def deploy_raw(
             identity_before,
             stopped_before,
             held_before=held_before,
+            had_old=had_old,
             gated=gated,
         )
         raise _deploy_failure(exc, restored) from exc
-    if replaced is not None:
-        _remove_container(replaced, slug)
     if gated:
         _mark_failed(name, False)
+    if replaced is not None:
+        try:
+            _remove_container(replaced, slug)
+        except Exception as exc:  # noqa: BLE001 - the new one runs; the old one is only a leftover
+            # The guard never starts a -replaced container, and the next deploy removes it.
+            logger.warning("Could not remove %s%s after its replacement started: %s", name, REPLACED_SUFFIX, exc)
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
 
@@ -1088,6 +1108,7 @@ def _roll_back(
     stopped_before: bool,
     *,
     held_before: str | None = None,
+    had_old: bool = True,
     gated: bool,
 ) -> str:
     """Undo a deploy whose new container could not be created or started. Says what was put back.
@@ -1109,6 +1130,8 @@ def _roll_back(
     if gated and not leftover_gone:
         _mark_failed(name, True)
     if replaced is None:
+        if had_old:
+            return "The previous container could not be moved aside, so it was removed and could not be put back."
         return "No container ran under that name before, so nothing was put back."
     if not leftover_gone:
         return (

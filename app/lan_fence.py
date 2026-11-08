@@ -1205,7 +1205,13 @@ def guard() -> dict[str, str]:
                     held[c.name] = problem
                     if running:
                         _guard_stop(c, problem)
-                elif not deploying and c.status in ("exited", "created") and c.name not in stopped:
+                elif (
+                    not deploying
+                    and c.status in ("exited", "created")
+                    and c.name not in stopped
+                    # The old node a deploy moved aside: put back by its roll-back, never by the guard.
+                    and not c.name.endswith(orch.REPLACED_SUFFIX)
+                ):
                     c.start()
                     if problem := _started_unattached(c, mode):
                         # Up with no address on its network: never started again
