@@ -10,6 +10,30 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.0.1] - 2026-11-07
+
+### Fixes
+
+- Retry a refused release check within the hour, so a rate-limited startup no longer hides updates for a day (#656)
+
+### Maintenance
+
+- Pin the examples to 2.0 (#654)
+
+## [2.0.0] - 2026-11-07
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#651)
+
+### Features
+
+- Release 2.0, because upgrading from 1.x now needs a step (#652)
+
+### Fixes
+
+- Stop proxied copies, the owner migration and the in-app update from failing owners (#653)
+
 ## [1.73.4] - 2026-11-07
 
 ### Fixes
