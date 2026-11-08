@@ -833,6 +833,7 @@ class TestStorageAndRoutes:
                 "worker_id": 7,
                 "slug": "honeygain",
                 "stopped_by_cap": 0,
+                "removing_since": None,
                 "created_at": copies[0]["created_at"],
             }
         ]
