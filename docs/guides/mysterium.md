@@ -135,7 +135,7 @@ so. Find every file that sets it:
 # (older Debian without a merged /usr: /lib/systemd/systemd-sysctl)
 /usr/lib/systemd/systemd-sysctl --cat-config | grep -E '^# /|reserved_ports'
 # without systemd, as root so no file is skipped:
-sudo grep -rn reserved_ports /etc/sysctl.conf /etc/sysctl.d/ /run/sysctl.d/ \
+sudo grep -Rn reserved_ports /etc/sysctl.conf /etc/sysctl.d/ /run/sysctl.d/ \
   /usr/local/lib/sysctl.d/ /usr/lib/sysctl.d/ /lib/sysctl.d/ 2>/dev/null
 ```
 
@@ -145,7 +145,9 @@ Put the whole combined list in one file, comment out the line in every other
 file that sets it, and read `sysctl net.ipv4.ip_local_reserved_ports` again
 after the next reboot. If the other file belongs to a package or a tool that
 rewrites it, your edit will not last: give your file a name that sorts after
-it instead, so the combined list is read last.
+it instead, so the combined list is read last. No file name sorts after
+`/etc/sysctl.conf` itself, because it is read after the directories. If the
+other setter is there, put the combined list in that line.
 
 **A firewall of your own in `DOCKER-USER` can drop the sessions.** Once the
 node is on CashPilot's bridge, customer packets to its UDP range are forwarded
@@ -185,7 +187,8 @@ T=$(date -u +%Y-%m-%dT%H:%M:%SZ)   # right after the change
 docker logs --since "$T" cashpilot-mysterium 2>&1 | grep -E 'are reachable|Failed to check manual ports'
 ```
 
-It should show `All ports [...] are reachable`.
+It should show `All ports [...] are reachable`. That line covers the ports in
+its brackets, so compare them with your range.
 
 **Check it.** After a few sessions, on the machine running the node:
 
