@@ -20,9 +20,9 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 
 > Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management, published on the machine it runs on only (127.0.0.1); from another machine open an SSH tunnel first (`ssh -L 4449:127.0.0.1:4449 <host>`, then browse `http://127.0.0.1:4449`), or put a reverse proxy in front (see **WebUI address** below). VPS accepted. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard.
 
-> **One node per public IP.** Mysterium strictly enforces one active node per public IP address. Additional nodes on the same IP show as offline and earn nothing. Do not run on a phone if a Docker node is already running on the same network. Use separate public IPs (e.g. dual WAN, different locations) for additional nodes.
+> **One node per public IP.** Mysterium strictly enforces one active node per public IP address. Additional nodes on the same IP show as offline and earn nothing. Do not run on a phone if a Docker node is already running on the same network. Use separate public IPs (e.g. dual WAN, different locations) for additional nodes. Fleet warns before a second node is deployed behind an address that already has one.
 
-> **Port forwarding recommended.** Forward the node's UDP range to maximize earnings; see **Port forwarding** below. Without it many VPN and proxy sessions fail to connect, which cuts income. The Docker image runs with `--net host` and the `NET_ADMIN`, `SETUID` and `SETGID` capabilities.
+> **Port forwarding recommended.** Forward the node's UDP range to maximize earnings; see **Port forwarding** below. Without it many VPN and proxy sessions fail to connect, which cuts income. The node runs on CashPilot's fenced bridge, or on your own network (`CASHPILOT_CONTAINER_NETWORK`), where the firewall rules are yours to supply (see [Isolation](../isolation.md)), with the `NET_ADMIN`, `SETUID` and `SETGID` capabilities.
 
 ## Cashing out
 
@@ -110,6 +110,26 @@ the router forward to match, and redeploy. A value equal to the default reads
 as a field left as it was, so the recorded range would stay. To take the
 default itself, remove the service from that machine (its data volume stays)
 and deploy again.
+
+Or keep the range on record and reserve it on the host, so the kernel stops
+handing its ports out to other programs, then redeploy without touching the
+router. For
+`56000:56100`, on the machine running the node, first read
+`sysctl net.ipv4.ip_local_reserved_ports`: if it already lists ranges, add
+`56000-56100` to them, comma-separated, and use that whole list in both
+commands below, or the first one drops the reservations already there.
+
+```bash
+sudo sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100
+echo 'net.ipv4.ip_local_reserved_ports = 56000-56100' | sudo tee /etc/sysctl.d/90-mysterium-ports.conf
+```
+
+The file under `/etc/sysctl.d/` keeps it after a reboot. A reservation only
+stops the kernel handing those ports out on its own: a program on the machine
+that binds one of them by number still takes it, and the node's start fails as
+before. The worker cannot read the host's setting (it runs on its own network,
+which has its own copy), so the Fleet warning about the range stays after you
+reserve it; once the range is reserved, redeploy anyway.
 
 **Check it.** After a few sessions, on the machine running the node:
 

@@ -53,6 +53,12 @@ LABEL_STATE_CREATED = "cashpilot.state-created"
 CASHPILOT_DEPLOYED = frozenset({"worker", "direct"})
 
 
+#: Linux's default ephemeral range (net.ipv4.ip_local_port_range): any program on
+#: the host can hold a port in it for a moment, and Docker publishing a port 1:1
+#: then fails the whole start.
+EPHEMERAL_PORTS = (32768, 60999)
+
+
 def drift_warnings_enabled() -> bool:
     """CASHPILOT_DRIFT_WARNINGS: off stops the worker reporting container settings
     and the UI judging them (app/drift.py). On unless set to 0, off, false or no."""

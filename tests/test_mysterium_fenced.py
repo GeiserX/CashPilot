@@ -16,6 +16,7 @@ stops it within 30 s if the fence or the container's shape goes.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from contextlib import asynccontextmanager
@@ -445,7 +446,7 @@ class TestIsolationCheck:
         found = isolation_check.host_netns_findings([_c("cashpilot-mysterium", "host", ["NET_ADMIN", "SETUID"])])
         assert found and found[0]["exposure"] is True
         assert "cashpilot-mysterium (NET_ADMIN)" in found[0]["detail"]
-        assert "Switch isolation on in Fleet, then redeploy them once" in found[0]["detail"]
+        assert "Redeploy them once to move them onto the fenced bridge" in found[0]["detail"]
 
     def test_control_net_admin_in_its_own_namespace_is_not(self):
         assert (
@@ -791,13 +792,15 @@ class TestAnOldHostNetworkNode:
         with pytest.raises(orchestrator.ContainerNetworkError) as refused:
             _raw_deploy(old=old, mode=lan_fence.MODE_LEGACY)
         # The catalog's name, the one on the dashboard card the owner redeploys from.
-        assert f"Switch isolation on in Fleet, then redeploy {MYST['name']}." in str(refused.value)
+        assert f"Switch isolation on in Fleet first, then redeploy {MYST['name']} once" in str(refused.value)
         old.stop.assert_not_called()
         old.remove.assert_not_called()
 
     def test_drift_still_flags_it_and_gives_the_order(self):
         found = " ".join(drift.container_drift(MYST, _shape(network_mode="host"), HOST_RECORD))
-        assert f"Switch isolation on in Fleet, then redeploy {MYST['name']} once" in found
+        assert "shares the host's network" in found
+        move = drift.move_advice(MYST, _shape(network_mode="host"), HOST_RECORD, lan_fence.MODE_LEGACY)
+        assert move["action"].startswith(f"Switch isolation on in Fleet first, then redeploy {MYST['name']} once")
 
     def test_control_a_fence_gated_one_in_legacy_mode_is_stopped(self, markers):
         node = _node(network_mode="bridge")
@@ -981,15 +984,17 @@ class TestTheMessagesNameTheService:
     def test_the_mode_refusal_names_the_service_it_is_given(self):
         problem = lan_fence.mode_problem(lan_fence.MODE_LEGACY, "Other")
         assert "Other runs only behind the LAN fence" in problem
-        assert problem.endswith("Switch isolation on in Fleet, then redeploy Other.")
+        assert problem.endswith(
+            "Switch isolation on in Fleet first, then redeploy Other once to move it onto the fenced bridge."
+        )
 
     def test_drift_names_the_service_and_claims_no_capability_it_lacks(self):
         other = {**MYST, "name": "Other", "docker": {**MYST["docker"], "cap_add": []}}
         shape = _shape(network_mode="host")
         shape["cap_add"] = []
         found = " ".join(drift.container_drift(other, shape, None))
-        assert "redeploy Other once" in found
         assert "NET_ADMIN" not in found
+        assert "Redeploy Other once" in drift.move_advice(other, shape, None, lan_fence.MODE_ON)["action"]
 
     def test_drift_flags_a_node_that_publishes_its_webui_but_not_its_range(self):
         found = drift.container_drift(MYST, _shape(udp=False), None)
@@ -1184,6 +1189,53 @@ class TestTheMoveNeedsTheOldIdentity:
             _raw_deploy(old=old)
         old.stop.assert_not_called()
         old.remove.assert_not_called()
+
+    def test_the_refusal_keeps_a_hold_kept_only_in_memory(self, markers):
+        # No record on disk: the hold could not be written, so memory is all there is.
+        orchestrator._MISMATCH_HELD["cashpilot-mysterium"] = "its identity is 0xb, not 0xa"
+        old = _node()
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not touched"):
+            _raw_deploy(old=old)
+        assert orchestrator._MISMATCH_HELD.get("cashpilot-mysterium") == "its identity is 0xb, not 0xa"
+        assert "0xb" in orchestrator.identity_problem(_node(status="exited"))
+
+    def test_the_refusal_leaves_the_record_on_disk_alone(self, markers):
+        # Written by someone else while the deploy ran: the refusal must not undo it.
+        old = _node()
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        real = orchestrator.read_node_identity
+
+        def read_and_race(container, slug):
+            orchestrator._remember_identity("cashpilot-mysterium", "MISMATCH written meanwhile")
+            return real(container, slug)
+
+        with (
+            patch.object(orchestrator, "read_node_identity", side_effect=read_and_race),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="not touched"),
+        ):
+            _raw_deploy(old=old)
+        assert orchestrator._identity_snapshot("cashpilot-mysterium") == "MISMATCH written meanwhile"
+
+    def test_the_refusal_keeps_a_hold_set_while_it_ran(self, markers):
+        orchestrator._MISMATCH_HELD["cashpilot-mysterium"] = "the older reason"
+        old = _node()
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        real = orchestrator.read_node_identity
+
+        def read_and_race(container, slug):
+            orchestrator._MISMATCH_HELD["cashpilot-mysterium"] = "the newer reason"
+            return real(container, slug)
+
+        with (
+            patch.object(orchestrator, "read_node_identity", side_effect=read_and_race),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="not touched"),
+        ):
+            _raw_deploy(old=old)
+        assert orchestrator._MISMATCH_HELD["cashpilot-mysterium"] == "the newer reason"
 
     def test_control_a_stopped_node_is_replaced_without_the_check(self, markers):
         old = _node(status="exited")
@@ -1622,3 +1674,123 @@ class TestTheEphemeralRangeHint:
 
     def test_control_another_refusal_gets_no_hint(self):
         assert orchestrator._ephemeral_hint("no such device /dev/net/tun") == ""
+
+
+# ---------------------------------------------------------------------------
+# The move off the host's network: one action for the worker's mode, then why
+# ---------------------------------------------------------------------------
+
+NEW_RECORD = {**HOST_RECORD, "env": {"UI_ADDRESS": "127.0.0.1", "UDP_PORTS": "23000:23029"}}
+
+
+class TestTheMoveAdvice:
+    @pytest.mark.parametrize(
+        ("mode", "says", "redeploy"),
+        [
+            (lan_fence.MODE_ON, f"Redeploy {MYST['name']} once to move it onto the fenced bridge.", True),
+            (lan_fence.MODE_OPERATOR, f"Redeploy {MYST['name']} once to move it onto your own network", True),
+            (lan_fence.MODE_LEGACY, "Switch isolation on in Fleet first, then redeploy", False),
+            (lan_fence.MODE_OFF, "Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy", False),
+            (lan_fence.MODE_UNSUPPORTED, "cannot be fenced on this worker", False),
+            (None, "if isolation is not on for this worker, switch it on in Fleet first", False),
+        ],
+    )
+    def test_the_action_fits_the_workers_mode(self, mode, says, redeploy):
+        move = drift.move_advice(MYST, _shape(network_mode="host"), NEW_RECORD, mode)
+        assert move["action"].startswith(says) or says in move["action"]
+        assert move["redeploy"] is redeploy
+        if mode in (lan_fence.MODE_ON, lan_fence.MODE_OPERATOR):
+            # Switching isolation on is refused in operator mode: a redeploy alone is the way.
+            assert "Switch isolation" not in move["action"] and "CASHPILOT_ISOLATION" not in move["action"]
+
+    def test_the_drift_reason_carries_no_action_of_its_own(self):
+        found = drift.container_drift(MYST, _shape(network_mode="host"), HOST_RECORD)
+        host = next(f for f in found if "host's network" in f)
+        assert host == "shares the host's network, where its NET_ADMIN reaches the host's firewall"
+
+    def test_a_recorded_range_in_the_ephemeral_range_is_flagged_before_the_redeploy(self):
+        move = drift.move_advice(MYST, _shape(network_mode="host"), HOST_RECORD, lan_fence.MODE_ON)
+        warning = move["warning"]
+        assert "56000:56100" in warning and "32768-60999" in warning
+        assert "Before you redeploy" in warning and "below 32768 other than the default" in warning
+        assert "23100:23129" in warning
+
+    def test_the_warning_offers_reserving_the_range_on_the_host_instead(self):
+        warning = drift.move_advice(MYST, _shape(network_mode="host"), HOST_RECORD, lan_fence.MODE_ON)["warning"]
+        assert "keep this range and reserve it on the host" in warning
+        assert "sudo sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in warning
+        # systemd-sysctl skips a file without .conf, so the file is named.
+        assert "net.ipv4.ip_local_reserved_ports = 56000-56100 in /etc/sysctl.d/90-mysterium-ports.conf" in warning
+        # Read before the write: sysctl -w replaces the whole list.
+        assert warning.index("First read sysctl net.ipv4.ip_local_reserved_ports") < warning.index("sudo sysctl -w")
+        assert "add 56000-56100 to them, comma-separated" in warning
+        # The kernel keeps it from automatic picks only; an explicit bind still takes the port.
+        assert "stops automatic picks only" in warning and "binds one of these ports by number" in warning
+        # The worker cannot read the host's reservation, so it says when to ignore the warning.
+        assert warning.endswith("If you've reserved this range on the host, you can redeploy.")
+
+    def test_the_reservation_names_the_recorded_range_not_a_fixed_one(self):
+        record = {**HOST_RECORD, "env": {"UDP_PORTS": "40000:40020"}}
+        warning = drift.move_advice(MYST, _shape(network_mode="host"), record, lan_fence.MODE_ON)["warning"]
+        assert "ip_local_reserved_ports=40000-40020" in warning and "56000" not in warning
+
+    def test_the_guide_and_the_upgrade_notes_give_the_same_reservation(self):
+        for doc in ("docs/guides/mysterium.md", "UPGRADING.md"):
+            text = (ROOT / doc).read_text(encoding="utf-8")
+            assert "sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in text, doc
+            assert "net.ipv4.ip_local_reserved_ports = 56000-56100" in text, doc
+            assert "/etc/sysctl.d/90-mysterium-ports.conf" in text, doc
+            flat = " ".join(text.split())
+            assert flat.index("read `sysctl net.ipv4.ip_local_reserved_ports`") < flat.index("sudo sysctl -w"), doc
+
+    def test_the_guide_no_longer_says_the_node_runs_on_the_host_network(self):
+        guide = (ROOT / "docs" / "guides" / "mysterium.md").read_text(encoding="utf-8")
+        assert "--net host" not in guide
+
+    def test_control_a_range_below_it_or_none_on_record_is_not(self):
+        for record in (NEW_RECORD, None, {**HOST_RECORD, "env": {}}):
+            assert drift.move_advice(MYST, _shape(network_mode="host"), record, lan_fence.MODE_ON)["warning"] is None
+
+    def test_control_a_node_already_off_the_host_network_gets_no_advice(self):
+        assert drift.move_advice(MYST, _shape(), NEW_RECORD, lan_fence.MODE_ON) is None
+
+    @pytest.mark.parametrize(
+        ("mode", "switch"),
+        [(lan_fence.MODE_ON, False), (lan_fence.MODE_OPERATOR, False), (lan_fence.MODE_LEGACY, True)],
+    )
+    def test_the_isolation_check_gives_the_same_action(self, mode, switch):
+        found = isolation_check.host_netns_findings([_c("cashpilot-mysterium", "host", ["NET_ADMIN"])], mode)
+        assert ("Switch isolation on in Fleet first" in found[0]["detail"]) is switch
+        assert "Redeploy them once" in found[0]["detail"] or "redeploy them once" in found[0]["detail"]
+
+    def test_the_mode_refusal_uses_the_same_advice(self):
+        assert lan_fence.move_advice(lan_fence.MODE_OFF, "Other") in lan_fence.mode_problem(lan_fence.MODE_OFF, "Other")
+        unknown = lan_fence.mode_problem("weird", "Other")
+        assert "Redeploy Other once" in unknown and "switch it on in Fleet first" in unknown
+
+    def test_the_dashboard_gets_the_workers_mode_and_the_warning(self):
+        from tests.test_drift import _deployed_row
+
+        row = _deployed_row(MYST, _shape(network_mode="host"), recorded=HOST_RECORD, isolation_mode="operator")
+        move = row["instance_details"][0]["drift_move"]
+        assert move["action"].startswith(f"Redeploy {MYST['name']} once to move it onto your own network")
+        assert "56000:56100" in move["warning"]
+
+    def test_the_dashboard_leads_with_the_action_and_offers_redeploy_only_where_it_works(self):
+        js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        assert "${escapeHtml(move.action)}${move.warning ? ` ${escapeHtml(move.warning)}` : ''}" in js
+        assert "!(move && move.redeploy === false)" in js
+
+
+def test_the_isolation_check_passes_the_workers_mode_to_the_finding():
+    client = MagicMock()
+    client.containers.list.return_value = []
+    with (
+        patch.object(lan_fence, "effective_network", return_value=(lan_fence.MODE_OPERATOR, "x")),
+        patch.object(isolation_check, "host_netns_findings", return_value=[]) as spy,
+        patch.object(isolation_check, "placement_findings", return_value=[]),
+        patch.object(isolation_check, "ipv6_findings", return_value=[]),
+        contextlib.suppress(Exception),
+    ):
+        isolation_check._run(client)
+    spy.assert_called_once_with([], lan_fence.MODE_OPERATOR)

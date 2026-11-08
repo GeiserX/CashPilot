@@ -279,6 +279,11 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # check (app/drift.py). None from a worker too old to send it.
                             "shape": c.get("shape"),
                             "_arch": sys_info.get("arch"),
+                            # The worker's isolation mode, for the drift advice on
+                            # a fence-gated node still on the host's network.
+                            "_isolation_mode": (
+                                (sys_info.get("isolation") or {}) if isinstance(sys_info.get("isolation"), dict) else {}
+                            ).get("mode"),
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
                             "_has_docker": worker_has_docker,
@@ -2618,8 +2623,8 @@ async def _instance_drift(
     inst: dict[str, Any],
     custom_image: str | None,
     specs: dict[tuple[str, int], dict[str, Any] | None],
-) -> tuple[list[str], bool]:
-    """How this running copy differs from what a redeploy would build, and whether it has a record.
+) -> tuple[list[str], bool, dict[str, Any] | None]:
+    """How this running copy differs from what a redeploy would build, whether it has a record, and the move advice.
 
     Never raises: a record that cannot be read leaves the copy judged on the
     catalog alone, and a check that fails says nothing rather than blanking
@@ -2637,10 +2642,11 @@ async def _instance_drift(
         found = drift.container_drift(
             svc, inst.get("shape"), recorded, custom_image=custom_image, worker_arch=inst.get("_arch")
         )
+        move = drift.move_advice(svc, inst.get("shape"), recorded, inst.get("_isolation_mode")) if found else None
     except Exception as exc:
         logger.warning("Drift check failed for %s on worker %s: %s", slug, wid, exc)
-        return [], False
-    return found, recorded is not None
+        return [], False, None
+    return found, recorded is not None, move
 
 
 @app.get("/api/services/deployed")
@@ -2786,12 +2792,14 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 and inst.get("deployed_by") in constants.CASHPILOT_DEPLOYED
                 and drift_ignored.get(f"{slug}|{inst.get('_worker_id')}") != drift.catalog_fingerprint(svc)
             ):
-                drift_found, has_record = await _instance_drift(
+                drift_found, has_record, move = await _instance_drift(
                     svc, slug, inst, custom_images.get(inst.get("_worker_id")), specs
                 )
                 if drift_found:
                     detail["drift"] = drift_found
                     detail["drift_has_record"] = has_record
+                    if move:
+                        detail["drift_move"] = move
             if inst.get("_is_android"):
                 detail["net_tx_24h"] = inst.get("_net_tx_24h", 0)
                 detail["net_rx_24h"] = inst.get("_net_rx_24h", 0)

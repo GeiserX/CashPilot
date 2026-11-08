@@ -163,7 +163,9 @@ docker:
 
 requirements:
   residential_ip: false
-  devices_per_ip: 0
+  # MystNodes help centre: one node per public IP; the others show offline
+  # (docs/research/per-ip-device-limits.md).
+  devices_per_ip: 1
   min_bandwidth: ""
   gpu: false
   min_storage: ""

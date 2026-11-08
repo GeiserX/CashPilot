@@ -1075,6 +1075,36 @@ def network_for_deploy() -> str | None:
     return NETWORK_NAME
 
 
+def move_advice(mode: str | None, service: str = "it", it: str = "it") -> str:
+    """The one thing to do to move a fence-gated node off the host's network, in this isolation mode.
+
+    ``on`` and ``operator`` take a redeploy alone (switching isolation on is
+    refused in ``operator`` mode); ``legacy`` needs isolation on first, ``off``
+    the setting changed, and Podman cannot be fenced at all. ``None`` is a
+    worker that reports no mode.
+    """
+    if mode == MODE_ON:
+        return f"Redeploy {service} once to move {it} onto the fenced bridge."
+    if mode == MODE_OPERATOR:
+        return f"Redeploy {service} once to move {it} onto your own network (CASHPILOT_CONTAINER_NETWORK)."
+    if mode == MODE_LEGACY:
+        return f"Switch isolation on in Fleet first, then redeploy {service} once to move {it} onto the fenced bridge."
+    if mode == MODE_OFF:
+        return (
+            f"Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy {service} once to move "
+            f"{it} onto the fenced bridge."
+        )
+    if mode == MODE_UNSUPPORTED:
+        return (
+            f"{PODMAN_UNSUPPORTED}, so {service} cannot be fenced on this worker. Run {it} on Docker, or on your "
+            "own network (CASHPILOT_CONTAINER_NETWORK)."
+        )
+    return (
+        f"Redeploy {service} once to move {it} onto the fenced bridge; if isolation is not on for this worker, "
+        "switch it on in Fleet first."
+    )
+
+
 def mode_problem(mode: str, service: str = "this service") -> str | None:
     """Why a fence-gated service cannot run in this isolation mode at all, or None.
 
@@ -1086,12 +1116,7 @@ def mode_problem(mode: str, service: str = "this service") -> str | None:
     """
     if mode in (MODE_ON, MODE_OPERATOR):
         return None
-    what = {
-        MODE_LEGACY: f"Switch isolation on in Fleet, then redeploy {service}.",
-        MODE_OFF: f"Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy {service}.",
-        MODE_UNSUPPORTED: "Run it on Docker with isolation on, or on your own network (CASHPILOT_CONTAINER_NETWORK).",
-    }.get(mode, f"Switch isolation on in Fleet, then redeploy {service}.")
-    return f"isolation is {mode} on this worker, and {service} runs only behind the LAN fence. {what}"
+    return f"isolation is {mode} on this worker, and {service} runs only behind the LAN fence. {move_advice(mode, service)}"
 
 
 def fence_problem(client: Any, service: str = "this service") -> str | None:
