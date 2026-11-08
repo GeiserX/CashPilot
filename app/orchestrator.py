@@ -825,7 +825,8 @@ def deploy_raw(
 
         # A mode that cannot run it at all (off, legacy) is refused here too,
         # while the running node is still running.
-        if problem := lan_fence.mode_problem(lan_fence.resolve_mode(client), service_name(slug)):
+        gated_mode = lan_fence.resolve_mode(client)
+        if problem := lan_fence.mode_problem(gated_mode, service_name(slug)):
             raise ContainerNetworkError(f"{slug} was not deployed: {problem} The running container was not touched.")
 
     # The pull is on this side of the line for the same reason: a registry outage
@@ -851,7 +852,15 @@ def deploy_raw(
     entrypoint = _get_entrypoint(slug)
     _refuse_init_image(image, image_config, entrypoint, command)
 
-    # Remove any existing container with the same name
+    # Replace any existing container with the same name. It is stopped and
+    # moved aside, not removed, until its replacement runs: Docker can still
+    # refuse the new one (a host port another program holds), and then the old
+    # one goes back as it was (_roll_back).
+    replaced = None
+    replaced_running = False
+    identity_before = _identity_snapshot(name)
+    held_before = _MISMATCH_HELD.get(name)
+    stopped_before = name in user_stopped()
     try:
         old = client.containers.get(name)
         # The name alone is not proof the container is this copy of this
@@ -865,6 +874,8 @@ def deploy_raw(
                 f"{name} already belongs to {old_slug} (copy {_instance_of(old)}), not to copy {instance} of "
                 f"{slug}. It was left running; remove it or deploy under another name."
             )
+        if problem := _aside_taken(client, old, name, slug):
+            raise ContainerRuntimeError(problem)
         volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
         for entry in kept:
             logger.warning(
@@ -913,12 +924,36 @@ def deploy_raw(
                     "without the check."
                 )
             _remember_identity(name, identity)
+        replaced_running = getattr(old, "status", "") == "running"
         try:
             old.stop(timeout=_get_stop_timeout(slug))
-        except APIError as exc:
+        except NotFound:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a timeout is no proof it stopped either
             logger.warning("Could not stop %s cleanly before replacing it: %s", name, exc)
-        logger.info("Removing existing container %s", name)
-        _remove_container(old, slug)
+            if _still_running(old):
+                # Its replacement would run beside it on the same identity volume.
+                _restore_identity(name, identity_before, held_before)
+                raise ContainerRuntimeError(
+                    f"{name} could not be stopped ({exc}), so it was not replaced and is still running. "
+                    "Try again in a minute.",
+                    409,
+                ) from exc
+        try:
+            replaced = _move_aside(client, old, name, slug)
+        except NotFound:
+            raise
+        except Exception as exc:  # noqa: BLE001 - whatever failed, the old node must run again
+            # A rename that timed out may still have happened: give it its name back.
+            with contextlib.suppress(Exception):
+                old.reload()
+                if str((old.attrs or {}).get("Name") or "").lstrip("/") != name:
+                    old.rename(name)
+            _restore_identity(name, identity_before, held_before)
+            restored = "The previous container was not replaced and " + _start_again(
+                client, old, replaced_running, gated, name
+            )
+            raise _deploy_failure(exc, restored, slug) from exc
     except NotFound:
         _ensure_volumes(client, volumes)
 
@@ -1006,16 +1041,241 @@ def deploy_raw(
         runtime=runtime or None,
         **resource_kwargs,
     )
-    container = client.containers.create(**run_kwargs) if gated else client.containers.run(detach=True, **run_kwargs)
+    created = None
+    try:
+        container = (
+            client.containers.create(**run_kwargs) if gated else client.containers.run(detach=True, **run_kwargs)
+        )
+        created = container
+        if gated:
+            _mark_stopped(name, False)
+            # Left created, not started, when the fence is not confirmed: the guard
+            # starts it as soon as it is, and nothing runs before that.
+            _require_fence(slug)
+            container.start()
+            from app import lan_fence
 
+            if problem := lan_fence._started_unattached(container, gated_mode):
+                raise ContainerRuntimeError(f"{name} did not come up on its network: {problem}.")
+    except ContainerNetworkError:
+        # The fence went between the checks above and the start: the new node is
+        # created and the guard starts it once the fence reads complete.
+        if gated:
+            _mark_failed(name, False)
+        _remove_replaced(replaced, name, slug)
+        raise
+    except Exception as exc:
+        restored = _roll_back(
+            client,
+            name,
+            slug,
+            replaced,
+            replaced_running,
+            identity_before,
+            stopped_before,
+            held_before=held_before,
+            created=created,
+            gated=gated,
+        )
+        raise _deploy_failure(exc, restored, slug) from exc
     if gated:
-        _mark_stopped(name, False)
-        # Left created, not started, when the fence is not confirmed: the guard
-        # starts it as soon as it is, and nothing runs before that.
-        _require_fence(slug)
-        container.start()
+        _mark_failed(name, False)
+    _remove_replaced(replaced, name, slug)
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
+
+
+#: Suffix of a container moved aside while its replacement is created.
+REPLACED_SUFFIX = "-replaced"
+
+
+def _move_aside(client: Any, old: Any, name: str, slug: str) -> Any | None:
+    """Rename the stopped ``old`` out of its name; remove it if it cannot be renamed. The renamed one, or None."""
+    aside = f"{name}{REPLACED_SUFFIX}"
+    with contextlib.suppress(NotFound):
+        # One left by a deploy that did not finish is older than ``old``.
+        leftover = client.containers.get(aside)
+        if leftover is not old and getattr(leftover, "id", None) != getattr(old, "id", None):
+            _remove_container(leftover, slug)
+    # A rename Docker refuses raises: the old one keeps its name and is never
+    # removed before its replacement runs.
+    old.rename(aside)
+    logger.info("Moved %s aside as %s until its replacement runs", name, aside)
+    return old
+
+
+def _aside_taken(client: Any, old: Any, name: str, slug: str) -> str | None:
+    """Why the name ``old`` would be moved aside to belongs to another container, or None."""
+    aside = f"{name}{REPLACED_SUFFIX}"
+    try:
+        leftover = client.containers.get(aside)
+    except NotFound:
+        return None
+    if leftover is old or getattr(leftover, "id", None) == getattr(old, "id", None):
+        return None
+    labels = leftover.labels if isinstance(getattr(leftover, "labels", None), dict) else {}
+    if labels.get(LABEL_SERVICE) == slug and _instance_of(leftover) == _instance_of(old):
+        return None
+    return (
+        f"{name} was not replaced: {aside}, the name it is moved aside to while its replacement starts, belongs to "
+        f"{labels.get(LABEL_SERVICE) or 'a container CashPilot did not deploy'}. The running container was not "
+        "touched; remove or rename that container, then redeploy."
+    )
+
+
+def _still_running(container: Any) -> bool:
+    try:
+        container.reload()
+    except NotFound:
+        return False
+    except Exception:  # noqa: BLE001 - not known stopped is treated as running
+        return True
+    return getattr(container, "status", "") == "running"
+
+
+def _remove_replaced(replaced: Any | None, name: str, slug: str) -> None:
+    """Remove the old container once its replacement is in place; a failure leaves a leftover only."""
+    if replaced is None:
+        return
+    try:
+        _remove_container(replaced, slug)
+    except Exception as exc:  # noqa: BLE001 - the guard never starts it, and the next deploy removes it
+        logger.warning("Could not remove %s%s after its replacement was created: %s", name, REPLACED_SUFFIX, exc)
+
+
+def _start_again(client: Any, old: Any, was_running: bool, gated: bool, name: str) -> str:
+    """Start the previous container again if it ran, a gated one only behind a complete fence. Says how it is."""
+    if not was_running:
+        return "is stopped as it was."
+    if gated and not predates_fence(old):
+        from app import lan_fence
+
+        try:
+            fence = lan_fence.fence_problem(client)
+        except Exception as exc:  # noqa: BLE001 - not confirmed is not complete
+            fence = f"the fence could not be checked ({exc})"
+        if fence:
+            logger.warning("Not starting %s again yet: %s", name, fence)
+            return f"is kept stopped until the LAN fence is complete again ({fence}); the worker starts it then."
+    try:
+        old.start()
+    except Exception as exc:  # noqa: BLE001 - reported to the caller
+        logger.warning("Could not start %s again: %s", name, exc)
+        return f"could not be started again ({exc})."
+    return "is running again."
+
+
+def _roll_back(
+    client: Any,
+    name: str,
+    slug: str,
+    replaced: Any | None,
+    was_running: bool,
+    identity_before: str | None,
+    stopped_before: bool,
+    *,
+    held_before: str | None = None,
+    created: Any | None = None,
+    gated: bool,
+) -> str:
+    """Undo a deploy whose new container could not be created or started. Says what was put back.
+
+    The half-made container goes, the old one gets its name back and runs
+    again if it ran, and the identity and stop records are as they were. A
+    leftover that cannot be removed is marked, so the guard never starts it.
+    """
+    leftover_gone = True
+    taken = False
+    try:
+        current = client.containers.get(name)
+        # Only what this deploy made: its own container, or (when Docker
+        # failed inside the create-and-start call) one that is not running.
+        # A running one there is another deploy's, and it is left alone.
+        if created is not None:
+            ours = getattr(current, "id", None) == getattr(created, "id", None)
+        else:
+            ours = getattr(current, "status", "") != "running"
+        if ours:
+            _remove_container(current, slug)
+        else:
+            leftover_gone, taken = False, True
+    except NotFound:
+        pass
+    except Exception as exc:  # noqa: BLE001 - reported below
+        leftover_gone = False
+        logger.warning("Could not remove the container the failed deploy of %s left: %s", name, exc)
+    _restore_identity(name, identity_before, held_before)
+    _mark_stopped(name, stopped_before)
+    if gated and not leftover_gone and not taken:
+        _mark_failed(name, True)
+    if replaced is None:
+        return "No container ran under that name before, so nothing was put back."
+    if taken:
+        return (
+            f"Another deploy took the name meanwhile, so the previous container is kept, stopped, as "
+            f"{name}{REPLACED_SUFFIX}."
+        )
+    if not leftover_gone:
+        return (
+            f"The previous container is kept, stopped, as {name}{REPLACED_SUFFIX}: the failed one still holds "
+            "the name. Remove it, then redeploy."
+        )
+    try:
+        replaced.rename(name)
+    except Exception as exc:  # noqa: BLE001 - reported to the caller
+        logger.warning("Could not put %s back: %s", name, exc)
+        return f"The previous container could not be put back ({exc}); it is kept as {name}{REPLACED_SUFFIX}."
+    logger.info("Put the previous %s back after a failed deploy", name)
+    return "The previous container was put back and " + _start_again(client, replaced, was_running, gated, name)
+
+
+def _deploy_failure(exc: BaseException, restored: str, slug: str = "") -> ContainerRuntimeError:
+    """The error a failed create or start answers with, after the roll-back."""
+    if isinstance(exc, ContainerRuntimeError):
+        return ContainerRuntimeError(f"{exc} {restored}", exc.status_code)
+    refusal = proxy_refusal(exc) if isinstance(exc, APIError) else None
+    if refusal:
+        return ContainerRuntimeError(f"{refusal} {restored}", 403)
+    if isinstance(exc, APIError):
+        reason = " ".join(str(exc.explanation or exc).split())[:300]
+        return ContainerRuntimeError(
+            f"Docker refused the container: {reason}{_ephemeral_hint(reason, slug)} {restored}"
+        )
+    return ContainerRuntimeError(f"The container could not be created: {exc}. {restored}", 500)
+
+
+#: Linux's default ephemeral range (net.ipv4.ip_local_port_range).
+EPHEMERAL_PORTS = (32768, 60999)
+
+
+def _ephemeral_hint(reason: str, slug: str = "") -> str:
+    """Why a taken UDP port in Linux's ephemeral range failed the start, and what to do.
+
+    The setting to change and its default come from the service's catalog
+    entry (``udp_port_range``); a service without one gets the general advice.
+    """
+    if "already" not in reason:
+        return ""
+    for port in re.findall(r":(\d+)/udp", reason):
+        if EPHEMERAL_PORTS[0] <= int(port) <= EPHEMERAL_PORTS[1]:
+            why = (
+                f" UDP port {port} is in Linux's ephemeral range ({EPHEMERAL_PORTS[0]}-{EPHEMERAL_PORTS[1]}), where "
+                "any program on the host can hold a port for a moment, and one taken port fails the whole start."
+            )
+            docker_conf = ((get_service(slug) if get_service and slug else None) or {}).get("docker") or {}
+            rng = docker_conf.get("udp_port_range")
+            key = str(rng.get("env") or "") if isinstance(rng, dict) else ""
+            if not key:
+                return why + f" Publish it on a port below {EPHEMERAL_PORTS[0]} instead."
+            default = next(
+                (str(v.get("default") or "") for v in docker_conf.get("env") or [] if v.get("key") == key), ""
+            )
+            shown = f" (the default is {default})" if default else ""
+            return why + (
+                f" Set {key} to a range below {EPHEMERAL_PORTS[0]}{shown} and forward that range on your router "
+                "instead."
+            )
+    return ""
 
 
 def _named_volumes(volumes: dict[str, Any] | list[str] | None) -> list[str]:
@@ -1192,6 +1452,49 @@ def _mark_stopped(name: str, stopped: bool, *, strict: bool = False) -> None:
         logger.warning("Could not record that %s was %s: %s", name, "stopped" if stopped else "started", exc)
 
 
+#: Fence-gated containers a failed deploy left that could not be removed. The
+#: guard never starts one; the next deploy that succeeds clears it.
+FAILED_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".fence_gated_failed")
+
+
+#: The last mark the file could not take, by container name. A deploy that
+#: worked must lift the mark even when /data cannot be written, or the guard
+#: would keep stopping the node the owner just redeployed.
+_FAILED_UNWRITTEN: dict[str, bool] = {}
+
+
+def _failed_on_disk() -> set[str]:
+    try:
+        with open(FAILED_MARKER, encoding="utf-8") as fh:
+            return {line.strip() for line in fh if line.strip()}
+    except OSError:
+        return set()
+
+
+def deploy_failed() -> set[str]:
+    names = _failed_on_disk()
+    for name, failed in _FAILED_UNWRITTEN.items():
+        names = names | {name} if failed else names - {name}
+    return names
+
+
+def _mark_failed(name: str, failed: bool) -> None:
+    names = _failed_on_disk()
+    if (name in names) == failed:
+        _FAILED_UNWRITTEN.pop(name, None)
+        return
+    names = names | {name} if failed else names - {name}
+    try:
+        with open(FAILED_MARKER, "w", encoding="utf-8") as fh:
+            fh.write("".join(f"{n}\n" for n in sorted(names)))
+        _FAILED_UNWRITTEN.pop(name, None)
+    except OSError as exc:
+        _FAILED_UNWRITTEN[name] = failed
+        logger.warning(
+            "Could not record that the last deploy of %s %s: %s", name, "failed" if failed else "worked", exc
+        )
+
+
 def predates_fence(container: Any) -> bool:
     """A fence-gated service's container from 2.0.6 or earlier: on the host's network.
 
@@ -1281,6 +1584,37 @@ def _identity_file(name: str) -> str:
 #: whose record could not be written must still hold, or the stopped node
 #: would read as unchecked and the guard would start it again every pass.
 _MISMATCH_HELD: dict[str, str] = {}
+
+
+def _identity_snapshot(name: str) -> str | None:
+    """The identity record exactly as it is, or None when there is none."""
+    try:
+        with open(_identity_file(name), encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def _restore_identity(name: str, snapshot: str | None, held: str | None = None) -> None:
+    """Put the identity record back as _identity_snapshot found it, and a hold kept only in memory."""
+    path = _identity_file(name)
+    try:
+        if snapshot is None:
+            if os.path.exists(path):
+                os.remove(path)
+        else:
+            os.makedirs(IDENTITY_DIR, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(snapshot)
+    except OSError as exc:
+        logger.warning("Could not restore the identity record of %s: %s", name, exc)
+    word, _, reason = (snapshot or "").strip().partition(" ")
+    if held is not None:
+        _MISMATCH_HELD[name] = held
+    elif word == "MISMATCH":
+        _MISMATCH_HELD[name] = reason
+    else:
+        _MISMATCH_HELD.pop(name, None)
 
 
 def _pending_identity(name: str) -> str | None:
@@ -1377,7 +1711,11 @@ def _require_startable(container: Any, slug: str) -> None:
         mode = lan_fence.resolve_mode(_get_client())
     except RuntimeError as exc:
         raise ContainerNetworkError(f"{slug} was not started: the isolation mode could not be read ({exc})") from None
-    problem = gated_spec_problem(container, mode) or identity_problem(container)
+    problem = (
+        (lan_fence.FAILED_DEPLOY if getattr(container, "name", None) in deploy_failed() else None)
+        or gated_spec_problem(container, mode)
+        or identity_problem(container)
+    )
     if problem:
         raise ContainerNetworkError(f"{slug} was not started: {problem}")
 
@@ -1422,8 +1760,41 @@ def gated_spec_problem(container: Any, mode: str | None = None) -> str | None:
     if mode in (lan_fence.MODE_ON, lan_fence.MODE_OPERATOR):
         settings = attrs.get("NetworkSettings") if isinstance(attrs.get("NetworkSettings"), dict) else {}
         attached = settings.get("Networks") if isinstance(settings.get("Networks"), dict) else {}
+        if network_mode not in attached:
+            return f"it is not attached to {network_mode}, so it would start with no network"
         if extra := sorted(set(attached) - {network_mode}):
             return f"it is also attached to {', '.join(extra)}, where the fence does not cover it"
+        bindings = host.get("PortBindings") if isinstance(host.get("PortBindings"), dict) else {}
+        ui = docker_conf.get("ui_port")
+        if isinstance(ui, dict) and f"{ui.get('port')}/tcp" not in bindings:
+            return f"it does not publish its WebUI port {ui.get('port')}"
+        rng = docker_conf.get("udp_port_range")
+        if isinstance(rng, dict):
+            wanted = _env_port_range(config, str(rng.get("env") or ""))
+            if wanted is None and not any(k.endswith("/udp") for k in bindings):
+                return "it publishes none of its UDP ports"
+            if wanted is not None:
+                missing = [p for p in range(wanted[0], wanted[1] + 1) if f"{p}/udp" not in bindings]
+                if missing:
+                    return (
+                        f"it does not publish UDP {missing[0]}"
+                        + (f" and {len(missing) - 1} more" if len(missing) > 1 else "")
+                        + f" of its range {wanted[0]}:{wanted[1]}"
+                    )
+    return None
+
+
+def _env_port_range(config: dict[str, Any], key: str) -> tuple[int, int] | None:
+    """The start:end range the container's own env sets in ``key``, or None when it sets none it can read."""
+    if not key:
+        return None
+    for entry in config.get("Env") or []:
+        name, _, value = str(entry).partition("=")
+        if name == key:
+            m = re.fullmatch(r"\s*(\d{1,5}):(\d{1,5})\s*", value)
+            if m and int(m[1]) <= int(m[2]) <= 65535:
+                return int(m[1]), int(m[2])
+            return None
     return None
 
 
