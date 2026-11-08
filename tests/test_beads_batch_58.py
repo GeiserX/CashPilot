@@ -346,5 +346,7 @@ class TestTheReleaseSkipRuleIsReachable:
     def test_no_release_bookkeeping_leaks_into_the_changelog(self):
         """The outcome, not just the ordering."""
         entries = [ln for ln in CHANGELOG.read_text(encoding="utf-8").splitlines() if ln.startswith("- ")]
-        leaked = [e for e in entries if re.match(r"- (chore\(release\)|Release v?[0-9])", e)]
+        # Bookkeeping is a bare version line ("Release v1.2.3"), not a feature whose
+        # subject starts with the word, such as "Release 2.0, because ..." (#652).
+        leaked = [e for e in entries if re.match(r"- (chore\(release\)|Release v?\d+(\.\d+)*( \(#\d+\))?$)", e)]
         assert not leaked, leaked
