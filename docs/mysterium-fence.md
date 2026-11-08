@@ -3,7 +3,10 @@
 Through 2.0.6, CashPilot ran a [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE)
 node on the host's network. From 2.0.7 it runs in its own network namespace
 on the fenced earner bridge, like every other earner, and the worker starts it
-only once the LAN fence is confirmed.
+only once the LAN fence is confirmed. That is the `on` isolation mode. On a
+network of your own (`CASHPILOT_CONTAINER_NETWORK`) CashPilot writes and checks
+no fence, so your firewall rules, tested from inside the node, are what keep it
+off your LAN.
 [Mysterium on the fenced bridge](isolation.md#mysterium-on-the-fenced-bridge)
 explains why and how. This page is the step-by-step move for a node you
 already run, and how to prove afterwards that it worked.
@@ -155,10 +158,12 @@ docker exec cashpilot-mysterium sh -c 'for t in 192.168.1.1:80 192.168.1.20:22; 
 
 # From inside the node: the internet and the broker must work.
 docker exec cashpilot-mysterium nc -z -w 5 1.1.1.1 443 && echo "internet ok"
-docker exec cashpilot-mysterium nc -z -w 5 broker.mysterium.network 4222 && echo "broker ok"
+docker exec cashpilot-mysterium nc -z -w 5 broker.mysterium.network 4222 && echo "broker port reachable"
 ```
 
-Only a target the host reached counts. A `REACHED` line from inside the node
+The broker line proves only that the TCP port answers, not that the node's
+session with the broker works; the node's log shows that. Only a target the
+host reached counts. A `REACHED` line from inside the node
 means the fence is not doing its job on that path: run **Check isolation** and
 follow its fix. [Test your isolation](isolation-check.md#mysterium) has a
 version of this probe that runs in a separate container with no capabilities,
@@ -185,10 +190,15 @@ sessions never connect directly.
 - **The Fleet page says the node is held stopped.** The worker could not read
   the fence back complete, or the container changed shape (privileged, a
   capability or image its catalog entry does not give it, a restart policy, the
-  wrong network). The message names which. The worker writes the fence again
-  and starts the node on the next check once it reads complete.
+  wrong network). The message names which. For a missing fence rule, the
+  worker writes the fence again and starts the node on a later check once it
+  reads complete. For a container that changed shape, redeploy the node from
+  the dashboard.
 - **"address already in use" on a UDP port.** Another program on the host
-  holds a port in the range. See the next section.
+  holds a port in the range. In releases after 2.1.0 the worker puts the old node back and
+  starts it again when Docker refuses the new one, so you keep earning while
+  you pick a free range; on an older worker the old container is already
+  gone. See the next section.
 - **An identity mismatch.** See [Same identity](#same-identity).
 
 ## Choosing the UDP port range
@@ -226,7 +236,9 @@ start.
     ```
 
     Put the same full list in a file under `/etc/sysctl.d/` so it survives a
-    reboot, and check no other file there sets it too. On Unraid, `/etc` is
+    reboot, and check no other sysctl file (`/etc/sysctl.conf`,
+    `/usr/lib/sysctl.d/`, `/run/sysctl.d/`) sets it too. After the next
+    reboot, read the value again. On Unraid, `/etc` is
     rebuilt at every boot: add the `sysctl -w` line to `/boot/config/go`,
     above the line that starts `emhttp`, so it runs before Docker starts.
 2. **Check nothing holds the range now**, before you deploy:
@@ -235,7 +247,7 @@ start.
     sudo ss -uanp '( sport >= :<start> and sport <= :<end> )'
     ```
 
-    No output means the range is free. Two holders are expected: an old
+    No rows under the header means the range is free. Two holders are expected: an old
     node still on the host's network shows as `myst`, and its sockets close
     when the move stops it; a node already on the bridge shows as
     `docker-proxy`. A `docker-proxy` can also belong to another container,
@@ -263,7 +275,8 @@ in the deploy form when they overlap.
 
 ### What each port costs
 
-Docker runs its port proxy, `docker-proxy`, as a separate host process per
+With Docker's default settings (the userland proxy on), Docker runs its port
+proxy, `docker-proxy`, as a separate host process per
 published port and address family, so a range published on IPv4 and IPv6 runs
 two processes per port. These run on the host, outside the node's container,
 so `docker stats` does not count them and the node's memory limit does not
@@ -275,7 +288,8 @@ splits pages the processes share, it was about 250 MB
 ([Limits](isolation.md#limits)). Either way the cost grows with every port. A
 30-port range runs about 60 of these processes.
 
-To see what they cost on your host:
+To see what they cost on your host (this counts every container's published
+ports, not only Mysterium's):
 
 ```bash
 ps -C docker-proxy -o rss= | awk '{s+=$1} END {printf "%d processes, %.0f MB resident\n", NR, s/1024}'
@@ -294,3 +308,8 @@ always has a working forward:
    ports in the node's log, or `Method:manual Success:true` lines
    ([Port forwarding](guides/mysterium.md#port-forwarding)).
 4. Delete the old forward.
+
+To go back to the catalog's default range, typing it in is not enough: the
+form treats the prefilled default as untouched and keeps the range on record.
+Remove the service from that machine (its data volume stays) and deploy it
+again.

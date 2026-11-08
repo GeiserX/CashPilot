@@ -201,16 +201,18 @@ need the host and port the earner connects to. Its log usually names them
 the proxy's answer to its `CONNECT` request:
 
 ```bash
-# HTTP CONNECT proxy
-curl -v -m 15 -o /dev/null --noproxy '' -x 'http://USER:PASS@gate.example.net:8080' https://earner-host.example:443/
+# HTTP CONNECT proxy; curl asks for the password, so it stays out of your shell history
+curl -v -m 15 -o /dev/null --noproxy '' -x 'http://gate.example.net:8080' --proxy-user USER https://earner-host.example:443/
 # SOCKS5 proxy, name resolved by the proxy
-curl -v -m 15 -o /dev/null --noproxy '' -x 'socks5h://USER:PASS@gate.example.net:7000' https://earner-host.example:443/
+curl -v -m 15 -o /dev/null --noproxy '' -x 'socks5h://gate.example.net:7000' --proxy-user USER https://earner-host.example:443/
 ```
 
 A `403`, `Access violation`, `connection not allowed by ruleset` or a closed
 connection right after the `CONNECT` means the proxy refuses that host or
-port. Try the earner's real port, not only 443: a proxy that allows 443 and
-nothing else passes a 443 test.
+port. A `200` to the `CONNECT` means the proxy let it through, so a TLS
+error after that comes from the far server or the protocol, not the proxy.
+Try the earner's real port, not only 443: a proxy that allows 443 and nothing
+else passes a 443 test.
 
 **After you deploy, through the copy's own tunnel.** Join the tunnel's
 network namespace with a throwaway container. Run the same probe once from
@@ -221,12 +223,12 @@ TUN=cashpilot-tunnel-<service>-p<proxy id>
 URL=https://earner-host.example:443/
 
 # Control: straight from the box
-docker run --rm --cap-drop ALL curlimages/curl:8.10.1 -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
+docker run --rm --cap-drop ALL curlimages/curl:8.10.1 --noproxy '*' -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
 # Through the proxy
-docker run --rm --cap-drop ALL --network "container:$TUN" curlimages/curl:8.10.1 -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
+docker run --rm --cap-drop ALL --network "container:$TUN" curlimages/curl:8.10.1 --noproxy '*' -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
 
-# What the proxy answered, if it refused
-docker logs "$TUN" 2>&1 | grep -i 'replied with\|error' | tail -5
+# What the proxy answered, if it refused, in the last minute only
+docker logs --since 1m "$TUN" 2>&1 | grep -i 'replied with\|error'
 ```
 
 Any HTTP status from the far server, even `404`, means the path works. A
@@ -235,7 +237,8 @@ reply from server` through the tunnel, where the control got a status, means
 something closed the connection. If the proxy refused it, the tunnel's log has
 a line such as `Server replied with 403 [Reason: Access violation]`, naming the
 port; the address in it is a placeholder from the tunnel's DNS, not the real
-one. With no such line, the earner's server may be refusing the proxy's exit
+one. The earner's own traffic shares this log, so match the port and the time
+of your probe. With no such line, the earner's server may be refusing the proxy's exit
 IP rather than the proxy refusing the server, since the control and the
 tunnel leave from different addresses.
 
@@ -257,7 +260,8 @@ device and tries again: first after 6 minutes, then at doubling intervals up
 to 4 hours apart. After 24 hours without success it stops and sends a notice,
 to the bell and to your notification channel, with the manual step. It needs that provider's credentials saved in CashPilot.
 While it is still trying, the dashboard does not ask you to add the device by
-hand. A redeploy starts a new 24 hours.
+hand. A redeploy after CashPilot gave up starts a new 24 hours; a redeploy
+while it is still trying keeps the current window.
 
 ## Exit IPs and grouping
 
@@ -414,6 +418,9 @@ What changes:
   relay carries the traffic further and slower; a direct connection between
   the two sites avoids it.
 
-Set it up with the steps in [Tailscale exit nodes](#tailscale-exit-nodes),
+On a Linux machine, the exit node also needs IP forwarding turned on before
+Tailscale lets it advertise itself; Tailscale's
+[exit node guide](https://tailscale.com/kb/1103/exit-nodes) has the commands
+per system. Then set it up with the steps in [Tailscale exit nodes](#tailscale-exit-nodes),
 then add one copy per service you move, and remove that service from the
 second site's worker if one still runs there.

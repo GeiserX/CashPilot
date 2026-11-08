@@ -214,7 +214,9 @@ in each `services/*/*.yml`) are limits, not usage, but they show the spread:
 A [proxied copy](proxies.md) adds a tunnel container next to each earner.
 
 **Measure on the box.** The **Dashboard** shows each container's CPU and
-memory, refreshed every few minutes. For a snapshot of everything at once:
+memory, refreshed every few minutes, for the services it reports; earners
+you started outside CashPilot may not show there. For a snapshot of everything
+at once:
 
 ```bash
 docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'
