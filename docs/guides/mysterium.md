@@ -22,7 +22,7 @@ MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on 
 
 > **One node per public IP.** Mysterium strictly enforces one active node per public IP address. Additional nodes on the same IP show as offline and earn nothing. Do not run on a phone if a Docker node is already running on the same network. Use separate public IPs (e.g. dual WAN, different locations) for additional nodes. Fleet warns before a second node is deployed behind an address that already has one.
 
-> **Port forwarding recommended.** Forward the node's UDP range to maximize earnings; see **Port forwarding** below. Without it many VPN and proxy sessions fail to connect, which cuts income. The node runs behind CashPilot's LAN fence, on its fenced bridge or your own network (see [Isolation](../isolation.md)), with the `NET_ADMIN`, `SETUID` and `SETGID` capabilities.
+> **Port forwarding recommended.** Forward the node's UDP range to maximize earnings; see **Port forwarding** below. Without it many VPN and proxy sessions fail to connect, which cuts income. The node runs on CashPilot's fenced bridge, or on your own network (`CASHPILOT_CONTAINER_NETWORK`), where the firewall rules are yours to supply (see [Isolation](../isolation.md)), with the `NET_ADMIN`, `SETUID` and `SETGID` capabilities.
 
 ## Cashing out
 

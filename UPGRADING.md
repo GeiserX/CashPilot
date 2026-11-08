@@ -53,10 +53,12 @@ drift, and **Check isolation** fails on it.
    would stay; to take the default itself, remove the service from that
    machine (its data volume stays) and deploy again.
    Or keep the range and reserve it on the host instead, with no router
-   change: `sudo sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100` (use
-   your range, with a dash, added to any ranges already listed there), and the
-   line `net.ipv4.ip_local_reserved_ports = 56000-56100` in a file under
-   `/etc/sysctl.d/` so it survives a reboot. It stops automatic picks only; a
+   change. First read `sysctl net.ipv4.ip_local_reserved_ports`: if it lists
+   ranges, add yours (with a dash) to them, comma-separated, and use the whole
+   list in both places, or the write drops them. Then run
+   `sudo sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100` and put the
+   line `net.ipv4.ip_local_reserved_ports = 56000-56100` in
+   `/etc/sysctl.d/90-mysterium-ports.conf` so it survives a reboot. It stops automatic picks only; a
    program that binds one of the ports by number still fails the start. The worker cannot see the host's
    reservation, so Fleet keeps warning about the range; once it is reserved,
    redeploy anyway.

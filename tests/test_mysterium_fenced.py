@@ -1219,6 +1219,24 @@ class TestTheMoveNeedsTheOldIdentity:
             _raw_deploy(old=old)
         assert orchestrator._identity_snapshot("cashpilot-mysterium") == "MISMATCH written meanwhile"
 
+    def test_the_refusal_keeps_a_hold_set_while_it_ran(self, markers):
+        orchestrator._MISMATCH_HELD["cashpilot-mysterium"] = "the older reason"
+        old = _node()
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        real = orchestrator.read_node_identity
+
+        def read_and_race(container, slug):
+            orchestrator._MISMATCH_HELD["cashpilot-mysterium"] = "the newer reason"
+            return real(container, slug)
+
+        with (
+            patch.object(orchestrator, "read_node_identity", side_effect=read_and_race),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="not touched"),
+        ):
+            _raw_deploy(old=old)
+        assert orchestrator._MISMATCH_HELD["cashpilot-mysterium"] == "the newer reason"
+
     def test_control_a_stopped_node_is_replaced_without_the_check(self, markers):
         old = _node(status="exited")
         old.exec_run.return_value = (1, b"")
@@ -1700,9 +1718,12 @@ class TestTheMoveAdvice:
     def test_the_warning_offers_reserving_the_range_on_the_host_instead(self):
         warning = drift.move_advice(MYST, _shape(network_mode="host"), HOST_RECORD, lan_fence.MODE_ON)["warning"]
         assert "keep this range and reserve it on the host" in warning
-        assert "sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in warning
-        assert "net.ipv4.ip_local_reserved_ports = 56000-56100 in a file under /etc/sysctl.d/" in warning
-        assert "add it to any ranges already listed there" in warning
+        assert "sudo sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in warning
+        # systemd-sysctl skips a file without .conf, so the file is named.
+        assert "net.ipv4.ip_local_reserved_ports = 56000-56100 in /etc/sysctl.d/90-mysterium-ports.conf" in warning
+        # Read before the write: sysctl -w replaces the whole list.
+        assert warning.index("First read sysctl net.ipv4.ip_local_reserved_ports") < warning.index("sudo sysctl -w")
+        assert "add 56000-56100 to them, comma-separated" in warning
         # The kernel keeps it from automatic picks only; an explicit bind still takes the port.
         assert "stops automatic picks only" in warning and "binds one of these ports by number" in warning
         # The worker cannot read the host's reservation, so it says when to ignore the warning.
@@ -1718,10 +1739,9 @@ class TestTheMoveAdvice:
             text = (ROOT / doc).read_text(encoding="utf-8")
             assert "sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in text, doc
             assert "net.ipv4.ip_local_reserved_ports = 56000-56100" in text, doc
-            assert "/etc/sysctl.d/" in text, doc
-        guide = (ROOT / "docs" / "guides" / "mysterium.md").read_text(encoding="utf-8")
-        # Read before the write: the sysctl -w replaces the whole list.
-        assert guide.index("read\n`sysctl net.ipv4.ip_local_reserved_ports`") < guide.index("sudo sysctl -w")
+            assert "/etc/sysctl.d/90-mysterium-ports.conf" in text, doc
+            flat = " ".join(text.split())
+            assert flat.index("read `sysctl net.ipv4.ip_local_reserved_ports`") < flat.index("sudo sysctl -w"), doc
 
     def test_the_guide_no_longer_says_the_node_runs_on_the_host_network(self):
         guide = (ROOT / "docs" / "guides" / "mysterium.md").read_text(encoding="utf-8")
