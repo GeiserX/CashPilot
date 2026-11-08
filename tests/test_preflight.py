@@ -131,6 +131,7 @@ class TestPreflightEndpoint:
             with (
                 patch.object(main, "_require_auth_api", lambda r: None),
                 patch.object(main.database, "get_deployments", AsyncMock(return_value=deployments or [])),
+                patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=None)),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=[worker] if worker else [])),
             ):
                 return await main.api_service_preflight(MagicMock(), slug, worker_id=worker_id, instances=instances)

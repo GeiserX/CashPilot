@@ -5448,6 +5448,14 @@ async def api_service_preflight(
         for c in worker.get("containers") or []
         if isinstance(c, dict) and egress.container_slug(c) == slug and str(c.get("status", "")).lower() == "running"
     )
+    if instances is None and running_here:
+        # The count the deploy itself uses: a record of two copies with one
+        # running starts the second one, which is a new device.
+        recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+        try:
+            instances = int((recorded or {}).get("instances") or 1)
+        except (TypeError, ValueError):
+            instances = 1
     replacing = running_here > 0 and (instances is None or instances <= running_here)
 
     return preflight.assess(

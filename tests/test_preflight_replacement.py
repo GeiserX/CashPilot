@@ -37,9 +37,10 @@ def _worker(worker_id, *, running=0, egress_ip="88.12.34.56", slug="mysterium"):
     }
 
 
-async def _preflight(workers, *, instances=None, worker_id=1):
+async def _preflight(workers, *, instances=None, worker_id=1, recorded=None):
     with (
         patch.object(main, "_require_auth_api", lambda r: None),
+        patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=recorded)),
         patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
         patch.object(main, "_decoded_worker", lambda w: w),
     ):
@@ -59,6 +60,17 @@ class TestAReplacementIsNotASecondCopy:
         out = await _preflight([_worker(1, running=1)])
         assert _per_ip(out) == []
         assert out["verdict"] != preflight.EARNS_NOTHING
+
+    @pytest.mark.asyncio
+    async def test_a_redeploy_at_its_recorded_count_does_not_warn(self):
+        out = await _preflight([_worker(1, running=1)], recorded={"instances": 1})
+        assert _per_ip(out) == []
+
+    @pytest.mark.asyncio
+    async def test_a_record_of_more_copies_than_run_starts_another_one(self):
+        # No count asked: the deploy takes the recorded two, and one is not running.
+        out = await _preflight([_worker(1, running=1)], recorded={"instances": 2})
+        assert [f["verdict"] for f in _per_ip(out)] == [preflight.EARNS_NOTHING]
 
     @pytest.mark.asyncio
     async def test_the_deploy_forms_redeploy_at_the_same_count_does_not_warn(self):
