@@ -1402,16 +1402,19 @@ async def _retry_device_links() -> None:
 async def _retrying_device_ids() -> dict[str, set[str]]:
     """Per slug, the device ids _retry_device_links is still adding to the account.
 
-    A failed read answers {}: the plain notice then shows, as it did before.
+    Only inside the retry window: a row the retry job never got to mark as given
+    up (the job failing every time) must not hide the notice for ever. A failed
+    read answers {}: the plain notice then shows, as it did before.
     """
     try:
         rows = await database.list_pending_device_links()
     except Exception as exc:
         logger.warning("Could not read the device registrations being retried: %s", exc)
         return {}
+    window_start = _db_time(datetime.now(UTC) - DEVICE_LINK_GIVE_UP)
     retrying: dict[str, set[str]] = {}
     for row in rows:
-        if not row["gave_up"]:
+        if not row["gave_up"] and str(row.get("first_at") or "") > window_start:
             retrying.setdefault(row["slug"], set()).add(row["device_id"])
     return retrying
 
