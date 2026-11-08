@@ -131,6 +131,72 @@ before. The worker cannot read the host's setting (it runs on its own network,
 which has its own copy), so the Fleet warning about the range stays after you
 reserve it; once the range is reserved, redeploy anyway.
 
+**Another sysctl file can undo the reservation at boot.** The files are read
+in order and the last one to set `net.ipv4.ip_local_reserved_ports` wins. If a
+file that sorts later, such as `99-something.conf`, also sets it for another
+program, your reservation is gone after the next reboot, with nothing saying
+so. Find every file that sets it:
+
+```bash
+# The file names are the "# /path" header lines; systemd-sysctl is usually not on PATH
+# (older Debian without a merged /usr: /lib/systemd/systemd-sysctl)
+/usr/lib/systemd/systemd-sysctl --cat-config | grep -E '^# /|reserved_ports'
+# without systemd, as root so no file is skipped:
+sudo grep -Rn reserved_ports /etc/sysctl.conf /etc/sysctl.d/ /run/sysctl.d/ \
+  /usr/local/lib/sysctl.d/ /usr/lib/sysctl.d/ /lib/sysctl.d/ 2>/dev/null
+```
+
+In the first output, the `reserved_ports` line belongs to the header just above it.
+
+Put the whole combined list in one file, comment out the line in every other
+file that sets it, and read `sysctl net.ipv4.ip_local_reserved_ports` again
+after the next reboot. If the other file belongs to a package or a tool that
+rewrites it, your edit will not last: give your file a name that sorts after
+it instead, so the combined list is read last. No file name sorts after
+`/etc/sysctl.conf` itself, because it is read after the directories. If the
+other setter is there, put the combined list in that line.
+
+**A firewall of your own in `DOCKER-USER` can drop the sessions.** Once the
+node is on CashPilot's bridge, customer packets to its UDP range are forwarded
+to a container, no longer delivered to the host itself. They pass Docker's
+`DOCKER-USER` chain. If yours ends with a rule that drops what comes in from
+the internet, such as `-i <wan interface> -j DROP`, every session to the
+forwarded range is dropped there. Add an accept directly above that drop,
+with your own interface and range, and below any deny rules you already
+have, so they keep applying. Find the drop's position with
+`sudo iptables -L DOCKER-USER --line-numbers` and insert at that number. `cp-isolated` is the bridge CashPilot creates; on a
+network of your own (`CASHPILOT_CONTAINER_NETWORK`), use that network's bridge:
+
+```bash
+sudo iptables -I DOCKER-USER <drop's line number> -i <wan interface> -o cp-isolated -p udp --dport <start>:<end> \
+  -m conntrack --ctorigdstport <start>:<end> -j ACCEPT
+```
+
+Docker has already rewritten the destination when a packet reaches this
+chain, so `--dport` alone would also match another container that maps some
+other host port onto a port in this range. The `--ctorigdstport` match checks
+the port the packet was sent to as well. The node publishes its range 1:1 and
+holds those host ports, so only its own sessions match.
+
+Then save it wherever your boot loads the rules from (for example
+`/etc/iptables/rules.v4` with `netfilter-persistent`), in the same order, or
+it is gone after a reboot. Check the saved file against the live chain
+(`sudo iptables -S DOCKER-USER`), because they can drift apart, and check the
+live chain again after the next reboot.
+
+The node's own check confirms it. Note the time right after the change,
+wait for a new session, then read only the log from that time, so an older
+success cannot answer for it:
+
+```bash
+T=$(date -u +%Y-%m-%dT%H:%M:%SZ)   # right after the change
+# ...after a new session:
+docker logs --since "$T" cashpilot-mysterium 2>&1 | grep -E 'are reachable|Failed to check manual ports'
+```
+
+It should show `All ports [...] are reachable`. That line covers the ports in
+its brackets, so compare them with your range.
+
 **Check it.** After a few sessions, on the machine running the node:
 
 ```bash
