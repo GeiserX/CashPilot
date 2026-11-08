@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -42,9 +43,9 @@ class _PerWorker(_Alerts):
         self.asked: list[tuple[str, object]] = []
 
     def run(self, statuses):
-        async def last(slug, worker_id):
+        async def last(slug, worker_id, instance=1):
             self.asked.append((slug, worker_id))
-            return self.events.get(worker_id)
+            return self.events.get((worker_id, instance), self.events.get(worker_id))
 
         def spawn(coro):
             coro.close()
@@ -85,6 +86,28 @@ class TestTheStopIsPerWorker:
         alerts = _PerWorker({})
         alerts.run([_entry(worker_id=1, **DOWN)])
         assert "urnetwork" in alerts.rows
+
+
+class TestTheStopIsPerCopy:
+    def test_a_stop_of_copy_one_does_not_hide_a_crash_of_copy_two_on_the_same_box(self):
+        alerts = _PerWorker({(1, 1): ("stop", _when(hours=4))})
+        alerts.run(
+            [
+                _entry(worker_id=1, instance=1, **DOWN),
+                {**_entry(worker_id=1, instance=2, node="alpha-2", **DOWN), "name": "cashpilot-urnetwork-2"},
+            ]
+        )
+        assert "alpha-2" in alerts.rows["urnetwork"]
+
+    def test_control_each_copy_stopped_here_is_quiet(self):
+        alerts = _PerWorker({(1, 1): ("stop", _when(hours=4)), (1, 2): ("stop", _when(hours=4))})
+        alerts.run(
+            [
+                _entry(worker_id=1, instance=1, **DOWN),
+                {**_entry(worker_id=1, instance=2, **DOWN), "name": "cashpilot-urnetwork-2"},
+            ]
+        )
+        assert not alerts.rows
 
 
 class TestTheAlertClearsByCause:
@@ -158,6 +181,29 @@ def test_the_latest_action_is_read_per_worker(db):
     assert one[0] == "stop" and two[0] == "start" and three is None
 
 
+def test_the_latest_action_is_read_per_copy_and_a_deploy_counts_for_each(db):
+    async def go():
+        await database.record_health_event("urnetwork", "stop", worker_id=1, instance=1)
+        await database.record_health_event("urnetwork", "start", worker_id=1, instance=2)
+        first = await database.get_last_lifecycle_event("urnetwork", 1, 1)
+        second = await database.get_last_lifecycle_event("urnetwork", 1, 2)
+        await database.record_health_event("urnetwork", "start", "deployed", worker_id=1)
+        return first, second, await database.get_last_lifecycle_event("urnetwork", 1, 1)
+
+    first, second, after_deploy = asyncio.run(go())
+    assert first[0] == "stop" and second[0] == "start" and after_deploy[0] == "start"
+
+
+def test_a_deploy_records_its_start_before_the_extra_copies():
+    # An extra copy that fails must not leave an older stop as the latest action.
+    source = (Path(main.__file__)).read_text(encoding="utf-8")
+    body = source[source.index("async def api_deploy(") :]
+    body = body[: body.index("\n@app.")]
+    assert body.index('record_health_event(slug, "start"') < body.index(
+        "await _proxy_worker_deploy(worker_id, slug, _instance_spec("
+    )
+
+
 def test_a_row_from_before_the_worker_was_recorded_counts_for_every_worker(db):
     async def go():
         await database.record_health_event("urnetwork", "stop")
@@ -174,6 +220,7 @@ def test_an_existing_database_gets_the_column(tmp_path):
             await database.init_db()
             async with aiosqlite.connect(path) as conn:
                 await conn.execute("ALTER TABLE health_events DROP COLUMN worker_id")
+                await conn.execute("ALTER TABLE health_events DROP COLUMN instance")
                 await conn.execute("INSERT INTO health_events (slug, event) VALUES ('urnetwork', 'stop')")
                 await conn.commit()
             await database.init_db()
@@ -183,7 +230,7 @@ def test_an_existing_database_gets_the_column(tmp_path):
             return cols, await database.get_last_lifecycle_event("urnetwork", 1)
 
     cols, last = asyncio.run(go())
-    assert "worker_id" in cols and last[0] == "stop"
+    assert {"worker_id", "instance"} <= cols and last[0] == "stop"
 
 
 @pytest.mark.parametrize(
@@ -203,7 +250,7 @@ def test_each_dashboard_action_records_its_worker(call, event):
         patch.object(main.database, "record_health_event", record),
     ):
         asyncio.run(call(MagicMock()))
-    record.assert_awaited_once_with("urnetwork", event, worker_id=4)
+    record.assert_awaited_once_with("urnetwork", event, worker_id=4, instance=1)
 
 
 def test_a_removal_records_its_worker():

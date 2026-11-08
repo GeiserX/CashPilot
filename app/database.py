@@ -562,9 +562,11 @@ CREATE TABLE IF NOT EXISTS health_events (
     event      TEXT    NOT NULL,
     detail     TEXT    NOT NULL DEFAULT '',
     created_at TEXT    NOT NULL DEFAULT (datetime('now')),
-    -- The worker a start/stop/restart/remove was sent to; NULL for check
-    -- events and for rows written before the column existed.
-    worker_id  INTEGER
+    -- The worker a start/stop/restart/remove was sent to, and the copy it
+    -- named (NULL: every copy, as a deploy or a removal does). NULL worker for
+    -- check events and for rows written before the columns existed.
+    worker_id  INTEGER,
+    instance   INTEGER
 );
 
 -- Durable per-user session-revocation epochs. A signed session cookie whose iat
@@ -1240,10 +1242,12 @@ async def init_db() -> None:
         # Migrate health_events: the worker a lifecycle action went to, so a stop
         # on one box is not undone by a start of the same service on another.
         cursor = await db.execute("PRAGMA table_info(health_events)")
-        if "worker_id" not in {row["name"] for row in await cursor.fetchall()}:
-            applied.append("health_events.worker_id")
-            # NULL backfill: an old row never knew its worker, so it counts for all.
-            await db.execute("ALTER TABLE health_events ADD COLUMN worker_id INTEGER")
+        health_cols = {row["name"] for row in await cursor.fetchall()}
+        # NULL backfill: an old row never knew its worker or copy, so it counts for all.
+        for column in ("worker_id", "instance"):
+            if column not in health_cols:
+                applied.append(f"health_events.{column}")
+                await db.execute(f"ALTER TABLE health_events ADD COLUMN {column} INTEGER")
 
         cursor = await db.execute("PRAGMA table_info(alerts)")
         alerts_cols = {row["name"] for row in await cursor.fetchall()}
@@ -3084,26 +3088,29 @@ async def get_worker_key_issued_at(client_id: str) -> str | None:
 # --- Health Events ---
 
 
-async def record_health_event(slug: str, event: str, detail: str = "", worker_id: int | None = None) -> None:
-    """Record a health event (start, stop, restart, crash, check_ok), with the worker it concerns."""
+async def record_health_event(
+    slug: str, event: str, detail: str = "", worker_id: int | None = None, instance: int | None = None
+) -> None:
+    """Record a health event (start, stop, restart, crash, check_ok), with the worker and copy it concerns."""
     db = await _get_db()
     try:
         await db.execute(
-            "INSERT INTO health_events (slug, event, detail, worker_id) VALUES (?, ?, ?, ?)",
-            (slug, event, detail, worker_id),
+            "INSERT INTO health_events (slug, event, detail, worker_id, instance) VALUES (?, ?, ?, ?, ?)",
+            (slug, event, detail, worker_id, instance),
         )
         await db.commit()
     finally:
         await db.close()
 
 
-async def get_last_lifecycle_event(slug: str, worker_id: int | None) -> tuple[str, str] | None:
-    """The latest start/stop/restart/remove CashPilot recorded for ``slug`` on one worker, with its UTC time.
+async def get_last_lifecycle_event(slug: str, worker_id: int | None, instance: int = 1) -> tuple[str, str] | None:
+    """The latest start/stop/restart/remove CashPilot recorded for one copy of ``slug``, with its UTC time.
 
     Answers "did the user stop this from CashPilot?" for the container-down
-    alert. Per worker: a start of the same service on another box says nothing
-    about this one. A row from before the worker was recorded counts for every
-    worker. Scoped to one slug so the slug index does the work; the table holds
+    alert. Per worker and copy: a start of the same service on another box, or
+    a stop of another copy, says nothing about this one. An action on every
+    copy (a deploy, a removal) counts for each, and a row from before the
+    worker was recorded counts for every worker. Scoped to one slug so the slug index does the work; the table holds
     a check event per service every five minutes.
     """
     db = await _get_db()
@@ -3111,9 +3118,9 @@ async def get_last_lifecycle_event(slug: str, worker_id: int | None) -> tuple[st
         cursor = await db.execute(
             "SELECT event, created_at FROM health_events "
             "WHERE slug = ? AND event IN ('start', 'stop', 'restart', 'remove') "
-            "AND (worker_id = ? OR worker_id IS NULL) "
+            "AND (worker_id = ? OR worker_id IS NULL) AND (instance = ? OR instance IS NULL) "
             "ORDER BY id DESC LIMIT 1",
-            (slug, worker_id),
+            (slug, worker_id, instance),
         )
         row = await cursor.fetchone()
         return (row["event"], row["created_at"]) if row else None

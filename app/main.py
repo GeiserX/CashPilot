@@ -513,12 +513,12 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
         # Services whose every down copy was stopped or removed from CashPilot.
         stopped_here: set[str] = set()
         for slug, copies in down.items():
-            stopped_on: set[Any] = set()
-            for wid in {c.get("_worker_id") for c in copies}:
-                last = await database.get_last_lifecycle_event(slug, wid)
+            stopped_on: set[tuple[Any, int]] = set()
+            for wid, copy in {(c.get("_worker_id"), int(c.get("instance") or 1)) for c in copies}:
+                last = await database.get_last_lifecycle_event(slug, wid, copy)
                 if last and last[0] in ("stop", "remove"):
-                    stopped_on.add(wid)
-            unexplained = [c for c in copies if c.get("_worker_id") not in stopped_on]
+                    stopped_on.add((wid, copy))
+            unexplained = [c for c in copies if (c.get("_worker_id"), int(c.get("instance") or 1)) not in stopped_on]
             if not unexplained:
                 stopped_here.add(slug)
             long_down = [c for c in unexplained if now - c["_down_since"] >= CONTAINER_DOWN_GRACE]
@@ -3583,13 +3583,15 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     else:
         spec.pop("instances", None)
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
+    # Recorded once the first copy runs: an extra copy that fails below must not
+    # leave an older stop as the latest action, which would hide this one's crash.
+    await database.record_health_event(slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id)
     # The extra copies, after the record: if one fails, the next redeploy still
     # knows how many this worker should run and tries again.
     for n in range(2, instances + 1):
         await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf))
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
-    await database.record_health_event(slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id)
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
@@ -3834,7 +3836,7 @@ async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "stop", slug, instance=instance)
-    await database.record_health_event(slug, "stop", worker_id=worker_id)
+    await database.record_health_event(slug, "stop", worker_id=worker_id, instance=instance)
     metrics.record_container_lifecycle("stop", slug)
     return result
 
@@ -3843,7 +3845,7 @@ async def _svc_restart(request: Request, slug: str, worker_id: int | None, insta
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug, instance=instance)
-    await database.record_health_event(slug, "restart", worker_id=worker_id)
+    await database.record_health_event(slug, "restart", worker_id=worker_id, instance=instance)
     metrics.record_container_lifecycle("restart", slug)
     return result
 
@@ -4912,8 +4914,9 @@ async def api_service_start(
 ) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "start", slug, instance=_instance_param(instance))
-    await database.record_health_event(slug, "start", worker_id=worker_id)
+    instance = _instance_param(instance)
+    result = await _proxy_worker_command(worker_id, "start", slug, instance=instance)
+    await database.record_health_event(slug, "start", worker_id=worker_id, instance=instance)
     metrics.record_container_lifecycle("start", slug)
     return result
 
