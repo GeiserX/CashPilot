@@ -221,7 +221,7 @@ class TestProviderForbidsWhatCashPilotDoes:
 class TestSourcedPerIpLimits:
     """Values must trace to a provider statement; see docs/research/per-ip-device-limits.md."""
 
-    @pytest.mark.parametrize("slug", ["honeygain", "iproyal", "spide", "earnfm", "ebesucher"])
+    @pytest.mark.parametrize("slug", ["honeygain", "iproyal", "spide", "earnfm", "ebesucher", "mysterium"])
     def test_the_documented_services_declare_one_per_ip(self, slug):
         """spide was MISSING from this list, and that is how the bug shipped.
 
@@ -268,6 +268,14 @@ class TestSourcedPerIpLimits:
         svc = catalog.get_service(slug)
         assert svc is not None, f"{slug} is not in the catalog"
         assert "devices_per_ip" not in (svc.get("requirements") or {})
+
+    def test_a_second_mystnodes_on_one_machine_earns_nothing(self):
+        """MystNodes shows every node but one per public IP offline; it read as unlimited."""
+        from app import catalog
+
+        out = preflight.assess(catalog.get_service("mysterium"), already_deployed_slugs={"mysterium"})
+        assert out["verdict"] == preflight.EARNS_NOTHING
+        assert "one device per IP" in " ".join(f["message"] for f in out["findings"])
 
     def test_a_second_device_behind_one_ip_now_gets_the_strongest_verdict(self):
         """The point of the bead: the verdict was weak exactly where the

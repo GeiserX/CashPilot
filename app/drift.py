@@ -128,6 +128,11 @@ def _names(values: set[str]) -> str:
     return ", ".join(sorted(values))
 
 
+#: Per network namespace: the worker, on its own bridge, reads its own value and
+#: never the host's, so the warning names the reservation instead of checking it.
+RESERVED_PORTS_SYSCTL = "net.ipv4.ip_local_reserved_ports"
+
+
 def move_advice(
     svc: dict[str, Any] | None,
     shape: dict[str, Any] | None,
@@ -170,7 +175,11 @@ def move_advice(
             f"Its recorded {key}, {value}, overlaps Linux's ephemeral range ({low}-{EPHEMERAL_PORTS[1]}), which the "
             "redeploy keeps: on its own network every port in it is published, and one a host program holds fails "
             f"the start. Before you redeploy, set {key} to a free range below {low} other than the default{example} "
-            "(a value equal to the default keeps the recorded one), and change the router forward to match."
+            "(a value equal to the default keeps the recorded one), and change the router forward to match. "
+            f"Or keep this range and reserve it on the host, so no program there takes one of its ports: run "
+            f"sysctl -w {RESERVED_PORTS_SYSCTL}={m[1]}-{m[2]} (add it to any ranges already listed there, "
+            f"comma-separated), and put the line {RESERVED_PORTS_SYSCTL} = {m[1]}-{m[2]} in a file under "
+            "/etc/sysctl.d/ so it survives a reboot. If you've reserved this range on the host, you can redeploy."
         )
     return advice
 

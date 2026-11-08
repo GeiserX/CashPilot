@@ -52,6 +52,13 @@ drift, and **Check isolation** fails on it.
    (`23000:23029`) reads as a field left as it was, so the range on record
    would stay; to take the default itself, remove the service from that
    machine (its data volume stays) and deploy again.
+   Or keep the range and reserve it on the host instead, with no router
+   change: `sudo sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100` (use
+   your range, with a dash, added to any ranges already listed there), and the
+   line `net.ipv4.ip_local_reserved_ports = 56000-56100` in a file under
+   `/etc/sysctl.d/` so it survives a reboot. The worker cannot see the host's
+   reservation, so Fleet keeps warning about the range; once it is reserved,
+   redeploy anyway.
    The worker publishes the range 1:1 through Docker, and a node's range on
    record (`56000:56100` through 2.0.6, `56000:56029` in 2.0.7 and 2.1.0) sits in
    Linux's ephemeral range, 32768-60999, where any program on the host can

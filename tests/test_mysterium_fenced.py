@@ -1190,6 +1190,17 @@ class TestTheMoveNeedsTheOldIdentity:
         old.stop.assert_not_called()
         old.remove.assert_not_called()
 
+    def test_the_refusal_keeps_a_hold_kept_only_in_memory(self, markers):
+        # No record on disk: the hold could not be written, so memory is all there is.
+        orchestrator._MISMATCH_HELD["cashpilot-mysterium"] = "its identity is 0xb, not 0xa"
+        old = _node()
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not touched"):
+            _raw_deploy(old=old)
+        assert orchestrator._MISMATCH_HELD.get("cashpilot-mysterium") == "its identity is 0xb, not 0xa"
+        assert "0xb" in orchestrator.identity_problem(_node(status="exited"))
+
     def test_control_a_stopped_node_is_replaced_without_the_check(self, markers):
         old = _node(status="exited")
         old.exec_run.return_value = (1, b"")
@@ -1667,6 +1678,31 @@ class TestTheMoveAdvice:
         assert "56000:56100" in warning and "32768-60999" in warning
         assert "Before you redeploy" in warning and "below 32768 other than the default" in warning
         assert "23100:23129" in warning
+
+    def test_the_warning_offers_reserving_the_range_on_the_host_instead(self):
+        warning = drift.move_advice(MYST, _shape(network_mode="host"), HOST_RECORD, lan_fence.MODE_ON)["warning"]
+        assert "keep this range and reserve it on the host" in warning
+        assert "sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in warning
+        assert "net.ipv4.ip_local_reserved_ports = 56000-56100 in a file under /etc/sysctl.d/" in warning
+        assert "add it to any ranges already listed there" in warning
+        # The worker cannot read the host's reservation, so it says when to ignore the warning.
+        assert warning.endswith("If you've reserved this range on the host, you can redeploy.")
+
+    def test_the_reservation_names_the_recorded_range_not_a_fixed_one(self):
+        record = {**HOST_RECORD, "env": {"UDP_PORTS": "40000:40020"}}
+        warning = drift.move_advice(MYST, _shape(network_mode="host"), record, lan_fence.MODE_ON)["warning"]
+        assert "ip_local_reserved_ports=40000-40020" in warning and "56000" not in warning
+
+    def test_the_guide_and_the_upgrade_notes_give_the_same_reservation(self):
+        for doc in ("docs/guides/mysterium.md", "UPGRADING.md"):
+            text = (ROOT / doc).read_text(encoding="utf-8")
+            assert "sysctl -w net.ipv4.ip_local_reserved_ports=56000-56100" in text, doc
+            assert "net.ipv4.ip_local_reserved_ports = 56000-56100" in text, doc
+            assert "/etc/sysctl.d/" in text, doc
+
+    def test_the_guide_no_longer_says_the_node_runs_on_the_host_network(self):
+        guide = (ROOT / "docs" / "guides" / "mysterium.md").read_text(encoding="utf-8")
+        assert "--net host" not in guide
 
     def test_control_a_range_below_it_or_none_on_record_is_not(self):
         for record in (NEW_RECORD, None, {**HOST_RECORD, "env": {}}):
