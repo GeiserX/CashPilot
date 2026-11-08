@@ -3295,10 +3295,16 @@ const CP = (() => {
       // connection warned about nothing — neither had the service yet, so
       // neither counted against the other (CashPilot-3tr).
       const planned = workerIds.join(',');
+      // The copies asked of each worker: without it, a worker that already runs
+      // the service is replaced, which is no second device.
       assessments = await Promise.all(
-        workerIds.map(id => api(
-          `/api/services/${slug}/preflight?worker_id=${encodeURIComponent(id)}&planned=${encodeURIComponent(planned)}`
-        ))
+        workerIds.map(id => {
+          const n = _instancesFor(slug, id);
+          const copies = n === undefined ? '' : `&instances=${encodeURIComponent(n)}`;
+          return api(
+            `/api/services/${slug}/preflight?worker_id=${encodeURIComponent(id)}&planned=${encodeURIComponent(planned)}${copies}`
+          );
+        })
       );
     } catch (err) {
       console.warn('Preflight unavailable, proceeding:', err);
