@@ -212,17 +212,20 @@ def test_a_row_from_before_the_worker_was_recorded_counts_for_every_worker(db):
     assert asyncio.run(go())[0] == "stop"
 
 
-def test_an_existing_database_gets_the_column(tmp_path):
+def test_an_existing_database_gets_the_columns(tmp_path):
     path = tmp_path / "cashpilot.db"
 
     async def go():
+        # The table as an earlier version created it, with a stop already recorded.
+        async with aiosqlite.connect(path) as conn:
+            await conn.execute(
+                "CREATE TABLE health_events (id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL, "
+                "event TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', "
+                "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+            )
+            await conn.execute("INSERT INTO health_events (slug, event) VALUES ('urnetwork', 'stop')")
+            await conn.commit()
         with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", path):
-            await database.init_db()
-            async with aiosqlite.connect(path) as conn:
-                await conn.execute("ALTER TABLE health_events DROP COLUMN worker_id")
-                await conn.execute("ALTER TABLE health_events DROP COLUMN instance")
-                await conn.execute("INSERT INTO health_events (slug, event) VALUES ('urnetwork', 'stop')")
-                await conn.commit()
             await database.init_db()
             async with aiosqlite.connect(path) as conn:
                 cursor = await conn.execute("PRAGMA table_info(health_events)")

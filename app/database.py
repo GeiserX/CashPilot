@@ -556,15 +556,15 @@ CREATE TABLE IF NOT EXISTS alerts (
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- worker_id and instance: the worker a start/stop/restart/remove was sent to,
+-- and the copy it named (NULL: every copy, as a deploy or a removal does).
+-- NULL worker for check events and for rows written before the columns existed.
 CREATE TABLE IF NOT EXISTS health_events (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     slug       TEXT    NOT NULL,
     event      TEXT    NOT NULL,
     detail     TEXT    NOT NULL DEFAULT '',
     created_at TEXT    NOT NULL DEFAULT (datetime('now')),
-    -- The worker a start/stop/restart/remove was sent to, and the copy it
-    -- named (NULL: every copy, as a deploy or a removal does). NULL worker for
-    -- check events and for rows written before the columns existed.
     worker_id  INTEGER,
     instance   INTEGER
 );
