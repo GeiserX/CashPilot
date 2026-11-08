@@ -121,7 +121,7 @@ _SEEN = {
 
 
 class TestPreflightEndpoint:
-    def _call(self, slug, worker_id=None, worker=None, deployments=None):
+    def _call(self, slug, worker_id=None, worker=None, deployments=None, instances=None):
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -131,9 +131,10 @@ class TestPreflightEndpoint:
             with (
                 patch.object(main, "_require_auth_api", lambda r: None),
                 patch.object(main.database, "get_deployments", AsyncMock(return_value=deployments or [])),
+                patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=None)),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=[worker] if worker else [])),
             ):
-                return await main.api_service_preflight(MagicMock(), slug, worker_id=worker_id)
+                return await main.api_service_preflight(MagicMock(), slug, worker_id=worker_id, instances=instances)
 
         return asyncio.run(run())
 
@@ -164,9 +165,12 @@ class TestPreflightEndpoint:
             "containers": json.dumps([{"slug": "honeygain", "status": "running"}]),
             "system_info": json.dumps({"arch": "x86_64"}),
         }
-        result = self._call("honeygain", worker_id=1, worker=worker)
+        # Another copy asked of it: a redeploy without a count replaces the running one.
+        result = self._call("honeygain", worker_id=1, worker=worker, instances=2)
         assert result["verdict"] in {preflight.REDUCED, preflight.EARNS_NOTHING}
         assert result["worker_arch"] == "x86_64"
+        replaced = self._call("honeygain", worker_id=1, worker=dict(worker))
+        assert not any("already running" in f["message"] for f in replaced["findings"])
 
     def test_without_a_worker_it_falls_back_to_all_deployments(self):
         result = self._call("honeygain", deployments=[{"slug": "honeygain"}])
