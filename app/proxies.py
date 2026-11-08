@@ -256,6 +256,9 @@ def earner_spec(recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id:
     renamed: dict[str, str] = {}
     for var in docker_conf.get("env", []):
         old_id = str(env.get(var.get("key")) or "") if var.get("per_device") else ""
+        if var.get("per_device") and var.get("required") and not old_id:
+            # Empty is only safe where the service makes its own id when given none.
+            raise ValueError(f"its deployment has no {var.get('key')}, so the copy cannot be given one of its own")
         if old_id:
             renamed[old_id] = copy_device_id(old_id, proxy_id, var.get("pattern"))
 

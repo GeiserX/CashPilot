@@ -154,6 +154,14 @@ class TestEarner:
         with pytest.raises(ValueError):
             proxies.earner_spec({"env": {"ID": value}}, {"env": [{"key": "ID", "per_device": True}]}, 1)
 
+    def test_a_required_device_id_missing_from_the_deployment_refuses_the_copy(self):
+        conf = {"env": [{"key": "UUID", "per_device": True, "required": True}]}
+        with pytest.raises(ValueError):
+            proxies.earner_spec({"env": {}}, conf, 1)
+        # Optional and empty: the service makes its own id, nothing is cloned.
+        optional = {"env": [{"key": "UUID", "per_device": True}]}
+        assert proxies.earner_spec({"env": {"UUID": ""}}, optional, 1)["env"] == {"UUID": ""}
+
     def test_a_derived_id_that_misses_the_catalog_pattern_refuses_the_copy(self):
         with pytest.raises(ValueError):
             proxies.copy_device_id("ab" * 32, 1, pattern=r"[0-9]{64}")
