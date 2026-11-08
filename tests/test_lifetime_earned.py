@@ -136,3 +136,40 @@ def test_a_cash_out_cannot_be_recorded_while_a_detected_one_waits(db):
         _add(platform="earnapp", amount=37.54)
     assert exc.value.status_code == 409
     assert asyncio.run(database.get_payouts("earnapp", confirmed_only=True)) == []
+
+
+def test_a_stablecoin_cash_out_counts_in_dollars(db):
+    """Repocket pays in USDT and Proxybase XYZ in USDC. With no rate for them a
+    cash-out recorded in either was stored unpriced and fell out of the totals."""
+    from app import exchange_rates
+
+    def response(body):
+        r = MagicMock(status_code=200)
+        r.json.return_value = body
+        return r
+
+    async def get(url, params=None):
+        if "coingecko" in url:
+            ids = (params or {}).get("ids", "").split(",")
+            prices = {"tether": {"usd": 1.0}, "usd-coin": {"usd": 0.9998}}
+            return response({i: prices[i] for i in ids if i in prices})
+        return response({"rates": {}})
+
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.get = AsyncMock(side_effect=get)
+    saved = (dict(exchange_rates._crypto_usd), exchange_rates._crypto_last_fetch, exchange_rates._fiat_last_fetch)
+    try:
+        with patch("app.exchange_rates.httpx.AsyncClient", return_value=client):
+            asyncio.run(exchange_rates.refresh())
+        usdt = _add(platform="repocket", amount=25.0, currency="USDT", method="Polygon")
+        usdc = _add(platform="proxybase-xyz", amount=10.0, currency="USDC")
+        assert usdt["priced"] and usdc["priced"]
+        totals = asyncio.run(database.get_confirmed_payout_totals())
+        assert totals["repocket"] == pytest.approx(25.0)
+        assert totals["proxybase-xyz"] == pytest.approx(9.998)
+    finally:
+        exchange_rates._crypto_usd.clear()
+        exchange_rates._crypto_usd.update(saved[0])
+        exchange_rates._crypto_last_fetch, exchange_rates._fiat_last_fetch = saved[1], saved[2]
