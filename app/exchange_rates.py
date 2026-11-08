@@ -37,6 +37,10 @@ CRYPTO_IDS: dict[str, str] = {
     "ANYONE": "airtor-protocol",
     # UpRock's token; its payout minimum is set in UPT (services/depin/uprock.yml).
     "UPT": "uprock",
+    # Stablecoins some services pay in (Repocket USDT, Proxybase XYZ USDC); a
+    # cash-out recorded in one must count toward the totals.
+    "USDT": "tether",
+    "USDC": "usd-coin",
 }
 
 CACHE_TTL = 900  # 15 minutes
