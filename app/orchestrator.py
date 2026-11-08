@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import functools
 import hashlib
 import ipaddress
 import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -746,6 +748,28 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
     return runtime
 
 
+#: Held while deploy_raw replaces a fence-gated container (Mysterium). The
+#: guard (lan_fence.guard) takes it for each pass, and while a deploy holds it
+#: the guard only stops: it starts nothing and reads no identity. Otherwise a
+#: pass could start the old node between its stop and its removal, or read the
+#: old node's identity, match the record deploy_raw just wrote, and delete it,
+#: so the new node would never be compared.
+GATED_DEPLOY_LOCK = threading.Lock()
+
+
+def _holds_gated_lock(fn: Any) -> Any:
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        slug = kwargs.get("slug", args[0] if args else "")
+        if not fence_gated(str(slug)):
+            return fn(*args, **kwargs)
+        with GATED_DEPLOY_LOCK:
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+@_holds_gated_lock
 def deploy_raw(
     slug: str,
     image: str,
@@ -1145,7 +1169,7 @@ def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
     container = _find_container(slug, instance)
     if fence_gated(slug):
-        _require_fence(slug)
+        _require_startable(container, slug)
         _mark_stopped(container.name, False)
     container.restart(timeout=_get_stop_timeout(slug))
     logger.info("Restarted container %s", container.name)
@@ -1241,6 +1265,27 @@ def _require_fence(slug: str) -> None:
     from app import lan_fence
 
     problem = lan_fence.fence_problem(_get_client())
+    if problem:
+        raise ContainerNetworkError(f"{slug} was not started: {problem}")
+
+
+def _require_startable(container: Any, slug: str) -> None:
+    """Refuse Start or Restart of an existing fence-gated container the guard would stop.
+
+    The fence first, then what the guard also holds against the container
+    itself: its shape (host network, privileged, a capability, an image or a
+    restart policy the catalog does not give it) and a different identity
+    than before its last redeploy. Without this the dashboard reported it
+    started, and it ran until the guard's next pass stopped it again.
+    """
+    from app import lan_fence
+
+    _require_fence(slug)
+    try:
+        mode = lan_fence.resolve_mode(_get_client())
+    except RuntimeError as exc:
+        raise ContainerNetworkError(f"{slug} was not started: the isolation mode could not be read ({exc})") from None
+    problem = gated_spec_problem(container, mode) or identity_problem(container)
     if problem:
         raise ContainerNetworkError(f"{slug} was not started: {problem}")
 
@@ -1694,7 +1739,7 @@ def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
     container = _find_container(slug, instance)
     if fence_gated(slug):
-        _require_fence(slug)
+        _require_startable(container, slug)
         _mark_stopped(container.name, False)
     container.start()
     logger.info("Started container %s", container.name)

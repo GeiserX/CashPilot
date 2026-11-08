@@ -106,10 +106,17 @@ class TestTheCatalog:
 
 
 class TestTheUdpRange:
-    def test_the_default_range_is_101_ports_each_on_itself(self):
-        ports = catalog.expand_udp_range("56000:56100")
-        assert len(ports) == 101
-        assert ports["56000/udp"] == 56000 and ports["56100/udp"] == 56100
+    def test_the_default_range_is_30_ports_each_on_itself(self):
+        default = next(e["default"] for e in MYST["docker"]["env"] if e["key"] == "UDP_PORTS")
+        ports = catalog.expand_udp_range(default)
+        # About two ports per session: 15 at once, and about 2.5 MB of
+        # docker-proxy memory per port, so a wider default only costs memory.
+        assert len(ports) == 30
+        assert ports["56000/udp"] == 56000 and ports["56029/udp"] == 56029
+
+    def test_the_default_stays_inside_the_range_routers_forward_since_2_0_3(self):
+        default = next(e["default"] for e in MYST["docker"]["env"] if e["key"] == "UDP_PORTS")
+        assert set(catalog.expand_udp_range(default)) <= set(catalog.expand_udp_range("56000:56100"))
 
     @pytest.mark.parametrize("value", ["56100:56000", "1:70000", "56000", "a:b", "56000-56100"])
     def test_anything_but_a_range_is_refused(self, value):
@@ -189,7 +196,7 @@ class TestTheDeploy:
         resp, sent = _ui_deploy(ui, {"env": {}})
         assert resp.status_code == 200, resp.text
         assert sent["network_mode"] is None
-        assert sum(k.endswith("/udp") for k in sent["ports"]) == 101
+        assert sum(k.endswith("/udp") for k in sent["ports"]) == 30
         assert sent["ports"]["4449/tcp"] == ["127.0.0.1", 4449]
 
     def test_a_node_recorded_on_the_host_network_moves_onto_the_bridge(self, ui):
@@ -198,6 +205,7 @@ class TestTheDeploy:
         assert sent["network_mode"] is None, "the record must not carry NET_ADMIN back into the host's namespace"
         # 4449 on every interface was the host-network record; now loopback only.
         assert sent["ports"]["4449/tcp"] == ["127.0.0.1", 4449]
+        # The range on record is kept, so the router's forward still matches.
         assert sum(k.endswith("/udp") for k in sent["ports"]) == 101
         # The identity lives in the data directory, which the redeploy keeps.
         assert sent["volumes"] == HOST_RECORD["volumes"]
@@ -536,3 +544,99 @@ class TestFenceProblem:
 
     def test_outside_on_mode_nothing_is_waited_for(self):
         assert self._read(None, mode=lan_fence.MODE_OPERATOR) is None
+
+
+# ---------------------------------------------------------------------------
+# (i) A deploy and the guard never act on the same node at once
+# ---------------------------------------------------------------------------
+
+
+class TestTheGuardDuringADeploy:
+    def test_it_starts_nothing_while_a_deploy_replaces_the_node(self, markers):
+        node = _node(status="exited")
+        with orchestrator.GATED_DEPLOY_LOCK:
+            _guard([node])
+        node.start.assert_not_called()
+
+    def test_it_does_not_clear_the_record_by_reading_the_old_node(self, markers):
+        # deploy_raw recorded the old node's identity and is about to stop it.
+        orchestrator._remember_identity("cashpilot-mysterium", "0x" + "a" * 40)
+        old = _node()
+        old.exec_run.return_value = (0, b'{"id":"0x' + b"a" * 40 + b'"}')
+        with orchestrator.GATED_DEPLOY_LOCK:
+            _guard([old])
+        assert (markers / "identity" / "cashpilot-mysterium").exists(), "the new node would never be compared"
+
+    def test_it_still_stops_a_node_when_the_fence_goes(self, markers):
+        node = _node()
+        with orchestrator.GATED_DEPLOY_LOCK:
+            _guard([node], problem="the LAN fence is not complete on this host")
+        node.stop.assert_called_once()
+
+    def test_control_once_the_deploy_is_done_it_starts_the_node(self, markers):
+        node = _node(status="exited")
+        _guard([node])
+        node.start.assert_called_once()
+        assert not orchestrator.GATED_DEPLOY_LOCK.locked()
+
+    def test_deploy_raw_holds_the_lock_while_it_replaces_the_node(self, markers):
+        seen = []
+        old = MagicMock()
+        old.name = "cashpilot-mysterium"
+        old.status = "exited"
+        old.labels = dict(LABELS)
+        old.attrs = {"Mounts": []}
+        old.stop.side_effect = lambda **_: seen.append(orchestrator.GATED_DEPLOY_LOCK.locked())
+        _raw_deploy(old=old)
+        assert seen == [True]
+        assert not orchestrator.GATED_DEPLOY_LOCK.locked()
+
+    def test_control_an_ordinary_earner_does_not_take_it(self, markers):
+        seen = []
+        old = MagicMock()
+        old.name = "cashpilot-honeygain"
+        old.status = "running"
+        old.labels = {"cashpilot.service": "honeygain", "cashpilot.managed": "true"}
+        old.attrs = {"Mounts": []}
+        old.stop.side_effect = lambda **_: seen.append(orchestrator.GATED_DEPLOY_LOCK.locked())
+        _raw_deploy(old=old, slug="honeygain")
+        assert seen == [False]
+
+
+# ---------------------------------------------------------------------------
+# (j) Start and Restart refuse a node the guard holds stopped
+# ---------------------------------------------------------------------------
+
+
+def _start(node, action="start_service"):
+    with (
+        patch.object(orchestrator, "_find_container", return_value=node),
+        patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+        patch.object(lan_fence, "fence_problem", return_value=None),
+        patch.object(lan_fence, "resolve_mode", return_value=lan_fence.MODE_ON),
+    ):
+        getattr(orchestrator, action)("mysterium")
+
+
+class TestStartRefusesAHeldNode:
+    def test_a_node_held_for_another_identity_is_not_started(self, markers):
+        orchestrator._remember_identity("cashpilot-mysterium", "MISMATCH its identity is 0xb, not 0xa")
+        node = _node(status="exited")
+        with pytest.raises(orchestrator.ContainerNetworkError, match="identity"):
+            _start(node)
+        node.start.assert_not_called()
+
+    @pytest.mark.parametrize("action", ["start_service", "restart_service"])
+    def test_a_node_on_the_host_network_is_not_started(self, markers, action):
+        node = _node(status="exited", network_mode="host")
+        with pytest.raises(orchestrator.ContainerNetworkError, match="host's network"):
+            _start(node, action)
+        node.start.assert_not_called()
+        node.restart.assert_not_called()
+
+    def test_control_a_node_as_the_catalog_says_starts(self, markers):
+        orchestrator._mark_stopped("cashpilot-mysterium", True)
+        node = _node(status="exited")
+        _start(node)
+        node.start.assert_called_once()
+        assert "cashpilot-mysterium" not in orchestrator.user_stopped()

@@ -1120,29 +1120,36 @@ def guard() -> dict[str, str]:
         if not gated:
             _state["guard"] = {}
             return {}
-        mode = resolve_mode(client)
-        fence = fence_problem(client)
-        # Container.status is read-only in docker-py; what this pass stopped is kept apart.
-        stopped_now: set[str] = set()
-        if fence and mode == MODE_ON:
-            # Stop first, so nothing runs while the table is put back.
+        # A deploy replacing a gated container holds this lock: the pass then
+        # only stops (orchestrator.GATED_DEPLOY_LOCK says why).
+        deploying = not orch.GATED_DEPLOY_LOCK.acquire(blocking=False)
+        try:
+            mode = resolve_mode(client)
+            fence = fence_problem(client)
+            # Container.status is read-only in docker-py; what this pass stopped is kept apart.
+            stopped_now: set[str] = set()
+            if fence and mode == MODE_ON:
+                # Stop first, so nothing runs while the table is put back.
+                for c in gated:
+                    if c.status == "running":
+                        _guard_stop(c, fence)
+                        stopped_now.add(c.name)
+                with contextlib.suppress(RuntimeError, IsolationConflict):
+                    apply_fence(client)
+            stopped = orch.user_stopped()
             for c in gated:
-                if c.status == "running":
-                    _guard_stop(c, fence)
-                    stopped_now.add(c.name)
-            with contextlib.suppress(RuntimeError, IsolationConflict):
-                apply_fence(client)
-        stopped = orch.user_stopped()
-        for c in gated:
-            running = c.status == "running" and c.name not in stopped_now
-            problem = fence or orch.gated_spec_problem(c, mode) or orch.identity_problem(c)
-            if problem:
-                held[c.name] = problem
-                if running:
-                    _guard_stop(c, problem)
-            elif c.status in ("exited", "created") and c.name not in stopped:
-                c.start()
-                logger.info("Started %s: the LAN fence is confirmed", c.name)
+                running = c.status == "running" and c.name not in stopped_now
+                problem = fence or orch.gated_spec_problem(c, mode) or (None if deploying else orch.identity_problem(c))
+                if problem:
+                    held[c.name] = problem
+                    if running:
+                        _guard_stop(c, problem)
+                elif not deploying and c.status in ("exited", "created") and c.name not in stopped:
+                    c.start()
+                    logger.info("Started %s: the LAN fence is confirmed", c.name)
+        finally:
+            if not deploying:
+                orch.GATED_DEPLOY_LOCK.release()
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
         logger.warning("Fence guard pass failed: %s", exc)
     _state["guard"] = held
