@@ -44,8 +44,13 @@ def assess(
     worker: dict[str, Any] | None = None,
     fleet_workers: list[dict[str, Any]] | None = None,
     also_deploying_to: set[Any] | None = None,
+    replacing: bool = False,
 ) -> dict[str, Any]:
     """Answer "what will this realistically do for me?" before the deploy runs.
+
+    ``replacing`` says the deploy replaces the copies of this service already
+    running on this worker rather than adding one (a redeploy, the Fleet move,
+    an imported draft): those are not a second device, so they are not counted.
 
     ``already_deployed_slugs`` is what is already running on the SAME worker,
     which is what makes a per-IP limit checkable at all.
@@ -78,7 +83,7 @@ def assess(
 
     # Already running here. A second instance on one egress IP is the case
     # several providers forbid outright, and the penalty is a forfeited balance.
-    if slug and slug in already_deployed:
+    if slug and slug in already_deployed and not replacing:
         devices_per_ip = reqs.get("devices_per_ip")
         if devices_per_ip == 1:
             findings.append(
@@ -235,7 +240,11 @@ def assess(
 
     # The cross-machine half: what the REST of the fleet implies about this.
     for finding in _fleet_findings(
-        service, worker=worker, fleet_workers=fleet_workers, also_deploying_to=also_deploying_to
+        service,
+        worker=worker,
+        fleet_workers=fleet_workers,
+        also_deploying_to=also_deploying_to,
+        replacing=replacing,
     ):
         findings.append(finding)
         verdicts.append(finding["verdict"])
@@ -293,6 +302,7 @@ def _fleet_findings(
     worker: dict[str, Any] | None,
     fleet_workers: list[dict[str, Any]] | None,
     also_deploying_to: set[Any] | None = None,
+    replacing: bool = False,
 ) -> list[dict[str, str]]:
     """What the *rest of the fleet* implies about deploying this here.
 
@@ -381,7 +391,8 @@ def _fleet_findings(
     else:
         # Peers + the one already running here + the prospective deploy. Omitting
         # the local one under-counts by exactly the case the feature is for.
-        local = 1 if slug in egress.running_slugs(worker) else 0
+        # A replacement is the prospective one itself, not one more.
+        local = 1 if slug in egress.running_slugs(worker) and not replacing else 0
         instances = len(conflicting) + local + 1
         verdict = EARNS_NOTHING if instances > limit else REDUCED
         findings.append(

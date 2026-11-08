@@ -5391,11 +5391,17 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
 
 @app.get("/api/services/{slug}/preflight")
 async def api_service_preflight(
-    request: Request, slug: str, worker_id: int | None = None, planned: str | None = None
+    request: Request,
+    slug: str,
+    worker_id: int | None = None,
+    planned: str | None = None,
+    instances: int | None = None,
 ) -> dict[str, Any]:
     """What this service will realistically do for THIS user, before deploying.
 
     Never blocks a deploy: the goal is informed consent, not a nanny.
+    ``instances`` is the number of copies the deploy asks this worker for; left
+    out, the deploy keeps the recorded count, so a running service is replaced.
     """
     _require_auth_api(request)
     service = catalog.get_service(slug)
@@ -5434,6 +5440,24 @@ async def api_service_preflight(
             planned_ids.add(int(part))
     planned_ids.discard(worker_id)
 
+    # A deploy to a worker that already runs the service replaces those copies
+    # (a redeploy, the Fleet move, an imported draft) unless it asks for more of
+    # them. The copies it replaces are not a second device on this IP.
+    running_here = sum(
+        1
+        for c in worker.get("containers") or []
+        if isinstance(c, dict) and egress.container_slug(c) == slug and str(c.get("status", "")).lower() == "running"
+    )
+    if instances is None and running_here:
+        # The count the deploy itself uses: a record of two copies with one
+        # running starts the second one, which is a new device.
+        recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+        try:
+            instances = int((recorded or {}).get("instances") or 1)
+        except (TypeError, ValueError):
+            instances = 1
+    replacing = running_here > 0 and (instances is None or instances <= running_here)
+
     return preflight.assess(
         service,
         already_deployed_slugs=egress.running_slugs(worker),
@@ -5444,6 +5468,7 @@ async def api_service_preflight(
         worker=worker,
         fleet_workers=workers,
         also_deploying_to=planned_ids,
+        replacing=replacing,
     )
 
 
