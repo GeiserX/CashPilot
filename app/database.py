@@ -673,12 +673,15 @@ CREATE TABLE IF NOT EXISTS proxies (
 
 -- Which service runs through which proxy on which worker. stopped_by_cap is
 -- 1 when the traffic cap stopped it, so a reset starts only those and never
--- one the owner stopped by hand.
+-- one the owner stopped by hand. removing_since is set when the owner asked to
+-- remove it and the worker has not confirmed yet (it timed out or was
+-- unreachable); the row goes once the worker confirms.
 CREATE TABLE IF NOT EXISTS proxied_copies (
     proxy_id       INTEGER NOT NULL,
     worker_id      INTEGER NOT NULL,
     slug           TEXT    NOT NULL,
     stopped_by_cap INTEGER NOT NULL DEFAULT 0,
+    removing_since TEXT,
     created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (proxy_id, worker_id, slug)
 );
@@ -1184,6 +1187,14 @@ async def init_db() -> None:
                 "UPDATE workers SET key_issued_at = datetime('now') "
                 "WHERE api_key_enc IS NOT NULL AND api_key_enc != '' AND key_confirmed = 0"
             )
+
+        # A copy removal the worker has not confirmed yet. NULL is the truthful
+        # backfill: no removal was pending before this column existed.
+        cursor = await db.execute("PRAGMA table_info(proxied_copies)")
+        copy_cols = {row["name"] for row in await cursor.fetchall()}
+        if copy_cols and "removing_since" not in copy_cols:
+            applied.append("proxied_copies.removing_since")
+            await db.execute("ALTER TABLE proxied_copies ADD COLUMN removing_since TEXT")
 
         # The appearance choice, per user. NULL means "never chosen".
         cursor = await db.execute("PRAGMA table_info(user_preferences)")
@@ -2221,7 +2232,7 @@ async def save_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> None:
         await db.execute(
             """
             INSERT INTO proxied_copies (proxy_id, worker_id, slug) VALUES (?, ?, ?)
-            ON CONFLICT(proxy_id, worker_id, slug) DO UPDATE SET stopped_by_cap = 0
+            ON CONFLICT(proxy_id, worker_id, slug) DO UPDATE SET stopped_by_cap = 0, removing_since = NULL
             """,
             (proxy_id, worker_id, slug),
         )
@@ -2250,6 +2261,20 @@ async def set_proxied_copy_capped(proxy_id: int, worker_id: int, slug: str, capp
         await db.execute(
             "UPDATE proxied_copies SET stopped_by_cap = ? WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
             (1 if capped else 0, proxy_id, worker_id, slug),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def set_proxied_copy_removing(proxy_id: int, worker_id: int, slug: str, removing: bool) -> None:
+    """Mark a copy as asked to be removed and not yet confirmed by its worker, or clear the mark."""
+    db = await _get_db()
+    try:
+        await db.execute(
+            "UPDATE proxied_copies SET removing_since = CASE WHEN ? THEN COALESCE(removing_since, datetime('now')) "
+            "END WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
+            (1 if removing else 0, proxy_id, worker_id, slug),
         )
         await db.commit()
     finally:
