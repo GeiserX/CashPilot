@@ -74,6 +74,10 @@
 #       pattern: "" (optional) regex a typed value must match in full, or the
 #         deploy is refused. For values that land on a command line, where a
 #         stray space or word becomes an argument and the service stops starting.
+#       per_device: false (optional) the value is the id the provider knows this
+#         device by (ProxyRack's UUID). A proxied copy gets its own, derived in the
+#         same format; a value in a format it cannot derive refuses the copy.
+#         Required on the key a device_link names.
 #       port_range: false (optional) the value is "start:end" with
 #         1 <= start <= end <= 65535. A pattern checks the shape, not the order.
 #   ports: ["port:port"]

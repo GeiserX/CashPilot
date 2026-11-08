@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -123,6 +124,61 @@ class TestEarner:
         assert spec["env"] == {"DEVICE": "cashpilot-box-p4", "TOKEN": "t0k"}
         assert spec["command"] == "run --device cashpilot-box-p4 --token t0k"
         assert not {"ports", "volumes", "network_mode", "hostname", "instances"} & set(spec)
+
+    def test_the_copy_reports_its_own_device_id_not_the_original(self):
+        original = "AB" * 32  # ProxyRack's own generator writes 64 uppercase hex
+        docker_conf = {
+            "env": [{"key": "UUID", "per_device": True}, {"key": "DEVICE_NAME", "default": "Device-${UUID}"}],
+            "command": "run ${UUID}",
+        }
+        recorded = {
+            "image": "x/x:1",
+            "env": {"UUID": original, "DEVICE_NAME": f"Device-{original}", "API_KEY": "k"},
+            "command": f"run {original}",
+        }
+        spec = proxies.earner_spec(recorded, docker_conf, 1)
+        new = spec["env"]["UUID"]
+        assert new != original and re.fullmatch(r"[0-9A-F]{64}", new)
+        assert spec["env"]["DEVICE_NAME"] == f"Device-{new}" and spec["env"]["API_KEY"] == "k"
+        assert spec["command"] == f"run {new}"
+        # Derived, so a redeploy keeps the device; another proxy gets another one.
+        assert proxies.earner_spec(recorded, docker_conf, 1)["env"]["UUID"] == new
+        assert proxies.earner_spec(recorded, docker_conf, 2)["env"]["UUID"] not in (new, original)
+
+    def test_an_unmarked_id_is_left_alone(self):
+        recorded = {"env": {"UUID": "ab" * 32}}
+        assert proxies.earner_spec(recorded, {"env": [{"key": "UUID"}]}, 1)["env"]["UUID"] == "ab" * 32
+
+    @pytest.mark.parametrize("value", ["sdk-node-0123abcd", "AbCdEf01", "not hex"])
+    def test_a_device_id_in_a_format_it_cannot_derive_refuses_the_copy(self, value):
+        with pytest.raises(ValueError):
+            proxies.earner_spec({"env": {"ID": value}}, {"env": [{"key": "ID", "per_device": True}]}, 1)
+
+    def test_a_required_device_id_missing_from_the_deployment_refuses_the_copy(self):
+        conf = {"env": [{"key": "UUID", "per_device": True, "required": True}]}
+        with pytest.raises(ValueError):
+            proxies.earner_spec({"env": {}}, conf, 1)
+        # Optional and empty: the service makes its own id, nothing is cloned.
+        optional = {"env": [{"key": "UUID", "per_device": True}]}
+        assert proxies.earner_spec({"env": {"UUID": ""}}, optional, 1)["env"] == {"UUID": ""}
+
+    def test_a_derived_id_that_misses_the_catalog_pattern_refuses_the_copy(self):
+        with pytest.raises(ValueError):
+            proxies.copy_device_id("ab" * 32, 1, pattern=r"[0-9]{64}")
+        assert re.fullmatch(r"[0-9a-f]{64}", proxies.copy_device_id("ab" * 32, 1, pattern=r"[0-9a-f]{64}"))
+
+    def test_the_copy_id_keeps_the_original_shape(self):
+        assert len(proxies.copy_device_id("abc", 3)) == 3
+        assert re.fullmatch(r"[0-9A-F]{6}", proxies.copy_device_id("ABCDEF", 3))
+        assert re.fullmatch(r"[0-9a-f]{6}", proxies.copy_device_id("abcdef", 3))
+
+    def test_every_catalog_device_id_is_marked_per_device(self):
+        from app import catalog
+
+        catalog.load_services()
+        for slug, key in [("proxyrack", "UUID"), ("earnapp", "EARNAPP_UUID"), ("spide", "SPIDE_MACHINE_ID")]:
+            env = (catalog.get_service(slug) or {}).get("docker", {}).get("env", [])
+            assert any(v.get("key") == key and v.get("per_device") is True for v in env), slug
 
 
 # ---------------------------------------------------------------------------
@@ -780,6 +836,43 @@ class TestStorageAndRoutes:
                 "created_at": copies[0]["created_at"],
             }
         ]
+
+    def test_a_copy_of_a_linked_device_runs_and_registers_its_own_id(self, db):
+        original = "cd" * 32
+        svc = {
+            "slug": "proxyrack",
+            "name": "ProxyRack",
+            "status": "active",
+            "docker": {
+                "image": "proxyrack/pop",
+                "env": [{"key": "UUID", "per_device": True}, {"key": "API_KEY", "secret": True}],
+            },
+            "device_link": {"id_env": "UUID", "steps": "Add the device."},
+        }
+        recorded = {"image": "proxyrack/pop", "env": {"UUID": original, "API_KEY": "k"}}
+        call = AsyncMock(return_value={"status": "deployed", "exit": {"ip": "93.184.215.14", "country": "US"}})
+        register = AsyncMock(return_value=True)
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            with (
+                patch.object(main.catalog, "get_service", return_value=svc),
+                patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
+                patch.object(main.database, "get_deployment_spec", new_callable=AsyncMock, return_value=recorded),
+                patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+                patch.object(main, "_proxy_to_worker", call),
+                patch.object(main, "_register_device", register),
+            ):
+                return await main.api_add_proxied_copy(
+                    created["id"], main.ProxyCopyRequest(worker_id=7, slug="proxyrack"), {}
+                )
+
+        result = _run(go)
+        sent_id = call.call_args.kwargs["json"]["earner"]["env"]["UUID"]
+        assert sent_id != original and len(sent_id) == 64
+        assert register.call_args.args[:2] == ("proxyrack", sent_id)
+        assert result["device_link"]["id"] == sent_id and result["device_link"]["registered"] is True
 
     def test_dropping_the_cap_lifts_the_stop_and_starts_the_copies(self, db):
         call = AsyncMock(return_value={})

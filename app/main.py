@@ -4249,7 +4249,10 @@ async def api_add_proxied_copy(
             detail=f"Deploy {svc.get('name') or slug} on this worker first; the proxied copy runs with its settings.",
         )
     docker_conf = svc.get("docker") or {}
-    earner = proxies.earner_spec(recorded, docker_conf, proxy_id)
+    try:
+        earner = proxies.earner_spec(recorded, docker_conf, proxy_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug}: {exc}") from exc
     if not recorded.get("custom_image") and isinstance(docker_conf.get("image_by_arch"), dict):
         worker = await database.get_worker(worker_id) or {}
         arch_image = _image_for_arch(docker_conf, _safe_json(worker.get("system_info", "{}"), {}).get("arch"))
@@ -4301,6 +4304,10 @@ async def api_add_proxied_copy(
             if limit == 1
             else "Copies on one IP share its bandwidth, and the provider may limit devices per IP."
         )
+    # The copy is a new device: add it to the account as a deploy does, or show the step.
+    if step := catalog.device_link_step(svc, earner["env"]):
+        step["registered"] = await _register_device(slug, step["id"], earner["env"])
+        response["device_link"] = step
     return response
 
 

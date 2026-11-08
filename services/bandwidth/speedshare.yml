@@ -25,6 +25,7 @@ docker:
       secret: true
       description: "Your SpeedShare authorization code from the dashboard"
     - key: SPEEDSHARE_UUID
+      per_device: true
       label: "Device UUID"
       required: false
       secret: false

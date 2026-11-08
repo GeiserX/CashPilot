@@ -1061,6 +1061,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const out = await CP.api(`/api/proxies/${proxyId}/copies`, {method: 'POST', body});
       CP.toast(`Running through ${out.exit_ip || 'the proxy'}${out.country ? ' · ' + out.country : ''}`, 'success');
       if (out.warning) CP.toast(out.warning, 'warning');
+      // The copy is a new device: say so when it could not be added to the account.
+      const link = out.device_link;
+      if (link && !link.registered) CP.toast(`New device ${link.id}: ${link.steps}${link.url ? ' ' + link.url : ''}`, 'warning');
       load();
     } catch (err) { CP.toast(err.message, 'error'); }
   });
