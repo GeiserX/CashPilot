@@ -535,10 +535,21 @@ class TestTheGuard:
         apply.assert_not_called()
         assert held == {}
 
-    def test_on_the_operators_own_network_there_is_no_fence_to_wait_for(self, markers):
+    def test_on_the_operators_own_network_there_is_no_fence_to_wait_for(self, markers, monkeypatch):
+        monkeypatch.setattr(orchestrator, "_CONTAINER_NETWORK", "operator-net")
         node = _node(status="exited", network_mode="operator-net")
         _guard([node], mode=lan_fence.MODE_OPERATOR)
         node.start.assert_called_once()
+
+    @pytest.mark.parametrize("network_mode", ["bridge", "cashpilot-isolated"])
+    def test_in_operator_mode_a_node_off_the_operators_network_is_held(self, markers, monkeypatch, network_mode):
+        # Docker's default bridge has inter-container traffic on, and nothing of the operator's applies there.
+        monkeypatch.setattr(orchestrator, "_CONTAINER_NETWORK", "operator-net")
+        running, stopped = _node(network_mode=network_mode), _node(status="exited", network_mode=network_mode)
+        held, _ = _guard([running, stopped], mode=lan_fence.MODE_OPERATOR)
+        running.stop.assert_called_once()
+        stopped.start.assert_not_called()
+        assert "operator-net" in held["cashpilot-mysterium"]
 
     @pytest.mark.parametrize("mode", [lan_fence.MODE_LEGACY, lan_fence.MODE_OFF])
     def test_on_the_default_bridge_it_does_not_run_at_all(self, markers, mode):

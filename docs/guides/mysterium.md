@@ -237,7 +237,7 @@ uses now (`docker inspect cashpilot-mysterium --format '{{json .Mounts}}'`); a
 different one starts a new node identity.
 
 ```bash
-docker run -d --name cashpilot-mysterium \
+docker create --name cashpilot-mysterium \
   --network cashpilot-isolated --restart no \
   -p 127.0.0.1:4449:4449 -p 56000-56029:56000-56029/udp \
   --cap-drop ALL --cap-add NET_ADMIN --cap-add SETUID --cap-add SETGID \
@@ -253,17 +253,20 @@ docker run -d --name cashpilot-mysterium \
 
 If a reverse proxy reaches this node's WebUI, add a `-p <address>:4449:4449` for
 each address it connects to. The worker's guard covers only nodes CashPilot
-deployed, so this hand-made container has no restart policy: Docker must not
-start it after a reboot before the worker has put the fence back. After a
-reboot, start it yourself once the fence reads complete:
+deployed, so this hand-made container is created, not started, and has no
+restart policy: Docker must not start it before the worker has put the fence
+in place. Start it, now and after every reboot, only when the fence's host
+rule is there (nftables backend; on the `iptables-legacy` one, test
+`sudo iptables-legacy -t mangle -S CP-IN | grep -q host` instead):
 
 ```bash
-docker logs cashpilot-worker 2>&1 | grep 'LAN fence applied' | tail -1   # after this boot
-docker start cashpilot-mysterium
+sudo nft list table ip cashpilot 2>/dev/null | grep -q 'comment "host"' \
+  && docker start cashpilot-mysterium || echo "fence not in place: node left stopped"
 ```
 
-Redeploying it from the dashboard instead hands it to the worker, which then
-starts it behind the fence by itself.
+This checks that the table is there, not every rule in it, as the worker
+does. Redeploying the node from the dashboard hands it to the worker, which
+checks the whole table, starts it only then and stops it if a rule goes.
 
 Verify it took:
 

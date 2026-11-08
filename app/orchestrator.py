@@ -1332,6 +1332,8 @@ def gated_spec_problem(container: Any, mode: str | None = None) -> str | None:
 
     if mode == lan_fence.MODE_ON and network_mode != lan_fence.NETWORK_NAME:
         return f"it is not on {lan_fence.NETWORK_NAME}, so the fence does not cover it"
+    if mode == lan_fence.MODE_OPERATOR and network_mode != _CONTAINER_NETWORK:
+        return f"it is not on {_CONTAINER_NETWORK}, the network whose rules this worker runs earners under"
     return None
 
 
