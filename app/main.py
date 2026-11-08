@@ -1360,7 +1360,7 @@ async def _device_still_deployed(slug: str, device_id: str) -> bool:
     if device_id in deployed:
         return True
     for copy in await database.list_proxied_copies():
-        if copy["slug"] != slug:
+        if copy["slug"] != slug or copy.get("removing_since"):
             continue
         for original in deployed:
             try:
@@ -4353,9 +4353,16 @@ async def api_delete_proxy(proxy_id: int, _auth: dict[str, Any] = Depends(_requi
     # Under the lock a copy being added records itself first, so it is either
     # seen here or finds the proxy gone.
     async with _proxy_state_lock(proxy_id):
-        if await database.list_proxied_copies(proxy_id):
+        if copies := await database.list_proxied_copies(proxy_id):
+            if all(c.get("removing_since") for c in copies):
+                raise HTTPException(
+                    status_code=409,
+                    detail="The copies through this proxy are still being removed: their worker has not "
+                    "confirmed yet. Try again once they are gone from the list.",
+                )
             raise HTTPException(status_code=409, detail="Remove the copies running through this proxy first")
         await database.delete_proxy(proxy_id)
+    await _drop_copy_device_links(proxy_id)
     return {"status": "deleted"}
 
 
@@ -4581,23 +4588,158 @@ async def api_proxied_copy_command(
     return result
 
 
+#: Seconds the dashboard waits for a worker to remove a copy: the earner's stop
+#: timeout plus the tunnel's 10 s. A removal that takes longer stays pending.
+COPY_REMOVE_TIMEOUT = 90
+
+#: Worker answers that leave a removal pending: the worker timed out (it may
+#: still be removing) or could not be reached. Any other answer is the worker's
+#: own, and final.
+_COPY_REMOVE_PENDING = (503, 504)
+
+#: Copies whose pending removal a heartbeat is finishing right now, so the
+#: next heartbeat does not send a second request while the first runs.
+_copy_removals_running: set[tuple[int, int, str]] = set()
+
+
+async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str) -> None:
+    """The worker confirmed the copy is gone: drop its record and its device's pending link."""
+    await database.delete_proxied_copy(proxy_id, worker_id, slug)
+    await _drop_copy_device_links(proxy_id, slug)
+
+
+async def _drop_copy_device_links(proxy_id: int, slug: str | None = None) -> None:
+    """Drop the pending device links of copies through ``proxy_id`` that no longer run.
+
+    A copy's device id is derived from its original's (proxies.copy_device_id),
+    so each pending link is matched against the ids every recorded original of
+    its service would get through this proxy. A link whose device still runs,
+    the original's own or another copy's, is left alone.
+    """
+    for row in await database.list_pending_device_links():
+        if slug is not None and row["slug"] != slug:
+            continue
+        link = (catalog.get_service(row["slug"]) or {}).get("device_link") or {}
+        if not link.get("id_env"):
+            continue
+        derived = set()
+        for original in await database.get_deployed_env_values(row["slug"], link["id_env"]):
+            try:
+                derived.add(proxies.copy_device_id(original, proxy_id))
+            except ValueError:
+                continue
+        if row["device_id"] in derived and not await _device_still_deployed(row["slug"], row["device_id"]):
+            await database.delete_pending_device_link(row["slug"], row["device_id"])
+
+
 @app.delete("/api/proxies/{proxy_id}/copies/{worker_id}/{slug}")
 async def api_remove_proxied_copy(
     proxy_id: int, worker_id: int, slug: str, _auth: dict[str, Any] = Depends(_require_owner)
-) -> dict[str, Any]:
+) -> Any:
+    """Remove a copy and its tunnel on the worker, then its record.
+
+    The record is marked as being removed before the worker is asked. If the
+    worker times out or cannot be reached, the mark stays and the answer is 202
+    "removing": every heartbeat from that worker asks again until it confirms
+    (_resume_copy_removals), so the record never outlives the containers and
+    never disappears while they still run.
+    """
     proxy = await _proxy_or_404(proxy_id)
     if not await database.get_worker(worker_id):
         # The box was deleted or enrolled again under a new id: there is no
         # worker to ask, and keeping the row would also block deleting the proxy.
-        await database.delete_proxied_copy(proxy_id, worker_id, slug)
+        await _finish_copy_removal(proxy_id, worker_id, slug)
         return {
             "status": "removed",
             "containers": [],
             "note": "That worker no longer exists; only the record was removed.",
         }
-    result = await _proxy_worker_call(worker_id, "DELETE", f"/api/proxied/{slug}/{proxy_id}", proxy["definition"])
-    await database.delete_proxied_copy(proxy_id, worker_id, slug)
+    async with _proxy_copy_lock(proxy_id, worker_id, slug):
+        await database.set_proxied_copy_removing(proxy_id, worker_id, slug, True)
+        try:
+            result = await _proxy_worker_call(
+                worker_id, "DELETE", f"/api/proxied/{slug}/{proxy_id}", proxy["definition"], timeout=COPY_REMOVE_TIMEOUT
+            )
+        except HTTPException as exc:
+            if exc.status_code in _COPY_REMOVE_PENDING:
+                return JSONResponse(
+                    status_code=202,
+                    content={
+                        "status": "removing",
+                        "note": "The worker has not confirmed yet. CashPilot asks it again with each of its "
+                        "heartbeats and drops the copy once it confirms.",
+                    },
+                )
+            await database.set_proxied_copy_removing(proxy_id, worker_id, slug, False)
+            raise
+        await _finish_copy_removal(proxy_id, worker_id, slug)
     return result
+
+
+async def _resume_copy_removals(copies: list[tuple[int, int, str]]) -> None:
+    """Ask a worker again to remove the copies it has not confirmed, and finish each it confirms."""
+    for key in copies:
+        proxy_id, worker_id, slug = key
+        try:
+            async with _proxy_copy_lock(*key):
+                fresh = [
+                    c
+                    for c in await database.list_proxied_copies(proxy_id)
+                    if c["worker_id"] == worker_id and c["slug"] == slug and c.get("removing_since")
+                ]
+                proxy = await database.get_proxy(proxy_id)
+                if not fresh:
+                    continue
+                if not proxy:
+                    await _finish_copy_removal(proxy_id, worker_id, slug)
+                    continue
+                try:
+                    await _proxy_worker_call(
+                        worker_id,
+                        "DELETE",
+                        f"/api/proxied/{slug}/{proxy_id}",
+                        proxy["definition"],
+                        timeout=COPY_REMOVE_TIMEOUT,
+                    )
+                except HTTPException as exc:
+                    if exc.status_code in _COPY_REMOVE_PENDING:
+                        continue
+                    # The worker answered and could not remove it: the copy is
+                    # still there, so it is listed again with its buttons.
+                    await database.set_proxied_copy_removing(proxy_id, worker_id, slug, False)
+                    logger.warning(
+                        "Worker %s could not remove the copy of %s through proxy %s: %s",
+                        worker_id,
+                        slug,
+                        proxy_id,
+                        exc.detail,
+                    )
+                    continue
+                await _finish_copy_removal(proxy_id, worker_id, slug)
+                logger.info("Worker %s confirmed the removal of %s through proxy %s", worker_id, slug, proxy_id)
+        except Exception as exc:  # noqa: BLE001 - one copy's failure must not strand the others
+            logger.warning(
+                "Could not resume the removal of %s through proxy %s on worker %s (the next heartbeat tries again): %s",
+                slug,
+                proxy_id,
+                worker_id,
+                exc,
+            )
+        finally:
+            _copy_removals_running.discard(key)
+
+
+async def _queue_copy_removals(worker_id: int) -> None:
+    """On a heartbeat: resume this worker's removals that are still waiting for its confirmation."""
+    pending = [
+        (c["proxy_id"], c["worker_id"], c["slug"])
+        for c in await database.list_proxied_copies()
+        if c["worker_id"] == worker_id and c.get("removing_since")
+    ]
+    pending = [key for key in pending if key not in _copy_removals_running]
+    if pending:
+        _copy_removals_running.update(pending)
+        _spawn(_resume_copy_removals(pending))
 
 
 @app.post("/api/proxies/{proxy_id}/reset-usage")
@@ -4623,7 +4765,7 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
     started: list[str] = []
     for copy in await database.list_proxied_copies(proxy["id"]):
         key = (proxy["id"], copy["worker_id"], copy["slug"])
-        if not copy.get("stopped_by_cap") or key in _proxy_cap_starting:
+        if not copy.get("stopped_by_cap") or copy.get("removing_since") or key in _proxy_cap_starting:
             continue
         _proxy_cap_starting.add(key)
         try:
@@ -4713,7 +4855,10 @@ async def _account_proxy_traffic(worker_id: int, entries: list[Any]) -> None:
     # cannot spend, or cap, a proxy it runs nothing through.
     copies = [c for c in await database.list_proxied_copies() if c["worker_id"] == worker_id]
     recorded = {(c["proxy_id"], c["slug"]) for c in copies}
-    held_by_cap = {(c["proxy_id"], c["slug"]) for c in copies if c.get("stopped_by_cap")}
+    # A copy being removed is never started again by the cap.
+    held_by_cap = {
+        (c["proxy_id"], c["slug"]) for c in copies if c.get("stopped_by_cap") and not c.get("removing_since")
+    }
     now = time.time()
     for proxy_id, items in by_proxy.items():
         counted = [e for e in items if (proxy_id, egress.container_slug(e)) in recorded]
@@ -7880,6 +8025,12 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
             await _account_proxy_traffic(worker_id, proxied)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not count proxy traffic for worker %s: %s", worker_id, exc)
+    # A copy removal this worker did not confirm in time: ask it again now that
+    # it is reporting. Never allowed to reject a heartbeat.
+    try:
+        await _queue_copy_removals(worker_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not resume copy removals for worker %s: %s", worker_id, exc)
     # Activity: the switch is read on every heartbeat, because the reply is
     # how the worker learns it. Never allowed to reject a heartbeat, and the
     # log line never carries the exception text, which could quote an address.
