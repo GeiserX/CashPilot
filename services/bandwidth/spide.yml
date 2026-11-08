@@ -21,6 +21,7 @@ docker:
   platforms: []
   env:
     - key: SPIDE_MACHINE_ID
+      per_device: true
       label: "Machine ID"
       required: false
       secret: false

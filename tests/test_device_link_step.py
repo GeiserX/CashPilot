@@ -106,7 +106,8 @@ def _errors(tmp_path: Path, link) -> list[str]:
         "docker": {
             "image": "x/x:1",
             "env": [
-                {"key": "ID"},
+                {"key": "ID", "per_device": True},
+                {"key": "PLAIN"},
                 {"key": "TOKEN", "secret": True},
                 {"key": "TWICE"},
                 {"key": "TWICE", "secret": True},
@@ -131,11 +132,24 @@ def test_the_loader_accepts_a_well_formed_block(tmp_path):
         {"id_env": "ID", "url": "https://x.test/${TOKEN}", "steps": "Open it."},  # a secret in the link
         {"id_env": "ID", "url": "https://x.test/${NOPE}", "steps": "Open it."},  # an undeclared placeholder
         {"id_env": "TWICE", "steps": "Open it."},  # declared twice, once secret: secret
+        {"id_env": "PLAIN", "steps": "Open it."},  # not marked per_device, so a proxied copy would clone it
         "EARNAPP_UUID",  # not a mapping
     ],
 )
 def test_the_loader_refuses_a_malformed_block(tmp_path, link):
     assert any("device_link" in e for e in _errors(tmp_path, link))
+
+
+def test_per_device_must_be_a_boolean(tmp_path):
+    data = {
+        "name": "X",
+        "slug": "x",
+        "category": "bandwidth",
+        "status": "active",
+        "description": "x",
+        "docker": {"image": "x/x:1", "env": [{"key": "ID", "per_device": "yes"}]},
+    }
+    assert any("per_device must be a boolean" in e for e in catalog._validate(data, tmp_path / "x.yml"))
 
 
 # ProxyRack's peer API adds a device itself (POST /api/device/add), so with the

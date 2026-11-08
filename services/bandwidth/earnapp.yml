@@ -29,6 +29,7 @@ docker:
     oom_score_adj: 300
   env:
     - key: EARNAPP_UUID
+      per_device: true
       label: "Node UUID"
       required: true
       secret: false
