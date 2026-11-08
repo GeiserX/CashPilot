@@ -10,6 +10,9 @@ from typing import Any, TypeVar
 
 import httpx
 
+#: register_device's answer when the provider has not seen a new device yet.
+REGISTER_PENDING = "pending"
+
 T = TypeVar("T")
 
 
@@ -116,11 +119,13 @@ class BaseCollector(abc.ABC):
         # `device_link` block. Empty means nothing to check.
         self.device_ids: set[str] = set()
 
-    async def register_device(self, device_id: str, name: str) -> bool | None:
+    async def register_device(self, device_id: str, name: str) -> bool | str | None:
         """Add a deployed device to the account, where the provider's API allows it.
 
         True when the device is on the account afterwards, False when it is not,
-        None when this provider has no way to do it (the user links it by hand).
+        None when this provider has no way to do it (the user links it by hand),
+        and REGISTER_PENDING when the provider has not seen the device yet and
+        says to try again later: the dashboard keeps retrying it.
         """
         return None
 
