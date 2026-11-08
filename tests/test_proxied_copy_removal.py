@@ -222,6 +222,33 @@ class TestASlowWorker:
 
         assert _run(go) == 1
 
+    def test_one_copys_failure_does_not_strand_the_next(self, db):
+        spawned: list = []
+
+        async def go():
+            pid = await _proxy_with_copy()
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            a, b, c, d = _worker(AsyncMock(side_effect=TIMEOUT), spawned)
+            with a, b, c, d:
+                await main.api_remove_proxied_copy(pid, 7, "honeygain", {})
+                await main.api_remove_proxied_copy(pid, 7, "proxyrack", {})
+            real = main._finish_copy_removal
+
+            async def finish(proxy_id, worker_id, slug):
+                if slug == "honeygain":
+                    raise RuntimeError("database is locked")
+                await real(proxy_id, worker_id, slug)
+
+            a, b, c, d = _worker(AsyncMock(return_value=REMOVED), spawned)
+            with a, b, c, d, patch.object(main, "_finish_copy_removal", finish):
+                await main._queue_copy_removals(7)
+                await spawned.pop()
+            return await _copies(), set(main._copy_removals_running)
+
+        copies, running = _run(go)
+        # honeygain failed and waits for the next heartbeat; proxyrack still finished.
+        assert copies == [(7, "honeygain", True)] and running == set()
+
     def test_a_refusal_on_the_retry_lists_the_copy_again(self, db):
         spawned: list = []
 

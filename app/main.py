@@ -4708,6 +4708,14 @@ async def _resume_copy_removals(copies: list[tuple[int, int, str]]) -> None:
                     continue
                 await _finish_copy_removal(proxy_id, worker_id, slug)
                 logger.info("Worker %s confirmed the removal of %s through proxy %s", worker_id, slug, proxy_id)
+        except Exception as exc:  # noqa: BLE001 - one copy's failure must not strand the others
+            logger.warning(
+                "Could not resume the removal of %s through proxy %s on worker %s (the next heartbeat tries again): %s",
+                slug,
+                proxy_id,
+                worker_id,
+                exc,
+            )
         finally:
             _copy_removals_running.discard(key)
 
