@@ -64,20 +64,20 @@ In the CashPilot web UI, open **Catalog** and click **Add** on the **MystNodes**
 | Variable | Default | What it does |
 |---|---|---|
 | `UI_ADDRESS` | `127.0.0.1` | The host addresses the node's WebUI (port 4449) is published on. Comma separated, no spaces. |
-| `UDP_PORTS` | `56000:56029` | The UDP ports the node uses for sessions, as `start:end`. Forward the same range. To go back to the default after changing it, remove the service from that machine (its data volume stays) and deploy again. |
+| `UDP_PORTS` | `23000:23029` | The UDP ports the node uses for sessions, as `start:end`. Forward the same range. Keep it below 32768 (see *Port forwarding*). To go back to the default after changing it, remove the service from that machine (its data volume stays) and deploy again. |
 
 ### Port forwarding
 
 Each session first tries to reach the node directly on its UDP range, and falls
 back to hole punching when it cannot, which many buyers fail at. The node uses
-only the range in `UDP_PORTS` (default `56000:56029`), so forward exactly that
+only the range in `UDP_PORTS` (default `23000:23029`), so forward exactly that
 range. Create one rule on your router:
 
 | Field | Value |
 |---|---|
 | Protocol | UDP |
-| External ports | 56000-56029 (your `UDP_PORTS`) |
-| Internal ports | the same, 56000-56029 |
+| External ports | 23000-23029 (your `UDP_PORTS`) |
+| Internal ports | the same, 23000-23029 |
 | Internal IP | the LAN address of the machine running the node |
 
 Give that machine a fixed LAN address (a DHCP reservation), or the rule points
@@ -86,18 +86,19 @@ the LAN fence, which drops the router, so it cannot ask the router for a
 forward. Forward the range by hand. DMZ is the last resort.
 
 The node runs on CashPilot's fenced bridge, and the worker publishes the range
-1:1 on the machine (`56000/udp` to `56000/udp`, and so on), so the forward on
+1:1 on the machine (`23000/udp` to `23000/udp`, and so on), so the forward on
 the router is the same as when the node shared the host's network.
+
+Keep the range below 32768. Ports 32768 to 60999 are Linux's ephemeral range: any program on the machine (a DNS lookup, a game client, a browser) can hold one of them for a moment. On the host's network the node just skipped a taken port, but Docker publishes the range as a whole, so one taken port fails the node's start. The worker then puts the previous node back and says which port was taken.
 
 Each session takes about two ports, so the default 30 ports carry about 15
 sessions at once, more than a home node gets. Every published port costs about
 2.5 MB of memory on the machine (Docker starts two small proxy processes per
 port; 101 ports measured about 250 MB), so a wider range only costs more. A
-range of 20 to 30 ports is enough. Through 2.0.6 the default was
-`56000:56100`: a router forward for that range keeps working, since the new
-default is inside it. A node that has `56000:56100` on record keeps it on a
-redeploy; to save the memory, set `UDP_PORTS` to `56000:56029` and redeploy,
-with no change on the router.
+range of 20 to 30 ports is enough. The default was `56000:56100` through
+2.0.6 and `56000:56029` in 2.0.7 and 2.1.0, both inside the ephemeral range. A node keeps
+the range it has on record on a redeploy. To move it, set `UDP_PORTS` to
+`23000:23029`, change the router forward to match, and redeploy.
 
 **Check it.** After a few sessions, on the machine running the node:
 
@@ -239,7 +240,7 @@ different one starts a new node identity.
 ```bash
 docker create --name cashpilot-mysterium \
   --network cashpilot-isolated --restart no --runtime runc \
-  -p 127.0.0.1:4449:4449 -p 56000-56029:56000-56029/udp \
+  -p 127.0.0.1:4449:4449 -p 23000-23029:23000-23029/udp \
   --cap-drop ALL --cap-add NET_ADMIN --cap-add SETUID --cap-add SETGID \
   --device /dev/net/tun \
   --security-opt no-new-privileges:true \
@@ -247,7 +248,7 @@ docker create --name cashpilot-mysterium \
   mysteriumnetwork/myst:1.39.9-alpine \
   --ui.address=0.0.0.0 --tequilapi.address=127.0.0.1 \
   --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 \
-  --udp.ports=56000:56029 \
+  --udp.ports=23000:23029 \
   service --agreed-terms-and-conditions
 ```
 

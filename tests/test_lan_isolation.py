@@ -81,7 +81,7 @@ class TestWhatCanActuallyBeIsolated:
         out = li.assess(catalog.get_service("mysterium"))
         assert out["verdict"] == li.NEEDS_EXCEPTIONS
         details = " ".join(e["detail"] for e in out["exceptions"])
-        assert "56000:56029/udp" in details
+        assert "23000:23029/udp" in details
         assert "host network" not in details
         assert "4449" not in details, "the WebUI is published on loopback by default"
 

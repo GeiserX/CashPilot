@@ -53,12 +53,17 @@ drift, and **Check isolation** fails on it.
    reads, so back up the keystore first anyway
    ([Backing up node identities](docs/backup.md)) and check the identity after
    (`docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities`).
-4. Nothing changes on the router: the worker publishes the UDP range 1:1. The
-   default range is now `56000:56029`, inside the old `56000:56100`, so the
-   old forward keeps working. A node with `56000:56100` on record keeps it;
-   setting `UDP_PORTS` to `56000:56029` before the redeploy saves about 175 MB
-   of memory in Docker's port proxy. UPnP no longer works for the node, so
-   forward the range by hand if you relied on it.
+4. Move the UDP range below 32768 before the redeploy: set `UDP_PORTS` to
+   `23000:23029`, the new default, and change the router forward to match.
+   The worker publishes the range 1:1 through Docker, and a node's range on
+   record (`56000:56100` through 2.0.6, `56000:56029` in 2.0.7 and 2.1.0) sits in
+   Linux's ephemeral range, 32768-60999, where any program on the host can
+   hold a port for a moment. One taken port fails the whole start. The
+   worker then puts the old node back and names the port, so nothing is
+   lost, but the node does not move. A node that keeps its old range still
+   works while no host program holds one of its ports. 30 ports also save
+   about 175 MB of memory in Docker's port proxy against 101. UPnP no longer
+   works for the node, so forward the range by hand if you relied on it.
 
 **If you reach the WebUI through a reverse proxy.** `UI_ADDRESS` is now the
 host addresses port 4449 is published on. A Docker network gateway in it is
