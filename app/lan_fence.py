@@ -1060,20 +1060,41 @@ def network_for_deploy() -> str | None:
     return NETWORK_NAME
 
 
+def mode_problem(mode: str) -> str | None:
+    """Why a fence-gated service cannot run in this isolation mode at all, or None.
+
+    Only ``on`` (behind our fence) and ``operator`` (on the operator's own
+    network, under their rules) qualify. In ``off``, ``legacy`` and
+    ``unsupported`` the node would sit on Docker's default bridge, where every
+    other earner reaches its WebUI and nothing keeps it off the LAN.
+    """
+    if mode in (MODE_ON, MODE_OPERATOR):
+        return None
+    how = {
+        MODE_OFF: "set CASHPILOT_ISOLATION=auto on this worker and restart it",
+        MODE_LEGACY: "press Turn on isolation on the Fleet page",
+        MODE_UNSUPPORTED: "run it on Docker, or on your own network (CASHPILOT_CONTAINER_NETWORK)",
+    }.get(mode, "turn isolation on")
+    return (
+        f"isolation is {mode} on this worker, and this node holds NET_ADMIN, so it runs only behind the LAN "
+        f"fence or on your own network. To run it, {how}, then redeploy it"
+    )
+
+
 def fence_problem(client: Any) -> str | None:
     """Why a fence-gated container must not start now, or None.
 
     In ``on`` mode the table is read back by the helper and every rule it
-    should hold must be there, IPv6 drops included. Other modes have no fence
-    of ours to wait for: the operator's network carries the operator's rules,
-    and ``off`` or ``legacy`` was the owner's choice (docs/isolation.md).
+    should hold must be there, IPv6 drops included. On the operator's own
+    network there is no fence of ours to wait for: it carries their rules. Any
+    other mode does not run the node at all (mode_problem).
     """
     try:
         mode = resolve_mode(client)
     except RuntimeError as exc:
         return f"the isolation mode could not be read ({exc})"
     if mode != MODE_ON:
-        return None
+        return mode_problem(mode)
     try:
         result = read_fence(client)
     except Exception as exc:  # noqa: BLE001 - the reason is the answer

@@ -84,7 +84,8 @@ and **Check isolation** starts two short-lived containers to test that it holds.
 
 Limits: through 2.0.3 Mysterium ran on host networking and was not covered by
 the fence; later releases move it onto the fenced bridge in its own network
-namespace on its next redeploy
+namespace on its next redeploy, and run it only with isolation on or on your
+own network
 ([Mysterium on the fenced bridge](isolation.md#mysterium-on-the-fenced-bridge)). A
 second WAN or extra public IPs are not dropped. Docker Desktop, rootless Docker,
 and Unraid are not tested yet. On Podman the fence is not available yet: a

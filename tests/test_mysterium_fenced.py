@@ -33,6 +33,9 @@ from fastapi.testclient import TestClient
 from app import catalog, drift, isolation_check, lan_fence, orchestrator, socket_policy, worker_api
 from app.worker_api import DeploySpec, _validate_deploy_spec
 
+#: The mode rule (lan_fence.mode_problem) is part of what these tests check.
+pytestmark = pytest.mark.real_gated_mode
+
 ROOT = Path(__file__).resolve().parent.parent
 MYST = catalog.get_service("mysterium")
 PINNED = MYST["docker"]["image"]
@@ -271,7 +274,7 @@ def markers(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _raw_deploy(problem=None, slug="mysterium", old=None, **kwargs):
+def _raw_deploy(problem=None, slug="mysterium", old=None, mode=lan_fence.MODE_ON, **kwargs):
     created = MagicMock(id="new", short_id="new")
     client = MagicMock()
     if old is None:
@@ -285,6 +288,7 @@ def _raw_deploy(problem=None, slug="mysterium", old=None, **kwargs):
         patch.object(orchestrator, "_CONTAINER_RUNTIME", "runsc"),
         patch.object(orchestrator, "available_runtimes", return_value={"runc", "runsc"}),
         patch("app.lan_fence.fence_problem", return_value=problem),
+        patch("app.lan_fence.mode_problem", return_value=lan_fence.mode_problem(mode)),
     ):
         orchestrator.deploy_raw(slug=slug, image=PINNED, **kwargs)
     return client, created
@@ -310,11 +314,26 @@ class TestDeployRaw:
         with (
             patch.object(orchestrator, "_get_client", return_value=client),
             patch("app.lan_fence.fence_problem", return_value="missing"),
+            patch("app.lan_fence.mode_problem", return_value=None),
             pytest.raises(orchestrator.ContainerNetworkError),
         ):
             orchestrator.deploy_raw(slug="mysterium", image=PINNED)
         created.start.assert_not_called()
         client.containers.run.assert_not_called()
+
+    @pytest.mark.parametrize("mode", [lan_fence.MODE_LEGACY, lan_fence.MODE_OFF])
+    def test_on_the_default_bridge_it_is_refused_before_the_old_node_is_touched(self, markers, mode):
+        old = MagicMock()
+        old.name = "cashpilot-mysterium"
+        old.labels = dict(LABELS)
+        with pytest.raises(orchestrator.ContainerNetworkError, match="not touched"):
+            _raw_deploy(old=old, mode=mode)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+
+    def test_control_on_the_operators_own_network_it_deploys(self, markers):
+        client, created = _raw_deploy(mode=lan_fence.MODE_OPERATOR)
+        created.start.assert_called_once()
 
     def test_control_an_ordinary_earner_keeps_unless_stopped(self, markers):
         client, _ = _raw_deploy(slug="honeygain")
@@ -516,10 +535,22 @@ class TestTheGuard:
         apply.assert_not_called()
         assert held == {}
 
-    def test_outside_on_mode_there_is_no_fence_to_wait_for(self, markers):
-        node = _node(status="exited", network_mode="bridge")
-        _guard([node], mode=lan_fence.MODE_LEGACY)
+    def test_on_the_operators_own_network_there_is_no_fence_to_wait_for(self, markers):
+        node = _node(status="exited", network_mode="operator-net")
+        _guard([node], mode=lan_fence.MODE_OPERATOR)
         node.start.assert_called_once()
+
+    @pytest.mark.parametrize("mode", [lan_fence.MODE_LEGACY, lan_fence.MODE_OFF])
+    def test_on_the_default_bridge_it_does_not_run_at_all(self, markers, mode):
+        # Every other earner there reaches its WebUI, and nothing keeps it off the LAN.
+        running, stopped = _node(network_mode="bridge"), _node(status="exited", network_mode="bridge")
+        held, apply = _guard([running, stopped], problem=lan_fence.mode_problem(mode), mode=mode)
+        running.stop.assert_called_once()
+        stopped.start.assert_not_called()
+        apply.assert_not_called()
+        assert (
+            "Turn on isolation" in held["cashpilot-mysterium"] or "CASHPILOT_ISOLATION" in held["cashpilot-mysterium"]
+        )
 
 
 class TestFenceProblem:
@@ -542,8 +573,12 @@ class TestFenceProblem:
     def test_no_network_is(self):
         assert self._read(None)
 
-    def test_outside_on_mode_nothing_is_waited_for(self):
+    def test_on_the_operators_network_nothing_is_waited_for(self):
         assert self._read(None, mode=lan_fence.MODE_OPERATOR) is None
+
+    @pytest.mark.parametrize("mode", [lan_fence.MODE_LEGACY, lan_fence.MODE_OFF, lan_fence.MODE_UNSUPPORTED])
+    def test_a_mode_without_a_fence_is_a_problem(self, mode):
+        assert "NET_ADMIN" in self._read(None, mode=mode)
 
 
 # ---------------------------------------------------------------------------

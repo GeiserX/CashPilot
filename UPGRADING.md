@@ -38,7 +38,12 @@ under drift. Plan the redeploy right after the upgrade.
 **What to do.**
 
 1. Upgrade the UI **and the worker that runs Mysterium**. The dashboard refuses
-   to redeploy Mysterium onto an older worker.
+   to redeploy Mysterium onto an older worker. The fence must be on on that
+   worker: if the Fleet page offers **Turn on isolation**, press it first. In
+   `off` or `legacy` mode, and on Podman, the worker does not run Mysterium at
+   all, since on Docker's default bridge the other earners could reach its
+   WebUI; on your own network (`CASHPILOT_CONTAINER_NETWORK`) it runs under
+   your rules.
 2. Redeploy Mysterium from the dashboard. It keeps its data volume or data
    folder, so it keeps its identity and its earnings. Back up the keystore
    first ([Backing up node identities](docs/backup.md)): the worker compares

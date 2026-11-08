@@ -51,6 +51,24 @@ def _no_custom_images(request):
 
 
 @pytest.fixture(autouse=True)
+def _gated_services_run_in_any_mode(request):
+    """A fence-gated service (Mysterium) deploys in the suite's ``off`` mode.
+
+    The worker refuses one outside ``on`` and ``operator`` (lan_fence.mode_problem),
+    and the suite runs with isolation off (above), where tests about volumes,
+    mounts or capabilities deploy Mysterium as their example. Tests marked
+    ``real_gated_mode`` get the real rule; tests/test_mysterium_fenced.py is.
+    """
+    if request.node.get_closest_marker("real_gated_mode"):
+        yield
+        return
+    from unittest.mock import patch
+
+    with patch("app.lan_fence.mode_problem", return_value=None):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _no_state_backups(request):
     """No backup is confirmed, unless a test asks for the real table.
 

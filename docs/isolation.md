@@ -210,10 +210,14 @@ and the new node runs. It is a safety net, not a backup: keep a copy of the
 keystore ([Backing up node identities](backup.md)) and check the data mount
 before a redeploy.
 
-Outside `on` mode there is no fence of CashPilot's to wait for: on your own
-network the node starts as soon as it is deployed, under your rules, and in
-`off` or `legacy` mode it sits on Docker's default bridge, still in its own
-namespace.
+On your own network (`CASHPILOT_CONTAINER_NETWORK`) there is no fence of
+CashPilot's to wait for: the node starts as soon as it is deployed, under your
+rules, and keeping other containers off its WebUI is up to those rules too. In
+`off` and `legacy` mode, and on Podman, the worker does not run the node at
+all: on Docker's default bridge every other earner could reach its WebUI and
+change its payout wallet, and nothing would keep it off your LAN. A deploy is
+refused before the running node is touched, and a node already running there
+is stopped; the reason says how to turn isolation on.
 
 Existing nodes move on their next redeploy; see UPGRADING.md.
 

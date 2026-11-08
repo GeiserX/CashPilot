@@ -820,6 +820,13 @@ def deploy_raw(
     network = container_network(network_mode)
     runtime = container_runtime(slug, network_mode, runtime)
     dns = container_dns(network)
+    if gated:
+        from app import lan_fence
+
+        # A mode that cannot run it at all (off, legacy) is refused here too,
+        # while the running node is still running.
+        if problem := lan_fence.mode_problem(lan_fence.resolve_mode(client)):
+            raise ContainerNetworkError(f"{slug} was not deployed: {problem}. The running container was not touched.")
 
     # The pull is on this side of the line for the same reason: a registry outage
     # or a typo'd image must not cost the running container. And once the image
