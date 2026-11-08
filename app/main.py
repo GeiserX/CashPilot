@@ -514,11 +514,13 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
         stopped_here: set[str] = set()
         for slug, copies in down.items():
             stopped_on: set[tuple[Any, int]] = set()
-            for wid, copy in {(c.get("_worker_id"), int(c.get("instance") or 1)) for c in copies}:
+            for wid, copy in {(c.get("_worker_id"), _copy_number(c)) for c in copies}:
+                if copy is None:
+                    continue  # An unreadable copy number never counts as stopped, so it still alerts.
                 last = await database.get_last_lifecycle_event(slug, wid, copy)
                 if last and last[0] in ("stop", "remove"):
                     stopped_on.add((wid, copy))
-            unexplained = [c for c in copies if (c.get("_worker_id"), int(c.get("instance") or 1)) not in stopped_on]
+            unexplained = [c for c in copies if (c.get("_worker_id"), _copy_number(c)) not in stopped_on]
             if not unexplained:
                 stopped_here.add(slug)
             long_down = [c for c in unexplained if now - c["_down_since"] >= CONTAINER_DOWN_GRACE]
@@ -555,6 +557,14 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
         _collector_alerts.extend(_container_down_bell.values())
     except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
         logger.warning("Container-down check failed: %s", exc)
+
+
+def _copy_number(container: dict[str, Any]) -> int | None:
+    """Which copy a heartbeat entry or deploy spec names: 1 when it says none, None when unreadable."""
+    try:
+        return int(container.get("instance") or 1)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
@@ -8244,7 +8254,12 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
             spec=body.spec if isinstance(body.spec, dict) else None,
             worker_id=worker_id,
         )
-        await database.record_health_event(slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id)
+        # The worker deploys the one copy the spec names, so a start of copy 2 says
+        # nothing about a stopped copy 1.
+        copy = _copy_number(body.spec) if isinstance(body.spec, dict) else 1
+        await database.record_health_event(
+            slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=copy or 1
+        )
         metrics.record_container_lifecycle("deploy", slug)
         _spawn(_run_collection())
     elif body.command == "stop":

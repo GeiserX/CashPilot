@@ -281,3 +281,26 @@ def test_the_raw_worker_command_records_the_first_copy(event):
     ):
         asyncio.run(main.api_worker_command(MagicMock(), 4, main.WorkerCommand(command=event, slug="urnetwork")))
     record.assert_awaited_once_with("urnetwork", event, worker_id=4, instance=1)
+
+
+def test_an_unreadable_copy_number_still_alerts():
+    # Copy 1 was stopped; an entry whose copy cannot be read must not hide behind that.
+    alerts = _PerWorker({(1, 1): ("stop", _when(hours=4))})
+    alerts.run([_entry(worker_id=1, instance="junk", **DOWN)])
+    assert len(alerts.rows) == 1
+
+
+@pytest.mark.parametrize(("spec", "copy"), [({"image": "x", "instance": 2}, 2), ({"image": "x"}, 1)])
+def test_the_raw_deploy_records_the_copy_it_deployed(spec, copy):
+    record = AsyncMock()
+    with (
+        patch.object(main, "_require_owner", lambda r: None),
+        patch.object(main, "_proxy_to_worker", AsyncMock(return_value={"container_id": "c"})),
+        patch.object(main.database, "save_deployment", AsyncMock()),
+        patch.object(main.database, "record_health_event", record),
+        patch.object(main, "_spawn", lambda coro: coro.close()),
+    ):
+        asyncio.run(
+            main.api_worker_command(MagicMock(), 4, main.WorkerCommand(command="deploy", slug="urnetwork", spec=spec))
+        )
+    record.assert_awaited_once_with("urnetwork", "start", "deployed to worker 4", worker_id=4, instance=copy)
