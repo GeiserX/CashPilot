@@ -2283,14 +2283,20 @@ async def delete_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> bool:
 
 
 async def save_pending_device_link(slug: str, device_id: str, name: str, next_at: str) -> None:
-    """Remember a registration to retry; a second save of one id keeps its first try."""
+    """Remember a registration to retry; a second save of a live one keeps its first try."""
     db = await _get_db()
     try:
         await db.execute(
             """
             INSERT INTO pending_device_links (slug, device_id, name, next_at) VALUES (?, ?, ?, ?)
             ON CONFLICT(slug, device_id) DO UPDATE SET name = excluded.name, gave_up = 0,
-                next_at = MIN(pending_device_links.next_at, excluded.next_at)
+                -- A row that had given up starts a new day of retries; a live one
+                -- keeps its window and its earliest next try.
+                first_at = CASE WHEN pending_device_links.gave_up THEN datetime('now')
+                                ELSE pending_device_links.first_at END,
+                attempts = CASE WHEN pending_device_links.gave_up THEN 0 ELSE pending_device_links.attempts END,
+                next_at = CASE WHEN pending_device_links.gave_up THEN excluded.next_at
+                               ELSE MIN(pending_device_links.next_at, excluded.next_at) END
             """,
             (slug, device_id, name, next_at),
         )

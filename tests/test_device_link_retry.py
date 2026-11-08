@@ -211,3 +211,20 @@ def test_a_proxied_copys_derived_id_counts_as_still_running(db):
 def test_the_retry_runs_on_the_scheduler():
     source = Path(main.__file__).read_text()
     assert '_retry_device_links,\n        "interval",\n        minutes=3,\n        id="retry_device_links"' in source
+
+
+def test_a_redeploy_after_giving_up_gets_a_new_day_of_retries(db):
+    old = (datetime.now(UTC) - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
+    _due(attempts=8, first_at=old)
+    stack, calls = _with_api({"/device/add": NOT_YET, "/device/status": UNKNOWN})
+    _enter(stack)
+    try:
+        _run(main._retry_device_links)  # gives up
+        _run(lambda: main._register_device("proxyrack", UUID, {"DEVICE_NAME": "box"}))  # the redeploy
+        (row,) = _run(database.list_pending_device_links)
+        _run(main._retry_device_links)  # not due yet: the new window waits its first six minutes
+    finally:
+        _exit(stack)
+    assert row["gave_up"] == 0 and row["attempts"] == 0 and row["first_at"] > old
+    assert row["next_at"] > datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    assert calls.count("/device/add") == 2  # the give-up try and the redeploy, nothing more
