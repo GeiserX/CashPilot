@@ -78,7 +78,11 @@ to redeploy Mysterium onto an older worker.
 
 ### 5. Check how you reach the WebUI
 
-If `UI_ADDRESS` holds only `127.0.0.1`, skip this. If it holds a LAN address
+On a Docker engine older than 28.0, a port published on `127.0.0.1` can still
+be reached by other machines on the same LAN segment, so upgrade Docker or
+block port 4449 with a `DOCKER-USER` rule first (`docker version` shows the
+engine). If `UI_ADDRESS` holds only `127.0.0.1` on Docker 28.0 or later, skip
+the rest of this step. If it holds a LAN address
 for a reverse proxy on another machine, know that after the move port 4449 is
 published through Docker's forwarding, so a host `INPUT` rule no longer limits
 who reaches it. Before you move, either add a `DOCKER-USER` rule, or move the
