@@ -80,6 +80,13 @@ range. Create one rule on your router:
 | Internal ports | the same, 56000-56029 |
 | Internal IP | the LAN address of the machine running the node |
 
+Before you pick a range, read
+[Choosing the UDP port range](../mysterium-fence.md#choosing-the-udp-port-range):
+one port in it held by another program stops the node from starting, and a
+range inside Linux's ephemeral port range can be taken at random. Moving a
+node deployed through 2.0.6? Follow
+[Moving your Mysterium node behind the fence](../mysterium-fence.md).
+
 Give that machine a fixed LAN address (a DHCP reservation), or the rule points
 at the wrong host after a lease change. UPnP does not work: the node sits behind
 the LAN fence, which drops the router, so it cannot ask the router for a

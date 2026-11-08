@@ -191,6 +191,71 @@ A Tailscale exit node on a connection you own has none of the proxy service's
 limits: it carries any port, UDP included. The exit's own network can still
 block a port, the same as for an earner running there.
 
+#### Probe an earner's servers through the proxy
+
+Do this before you rely on a copy, and again whenever one earns nothing. You
+need the host and port the earner connects to. Its log usually names them
+(`docker logs cashpilot-<service>-p<proxy id>`), or the provider's docs do.
+
+**Before you deploy, from any machine.** Ask the proxy directly. curl prints
+the proxy's answer to its `CONNECT` request:
+
+```bash
+# HTTP CONNECT proxy
+curl -v -m 15 -o /dev/null -x 'http://USER:PASS@gate.example.net:8080' https://earner-host.example:443/
+# SOCKS5 proxy, name resolved by the proxy
+curl -v -m 15 -o /dev/null -x 'socks5h://USER:PASS@gate.example.net:7000' https://earner-host.example:443/
+```
+
+A `403`, `Access violation`, `connection not allowed by ruleset` or a closed
+connection right after the `CONNECT` means the proxy refuses that host or
+port. Try the earner's real port, not only 443: a proxy that allows 443 and
+nothing else passes a 443 test.
+
+**After you deploy, through the copy's own tunnel.** Join the tunnel's
+network namespace with a throwaway container. Run the same probe once from
+the box's own network as the control, so you know what an answer looks like:
+
+```bash
+TUN=cashpilot-tunnel-<service>-p<proxy id>
+URL=https://earner-host.example:443/
+
+# Control: straight from the box
+docker run --rm --cap-drop ALL curlimages/curl:8.10.1 -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
+# Through the proxy
+docker run --rm --cap-drop ALL --network "container:$TUN" curlimages/curl:8.10.1 -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
+
+# What the proxy answered, if it refused
+docker logs "$TUN" 2>&1 | grep -i 'replied with\|error' | tail -5
+```
+
+Any HTTP status from the far server, even `404`, means the path works. A
+TLS error such as `SSL_ERROR_SYSCALL`, `Connection reset by peer` or `Empty
+reply from server` through the tunnel, where the control got a status, means
+the proxy closed the connection. The tunnel's log then has a line such as
+`Server replied with 403 [Reason: Access violation]`. It names the port; the
+address in it is a placeholder from the tunnel's DNS, not the real one.
+
+!!! warning "A plain port check proves nothing through the tunnel"
+
+    `nc -z` and other connect-only checks report the port open through a
+    tunnel even when the proxy refused, and even for an address where nothing
+    exists. The tunnel accepts the connection locally first, then asks the
+    proxy. Use a probe that needs an answer from the far server, as above.
+
+#### A new device the provider accepts only later
+
+Some providers add a new device to your account only after its client has
+been connecting for a while. [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn)
+knows a new device about five minutes after it first connects, so an add
+right at deploy is refused. This holds for a proxied copy as much as for a
+deploy on the box. When the provider says "not yet", CashPilot keeps the
+device and tries again: first after 6 minutes, then at doubling intervals up
+to 4 hours apart. After 24 hours without success it stops and sends a notice,
+to the bell and to your notification channel, with the manual step. It needs that provider's credentials saved in CashPilot.
+While it is still trying, the dashboard does not ask you to add the device by
+hand. A redeploy starts a new 24 hours.
+
 ## Exit IPs and grouping
 
 The exit IP a copy shows is the one the tunnel saw when it came up. Copies are
@@ -302,3 +367,50 @@ start fails the same way. Create a new key, paste it into the proxy's
 settings, then press **Start** on each copy (see [Editing a proxy](#editing-a-proxy)).
 A leaked reusable key lets anyone join your tailnet as that tag,
 which is why it must be ephemeral, tagged and used for nothing else.
+
+### A second site as an exit node instead of a worker
+
+If you have a machine at a second site (a relative's house, a holiday flat)
+you can run a worker and earners there, or only make it a Tailscale exit node
+and run the earners elsewhere as proxied copies that leave through it. The
+second way suits a small box: an exit node only forwards packets, while each
+earner is a container with its own memory and CPU.
+
+It makes sense when:
+
+- the box is short on memory or CPU, or does other work you do not want to
+  slow down;
+- what you want from that site is its residential IP, not its hardware;
+- you would rather keep containers and updates on one machine you look after.
+
+What changes:
+
+- **Only services that can run as a proxied copy move.** Anything that needs
+  published ports, volumes, devices or extra capabilities stays where it runs
+  ([What cannot run through a proxy](#what-cannot-run-through-a-proxy)).
+  That rules out Mysterium and the storage nodes, for example. Earners whose
+  terms forbid proxies or VPNs are refused too.
+- **The per-IP limits move with the IP.** A copy through the exit node counts
+  against that site's public IP. If the box there still runs a service with a
+  limit of one device per IP, a copy of the same service through its exit
+  earns nothing; the page warns before you start it
+  ([Exit IPs and grouping](#exit-ips-and-grouping)). Move each service, do
+  not double it.
+- **The traffic crosses both connections.** The earner's traffic goes from
+  the box running the copy, over the tailnet, to the exit node, and out from
+  there. The exit's connection carries it in both directions, and the copy's
+  own box carries it too, encrypted. Check both upload allowances.
+- **The exit node still does work.** It encrypts and forwards every packet, so
+  its CPU rises with the traffic. Measure it under load (see
+  [Budgeting a small box](fleet.md#budgeting-a-small-box)).
+- **Each copy is two containers on the box that runs it**, the tunnel and the
+  earner, and each joins the tailnet as its own ephemeral node.
+- **The path to the exit node is over the internet.** With
+  [LAN isolation](isolation.md#lan-isolation-by-default) on, the tunnel reaches
+  the exit node over its public endpoints or a DERP relay, never a LAN path. A
+  relay carries the traffic further and slower; a direct connection between
+  the two sites avoids it.
+
+Set it up with the steps in [Tailscale exit nodes](#tailscale-exit-nodes),
+then add one copy per service you move, and remove that service from the
+second site's worker if one still runs there.

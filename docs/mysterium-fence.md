@@ -1,0 +1,251 @@
+# Moving your Mysterium node behind the fence
+
+Through 2.0.6, CashPilot ran a [MystNodes](https://mystnodes.co/?referral_code=do7v7YOoBBpbOstKQovX2pUvZYKia4ZhH3QIdNtE)
+node on the host's network. From 2.0.7 it runs in its own network namespace
+on the fenced earner bridge, like every other earner, and the worker starts it
+only once the LAN fence is confirmed.
+[Mysterium on the fenced bridge](isolation.md#mysterium-on-the-fenced-bridge)
+explains why and how. This page is the step-by-step move for a node you
+already run, and how to prove afterwards that it worked.
+
+A node deployed through 2.0.6 keeps running exactly as it is until you
+redeploy it. Nothing moves on its own, so you choose when.
+
+## What changes for the node
+
+- It leaves the host's network and joins `cashpilot-isolated`. Its `NET_ADMIN`
+  then reaches only its own namespace, and the host's fence drops anything it
+  sends to your LAN, the host, a tailnet or cloud metadata.
+- Its UDP range (`UDP_PORTS`) is published 1:1 on the host, so the forward on
+  your router stays the same. Read [Choosing the UDP port range](#choosing-the-udp-port-range)
+  before you redeploy: on the host's network a busy port was skipped; now a
+  busy port stops the whole start.
+- Docker never starts it by itself. The worker starts it once it has read the
+  fence back complete, and a guard stops it within 30 seconds if a fence rule
+  goes missing or the container's shape changes.
+- On a redeploy of a running node, the worker reads the node's identity before
+  it removes the old container and again from the new one. If they differ,
+  the new node is kept stopped.
+- UPnP no longer works for it, since the fence drops your router. Forward the
+  range by hand.
+
+## Before you start
+
+### 1. Back up the keystore
+
+The node's identity lives in its data volume. If a redeploy ever comes up on
+an empty volume, it creates a new identity, and the old one's reputation and
+unsettled earnings stay with the old keys. The identity check above catches
+that case only when it can read both identities. Take a backup first:
+[Backing up node identities](backup.md).
+
+### 2. Write down the current identity
+
+On the machine running the node:
+
+```bash
+docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities
+```
+
+Keep the `0x...` address it prints. You compare against it after the move.
+
+### 3. Check the isolation mode
+
+The node runs only in two modes:
+
+| Mode | Where the node runs |
+|---|---|
+| `on` | behind CashPilot's fence, on `cashpilot-isolated` |
+| your own network (`CASHPILOT_CONTAINER_NETWORK` set) | on your network, under your firewall rules |
+
+In any other mode the worker refuses the deploy before it touches the running
+node, and the message says what to do:
+
+| The message ends with | What to do |
+|---|---|
+| "isolation is legacy on this worker ... Switch isolation on in Fleet, then redeploy MystNodes." | On the **Fleet** page, press **Turn on isolation** for that worker. |
+| "isolation is off on this worker ... Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy MystNodes." | Change the worker's environment and recreate the worker. |
+| "isolation is unsupported on this worker ... Run it on Docker with isolation on, or on your own network (CASHPILOT_CONTAINER_NETWORK)." | The worker runs on Podman, which CashPilot cannot fence. Move the node to a Docker host, or bring your own network and rules. |
+
+The Fleet page shows each worker's mode. [Modes](isolation.md#modes) has the
+full table.
+
+### 4. Upgrade the UI and the worker
+
+Both, and the worker that runs Mysterium in particular. The dashboard refuses
+to redeploy Mysterium onto an older worker.
+
+### 5. Check the UDP range is free
+
+See [Choosing the UDP port range](#choosing-the-udp-port-range) below. One port
+in the range held by another program on the host is enough to stop the node
+from starting.
+
+## Move it
+
+Redeploy Mysterium on that machine from the dashboard. It keeps its data
+volume, so it keeps its identity and its earnings. The
+[upgrade notes](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md)
+cover the same move, including going back to 2.0.6.
+
+## Check that it worked
+
+### Same identity
+
+```bash
+docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities
+```
+
+It must print the address you wrote down. If the worker saw a different one,
+it stops the node and the Fleet page says why: "its identity is ..., not ...
+as before the redeploy, so it is not running on the data volume that holds
+its keystore". Restore the volume from your backup, then redeploy.
+
+### Check isolation is clean
+
+On the **Fleet** page, press **Check isolation** on the worker. It should
+read **Isolated**, with no line about containers that "hold firewall
+capabilities in this host's own network namespace". That line means a
+Mysterium container is still on the host's network. [Reading the result](isolation.md#reading-the-result)
+explains each line.
+
+### Probe from inside the node
+
+The node's own namespace should reach the internet and Mysterium's broker,
+and nothing on your LAN. A target nothing listens on reads blocked with or
+without a fence, so first pick targets that answer from the host itself: your
+router's web page, another machine's SSH, a NAS share. Replace the addresses
+below with yours.
+
+```bash
+# Control, from the host: each LAN target here must answer.
+T='192.168.1.1:80 192.168.1.20:22'
+for t in $T; do nc -z -w 3 ${t%:*} ${t#*:} && echo "host reaches $t" || echo "host cannot reach $t"; done
+
+# From inside the node: each of the same targets must be blocked.
+docker exec cashpilot-mysterium sh -c 'for t in 192.168.1.1:80 192.168.1.20:22; do
+  nc -z -w 3 ${t%:*} ${t#*:} && echo "REACHED $t" || echo "blocked $t"; done'
+
+# From inside the node: the internet and the broker must work.
+docker exec cashpilot-mysterium nc -z -w 5 1.1.1.1 443 && echo "internet ok"
+docker exec cashpilot-mysterium nc -z -w 5 broker.mysterium.network 4222 && echo "broker ok"
+```
+
+Only a target the host reached counts. A `REACHED` line from inside the node
+means the fence is not doing its job on that path: run **Check isolation** and
+follow its fix. [Test your isolation](isolation-check.md#mysterium) has a
+version of this probe that runs in a separate container with no capabilities,
+and how to read the fence's drop counters.
+
+### The node can reach its forwarded ports
+
+Each session first tries the forwarded range. The node checks those ports
+from outside and logs the result:
+
+```bash
+docker logs cashpilot-mysterium 2>&1 | grep -E 'All ports .* are reachable|Failed to check manual ports' | tail -5
+```
+
+`All ports [56000 56001] are reachable` (your ports) means the router forward
+works. `Failed to check manual ports ... globally` means it does not. Both
+lines appear only when a session starts, so wait for some traffic.
+[Port forwarding](guides/mysterium.md#port-forwarding) in the MystNodes guide
+has the per-session count and the dashboard check that flags a node whose
+sessions never connect directly.
+
+## If the node does not start
+
+- **The Fleet page says the node is held stopped.** The worker could not read
+  the fence back complete, or the container changed shape (privileged, a
+  capability or image its catalog entry does not give it, a restart policy, the
+  wrong network). The message names which. The worker writes the fence again
+  and starts the node on the next check once it reads complete.
+- **"address already in use" on a UDP port.** Another program on the host
+  holds a port in the range. See the next section.
+- **An identity mismatch.** See [Same identity](#same-identity).
+
+## Choosing the UDP port range
+
+### Why one busy port now matters
+
+On the host's network, Mysterium picked ports from its range by itself and
+skipped any port another program held. On the bridge, Docker publishes the
+range for the node, and it must reserve every port in it. If one port is
+held by any process on the host, the whole start fails.
+
+Linux hands out ports from its ephemeral range to any program that opens a
+socket without choosing a port: DNS lookups, discovery daemons, NAS management
+tools. Your host's range is in:
+
+```bash
+cat /proc/sys/net/ipv4/ip_local_port_range
+```
+
+It is commonly `32768 60999`. A Mysterium range inside it can be free today and
+taken by some program at random tomorrow, and the node then fails on its next
+start.
+
+### The rule
+
+1. **Pick a range below the start of the ephemeral range**, so the kernel never
+   gives those ports to anyone else. If you must stay inside it, reserve the
+   ports so the kernel never hands them out:
+   `sysctl -w net.ipv4.ip_local_reserved_ports=<start>-<end>` (add it to
+   `/etc/sysctl.conf` or a file in `/etc/sysctl.d/` so it survives a reboot).
+2. **Check nothing holds the range now**, before you deploy:
+
+    ```bash
+    sudo ss -uanp '( sport >= :<start> and sport <= :<end> )'
+    ```
+
+    No output means the range is free. Once the node runs, its own
+    `docker-proxy` processes show here, which is expected.
+
+3. **Keep it small.** Each session uses about two ports, so 20 to 30 ports
+   carry 10 to 15 sessions at once, more than a home node usually gets. See the
+   memory cost below.
+4. **Forward the same range on the router**, UDP, external and internal ports
+   the same, to the machine's fixed LAN address.
+5. **Several hosts behind one public IP need one range each.** A router
+   forwards a port to one LAN address only, so two nodes in one house cannot
+   share a range. Give each host its own range with no overlap, and one
+   forward per host.
+
+The catalog's default range is the `UDP_PORTS` field in
+[services/bandwidth/mysterium.yml](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml).
+Compare it with your host's ephemeral range before you accept it; set your own
+in the deploy form when they overlap.
+
+### What each port costs
+
+Docker runs its port proxy, `docker-proxy`, as a separate host process per
+published port and address family, so a range published on IPv4 and IPv6 runs
+two processes per port. These run on the host, outside the node's container,
+so `docker stats` does not count them and the node's memory limit does not
+cap them.
+
+Measured with 101 ports: 205 processes. By resident memory that was about
+2.3 MB per process, or about 460 MB in total. By proportional set size, which
+splits pages the processes share, it was about 250 MB
+([Limits](isolation.md#limits)). Either way the cost grows with every port. A
+30-port range runs about 60 of these processes.
+
+To see what they cost on your host:
+
+```bash
+ps -C docker-proxy -o rss= | awk '{s+=$1} END {printf "%d processes, %.0f MB resident\n", NR, s/1024}'
+```
+
+### Changing the range of a running node
+
+The node can only use the range it was started with, and the router can only
+send sessions to the range it forwards. Change both in this order, so the node
+always has a working forward:
+
+1. Add a router forward for the new range, next to the old one.
+2. Set `UDP_PORTS` to the new range in the deploy form, and redeploy the node
+   on that machine.
+3. Confirm sessions reach it: `All ports [...] are reachable` with the new
+   ports in the node's log, or `Method:manual Success:true` lines
+   ([Port forwarding](guides/mysterium.md#port-forwarding)).
+4. Delete the old forward.

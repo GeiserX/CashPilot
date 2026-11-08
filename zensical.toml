@@ -132,6 +132,7 @@ nav = [
       { "Protecting your home network" = "home-network-security.md" },
       { "Network isolation" = "isolation.md" },
       { "Test your isolation" = "isolation-check.md" },
+      { "Moving Mysterium behind the fence" = "mysterium-fence.md" },
       { "Activity per container" = "activity.md" },
     ] },
   { Operations = [
