@@ -459,9 +459,6 @@ def _report_blind_workers(blind: list[dict[str, Any]]) -> None:
 # that a node which exited cleanly and stayed down (restart policy "no") is
 # news within the hour instead of after days of check_down rows nobody reads.
 CONTAINER_DOWN_GRACE = timedelta(minutes=30)
-# A stop recorded by CashPilot explains a container that finished within this
-# long after it; a container that finished later stopped for another reason.
-_STOP_EXPLAINS_WITHIN = timedelta(minutes=10)
 # When each stopped container was first seen down, for a worker too old to
 # report Docker's own FinishedAt. Keyed by (worker id, container name).
 _container_first_seen_down: dict[tuple[Any, str], datetime] = {}
@@ -487,8 +484,9 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
     The health check already wrote check_down for such a container every five
     minutes, and nothing read it: three urnetwork containers exited cleanly
     with restart policy "no" and sat down for two days with no alert. One alert
-    per service, cleared when no managed copy of it is down any more. A stop the
-    user made from CashPilot is not an alert. Never raises.
+    per service, cleared when no managed copy of it is down any more. A stop or
+    removal the user made from CashPilot keeps a copy quiet for as long as it is
+    the latest action CashPilot sent for that service to that worker. Never raises.
     """
     global _collector_alerts
     try:
@@ -512,26 +510,38 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
             _container_first_seen_down.pop(key, None)
 
         alerting: dict[str, str] = {}
+        # Services whose every down copy was stopped or removed from CashPilot.
+        stopped_here: set[str] = set()
         for slug, copies in down.items():
-            long_down = [c for c in copies if now - c["_down_since"] >= CONTAINER_DOWN_GRACE]
-            if not long_down:
-                continue
-            last = await database.get_last_lifecycle_event(slug)
-            if last and last[0] in ("stop", "remove"):
-                stopped_at = _docker_time(last[1].replace(" ", "T"))
-                if stopped_at is not None:
-                    long_down = [c for c in long_down if c["_down_since"] > stopped_at + _STOP_EXPLAINS_WITHIN]
+            stopped_on: set[Any] = set()
+            for wid in {c.get("_worker_id") for c in copies}:
+                last = await database.get_last_lifecycle_event(slug, wid)
+                if last and last[0] in ("stop", "remove"):
+                    stopped_on.add(wid)
+            unexplained = [c for c in copies if c.get("_worker_id") not in stopped_on]
+            if not unexplained:
+                stopped_here.add(slug)
+            long_down = [c for c in unexplained if now - c["_down_since"] >= CONTAINER_DOWN_GRACE]
             if long_down:
                 alerting[slug] = _container_down_message(slug, long_down)
 
-        # Recovery: nothing of that service is down any more. A copy that is
-        # down but still inside the grace period (or explained by a stop) is
-        # neither raised nor cleared, so a UI restart cannot clear an alert
-        # just because it forgot when an old worker's container went down.
+        # Recovery: nothing of that service is down any more, or only copies
+        # the user stopped from CashPilot. A copy that is down but still inside
+        # the grace period is neither raised nor cleared, so a UI restart cannot
+        # clear an alert just because it forgot when an old worker's container
+        # went down.
+        listed = {s.get("slug") for s in statuses}
         for slug in await database.get_alert_subjects("container"):
-            if slug not in down:
-                await database.clear_alerts("container", slug)
-                logger.info("%s is running again; cleared its container-down alert", slug)
+            if slug in down and slug not in stopped_here:
+                continue
+            if slug in stopped_here:
+                cause = "was stopped or removed from CashPilot"
+            elif slug in listed:
+                cause = "is running again"
+            else:
+                cause = "is no longer listed on any worker (removed, or its worker stopped reporting)"
+            await database.clear_alerts("container", slug)
+            logger.info("%s %s; cleared its container-down alert", slug, cause)
         for slug in list(_container_down_bell):
             if slug not in alerting:
                 _container_down_bell.pop(slug)
@@ -558,7 +568,8 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
         # No restart policy on purpose: the worker starts it once the LAN fence is confirmed.
         return message + (
             " The worker starts it as soon as the LAN fence is confirmed; while it stays down, the Fleet page "
-            "says what holds it. If you stopped it on purpose, start it from the dashboard when you want it back."
+            "says what holds it. If you stopped it on purpose, stop it from the dashboard, which keeps this alert "
+            "quiet, and start it there when you want it back."
         )
     policies = sorted({str(c["restart_policy"]) for c in copies if c.get("restart_policy")} - set(_RESTARTING_POLICIES))
     if policies:
@@ -566,7 +577,10 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
             f' Its restart policy is "{", ".join(policies)}", so Docker will not start it again by itself;'
             " redeploying it from CashPilot sets unless-stopped."
         )
-    return message + " Start it from the dashboard, or remove it if you stopped it on purpose."
+    return message + (
+        " Start it from the dashboard. If you stopped it on purpose, stop it from the dashboard too: "
+        "a stop made there keeps this alert quiet."
+    )
 
 
 # Services whose provider has disabled the account: slug -> the message shown.
@@ -3575,7 +3589,7 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
         await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf))
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
-    await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
+    await database.record_health_event(slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id)
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
@@ -3820,7 +3834,7 @@ async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "stop", slug, instance=instance)
-    await database.record_health_event(slug, "stop")
+    await database.record_health_event(slug, "stop", worker_id=worker_id)
     metrics.record_container_lifecycle("stop", slug)
     return result
 
@@ -3829,7 +3843,7 @@ async def _svc_restart(request: Request, slug: str, worker_id: int | None, insta
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "restart", slug, instance=instance)
-    await database.record_health_event(slug, "restart")
+    await database.record_health_event(slug, "restart", worker_id=worker_id)
     metrics.record_container_lifecycle("restart", slug)
     return result
 
@@ -3866,7 +3880,7 @@ async def _svc_remove(
             await database.delete_proxied_copies_of(worker_id, slug)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Removed %s, but could not drop its proxied copy records: %s", slug, exc)
-    await database.record_health_event(slug, "remove")
+    await database.record_health_event(slug, "remove", worker_id=worker_id)
     metrics.record_container_lifecycle("remove", slug)
     return result
 
@@ -4899,7 +4913,7 @@ async def api_service_start(
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "start", slug, instance=_instance_param(instance))
-    await database.record_health_event(slug, "start")
+    await database.record_health_event(slug, "start", worker_id=worker_id)
     metrics.record_container_lifecycle("start", slug)
     return result
 
@@ -8227,21 +8241,21 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
             spec=body.spec if isinstance(body.spec, dict) else None,
             worker_id=worker_id,
         )
-        await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
+        await database.record_health_event(slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id)
         metrics.record_container_lifecycle("deploy", slug)
         _spawn(_run_collection())
     elif body.command == "stop":
-        await database.record_health_event(slug, "stop")
+        await database.record_health_event(slug, "stop", worker_id=worker_id)
         metrics.record_container_lifecycle("stop", slug)
     elif body.command == "restart":
-        await database.record_health_event(slug, "restart")
+        await database.record_health_event(slug, "restart", worker_id=worker_id)
         metrics.record_container_lifecycle("restart", slug)
     elif body.command == "start":
-        await database.record_health_event(slug, "start")
+        await database.record_health_event(slug, "start", worker_id=worker_id)
         metrics.record_container_lifecycle("start", slug)
     elif body.command == "remove":
         await database.remove_deployment(slug, worker_id=worker_id)
-        await database.record_health_event(slug, "remove")
+        await database.record_health_event(slug, "remove", worker_id=worker_id)
         metrics.record_container_lifecycle("remove", slug)
     return result
 

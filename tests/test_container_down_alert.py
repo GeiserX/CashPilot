@@ -137,10 +137,16 @@ class TestWhatIsNotAnAlert:
         alerts.run([_entry(finished_at=_ago(hours=3))])
         assert not alerts.rows
 
-    def test_a_stop_long_before_the_exit_does_not_explain_it(self):
-        """The control for the case above: an old stop must not hide a later crash."""
+    def test_a_stop_stays_quiet_for_as_long_as_it_is_the_latest_action(self):
+        """No window: a node stopped from the dashboard days ago is still stopped on purpose."""
         stopped = (datetime.now(UTC) - timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
         alerts = _Alerts(last_event=("stop", stopped))
+        alerts.run([_entry(finished_at=_ago(hours=3))])
+        assert not alerts.rows
+
+    def test_control_a_later_start_from_cashpilot_rearms_it(self):
+        started = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+        alerts = _Alerts(last_event=("start", started))
         alerts.run([_entry(finished_at=_ago(hours=3))])
         assert "urnetwork" in alerts.rows
 

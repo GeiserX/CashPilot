@@ -561,7 +561,10 @@ CREATE TABLE IF NOT EXISTS health_events (
     slug       TEXT    NOT NULL,
     event      TEXT    NOT NULL,
     detail     TEXT    NOT NULL DEFAULT '',
-    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    -- The worker a start/stop/restart/remove was sent to; NULL for check
+    -- events and for rows written before the column existed.
+    worker_id  INTEGER
 );
 
 -- Durable per-user session-revocation epochs. A signed session cookie whose iat
@@ -1085,7 +1088,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 async def init_db() -> None:
@@ -1234,6 +1237,14 @@ async def init_db() -> None:
         # remembering what it deployed. Rows written before this stay empty and fall
         # back to the catalog, exactly as they do today.
         # Migrate alerts table: add the failure-kind category (CashPilot-5bdm).
+        # Migrate health_events: the worker a lifecycle action went to, so a stop
+        # on one box is not undone by a start of the same service on another.
+        cursor = await db.execute("PRAGMA table_info(health_events)")
+        if "worker_id" not in {row["name"] for row in await cursor.fetchall()}:
+            applied.append("health_events.worker_id")
+            # NULL backfill: an old row never knew its worker, so it counts for all.
+            await db.execute("ALTER TABLE health_events ADD COLUMN worker_id INTEGER")
+
         cursor = await db.execute("PRAGMA table_info(alerts)")
         alerts_cols = {row["name"] for row in await cursor.fetchall()}
         if "category" not in alerts_cols:
@@ -3073,24 +3084,26 @@ async def get_worker_key_issued_at(client_id: str) -> str | None:
 # --- Health Events ---
 
 
-async def record_health_event(slug: str, event: str, detail: str = "") -> None:
-    """Record a health event (start, stop, restart, crash, check_ok)."""
+async def record_health_event(slug: str, event: str, detail: str = "", worker_id: int | None = None) -> None:
+    """Record a health event (start, stop, restart, crash, check_ok), with the worker it concerns."""
     db = await _get_db()
     try:
         await db.execute(
-            "INSERT INTO health_events (slug, event, detail) VALUES (?, ?, ?)",
-            (slug, event, detail),
+            "INSERT INTO health_events (slug, event, detail, worker_id) VALUES (?, ?, ?, ?)",
+            (slug, event, detail, worker_id),
         )
         await db.commit()
     finally:
         await db.close()
 
 
-async def get_last_lifecycle_event(slug: str) -> tuple[str, str] | None:
-    """The latest start/stop/restart/remove CashPilot recorded for ``slug``, with its UTC time.
+async def get_last_lifecycle_event(slug: str, worker_id: int | None) -> tuple[str, str] | None:
+    """The latest start/stop/restart/remove CashPilot recorded for ``slug`` on one worker, with its UTC time.
 
     Answers "did the user stop this from CashPilot?" for the container-down
-    alert. Scoped to one slug so the slug index does the work; the table holds
+    alert. Per worker: a start of the same service on another box says nothing
+    about this one. A row from before the worker was recorded counts for every
+    worker. Scoped to one slug so the slug index does the work; the table holds
     a check event per service every five minutes.
     """
     db = await _get_db()
@@ -3098,8 +3111,9 @@ async def get_last_lifecycle_event(slug: str) -> tuple[str, str] | None:
         cursor = await db.execute(
             "SELECT event, created_at FROM health_events "
             "WHERE slug = ? AND event IN ('start', 'stop', 'restart', 'remove') "
+            "AND (worker_id = ? OR worker_id IS NULL) "
             "ORDER BY id DESC LIMIT 1",
-            (slug,),
+            (slug, worker_id),
         )
         row = await cursor.fetchone()
         return (row["event"], row["created_at"]) if row else None
