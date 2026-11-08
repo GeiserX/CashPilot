@@ -131,10 +131,14 @@ program, your reservation is gone after the next reboot, with nothing saying
 so. Find every file that sets it:
 
 ```bash
-systemd-sysctl --cat-config | grep reserved_ports
-# without systemd-sysctl:
-grep -rn reserved_ports /etc/sysctl.conf /etc/sysctl.d/ /usr/lib/sysctl.d/ /run/sysctl.d/ 2>/dev/null
+# The file names are the "# /path" header lines; systemd-sysctl is usually not on PATH
+/usr/lib/systemd/systemd-sysctl --cat-config | grep -E '^# /|reserved_ports'
+# without systemd:
+grep -rn reserved_ports /etc/sysctl.conf /etc/sysctl.d/ /run/sysctl.d/ \
+  /usr/local/lib/sysctl.d/ /usr/lib/sysctl.d/ /lib/sysctl.d/ 2>/dev/null
 ```
+
+In the first output, the `reserved_ports` line belongs to the header just above it.
 
 Put the whole combined list in one file, comment out the line in every other
 file that sets it, and read `sysctl net.ipv4.ip_local_reserved_ports` again
@@ -150,14 +154,23 @@ own interface and range. `cp-isolated` is the bridge CashPilot creates; on a
 network of your own (`CASHPILOT_CONTAINER_NETWORK`), use that network's bridge:
 
 ```bash
-sudo iptables -I DOCKER-USER -i <wan interface> -o cp-isolated -p udp --dport <start>:<end> -j ACCEPT
+sudo iptables -I DOCKER-USER -i <wan interface> -o cp-isolated -p udp --dport <start>:<end> \
+  -m conntrack --ctorigdstport <start>:<end> -j ACCEPT
 ```
+
+Docker has already rewritten the destination when a packet reaches this
+chain, so `--dport` alone would also match another container that maps some
+other host port onto a port in this range. The `--ctorigdstport` match checks
+the port the packet was sent to as well. The node publishes its range 1:1 and
+holds those host ports, so only its own sessions match.
 
 Then save it wherever your rules are kept (for example `/etc/iptables/rules.v4`),
 or it is gone after a reboot. Check the saved file against the live chain
 (`sudo iptables -S DOCKER-USER`); they can drift apart. The node's own check
-confirms it: `docker logs cashpilot-mysterium 2>&1 | grep 'are reachable'`
-should show `All ports [...] are reachable` once a session starts.
+confirms it. After the change, wait for a new session, then read only the
+log since then, so an older success cannot answer for it:
+`docker logs --since 10m cashpilot-mysterium 2>&1 | grep -E 'are reachable|Failed to check manual ports'`
+should show `All ports [...] are reachable`.
 
 **Check it.** After a few sessions, on the machine running the node:
 
