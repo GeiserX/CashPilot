@@ -10,6 +10,20 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.1.1] - 2026-11-08
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#674)
+
+### Fixes
+
+- Keep the running node when Docker refuses its replacement (#675)
+
+### Maintenance
+
+- Pin the examples to 2.1 (#673)
+
 ## [2.1.0] - 2026-11-08
 
 ### Documentation
