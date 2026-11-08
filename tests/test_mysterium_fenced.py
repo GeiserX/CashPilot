@@ -981,3 +981,84 @@ def test_a_ui_default_on_any_loopback_address_is_no_inbound_exception():
     assert lan_isolation.published_ports(svc("127.0.0.2")) == []
     assert lan_isolation.published_ports(svc("::1,localhost")) == []
     assert lan_isolation.published_ports(svc("192.168.1.5")) == ["192.168.1.5:4449"]
+
+
+# ---------------------------------------------------------------------------
+# (m) The upgrade: the old node keeps earning, the Fleet page offers the move,
+#     and the move compares the identity with the node it replaces
+# ---------------------------------------------------------------------------
+
+IDENTITY_A = "0x" + "a" * 40
+IDENTITY_B = "0x" + "b" * 40
+
+
+def _says(identity):
+    return (0, b'{"identities":[{"id":"' + identity.encode() + b'"}]}')
+
+
+class TestTheUpgrade:
+    @pytest.mark.parametrize("mode", [lan_fence.MODE_ON, lan_fence.MODE_LEGACY])
+    def test_the_old_node_keeps_running_and_the_fleet_page_is_told(self, markers, mode):
+        node = _old_node()
+        problem = None if mode == lan_fence.MODE_ON else lan_fence.mode_problem(mode)
+        _guard([node], problem=problem, mode=mode)
+        node.stop.assert_not_called()
+        node.restart.assert_not_called()
+        node.remove.assert_not_called()
+        assert lan_fence.status()["unfenced"] == [
+            {"name": "cashpilot-mysterium", "slug": "mysterium", "service": MYST["name"]}
+        ]
+
+    def test_control_a_fenced_node_is_not_reported_as_unfenced(self, markers):
+        _guard([_node()])
+        assert lan_fence.status()["unfenced"] == []
+
+    def _old_with_data(self, identity):
+        old = _old_node()
+        old.attrs["Mounts"] = [
+            {"Type": "bind", "Source": "/mnt/appdata/myst/data", "Destination": "/var/lib/mysterium-node", "RW": True}
+        ]
+        old.exec_run.return_value = _says(identity)
+        return old
+
+    def test_the_redeploy_reads_the_running_old_nodes_identity_before_replacing_it(self, markers):
+        old = self._old_with_data(IDENTITY_A)
+        order = []
+        old.exec_run.side_effect = lambda *a, **k: order.append("read") or _says(IDENTITY_A)
+        old.stop.side_effect = lambda **_: order.append("stop")
+        old.remove.side_effect = lambda **_: order.append("remove")
+        client, _ = _raw_deploy(old=old, volumes={"mysterium-data": {"bind": "/var/lib/mysterium-node", "mode": "rw"}})
+        assert order[0] == "read" and "stop" in order
+        assert orchestrator._pending_identity("cashpilot-mysterium") == IDENTITY_A
+        volumes = client.containers.create.call_args.kwargs["volumes"]
+        assert "/mnt/appdata/myst/data" in str(volumes), "the node's own data must come with it"
+
+    def test_a_different_identity_after_the_move_holds_it_and_keeps_the_volume(self, markers):
+        _raw_deploy(old=self._old_with_data(IDENTITY_A))
+        new = _node()
+        new.exec_run.return_value = _says(IDENTITY_B)
+        held, _ = _guard([new])
+        new.stop.assert_called_once()
+        new.remove.assert_not_called()
+        assert IDENTITY_A in held["cashpilot-mysterium"] and IDENTITY_B in held["cashpilot-mysterium"]
+        # Sticky: stopped, it reads no identity, and it still is not started.
+        stopped = _node(status="exited")
+        _guard([stopped])
+        stopped.start.assert_not_called()
+
+    def test_control_the_same_identity_after_the_move_runs(self, markers):
+        _raw_deploy(old=self._old_with_data(IDENTITY_A))
+        new = _node()
+        new.exec_run.return_value = _says(IDENTITY_A)
+        held, _ = _guard([new])
+        new.stop.assert_not_called()
+        assert held == {}
+        assert orchestrator._pending_identity("cashpilot-mysterium") is None
+
+
+def test_the_fleet_page_offers_the_move_and_says_isolation_first():
+    fleet = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+    assert "iso.unfenced" in fleet
+    assert "to move behind the fence</button>" in fleet
+    assert "Switch isolation on first, then redeploy it once" in fleet
+    assert "moveBehindFence(" in fleet
