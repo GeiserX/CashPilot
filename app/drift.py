@@ -188,7 +188,8 @@ def container_drift(
             if want_host
             else "shares the host's network"
             + (
-                ", where its NET_ADMIN reaches the host's firewall; a redeploy moves it onto the fenced bridge"
+                ", where its NET_ADMIN reaches the host's firewall. Switch isolation on in Fleet, then redeploy "
+                "Mysterium once to move it onto the fenced bridge"
                 if gated
                 else ""
             )

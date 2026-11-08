@@ -29,29 +29,30 @@ releases run it in its own network namespace on `cashpilot-isolated`, behind
 the fence, and the worker starts it only once the fence is in place
 ([Mysterium on the fenced bridge](docs/isolation.md#mysterium-on-the-fenced-bridge)).
 
-The upgraded worker stops the old node within 30 seconds of starting and
-keeps it stopped until you redeploy it, since a node on the host's network
-with `NET_ADMIN` is the exposure this release closes. The fleet page lists it
-as held stopped ("it shares the host's network"), and the dashboard lists it
-under drift. Plan the redeploy right after the upgrade.
+A running node keeps working exactly as it is until you redeploy it, in any
+isolation mode: the upgraded worker does not stop, start or change it. The
+dashboard lists it under drift ("shares the host's network, where its
+NET_ADMIN reaches the host's firewall. Switch isolation on in Fleet, then
+redeploy Mysterium once"), and **Check isolation** fails on it.
 
-**What to do.**
+**What to do, in this order.**
 
 1. Upgrade the UI **and the worker that runs Mysterium**. The dashboard refuses
-   to redeploy Mysterium onto an older worker. The fence must be on on that
-   worker: if the Fleet page offers **Turn on isolation**, press it first. In
-   `off` or `legacy` mode, and on Podman, the worker does not run Mysterium at
-   all, since on Docker's default bridge the other earners could reach its
-   WebUI; on your own network (`CASHPILOT_CONTAINER_NETWORK`) it runs under
-   your rules.
-2. Redeploy Mysterium from the dashboard. It keeps its data volume or data
-   folder, so it keeps its identity and its earnings. Back up the keystore
-   first ([Backing up node identities](docs/backup.md)): the worker compares
-   the identity before and after only when it can read both, and by then the
-   old node is already stopped, so there is nothing to compare on this
-   redeploy. Check the identity after it
+   to redeploy Mysterium onto an older worker.
+2. Switch isolation on in Fleet: if the Fleet page offers **Turn on
+   isolation**, press it. A worker with `CASHPILOT_ISOLATION=off` needs it set
+   to `auto` and a restart. In `off` or `legacy` mode, and on Podman, the
+   worker refuses to redeploy Mysterium, since on Docker's default bridge the
+   other earners could reach its WebUI; the running node is left as it is. On
+   your own network (`CASHPILOT_CONTAINER_NETWORK`) it runs under your rules.
+3. Redeploy Mysterium once from the dashboard. It keeps its data volume or
+   data folder, so it keeps its identity and its earnings: the worker reads
+   the identity from the running node before it removes it, compares it with
+   the new one's, and stops the new node if they differ. That needs both
+   reads, so back up the keystore first anyway
+   ([Backing up node identities](docs/backup.md)) and check the identity after
    (`docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities`).
-3. Nothing changes on the router: the worker publishes the UDP range 1:1. The
+4. Nothing changes on the router: the worker publishes the UDP range 1:1. The
    default range is now `56000:56029`, inside the old `56000:56100`, so the
    old forward keeps working. A node with `56000:56100` on record keeps it;
    setting `UDP_PORTS` to `56000:56029` before the redeploy saves about 175 MB

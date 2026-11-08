@@ -826,7 +826,7 @@ def deploy_raw(
         # A mode that cannot run it at all (off, legacy) is refused here too,
         # while the running node is still running.
         if problem := lan_fence.mode_problem(lan_fence.resolve_mode(client)):
-            raise ContainerNetworkError(f"{slug} was not deployed: {problem}. The running container was not touched.")
+            raise ContainerNetworkError(f"{slug} was not deployed: {problem} The running container was not touched.")
 
     # The pull is on this side of the line for the same reason: a registry outage
     # or a typo'd image must not cost the running container. And once the image
@@ -1162,10 +1162,27 @@ def _mark_stopped(name: str, stopped: bool) -> None:
         logger.warning("Could not record that %s was %s: %s", name, "stopped" if stopped else "started", exc)
 
 
+def predates_fence(container: Any) -> bool:
+    """A fence-gated service's container from 2.0.3 or earlier: on the host's network.
+
+    Every Mysterium through 2.0.3 runs this way, and keeps running exactly as
+    it is until its owner redeploys it: the guard neither stops nor starts it,
+    and Start, Stop and Restart treat it as before. Drift and the isolation
+    check flag it, and the redeploy moves it onto the fenced bridge.
+    """
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    return str(host.get("NetworkMode") or "") == "host"
+
+
+def _gated_container(slug: str, container: Any) -> bool:
+    return fence_gated(slug) and not predates_fence(container)
+
+
 def stop_service(slug: str, instance: int = 1) -> None:
     """Stop the container for a service."""
     container = _find_container(slug, instance)
-    if fence_gated(slug):
+    if _gated_container(slug, container):
         # Before the stop: the guard must not start it again in between.
         _mark_stopped(container.name, True)
     container.stop(timeout=_get_stop_timeout(slug))
@@ -1175,7 +1192,7 @@ def stop_service(slug: str, instance: int = 1) -> None:
 def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
     container = _find_container(slug, instance)
-    if fence_gated(slug):
+    if _gated_container(slug, container):
         _require_startable(container, slug)
         _mark_stopped(container.name, False)
     container.restart(timeout=_get_stop_timeout(slug))
@@ -1747,7 +1764,7 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
 def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
     container = _find_container(slug, instance)
-    if fence_gated(slug):
+    if _gated_container(slug, container):
         _require_startable(container, slug)
         _mark_stopped(container.name, False)
     container.start()

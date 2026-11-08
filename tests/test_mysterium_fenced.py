@@ -414,6 +414,7 @@ class TestIsolationCheck:
         found = isolation_check.host_netns_findings([_c("cashpilot-mysterium", "host", ["NET_ADMIN", "SETUID"])])
         assert found and found[0]["exposure"] is True
         assert "cashpilot-mysterium (NET_ADMIN)" in found[0]["detail"]
+        assert "Switch isolation on in Fleet, then redeploy them once" in found[0]["detail"]
 
     def test_control_net_admin_in_its_own_namespace_is_not(self):
         assert (
@@ -493,7 +494,6 @@ class TestTheGuard:
     @pytest.mark.parametrize(
         "change",
         [
-            {"network_mode": "host"},
             {"caps": ("NET_ADMIN", "SETUID", "SETGID", "SYS_ADMIN")},
             {"image": "mysteriumnetwork/myst:latest"},
             {"network_mode": "bridge"},
@@ -559,9 +559,7 @@ class TestTheGuard:
         running.stop.assert_called_once()
         stopped.start.assert_not_called()
         apply.assert_not_called()
-        assert (
-            "Turn on isolation" in held["cashpilot-mysterium"] or "CASHPILOT_ISOLATION" in held["cashpilot-mysterium"]
-        )
+        assert "runs only behind the LAN fence" in held["cashpilot-mysterium"]
 
 
 class TestFenceProblem:
@@ -589,7 +587,7 @@ class TestFenceProblem:
 
     @pytest.mark.parametrize("mode", [lan_fence.MODE_LEGACY, lan_fence.MODE_OFF, lan_fence.MODE_UNSUPPORTED])
     def test_a_mode_without_a_fence_is_a_problem(self, mode):
-        assert "NET_ADMIN" in self._read(None, mode=mode)
+        assert "runs only behind the LAN fence" in self._read(None, mode=mode)
 
 
 # ---------------------------------------------------------------------------
@@ -673,9 +671,9 @@ class TestStartRefusesAHeldNode:
         node.start.assert_not_called()
 
     @pytest.mark.parametrize("action", ["start_service", "restart_service"])
-    def test_a_node_on_the_host_network_is_not_started(self, markers, action):
-        node = _node(status="exited", network_mode="host")
-        with pytest.raises(orchestrator.ContainerNetworkError, match="host's network"):
+    def test_a_node_with_a_capability_the_catalog_does_not_grant_is_not_started(self, markers, action):
+        node = _node(status="exited", caps=("NET_ADMIN", "SETUID", "SETGID", "SYS_ADMIN"))
+        with pytest.raises(orchestrator.ContainerNetworkError, match="SYS_ADMIN"):
             _start(node, action)
         node.start.assert_not_called()
         node.restart.assert_not_called()
@@ -686,3 +684,72 @@ class TestStartRefusesAHeldNode:
         _start(node)
         node.start.assert_called_once()
         assert "cashpilot-mysterium" not in orchestrator.user_stopped()
+
+
+# ---------------------------------------------------------------------------
+# (k) A node from 2.0.3 or earlier keeps running untouched until its redeploy
+# ---------------------------------------------------------------------------
+
+
+def _old_node(status="running"):
+    """What every Mysterium through 2.0.3 is: host network, unless-stopped, an unpinned image."""
+    c = _node(status=status, network_mode="host", image="mysteriumnetwork/myst")
+    c.attrs["HostConfig"]["RestartPolicy"] = {"Name": "unless-stopped"}
+    return c
+
+
+class TestAnOldHostNetworkNode:
+    @pytest.mark.parametrize("mode", [lan_fence.MODE_ON, lan_fence.MODE_LEGACY, lan_fence.MODE_OFF])
+    def test_the_guard_leaves_a_running_one_alone(self, markers, mode):
+        node = _old_node()
+        held, _ = _guard([node], problem=lan_fence.mode_problem(mode), mode=mode)
+        node.stop.assert_not_called()
+        node.start.assert_not_called()
+        node.restart.assert_not_called()
+        node.exec_run.assert_not_called()
+        assert held == {}
+
+    def test_the_guard_leaves_it_alone_when_the_fence_goes_too(self, markers):
+        node = _old_node()
+        _guard([node], problem="the LAN fence is not complete on this host")
+        node.stop.assert_not_called()
+
+    def test_the_guard_does_not_start_a_stopped_one(self, markers):
+        node = _old_node(status="exited")
+        _guard([node])
+        node.start.assert_not_called()
+
+    @pytest.mark.parametrize("action", ["start_service", "restart_service"])
+    def test_start_and_restart_work_as_before_in_legacy_mode(self, markers, action):
+        node = _old_node(status="exited")
+        with (
+            patch.object(orchestrator, "_find_container", return_value=node),
+            patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+            patch.object(lan_fence, "resolve_mode", return_value=lan_fence.MODE_LEGACY),
+        ):
+            getattr(orchestrator, action)("mysterium")
+        assert node.start.called or node.restart.called
+
+    def test_stop_records_nothing_for_the_guard(self, markers):
+        node = _old_node()
+        with patch.object(orchestrator, "_find_container", return_value=node):
+            orchestrator.stop_service("mysterium")
+        node.stop.assert_called_once()
+        assert orchestrator.user_stopped() == set()
+
+    def test_a_redeploy_in_legacy_mode_is_refused_and_says_what_to_do(self, markers):
+        old = _old_node()
+        with pytest.raises(orchestrator.ContainerNetworkError) as refused:
+            _raw_deploy(old=old, mode=lan_fence.MODE_LEGACY)
+        assert "Switch isolation on in Fleet, then redeploy Mysterium." in str(refused.value)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+
+    def test_drift_still_flags_it_and_gives_the_order(self):
+        found = " ".join(drift.container_drift(MYST, _shape(network_mode="host"), HOST_RECORD))
+        assert "Switch isolation on in Fleet, then redeploy Mysterium once" in found
+
+    def test_control_a_fence_gated_one_in_legacy_mode_is_stopped(self, markers):
+        node = _node(network_mode="bridge")
+        _guard([node], problem=lan_fence.mode_problem(lan_fence.MODE_LEGACY), mode=lan_fence.MODE_LEGACY)
+        node.stop.assert_called_once()

@@ -191,9 +191,9 @@ it never starts it on its own after a reboot or a daemon restart, before the
 worker has put the table back. The worker starts it once it has read the table
 back with every rule in place: at deploy, when the worker starts, and after a
 crash. Every 30 seconds it checks again, and it stops the node when a rule is
-missing, or when the container was recreated on the host network, privileged,
-with a capability or an image its catalog entry does not give it, or with a
-restart policy. It then writes the table again, and starts the node on the next
+missing, or when the container was recreated privileged, with a capability or
+an image its catalog entry does not give it, with a restart policy, or off the
+network the mode puts it on. It then writes the table again, and starts the node on the next
 check once the table reads complete. A node you stopped from the dashboard
 stays stopped. The fleet page names a node held stopped and says why. In the
 lab, a deleted rule stopped the node within 30 seconds, and after a Docker
@@ -216,10 +216,16 @@ rules, and keeping other containers off its WebUI is up to those rules too. In
 `off` and `legacy` mode, and on Podman, the worker does not run the node at
 all: on Docker's default bridge every other earner could reach its WebUI and
 change its payout wallet, and nothing would keep it off your LAN. A deploy is
-refused before the running node is touched, and a node already running there
-is stopped; the reason says how to turn isolation on.
+refused before the running node is touched, with the order to follow: switch
+isolation on in Fleet, then redeploy Mysterium. A fenced node already running
+in such a mode is stopped.
 
-Existing nodes move on their next redeploy; see UPGRADING.md.
+**A node from 2.0.3 or earlier keeps running as it is.** A Mysterium container
+on the host's network, which is what every node deployed through 2.0.3 is, is
+left exactly as it is in every mode until you redeploy it: the guard neither
+stops nor starts it, and Start, Stop and Restart work on it as before. Drift
+and **Check isolation** keep flagging it. It moves onto the fenced bridge on
+its redeploy; see UPGRADING.md.
 
 ### Limits
 

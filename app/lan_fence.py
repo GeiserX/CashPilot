@@ -1070,15 +1070,12 @@ def mode_problem(mode: str) -> str | None:
     """
     if mode in (MODE_ON, MODE_OPERATOR):
         return None
-    how = {
-        MODE_OFF: "set CASHPILOT_ISOLATION=auto on this worker and restart it",
-        MODE_LEGACY: "press Turn on isolation on the Fleet page",
-        MODE_UNSUPPORTED: "run it on Docker, or on your own network (CASHPILOT_CONTAINER_NETWORK)",
-    }.get(mode, "turn isolation on")
-    return (
-        f"isolation is {mode} on this worker, and this node holds NET_ADMIN, so it runs only behind the LAN "
-        f"fence or on your own network. To run it, {how}, then redeploy it"
-    )
+    what = {
+        MODE_LEGACY: "Switch isolation on in Fleet, then redeploy Mysterium.",
+        MODE_OFF: "Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy Mysterium.",
+        MODE_UNSUPPORTED: "Run it on Docker with isolation on, or on your own network (CASHPILOT_CONTAINER_NETWORK).",
+    }.get(mode, "Switch isolation on in Fleet, then redeploy Mysterium.")
+    return f"isolation is {mode} on this worker, and Mysterium runs only behind the LAN fence. {what}"
 
 
 def fence_problem(client: Any) -> str | None:
@@ -1113,7 +1110,11 @@ def _gated(client: Any) -> list[Any]:
     return [
         c
         for c in _managed(client)
-        if orch.fence_gated(str((c.labels or {}).get(LABEL_SERVICE) or "")) and not orch.is_proxied(c)
+        if orch.fence_gated(str((c.labels or {}).get(LABEL_SERVICE) or ""))
+        and not orch.is_proxied(c)
+        # A node from 2.0.3 or earlier, on the host's network, is left exactly
+        # as it is until its owner redeploys it (orchestrator.predates_fence).
+        and not orch.predates_fence(c)
     ]
 
 

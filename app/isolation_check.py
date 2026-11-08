@@ -431,7 +431,8 @@ def host_netns_findings(containers: list[Any]) -> list[dict[str, Any]]:
             "detail": (
                 "These containers hold firewall capabilities in this host's own network namespace, so they can "
                 "rewrite the host's firewall, the LAN fence included, and reach everything the host reaches: "
-                f"{', '.join(sorted(held))}. Redeploy them from the dashboard to move them onto the fenced bridge."
+                f"{', '.join(sorted(held))}. Switch isolation on in Fleet, then redeploy them once from the dashboard to "
+                "move them onto the fenced bridge."
             ),
             "docs": ISOLATION_PAGE,
         }
