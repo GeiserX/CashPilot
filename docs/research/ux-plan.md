@@ -1,6 +1,6 @@
 # CashPilot UX plan: clicks, keyboard, terminal and agents
 
-Status: proposal. Based on origin/main at 94788d55 (v2.1.1 plus fixes). Every `file:line` below refers to that tree. Screenshot names (such as `05-owner-bad-token.png`) refer to a throwaway walkthrough run with fake data, in dark mode. Those screenshots are not committed. The mockups in `ux-mockups/` are committed, and their own notes cite the tree they were drawn on, one or two commits earlier.
+Status: proposal. Based on origin/main at ce2f6dbf (v2.1.1 plus fixes). Every `file:line` below refers to that tree. Screenshot names (such as `05-owner-bad-token.png`) refer to a throwaway walkthrough run with fake data, in dark mode. Those screenshots are not committed. The mockups in `ux-mockups/` are committed, and their own notes cite the tree they were drawn on, one or two commits earlier.
 
 ## 1. The problem
 
@@ -70,9 +70,9 @@ Effort: S is up to a day, M is a few days, L is a week or more. An item marked "
 
 - Task: stop, remove or redeploy a stateful node.
 - Today: Enter, Enter removes the container and deletes its volume. Stop on the dashboard has no confirm at all (`app.js:2687-2696`).
-- After: focus starts on "Keep data". Deletion needs the slug typed in. Stop on a stateful node names the risk ("downtime counts against Storj uptime"), and the toast offers "Start again".
+- After: "Keep data" is preselected and focus starts on Cancel. Deletion needs the slug typed in. Stop on a stateful node names the risk ("downtime counts against Storj uptime"), and the toast offers "Start again".
 - Change: add `CP.confirm({title, body, danger, confirmLabel, requireType})` and replace all 23 `confirm()` calls. Every confirm names the box. The redeploy variant shows the X22 plan once X22 lands. Until then it lists the saved settings it keeps.
-- Evidence: 15 in `app.js` (among them `:4172`, `:4174`, `:2710`, `:2737`, `:2750`, `:3736`, `:3760`, `:4139`, `:4155`, `:4684`); 5 in `fleet.html` (`:533`, `:551`, `:793`, `:1134`, `:1144`); 2 in `activity.html`; 1 in `import.js:205`. Stop without a confirm: `app.js:2065`, `:2687-2696`.
+- Evidence: 15 in `app.js` (among them `:4172`, `:4174`, `:2710`, `:2737`, `:2750`, `:3736`, `:3760`, `:4139`, `:4155`, `:4684`); 5 in `fleet.html` (`:533`, `:551`, `:793`, `:1134`, `:1144`); 2 in `activity.html`; 1 in `import.js:205`. Stop without a confirm: `app.js:2058`, `:2687-2696`.
 - Impact: high. Effort: M. Dependencies: N2.
 
 ![M8: remove dialog that keeps data by default](ux-mockups/m8-fold.png)
@@ -136,7 +136,7 @@ Effort: S is up to a day, M is a few days, L is a week or more. An item marked "
     - Generate the full 6-variable snippet.
     - Rename "Reveal API Key" to "Enrolment key", with a pointer to API tokens (cli-16).
     - Settings shows "Generated, managed on Fleet" instead of "Not set".
-- Evidence: `fleet.html:36-44`, `:128-155`, `:171`; `docs/fleet.md:110-136`, `:245`; `docker-compose.yml:35-36`; `app/main.py:7153`; screenshot 40-fleet-add-box.png.
+- Evidence: `fleet.html:36-44`, `:128-155`, `:171`; `docs/fleet.md:110-136`, `:245`; `docker-compose.yml:35-36`; `app/main.py:7145`; screenshot 40-fleet-add-box.png.
 - Impact: high. Effort: M. Dependencies: N2. One-time join tokens come later (X10).
 
 ![M4: address step with the loopback warning](ux-mockups/m4-screen2.png)
@@ -203,7 +203,7 @@ Effort: S is up to a day, M is a few days, L is a week or more. An item marked "
     - `?` opens the shortcuts overlay (section 4).
     - A skip link leads to `<main id="main">`.
     - The active nav link has `aria-current="page"`, and focus lands on the `h1` after a `g` jump.
-    - Buttons get object labels ("Restart Honeygain on box-2"), and toggle groups get `aria-pressed`.
+    - Buttons get object labels ("Restart Honeygain on box-b"), and toggle groups get `aria-pressed`.
     - The catalog search field gets a label.
 - Evidence: `base.html:45-171`, `:84`, `:96`; `app.js:184-187`, `:2054-2062`, `:3998`; `fleet.html:445`, `:1005-1013`; `catalog.html:11-21`; `setup.html:9-28`.
 - Impact: medium. Effort: S. Dependencies: none.
@@ -269,7 +269,7 @@ Effort: S is up to a day, M is a few days, L is a week or more. An item marked "
 
 - Task: run any action.
 - Today: about 70 keystrokes to redeploy one service on one box.
-- After: about 12 keystrokes (Cmd+K, `rede hon box2`, Enter, Enter).
+- After: about 12 keystrokes (Cmd+K, `rede hon box-b`, Enter, Enter).
 - Change:
     1. `GET /api/actions` serves one registry of `{id, label, keywords, scope, params, route, danger, shortcut}`, filtered by the caller's role. A `<dialog>` holds a combobox fed by it. The first PR covers pages, services and settings.
     2. Parameterised actions. Parameters are asked for step by step (service, then box, then confirm), with recent entries on top. Dangerous entries go through N3 and show the X22 plan.
@@ -369,8 +369,8 @@ Effort: S is up to a day, M is a few days, L is a week or more. An item marked "
 - Task: operate CashPilot from a terminal.
 - Today: there is no CLI.
 - After: see section 6.
-    1. CLI v1, read and proxies: `status`, `finding ls|run`, `service ls|logs`, `egress add|import|test`, `box ls|add --print-compose`, `setup-token`, `token ls|create|revoke`.
-    2. Lifecycle: `service deploy|start|stop|rm`, `copy apply`, `update`. Each accepts `--dry-run` and prints the X22 plan.
+    1. CLI v1, read and proxies: `login`, `status`, `finding ls|run|snooze`, `service ls|logs`, `egress ls|add|import|test`, `box ls|add --print compose|wait`, `setup-token`, `token ls|create|revoke`.
+    2. Lifecycle: `service deploy|redeploy|start|stop|restart|rm`, `copy apply`, `update`. Each accepts `--dry-run` and prints the X22 plan.
 - Evidence: `pyproject.toml:1-6`; `app/main.py:3169-3179`, `:3265`, `:3884-3892`, `:6455`, `:6512-6589`; `AGENTS.md:56-150`.
 - Impact: high. Effort: L (M, M). Dependencies: N9, N13, X7 (X22 for the second PR).
 
@@ -390,7 +390,7 @@ Effort: S is up to a day, M is a few days, L is a week or more. An item marked "
 - After:
     - A one-time join token per box replaces the shared key. It expires and is stored hashed.
     - A live checklist runs after the first heartbeat: UI can reach worker URL, versions match, socket proxy on, LAN fence on, isolation passed. Each line has a [Check again] button.
-    - `cashpilot box add --print-compose` gives the same result.
+    - `cashpilot box add --print compose` gives the same result, and `cashpilot box wait` streams the same checks.
 - Evidence: see N8; `fleet.html:910-944`.
 - Impact: medium. Effort: M. Dependencies: N8.
 
@@ -660,7 +660,7 @@ Every new egress is tested before anything is placed on it. The test shows the e
 3. **Server-side plans** (X22, M). Every stateful verb gets `dry_run` and a `plan_id`.
 4. **`cashpilot` CLI** (X8, two PRs). A thin httpx client, installed with `uv tool install cashpilot` / `uvx`. It is also shipped inside the UI image as `docker exec cashpilot-ui cashpilot …`, already authenticated locally, so a first-time user needs no token.
     - Nouns follow principle 7: `box`, `service`, `egress`, `copy`, `finding`, `token`, `actions`. Plural aliases are accepted.
-    - First commands: `status` (exit 0/1/2 for ok/warn/fail), `finding ls|run <id> --dry-run`, `setup-token`, `service ls|deploy|start|stop|logs|rm`, `box ls|add --print-compose|isolation-check`, `egress add|import|test|apply`, `copy apply`, `token ls|create|revoke`.
+    - First commands: `login` (token from stdin), `status` (exit 0 when it read the server; open findings are in the output, not the exit code), `finding ls|run <id> --dry-run|snooze`, `setup-token`, `service ls|deploy|redeploy|start|stop|restart|logs|rm`, `box ls|add --print compose|wait|isolation-check`, `egress ls|add|import|test|apply`, `copy apply`, `token ls|create|revoke`, `actions`.
     - Global flags: `--json`, `--jq`, `--box <name>`, `--dry-run`, `--yes`, `--profile`.
     - Secrets come from stdin or a file, never from argv.
     - The verbs are idempotent: when nothing needs to change, the result is `changed:false` with exit 0.
@@ -773,7 +773,7 @@ Checkbox cards, one auto-ticked "Deploy to" bar, credentials reused for balances
 
 ### M7. API & CLI settings
 
-Scoped tokens shown once, terminal install, agent setup (agents.md, llms.txt, MCP), and the last actions as commands (X7, N13, X17, L5). Source: [m7.html](ux-mockups/m7.html).
+Scoped tokens shown once, terminal install, agent setup (agents.md, llms.txt, MCP), and the last actions as commands, which ship in wave 3 (X7, N13, X17, L5). Source: [m7.html](ux-mockups/m7.html).
 
 ![M7 first screen](ux-mockups/m7-fold.png)
 ![M7 full page](ux-mockups/m7-full.png)

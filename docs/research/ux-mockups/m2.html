@@ -197,7 +197,7 @@ tr.off .svc { color: var(--text-muted); }
   <div>
     <h3>Restarting Honeygain on box-b, the day it dies</h3>
     <ul>
-      <li>Cells are <code>&lt;span class="cell cell-fail" title=…&gt;</code> (<code>app.js:1481-1485</code>): no tabindex, no click handler. <kbd>Tab</kbd> skips the whole grid (screenshot <code>walkthrough/shots/33-kbd-dash-tab15.png</code>).</li>
+      <li>Cells are <code>&lt;span class="cell cell-fail" title=…&gt;</code> (<code>app.js:1481-1485</code>): no tabindex, no click handler. <kbd>Tab</kbd> skips the whole grid (screenshot <code>33-kbd-dash-tab15.png</code>).</li>
       <li>To act: scroll to the Services table, find Honeygain, expand its copies, find the box-b row, click Restart (<code>app.js:2079-2141</code>): <span class="count-badge">1 scroll + visual search + 2-3 clicks</span>, the cause (exit code, OOM) is not on the way.</li>
       <li>State is colour only: <code>.cell-ok</code> green vs <code>.cell-fail</code> red differ by luminance 1.16:1 (<code>style.css:1433-1435</code>), so red-green colour-blind users see two equal squares.</li>
       <li>Proxied copies are dropped before placement sees them (<code>orchestrator.py:3034-3038</code>): a dead copy behind isp-1 never shows on the Dashboard.</li>
@@ -225,7 +225,7 @@ tr.off .svc { color: var(--text-muted); }
             <th class="box"><span class="bn">box-a</span></th>
             <th class="box eg" id="egh"><span class="bn">box-a via isp-1</span></th>
             <th class="box"><span class="bn">box-b</span></th>
-            <th class="box"><span class="bn">garage-…-2</span></th>
+            <th class="box"><span class="bn">nas-…-2</span></th>
             <th class="up">Up</th></tr></thead>
           <tbody>
             <tr><th class="svc">Honeygain</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-ok">✓</span></td><td><span class="c c-fail">×</span></td><td><span class="c c-ok">✓</span></td><td class="up fail">3/4</td></tr>
@@ -262,7 +262,7 @@ tr.off .svc { color: var(--text-muted); }
   <li><span class="co">4</span><span><b>Pending device link</b>: an amber chain on the cell when EarnApp, Bitping and similar run but the device is not yet claimed in the vendor's dashboard. The cell is degraded, not up, because it earns nothing yet.</span></li>
   <li><span class="co">5</span><span><b>Several copies on one box</b> show a small count, as the current <code>.cell-n</code> does.</span></li>
   <li><span class="co">6</span><span><b>Account off.</b> The whole row is hatched with a lock and “account off” replaces the Up count, so green containers on a disabled account no longer look like income. Uses the existing account-disabled flag from Needs attention.</span></li>
-  <li><span class="co">7</span><span><b>Middle-truncated box names</b> (<code>garage-…-2</code>) so two boxes with the same long prefix stay tell-apart; today names are cut at the end at 14 characters (<code>app.js:1468</code>).</span></li>
+  <li><span class="co">7</span><span><b>Middle-truncated box names</b> (<code>nas-…-2</code>) so two boxes with the same long prefix stay tell-apart; today names are cut at the end at 14 characters (<code>app.js:1468</code>).</span></li>
   <li><span class="co">8</span><span><b>Empty egress cell</b> (Repocket via isp-1, shown here hovered) stays blank at rest and shows a faint “+” on focus or hover (State 3). n/a where the service cannot run through a proxy, with the reason in the tooltip.</span></li>
 </ol>
 
@@ -277,7 +277,7 @@ tr.off .svc { color: var(--text-muted); }
       <section>
         <div class="block-head"><h2 class="block-title">Placement</h2><span class="block-meta">↑↓←→ move · Enter act · Esc close</span></div>
         <table class="pt">
-          <thead><tr><th class="svc">Service</th><th class="box"><span class="bn">box-a</span></th><th class="box eg"><span class="bn">box-a via isp-1</span></th><th class="box"><span class="bn">box-b</span></th><th class="box"><span class="bn">garage-…-2</span></th><th class="up">Up</th></tr></thead>
+          <thead><tr><th class="svc">Service</th><th class="box"><span class="bn">box-a</span></th><th class="box eg"><span class="bn">box-a via isp-1</span></th><th class="box"><span class="bn">box-b</span></th><th class="box"><span class="bn">nas-…-2</span></th><th class="up">Up</th></tr></thead>
           <tbody>
             <tr><th class="svc">Honeygain</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-ok">✓</span></td><td><span class="c c-fail foc">×</span></td><td><span class="c c-ok">✓</span></td><td class="up fail">3/4</td></tr>
             <tr><th class="svc">EarnApp</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="muted" style="font-size:13px">n/a</span></td><td><span class="c c-warn">!<span class="link-chip">⛓</span></span></td><td><span class="c c-none">·</span></td><td class="up warn">1/2</td></tr>
@@ -311,7 +311,7 @@ tr.off .svc { color: var(--text-muted); }
   <li><span class="co">2</span><span><b>The cause, in words, first line.</b> Exit code 137 plus the memory limit becomes “ran out of memory at 256 MB”. Restart count tells a crash loop from a one-off.</span></li>
   <li><span class="co">3</span><span><b>Last 20 log lines inline</b>, monospace, so most diagnoses need no second click. <kbd>l</kbd> opens the full log viewer that exists today.</span></li>
   <li><span class="co">4</span><span><b>A suggested fix</b> when the cause is known (OOM, port in use, bad credential, image pull failure), with the numbers from the fleet.</span></li>
-  <li><span class="co">5</span><span><b>Actions with keys</b>, primary first by state: Start for a stopped copy, Restart for a running but degraded one. Today's path to Restart: scroll, search, expand, click (2-3 clicks plus a search). Now: <span class="count-badge">Tab, arrows, Enter, s</span>. Copy as CLI gives <code>cashpilot service start honeygain --box box-b</code>.</span></li>
+  <li><span class="co">5</span><span><b>Actions with keys</b>, primary first by state: Start for a stopped copy, Restart for a running but degraded one. Today's path to Start or Restart: scroll, search, expand, click (2-3 clicks plus a search). Now: <span class="count-badge">Tab, arrows, Enter, s</span> (Start). Copy as CLI (wave 3) gives <code>cashpilot service start honeygain --box box-b</code>.</span></li>
 </ol>
 <div class="kflow"><b>Keyboard</b>
   <span class="step"><kbd>Tab</kbd> enters the grid once, on the worst cell</span><span class="arrow">→</span>
@@ -328,7 +328,7 @@ tr.off .svc { color: var(--text-muted); }
   <header class="topbar"><div class="topbar-brand"><span class="sun"></span>CashPilot</div><nav class="topnav"><a class="active">Dashboard</a><a>Fleet</a><a>Proxies &amp; VPNs</a><a>Catalog</a><a>Payouts</a><a>Activity</a><a>Settings</a></nav><div class="topbar-right"><span class="topbar-earn">$148.32</span><span class="avatar">S</span></div></header>
   <div class="page" style="width:760px">
     <table class="pt">
-      <thead><tr><th class="svc">Service</th><th class="box"><span class="bn">box-a</span></th><th class="box eg"><span class="bn">box-a via isp-1</span></th><th class="box"><span class="bn">box-b</span></th><th class="box"><span class="bn">garage-…-2</span></th><th class="up">Up</th></tr></thead>
+      <thead><tr><th class="svc">Service</th><th class="box"><span class="bn">box-a</span></th><th class="box eg"><span class="bn">box-a via isp-1</span></th><th class="box"><span class="bn">box-b</span></th><th class="box"><span class="bn">nas-…-2</span></th><th class="up">Up</th></tr></thead>
       <tbody><tr><th class="svc">Repocket</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-add foc">+</span></td><td><span class="c c-ok">✓</span></td><td><span class="c c-none">·</span></td><td class="up">2/2</td></tr></tbody>
     </table>
   </div>
@@ -368,7 +368,7 @@ tr.off .svc { color: var(--text-muted); }
   <div><p class="frame-label">error · workers unreadable (app.js:1437-1439 today)</p><div class="mini-frame"><div class="block-head"><span class="block-title">Placement</span><span class="fresh stale">updated 6 min ago</span></div><p class="inline-note fail" style="margin:10px 0 0">Could not read the workers, so placement is unknown. Showing the last good grid from 6 min ago, dimmed. <span class="btn btn-ghost btn-sm">Retry <kbd>r</kbd></span></p></div></div>
   <div><p class="frame-label">empty · no services yet</p><div class="mini-frame"><div class="block-head"><span class="block-title">Placement</span></div><p style="margin:10px 0 4px">Nothing placed yet.</p><p class="muted" style="font-size:var(--fs-2); margin:0 0 8px">Pick services and the boxes to run them on; they show up here as rows and columns.</p><span class="btn btn-primary btn-sm">+ Add service <kbd>n</kbd></span></div></div>
   <div><p class="frame-label">390 wide · phone</p><div class="mini-frame" style="width:390px; padding:10px 12px" id="s-mobile"><div class="block-head"><span class="block-title">Placement</span><span class="fresh">12 s ago</span></div>
-    <table class="pt"><thead><tr><th class="svc">Service</th><th class="box" style="width:44px"><span class="bn">box-a</span></th><th class="box eg" style="width:44px"><span class="bn">via isp-1</span></th><th class="box" style="width:44px"><span class="bn">box-b</span></th><th class="box" style="width:44px"><span class="bn">garage-…-2</span></th><th class="up">Up</th></tr></thead>
+    <table class="pt"><thead><tr><th class="svc">Service</th><th class="box" style="width:44px"><span class="bn">box-a</span></th><th class="box eg" style="width:44px"><span class="bn">via isp-1</span></th><th class="box" style="width:44px"><span class="bn">box-b</span></th><th class="box" style="width:44px"><span class="bn">nas-…-2</span></th><th class="up">Up</th></tr></thead>
     <tbody><tr><th class="svc">Honeygain</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-ok">✓</span></td><td><span class="c c-fail">×</span></td><td><span class="c c-ok">✓</span></td><td class="up fail">3/4</td></tr><tr class="off"><th class="svc">🔒 Pawns</th><td></td><td class="eg"></td><td></td><td></td><td class="up" style="color:var(--warning);font-family:var(--font-ui)">off</td></tr></tbody></table>
     <p class="muted" style="font-size:var(--fs-1); margin:6px 0 0">Tap a cell: the popover opens as a bottom sheet with the same actions.</p></div></div>
 </div>
@@ -376,15 +376,15 @@ tr.off .svc { color: var(--text-muted); }
 <h2 class="scr"><span class="tag">CLI · API</span> The grid as data</h2>
 <div class="frame" style="padding:16px 20px; background:var(--bg-log)" id="s4">
 <div class="logbox" style="border:0; padding:0; font-size:14px; line-height:1.55"><span class="muted">$</span> cashpilot service ls --grid
-SERVICE         box-a  box-a/isp-1  box-b   garage-…-2  UP
+SERVICE         box-a  box-a/isp-1  box-b   nas-…-2  UP
 Honeygain       ✓      ✓            ×       ✓           <span class="fail">3/4</span>
 EarnApp         ✓      n/a          !⛓      ·           <span class="warn">1/2</span>
 Mysterium       ✓      n/a          ?       ✓           2/3
 Repocket        ✓      ·            ✓2      ·           3/3
 IPRoyal Pawns   <span class="muted">account off</span>
-<span class="muted">updated 12 s ago · 1 down: cashpilot service why honeygain --box box-b</span>
+<span class="muted">updated 12 s ago · 1 down: cashpilot finding ls --box box-b</span>
 
-<span class="muted">$</span> cashpilot service why honeygain --box box-b --json
+<span class="muted">$</span> cashpilot finding ls --box box-b --json
 { "service": "honeygain", "box": "box-b", "egress": null, "state": "down",
   "reason": "oom", "exit_code": 137, "mem_limit_mb": 256, "exited_ago_s": 240,
   "restarts_1h": 3, "suggest": { "action": "edit", "mem_limit_mb": 384 },

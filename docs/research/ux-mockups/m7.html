@@ -177,7 +177,7 @@ a { color: var(--accent-secondary); }
 <div class="sheet">
 
 <div class="sheet-head">
-  <h1>M7 · Settings › API &amp; CLI <span class="cite">tokens, copy as CLI, agent setup</span></h1>
+  <h1>M7 · Settings › API &amp; CLI <span class="cite">tokens, agent setup, copy as CLI (wave 3)</span></h1>
   <div class="meta">Mockup on origin/main · v2.1.1 · default theme “Classic night” · fake data</div>
 </div>
 
@@ -219,15 +219,15 @@ a { color: var(--accent-secondary); }
           <span class="co abs" style="left:-30px;top:10px">1</span>
           <h3 class="settings-section-title">Personal tokens
             <span class="btn btn-primary btn-sm focus" style="margin-left:auto">Create token</span>
-            <span class="kbd" title="keyboard">t</span>
+            <span class="kbd" title="keyboard">n</span>
           </h3>
           <p class="settings-section-desc">A token lets a script, a dashboard widget or an AI agent act as you, limited to the scopes and boxes you pick. Each one is shown once, stored hashed, and can be revoked here without a restart.</p>
           <table class="tbl tokens">
             <thead><tr><th>Name</th><th>Scopes</th><th>Boxes</th><th>Expires</th><th>Last used</th><th class="r"></th></tr></thead>
             <tbody>
-              <tr><td><span class="tok-name">home-assistant</span><div class="cite">cp_pat_hA2…f9</div></td><td><span class="chip">read</span></td><td>all</td><td class="hide-m">never</td><td><span class="badge"><span class="sq ok"></span>4 min ago · GET /api/earnings</span></td><td class="r"><span class="btn btn-danger btn-sm">Revoke</span></td></tr>
-              <tr style="background:var(--accent-soft)"><td><span class="tok-name">claude-code</span><div class="cite">cp_pat_Qm7…k2</div></td><td><span class="chip">read</span><span class="chip">operate</span><span class="chip warn">proxies</span></td><td><span class="chip">box-a</span><span class="chip">box-b</span></td><td class="hide-m">in 90 days · 6 Feb 2027</td><td><span class="badge"><span class="sq ok"></span>just now · POST /api/services/honeygain/restart</span></td><td class="r"><span class="btn btn-danger btn-sm">Revoke</span></td></tr>
-              <tr><td><span class="tok-name">old-grafana</span><div class="cite">cp_pat_Zt0…a1</div></td><td><span class="chip">read</span></td><td>all</td><td class="hide-m"><span class="badge" style="color:var(--warning)"><span class="sq warn"></span>in 3 days</span></td><td><span class="badge"><span class="sq off"></span>19 days ago</span></td><td class="r"><span class="btn btn-ghost btn-sm">Extend</span> <span class="btn btn-danger btn-sm">Revoke</span></td></tr>
+              <tr><td><span class="tok-name">home-assistant</span><div class="cite">cp_hA2x_…f9</div></td><td><span class="chip">read</span></td><td>all</td><td class="hide-m">never</td><td><span class="badge"><span class="sq ok"></span>4 min ago · GET /api/earnings</span></td><td class="r"><span class="btn btn-danger btn-sm">Revoke</span></td></tr>
+              <tr style="background:var(--accent-soft)"><td><span class="tok-name">claude-code</span><div class="cite">cp_Qm7d_…k2</div></td><td><span class="chip">read</span><span class="chip">operate</span><span class="chip warn">proxies</span></td><td><span class="chip">box-a</span><span class="chip">box-b</span></td><td class="hide-m">in 90 days · 6 Feb 2027</td><td><span class="badge"><span class="sq ok"></span>just now · POST /api/services/honeygain/restart</span></td><td class="r"><span class="btn btn-danger btn-sm">Revoke</span></td></tr>
+              <tr><td><span class="tok-name">old-grafana</span><div class="cite">cp_Zt0p_…a1</div></td><td><span class="chip">read</span></td><td>all</td><td class="hide-m"><span class="badge" style="color:var(--warning)"><span class="sq warn"></span>in 3 days</span></td><td><span class="badge"><span class="sq off"></span>19 days ago</span></td><td class="r"><span class="btn btn-ghost btn-sm">Extend</span> <span class="btn btn-danger btn-sm">Revoke</span></td></tr>
               <tr class="tok-legacy"><td><span class="tok-name">Admin key</span> <span class="chip warn">legacy, set in .env</span><div class="cite">CASHPILOT_ADMIN_API_KEY</div></td><td><span class="chip danger">admin</span> <span class="cite">(everything)</span></td><td>all</td><td class="hide-m">never</td><td><span class="badge"><span class="sq off"></span>12 days ago</span></td><td class="r"><span class="btn btn-ghost btn-sm">How to retire it</span></td></tr>
             </tbody>
           </table>
@@ -257,7 +257,7 @@ a { color: var(--accent-secondary); }
               <a class="linkcard">Agents guide <small>docs/agents.md</small></a>
               <a class="linkcard">llms.txt <small>/llms.txt</small></a>
               <a class="linkcard">API schema <small>/api/docs · signed in</small></a>
-              <a class="linkcard">Claude Code skill <small>cashpilot</small></a>
+              <a class="linkcard">Claude Code skill <small>cashpilot-operator</small></a>
             </div>
             <div class="form-label">MCP server config</div>
             <div class="codebox"><span class="txt">{ "mcpServers": { "cashpilot": {
@@ -286,11 +286,11 @@ a { color: var(--accent-secondary); }
   </div>
 </div>
 <ul class="notes">
-  <li><span class="co">1</span><div><b>New “API &amp; CLI” section</b> in the existing settings index (<span class="cite">templates/settings.html:9-15</span>), owner only. <span class="kbd">g</span> <span class="kbd">s</span> reaches Settings today; <span class="kbd">t</span> on this section opens Create token. Focus ring is the theme’s cyan (<span class="cite">style.css:2253-2254</span>).</div></li>
+  <li><span class="co">1</span><div><b>New “API &amp; CLI” section</b> in the existing settings index (<span class="cite">templates/settings.html:9-15</span>), owner only. <span class="kbd">g</span> <span class="kbd">s</span> reaches Settings today; <span class="kbd">n</span> on this section opens Create token. Focus ring is the theme’s cyan (<span class="cite">style.css:2253-2254</span>).</div></li>
   <li><span class="co">2</span><div><b>Token table</b>: scopes as chips, box allowlist, expiry with a warning 7 days ahead, last used with the last route. The env key stays visible as a <b>legacy</b> row so nothing breaks and the owner sees it is all-powerful. Backend: <code>api_tokens</code> table (hash, scopes, worker_ids, expires_at, last_used_at), checked in <code>get_current_user</code> next to the env keys (<span class="cite">app/auth.py:153-183</span>).</div></li>
   <li><span class="co">3</span><div><b>Terminal</b>: a <code>cli/</code> package published as <code>cashpilot</code> and also baked into the UI image, so <code>docker exec</code> works with no install. <code>--token-stdin</code> keeps the token out of shell history. Today: no CLI exists.</div></li>
-  <li><span class="co">4</span><div><b>Agents</b>: <code>/api/docs</code> and <code>/openapi.json</code> come back, but <b>behind sign-in</b>, which keeps the reason they were removed (<span class="cite">app/main.py:2311-2317</span>). <code>docs/agents.md</code> and a generated <code>llms.txt</code> list scopes, the plan/confirm contract and exit codes. MCP server = the same CLI in <code>mcp</code> mode.</div></li>
-  <li><span class="co">5</span><div><b>Recorder</b>: <code>CP.api()</code> (<span class="cite">app.js:14-38</span>) appends method, path and body to a ring of 10 in <code>sessionStorage</code>; a route→command map turns it into CLI text. Bodies are masked by field name (<code>password</code>, <code>token</code>, <code>*_KEY</code>, <code>url</code> credentials) before storing. 2 clicks to a working command.</div></li>
+  <li><span class="co">4</span><div><b>Agents</b>: <code>/api/docs</code> and <code>/openapi.json</code> come back, but <b>behind sign-in</b>, which keeps the reason they were removed (<span class="cite">app/main.py:2311-2317</span>). <code>docs/agents.md</code> and a generated <code>llms.txt</code> list scopes, the plan then <code>plan_id</code> contract and exit codes. MCP server = the same CLI in <code>mcp</code> mode.</div></li>
+  <li><span class="co">5</span><div><b>Recorder</b> (wave 3, L5): <code>CP.api()</code> (<span class="cite">app.js:14-38</span>) appends method, path and body to a ring of 10 in <code>sessionStorage</code>; a route→command map turns it into CLI text. Bodies are masked by field name (<code>password</code>, <code>token</code>, <code>*_KEY</code>, <code>url</code> credentials) before storing. 2 clicks to a working command.</div></li>
   <li><span class="co">→</span><div><b>Counts.</b> Create a read-only token for a widget: today 3 terminal steps + restart, and it is owner-level; after, 3 clicks + type a name. Revoke one client: today rotate for all; after, 2 clicks (Revoke, confirm).</div></li>
 </ul>
 
@@ -329,7 +329,7 @@ a { color: var(--accent-secondary); }
     <span class="co abs" style="left:6px;top:6px">7</span>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="stamp after">success</span><span class="cite">token shown once</span></div>
     <div class="okline" style="margin-bottom:10px">Token <b>claude-code</b> created. Copy it now: CashPilot stores only a hash and cannot show it again.</div>
-    <div class="codebox" style="border-color:var(--success)"><span class="txt" style="color:var(--text-primary)">cp_pat_Qm7dN4x0VfR2sTq8LwY1bHc6ZpE3uJk2</span><span class="btn btn-primary btn-sm focus">Copy</span></div>
+    <div class="codebox" style="border-color:var(--success)"><span class="txt" style="color:var(--text-primary)">cp_Qm7d_N4x0VfR2sTq8LwY1bHc6ZpE3uJk2</span><span class="btn btn-primary btn-sm focus">Copy</span></div>
     <div class="form-label" style="margin-top:10px">Try it</div>
     <div class="codebox"><span class="txt">curl -s -H "Authorization: Bearer $CASHPILOT_TOKEN" \
   http://cashpilot.local:8080/api/workers | jq '.[].name'</span><span class="btn btn-ghost btn-sm">Copy</span></div>
@@ -349,7 +349,7 @@ a { color: var(--accent-secondary); }
 </div>
 
 <!-- ============ INSETS ============ -->
-<div class="frame-title">Copy as CLI everywhere you act, and the Fleet rename <span class="stamp after">after</span></div>
+<div class="frame-title">Copy as CLI everywhere you act (wave 3), and the Fleet rename <span class="stamp after">after</span></div>
 <div class="grid3">
   <div class="frame pad" style="position:relative">
     <span class="co abs" style="left:6px;top:6px">8</span>
@@ -357,14 +357,14 @@ a { color: var(--accent-secondary); }
     <div class="svcrow"><span class="sq ok"></span><b>Honeygain</b><span class="cite">box-a</span><span class="num mono">$3.12</span><span class="btn btn-ghost btn-sm focus">⋯</span></div>
     <div style="display:flex;justify-content:flex-end;margin-top:4px">
       <div class="menu">
-        <div class="mi">Restart <span class="k">r</span></div><div class="mi">Stop <span class="k">s</span></div><div class="mi">Logs <span class="k">l</span></div>
+        <div class="mi">Restart <span class="k">⇧R</span></div><div class="mi">Stop <span class="k">x</span></div><div class="mi">Logs <span class="k">l</span></div>
         <div class="sep"></div>
-        <div class="mi sel">Copy as CLI <span class="k">c</span></div><div class="mi">Copy as curl <span class="k">u</span></div>
+        <div class="mi sel">Copy as CLI <span class="k">c</span></div><div class="mi">Copy as curl</div>
         <div class="sep"></div>
-        <div class="mi" style="color:var(--error)">Remove… <span class="k">⌫</span></div>
+        <div class="mi" style="color:var(--error)">Remove…</div>
       </div>
     </div>
-    <div class="toast" style="margin-top:10px;border-left-color:var(--accent-secondary)"><span>Copied <code>cashpilot service status honeygain --box box-a</code></span></div>
+    <div class="toast" style="margin-top:10px;border-left-color:var(--accent-secondary)"><span>Copied <code>cashpilot service logs honeygain --box box-a</code></span></div>
     <div class="caption"><span class="kbd">↑</span><span class="kbd">↓</span> moves, the letter jumps, <span class="kbd">Esc</span> closes back to ⋯. Today each row has separate icon buttons and no copy (<span class="cite">app.js:2676-2746</span>).</div>
   </div>
   <div class="frame pad" style="position:relative">
@@ -416,12 +416,12 @@ CASHPILOT_WORKER_NAME=box-c</span></div>
 <span class="t-p">$</span> <span class="t-c">cashpilot status --json</span>
 {
   <span class="t-k">"version"</span>: <span class="t-s">"2.2.0"</span>,
-  <span class="t-k">"workers"</span>: [
+  <span class="t-k">"boxes"</span>: [
     { <span class="t-k">"name"</span>: <span class="t-s">"box-a"</span>, <span class="t-k">"online"</span>: <span class="t-n">true</span>, <span class="t-k">"running"</span>: <span class="t-n">6</span>, <span class="t-k">"isolation"</span>: <span class="t-s">"on"</span> },
     { <span class="t-k">"name"</span>: <span class="t-s">"box-b"</span>, <span class="t-k">"online"</span>: <span class="t-n">true</span>, <span class="t-k">"running"</span>: <span class="t-n">4</span>, <span class="t-k">"isolation"</span>: <span class="t-s">"off"</span> }
   ],
-  <span class="t-k">"attention"</span>: [
-    { <span class="t-k">"slug"</span>: <span class="t-s">"earnapp"</span>, <span class="t-k">"worker"</span>: <span class="t-s">"box-b"</span>, <span class="t-k">"issue"</span>: <span class="t-s">"exited"</span> }
+  <span class="t-k">"findings"</span>: [
+    { <span class="t-k">"id"</span>: <span class="t-s">"down/earnapp@box-b"</span>, <span class="t-k">"severity"</span>: <span class="t-s">"fail"</span> }
   ],
   <span class="t-k">"balance_usd"</span>: <span class="t-n">41.87</span>
 }
@@ -444,11 +444,11 @@ CASHPILOT_WORKER_NAME=box-c</span></div>
     <table class="tbl" style="font-size:var(--fs-2)">
       <thead><tr><th>Scope</th><th>Lets you</th><th>CLI</th></tr></thead>
       <tbody>
-        <tr><td><span class="chip">read</span></td><td>status, earnings, logs, fleet</td><td><code>status · services ls · logs</code></td></tr>
-        <tr><td><span class="chip">operate</span></td><td>start, stop, restart</td><td><code>services start|stop|restart</code></td></tr>
-        <tr><td><span class="chip">deploy</span></td><td>deploy, redeploy, remove</td><td><code>deploy · services rm</code></td></tr>
-        <tr><td><span class="chip warn">proxies</span></td><td>proxies and proxied copies</td><td><code>proxies add|test|copy</code></td></tr>
-        <tr><td><span class="chip danger">admin</span></td><td>settings, credentials, tokens</td><td><code>tokens · settings</code></td></tr>
+        <tr><td><span class="chip">read</span></td><td>status, earnings, logs, fleet</td><td><code>status · service ls|logs · finding ls</code></td></tr>
+        <tr><td><span class="chip">operate</span></td><td>start, stop, restart</td><td><code>service start|stop|restart</code></td></tr>
+        <tr><td><span class="chip">deploy</span></td><td>deploy, redeploy, remove</td><td><code>service deploy|redeploy|rm</code></td></tr>
+        <tr><td><span class="chip warn">proxies</span></td><td>proxies and proxied copies</td><td><code>egress add|import|test · copy apply</code></td></tr>
+        <tr><td><span class="chip danger">admin</span></td><td>settings, credentials, tokens</td><td><code>token ls|create|revoke · box add</code></td></tr>
       </tbody>
     </table>
     <h4 style="margin:12px 0 4px;font-size:var(--fs-3)">Stateful services: plan, then confirm</h4>
@@ -459,7 +459,7 @@ cashpilot service rm mysterium --box box-a --dry-run --json
 cashpilot service rm mysterium --box box-a --yes
 <span class="t-m"># 3. only if the owner asked: delete the volume too</span>
 cashpilot service rm mysterium --box box-a --yes --delete-volume=mysterium</span></div>
-    <p class="form-hint">The volume flag must repeat the slug, the same check as the dialog in M8. Over HTTP, add <code>dry_run=true</code> to the same request: it returns <code>{"plan": …, "confirm": "&lt;token&gt;"}</code>; send <code>confirm</code> back within 5 minutes.</p>
+    <p class="form-hint">The volume flag must repeat the slug, the same check as the dialog in M8. Over HTTP, add <code>dry_run=1</code> to the same request: it returns <code>{"plan": …, "plan_id": "…"}</code>; send <code>plan_id</code> back within 5 minutes.</p>
   </div>
 </div>
 

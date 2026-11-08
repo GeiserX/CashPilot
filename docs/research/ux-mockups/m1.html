@@ -190,7 +190,7 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
       <li>Types: SOCKS5, HTTP, Tailscale exit (<code>fleet.html:93-96</code>). No WireGuard or OpenVPN file, no provider picker.</li>
       <li>Test checks the tunnel and exit IP only (<code>tunnel/cp-probe:8-14</code>): a proxy that 403s PacketStream still shows green, and the copy earns nothing.</li>
       <li>Running a copy is a second form with three selects, one copy per submit (<code>fleet.html:114-123</code>).</li>
-      <li>Keyboard: no shortcut reaches it; Tab from the top of Fleet takes 30+ presses (screenshot <code>walkthrough/shots/36-kbd-fleet-proxy.png</code>).</li>
+      <li>Keyboard: no shortcut reaches it; Tab from the top of Fleet takes 30+ presses (screenshot <code>36-kbd-fleet-proxy.png</code>).</li>
     </ul>
   </div>
 </div>
@@ -224,13 +224,13 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
       <div class="stat"><div class="stat-label">Net, this month</div><div class="stat-value fail">−$5.88</div><div class="stat-note">isp-1 costs more than it earns</div></div>
     </div>
 
-    <div class="block-head"><h2 class="block-title">Ways out <span class="muted mono" style="font-weight:500">4</span></h2><span class="block-meta">tested 6 min ago · <kbd>t</kbd> test selected · <kbd>p</kbd> place earners</span></div>
+    <div class="block-head"><h2 class="block-title">Ways out <span class="muted mono" style="font-weight:500">4</span></h2><span class="block-meta">tested 6 min ago · <kbd>t</kbd> test selected</span></div>
     <table class="t egress-table">
       <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Exit IP</th><th>Country</th><th>IP type</th><th class="num">Copies</th><th>Traffic</th><th>Cost vs earnings</th><th>Kill switch</th><th></th></tr></thead>
       <tbody>
         <tr class="own"><td><div class="name">This box's own IP</div><div class="sub2">box-a</div></td><td>Direct</td><td><span class="chip ok">Works</span></td><td class="mono">x.x.x.42</td><td>Spain</td><td><span class="chip ok plain">Residential</span></td><td class="num">6</td><td class="muted">not counted</td><td><div class="cost"><span class="muted">your own line</span></div></td><td class="muted">n/a</td><td class="rowact"><span class="btn btn-ghost btn-sm">Test</span></td></tr>
         <tr><td><div class="name">isp-1</div><div class="sub2">203.0.113.10:1080</div></td><td><div class="typecell">SOCKS5<span class="sub2">sticky</span></div></td><td><span class="chip ok">Works</span></td><td class="mono">x.x.x.10</td><td>Spain</td><td><span class="chip ok plain">Residential/ISP</span></td><td class="num">3</td><td><span class="bar"><i style="width:21%"></i></span> <span class="mono" style="font-size:14px; white-space:nowrap">2.1/10 GB</span><div class="sub2">resets on day 1</div></td><td><div class="cost"><span>$3.00/GB cost</span><span>~$0.20/GB earned</span><span class="loss">losing money</span></div></td><td><span class="chip ok">On</span></td><td class="rowact"><span class="btn btn-ghost btn-sm">Test</span><span class="btn btn-ghost btn-sm">Place</span><span class="btn btn-ghost btn-sm">⋯</span></td></tr>
-        <tr><td><div class="name">site-two</div><div class="sub2">exit node in the other house</div></td><td><div class="typecell">Tailscale exit<span class="sub2">via box-b</span></div></td><td><span class="chip ok">Works</span></td><td class="mono">x.x.x.77</td><td>Spain</td><td><span class="chip ok plain">Residential</span></td><td class="num">2</td><td><span class="mono" style="font-size:14px">14.3 GB</span><div class="sub2">no cap</div></td><td><div class="cost"><span class="muted">no cost set</span><span>~$0.20/GB earned</span></div></td><td><span class="chip ok">On</span></td><td class="rowact"><span class="btn btn-ghost btn-sm">Test</span><span class="btn btn-ghost btn-sm">Place</span><span class="btn btn-ghost btn-sm">⋯</span></td></tr>
+        <tr><td><div class="name">site-b</div><div class="sub2">exit node at a second site</div></td><td><div class="typecell">Tailscale exit<span class="sub2">via box-b</span></div></td><td><span class="chip ok">Works</span></td><td class="mono">x.x.x.77</td><td>Spain</td><td><span class="chip ok plain">Residential</span></td><td class="num">2</td><td><span class="mono" style="font-size:14px">14.3 GB</span><div class="sub2">no cap</div></td><td><div class="cost"><span class="muted">no cost set</span><span>~$0.20/GB earned</span></div></td><td><span class="chip ok">On</span></td><td class="rowact"><span class="btn btn-ghost btn-sm">Test</span><span class="btn btn-ghost btn-sm">Place</span><span class="btn btn-ghost btn-sm">⋯</span></td></tr>
         <tr><td><div class="name">wg-mullvad</div><div class="sub2">mullvad-se-sto.conf</div></td><td><div class="typecell">WireGuard<span class="sub2">from file</span></div></td><td><span class="chip ok">Works</span></td><td class="mono">x.x.x.201</td><td>Sweden</td><td><span class="chip warn plain">Datacenter</span></td><td class="num">0</td><td><span class="mono" style="font-size:14px">0 GB</span><div class="sub2">no cap</div></td><td><div class="cost"><span>$5.00/month</span></div></td><td><span class="chip ok">On</span></td><td class="rowact"><span class="btn btn-ghost btn-sm">Test</span><span class="btn btn-ghost btn-sm">Place</span><span class="btn btn-ghost btn-sm">⋯</span></td></tr>
         <tr class="sub"><td></td><td colspan="10"><p class="inline-note warn">4 of your services do not pay on datacenter IPs (Honeygain, EarnApp, IPRoyal Pawns, PacketStream). Mysterium and Storj do. <a style="color:var(--text-primary);text-decoration:underline">Place only the ones that pay</a></p></td></tr>
       </tbody>
@@ -256,9 +256,9 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
   <li><span class="co">4</span><span><b>“Works” means the vendors answer through it</b>, not only that the tunnel opened (see Screen 3). Other values: <span class="chip warn">Partly</span> some vendors blocked, <span class="chip fail">Down</span>, <span class="chip">Untested</span>.</span></li>
   <li><span class="co">5</span><span><b>Cost vs earnings.</b> Cost per GB from the plan the user typed; earnings per GB from the copies' own balance history. Red “losing money” when cost &gt; earnings. Today there is a cap but no cost, so a paid proxy can burn money silently.</span></li>
   <li><span class="co">6</span><span><b>Kill switch shown, not assumed.</b> Green only after the test proved the copy has no route to the home line (the probe tries the direct route and expects it to fail).</span></li>
-  <li><span class="co">7</span><span><b>Datacenter warning names the services.</b> The list comes from a new <code>docker.egress.datacenter: false</code> key in <code>services/**/*.yml</code>; the link opens Place with only the services that pay pre-ticked.</span></li>
+  <li><span class="co">7</span><span><b>Datacenter warning names the services.</b> The list comes from the catalog's <code>residential_ip: true</code> key in <code>services/**/*.yml</code>; the link opens Place with only the services that pay pre-ticked.</span></li>
   <li><span class="co">8</span><span><b>Totals first.</b> How many IPs, how many earn, what egress cost this month. Net in red when negative.</span></li>
-  <li><span class="co">9</span><span><b>Copy as CLI</b> puts the equivalent commands on the clipboard: <code>cashpilot egress ls --json</code>, <code>cashpilot egress test --all</code>. The same affordance sits in every dialog footer.</span></li>
+  <li><span class="co">9</span><span><b>Copy as CLI</b> <i>(wave 3, L5)</i> puts the equivalent commands on the clipboard: <code>cashpilot egress ls --json</code>, <code>cashpilot egress test --all</code>. The same affordance sits in every dialog footer.</span></li>
 </ol>
 
 <h2 class="scr"><span class="tag">STATES</span> Empty, and the 390-wide phone layout</h2>
@@ -269,7 +269,7 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
       <div class="page-head"><h1 class="page-title">Proxies &amp; VPNs</h1><span class="btn btn-primary">+ Add egress <kbd>n</kbd></span></div>
       <table class="t egress-table" style="margin:8px 0 16px"><tbody><tr class="own"><td><div class="name">This box's own IP</div><div class="sub2">box-a</div></td><td><span class="chip ok">Works</span></td><td class="mono">x.x.x.42</td><td>Spain</td><td><span class="chip ok plain">Residential</span></td><td class="num">6 services</td></tr></tbody></table>
       <div style="font-weight:600">Each service earns once per IP. Add another IP.</div>
-      <p class="muted" style="margin:4px 0 12px; font-size:var(--fs-2)">Paste a proxy list from your provider, drop a WireGuard or OpenVPN file, or pick a Tailscale exit node in another house. CashPilot tests each one against the services you run before placing anything.</p>
+      <p class="muted" style="margin:4px 0 12px; font-size:var(--fs-2)">Paste a proxy list from your provider, drop a WireGuard or OpenVPN file, or pick a Tailscale exit node at another site. CashPilot tests each one against the services you run before placing anything.</p>
       <div style="display:flex; gap:8px"><span class="btn btn-ghost btn-sm">Paste proxies</span><span class="btn btn-ghost btn-sm">VPN file</span><span class="btn btn-ghost btn-sm">Tailscale exit node</span></div>
       <div class="cli" style="margin-top:14px"><span class="prompt">$</span> cashpilot egress add 'socks5://user:pass@host:1080' --name isp-1<span class="btn btn-ghost btn-sm copy">Copy</span></div>
     </div>
@@ -285,7 +285,7 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
       <div style="padding:10px 14px; border-bottom:1px solid var(--border-color); font-size:var(--fs-2)" class="muted">4 IPs · 3 earning · net <span class="fail mono">−$5.88</span></div>
       <div class="m-card"><div class="l1"><b>This box's own IP</b><span class="chip ok">Works</span></div><div class="l2"><span>Direct · box-a</span><span>Spain</span><span>Residential</span><span>6 services</span></div></div>
       <div class="m-card"><div class="l1"><b>isp-1</b><span class="chip ok">Works</span></div><div class="l2"><span>SOCKS5</span><span>Spain</span><span>Residential/ISP</span><span>3 copies</span></div><div class="l2"><span class="bar" style="width:90px"><i style="width:21%"></i></span><span class="mono">2.1/10 GB</span><span class="fail" style="font-weight:600">losing money</span></div></div>
-      <div class="m-card"><div class="l1"><b>site-two</b><span class="chip ok">Works</span></div><div class="l2"><span>Tailscale exit</span><span>Spain</span><span>Residential</span><span>2 copies</span></div></div>
+      <div class="m-card"><div class="l1"><b>site-b</b><span class="chip ok">Works</span></div><div class="l2"><span>Tailscale exit</span><span>Spain</span><span>Residential</span><span>2 copies</span></div></div>
       <div class="m-card"><div class="l1"><b>wg-mullvad</b><span class="chip ok">Works</span></div><div class="l2"><span>WireGuard</span><span>Sweden</span><span class="warn">Datacenter</span><span>0 copies</span></div><p class="inline-note warn" style="font-size:14px">4 of your services do not pay on datacenter IPs.</p></div>
       <div class="m-fab"><span class="btn btn-primary btn-lg" style="height:40px">+ Add egress</span></div>
       <span class="co abs" style="left:330px; top:140px">10</span>
@@ -354,7 +354,7 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
   <li><span class="co">3</span><span><b>Live preview, one row per line.</b> The parser in <code>app/proxies.py</code> gains <code>parse_proxy_line()</code>; the API takes a list (<code>POST /api/egress/batch</code>). Today the API takes one proxy per call (<code>app/proxies.py:24</code>).</span></li>
   <li><span class="co">4</span><span><b>Bad line in red with the reason</b>, skipped, counted out of the Add button (“Add 3”, not 4). Fixing it in the textarea updates the row at once.</span></li>
   <li><span class="co">5</span><span><b>Shared fields typed once.</b> Ten proxies from one plan share cap, reset day and price. Rotation is measured, not asked (Screen 3).</span></li>
-  <li><span class="co">6</span><span><b>Copy as CLI</b> with the exact flags the dialog holds, passwords excluded (the file keeps them). An agent can do the same with one command.</span></li>
+  <li><span class="co">6</span><span><b>Copy as CLI</b> <i>(wave 3, L5)</i> with the exact flags the dialog holds, passwords excluded (the file keeps them). An agent can do the same with one command.</span></li>
   <li><span class="co">7</span><span><b>Test before Add.</b> Enter tests all parsed lines in parallel; Add stays available but warns if a line has not passed. ten proxies: <span class="count-badge">≈ 80 inputs → 3 keys</span> (<kbd>n</kbd>, <kbd>Ctrl V</kbd>, <kbd>Enter</kbd>) plus one click to add.</span></li>
 </ol>
 <div class="kflow"><b>Keyboard</b>
@@ -409,7 +409,7 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
 <ol class="notes">
   <li><span class="co">1</span><span><b>IP type with the network's name.</b> Residential, Residential/ISP, Datacenter, Mobile, from the ASN of the exit IP. Users buy “residential” proxies that turn out to be hosting ranges; this shows it before money is spent.</span></li>
   <li><span class="co">2</span><span><b>Rotation is measured.</b> Three samples. Same IP = sticky; different = rotating, and the rotating box ticks itself. Today it is a checkbox the user must know to tick (<code>fleet.html:109</code>).</span></li>
-  <li><span class="co">3</span><span><b>Vendor reach, per deployed service.</b> One request to each vendor's endpoint (new <code>docker.egress.reach</code> list in the service YAML) through the egress. This is the check whose absence made copies run green and earn nothing.</span></li>
+  <li><span class="co">3</span><span><b>Vendor reach, per deployed service.</b> One request to each vendor's endpoint (the new <code>docker.egress</code> list of <code>{host, port}</code> in the service YAML) through the egress. This is the check whose absence made copies run green and earn nothing.</span></li>
   <li><span class="co">4</span><span><b>Failures say what to do</b>, in plain words, not an HTTP dump. Ports come from the service YAML.</span></li>
   <li><span class="co">5</span><span><b>Services that cannot run through any egress are greyed</b>, with the reason the code already enforces (no host networking, ports, volumes or devices, <code>fleet.html:121</code>).</span></li>
   <li><span class="co">6</span><span><b>Place earners</b> pre-selects only the services that passed, on the boxes that already run them, and asks once. Today: one “Run a copy” submit per service per proxy (<code>fleet.html:114-123</code>).</span></li>
@@ -432,14 +432,14 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px"><span class="btn" style="opacity:.55">Connect Tailscale</span><span class="chip ok">Connected as tailnet example-tailnet</span><span class="muted" style="font-size:var(--fs-2)">read-only OAuth client, scope devices:read · <a style="color:var(--text-primary)">Disconnect</a></span></div>
         <label class="label">Exit nodes in your tailnet <span class="muted">· <kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Space</kbd> pick</span></label>
         <div class="nodes">
-          <div class="node sel focus-ring"><span>☑</span><span><b>site-two</b> <span class="sub2">already added</span></span><span><span class="dot"></span> online · now</span><span>Spain</span><span class="chip ok plain">Residential</span></div>
-          <div class="node"><span>☐</span><span><b>parents-router</b></span><span><span class="dot"></span> online · 2 min ago</span><span>Portugal</span><span class="chip ok plain">Residential</span></div>
-          <div class="node"><span>☐</span><span><b>vps-nl</b></span><span><span class="dot"></span> online · now</span><span>Netherlands</span><span class="chip warn plain">Datacenter</span></div>
+          <div class="node sel focus-ring"><span>☑</span><span><b>site-b</b> <span class="sub2">already added</span></span><span><span class="dot"></span> online · now</span><span>Spain</span><span class="chip ok plain">Residential</span></div>
+          <div class="node"><span>☐</span><span><b>router-2</b></span><span><span class="dot"></span> online · 2 min ago</span><span>Portugal</span><span class="chip ok plain">Residential</span></div>
+          <div class="node"><span>☐</span><span><b>vps-1</b></span><span><span class="dot"></span> online · now</span><span>Netherlands</span><span class="chip warn plain">Datacenter</span></div>
           <div class="node" style="color:var(--text-muted)"><span>☐</span><span><b>travel-router</b></span><span><span class="dot off"></span> offline · 3 days ago</span><span>—</span><span class="chip plain">unknown</span></div>
         </div>
         <p class="muted" style="font-size:var(--fs-2); margin:6px 0 16px">Only nodes that advertise an exit route are listed. Country and IP type come from a test through each node.</p>
 
-        <div class="block-head"><span class="block-title fail">Missing grant · parents-router</span><span class="block-meta">Tailscale refused: this tagged node may not use exit nodes</span></div>
+        <div class="block-head"><span class="block-title fail">Missing grant · router-2</span><span class="block-meta">Tailscale refused: this tagged node may not use exit nodes</span></div>
         <p style="font-size:var(--fs-2); color:var(--text-secondary); margin:8px 0">CashPilot cannot change your tailnet policy. Add these lines to the policy file in the Tailscale admin (Access controls), save, then press Retry.</p>
         <pre class="json">{
   "tagOwners": { "tag:cashpilot": ["autogroup:admin"] },
@@ -447,9 +447,9 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
     { "src": ["tag:cashpilot"], "dst": ["autogroup:internet"], "ip": ["*"] }
   ]
 }</pre>
-        <div style="display:flex; gap:6px; margin-top:8px"><span class="btn btn-ghost btn-sm">Copy <kbd>c</kbd></span><span class="btn btn-ghost btn-sm">Open Access controls ↗</span><span class="btn btn-ghost btn-sm">Retry <kbd>t</kbd></span></div>
+        <div style="display:flex; gap:6px; margin-top:8px"><span class="btn btn-ghost btn-sm">Copy</span><span class="btn btn-ghost btn-sm">Open Access controls ↗</span><span class="btn btn-ghost btn-sm">Retry <kbd>t</kbd></span></div>
       </div>
-      <div class="modal-foot"><div class="cli" style="flex:1"><span class="prompt">$</span> cashpilot egress add --tailscale parents-router --name parents<span class="btn btn-ghost btn-sm copy">Copy as CLI</span></div></div>
+      <div class="modal-foot"><div class="cli" style="flex:1"><span class="prompt">$</span> cashpilot egress add --tailscale router-2 --name site-c<span class="btn btn-ghost btn-sm copy">Copy as CLI</span></div></div>
       <div class="modal-foot"><span class="spacer"></span><span class="btn btn-ghost">Cancel</span><span class="btn btn-primary">Add 1 exit node</span></div>
     </div>
   </div>
@@ -468,7 +468,7 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
 </ol>
 
 <h2 class="scr"><span class="tag">CLI · API</span> Same actions without the browser</h2>
-<p class="scr-lede">Every dialog above has a <b>Copy as CLI</b> line. The CLI is a thin client over the same REST endpoints (bearer token from Settings → API tokens), so a person in a terminal and an agent such as Claude Code get identical behaviour.</p>
+<p class="scr-lede">Every dialog above has a <b>Copy as CLI</b> line (wave 3, L5). The CLI is a thin client over the same REST endpoints (bearer token from Settings → API tokens), so a person in a terminal and an agent such as Claude Code get identical behaviour.</p>
 <div class="frame" style="padding:16px 20px; background:var(--bg-log)" id="s5">
 <div class="logbox" style="border:0; padding:0; font-size:14px; line-height:1.55"><span class="muted">$</span> cashpilot egress import proxies.txt --default-type socks5 --cap 10GB --reset-day 1 --test
   <span class="ok">added</span>  isp-2  socks5  203.0.113.10:1080   Works      Residential/ISP  ES  sticky
@@ -500,7 +500,7 @@ pre.json { margin: 0; background: var(--bg-log); border: 1px solid var(--border-
 </div>
 <ol class="notes">
   <li><span class="co">A</span><span><b>Human output by default, <code>--json</code> for agents</b>, stable field names, documented exit codes so a script or an agent can branch without parsing prose.</span></li>
-  <li><span class="co">B</span><span><b><code>--dry-run</code> on every write</b> and a “Next:” hint after each command. Docs page <code>docs/egress.md</code> carries a copy-paste block per provider format, and an <code>AGENTS.md</code> section lists the commands and exit codes for agents.</span></li>
+  <li><span class="co">B</span><span><b><code>--dry-run</code> on every write</b> and a “Next:” hint after each command. Docs page <code>docs/egress.md</code> carries a copy-paste block per provider format, and <code>docs/agents.md</code> lists the commands and exit codes for agents.</span></li>
 </ol>
 
 </div></body></html>

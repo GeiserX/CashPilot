@@ -258,7 +258,7 @@ a { color: var(--accent-secondary); }
 </div>
 <ul class="notes">
   <li><span class="co">1</span><div><b>Native <code>&lt;dialog&gt;</code> opened with <code>showModal()</code></b>: the browser makes the page inert, traps Tab, closes on Esc and restores focus. Replaces the <code>.modal-overlay</code> divs (<span class="cite">style.css:730-745</span>) and every <code>confirm()</code> through one <code>CP.confirm({title, plan, choices, danger})</code> in a new <code>confirm.js</code>.</div></li>
-  <li><span class="co">2</span><div><b>The plan is data from the server</b>: <code>DELETE /api/services/mysterium?worker_id=…&amp;dry_run=true</code> returns the container, the volume with its size, and the backup state already tracked by the payout registry (<span class="cite">app/main.py:6558-6569</span>). Keep is pre-selected.</div></li>
+  <li><span class="co">2</span><div><b>The plan is data from the server</b>: <code>DELETE /api/services/mysterium?box=box-a&amp;dry_run=1</code> returns the container, the volume with its size, and the backup state already tracked by the payout registry (<span class="cite">app/main.py:6558-6569</span>). Keep is pre-selected.</div></li>
   <li><span class="co">3</span><div><b>Focus starts on Cancel</b> (outlined). The action button names what it will actually do: “Remove container” while Keep is chosen. It is the outlined danger style, not filled, until data is at stake.</div></li>
   <li><span class="co">→</span><div><b>Same dialog for non-stateful services</b>, shorter: no Data row. A service with no volume and no reputation (Honeygain) gets one line and no typing.</div></li>
 </ul>
@@ -342,7 +342,7 @@ a { color: var(--accent-secondary); }
         <div class="toast" style="border-left-color:var(--warning);max-width:none" role="status" aria-live="polite">
           <span>Stopped Storj on box-b.</span><span class="btn btn-ghost btn-sm focus" style="margin-left:auto">Start again</span><span class="cite">⨯</span>
         </div>
-        <div class="caption" style="margin:0">The toast lives in an <code>aria-live="polite"</code> region, so it is read aloud. It stays while hovered or focused (today toasts vanish on a timer, <span class="cite">app.js:44-69</span>). <span class="kbd">F6</span> jumps to it; <span class="kbd">Enter</span> starts the node again.</div>
+        <div class="caption" style="margin:0">The toast lives in an <code>aria-live="polite"</code> region, so it is read aloud. It stays while hovered or focused (today toasts vanish on a timer, <span class="cite">app.js:44-69</span>). <span class="kbd">Tab</span> reaches it; <span class="kbd">Enter</span> starts the node again.</div>
       </div>
     </div>
   </div>
@@ -386,7 +386,7 @@ a { color: var(--accent-secondary); }
 {
   <span class="t-k">"action"</span>: <span class="t-s">"remove"</span>,
   <span class="t-k">"service"</span>: <span class="t-s">"mysterium"</span>,
-  <span class="t-k">"worker"</span>: <span class="t-s">"box-a"</span>,
+  <span class="t-k">"box"</span>: <span class="t-s">"box-a"</span>,
   <span class="t-k">"stateful"</span>: <span class="t-n">true</span>,
   <span class="t-k">"steps"</span>: [
     { <span class="t-k">"what"</span>: <span class="t-s">"container"</span>, <span class="t-k">"name"</span>: <span class="t-s">"cashpilot-mysterium"</span>,
@@ -396,7 +396,7 @@ a { color: var(--accent-secondary); }
       <span class="t-k">"delete_with"</span>: <span class="t-s">"--delete-volume=mysterium"</span> }
   ],
   <span class="t-k">"backup"</span>: { <span class="t-k">"confirmed_at"</span>: <span class="t-s">"2026-11-05T09:14:00Z"</span>, <span class="t-k">"current"</span>: <span class="t-n">true</span> },
-  <span class="t-k">"confirm"</span>: <span class="t-s">"pln_8c1e4a"</span>,
+  <span class="t-k">"plan_id"</span>: <span class="t-s">"pln_8c1e4a"</span>,
   <span class="t-k">"expires_in"</span>: <span class="t-n">300</span>
 }
 
@@ -416,7 +416,7 @@ Remove Mysterium from box-a?
       <li><span class="co">8</span><div><b>One plan, three surfaces.</b> The dialog, <code>--dry-run --json</code> and the MCP tool all render the same object from <code>_svc_remove(…, dry_run=True)</code> next to the existing <code>delete_volumes</code> path (<span class="cite">app/main.py:3837-3892</span>).</div></li>
       <li><span class="co">9</span><div><b>No silent action from a script</b>: without a TTY and without <code>--yes</code> the CLI prints the plan and exits 5. On a TTY it asks, with “No” as the default (<code>[y/N]</code>), the same safe default as the dialog.</div></li>
       <li><span class="co">10</span><div><b>The volume flag repeats the slug</b>, the CLI form of “type mysterium to confirm”. A copy-pasted command for the wrong service fails with exit 5.</div></li>
-      <li><span class="co">11</span><div><b>For agents</b>: the HTTP API returns the plan and a short-lived <code>confirm</code> id; the destructive call must send it back. An agent cannot skip the plan, and the owner sees the plan in Activity.</div></li>
+      <li><span class="co">11</span><div><b>For agents</b>: the HTTP API returns the plan and a short-lived <code>plan_id</code>; the destructive call must send it back. An agent cannot skip the plan, and the owner sees the plan in Activity.</div></li>
     </ul>
   </div>
 </div>

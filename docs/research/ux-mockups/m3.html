@@ -2611,9 +2611,9 @@ body { margin: 0; }
         <h3>After</h3>
         <ul>
           <li>Same task: <span class="mk-big good">≈12</span> keystrokes. <b>⌘K</b>, <b>rede hon</b>, <b>Enter</b>, pick the box, <b>Enter</b> on the plan.</li>
-          <li>Every action is one registry entry (<code>app/static/js/actions.js</code>): label, keywords, parameters, the plan it shows, the API call, and its CLI twin. The palette, the <kbd>?</kbd> overlay and <code>cashpilot actions</code> all read it, so they cannot drift apart.</li>
+          <li>Every action is one registry entry, served by <code>GET /api/actions</code>: label, keywords, parameters, the plan it shows, the API call, and its CLI twin. The palette, the <kbd>?</kbd> overlay and <code>cashpilot actions</code> all read it, so they cannot drift apart.</li>
           <li>Owner-only actions are left out of the registry for viewers, the same way the nav already does (<code>base.html:80-90</code>).</li>
-          <li>Anything that recreates a container shows its plan first; a stateful node needs the box name typed.</li>
+          <li>Anything that recreates a container shows its plan first; for a stateful node, focus starts on Back.</li>
         </ul>
       </div>
     </div>
@@ -2766,7 +2766,7 @@ body { margin: 0; }
       <li><span class="mk-pin inline">4</span><span><b>Fuzzy, word-start match.</b> "rede hon" matches the start of two words; matched letters are underlined in the accent colour. Each row names its scope (box-a) on the right.</span></li>
       <li><span class="mk-pin inline">5</span><span><b>Parameter rows.</b> "Redeploy Honeygain…" with an ellipsis asks for the box next (Screen 2). <kbd>Tab</kbd> on any row fills the input with it, so you can keep typing.</span></li>
       <li><span class="mk-pin inline">6</span><span><b>Not only actions.</b> Services, boxes, proxies, pages and docs are in the same list, grouped. The registry holds actions; the rest comes from data the page already loaded (<code>/api/services</code>, <code>/api/workers</code>).</span></li>
-      <li><span class="mk-pin inline">7</span><span><b>The CLI twin of the highlighted row</b>, live. Click or <kbd>⌘C</kbd> copies it. Same words, same parameters, so what you learn here works in a terminal or in an agent's prompt.</span></li>
+      <li><span class="mk-pin inline">7</span><span><b>The CLI twin of the highlighted row</b>, live <i>(wave 3, L5)</i>. Click or <kbd>⌘C</kbd> copies it. Same words, same parameters, so what you learn here works in a terminal or in an agent's prompt.</span></li>
     </ol>
   </section>
 
@@ -2895,7 +2895,7 @@ body { margin: 0; }
       <li><span class="mk-pin inline">3</span><span><b>Unavailable choices stay visible and say why</b> instead of vanishing, so "where is my phone?" has an answer.</span></li>
       <li><span class="mk-pin inline">4</span><span><b>The plan is the confirm.</b> Today a browser <code>confirm()</code> says "It keeps the settings it was deployed with." and nothing about volumes or downtime (<code>app.js:3736</code>).</span></li>
       <li><span class="mk-pin inline">5</span><span><b>Facts from the deploy record</b>, the same record that already drives "redeploy notes" (<code>app.js:3739-3742</code>), so the plan and the result use the same words.</span></li>
-      <li><span class="mk-pin inline">6</span><span><b>Copy as CLI</b> on every confirm step. <code>--yes</code> skips the prompt in scripts; without it the CLI prints this same plan and asks.</span></li>
+      <li><span class="mk-pin inline">6</span><span><b>Copy as CLI</b> on every confirm step <i>(wave 3, L5)</i>. <code>--yes</code> skips the prompt in scripts; without it the CLI prints this same plan and asks.</span></li>
       <li><span class="mk-pin inline">7</span><span><b>Focus starts on the primary button</b> with a visible ring, so Enter is a deliberate second press, never the same keystroke that chose the box.</span></li>
     </ol>
   </section>
@@ -2968,15 +2968,15 @@ body { margin: 0; }
         <div class="inset" style="grid-column: span 2">
           <p class="inset-cap">query: "redeploy storj", then Enter on box-a: the stateful case</p>
           <div class="palette">
-            <div class="palette-input-row focus"><span class="palette-crumb">Redeploy Storj</span><span class="palette-sep">›</span><span class="palette-crumb">box-a</span><span class="palette-sep">›</span><div class="palette-input"><span class="ph">type box-a to confirm</span><span class="mk-caret"></span></div></div>
+            <div class="palette-input-row focus"><span class="palette-crumb">Redeploy Storj</span><span class="palette-sep">›</span><span class="palette-crumb">box-a</span><span class="palette-sep">›</span><span class="palette-crumb">confirm</span></div>
             <div class="palette-plan">
-              <div class="danger-box"><b>Stateful node.</b> Storj keeps its identity and stored pieces on box-a. The volumes are kept, but if the identity volume were lost the node would be disqualified and its held amount forfeited. This plan keeps both volumes; typing the box name is the only extra step.</div>
+              <div class="danger-box"><b>Stateful node.</b> Storj keeps its identity and stored pieces on box-a. The volumes are kept, but if the identity volume were lost the node would be disqualified and its held amount forfeited. This plan keeps both volumes. Focus starts on Back, so a stray Enter never recreates the node.</div>
               <dl class="plan-list">
                 <div class="plan-row"><dt>Container recreated</dt><dd><span class="yes">yes</span> · node offline about 30 s, counts against uptime</dd></div>
                 <div class="plan-row"><dt>Volumes kept</dt><dd><span class="keep">2</span> · <code>storj-identity</code>, <code>storj-data</code> (418 GB)</dd></div>
               </dl>
             </div>
-            <div class="palette-foot"><span><kbd>↵</kbd> runs only after the name matches</span><span class="cli">cashpilot service redeploy storj --box box-a --confirm box-a</span></div>
+            <div class="palette-foot"><span>Focus on Back · <kbd>Tab</kbd> to Redeploy, then <kbd>↵</kbd></span><span class="cli">cashpilot service redeploy storj --box box-a --yes</span></div>
           </div>
         </div>
       </div>
@@ -2991,7 +2991,7 @@ body { margin: 0; }
       <li><span class="mk-pin inline">2</span><span><b>Per-box actions are expanded per box</b>, plus an "every box" row. The footer line repeats the button's own tooltip (<code>fleet.html:440</code>) so safety text travels with the action.</span></li>
       <li><span class="mk-pin inline">3</span><span><b>Settings are actions too.</b> The theme lives in the avatar menu today (<code>base.html:124-128</code>); here it previews live while highlighted.</span></li>
       <li><span class="mk-pin inline">4</span><span><b>Tokens for agents</b> are one query away, with the doc page that explains them. Join tokens are the same ones the Add a box dialog makes (M4).</span></li>
-      <li><span class="mk-pin inline">5</span><span><b>Stateful nodes (Storj, Mysterium) need the box name typed</b>, the same check in the CLI (<code>--confirm box-a</code>). Never a single Enter for anything that could cost a node its reputation.</span></li>
+      <li><span class="mk-pin inline">5</span><span><b>Stateful nodes (Storj, Mysterium) open the plan with focus on Back</b>, and the CLI needs <code>--yes</code>. A stray Enter never recreates anything that could cost a node its reputation. Typing a name is kept for deleting data (M8).</span></li>
     </ol>
   </section>
 
@@ -3065,16 +3065,15 @@ body { margin: 0; }
               <div class="help-row"><span>Add service</span><span class="keys"><kbd>g</kbd> <kbd>a</kbd></span></div>
               <div class="help-row new"><span>Search this page</span><span class="keys"><kbd>/</kbd></span></div>
               <div class="help-row"><span>Refresh data</span><span class="keys"><kbd>r</kbd></span></div>
+              <div class="help-row new"><span>Proxies &amp; VPNs page</span><span class="keys"><kbd>g</kbd> <kbd>e</kbd></span></div>
+              <div class="help-row new"><span>Alerts and findings</span><span class="keys"><kbd>g</kbd> <kbd>b</kbd></span></div>
             </div>
             <div class="help-col">
               <h4>This page: <span>Fleet</span></h4>
               <div class="help-row new"><span>Add a box</span><span class="keys"><kbd>n</kbd></span></div>
-              <div class="help-row new"><span>Proxies &amp; VPNs page</span><span class="keys"><kbd>g</kbd> <kbd>e</kbd></span></div>
               <div class="help-row new"><span>Check isolation, focused box</span><span class="keys"><kbd>i</kbd></span></div>
-              <div class="help-row new"><span>Activity, focused box</span><span class="keys"><kbd>v</kbd></span></div>
-              <div class="help-row new"><span>Edit power draw</span><span class="keys"><kbd>w</kbd></span></div>
+              <div class="help-row new"><span>Edit power draw</span><span class="keys"><kbd>e</kbd></span></div>
               <div class="help-row new"><span>Redeploy on focused box…</span><span class="keys"><kbd>d</kbd></span></div>
-              <div class="help-row new"><span>Remove focused box…</span><span class="keys"><kbd>⇧</kbd> <kbd>⌫</kbd></span></div>
             </div>
             <div class="help-col">
               <h4>Lists and tables</h4>
@@ -3082,7 +3081,10 @@ body { margin: 0; }
               <div class="help-row new"><span>Open the row</span><span class="keys"><kbd>↵</kbd></span></div>
               <div class="help-row new"><span>Row actions menu</span><span class="keys"><kbd>.</kbd></span></div>
               <div class="help-row new"><span>First / last row</span><span class="keys"><kbd>Home</kbd> / <kbd>End</kbd></span></div>
-              <div class="help-row new"><span>Copy the row as CLI</span><span class="keys"><kbd>c</kbd></span></div>
+              <div class="help-row new"><span>Start / restart / stop</span><span class="keys"><kbd>s</kbd> <kbd>⇧ R</kbd> <kbd>x</kbd></span></div>
+              <div class="help-row new"><span>Logs</span><span class="keys"><kbd>l</kbd></span></div>
+              <div class="help-row new"><span>Copy the row's id</span><span class="keys"><kbd>y</kbd></span></div>
+              <div class="help-row new"><span>Copy the row as CLI (wave 3)</span><span class="keys"><kbd>c</kbd></span></div>
             </div>
             <div class="help-col">
               <h4>Dialogs</h4>
@@ -3138,10 +3140,10 @@ body { margin: 0; }
     ],
     <span class="v">"plan"</span>: <span class="s">"POST /api/actions/service.redeploy/plan"</span>,
     <span class="v">"run"</span>: <span class="s">"POST /api/actions/service.redeploy"</span>,
-    <span class="v">"confirm"</span>: <span class="s">"enter | type-box-name-if-stateful"</span>,
+    <span class="v">"confirm"</span>: <span class="s">"enter | back-focused-if-stateful"</span>,
     <span class="v">"role"</span>: <span class="s">"owner"</span>,
     <span class="v">"cli"</span>: <span class="s">"cashpilot service redeploy {service} --box {box}"</span>,
-    <span class="v">"shortcut"</span>: <span class="s">"Shift+R (Fleet, focused box)"</span>
+    <span class="v">"shortcut"</span>: <span class="s">"d (lists)"</span>
   }
 ]</div>
         <div class="codeblock" id="cli-r" style="margin:0;height:560px"><span class="c">$ cashpilot service redeploy honeygain --box box-b</span>
@@ -3154,9 +3156,9 @@ Plan: redeploy honeygain on box-b
 Proceed? [y/N] y
 <span style="color:var(--success)">ok</span>  honeygain on box-b running again after 9 s
 
-<span class="c">$ cashpilot service redeploy storj --box box-a --yes</span>
-<span id="cli-ref"><span style="color:var(--error)">refused</span>: storj on box-a is a stateful node.</span>
-  Pass --confirm box-a to proceed. --yes alone is not enough.
+<span class="c">$ cashpilot service redeploy storj --box box-a &lt; /dev/null</span>
+<span id="cli-ref"><span style="color:var(--error)">refused</span>: storj on box-a is a stateful node and --yes was not given.</span>
+  The plan is printed above it; rerun with --yes to apply. Nothing done.
 <span class="c">exit 5</span>
 
 <span class="c">$ cashpilot service redeploy honeygain --box box-b --json --yes</span>
@@ -3172,7 +3174,7 @@ Proceed? [y/N] y
     <ol class="mk-notes">
       <li><span class="mk-pin inline">1</span><span><b>One entry, four surfaces:</b> palette row, <kbd>?</kbd> overlay line, CLI command, API route. The shortcut and the role live in the entry, so the help can never claim a key the code does not bind.</span></li>
       <li><span class="mk-pin inline">2</span><span><b>The CLI prints the same plan as the palette</b> and asks. Exit codes are stable (0 ok, 2 usage, 3 auth or scope, 5 refused for safety, 7 partial) so an agent can branch on them.</span></li>
-      <li><span class="mk-pin inline">3</span><span><b><code>--json</code> on every command</b>; stateful nodes refuse <code>--yes</code> alone and need <code>--confirm &lt;box&gt;</code>, the same rule as typing the name in the palette.</span></li>
+      <li><span class="mk-pin inline">3</span><span><code>--json</code> on every command. A stateful change without <code>--yes</code> prints the plan and exits 5, the CLI form of focus starting on Back in the palette.</span></li>
     </ol>
   </section>
   <p class="mk-legend">Mockup only. Data is fake. Colours, type, buttons, modals, kbd and tables use CashPilot's own stylesheet from origin/main (Classic night, the default theme in app/themes.json), inlined. Yellow numbered dots are annotations, not UI.</p>
