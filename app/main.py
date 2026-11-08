@@ -4249,9 +4249,8 @@ async def api_add_proxied_copy(
             detail=f"Deploy {svc.get('name') or slug} on this worker first; the proxied copy runs with its settings.",
         )
     docker_conf = svc.get("docker") or {}
-    link = svc.get("device_link") if isinstance(svc.get("device_link"), dict) else {}
     try:
-        earner = proxies.earner_spec(recorded, docker_conf, proxy_id, link.get("id_env"))
+        earner = proxies.earner_spec(recorded, docker_conf, proxy_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug}: {exc}") from exc
     if not recorded.get("custom_image") and isinstance(docker_conf.get("image_by_arch"), dict):

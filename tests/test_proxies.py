@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -125,24 +126,51 @@ class TestEarner:
         assert not {"ports", "volumes", "network_mode", "hostname", "instances"} & set(spec)
 
     def test_the_copy_reports_its_own_device_id_not_the_original(self):
-        original = "ab" * 32
-        docker_conf = {"env": [{"key": "UUID"}, {"key": "DEVICE_NAME", "default": "Device-${UUID}"}]}
-        recorded = {"image": "x/x:1", "env": {"UUID": original, "DEVICE_NAME": f"Device-{original}", "API_KEY": "k"}}
-        spec = proxies.earner_spec(recorded, docker_conf, 1, "UUID")
+        original = "AB" * 32  # ProxyRack's own generator writes 64 uppercase hex
+        docker_conf = {
+            "env": [{"key": "UUID", "per_device": True}, {"key": "DEVICE_NAME", "default": "Device-${UUID}"}],
+            "command": "run ${UUID}",
+        }
+        recorded = {
+            "image": "x/x:1",
+            "env": {"UUID": original, "DEVICE_NAME": f"Device-{original}", "API_KEY": "k"},
+            "command": f"run {original}",
+        }
+        spec = proxies.earner_spec(recorded, docker_conf, 1)
         new = spec["env"]["UUID"]
-        assert new != original and len(new) == 64 and int(new, 16) >= 0
+        assert new != original and re.fullmatch(r"[0-9A-F]{64}", new)
         assert spec["env"]["DEVICE_NAME"] == f"Device-{new}" and spec["env"]["API_KEY"] == "k"
+        assert spec["command"] == f"run {new}"
         # Derived, so a redeploy keeps the device; another proxy gets another one.
-        assert proxies.earner_spec(recorded, docker_conf, 1, "UUID")["env"]["UUID"] == new
-        assert proxies.earner_spec(recorded, docker_conf, 2, "UUID")["env"]["UUID"] not in (new, original)
+        assert proxies.earner_spec(recorded, docker_conf, 1)["env"]["UUID"] == new
+        assert proxies.earner_spec(recorded, docker_conf, 2)["env"]["UUID"] not in (new, original)
 
-    def test_a_device_id_that_cannot_be_derived_refuses_the_copy(self):
+    def test_an_unmarked_id_is_left_alone(self):
+        recorded = {"env": {"UUID": "ab" * 32}}
+        assert proxies.earner_spec(recorded, {"env": [{"key": "UUID"}]}, 1)["env"]["UUID"] == "ab" * 32
+
+    @pytest.mark.parametrize("value", ["sdk-node-0123abcd", "AbCdEf01", "not hex"])
+    def test_a_device_id_in_a_format_it_cannot_derive_refuses_the_copy(self, value):
         with pytest.raises(ValueError):
-            proxies.earner_spec({"env": {"ID": "sdk-node-1"}}, {}, 1, "ID")
+            proxies.earner_spec({"env": {"ID": value}}, {"env": [{"key": "ID", "per_device": True}]}, 1)
+
+    def test_a_derived_id_that_misses_the_catalog_pattern_refuses_the_copy(self):
+        with pytest.raises(ValueError):
+            proxies.copy_device_id("ab" * 32, 1, pattern=r"[0-9]{64}")
+        assert re.fullmatch(r"[0-9a-f]{64}", proxies.copy_device_id("ab" * 32, 1, pattern=r"[0-9a-f]{64}"))
 
     def test_the_copy_id_keeps_the_original_shape(self):
         assert len(proxies.copy_device_id("abc", 3)) == 3
-        assert proxies.copy_device_id("ABCDEF", 3).isupper()
+        assert re.fullmatch(r"[0-9A-F]{6}", proxies.copy_device_id("ABCDEF", 3))
+        assert re.fullmatch(r"[0-9a-f]{6}", proxies.copy_device_id("abcdef", 3))
+
+    def test_every_catalog_device_id_is_marked_per_device(self):
+        from app import catalog
+
+        catalog.load_services()
+        for slug, key in [("proxyrack", "UUID"), ("earnapp", "EARNAPP_UUID"), ("spide", "SPIDE_MACHINE_ID")]:
+            env = (catalog.get_service(slug) or {}).get("docker", {}).get("env", [])
+            assert any(v.get("key") == key and v.get("per_device") is True for v in env), slug
 
 
 # ---------------------------------------------------------------------------
@@ -807,7 +835,10 @@ class TestStorageAndRoutes:
             "slug": "proxyrack",
             "name": "ProxyRack",
             "status": "active",
-            "docker": {"image": "proxyrack/pop", "env": [{"key": "UUID"}, {"key": "API_KEY", "secret": True}]},
+            "docker": {
+                "image": "proxyrack/pop",
+                "env": [{"key": "UUID", "per_device": True}, {"key": "API_KEY", "secret": True}],
+            },
             "device_link": {"id_env": "UUID", "steps": "Add the device."},
         }
         recorded = {"image": "proxyrack/pop", "env": {"UUID": original, "API_KEY": "k"}}

@@ -23,6 +23,7 @@ docker:
     oom_score_adj: 300
   env:
     - key: UUID
+      per_device: true
       label: "Device UUID"
       required: true
       secret: false

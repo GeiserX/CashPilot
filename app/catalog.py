@@ -153,6 +153,8 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         re.compile(pattern)
                     except (re.error, TypeError):
                         errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
+                if isinstance(item, dict) and "per_device" in item and not isinstance(item["per_device"], bool):
+                    errors.append(f"{path.name}: docker.env[{i}].per_device must be a boolean")
         signals = docker.get("health_signals")
         if isinstance(signals, list):
             for i, item in enumerate(signals):
@@ -222,6 +224,9 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         url = str(link.get("url") or "") if isinstance(link, dict) else ""
         if not isinstance(link, dict) or link.get("id_env") not in public:
             errors.append(f"{path.name}: device_link.id_env must name a non-secret docker.env key")
+        elif link["id_env"] not in {v.get("key") for v in declared if v.get("per_device") is True}:
+            # Copies through a proxy derive their own id only from marked keys.
+            errors.append(f"{path.name}: device_link.id_env must be marked per_device: true")
         elif not isinstance(link.get("steps"), str) or not link["steps"].strip():
             errors.append(f"{path.name}: device_link.steps must say what to do with the id")
         elif url and not url.startswith("https://"):
