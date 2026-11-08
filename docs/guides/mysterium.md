@@ -97,8 +97,12 @@ sessions at once, more than a home node gets. Every published port costs about
 port; 101 ports measured about 250 MB), so a wider range only costs more. A
 range of 20 to 30 ports is enough. The default was `56000:56100` through
 2.0.6 and `56000:56029` in 2.0.7 and 2.1.0, both inside the ephemeral range. A node keeps
-the range it has on record on a redeploy. To move it, set `UDP_PORTS` to
-`23000:23029`, change the router forward to match, and redeploy.
+the range it has on record on a redeploy. To move it, set `UDP_PORTS` to a
+free range below 32768 other than the default, such as `23100:23129`, change
+the router forward to match, and redeploy. A value equal to the default reads
+as a field left as it was, so the recorded range would stay. To take the
+default itself, remove the service from that machine (its data volume stays)
+and deploy again.
 
 **Check it.** After a few sessions, on the machine running the node:
 

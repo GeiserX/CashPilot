@@ -53,8 +53,12 @@ drift, and **Check isolation** fails on it.
    reads, so back up the keystore first anyway
    ([Backing up node identities](docs/backup.md)) and check the identity after
    (`docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities`).
-4. Move the UDP range below 32768 before the redeploy: set `UDP_PORTS` to
-   `23000:23029`, the new default, and change the router forward to match.
+4. Move the UDP range below 32768 before the redeploy: set `UDP_PORTS` to a
+   free range below 32768 other than the default, such as `23100:23129`,
+   and change the router forward to match. A value equal to the default
+   (`23000:23029`) reads as a field left as it was, so the range on record
+   would stay; to take the default itself, remove the service from that
+   machine (its data volume stays) and deploy again.
    The worker publishes the range 1:1 through Docker, and a node's range on
    record (`56000:56100` through 2.0.6, `56000:56029` in 2.0.7 and 2.1.0) sits in
    Linux's ephemeral range, 32768-60999, where any program on the host can

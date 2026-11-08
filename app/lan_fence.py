@@ -776,7 +776,8 @@ def reattach(client: Any, net: Any) -> list[str]:
         try:
             net.disconnect(c, force=True)
             net.connect(c)
-            if "network" in error and "not found" in error:
+            # A fence-gated one is started by the guard alone, after all its checks.
+            if "network" in error and "not found" in error and not _is_gated(c):
                 c.start()
             moved.append(c.name)
         except Exception as exc:  # noqa: BLE001 - logged; the next check tries again
@@ -784,6 +785,13 @@ def reattach(client: Any, net: Any) -> list[str]:
     if moved:
         logger.info("Reattached %s to the recreated %s network", ", ".join(moved), NETWORK_NAME)
     return moved
+
+
+def _is_gated(container: Any) -> bool:
+    from app.constants import LABEL_SERVICE
+
+    slug = str((getattr(container, "labels", None) or {}).get(LABEL_SERVICE) or "")
+    return _orchestrator()._gated_container(slug, container)
 
 
 def _subnet(net: Any) -> str:
@@ -1218,7 +1226,8 @@ def guard() -> dict[str, str]:
                         # by the guard until a deploy succeeds.
                         held[c.name] = problem
                         _guard_stop(c, problem)
-                        orch._mark_failed(c.name, True)
+                        if not problem.startswith(UNREAD):
+                            orch._mark_failed(c.name, True)
                     else:
                         logger.info("Started %s: the LAN fence is confirmed and it is on its network", c.name)
         finally:
@@ -1238,6 +1247,10 @@ def guard() -> dict[str, str]:
 FAILED_DEPLOY = "its last deploy failed and left this container behind. Redeploy it from the dashboard"
 
 
+#: A start the guard could not read back: stopped, but tried again next pass.
+UNREAD = "it could not be read back after its start"
+
+
 def _started_unattached(container: Any, mode: str | None) -> str | None:
     """Why a container just started must stop: not running, or no address on its network.
 
@@ -1250,7 +1263,7 @@ def _started_unattached(container: Any, mode: str | None) -> str | None:
     try:
         container.reload()
     except Exception as exc:  # noqa: BLE001 - not confirmed is not attached
-        return f"it could not be read back after its start ({exc})"
+        return f"{UNREAD} ({exc})"
     attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
     state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
     nets = ((attrs.get("NetworkSettings") or {}).get("Networks") or {}) if isinstance(attrs, dict) else {}

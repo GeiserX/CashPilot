@@ -703,6 +703,15 @@ def _start(node, action="start_service"):
 
 
 class TestStartRefusesAHeldNode:
+    @pytest.mark.parametrize("action", ["start_service", "restart_service"])
+    def test_a_node_a_failed_deploy_left_is_not_started(self, markers, action):
+        orchestrator._mark_failed("cashpilot-mysterium", True)
+        node = _node(status="exited")
+        with pytest.raises(orchestrator.ContainerNetworkError, match="last deploy failed"):
+            _start(node, action)
+        node.start.assert_not_called()
+        node.restart.assert_not_called()
+
     def test_a_node_held_for_another_identity_is_not_started(self, markers):
         orchestrator._remember_identity("cashpilot-mysterium", "MISMATCH its identity is 0xb, not 0xa")
         node = _node(status="exited")
@@ -1400,15 +1409,89 @@ class TestAMoveAsideThatFails:
         docker.client.containers.create.assert_not_called()
         assert orchestrator._identity_snapshot("cashpilot-mysterium") is None
 
-    def test_a_removed_old_node_is_not_reported_as_never_there(self, markers):
+    def test_a_refused_rename_never_removes_the_old_node(self, markers):
         old = _running_old()
         docker = _FakeDocker(old)
         old.rename.side_effect = _api_error("rename refused")
-        docker.create_error = _api_error("Conflict. The container name is already in use")
-        with pytest.raises(orchestrator.ContainerRuntimeError) as refused:
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="running again"):
             _raw_deploy(client=docker.client, old=old)
-        assert "could not be moved aside, so it was removed" in str(refused.value)
-        assert "No container ran" not in str(refused.value)
+        assert not old.removed and docker.get("cashpilot-mysterium") is old
+        old.start.assert_called_once()
+        docker.client.containers.create.assert_not_called()
+
+    def test_an_old_node_that_will_not_stop_is_not_replaced(self, markers):
+        old = _running_old()
+        docker = _FakeDocker(old)
+        old.stop.side_effect = _api_error("tried to kill container, but did not receive an exit event")
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="could not be stopped"):
+            _raw_deploy(client=docker.client, old=old)
+        old.rename.assert_not_called()
+        docker.client.containers.create.assert_not_called()
+
+    def test_control_a_failed_stop_of_a_node_that_did_stop_goes_ahead(self, markers):
+        old = _running_old()
+        docker = _FakeDocker(old)
+
+        def stopped_anyway(**_):
+            old.status = "exited"
+            raise _api_error("tried to kill container, but did not receive an exit event")
+
+        old.stop.side_effect = stopped_anyway
+        _raw_deploy(client=docker.client, old=old)
+        docker.created.start.assert_called_once()
+
+    def test_an_aside_name_another_service_holds_is_refused_before_anything_moves(self, markers):
+        old = _running_old()
+        other = _running_old(
+            "cashpilot-mysterium-replaced", {"cashpilot.service": "mysterium-replaced", "cashpilot.managed": "true"}
+        )
+        docker = _FakeDocker(old, other)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="belongs to mysterium-replaced"):
+            _raw_deploy(client=docker.client, old=old)
+        old.stop.assert_not_called()
+        assert not other.removed
+
+    def test_a_new_node_the_fence_went_under_clears_the_failed_mark(self, markers):
+        orchestrator._mark_failed("cashpilot-mysterium", True)
+        old = _running_old()
+        docker = _FakeDocker(old)
+        with (
+            patch.object(orchestrator, "_require_fence", side_effect=orchestrator.ContainerNetworkError("gone")),
+            pytest.raises(orchestrator.ContainerNetworkError),
+        ):
+            _raw_deploy(client=docker.client, old=old)
+        assert orchestrator.deploy_failed() == set()
+
+    def test_a_name_another_deploy_took_is_left_to_it(self, markers):
+        old = _running_old()
+        docker = _FakeDocker(old)
+        other = MagicMock(id="other", status="running")
+        other.name = "cashpilot-mysterium"
+
+        def taken(*_a, **_k):
+            docker.by_name["cashpilot-mysterium"] = other
+            raise _api_error("container is not running")
+
+        docker.created.start.side_effect = taken
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="Another deploy took the name"):
+            _raw_deploy(client=docker.client, old=old)
+        other.remove.assert_not_called()
+        assert docker.get("cashpilot-mysterium-replaced") is old
+        old.start.assert_not_called()
+
+    def test_the_old_node_waits_for_the_fence_before_it_runs_again(self, markers):
+        old = _running_old()
+        docker = _FakeDocker(old)
+
+        def fence_gone(*_a, **_k):
+            lan_fence.fence_problem.return_value = "the LAN fence is not complete on this host"
+            raise _api_error(BIND_REFUSED)
+
+        docker.created.start.side_effect = fence_gone
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="kept stopped until the LAN fence"):
+            _raw_deploy(client=docker.client, old=old)
+        assert docker.get("cashpilot-mysterium") is old
+        old.start.assert_not_called()
 
     def test_a_leftover_that_cannot_go_does_not_fail_a_deploy_that_runs(self, markers):
         orchestrator._mark_failed("cashpilot-mysterium", True)
@@ -1422,6 +1505,28 @@ class TestAMoveAsideThatFails:
 
 
 class TestTheGuardStartsOnlyAWholeNode:
+    def test_a_start_it_could_not_read_back_is_tried_again(self, markers):
+        node = _node(status="exited")
+        node.reload.side_effect = RuntimeError("the daemon did not answer")
+        held, _ = _guard([node])
+        node.stop.assert_called_once()
+        assert lan_fence.UNREAD in held["cashpilot-mysterium"]
+        assert orchestrator.deploy_failed() == set()
+
+    def test_never_one_missing_part_of_its_udp_range(self, markers):
+        node = _node(status="exited")
+        node.attrs["Config"]["Env"] = ["UDP_PORTS=23000:23029"]
+        del node.attrs["HostConfig"]["PortBindings"]["23015/udp"]
+        held, _ = _guard([node])
+        node.start.assert_not_called()
+        assert "UDP 23015" in held["cashpilot-mysterium"]
+
+    def test_control_one_with_its_whole_range_is_started(self, markers):
+        node = _node(status="exited")
+        node.attrs["Config"]["Env"] = ["UDP_PORTS=23000:23029"]
+        _guard([node])
+        node.start.assert_called_once()
+
     def test_never_the_old_node_a_deploy_moved_aside(self, markers):
         aside = _node(status="exited")
         aside.name = "cashpilot-mysterium-replaced"
@@ -1477,8 +1582,13 @@ class TestTheGuardStartsOnlyAWholeNode:
 
 class TestTheEphemeralRangeHint:
     def test_a_taken_port_in_the_ephemeral_range_says_why_and_what_to_do(self):
-        hint = orchestrator._ephemeral_hint(BIND_REFUSED)
-        assert "32768-60999" in hint and "below 32768" in hint and "23000:23029" in hint
+        hint = orchestrator._ephemeral_hint(BIND_REFUSED, "mysterium")
+        assert "32768-60999" in hint and "below 32768" in hint and "UDP_PORTS" in hint and "23000:23029" in hint
+
+    def test_a_service_without_a_udp_range_setting_gets_general_advice(self):
+        hint = orchestrator._ephemeral_hint(BIND_REFUSED, "honeygain")
+        assert "32768-60999" in hint and "below 32768" in hint
+        assert "UDP_PORTS" not in hint and "23000" not in hint
 
     def test_control_a_taken_port_below_it_gets_no_hint(self):
         assert orchestrator._ephemeral_hint(BIND_REFUSED.replace("56033", "23005")) == ""
