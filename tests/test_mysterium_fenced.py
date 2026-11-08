@@ -1645,6 +1645,7 @@ class TestTheMoveAdvice:
             (lan_fence.MODE_LEGACY, "Switch isolation on in Fleet first, then redeploy", False),
             (lan_fence.MODE_OFF, "Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy", False),
             (lan_fence.MODE_UNSUPPORTED, "cannot be fenced on this worker", False),
+            (None, "if isolation is not on for this worker, switch it on in Fleet first", False),
         ],
     )
     def test_the_action_fits_the_workers_mode(self, mode, says, redeploy):

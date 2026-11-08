@@ -137,7 +137,7 @@ def move_advice(
     """For a fence-gated container still on the host's network: the one action, and what to fix first.
 
     ``action`` depends on the worker's isolation mode (lan_fence.move_advice);
-    ``redeploy`` says whether a redeploy alone does it there; ``warning`` is set
+    ``redeploy`` says whether the worker reports a mode where a redeploy alone does it; ``warning`` is set
     when the recorded UDP range, which the redeploy keeps, overlaps Linux's
     ephemeral range, where one port a host program holds fails the start.
     None for any other container.
@@ -150,7 +150,9 @@ def move_advice(
     name = svc.get("name") or "it"
     advice: dict[str, Any] = {
         "action": lan_fence.move_advice(isolation_mode, name),
-        "redeploy": isolation_mode in (lan_fence.MODE_ON, lan_fence.MODE_OPERATOR, None),
+        # Only where the worker says a redeploy alone works: one that reports no
+        # mode yet may be in legacy, off or on Podman, where it is refused.
+        "redeploy": isolation_mode in (lan_fence.MODE_ON, lan_fence.MODE_OPERATOR),
         "warning": None,
     }
     rng = docker_conf.get("udp_port_range")
