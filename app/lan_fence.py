@@ -1158,12 +1158,14 @@ def guard() -> dict[str, str]:
     """
     orch = _orchestrator()
     held: dict[str, str] = {}
+    scanned = False
     try:
         if not orch.docker_available():
             _state["unfenced"] = []
             return {}
         client = orch._get_client()
         _state["unfenced"] = _unfenced(client)
+        scanned = True
         gated = _gated(client)
         if not gated:
             _state["guard"] = {}
@@ -1218,8 +1220,10 @@ def guard() -> dict[str, str]:
                 orch.GATED_DEPLOY_LOCK.release()
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
         logger.warning("Fence guard pass failed: %s", exc)
-        # Not a fresh scan: no Fleet button on a report that may be stale.
-        _state["unfenced"] = []
+        # No Fleet button on a report the scan could not refresh. A later step
+        # failing (another node's start) leaves a fresh report as it is.
+        if not scanned:
+            _state["unfenced"] = []
     _state["guard"] = held
     return held
 

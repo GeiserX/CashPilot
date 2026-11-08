@@ -1149,6 +1149,17 @@ def test_a_failed_scan_drops_the_unfenced_report(markers):
     assert lan_fence.status()["unfenced"] == []
 
 
+def test_a_later_failure_in_the_pass_keeps_a_fresh_unfenced_report(markers):
+    """Another node failing to start does not hide the move of the one on the host network."""
+    old = _old_node()
+    other = _node(status="exited")
+    other.name = "cashpilot-mysterium-2"
+    other.start.side_effect = RuntimeError("the start failed")
+    _guard([old, other])
+    other.start.assert_called_once()
+    assert [u["name"] for u in lan_fence.status()["unfenced"]] == ["cashpilot-mysterium"]
+
+
 def test_the_fleet_page_does_not_offer_a_move_it_just_made():
     fleet = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
     assert "_movedBehindFence.add(" in fleet

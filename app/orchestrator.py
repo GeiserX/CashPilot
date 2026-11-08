@@ -1037,7 +1037,15 @@ def deploy_raw(
         raise
     except Exception as exc:
         restored = _roll_back(
-            client, name, slug, replaced, replaced_running, identity_before, stopped_before, held_before=held_before, gated=gated
+            client,
+            name,
+            slug,
+            replaced,
+            replaced_running,
+            identity_before,
+            stopped_before,
+            held_before=held_before,
+            gated=gated,
         )
         raise _deploy_failure(exc, restored) from exc
     if replaced is not None:
