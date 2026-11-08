@@ -3086,20 +3086,27 @@ def _instance_spec(spec: dict[str, Any], instance: int, docker_conf: dict[str, A
     """The spec of copy ``instance``: the first copy's, under its own names.
 
     The env values the catalog derives from {hostname} are device names the
-    provider counts by, so each copy gets its own (cashpilot-box-2). Nothing
-    else differs: same image, credentials, capabilities and limits.
+    provider counts by, so each copy gets its own (cashpilot-box-2), and so are
+    the ids it marks ``per_device``: each copy gets its own, derived from the
+    original and the copy number as CashPilot Desktop does. Nothing else
+    differs: same image, credentials, capabilities and limits. Raises
+    ValueError when a device id cannot be derived: the copy is refused.
     """
     named = {var["key"] for var in docker_conf.get("env", []) if "{hostname}" in str(var.get("default", ""))}
     env = {
         key: (f"{value}-{instance}" if key in named and value else value)
         for key, value in (spec.get("env") or {}).items()
     }
+    rename = proxies.device_id_renamer(env, docker_conf, str(instance))
+    env = {key: rename(value) for key, value in env.items()}
     copy = {**spec, "env": env, "instance": instance, "moved_mounts": []}
     copy["hostname"] = f"{spec['hostname']}-{instance}" if spec.get("hostname") else None
     # A command that carries a device name (Traffmonetizer's --device-name) is
     # filled again from this copy's env, or every copy registers as the first.
     if spec.get("command") and docker_conf.get("command"):
         copy["command"] = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), docker_conf["command"])
+    elif spec.get("command"):
+        copy["command"] = rename(spec["command"])
     return copy
 
 
@@ -3380,6 +3387,14 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     # is one row per service for the whole fleet, and a container made or edited
     # by hand has no record at all - so the running container has the last word.
     moved_mounts = sorted(target for target, keys in keys_by_target.items() if keys & set(typed_env))
+
+    # Every extra copy must be able to get its own device id before anything is
+    # replaced, or the first copy would be redeployed and the rest refused.
+    for n in range(2, instances + 1):
+        try:
+            _instance_spec(spec, n, docker_conf)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug} copy {n}: {exc}") from exc
 
     result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts})
     container_id = result.get("container_id", "remote")
