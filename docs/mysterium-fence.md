@@ -81,8 +81,11 @@ to redeploy Mysterium onto an older worker.
 If `UI_ADDRESS` holds only `127.0.0.1`, skip this. If it holds a LAN address
 for a reverse proxy on another machine, know that after the move port 4449 is
 published through Docker's forwarding, so a host `INPUT` rule no longer limits
-who reaches it. Add a `DOCKER-USER` rule or keep the proxy on the same machine
-before you move ([WebUI address](guides/mysterium.md#webui-address)).
+who reaches it. Before you move, either add a `DOCKER-USER` rule, or move the
+proxy to the same machine and also take the LAN address out of `UI_ADDRESS`
+in the deploy form (enter `localhost` for loopback only). Moving the proxy
+alone leaves the LAN address published
+([WebUI address](guides/mysterium.md#webui-address)).
 
 ### 6. Check the UDP range is free
 
@@ -231,7 +234,10 @@ start.
     No output means the range is free. Two holders are expected: an old
     node still on the host's network shows as `myst`, and its sockets close
     when the move stops it; a node already on the bridge shows as
-    `docker-proxy`. Any other program in the list means a different range.
+    `docker-proxy`. A `docker-proxy` can also belong to another container,
+    so check which one publishes the ports with
+    `docker ps --format '{{.Names}} {{.Ports}}' | grep udp`. Any holder but
+    the node you are moving means a different range.
 
 3. **Keep it small.** Each session uses about two ports, so 20 to 30 ports
    carry 10 to 15 sessions at once, more than a home node usually gets. See the
