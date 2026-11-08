@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>M8 · Safe confirm dialog and dry-run plan · CashPilot mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Tokens copied from app/static/css/style.css on origin/main:
+   :root (lines 12-82) and the default theme :root[data-theme="classic"] (2213-2249). */
+:root {
+  --bg-primary: #0b0b14; --bg-secondary: #11111d; --bg-card: #11111d; --bg-tertiary: #171726;
+  --bg-hover: #1d1d2f; --bg-input: #08080f; --bg-log: #07070d;
+  --border-color: #25233a; --border-light: #322f4b; --border-strong: #4b4670;
+  --text-primary: #e8e6f0; --text-secondary: #bdb6cf; --text-muted: #a59cb5;
+  --accent: #f472b6; --accent-hover: #f9a8d4; --accent-soft: rgba(244,114,182,0.10);
+  --accent-secondary: #22d3ee; --accent-secondary-soft: rgba(34,211,238,0.10);
+  --success: #46b37f; --success-soft: rgba(70,179,127,0.12);
+  --warning: #e0a53c; --warning-soft: rgba(224,165,60,0.12);
+  --error: #f06a5f; --error-bg: #b8382e; --error-soft: rgba(240,106,95,0.12);
+  --gradient-card: linear-gradient(135deg, rgba(139,92,246,0.07), rgba(6,182,212,0.035));
+  --gradient-sidebar: linear-gradient(180deg, #121222, #0e0e1a);
+  --shadow-glow-rose: 0 0 14px rgba(244,114,182,0.24);
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --fs-1: 14px; --fs-2: 15px; --fs-3: 16px; --fs-4: 18px; --fs-5: 23px;
+  --note: #a78bfa; /* mockup annotation colour only, not part of the app */
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #05050a; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--fs-3); line-height: 1.45; }
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+a { color: var(--accent-secondary); }
+
+/* ---------- mockup chrome (not app UI) ---------- */
+.sheet { width: 1440px; margin: 0 auto; padding: 28px 32px 40px; }
+.sheet-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #2a2840; padding-bottom: 12px; margin-bottom: 22px; }
+.sheet-head h1 { font-size: 26px; margin: 0; font-weight: 600; }
+.sheet-head .meta { color: var(--text-muted); font-size: var(--fs-2); }
+.frame-title { font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: var(--note); margin: 30px 0 10px; font-weight: 600; }
+.frame { border: 1px solid #2a2840; border-radius: 6px; overflow: hidden; background: var(--bg-primary); position: relative; }
+.frame.pad { padding: 18px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.co { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--note); color: #0b0b14; font: 700 13px/1 var(--font-ui); flex-shrink: 0; box-shadow: 0 0 0 2px #05050a; }
+.co.abs { position: absolute; z-index: 5; }
+.notes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 28px; margin: 14px 0 0; padding: 0; list-style: none; }
+.notes li { display: flex; gap: 10px; font-size: var(--fs-2); color: var(--text-secondary); }
+.notes li b { color: var(--text-primary); }
+.cite { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
+.kbd { display: inline-block; font-family: var(--font-mono); font-size: 13px; padding: 0 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 3px; color: var(--text-primary); background: var(--bg-tertiary); line-height: 20px; }
+.caption { font-size: var(--fs-2); color: var(--text-muted); margin-top: 8px; }
+.stamp { display: inline-block; font: 600 12px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; }
+.stamp.before { background: var(--error-soft); color: var(--error); }
+.stamp.after { background: var(--success-soft); color: var(--success); }
+.stamp.state { background: var(--accent-secondary-soft); color: var(--accent-secondary); }
+
+/* ---------- app components (from style.css) ---------- */
+.topbar { display: flex; align-items: stretch; gap: 28px; height: 48px; padding: 0 20px; background: var(--gradient-sidebar); border-bottom: 1px solid; border-image: linear-gradient(90deg, #f472b6, #8b5cf6 50%, #22d3ee) 1; }
+.topbar-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; color: var(--text-primary); text-decoration: none; }
+.logo { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(#FFD54F, #FF9800 40%, #E91E63 72%, #AB47BC); }
+.topnav { display: flex; align-items: stretch; gap: 2px; flex: 1; }
+.topnav a { display: flex; align-items: center; padding: 0 10px; color: var(--text-secondary); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.topnav a.active { color: var(--text-primary); border-bottom-color: var(--accent); font-weight: 600; }
+.topbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-2); }
+.avatar { width: 26px; height: 26px; border: 1px solid var(--border-light); display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-ui); }
+.page { padding: 18px 24px 32px; }
+.page-title { font-size: var(--fs-5); font-weight: 600; margin: 0 0 14px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 2px; font: inherit; font-size: var(--fs-3); font-weight: 500; border: 1px solid var(--border-light); background: var(--bg-tertiary); color: var(--text-primary); white-space: nowrap; cursor: pointer; }
+.btn-sm { height: 24px; padding: 0 8px; font-size: var(--fs-2); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--bg-primary); box-shadow: var(--shadow-glow-rose); }
+.btn-ghost { background: none; }
+.btn-danger { background: none; color: var(--error); }
+.btn-danger-solid { background: var(--error-bg); border-color: var(--error-bg); color: #fff; }
+.btn:disabled, .btn.disabled { opacity: .4; box-shadow: none; }
+.focus { outline: 2px solid var(--accent-secondary) !important; outline-offset: 2px; }
+.form-label { display: block; font-size: var(--fs-2); font-weight: 500; color: var(--text-secondary); margin-bottom: 3px; }
+.form-hint { font-size: var(--fs-2); color: var(--text-muted); margin-top: 3px; }
+.form-input { width: 100%; height: 30px; padding: 0 8px; background: var(--bg-input); border: 1px solid var(--border-light); border-radius: 2px; color: var(--text-primary); font: inherit; font-size: var(--fs-3); display: flex; align-items: center; }
+.form-group { margin-bottom: 12px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-2); color: var(--text-secondary); white-space: nowrap; }
+.sq { width: 8px; height: 8px; display: inline-block; }
+.sq.ok { background: var(--success); } .sq.warn { background: var(--warning); } .sq.fail { background: var(--error); } .sq.off { background: var(--text-muted); }
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th { font-size: var(--fs-2); font-weight: 500; color: var(--text-muted); text-align: left; padding: 6px 10px; height: 30px; border-bottom: 1px solid var(--border-light); white-space: nowrap; }
+.tbl td { padding: 6px 10px; border-bottom: 1px solid var(--border-color); font-size: var(--fs-3); vertical-align: middle; }
+.tbl th:first-child, .tbl td:first-child { padding-left: 0; }
+.tbl td.r, .tbl th.r { text-align: right; }
+.chip { display: inline-block; font-family: var(--font-mono); font-size: 13px; padding: 0 6px; border: 1px solid var(--border-light); border-radius: 2px; color: var(--text-secondary); margin-right: 3px; line-height: 20px; }
+.chip.danger { color: var(--error); border-color: rgba(240,106,95,.5); }
+.chip.warn { color: var(--warning); border-color: rgba(224,165,60,.5); }
+.settings-layout { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 36px; align-items: start; }
+.settings-index { display: flex; flex-direction: column; }
+.settings-index a { color: var(--text-secondary); text-decoration: none; padding: 4px 0 4px 10px; border-left: 1px solid var(--border-light); }
+.settings-index a.active { color: var(--text-primary); border-left: 2px solid var(--accent); font-weight: 600; }
+.settings-section { border-top: 1px solid var(--border-light); padding-top: 10px; margin-bottom: 30px; position: relative; }
+.settings-section-title { font-size: var(--fs-4); font-weight: 600; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+.settings-section-desc { font-size: var(--fs-2); color: var(--text-secondary); max-width: 82ch; margin: 0 0 12px; line-height: 1.5; }
+.modal { background: var(--bg-secondary); background-image: var(--gradient-card); border: 1px solid var(--border-light); border-radius: 2px; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border-color); font-size: var(--fs-4); font-weight: 600; }
+.modal-body { padding: 14px 16px 16px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border-color); }
+.toast { display: flex; align-items: center; gap: 10px; background: var(--bg-secondary); border: 1px solid var(--border-light); border-left: 3px solid var(--success); border-radius: 2px; padding: 8px 12px; max-width: 420px; }
+.codebox { background: var(--bg-log); border: 1px solid var(--border-color); border-radius: 2px; font-family: var(--font-mono); font-size: 14px; color: #c9ced4; padding: 8px 10px; display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; white-space: pre-wrap; overflow-wrap: anywhere; }
+.codebox .txt { flex: 1; }
+.codebox .p { color: var(--text-muted); user-select: none; }
+.term { background: #07070d; border: 1px solid var(--border-light); border-radius: 6px; font-family: var(--font-mono); font-size: 13px; line-height: 1.55; color: #c9ced4; overflow: hidden; }
+.term-bar { display: flex; gap: 6px; align-items: center; padding: 7px 10px; background: #11111d; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 13px; }
+.term-bar i { width: 10px; height: 10px; border-radius: 50%; background: #322f4b; display: inline-block; }
+.term pre { margin: 0; padding: 12px 14px; white-space: pre-wrap; }
+.t-p { color: var(--success); } .t-c { color: var(--text-primary); } .t-m { color: var(--text-muted); } .t-k { color: var(--accent-secondary); } .t-s { color: #f9a8d4; } .t-e { color: var(--error); } .t-w { color: var(--warning); } .t-n { color: #c4b5fd; }
+.menu { background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 2px; padding: 4px 0; min-width: 230px; }
+.menu .mi { display: flex; justify-content: space-between; gap: 18px; padding: 5px 12px; font-size: var(--fs-2); color: var(--text-primary); }
+.menu .mi .k { color: var(--text-muted); font-family: var(--font-mono); font-size: 13px; }
+.menu .sep { height: 1px; background: var(--border-color); margin: 4px 0; }
+.menu .mi.sel { background: var(--bg-hover); outline: 2px solid var(--accent-secondary); outline-offset: -2px; }
+.radio, .check { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; }
+.rdot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border-strong); flex-shrink: 0; margin-top: 3px; position: relative; background: var(--bg-input); }
+.rdot.on::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent); }
+.cbox { width: 16px; height: 16px; border: 1px solid var(--border-strong); flex-shrink: 0; margin-top: 3px; background: var(--bg-input); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--bg-primary); }
+.cbox.on { background: var(--text-primary); border-color: var(--text-primary); }
+.cbox.on::after { content: '✓'; font-weight: 700; }
+.warnline { border-left: 2px solid var(--warning); padding: 6px 10px; background: var(--warning-soft); font-size: var(--fs-2); }
+.dangerline { border-left: 2px solid var(--error); padding: 6px 10px; background: var(--error-soft); font-size: var(--fs-2); }
+.okline { border-left: 2px solid var(--success); padding: 6px 10px; background: var(--success-soft); font-size: var(--fs-2); }
+.skel { display: inline-block; height: 12px; border-radius: 2px; background: linear-gradient(90deg, #171726, #25233a, #171726); }
+.before-img { width: 100%; display: block; border: 1px solid #2a2840; }
+
+.topbar-right .btn { font-family: var(--font-ui); }
+.notes.evid li .cite { flex: 0 0 290px; }
+
+.stage { position: relative; height: 860px; overflow: hidden; }
+.behind { filter: none; opacity: .35; pointer-events: none; }
+.scrim { position: absolute; inset: 48px 0 0 0; background: rgba(0,0,0,.62); display: flex; align-items: center; justify-content: center; }
+.dlg { width: 560px; position: relative; }
+.dlg .modal-header { font-size: var(--fs-4); }
+.plan { border: 1px solid var(--border-color); background: var(--bg-primary); }
+.plan-row { display: grid; grid-template-columns: 110px 1fr; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--border-color); font-size: var(--fs-2); }
+.plan-row:last-child { border-bottom: none; }
+.plan-row .k { color: var(--text-muted); }
+.opt { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border: 1px solid transparent; margin: 2px 0; }
+.opt.chosen { border-color: var(--border-light); background: var(--bg-tertiary); }
+.diff-old { color: var(--error); text-decoration: line-through; text-decoration-color: rgba(240,106,95,.6); }
+.diff-new { color: var(--success); }
+.kbdcap { display: flex; gap: 18px; flex-wrap: wrap; font-size: var(--fs-2); color: var(--text-secondary); padding: 10px 14px; border-top: 1px solid #2a2840; background: #0a0a12; }
+.mini-stage { position: relative; background: rgba(0,0,0,.62); padding: 18px; min-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.native { width: 440px; background: #2b2b33; border-radius: 10px; padding: 18px 18px 14px; color: #eee; font: 14px -apple-system, system-ui, sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+.native .origin { font-weight: 600; margin-bottom: 8px; }
+.native .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.native .nb { padding: 4px 14px; border-radius: 6px; background: #45454f; }
+.native .nb.def { background: #2f6fde; color: #fff; outline: 2px solid #7fb0ff; outline-offset: 1px; }
+.svcline { display: grid; grid-template-columns: 14px 200px 110px 120px 90px 1fr; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border-color); }
+.inv td { font-size: var(--fs-2); }
+.toast-stack { position: absolute; top: 64px; right: 20px; display: flex; flex-direction: column; gap: 8px; }
+@media (max-width: 600px) {
+  .sheet { width: 100%; padding: 14px 10px; }
+  .sheet-head { flex-direction: column; gap: 4px; }
+  .grid2, .grid3, .notes { grid-template-columns: 1fr; }
+  .wide-only { display: none !important; }
+  .stage { height: auto; min-height: 760px; }
+  .scrim { align-items: flex-end; inset: 48px 0 0 0; }
+  .dlg { width: 100%; }
+  .dlg .modal { border-radius: 10px 10px 0 0; }
+  .topnav a:not(.active) { display: none; }
+  .topbar { gap: 10px; padding: 0 10px; }
+  .svcline { grid-template-columns: 14px 1fr 80px; }
+  .svcline > :nth-child(n+4) { display: none; }
+  .plan-row { grid-template-columns: 1fr; gap: 2px; }
+  .co.abs { display: none; }
+  .modal-foot { flex-direction: column-reverse; }
+  .modal-foot .btn { width: 100%; height: 40px; }
+  .native { width: 100%; }
+  .kbdcap { font-size: 14px; }
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<div class="sheet-head">
+  <h1>M8 · Safe confirm dialog and dry-run plan <span class="cite">stateful actions</span></h1>
+  <div class="meta">Mockup on origin/main · v2.1.1 · default theme “Classic night” · fake data</div>
+</div>
+
+<!-- ============ BEFORE ============ -->
+<div class="frame-title wide-only">Today <span class="stamp before">before</span></div>
+<div class="grid2 wide-only">
+  <div class="frame">
+    <div class="mini-stage">
+      <div class="native"><div class="origin">cashpilot.local:8080 says</div>Remove mysterium from box-a? Its container is stopped and deleted.<div class="btns"><span class="nb">Cancel</span><span class="nb def">OK</span></div></div>
+      <div class="kbd" style="font-size:15px">Enter ↵</div>
+      <div class="native"><div class="origin">cashpilot.local:8080 says</div>Also delete its data volume on box-a? This cannot be undone. Cancel keeps the data for a later deploy.<div class="btns"><span class="nb">Cancel</span><span class="nb def">OK</span></div></div>
+      <div class="kbd" style="font-size:15px">Enter ↵</div>
+      <div class="toast" style="border-left-color:var(--success)">mysterium removed from box-a</div><div class="cite">identity volume deleted too · no undo</div>
+    </div>
+    <div class="caption" style="padding:0 14px 12px">Reconstructed from <span class="cite">app/static/js/app.js:4172-4175</span>. Native <code>confirm()</code> focuses OK, so <b>two Enter presses delete the data volume</b> with <code>allow_delete_critical=true</code>. For a Mysterium node that is the identity and its earnings history; for Storj, the node and its held amount.</div>
+  </div>
+  <div class="frame pad">
+    <ul class="notes" style="grid-template-columns:1fr;margin:0">
+      <li><span class="co" style="background:var(--error)">!</span><div><b>Remove + delete volume: 2 keystrokes</b> (Enter, Enter). The safe answer is the non-default button both times (<span class="cite">app.js:4172-4175</span>).</div></li>
+      <li><span class="co" style="background:var(--error)">!</span><div><b>Stop a Storj or Mysterium node: 1 click, no confirm</b> (<span class="cite">app.js:2687-2697</span>). Every minute down counts against the node’s uptime and audit score.</div></li>
+      <li><span class="co" style="background:var(--error)">!</span><div><b>23 <code>confirm()</code> calls</b> in the client (<span class="cite">app.js</span> ×15, <span class="cite">fleet.html</span> ×5, <span class="cite">activity.html</span> ×2, <span class="cite">import.js</span> ×1, counted with <code>git grep -n "confirm("</code>). None shows what will happen, none can name a volume, none is themed or announced to screen readers beyond the browser default, and the text cannot be selected or copied.</div></li>
+      <li><span class="co" style="background:var(--error)">!</span><div><b>The modals that do exist</b> are <code>.modal-overlay</code> divs (<span class="cite">style.css:730-745</span>): no focus trap, the page behind stays tabbable (walkthrough shot <span class="cite">35-kbd-modal.png</span>: Tab leaves the dialog into the catalog rows).</div></li>
+      <li><span class="co" style="background:var(--error)">!</span><div><b>Redeploy says only “with its saved settings?”</b> (<span class="cite">app.js:4139</span>, <span class="cite">:3736</span>, <span class="cite">:3760</span>). If the catalog moved Mysterium’s UDP range, the router forward silently breaks.</div></li>
+      <li><span class="co" style="background:var(--note)">→</span><div><b>After:</b> one <code>CP.confirm(plan)</code> on a native <code>&lt;dialog&gt;</code>. Focus lands on Cancel; keeping data is the default; deleting needs the slug typed. Removing and keeping the volume: Tab, Enter (2 keys, deliberate). Deleting: 3 arrow/tab keys + type the slug + Enter.</div></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============ FRAME 1 ============ -->
+<div class="frame-title">Frame 1 · Remove Mysterium from box-a <span class="stamp after">after · default state</span> <span class="cite">1440×900</span></div>
+<div class="frame">
+  <div class="stage">
+    <header class="topbar">
+      <a class="topbar-brand"><span class="logo"></span>CashPilot</a>
+      <nav class="topnav"><a class="active">Dashboard</a><a>Fleet</a><a>Catalog</a><a>Payouts</a><a>Activity</a><a>Settings</a></nav>
+      <div class="topbar-right"><span class="btn btn-primary btn-sm">+ Add service</span><span>$41.87</span><span class="avatar">O</span></div>
+    </header>
+    <div class="page behind" inert aria-hidden="true">
+      <h2 class="page-title">Services</h2>
+      <div class="svcline" style="color:var(--text-muted);font-size:var(--fs-2)"><span></span><span>Service</span><span>Box</span><span>Status</span><span>Today</span><span></span></div>
+      <div class="svcline"><span class="sq ok"></span><b>Honeygain</b><span class="mono">box-a</span><span>running</span><span class="mono">$0.21</span><span></span></div>
+      <div class="svcline"><span class="sq ok"></span><b>Mysterium</b><span class="mono">box-a</span><span>running</span><span class="mono">$0.64</span><span style="text-align:right"><span class="btn btn-danger btn-sm" style="outline:2px dashed var(--accent-secondary);outline-offset:2px">Remove</span></span></div>
+      <div class="svcline"><span class="sq ok"></span><b>Storj</b><span class="mono">box-b</span><span>running</span><span class="mono">$0.38</span><span></span></div>
+      <div class="svcline"><span class="sq fail"></span><b>EarnApp</b><span class="mono">box-b</span><span>exited</span><span class="mono">$0.00</span><span></span></div>
+      <div class="svcline"><span class="sq ok"></span><b>PacketStream</b><span class="mono">box-a</span><span>running</span><span class="mono">$0.09</span><span></span></div>
+    </div>
+    <div class="scrim">
+      <div class="dlg" role="dialog" aria-modal="true">
+        <span class="co abs" style="left:-34px;top:8px">1</span><span class="co abs" style="left:-34px;top:160px">2</span>
+        <div class="modal">
+          <div class="modal-header">Remove Mysterium from box-a? <span class="cite">Esc</span></div>
+          <div class="modal-body">
+            <p style="margin:0 0 10px;font-size:var(--fs-2);color:var(--text-secondary)">This is what will happen:</p>
+            <div class="plan">
+              <div class="plan-row"><span class="k">Container</span><span><b>Removed</b> · <code>cashpilot-mysterium</code> stops and is deleted</span></div>
+              <div class="plan-row" style="position:relative"><span class="k">Data</span><span>
+                
+                <div class="opt chosen"><span class="rdot on"></span><div><b>Keep the identity volume</b> <code>cashpilot_mysterium_data</code> <span class="muted">(12 MB)</span><div class="form-hint" style="margin:0">A later deploy on box-a picks up the same node identity and its history.</div></div></div>
+                <div class="opt"><span class="rdot"></span><div><span style="color:var(--error)">Delete it permanently</span><div class="form-hint" style="margin:0">The node identity is gone. A new deploy is a new node with no history.</div></div></div>
+              </span></div>
+              <div class="plan-row"><span class="k">Backup</span><span><span class="badge" style="color:var(--success)"><span class="sq ok"></span>Last confirmed backup: 3 days ago ✓</span> <span class="cite">from Payouts › Backups</span></span></div>
+              <div class="plan-row"><span class="k">Earnings</span><span>Collection for this box stops. Past earnings stay.</span></div>
+            </div>
+          </div>
+          <div class="modal-foot" style="position:relative">
+            <span class="co abs" style="left:14px;top:12px">3</span>
+            <span class="btn btn-ghost focus">Cancel</span>
+            <span class="btn btn-danger">Remove container</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="toast-stack wide-only"><div class="cite" style="background:#0a0a12;border:1px solid #2a2840;padding:6px 10px;max-width:300px">Page behind is <code>inert</code>: Tab and the screen reader cannot reach the rows.</div></div>
+  </div>
+  <div class="kbdcap"><span><span class="kbd">Tab</span> / <span class="kbd">⇧Tab</span> cycles Cancel → Remove container → Data radios, inside the dialog only</span><span><span class="kbd">↑</span><span class="kbd">↓</span> changes the Data choice</span><span><span class="kbd">Enter</span> activates the focused button (Cancel on open)</span><span><span class="kbd">Esc</span> cancels and returns focus to the row’s Remove button</span></div>
+</div>
+<ul class="notes">
+  <li><span class="co">1</span><div><b>Native <code>&lt;dialog&gt;</code> opened with <code>showModal()</code></b>: the browser makes the page inert, traps Tab, closes on Esc and restores focus. Replaces the <code>.modal-overlay</code> divs (<span class="cite">style.css:730-745</span>) and every <code>confirm()</code> through one <code>CP.confirm({title, plan, choices, danger})</code> in a new <code>confirm.js</code>.</div></li>
+  <li><span class="co">2</span><div><b>The plan is data from the server</b>: <code>DELETE /api/services/mysterium?worker_id=…&amp;dry_run=true</code> returns the container, the volume with its size, and the backup state already tracked by the payout registry (<span class="cite">app/main.py:6558-6569</span>). Keep is pre-selected.</div></li>
+  <li><span class="co">3</span><div><b>Focus starts on Cancel</b> (outlined). The action button names what it will actually do: “Remove container” while Keep is chosen. It is the outlined danger style, not filled, until data is at stake.</div></li>
+  <li><span class="co">→</span><div><b>Same dialog for non-stateful services</b>, shorter: no Data row. A service with no volume and no reputation (Honeygain) gets one line and no typing.</div></li>
+</ul>
+
+<!-- ============ FRAME 1 variants ============ -->
+<div class="frame-title">Frame 1 · Delete chosen, typing to confirm, loading and error <span class="stamp state">states</span></div>
+<div class="grid2">
+  <div class="frame" style="position:relative">
+    <span class="co abs" style="left:8px;top:8px">4</span>
+    <div class="mini-stage" style="align-items:stretch">
+      <div class="modal">
+        <div class="modal-header">Remove Mysterium from box-a?</div>
+        <div class="modal-body">
+          <div class="plan">
+            <div class="plan-row"><span class="k">Data</span><span>
+              <div class="opt"><span class="rdot"></span><div>Keep the identity volume <code>cashpilot_mysterium_data</code></div></div>
+              <div class="opt chosen" style="border-color:var(--error)"><span class="rdot on" style="border-color:var(--error)"></span><div><b style="color:var(--error)">Delete it permanently</b></div></div>
+              <div class="form-group" style="margin:8px 0 0 32px"><label class="form-label">Type <code style="color:var(--text-primary)">mysterium</code> to confirm</label><div class="form-input focus mono">myster<span style="border-left:1px solid var(--text-primary);height:16px;margin-left:1px"></span></div><div class="form-hint">3 more characters</div></div>
+            </span></div>
+          </div>
+        </div>
+        <div class="modal-foot"><span class="btn btn-ghost">Cancel</span><span class="btn btn-danger-solid disabled" aria-disabled="true">Delete volume</span></div>
+      </div>
+      <div class="caption" style="margin:0">Partial slug: <b>Delete volume</b> is red and disabled. Enter in the field does nothing yet.</div>
+      <div class="modal">
+        <div class="modal-foot" style="border-top:none"><span class="cite" style="margin-right:auto;align-self:center">typed <code style="color:var(--success)">mysterium</code> ✓</span><span class="btn btn-ghost">Cancel</span><span class="btn btn-danger-solid focus">Delete volume</span></div>
+      </div>
+      <div class="caption" style="margin:0">Exact match: enabled. Pasting is allowed; case must match. Picking Keep again clears the field.</div>
+    </div>
+  </div>
+  <div class="frame" style="position:relative">
+    <span class="co abs" style="left:8px;top:8px">5</span>
+    <div class="mini-stage" style="align-items:stretch">
+      <div class="modal">
+        <div class="modal-header">Remove Mysterium from box-a? <span class="stamp state">loading</span></div>
+        <div class="modal-body">
+          <div class="plan">
+            <div class="plan-row"><span class="k">Container</span><span><b>Removed</b></span></div>
+            <div class="plan-row"><span class="k">Data</span><span><span class="skel" style="width:70%"></span><div class="form-hint" style="margin-top:6px">Asking box-a for its volumes…</div></span></div>
+            <div class="plan-row"><span class="k">Backup</span><span><span class="skel" style="width:40%"></span></span></div>
+          </div>
+        </div>
+        <div class="modal-foot"><span class="btn btn-ghost focus">Cancel</span><span class="btn btn-danger disabled">Remove container</span></div>
+      </div>
+      <div class="modal">
+        <div class="modal-header">Remove Mysterium from box-a? <span class="stamp before">box offline</span></div>
+        <div class="modal-body">
+          <div class="warnline">box-a has not reported for 14 min, so CashPilot cannot remove the container or read its volume. Nothing will be deleted.</div>
+          <div class="plan" style="margin-top:10px">
+            <div class="plan-row"><span class="k">You can</span><span><b>Forget the record</b>: CashPilot stops tracking Mysterium on box-a. The container and the volume stay on the box untouched. <span class="cite">same as app.js:2735</span></span></div>
+          </div>
+        </div>
+        <div class="modal-foot"><span class="btn btn-ghost focus">Cancel</span><span class="btn btn-ghost">Retry</span><span class="btn btn-danger">Forget the record</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><span class="co">4</span><div><b>Type the slug</b> only when data is deleted. The button turns solid red and changes its words to “Delete volume”, so the label always says the worst thing it will do.</div></li>
+  <li><span class="co">5</span><div><b>Loading</b>: the safe parts of the plan show at once, the volume line fills in. <b>Error</b>: the dialog never offers a half action; it offers what is still safe (forget the record, retry).</div></li>
+</ul>
+
+<!-- ============ FRAME 2 + 3 ============ -->
+<div class="grid2">
+  <div>
+    <div class="frame-title">Frame 2 · Stop Storj on box-b, then the undo toast <span class="stamp after">after</span></div>
+    <div class="frame" style="position:relative">
+      <span class="co abs" style="left:8px;top:8px">6</span>
+      <div class="mini-stage" style="align-items:stretch">
+        <div class="modal">
+          <div class="modal-header">Stop Storj on box-b?</div>
+          <div class="modal-body">
+            <div class="warnline"><b>Downtime counts against your node’s uptime score.</b> Storj suspends nodes that stay offline too long and keeps their held amount. Restart is quick; prefer it to Stop if you are fixing something.</div>
+            <div class="plan" style="margin-top:10px">
+              <div class="plan-row"><span class="k">Container</span><span>Stopped, not removed</span></div>
+              <div class="plan-row"><span class="k">Data</span><span>Untouched · <code>cashpilot_storj_data</code></span></div>
+            </div>
+          </div>
+          <div class="modal-foot"><span class="btn btn-ghost focus">Cancel</span><span class="btn btn-ghost">Restart instead</span><span class="btn btn-danger">Stop node</span></div>
+        </div>
+        <div class="toast" style="border-left-color:var(--warning);max-width:none" role="status" aria-live="polite">
+          <span>Stopped Storj on box-b.</span><span class="btn btn-ghost btn-sm focus" style="margin-left:auto">Start again</span><span class="cite">⨯</span>
+        </div>
+        <div class="caption" style="margin:0">The toast lives in an <code>aria-live="polite"</code> region, so it is read aloud. It stays while hovered or focused (today toasts vanish on a timer, <span class="cite">app.js:44-69</span>). <span class="kbd">F6</span> jumps to it; <span class="kbd">Enter</span> starts the node again.</div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="frame-title">Frame 3 · Redeploy with a diff plan <span class="stamp after">after</span></div>
+    <div class="frame" style="position:relative">
+      <span class="co abs" style="left:8px;top:8px">7</span>
+      <div class="mini-stage" style="align-items:stretch">
+        <div class="modal">
+          <div class="modal-header">Redeploy Mysterium on box-a</div>
+          <div class="modal-body">
+            <p style="margin:0 0 8px;font-size:var(--fs-2);color:var(--text-secondary)">What changes compared with the running container:</p>
+            <div class="plan mono" style="font-size:14px">
+              <div class="plan-row"><span class="k">UDP_PORTS</span><span><span class="diff-old">40000:40029</span> → <span class="diff-new">23000:23029</span></span></div>
+              <div class="plan-row"><span class="k">image</span><span><span class="diff-old">sha256:4be1…c07</span> → <span class="diff-new">sha256:9a3f…e12</span></span></div>
+              <div class="plan-row"><span class="k">identity</span><span>kept · <code>cashpilot_mysterium_data</code></span></div>
+              <div class="plan-row"><span class="k">downtime</span><span>about 20 s</span></div>
+            </div>
+            <div class="warnline" style="margin-top:10px">After this, forward <b>UDP 23000-23029</b> on your router to box-a, or the node shows as unreachable.
+              <div class="codebox" style="margin-top:6px"><span class="txt">UDP 23000-23029 → box-a</span><span class="btn btn-ghost btn-sm">Copy</span></div>
+            </div>
+          </div>
+          <div class="modal-foot"><span class="btn btn-ghost focus">Cancel</span><span class="btn btn-primary">Redeploy</span></div>
+        </div>
+        <div class="caption" style="margin:0">Today the same action reads “Redeploy mysterium on this box? It keeps the settings it was deployed with.” (<span class="cite">app.js:3736</span>), with no word on ports.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<ul class="notes">
+  <li><span class="co">6</span><div><b>Stop gets a confirm only for stateful services</b> (the catalog already marks them: the volume-delete guard needs <code>allow_delete_critical</code>, <span class="cite">app/main.py:3841-3856</span>). Honeygain still stops in one click. “Restart instead” is the action most people wanted.</div></li>
+  <li><span class="co">7</span><div><b>Redeploy shows a diff</b> of env, ports and image digest, computed server-side. A port change carries the follow-up router step with Copy.</div></li>
+</ul>
+
+<!-- ============ FRAME 4 ============ -->
+<div class="frame-title">Frame 4 · The same plan from the CLI <span class="stamp after">after</span></div>
+<div class="grid2">
+  <div class="term">
+    <div class="term-bar"><i></i><i></i><i></i>&nbsp; zsh — cashpilot</div>
+<pre><span class="t-p">$</span> <span class="t-c">cashpilot service rm mysterium --box box-a --dry-run --json</span>
+{
+  <span class="t-k">"action"</span>: <span class="t-s">"remove"</span>,
+  <span class="t-k">"service"</span>: <span class="t-s">"mysterium"</span>,
+  <span class="t-k">"worker"</span>: <span class="t-s">"box-a"</span>,
+  <span class="t-k">"stateful"</span>: <span class="t-n">true</span>,
+  <span class="t-k">"steps"</span>: [
+    { <span class="t-k">"what"</span>: <span class="t-s">"container"</span>, <span class="t-k">"name"</span>: <span class="t-s">"cashpilot-mysterium"</span>,
+      <span class="t-k">"effect"</span>: <span class="t-s">"remove"</span> },
+    { <span class="t-k">"what"</span>: <span class="t-s">"volume"</span>, <span class="t-k">"name"</span>: <span class="t-s">"cashpilot_mysterium_data"</span>,
+      <span class="t-k">"size_bytes"</span>: <span class="t-n">12582912</span>, <span class="t-k">"effect"</span>: <span class="t-s">"keep"</span>,
+      <span class="t-k">"delete_with"</span>: <span class="t-s">"--delete-volume=mysterium"</span> }
+  ],
+  <span class="t-k">"backup"</span>: { <span class="t-k">"confirmed_at"</span>: <span class="t-s">"2026-11-05T09:14:00Z"</span>, <span class="t-k">"current"</span>: <span class="t-n">true</span> },
+  <span class="t-k">"confirm"</span>: <span class="t-s">"pln_8c1e4a"</span>,
+  <span class="t-k">"expires_in"</span>: <span class="t-n">300</span>
+}
+
+<span class="t-p">$</span> <span class="t-c">cashpilot service rm mysterium --box box-a</span>
+Remove Mysterium from box-a?
+  container  cashpilot-mysterium       <span class="t-e">remove</span>
+  volume     cashpilot_mysterium_data  <span class="t-p">keep</span> (12 MB, backed up 3 d ago)
+<span class="t-w">Not a terminal and no --yes: nothing done.</span>
+<span class="t-p">$</span> <span class="t-c">echo $?</span>
+<span class="t-w">5</span>   <span class="t-m"># needs --yes</span>
+
+<span class="t-p">$</span> <span class="t-c">cashpilot service rm mysterium --box box-a --yes --delete-volume=storj</span>
+<span class="t-e">✗ --delete-volume must name this service (mysterium). Nothing done.</span>  <span class="t-m">exit 5</span></pre>
+  </div>
+  <div class="frame pad">
+    <ul class="notes" style="grid-template-columns:1fr;margin:0">
+      <li><span class="co">8</span><div><b>One plan, three surfaces.</b> The dialog, <code>--dry-run --json</code> and the MCP tool all render the same object from <code>_svc_remove(…, dry_run=True)</code> next to the existing <code>delete_volumes</code> path (<span class="cite">app/main.py:3837-3892</span>).</div></li>
+      <li><span class="co">9</span><div><b>No silent action from a script</b>: without a TTY and without <code>--yes</code> the CLI prints the plan and exits 5. On a TTY it asks, with “No” as the default (<code>[y/N]</code>), the same safe default as the dialog.</div></li>
+      <li><span class="co">10</span><div><b>The volume flag repeats the slug</b>, the CLI form of “type mysterium to confirm”. A copy-pasted command for the wrong service fails with exit 5.</div></li>
+      <li><span class="co">11</span><div><b>For agents</b>: the HTTP API returns the plan and a short-lived <code>confirm</code> id; the destructive call must send it back. An agent cannot skip the plan, and the owner sees the plan in Activity.</div></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============ INVENTORY ============ -->
+<div class="frame-title wide-only">Every confirm() on origin/main and what it becomes</div>
+<div class="frame pad wide-only">
+  <table class="tbl inv"><colgroup><col style="width:22%"><col style="width:38%"><col style="width:30%"><col style="width:10%"></colgroup>
+    <thead><tr><th>Where</th><th>Today asks</th><th>Becomes</th><th>Default focus</th></tr></thead>
+    <tbody>
+      <tr><td class="cite">app.js:4172, :4174</td><td>Remove custom service from box; then “Also delete its data volume?”</td><td>Frame 1 plan, Keep default, type slug to delete</td><td>Cancel</td></tr>
+      <tr><td class="cite">app.js:2750</td><td>Remove {slug}? stop and delete the container</td><td>Frame 1 plan (volume kept unless chosen)</td><td>Cancel</td></tr>
+      <tr><td class="cite">app.js:2687 (none)</td><td>Stop, no confirm</td><td>Frame 2 for stateful services only</td><td>Cancel</td></tr>
+      <tr><td class="cite">app.js:2710</td><td>Stop {name} on N containers?</td><td>Frame 2, lists the boxes, warns per stateful one</td><td>Cancel</td></tr>
+      <tr><td class="cite">app.js:3736, :3760, :4139</td><td>Redeploy … with its saved settings?</td><td>Frame 3 diff plan</td><td>Cancel</td></tr>
+      <tr><td class="cite">fleet.html:533, :551</td><td>Redeploy behind the LAN fence / turn on isolation</td><td>Frame 3 diff plan (network changes)</td><td>Cancel</td></tr>
+      <tr><td class="cite">fleet.html:793</td><td>Remove worker</td><td>Plan: what stays on the box, how to re-enrol</td><td>Cancel</td></tr>
+      <tr><td class="cite">fleet.html:1134, :1144</td><td>Remove proxied copy / delete proxy</td><td>Plan: copies using this proxy, Remove</td><td>Cancel</td></tr>
+      <tr><td class="cite">app.js:2737, import.js:205</td><td>Forget a deployment / imported settings</td><td>Short dialog, no plan (nothing on a box changes)</td><td>Forget</td></tr>
+      <tr><td class="cite">app.js:845, :929, :4155, :4467, :4684, :3320, :3725; activity.html:327, :345</td><td>Cash-out, payout, custom definition, credentials, deploy-anyway warning, self-update, ignore drift, activity records</td><td>Short dialog with the record named; destructive label</td><td>Cancel</td></tr>
+    </tbody>
+  </table>
+</div>
+
+</div>
+</body>
+</html>
