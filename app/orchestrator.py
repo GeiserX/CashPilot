@@ -893,13 +893,25 @@ def deploy_raw(
         # chance to flush (storj declares 300 s for that reason) and pays for it
         # with an unclean-shutdown recovery. A stop that fails is not a reason to
         # abandon the deploy - the forced removal below is what ran before.
+        if gated:
+            # A deploy is the owner's way out of a hold, written down or not.
+            _MISMATCH_HELD.pop(name, None)
         if gated and not _pending_identity(name):
             # Read while it still runs; the guard compares the new one with it.
             # A redeploy over a stopped node clears the record instead. A record
             # still pending is kept: the container being replaced is itself a
             # replacement whose identity was never confirmed, so this retry is
             # compared with the node as it was before the first redeploy.
-            identity = read_node_identity(old, slug) if getattr(old, "status", "") == "running" else None
+            running = getattr(old, "status", "") == "running"
+            identity = read_node_identity(old, slug) if running else None
+            if running and identity is None and _reads_identity(slug):
+                # Without it the new node could run on another keystore unchecked.
+                raise ContainerRuntimeError(
+                    f"{name} was not replaced: its identity could not be read from the running node, so the new "
+                    "one could not be checked against it. The running container was not touched. Try again in a "
+                    "minute. If the node is broken, stop it from the dashboard first: a stopped node is replaced "
+                    "without the check."
+                )
             _remember_identity(name, identity)
         try:
             old.stop(timeout=_get_stop_timeout(slug))
@@ -1254,8 +1266,21 @@ def read_node_identity(container: Any, slug: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _reads_identity(slug: str) -> bool:
+    """Whether the catalog says how to read this service's node identity (collector.node_read)."""
+    svc = (get_service(slug) if get_service else None) or {}
+    spec = (svc.get("collector") or {}).get("node_read") or {}
+    return isinstance(spec.get("command"), list) and bool(spec.get("command")) and isinstance(spec.get("node"), str)
+
+
 def _identity_file(name: str) -> str:
     return os.path.join(IDENTITY_DIR, re.sub(r"[^A-Za-z0-9_.-]", "_", name))
+
+
+#: Mismatch holds by container name, kept in memory as well as on disk: a hold
+#: whose record could not be written must still hold, or the stopped node
+#: would read as unchecked and the guard would start it again every pass.
+_MISMATCH_HELD: dict[str, str] = {}
 
 
 def _pending_identity(name: str) -> str | None:
@@ -1269,6 +1294,9 @@ def _pending_identity(name: str) -> str | None:
 
 
 def _remember_identity(name: str, identity: str | None) -> None:
+    if not str(identity or "").startswith("MISMATCH "):
+        # A deploy rewrites the record: the owner's way out of a hold.
+        _MISMATCH_HELD.pop(name, None)
     path = _identity_file(name)
     try:
         if identity:
@@ -1287,6 +1315,8 @@ def identity_problem(container: Any) -> str | None:
     None while there is nothing to compare (no record, or the node not
     answering yet) and once it matches, when the record is deleted.
     """
+    if held_reason := _MISMATCH_HELD.get(container.name):
+        return held_reason
     path = _identity_file(container.name)
     try:
         with open(path, encoding="utf-8") as fh:
@@ -1312,6 +1342,7 @@ def identity_problem(container: Any) -> str | None:
         f"its identity is {current}, not {expected} as before the redeploy, so it is not running on the data "
         "volume that holds its keystore. It stays stopped: restore that volume, then redeploy"
     )
+    _MISMATCH_HELD[container.name] = reason
     _remember_identity(container.name, f"MISMATCH {reason}")
     return reason
 
