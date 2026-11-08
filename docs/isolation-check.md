@@ -313,16 +313,25 @@ the host's firewall, so no probe result can make it safe. A node deployed
 through 2.0.3 shows it until you redeploy it from the dashboard (UPGRADING.md).
 
 To see the fence hold from the node's own namespace, join it with a probe that
-has no capabilities, and try a LAN address, the host and the internet:
+has no capabilities. A target nothing listens on prints `blocked` with or
+without a fence, so pick targets that answer on your network (your router's
+web page, this machine's SSH on its LAN address, a tailnet DNS if you run one)
+and run the same loop from Docker's default bridge first, as the control:
 
 ```sh
-docker run --rm --network container:cashpilot-mysterium --cap-drop ALL --read-only busybox \
-  sh -c 'for t in 192.168.1.1:80 172.17.0.1:22 100.100.100.100:53 169.254.169.254:80 1.1.1.1:443; do
-           nc -z -w 3 ${t%:*} ${t#*:} && echo "REACHED $t" || echo "blocked $t"; done'
+T='192.168.1.1:80 192.168.1.20:22 100.100.100.100:53 1.1.1.1:443'   # yours
+P='for t in '"$T"'; do nc -z -w 3 ${t%:*} ${t#*:} && echo "REACHED $t" || echo "blocked $t"; done'
+docker run --rm --network bridge --cap-drop ALL --read-only busybox sh -c "$P"          # control
+docker run --rm --network container:cashpilot-mysterium --cap-drop ALL --read-only busybox sh -c "$P"
 ```
 
-Everything but `1.1.1.1:443` should be blocked, and the counters of
-`nft list table ip cashpilot` on the host should go up.
+Only a target the control reached counts. From the node, each of those but
+`1.1.1.1:443` should be blocked, and the fence's drop counters on the host
+should go up between a run and the next: `sudo nft list table ip cashpilot` on
+the nftables backend, or `sudo iptables-legacy -t mangle -L CP-FWD -v -n` and
+`sudo iptables-legacy -t mangle -L CP-IN -v -n` on the `iptables-legacy` one
+(the worker's log says which: "LAN fence applied (nft backend" or "(legacy
+backend").
 
 **The node's own list.** Mysterium blocks some destinations for its customers
 itself. Its default list is `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,

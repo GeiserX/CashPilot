@@ -64,20 +64,20 @@ In the CashPilot web UI, open **Catalog** and click **Add** on the **MystNodes**
 | Variable | Default | What it does |
 |---|---|---|
 | `UI_ADDRESS` | `127.0.0.1` | The host addresses the node's WebUI (port 4449) is published on. Comma separated, no spaces. |
-| `UDP_PORTS` | `56000:56100` | The UDP ports the node uses for sessions, as `start:end`. Forward the same range. To go back to the default after changing it, remove the service from that machine (its data volume stays) and deploy again. |
+| `UDP_PORTS` | `56000:56029` | The UDP ports the node uses for sessions, as `start:end`. Forward the same range. To go back to the default after changing it, remove the service from that machine (its data volume stays) and deploy again. |
 
 ### Port forwarding
 
 Each session first tries to reach the node directly on its UDP range, and falls
 back to hole punching when it cannot, which many buyers fail at. The node uses
-only the range in `UDP_PORTS` (default `56000:56100`), so forward exactly that
+only the range in `UDP_PORTS` (default `56000:56029`), so forward exactly that
 range. Create one rule on your router:
 
 | Field | Value |
 |---|---|
 | Protocol | UDP |
-| External ports | 56000-56100 (your `UDP_PORTS`) |
-| Internal ports | the same, 56000-56100 |
+| External ports | 56000-56029 (your `UDP_PORTS`) |
+| Internal ports | the same, 56000-56029 |
 | Internal IP | the LAN address of the machine running the node |
 
 Give that machine a fixed LAN address (a DHCP reservation), or the rule points
@@ -89,8 +89,15 @@ The node runs on CashPilot's fenced bridge, and the worker publishes the range
 1:1 on the machine (`56000/udp` to `56000/udp`, and so on), so the forward on
 the router is the same as when the node shared the host's network.
 
-Each session takes about two ports, so 101 ports carry about 50 sessions at
-once, far more than a home node gets.
+Each session takes about two ports, so the default 30 ports carry about 15
+sessions at once, more than a home node gets. Every published port costs about
+2.5 MB of memory on the machine (Docker starts two small proxy processes per
+port; 101 ports measured about 250 MB), so a wider range only costs more. A
+range of 20 to 30 ports is enough. Through 2.0.3 the default was
+`56000:56100`: a router forward for that range keeps working, since the new
+default is inside it. A node that has `56000:56100` on record keeps it on a
+redeploy; to save the memory, set `UDP_PORTS` to `56000:56029` and redeploy,
+with no change on the router.
 
 **Check it.** After a few sessions, on the machine running the node:
 
@@ -231,8 +238,8 @@ different one starts a new node identity.
 
 ```bash
 docker run -d --name cashpilot-mysterium \
-  --network cashpilot-isolated --restart unless-stopped \
-  -p 127.0.0.1:4449:4449 -p 56000-56100:56000-56100/udp \
+  --network cashpilot-isolated --restart no \
+  -p 127.0.0.1:4449:4449 -p 56000-56029:56000-56029/udp \
   --cap-drop ALL --cap-add NET_ADMIN --cap-add SETUID --cap-add SETGID \
   --device /dev/net/tun \
   --security-opt no-new-privileges:true \
@@ -240,14 +247,23 @@ docker run -d --name cashpilot-mysterium \
   mysteriumnetwork/myst:1.39.9-alpine \
   --ui.address=0.0.0.0 --tequilapi.address=127.0.0.1 \
   --firewall.protected.networks=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16 \
-  --udp.ports=56000:56100 \
+  --udp.ports=56000:56029 \
   service --agreed-terms-and-conditions
 ```
 
 If a reverse proxy reaches this node's WebUI, add a `-p <address>:4449:4449` for
-each address it connects to. Docker restarts this hand-made container by
-itself, before CashPilot's fence is back after a reboot; a node CashPilot
-deploys has no restart policy and is started by the worker behind the fence.
+each address it connects to. The worker's guard covers only nodes CashPilot
+deployed, so this hand-made container has no restart policy: Docker must not
+start it after a reboot before the worker has put the fence back. After a
+reboot, start it yourself once the fence reads complete:
+
+```bash
+docker logs cashpilot-worker 2>&1 | grep 'LAN fence applied' | tail -1   # after this boot
+docker start cashpilot-mysterium
+```
+
+Redeploying it from the dashboard instead hands it to the worker, which then
+starts it behind the fence by itself.
 
 Verify it took:
 
@@ -261,7 +277,8 @@ docker logs cashpilot-mysterium 2>&1 | grep -i wireguard | tail -3   # expect "W
 **Your identity is safe.** It lives in the mounted data directory
 (`/var/lib/mysterium-node/keystore/`), not in the container, so recreating the
 container keeps the same node identity and its accumulated reputation. Confirm
-with `curl -s http://127.0.0.1:4050/identities`; the address must be unchanged.
+with `docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities`
+(the Tequila API listens only inside the node); the address must be unchanged.
 
 **On the host**, `/dev/net/tun` must exist (`ls -l /dev/net/tun`). If it does
 not, load the module with `modprobe tun`.

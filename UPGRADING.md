@@ -29,22 +29,29 @@ releases run it in its own network namespace on `cashpilot-isolated`, behind
 the fence, and the worker starts it only once the fence is in place
 ([Mysterium on the fenced bridge](docs/isolation.md#mysterium-on-the-fenced-bridge)).
 
-A running node keeps working as it is until you redeploy it. The dashboard
-lists it under drift ("shares the host's network, where its NET_ADMIN reaches
-the host's firewall"), and **Check isolation** fails on it.
+The upgraded worker stops the old node within 30 seconds of starting and
+keeps it stopped until you redeploy it, since a node on the host's network
+with `NET_ADMIN` is the exposure this release closes. The fleet page lists it
+as held stopped ("it shares the host's network"), and the dashboard lists it
+under drift. Plan the redeploy right after the upgrade.
 
 **What to do.**
 
 1. Upgrade the UI **and the worker that runs Mysterium**. The dashboard refuses
-   to redeploy Mysterium onto an older worker, and leaves the node running.
-2. Redeploy Mysterium from the dashboard. The node is down for under a minute,
-   and its open sessions drop and reconnect. It keeps its data volume or data
-   folder, so it keeps its identity and its earnings: the worker reads the
-   identity before it removes the old container, compares it with the new
-   one's, and stops the new node if they differ.
-3. Nothing changes on the router: the worker publishes the same UDP range 1:1.
-   UPnP no longer works for the node, so forward the range by hand if you
-   relied on it.
+   to redeploy Mysterium onto an older worker.
+2. Redeploy Mysterium from the dashboard. It keeps its data volume or data
+   folder, so it keeps its identity and its earnings. Back up the keystore
+   first ([Backing up node identities](docs/backup.md)): the worker compares
+   the identity before and after only when it can read both, and by then the
+   old node is already stopped, so there is nothing to compare on this
+   redeploy. Check the identity after it
+   (`docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities`).
+3. Nothing changes on the router: the worker publishes the UDP range 1:1. The
+   default range is now `56000:56029`, inside the old `56000:56100`, so the
+   old forward keeps working. A node with `56000:56100` on record keeps it;
+   setting `UDP_PORTS` to `56000:56029` before the redeploy saves about 175 MB
+   of memory in Docker's port proxy. UPnP no longer works for the node, so
+   forward the range by hand if you relied on it.
 
 **If you reach the WebUI through a reverse proxy.** `UI_ADDRESS` is now the
 host addresses port 4449 is published on. A Docker network gateway in it is

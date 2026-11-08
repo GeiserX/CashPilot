@@ -292,8 +292,11 @@ shipped compose files, and with the raw Docker socket, which is root, in the
   `0.0.0.0` on a machine with a public address.
 - **Don't publish a node's own management UI to your LAN** unless you need it.
   Mysterium's WebUI is published on `127.0.0.1` only by default, and its API
-  never leaves the node. Reach the WebUI over an SSH tunnel, or add only your
-  reverse proxy's address to `UI_ADDRESS`. A published port goes through
+  never leaves the node. Reach the WebUI over an SSH tunnel, or add to
+  `UI_ADDRESS` only the one address of this machine your reverse proxy
+  connects to: a Docker network gateway such as `172.18.0.1` for a proxy on
+  the same machine, or this machine's LAN address for a proxy elsewhere.
+  `UI_ADDRESS` names addresses on this machine, never the proxy's own. A published port goes through
   Docker's forwarding, so a host `INPUT` rule does not restrict it: limit it
   with the address you publish on, or a rule in `DOCKER-USER`.
 

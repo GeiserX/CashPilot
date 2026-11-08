@@ -167,8 +167,9 @@ every other earner:
   its namespace (flush its tables, take a LAN address, add a LAN route), what
   it sends to your LAN, the host, a tailnet or cloud metadata is dropped on
   the host.
-- Its UDP range (`UDP_PORTS`, 56000:56100 by default) is published 1:1, so the
-  forward on your router stays the same. Each port goes to the same port in
+- Its UDP range (`UDP_PORTS`, 56000:56029 by default, inside the 56000:56100
+  default through 2.0.3) is published 1:1, so the forward on your router stays
+  valid. Each port goes to the same port in
   the node, with the customer's own source address. At most 1000 ports.
 - Its WebUI listens on `0.0.0.0` inside its namespace and is published only
   on the host addresses in `UI_ADDRESS`, `127.0.0.1` by default. The Tequila
@@ -199,10 +200,15 @@ lab, a deleted rule stopped the node within 30 seconds, and after a Docker
 restart with the table deleted the node stayed stopped until the worker had
 written the table back.
 
-**The identity is checked.** On a redeploy the worker reads the node's identity
-before it removes the old container, and reads it again from the new one. If
-they differ, the new node is not running on the data volume that holds its
-keystore: the worker stops it and keeps it stopped until the next redeploy.
+**The identity is checked when it can be read.** On a redeploy of a running
+node the worker reads the node's identity before it removes the old container,
+and reads it again from the new one. If they differ, the new node is not
+running on the data volume that holds its keystore: the worker stops it and
+keeps it stopped until the next redeploy. The check needs both reads: a node
+that was already stopped, or that did not answer, leaves nothing to compare,
+and the new node runs. It is a safety net, not a backup: keep a copy of the
+keystore ([Backing up node identities](backup.md)) and check the data mount
+before a redeploy.
 
 Outside `on` mode there is no fence of CashPilot's to wait for: on your own
 network the node starts as soon as it is deployed, under your rules, and in
@@ -217,11 +223,13 @@ Existing nodes move on their next redeploy; see UPGRADING.md.
   netlink, nf_tables, WireGuard and tun code is reachable from it. A kernel bug
   there would reach the host. Running the node in userspace mode without
   `NET_ADMIN` is the next step.
-- Docker's userland proxy starts two processes per published UDP port, about
-  200 for Mysterium's default range. Measured: about 250 MB of memory in total
-  (proportional set size). `"userland-proxy": false` in the Docker daemon's
-  configuration removes them, for every container on the host. A narrower
-  `UDP_PORTS` range (and the same on the router) also reduces it.
+- Docker's userland proxy starts two processes per published UDP port.
+  Measured with 101 ports: 205 processes, about 250 MB of memory in total
+  (proportional set size), so about 2.5 MB per port. The default range is 30
+  ports for that reason (about 60 processes, 75 MB), which carries about 15
+  sessions at once; 20 to 30 ports is enough for a home node. A node with a
+  wider range on record keeps it until you narrow `UDP_PORTS` and redeploy;
+  a router forward for the wider range keeps working.
 - UPnP on the router no longer works for the node, since the fence drops the
   router. Forward the range by hand.
 - IPv6: the fenced network has IPv6 off. On Docker 26 and later the earners

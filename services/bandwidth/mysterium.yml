@@ -50,10 +50,16 @@ docker:
       secret: false
       description: >-
         The UDP ports the node uses for VPN sessions, as start:end. Forward this
-        same range on your router.
-      default: "56000:56100"
-      # Without it the node picks from 10000:60000, so a forwarded 56000-56100
-      # is never used and every session falls back to hole punching.
+        same range on your router. Each session takes about two ports, so the
+        default 30 carry about 15 sessions at once, more than a home node gets.
+        Every published port costs about 2.5 MB of memory in Docker's port
+        proxy, so a wider range only costs more. A forward you already have for
+        a wider range that contains this one (56000-56100) keeps working.
+      default: "56000:56029"
+      # Without it the node picks from 10000:60000, so a forwarded range is
+      # never used and every session falls back to hole punching. 30 ports, a
+      # sub-range of the 56000:56100 default through 2.0.3, so the router
+      # forwards made for that one stay valid.
       # ASCII digits only, as above; port_range checks start <= end <= 65535.
       pattern: '[0-9]{4,5}:[0-9]{4,5}'
       port_range: true
@@ -169,7 +175,7 @@ earnings:
   monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 (loopback by default) for management. VPS accepted. Port forwarding UDP 56000-56100 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 (loopback by default) for management. VPS accepted. Port forwarding UDP 56000-56029 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
 
 cashout:
   method: auto

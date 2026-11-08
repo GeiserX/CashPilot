@@ -29,7 +29,7 @@ PROTECTED = (
 )
 LOOPBACK = f"--ui.address=127.0.0.1 --tequilapi.address=127.0.0.1 {PROTECTED} --udp.ports=56000:56100 service --agreed-terms-and-conditions"
 #: What every node runs after 2.0.3: the WebUI on its own namespace, published by Docker.
-COMMAND = f"--ui.address=0.0.0.0 --tequilapi.address=127.0.0.1 {PROTECTED} --udp.ports=56000:56100 service --agreed-terms-and-conditions"
+COMMAND = f"--ui.address=0.0.0.0 --tequilapi.address=127.0.0.1 {PROTECTED} --udp.ports=56000:56029 service --agreed-terms-and-conditions"
 UI = "4449/tcp"
 
 

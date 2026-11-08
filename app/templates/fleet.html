@@ -496,7 +496,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // Fence-gated earners (Mysterium) the worker holds stopped, with why.
     const held = Object.entries(iso.guard || {});
     if (held.length) {
-      line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">Held stopped until the LAN fence and its settings are back: ${held.map(([n, why]) => `${esc(n)} (${esc(why)})`).join('; ')}. It starts by itself once they are.</span>${line ? '</div>' : ''}`;
+      line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">Held stopped: ${held.map(([n, why]) => `${esc(n)} (${esc(why)})`).join('; ')}. A missing LAN fence clears by itself; any other reason needs a redeploy from the dashboard.</span>${line ? '</div>' : ''}`;
     }
     if (sw) {
       const tone = sw.error ? 'text-fail' : sw.busy ? 'muted' : 'text-ok';

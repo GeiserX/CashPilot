@@ -30,7 +30,7 @@ Left out: [earning-machine](https://github.com/jf-m/earning-machine) and [passiv
 
 ## Side by side
 
-CashPilot's column describes v1.64.0, except the proxy, Docker socket and LAN isolation rows, which describe v1.71.1 (`0170dee`, 2026-11-06). The other columns describe the commits in the table above.
+CashPilot's column describes v1.64.0, except the proxy, Docker socket and LAN isolation rows, which describe v1.71.1 (`0170dee`, 2026-11-06), and Mysterium's network in the container settings row, which describes the release after 2.0.3 (`01e7310`). The other columns describe the commits in the table above.
 
 | | CashPilot | money4band 5.0.0 | IGM | InternetIncome | CashFactory | HA add-ons |
 |---|---|---|---|---|---|---|
@@ -155,7 +155,7 @@ We did not check whether each app on each list still pays out.
 [cp-hardening]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/orchestrator.py#L745-L752
 [cp-privileged]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/worker_api.py#L1244
 [cp-mounts]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/worker_api.py#L992-L1040
-[cp-myst]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/services/bandwidth/mysterium.yml#L83-L91
+[cp-myst]: https://github.com/GeiserX/CashPilot/blob/01e7310cf1d923ba35523d8944ebaf2478f39079/services/bandwidth/mysterium.yml#L19-L113
 [cp-sock]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/docker-compose.yml#L69-L106
 [cp-update]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/update_check.py#L80
 [cp-rates]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/exchange_rates.py#L101-L119
