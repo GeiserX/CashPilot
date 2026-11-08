@@ -155,7 +155,12 @@ def public_view(proxy: dict[str, Any], copies: list[dict[str, Any]] | None = Non
         "last_checked_at": state.get("last_checked_at"),
         "last_test": state.get("last_test"),
         "copies": [
-            {"worker_id": c["worker_id"], "slug": c["slug"], "stopped_by_cap": bool(c.get("stopped_by_cap"))}
+            {
+                "worker_id": c["worker_id"],
+                "slug": c["slug"],
+                "stopped_by_cap": bool(c.get("stopped_by_cap")),
+                "removing": bool(c.get("removing_since")),
+            }
             for c in copies or []
         ],
     }

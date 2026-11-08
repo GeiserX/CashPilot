@@ -1000,6 +1000,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
         if (t && !t.ok) exit += `<br><span class="muted">Last test failed on ${esc(t.worker)} (${esc((t.at || '').replace('T', ' ').slice(0, 16))}): ${esc(t.error)}</span>`;
         const copies = p.copies.map((c) => {
           const st = copyStatus(c.worker_id, c.slug, p.id);
+          // Asked to remove, worker not confirmed yet: no buttons, it goes once the worker confirms.
+          if (c.removing) return `<div>${esc(c.slug)} on ${esc(workerName(c.worker_id))}: <span class="muted">removing…</span></div>`;
           const capped = c.stopped_by_cap ? ' <span class="muted">(stopped by the cap)</span>' : '';
           return `<div>${esc(c.slug)} on ${esc(workerName(c.worker_id))}: ${esc(st.status)} via ${esc(st.via)}${capped}
             <button class="btn btn-ghost btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="${st.status === 'running' ? 'stop' : 'start'}">${st.status === 'running' ? 'Stop' : 'Start'}</button>
@@ -1132,7 +1134,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const base = `/api/proxies/${pid}/copies/${wid}/${encodeURIComponent(slug)}`;
         if (btn.dataset.cmd === 'remove') {
           if (!confirm(`Remove the proxied copy of ${slug}?`)) return;
-          await CP.api(base, {method: 'DELETE'});
+          const out = await CP.api(base, {method: 'DELETE'});
+          // 202: the worker is slow, not failing. The row shows "removing…" until it confirms.
+          if (out && out.status === 'removing') CP.toast(`Removing ${slug}… the worker has not confirmed yet; the copy disappears once it does.`, 'info');
         } else {
           await CP.api(`${base}/${btn.dataset.cmd}`, {method: 'POST'});
         }
