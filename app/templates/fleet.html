@@ -1063,7 +1063,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       if (out.warning) CP.toast(out.warning, 'warning');
       // The copy is a new device: say so when it could not be added to the account.
       const link = out.device_link;
-      if (link && !link.registered) CP.toast(`New device ${link.id}: ${link.steps}${link.url ? ' ' + link.url : ''}`, 'warning');
+      if (link && link.retrying) CP.toast(`New device ${link.id}: CashPilot keeps trying to add it to your account for a day and tells you if it cannot.`, 'info');
+      else if (link && !link.registered) CP.toast(`New device ${link.id}: ${link.steps}${link.url ? ' ' + link.url : ''}`, 'warning');
       load();
     } catch (err) { CP.toast(err.message, 'error'); }
   });

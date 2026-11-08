@@ -683,6 +683,21 @@ CREATE TABLE IF NOT EXISTS proxied_copies (
     PRIMARY KEY (proxy_id, worker_id, slug)
 );
 
+-- A device_link registration the provider asked to retry later (a new
+-- ProxyRack UUID is unknown for about five minutes). The scheduler retries it
+-- with backoff until it is on the account, the device is gone, or a day has
+-- passed (gave_up = 1, and the user is told to add it by hand).
+CREATE TABLE IF NOT EXISTS pending_device_links (
+    slug        TEXT    NOT NULL,
+    device_id   TEXT    NOT NULL,
+    name        TEXT    NOT NULL DEFAULT '',
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    first_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    next_at     TEXT    NOT NULL,
+    gave_up     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (slug, device_id)
+);
+
 CREATE TABLE IF NOT EXISTS usage_counters (
     worker_id    INTEGER NOT NULL,
     container_id TEXT    NOT NULL,
@@ -2260,6 +2275,56 @@ async def delete_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> bool:
         )
         await db.commit()
         return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
+
+
+# --- Pending device registrations ---
+
+
+async def save_pending_device_link(slug: str, device_id: str, name: str, next_at: str) -> None:
+    """Remember a registration to retry; a second save of one id keeps its first try."""
+    db = await _get_db()
+    try:
+        await db.execute(
+            """
+            INSERT INTO pending_device_links (slug, device_id, name, next_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT(slug, device_id) DO UPDATE SET name = excluded.name, gave_up = 0,
+                next_at = MIN(pending_device_links.next_at, excluded.next_at)
+            """,
+            (slug, device_id, name, next_at),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def list_pending_device_links() -> list[dict[str, Any]]:
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM pending_device_links ORDER BY next_at")
+        return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def update_pending_device_link(slug: str, device_id: str, *, attempts: int, next_at: str, gave_up: bool) -> None:
+    db = await _get_db()
+    try:
+        await db.execute(
+            "UPDATE pending_device_links SET attempts = ?, next_at = ?, gave_up = ? WHERE slug = ? AND device_id = ?",
+            (attempts, next_at, int(gave_up), slug, device_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def delete_pending_device_link(slug: str, device_id: str) -> None:
+    db = await _get_db()
+    try:
+        await db.execute("DELETE FROM pending_device_links WHERE slug = ? AND device_id = ?", (slug, device_id))
+        await db.commit()
     finally:
         await db.close()
 

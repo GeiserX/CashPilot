@@ -11,7 +11,7 @@ import logging
 import httpx  # noqa: F401 — needed for test patching
 
 from app.collectors import base
-from app.collectors.base import BaseCollector, EarningsResult
+from app.collectors.base import REGISTER_PENDING, BaseCollector, EarningsResult
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class ProxyRackCollector(BaseCollector):
             "Content-Type": "application/json",
         }
 
-    async def register_device(self, device_id: str, name: str) -> bool | None:
+    async def register_device(self, device_id: str, name: str) -> bool | str | None:
         """Add the UUID to the account with /device/add, the same call the dashboard makes.
 
         A redeploy adds a UUID that is already there, which the API refuses, so a
@@ -51,6 +51,10 @@ class ProxyRackCollector(BaseCollector):
             )
             if resp.status_code == 200 and (resp.json() or {}).get("status") == "success":
                 return True
+            # A new UUID is unknown until the client has been connected for about
+            # five minutes; the API says so and asks to try again later.
+            if resp.status_code == 400 and "try again" in str((resp.json() or {}).get("details", "")).lower():
+                return REGISTER_PENDING
             resp = await client.post(
                 f"{API_BASE}/device/status", headers=self._headers(), json={"device_id": device_id}
             )
