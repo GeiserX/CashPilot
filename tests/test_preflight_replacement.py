@@ -73,6 +73,11 @@ class TestAReplacementIsNotASecondCopy:
         assert [f["verdict"] for f in _per_ip(out)] == [preflight.EARNS_NOTHING]
 
     @pytest.mark.asyncio
+    async def test_a_junk_recorded_count_reads_as_one_copy(self):
+        out = await _preflight([_worker(1, running=1)], recorded={"instances": "two"})
+        assert _per_ip(out) == []
+
+    @pytest.mark.asyncio
     async def test_the_deploy_forms_redeploy_at_the_same_count_does_not_warn(self):
         out = await _preflight([_worker(1, running=1)], instances=1)
         assert _per_ip(out) == []
