@@ -57,7 +57,7 @@ The node runs only in two modes:
 | Mode | Where the node runs |
 |---|---|
 | `on` | behind CashPilot's fence, on `cashpilot-isolated` |
-| your own network (`CASHPILOT_CONTAINER_NETWORK` set) | on your network, under your firewall rules |
+| your own network (`CASHPILOT_CONTAINER_NETWORK` set) | on your network. CashPilot writes no fence there, so your firewall rules are the only thing keeping it off your LAN |
 
 In any other mode the worker refuses the deploy before it touches the running
 node, and the message says what to do:
@@ -211,7 +211,9 @@ start.
     ```
 
     Put the same full list in a file under `/etc/sysctl.d/` so it survives a
-    reboot, and check no other file there sets it too.
+    reboot, and check no other file there sets it too. On Unraid, `/etc` is
+    rebuilt at every boot: add the `sysctl -w` line to `/boot/config/go`,
+    above the line that starts `emhttp`, so it runs before Docker starts.
 2. **Check nothing holds the range now**, before you deploy:
 
     ```bash
