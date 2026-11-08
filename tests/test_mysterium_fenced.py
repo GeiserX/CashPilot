@@ -1122,3 +1122,31 @@ def test_the_fleet_page_does_not_offer_a_move_it_just_made():
     fleet = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
     assert "_movedBehindFence.add(" in fleet
     assert "!_movedBehindFence.has(" in fleet
+
+
+class TestTheMoveNeedsTheOldIdentity:
+    def test_a_running_node_whose_identity_cannot_be_read_is_not_replaced(self, markers):
+        old = _node()
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not touched"):
+            _raw_deploy(old=old)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+
+    def test_control_a_stopped_node_is_replaced_without_the_check(self, markers):
+        old = _node(status="exited")
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        _raw_deploy(old=old)
+        old.remove.assert_called_once()
+
+    def test_a_redeploy_lifts_a_hold_kept_only_in_memory(self, markers):
+        orchestrator._remember_identity("cashpilot-mysterium", IDENTITY_A)
+        orchestrator._MISMATCH_HELD["cashpilot-mysterium"] = "its identity is 0xb, not 0xa"
+        old = _node(status="exited")
+        old.attrs["Mounts"] = []
+        _raw_deploy(old=old)
+        assert "cashpilot-mysterium" not in orchestrator._MISMATCH_HELD
+        # The identity to match is kept, so the restored volume is still checked.
+        assert orchestrator._pending_identity("cashpilot-mysterium") == IDENTITY_A
