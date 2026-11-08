@@ -405,7 +405,7 @@ def _name(container: Any) -> str:
 NETNS_CAPABILITIES = frozenset({"NET_ADMIN", "SYS_ADMIN"})
 
 
-def host_netns_findings(containers: list[Any]) -> list[dict[str, Any]]:
+def host_netns_findings(containers: list[Any], mode: str | None = None) -> list[dict[str, Any]]:
     """Managed containers holding NET_ADMIN or SYS_ADMIN in the host's network namespace.
 
     Such a container can rewrite the host's firewall, the LAN fence included,
@@ -431,8 +431,7 @@ def host_netns_findings(containers: list[Any]) -> list[dict[str, Any]]:
             "detail": (
                 "These containers hold firewall capabilities in this host's own network namespace, so they can "
                 "rewrite the host's firewall, the LAN fence included, and reach everything the host reaches: "
-                f"{', '.join(sorted(held))}. Switch isolation on in Fleet, then redeploy them once from the dashboard to "
-                "move them onto the fenced bridge."
+                f"{', '.join(sorted(held))}. " + lan_fence.move_advice(mode, "them", "them")
             ),
             "docs": ISOLATION_PAGE,
         }
@@ -770,7 +769,7 @@ def _run(client: Any) -> dict[str, Any]:
         "not_answering_from_host": [],
         "addresses_left_out": [],
         "findings": (
-            host_netns_findings(every)
+            host_netns_findings(every, mode)
             + placement_findings(every, network, mode)
             + ipv6_findings(client, every, network)
         ),

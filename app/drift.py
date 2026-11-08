@@ -24,7 +24,8 @@ import re
 import shlex
 from typing import Any
 
-from app import arch, catalog
+from app import arch, catalog, lan_fence
+from app.constants import EPHEMERAL_PORTS
 
 #: Repositories CashPilot builds itself (images/<slug>/). The catalog pins their tag.
 OWN_IMAGE_PREFIX = "drumsergio/cashpilot-"
@@ -127,6 +128,53 @@ def _names(values: set[str]) -> str:
     return ", ".join(sorted(values))
 
 
+def move_advice(
+    svc: dict[str, Any] | None,
+    shape: dict[str, Any] | None,
+    recorded: dict[str, Any] | None,
+    isolation_mode: str | None,
+) -> dict[str, Any] | None:
+    """For a fence-gated container still on the host's network: the one action, and what to fix first.
+
+    ``action`` depends on the worker's isolation mode (lan_fence.move_advice);
+    ``redeploy`` says whether the worker reports a mode where a redeploy alone does it; ``warning`` is set
+    when the recorded UDP range, which the redeploy keeps, overlaps Linux's
+    ephemeral range, where one port a host program holds fails the start.
+    None for any other container.
+    """
+    if not svc or not isinstance(shape, dict) or not catalog.fence_gated(svc):
+        return None
+    if shape.get("network_mode") != "host":
+        return None
+    docker_conf = svc.get("docker") or {}
+    name = svc.get("name") or "it"
+    advice: dict[str, Any] = {
+        "action": lan_fence.move_advice(isolation_mode, name),
+        # Only where the worker says a redeploy alone works: one that reports no
+        # mode yet may be in legacy, off or on Podman, where it is refused.
+        "redeploy": isolation_mode in (lan_fence.MODE_ON, lan_fence.MODE_OPERATOR),
+        "warning": None,
+    }
+    rng = docker_conf.get("udp_port_range")
+    key = str(rng.get("env") or "") if isinstance(rng, dict) else ""
+    value = str(((recorded or {}).get("env") or {}).get(key) or "").strip() if key else ""
+    m = re.fullmatch(r"(\d{1,5}):(\d{1,5})", value)
+    if m and int(m[1]) <= EPHEMERAL_PORTS[1] and int(m[2]) >= EPHEMERAL_PORTS[0]:
+        low = EPHEMERAL_PORTS[0]
+        default = next((str(v.get("default") or "") for v in docker_conf.get("env") or [] if v.get("key") == key), "")
+        example = ""
+        d = re.fullmatch(r"(\d{1,5}):(\d{1,5})", default)
+        if d and int(d[2]) + 100 < low:
+            example = f", such as {int(d[1]) + 100}:{int(d[2]) + 100}"
+        advice["warning"] = (
+            f"Its recorded {key}, {value}, overlaps Linux's ephemeral range ({low}-{EPHEMERAL_PORTS[1]}), which the "
+            "redeploy keeps: on its own network every port in it is published, and one a host program holds fails "
+            f"the start. Before you redeploy, set {key} to a free range below {low} other than the default{example} "
+            "(a value equal to the default keeps the recorded one), and change the router forward to match."
+        )
+    return advice
+
+
 def container_drift(
     svc: dict[str, Any] | None,
     shape: dict[str, Any] | None,
@@ -192,13 +240,7 @@ def container_drift(
         found.append(
             "uses its own network, but should share the host's"
             if want_host
-            else "shares the host's network"
-            + (
-                f", where {reach}. Switch isolation on in Fleet, then redeploy {svc.get('name') or 'it'} once to "
-                "move it onto the fenced bridge"
-                if gated
-                else ""
-            )
+            else "shares the host's network" + (f", where {reach}" if gated else "")
         )
     elif not want_host:
         recorded_ports = None if gated else rec.get("ports")

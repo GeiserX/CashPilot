@@ -1244,8 +1244,7 @@ def _deploy_failure(exc: BaseException, restored: str, slug: str = "") -> Contai
     return ContainerRuntimeError(f"The container could not be created: {exc}. {restored}", 500)
 
 
-#: Linux's default ephemeral range (net.ipv4.ip_local_port_range).
-EPHEMERAL_PORTS = (32768, 60999)
+from app.constants import EPHEMERAL_PORTS  # noqa: E402 - Linux's default ephemeral range
 
 
 def _ephemeral_hint(reason: str, slug: str = "") -> str:

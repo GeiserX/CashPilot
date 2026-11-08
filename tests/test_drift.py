@@ -201,7 +201,7 @@ class TestOtherFields:
     def test_an_unreadable_record_still_judges_the_catalog(self):
         """A failed record read must not hide what the catalog alone shows."""
         with patch("app.main.database.get_deployment_spec", AsyncMock(side_effect=RuntimeError("db"))):
-            found, has_record = asyncio.run(
+            found, has_record, _move = asyncio.run(
                 main._instance_drift(
                     BITPING, "bitping", {"_worker_id": 1, "shape": _shape(_bitping_spec(cap_add=None))}, None, {}
                 )
@@ -256,7 +256,7 @@ class TestTheDashboard:
         assert "tag: 'Needs fixing'" in js
 
 
-def _deployed_row(svc, shape, recorded, deployed_by="worker", config=None):
+def _deployed_row(svc, shape, recorded, deployed_by="worker", config=None, isolation_mode=None):
     from fastapi.testclient import TestClient
 
     container = {
@@ -272,7 +272,13 @@ def _deployed_row(svc, shape, recorded, deployed_by="worker", config=None):
         "id": 1,
         "name": "w1",
         "status": "online",
-        "system_info": json.dumps({"docker_available": True, "arch": "x86_64"}),
+        "system_info": json.dumps(
+            {
+                "docker_available": True,
+                "arch": "x86_64",
+                **({"isolation": {"mode": isolation_mode}} if isolation_mode else {}),
+            }
+        ),
         "containers": json.dumps([container]),
         "apps": "[]",
     }

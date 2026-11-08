@@ -217,9 +217,11 @@ rules, and keeping other containers off its WebUI is up to those rules too. In
 `off` and `legacy` mode, and on Podman, the worker does not run the node at
 all: on Docker's default bridge every other earner could reach its WebUI and
 change its payout wallet, and nothing would keep it off your LAN. A deploy is
-refused before the running node is touched, with the order to follow: switch
-isolation on in Fleet, then redeploy Mysterium. A fenced node already running
-in such a mode is stopped.
+refused before the running node is touched, with what to do in that mode:
+in `legacy`, switch isolation on in Fleet first, then redeploy Mysterium; in
+`off`, set `CASHPILOT_ISOLATION=auto` and restart the worker first; on Podman
+it cannot be fenced. In `on` and operator mode a redeploy alone moves it. A
+fenced node already running in such a mode is stopped.
 
 **A node from 2.0.6 or earlier keeps running as it is.** A Mysterium container
 on the host's network, which is what every node deployed through 2.0.6 is, is
