@@ -29,11 +29,12 @@ releases run it in its own network namespace on `cashpilot-isolated`, behind
 the fence, and the worker starts it only once the fence is in place
 ([Mysterium on the fenced bridge](docs/isolation.md#mysterium-on-the-fenced-bridge)).
 
-A running node keeps working exactly as it is until you redeploy it, in any
-isolation mode: the upgraded worker does not stop, start or change it. The
-dashboard lists it under drift ("shares the host's network, where its
-NET_ADMIN reaches the host's firewall. Switch isolation on in Fleet, then
-redeploy Mysterium once"), and **Check isolation** fails on it.
+A running node keeps running until you redeploy it, in any isolation mode:
+the upgraded worker does not stop, start or change it. Redeploy it once to
+move it behind the fence. Until then the Fleet page shows it under its worker
+with a **Redeploy MystNodes to move behind the fence** button (or, with
+isolation off, says to switch it on first), the dashboard lists it under
+drift, and **Check isolation** fails on it.
 
 **What to do, in this order.**
 

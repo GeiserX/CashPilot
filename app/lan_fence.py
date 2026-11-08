@@ -529,6 +529,7 @@ _state: dict[str, Any] = {
     "earners_outside_stopped": [],
     # Fence-gated containers the guard holds stopped, by name, with the reason.
     "guard": {},
+    "unfenced": [],
 }
 #: The worker's public egress IP, set from the heartbeat's detection
 #: (app/worker_api.py). The next apply adds its drop.
@@ -1125,6 +1126,22 @@ def _gated(client: Any) -> list[Any]:
     ]
 
 
+def _unfenced(client: Any) -> list[dict[str, str]]:
+    """Fence-gated services' containers still on the host's network (2.0.6 or earlier).
+
+    Left running as they are; the Fleet page offers the redeploy that moves them.
+    """
+    orch = _orchestrator()
+    from app.constants import LABEL_SERVICE
+
+    found = []
+    for c in _managed(client):
+        slug = str((c.labels or {}).get(LABEL_SERVICE) or "")
+        if orch.fence_gated(slug) and orch.predates_fence(c):
+            found.append({"name": c.name, "slug": slug, "service": orch.service_name(slug)})
+    return found
+
+
 def guard() -> dict[str, str]:
     """Every GUARD_SECONDS: hold each fence-gated container to the fence. Never raises.
 
@@ -1143,8 +1160,10 @@ def guard() -> dict[str, str]:
     held: dict[str, str] = {}
     try:
         if not orch.docker_available():
+            _state["unfenced"] = []
             return {}
         client = orch._get_client()
+        _state["unfenced"] = _unfenced(client)
         gated = _gated(client)
         if not gated:
             _state["guard"] = {}
@@ -1186,6 +1205,8 @@ def guard() -> dict[str, str]:
                 orch.GATED_DEPLOY_LOCK.release()
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
         logger.warning("Fence guard pass failed: %s", exc)
+        # Not a fresh scan: no Fleet button on a report that may be stale.
+        _state["unfenced"] = []
     _state["guard"] = held
     return held
 
@@ -1348,6 +1369,7 @@ def status() -> dict[str, Any]:
         "earners_outside": list(_state["earners_outside"]),
         "earners_outside_stopped": list(_state.get("earners_outside_stopped") or []),
         "guard": dict(_state.get("guard") or {}),
+        "unfenced": [dict(u) for u in _state.get("unfenced") or []],
     }
 
 

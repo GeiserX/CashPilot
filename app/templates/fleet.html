@@ -460,6 +460,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
   // Turning isolation on, per worker id: {busy}, {done}, or {error}.
   const _fenceSwitch = {};
+  const _movedBehindFence = new Set();
 
   // The LAN fence of one worker (app/lan_fence.py), from its heartbeat. Says
   // nothing when the fence holds and every earner sits behind it.
@@ -498,11 +499,52 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (held.length) {
       line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">Held stopped: ${held.map(([n, why]) => `${esc(n)} (${esc(why)})`).join('; ')}. A missing LAN fence clears by itself; any other reason needs a redeploy from the dashboard.</span>${line ? '</div>' : ''}`;
     }
+    // A Mysterium from 2.0.6 or earlier, still on the host's network: left
+    // running until its owner redeploys it, which moves it behind the fence.
+    // A node moved from this page stays hidden until the worker stops reporting
+    // it: a heartbeat sent before the move must not offer the move again.
+    for (const key of [..._movedBehindFence]) {
+      if (key.startsWith(`${w.id}:`) && !(iso.unfenced || []).some((u) => key === `${w.id}:${u.slug}`)) _movedBehindFence.delete(key);
+    }
+    const unfenced = (iso.unfenced || []).filter((u) => !_movedBehindFence.has(`${w.id}:${u.slug}`));
+    if (unfenced.length) {
+      const fenced = iso.mode === 'on' || iso.mode === 'operator';
+      const what = unfenced.map((u) => esc(u.service || u.slug)).join(', ');
+      const order = fenced
+        ? 'It keeps running as it is until you redeploy it once, which moves it behind the fence and keeps its identity.'
+        : iso.mode === 'unsupported'
+          ? 'It keeps running as it is. Podman cannot be fenced: run it on Docker with isolation on, or on your own network (CASHPILOT_CONTAINER_NETWORK).'
+          : iso.mode === 'off'
+            ? 'It keeps running as it is. Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy it once to move it behind the fence.'
+            : 'It keeps running as it is. Switch isolation on first, then redeploy it once to move it behind the fence.';
+      const redeploy = _isOwner && fenced && !(sw && sw.busy)
+        ? unfenced.map((u) => ` <button class="btn btn-primary btn-sm btn-unfenced-redeploy" data-worker-id="${w.id}" data-slug="${esc(u.slug)}" data-service="${esc(u.service || u.slug)}">Redeploy ${esc(u.service || u.slug)} to move behind the fence</button>`).join('')
+        : '';
+      line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">${what} still shares this host's network, where its NET_ADMIN can rewrite the host's firewall. ${order}</span>${redeploy}${line ? '</div>' : ''}`;
+    }
     if (sw) {
       const tone = sw.error ? 'text-fail' : sw.busy ? 'muted' : 'text-ok';
       line += `<div class="iso-line ${tone}">${esc(sw.error || sw.busy || sw.done)}</div>`;
     }
     return line ? `<tr class="worker-detail"><td colspan="7"><div class="iso-report">${line} <a href="https://geiserx.github.io/CashPilot/isolation/#lan-isolation-by-default" target="_blank" rel="noopener noreferrer">How it works</a></div></td></tr>` : '';
+  }
+
+  async function moveBehindFence(workerId, slug, service) {
+    if (!confirm(`Redeploy ${service} to move it behind the LAN fence?\n\n`
+      + '- The worker reads the node\'s identity, replaces the container on the fenced network and checks the new one has the same identity.\n'
+      + '- The data volume is kept. If the identity differs, the node is held stopped and the volume is left as it is.\n'
+      + '- The node is down for under a minute.')) return;
+    _fenceSwitch[workerId] = { busy: `Moving ${service} behind the fence…` };
+    loadFleet();
+    try {
+      // An empty body redeploys from the recorded spec; a fence-gated service lands on the fenced bridge.
+      await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: {} });
+      _movedBehindFence.add(`${workerId}:${slug}`);
+      _fenceSwitch[workerId] = { done: `${service} was redeployed behind the fence.` };
+    } catch (err) {
+      _fenceSwitch[workerId] = { error: `${service} was not moved: ${err.message}` };
+    }
+    loadFleet();
   }
 
   async function enableFence(workerId, name) {
@@ -840,6 +882,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (fenceBtn) {
       const id = parseInt(fenceBtn.dataset.workerId, 10);
       if (!isNaN(id) && !(_fenceSwitch[id] && _fenceSwitch[id].busy)) enableFence(id, fenceBtn.dataset.workerName);
+      return;
+    }
+
+    const unfencedBtn = e.target.closest('.btn-unfenced-redeploy');
+    if (unfencedBtn) {
+      const id = parseInt(unfencedBtn.dataset.workerId, 10);
+      if (!isNaN(id) && !(_fenceSwitch[id] && _fenceSwitch[id].busy)) moveBehindFence(id, unfencedBtn.dataset.slug, unfencedBtn.dataset.service);
       return;
     }
 

@@ -271,6 +271,7 @@ class TestTheWorkerRefuses:
 def markers(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrator, "STOPPED_MARKER", str(tmp_path / "stopped"))
     monkeypatch.setattr(orchestrator, "IDENTITY_DIR", str(tmp_path / "identity"))
+    monkeypatch.setattr(orchestrator, "_MISMATCH_HELD", {}, raising=False)
     return tmp_path
 
 
@@ -981,3 +982,171 @@ def test_a_ui_default_on_any_loopback_address_is_no_inbound_exception():
     assert lan_isolation.published_ports(svc("127.0.0.2")) == []
     assert lan_isolation.published_ports(svc("::1,localhost")) == []
     assert lan_isolation.published_ports(svc("192.168.1.5")) == ["192.168.1.5:4449"]
+
+
+# ---------------------------------------------------------------------------
+# (m) The upgrade: the old node keeps earning, the Fleet page offers the move,
+#     and the move compares the identity with the node it replaces
+# ---------------------------------------------------------------------------
+
+IDENTITY_A = "0x" + "a" * 40
+IDENTITY_B = "0x" + "b" * 40
+
+
+def _says(identity):
+    return (0, b'{"identities":[{"id":"' + identity.encode() + b'"}]}')
+
+
+class TestTheUpgrade:
+    @pytest.mark.parametrize("mode", [lan_fence.MODE_ON, lan_fence.MODE_LEGACY])
+    def test_the_old_node_keeps_running_and_the_fleet_page_is_told(self, markers, mode):
+        node = _old_node()
+        problem = None if mode == lan_fence.MODE_ON else lan_fence.mode_problem(mode)
+        _guard([node], problem=problem, mode=mode)
+        node.stop.assert_not_called()
+        node.restart.assert_not_called()
+        node.remove.assert_not_called()
+        assert lan_fence.status()["unfenced"] == [
+            {"name": "cashpilot-mysterium", "slug": "mysterium", "service": MYST["name"]}
+        ]
+
+    def test_control_a_fenced_node_is_not_reported_as_unfenced(self, markers):
+        _guard([_node()])
+        assert lan_fence.status()["unfenced"] == []
+
+    def _old_with_data(self, identity):
+        old = _old_node()
+        old.attrs["Mounts"] = [
+            {"Type": "bind", "Source": "/mnt/appdata/myst/data", "Destination": "/var/lib/mysterium-node", "RW": True}
+        ]
+        old.exec_run.return_value = _says(identity)
+        return old
+
+    def test_the_redeploy_reads_the_running_old_nodes_identity_before_replacing_it(self, markers):
+        old = self._old_with_data(IDENTITY_A)
+        order = []
+        old.exec_run.side_effect = lambda *a, **k: order.append("read") or _says(IDENTITY_A)
+        old.stop.side_effect = lambda **_: order.append("stop")
+        old.remove.side_effect = lambda **_: order.append("remove")
+        client, _ = _raw_deploy(old=old, volumes={"mysterium-data": {"bind": "/var/lib/mysterium-node", "mode": "rw"}})
+        assert order[0] == "read" and "stop" in order
+        assert orchestrator._pending_identity("cashpilot-mysterium") == IDENTITY_A
+        volumes = client.containers.create.call_args.kwargs["volumes"]
+        assert "/mnt/appdata/myst/data" in str(volumes), "the node's own data must come with it"
+
+    def test_a_different_identity_after_the_move_holds_it_and_keeps_the_volume(self, markers):
+        _raw_deploy(old=self._old_with_data(IDENTITY_A))
+        new = _node()
+        new.exec_run.return_value = _says(IDENTITY_B)
+        held, _ = _guard([new])
+        new.stop.assert_called_once()
+        new.remove.assert_not_called()
+        assert IDENTITY_A in held["cashpilot-mysterium"] and IDENTITY_B in held["cashpilot-mysterium"]
+        # Sticky: stopped, it reads no identity, and it still is not started.
+        stopped = _node(status="exited")
+        _guard([stopped])
+        stopped.start.assert_not_called()
+
+    def test_control_the_same_identity_after_the_move_runs(self, markers):
+        _raw_deploy(old=self._old_with_data(IDENTITY_A))
+        new = _node()
+        new.exec_run.return_value = _says(IDENTITY_A)
+        held, _ = _guard([new])
+        new.stop.assert_not_called()
+        assert held == {}
+        assert orchestrator._pending_identity("cashpilot-mysterium") is None
+
+
+def test_the_fleet_page_offers_the_move_and_says_isolation_first():
+    fleet = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+    assert "iso.unfenced" in fleet
+    assert "to move behind the fence</button>" in fleet
+    assert "Switch isolation on first, then redeploy it once" in fleet
+    assert "moveBehindFence(" in fleet
+
+
+class TestAHoldThatCannotBeWritten:
+    """Found in the lab: a pending record the worker could not overwrite let the guard restart the node each pass."""
+
+    def _unwritable(self, markers):
+        orchestrator._remember_identity("cashpilot-mysterium", IDENTITY_A)
+        (markers / "identity").chmod(0o500)
+        (markers / "identity" / "cashpilot-mysterium").chmod(0o400)
+
+    def test_the_hold_survives_and_the_node_is_not_started_again(self, markers):
+        self._unwritable(markers)
+        try:
+            new = _node()
+            new.exec_run.return_value = _says(IDENTITY_B)
+            _guard([new])
+            new.stop.assert_called_once()
+            stopped = _node(status="exited")
+            held, _ = _guard([stopped])
+            stopped.start.assert_not_called()
+            assert IDENTITY_B in held["cashpilot-mysterium"]
+            with pytest.raises(orchestrator.ContainerNetworkError, match="identity"):
+                _start(_node(status="exited"))
+        finally:
+            (markers / "identity").chmod(0o700)
+
+    def test_control_a_redeploy_lifts_the_hold(self, markers):
+        self._unwritable(markers)
+        try:
+            new = _node()
+            new.exec_run.return_value = _says(IDENTITY_B)
+            _guard([new])
+        finally:
+            (markers / "identity").chmod(0o700)
+            (markers / "identity" / "cashpilot-mysterium").chmod(0o600)
+        orchestrator._remember_identity("cashpilot-mysterium", None)
+        stopped = _node(status="exited")
+        _guard([stopped])
+        stopped.start.assert_called_once()
+
+
+def test_a_failed_scan_drops_the_unfenced_report(markers):
+    """No Fleet button on a report the worker could not refresh."""
+    _guard([_old_node()])
+    assert lan_fence.status()["unfenced"]
+    client = MagicMock()
+    client.containers.list.side_effect = RuntimeError("docker is gone")
+    with (
+        patch.object(orchestrator, "docker_available", return_value=True),
+        patch.object(orchestrator, "_get_client", return_value=client),
+    ):
+        lan_fence.guard()
+    assert lan_fence.status()["unfenced"] == []
+
+
+def test_the_fleet_page_does_not_offer_a_move_it_just_made():
+    fleet = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+    assert "_movedBehindFence.add(" in fleet
+    assert "!_movedBehindFence.has(" in fleet
+
+
+class TestTheMoveNeedsTheOldIdentity:
+    def test_a_running_node_whose_identity_cannot_be_read_is_not_replaced(self, markers):
+        old = _node()
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not touched"):
+            _raw_deploy(old=old)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+
+    def test_control_a_stopped_node_is_replaced_without_the_check(self, markers):
+        old = _node(status="exited")
+        old.exec_run.return_value = (1, b"")
+        old.attrs["Mounts"] = []
+        _raw_deploy(old=old)
+        old.remove.assert_called_once()
+
+    def test_a_redeploy_lifts_a_hold_kept_only_in_memory(self, markers):
+        orchestrator._remember_identity("cashpilot-mysterium", IDENTITY_A)
+        orchestrator._MISMATCH_HELD["cashpilot-mysterium"] = "its identity is 0xb, not 0xa"
+        old = _node(status="exited")
+        old.attrs["Mounts"] = []
+        _raw_deploy(old=old)
+        assert "cashpilot-mysterium" not in orchestrator._MISMATCH_HELD
+        # The identity to match is kept, so the restored volume is still checked.
+        assert orchestrator._pending_identity("cashpilot-mysterium") == IDENTITY_A
