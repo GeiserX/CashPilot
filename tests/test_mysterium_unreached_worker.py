@@ -11,7 +11,6 @@ and is held back in the first collection after a start while workers settle.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,7 +19,6 @@ from app import credential_test, database, main
 from app.collectors.base import KIND_UNREAD
 from tests.test_mysterium_node_balance import CLOUD, _collector, _node
 
-ROOT = Path(__file__).resolve().parent.parent
 NOWHERE = "ran on no CashPilot worker"
 
 
@@ -164,17 +162,18 @@ class TestTheFirstCollectionAfterAStart:
     def test_only_the_first_collection(self):
         assert _attach([FRESH, STALE], collected=True).workers_settling is False
 
-    def test_a_collection_marks_the_process_as_collected(self):
-        source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
-        body = source[source.index("async def _run_collection") : source.index("async def _run_data_retention")]
-        assert "_collected_since_start = True" in body[body.index("finally:") :]
-
 
 @pytest.fixture
 def db(tmp_path):
     with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"):
         asyncio.run(database.init_db())
         yield
+
+
+def test_a_collection_marks_the_process_as_collected(db):
+    with patch.object(main, "_collected_since_start", False):
+        asyncio.run(main._run_collection())
+        assert main._collected_since_start is True
 
 
 def test_the_known_nodes_are_every_node_ever_read_for_that_platform(db):
