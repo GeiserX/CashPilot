@@ -2263,6 +2263,8 @@ class TestLifespanScheduler:
                         # Activity: raw-address purge, spike check, network
                         # table refresh. Not spawned at startup.
                         "activity_hourly",
+                        # Device registrations the provider asked to retry later.
+                        "retry_device_links",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():

@@ -3436,6 +3436,7 @@ const CP = (() => {
         ${todo.length ? `
         <div class="device-link-title">Link this device to your account</div>
         <p class="device-link-text">${escapeHtml(todo[0].steps)}</p>
+        ${todo.some(l => l.retrying) ? `<p class="device-link-text">The provider does not know this new device yet. CashPilot keeps trying to add it for a day and tells you if it cannot.</p>` : ''}
         ${todo.map(l => item(l, true)).join('')}` : ''}
         ${done.length ? `
         <div class="device-link-title">Added to your account</div>

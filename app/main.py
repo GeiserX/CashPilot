@@ -72,6 +72,7 @@ from app import (
     usage,
     version,
 )
+from app.collectors.base import REGISTER_PENDING
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
 
 logging.basicConfig(
@@ -1269,13 +1270,27 @@ async def _track_fully_configured_services() -> int:
         return 0
 
 
-async def _register_device(slug: str, device_id: str, env: dict[str, Any]) -> bool:
-    """Add a deployed device to the user's account with the stored collector credentials.
+#: A pending registration is retried this long after the first refusal, then
+#: twice as long each time, up to the cap; after the give-up it is the user's.
+DEVICE_LINK_FIRST_RETRY = timedelta(minutes=6)
+DEVICE_LINK_MAX_RETRY = timedelta(hours=4)
+DEVICE_LINK_GIVE_UP = timedelta(hours=24)
 
-    Only where the provider's API can do it and the credentials are saved; anything
-    else is False, and the deploy form shows the manual step instead. Never fails
-    the deploy, which has already happened.
-    """
+
+def _db_time(when: datetime) -> str:
+    """The format SQLite's datetime('now') writes, so stored times compare as text."""
+    return when.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _device_name(device_id: str, env: dict[str, Any]) -> str:
+    name = str(env.get("DEVICE_NAME") or "").strip()
+    if not name or "${" in name:  # an unfilled catalog default is not a name
+        name = f"cashpilot-{device_id[:8]}"
+    return name
+
+
+async def _try_register(slug: str, device_id: str, name: str) -> bool | str:
+    """One registration attempt: True, False or REGISTER_PENDING. Never raises."""
     from app.collectors import build_collector
 
     try:
@@ -1285,15 +1300,103 @@ async def _register_device(slug: str, device_id: str, env: dict[str, Any]) -> bo
     if collector is None:
         return False
     try:
-        name = str(env.get("DEVICE_NAME") or "").strip()
-        if not name or "${" in name:  # an unfilled catalog default is not a name
-            name = f"cashpilot-{device_id[:8]}"
-        return bool(await asyncio.wait_for(collector.register_device(device_id, name), 20))
+        result = await asyncio.wait_for(collector.register_device(device_id, name), 20)
+        return result if result == REGISTER_PENDING else bool(result)
     except Exception as exc:
         logger.warning("Could not add the %s device to the account: %s", slug, notify.redact(str(exc)))
         return False
     finally:
         await collector.close()
+
+
+async def _register_device(slug: str, device_id: str, env: dict[str, Any]) -> bool | None:
+    """Add a deployed device to the user's account with the stored collector credentials.
+
+    Only where the provider's API can do it and the credentials are saved; anything
+    else is False, and the deploy form shows the manual step instead. None when
+    the provider has not seen the new device yet: the registration is stored and
+    retried by the scheduler (_retry_device_links). Never fails the deploy, which
+    has already happened.
+    """
+    result = await _try_register(slug, device_id, _device_name(device_id, env))
+    if result == REGISTER_PENDING:
+        now = datetime.now(UTC)
+        try:
+            await database.save_pending_device_link(
+                slug, device_id, _device_name(device_id, env), _db_time(now + DEVICE_LINK_FIRST_RETRY)
+            )
+        except Exception as exc:
+            logger.warning("Could not store the %s registration to retry: %s", slug, exc)
+            return False
+        return None
+    return bool(result)
+
+
+async def _device_still_deployed(slug: str, device_id: str) -> bool:
+    """Whether ``device_id`` still runs: a deployment's id, or a proxied copy's derived one."""
+    link = (catalog.get_service(slug) or {}).get("device_link") or {}
+    if not link.get("id_env"):
+        return False
+    deployed = await database.get_deployed_env_values(slug, link["id_env"])
+    if device_id in deployed:
+        return True
+    for copy in await database.list_proxied_copies():
+        if copy["slug"] != slug:
+            continue
+        for original in deployed:
+            try:
+                if proxies.copy_device_id(original, copy["proxy_id"]) == device_id:
+                    return True
+            except ValueError:
+                continue
+    return False
+
+
+async def _retry_device_links() -> None:
+    """Retry the registrations a provider asked to try again later, with backoff."""
+    now = datetime.now(UTC)
+    for row in await database.list_pending_device_links():
+        if row["gave_up"] or row["next_at"] > _db_time(now):
+            continue
+        slug, device_id = row["slug"], row["device_id"]
+        if not await _device_still_deployed(slug, device_id):
+            await database.delete_pending_device_link(slug, device_id)
+            continue
+        result = await _try_register(slug, device_id, row["name"])
+        if result is True:
+            await database.delete_pending_device_link(slug, device_id)
+            await database.record_health_event(slug, "device_linked", f"{device_id} added to the account")
+            logger.info(
+                "Added the %s device %s to the account after %d retries", slug, device_id[:8], row["attempts"] + 1
+            )
+            continue
+        attempts = row["attempts"] + 1
+        first = datetime.strptime(row["first_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+        if now - first >= DEVICE_LINK_GIVE_UP:
+            await database.update_pending_device_link(
+                slug, device_id, attempts=attempts, next_at=row["next_at"], gave_up=True
+            )
+            svc = catalog.get_service(slug) or {}
+            step = catalog.device_link_step(svc, {(svc.get("device_link") or {}).get("id_env"): device_id}) or {}
+            message = (
+                f"{svc.get('name') or slug} never accepted the device {device_id} after a day of retries, "
+                f"so it earns for nobody. {step.get('steps', '')} {step.get('url', '')}"
+            ).strip()
+            if alert_id := await database.record_alert("notice", slug, message):
+                _spawn(
+                    _push_alert(
+                        "notice",
+                        slug,
+                        f"CashPilot: {svc.get('name') or slug} device not on your account",
+                        message,
+                        alert_id,
+                    )
+                )
+            continue
+        wait = min(DEVICE_LINK_FIRST_RETRY * (2**attempts), DEVICE_LINK_MAX_RETRY)
+        await database.update_pending_device_link(
+            slug, device_id, attempts=attempts, next_at=_db_time(now + wait), gave_up=False
+        )
 
 
 def _unlinked_devices_warning(result: Any) -> str:
@@ -2011,6 +2114,15 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=COLLECT_INTERVAL_MIN,
         id="collect",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        _retry_device_links,
+        "interval",
+        minutes=3,
+        id="retry_device_links",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -3429,7 +3541,9 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
     # From the merged env: a redeploy with a blank form still runs the recorded id.
     if link := catalog.device_link_step(svc, merged_env):
-        link["registered"] = await _register_device(slug, link["id"], merged_env)
+        registered = await _register_device(slug, link["id"], merged_env)
+        link["registered"] = registered is True
+        link["retrying"] = registered is None
         response["device_link"] = link
     if divergence:
         response["kept_from_previous_deployment"] = divergence
@@ -4380,7 +4494,9 @@ async def api_add_proxied_copy(
         )
     # The copy is a new device: add it to the account as a deploy does, or show the step.
     if step := catalog.device_link_step(svc, earner["env"]):
-        step["registered"] = await _register_device(slug, step["id"], earner["env"])
+        registered = await _register_device(slug, step["id"], earner["env"])
+        step["registered"] = registered is True
+        step["retrying"] = registered is None
         response["device_link"] = step
     return response
 

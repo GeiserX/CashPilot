@@ -10,11 +10,26 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## Unreleased
+## [2.0.5] - 2026-11-08
 
 ### Documentation
 
+- Regenerate CHANGELOG.md (#666)
+
+### Fixes
+
+- Keep adding a new ProxyRack device until the account accepts it, instead of dropping it (#664)
+
+## [2.0.4] - 2026-11-08
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#662)
 - Regenerate CHANGELOG.md (#661)
+
+### Fixes
+
+- Give each copy on a box its own device id, so a SpeedShare copy earns as a second device (#663)
 
 ## [2.0.3] - 2026-11-08
 
