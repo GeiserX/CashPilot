@@ -1585,16 +1585,23 @@ const CP = (() => {
         const fix = inst.drift_has_record
           ? 'Redeploy it here: CashPilot keeps the settings it was deployed with.'
           : 'CashPilot has no record of how it was deployed, so it cannot rebuild it without losing its settings. Recreate it with the setting above, or remove it and deploy it again from the service page.';
+        // A fence-gated node still on the host's network (app/drift.py move_advice):
+        // the one action for this worker's isolation mode first, then what to fix
+        // before it, then the reasons.
+        const move = inst.drift_move;
+        const why = move
+          ? `${escapeHtml(move.action)}${move.warning ? ` ${escapeHtml(move.warning)}` : ''}${inst.drift_has_record ? '' : ` ${fix}`}${inst.drift.map(d => `<br>· ${escapeHtml(d)}`).join('')}`
+          : `container does not match the catalog: ${what}. ${fix}`;
         let actions = '';
         if (_isOwner && !inst.unmanaged) {
-          actions = inst.drift_has_record && inst.worker_id != null
+          actions = inst.drift_has_record && inst.worker_id != null && !(move && move.redeploy === false)
             ? `<button class="btn btn-primary btn-sm" data-action="redeployOnWorker" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Redeploy</button>`
             : `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>`;
           if (inst.worker_id != null) {
             actions += `<button class="btn btn-ghost btn-sm" data-action="ignoreDrift" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Ignore</button>`;
           }
         }
-        items.push({ level: 'fail', tag: 'Needs fixing', what: svc.name, where, why: `container does not match the catalog: ${what}. ${fix}`, actions });
+        items.push({ level: 'fail', tag: 'Needs fixing', what: svc.name, where, why, actions });
       }
     }
 
