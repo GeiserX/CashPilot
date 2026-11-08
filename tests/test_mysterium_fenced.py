@@ -1419,6 +1419,33 @@ class TestAMoveAsideThatFails:
         old.start.assert_called_once()
         docker.client.containers.create.assert_not_called()
 
+    def test_a_move_aside_that_times_out_puts_the_old_node_back_running(self, markers):
+        old = _running_old()
+        docker = _FakeDocker(old)
+
+        def renamed_then_timed_out(new):
+            docker.by_name.pop(old.name, None)
+            old.name = new
+            docker.by_name[new] = old
+            old.attrs["Name"] = "/" + new
+            old.rename.side_effect = lambda back: old.attrs.update(Name="/" + back)
+            raise ConnectionError("read timed out")
+
+        old.rename.side_effect = renamed_then_timed_out
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="running again"):
+            _raw_deploy(client=docker.client, old=old)
+        assert old.attrs["Name"] == "/cashpilot-mysterium"
+        old.start.assert_called_once()
+        docker.client.containers.create.assert_not_called()
+
+    def test_a_stop_that_times_out_on_a_running_node_is_not_replaced(self, markers):
+        old = _running_old()
+        docker = _FakeDocker(old)
+        old.stop.side_effect = ConnectionError("read timed out")
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="could not be stopped"):
+            _raw_deploy(client=docker.client, old=old)
+        old.rename.assert_not_called()
+
     def test_an_old_node_that_will_not_stop_is_not_replaced(self, markers):
         old = _running_old()
         docker = _FakeDocker(old)

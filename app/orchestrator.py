@@ -927,7 +927,9 @@ def deploy_raw(
         replaced_running = getattr(old, "status", "") == "running"
         try:
             old.stop(timeout=_get_stop_timeout(slug))
-        except APIError as exc:
+        except NotFound:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a timeout is no proof it stopped either
             logger.warning("Could not stop %s cleanly before replacing it: %s", name, exc)
             if _still_running(old):
                 # Its replacement would run beside it on the same identity volume.
@@ -939,8 +941,14 @@ def deploy_raw(
                 ) from exc
         try:
             replaced = _move_aside(client, old, name, slug)
-        except APIError as exc:
-            # Not renamed: it still holds its name, so it runs again as it was.
+        except NotFound:
+            raise
+        except Exception as exc:  # noqa: BLE001 - whatever failed, the old node must run again
+            # A rename that timed out may still have happened: give it its name back.
+            with contextlib.suppress(Exception):
+                old.reload()
+                if str((old.attrs or {}).get("Name") or "").lstrip("/") != name:
+                    old.rename(name)
             _restore_identity(name, identity_before, held_before)
             restored = "The previous container was not replaced and " + _start_again(
                 client, old, replaced_running, gated, name
