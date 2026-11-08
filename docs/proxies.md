@@ -202,9 +202,9 @@ the proxy's answer to its `CONNECT` request:
 
 ```bash
 # HTTP CONNECT proxy
-curl -v -m 15 -o /dev/null -x 'http://USER:PASS@gate.example.net:8080' https://earner-host.example:443/
+curl -v -m 15 -o /dev/null --noproxy '' -x 'http://USER:PASS@gate.example.net:8080' https://earner-host.example:443/
 # SOCKS5 proxy, name resolved by the proxy
-curl -v -m 15 -o /dev/null -x 'socks5h://USER:PASS@gate.example.net:7000' https://earner-host.example:443/
+curl -v -m 15 -o /dev/null --noproxy '' -x 'socks5h://USER:PASS@gate.example.net:7000' https://earner-host.example:443/
 ```
 
 A `403`, `Access violation`, `connection not allowed by ruleset` or a closed
@@ -232,9 +232,12 @@ docker logs "$TUN" 2>&1 | grep -i 'replied with\|error' | tail -5
 Any HTTP status from the far server, even `404`, means the path works. A
 TLS error such as `SSL_ERROR_SYSCALL`, `Connection reset by peer` or `Empty
 reply from server` through the tunnel, where the control got a status, means
-the proxy closed the connection. The tunnel's log then has a line such as
-`Server replied with 403 [Reason: Access violation]`. It names the port; the
-address in it is a placeholder from the tunnel's DNS, not the real one.
+something closed the connection. If the proxy refused it, the tunnel's log has
+a line such as `Server replied with 403 [Reason: Access violation]`, naming the
+port; the address in it is a placeholder from the tunnel's DNS, not the real
+one. With no such line, the earner's server may be refusing the proxy's exit
+IP rather than the proxy refusing the server, since the control and the
+tunnel leave from different addresses.
 
 !!! warning "A plain port check proves nothing through the tunnel"
 

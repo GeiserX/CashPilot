@@ -35,8 +35,9 @@ redeploy it. Nothing moves on its own, so you choose when.
 
 The node's identity lives in its data volume. If a redeploy ever comes up on
 an empty volume, it creates a new identity, and the old one's reputation and
-unsettled earnings stay with the old keys. The identity check above catches
-that case only when it can read both identities. Take a backup first:
+unsettled earnings stay with the old keys. The identity check above refuses
+to replace a running node whose identity it cannot read, but a node that is
+already stopped is replaced without the check. Take a backup first:
 [Backing up node identities](backup.md).
 
 ### 2. Write down the current identity
@@ -83,8 +84,19 @@ from starting.
 
 ## Move it
 
-Redeploy Mysterium on that machine from the dashboard. It keeps its data
-volume, so it keeps its identity and its earnings. The
+On the **Fleet** page, a node still on the host's network shows under its
+worker with a **Redeploy MystNodes to move behind the fence** button. Press
+it, or redeploy Mysterium on that machine from the dashboard; both do the
+same. With isolation off, the page says to switch it on first. The node keeps
+its data volume, so it keeps its identity and its earnings.
+
+If the running node does not answer when the worker reads its identity, the
+move is refused and the old container is left as it was: "its identity could
+not be read from the running node ... Try again in a minute." A node that is
+broken for good can be stopped from the dashboard first; a stopped node is
+replaced without the check, so have your backup ready.
+
+The
 [upgrade notes](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md)
 cover the same move, including going back to 2.0.6.
 
@@ -146,7 +158,7 @@ from outside and logs the result:
 docker logs cashpilot-mysterium 2>&1 | grep -E 'All ports .* are reachable|Failed to check manual ports' | tail -5
 ```
 
-`All ports [56000 56001] are reachable` (your ports) means the router forward
+`All ports [<port> <port>] are reachable`, with ports from your range, means the router forward
 works. `Failed to check manual ports ... globally` means it does not. Both
 lines appear only when a session starts, so wait for some traffic.
 [Port forwarding](guides/mysterium.md#port-forwarding) in the MystNodes guide
@@ -189,9 +201,17 @@ start.
 
 1. **Pick a range below the start of the ephemeral range**, so the kernel never
    gives those ports to anyone else. If you must stay inside it, reserve the
-   ports so the kernel never hands them out:
-   `sysctl -w net.ipv4.ip_local_reserved_ports=<start>-<end>` (add it to
-   `/etc/sysctl.conf` or a file in `/etc/sysctl.d/` so it survives a reboot).
+   ports so the kernel never hands them out. The setting is one list, and
+   writing it replaces what is there, so read it first and add your range to
+   it:
+
+    ```bash
+    sysctl net.ipv4.ip_local_reserved_ports        # empty, or e.g. 8080,9000-9010
+    sudo sysctl -w net.ipv4.ip_local_reserved_ports='8080,9000-9010,<start>-<end>'
+    ```
+
+    Put the same full list in a file under `/etc/sysctl.d/` so it survives a
+    reboot, and check no other file there sets it too.
 2. **Check nothing holds the range now**, before you deploy:
 
     ```bash
@@ -209,7 +229,10 @@ start.
 5. **Several hosts behind one public IP need one range each.** A router
    forwards a port to one LAN address only, so two nodes in one house cannot
    share a range. Give each host its own range with no overlap, and one
-   forward per host.
+   forward per host. Separate ranges only stop the ports clashing. Whether a
+   second node on the same public IP gets any traffic is up to Mysterium:
+   read the warning in the [MystNodes guide](guides/mysterium.md) before you
+   count on it.
 
 The catalog's default range is the `UDP_PORTS` field in
 [services/bandwidth/mysterium.yml](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/mysterium.yml).

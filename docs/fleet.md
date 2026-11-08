@@ -217,11 +217,11 @@ A [proxied copy](proxies.md) adds a tunnel container next to each earner.
 memory, refreshed every few minutes. For a snapshot of everything at once:
 
 ```bash
-docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' \
-  $(docker ps -q --filter name=cashpilot-)
+docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'
 ```
 
-CPU is per core: `100%` is one full core. Take a few snapshots at different
+It lists every running container, including earners you started outside
+CashPilot. CPU is per core: `100%` is one full core. Take a few snapshots at different
 times of day, since bandwidth earners and exits are busiest when someone is
 buying traffic. `docker stats` counts only what runs inside containers, so
 also look at the host as a whole (`free -m`, `uptime`) and at the CashPilot UI
