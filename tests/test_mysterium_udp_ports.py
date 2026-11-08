@@ -29,16 +29,16 @@ def _udp(sent):
 def test_a_first_deploy_uses_the_range_the_guide_says_to_forward(client):
     resp, sent = _deploy(client, {"env": {}})
     assert resp.status_code == 200, resp.text
-    assert " --udp.ports=56000:56029 service " in sent["command"]
+    assert " --udp.ports=23000:23029 service " in sent["command"]
     # Published 1:1 on the bridge, so the router's forward reaches the node unchanged.
-    assert _udp(sent) == [f"{p}/udp" for p in range(56000, 56030)]
-    assert all(sent["ports"][f"{p}/udp"] == p for p in range(56000, 56030))
+    assert _udp(sent) == [f"{p}/udp" for p in range(23000, 23030)]
+    assert all(sent["ports"][f"{p}/udp"] == p for p in range(23000, 23030))
 
 
 def test_a_node_deployed_before_the_setting_existed_gets_the_default(client):
     resp, sent = _deploy(client, {"env": {}}, recorded=_record({"UI_ADDRESS": "127.0.0.1"}))
     assert resp.status_code == 200, resp.text
-    assert " --udp.ports=56000:56029 service " in sent["command"]
+    assert " --udp.ports=23000:23029 service " in sent["command"]
 
 
 def test_a_typed_range_reaches_the_node(client):
@@ -50,7 +50,7 @@ def test_a_typed_range_reaches_the_node(client):
 
 def test_a_blank_redeploy_keeps_the_range_this_machine_was_given(client):
     recorded = _record({"UDP_PORTS": "41000:41050"})
-    for env in ({}, {"UDP_PORTS": ""}, {"UDP_PORTS": "56000:56029"}):
+    for env in ({}, {"UDP_PORTS": ""}, {"UDP_PORTS": "23000:23029"}):
         resp, sent = _deploy(client, {"env": env}, recorded=recorded)
         assert resp.status_code == 200, resp.text
         assert " --udp.ports=41000:41050 service " in sent["command"]
@@ -83,5 +83,5 @@ def test_a_recorded_reversed_range_is_refused_too(client):
 
 def test_the_compose_rendering_uses_the_default_range():
     service = compose_generator._service_to_compose(catalog.get_service("mysterium"), None, None, None)
-    assert " --udp.ports=56000:56029 service " in service["command"]
-    assert "56000-56029:56000-56029/udp" in service["ports"]
+    assert " --udp.ports=23000:23029 service " in service["command"]
+    assert "23000-23029:23000-23029/udp" in service["ports"]

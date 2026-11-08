@@ -776,7 +776,8 @@ def reattach(client: Any, net: Any) -> list[str]:
         try:
             net.disconnect(c, force=True)
             net.connect(c)
-            if "network" in error and "not found" in error:
+            # A fence-gated one is started by the guard alone, after all its checks.
+            if "network" in error and "not found" in error and not _is_gated(c):
                 c.start()
             moved.append(c.name)
         except Exception as exc:  # noqa: BLE001 - logged; the next check tries again
@@ -784,6 +785,13 @@ def reattach(client: Any, net: Any) -> list[str]:
     if moved:
         logger.info("Reattached %s to the recreated %s network", ", ".join(moved), NETWORK_NAME)
     return moved
+
+
+def _is_gated(container: Any) -> bool:
+    from app.constants import LABEL_SERVICE
+
+    slug = str((getattr(container, "labels", None) or {}).get(LABEL_SERVICE) or "")
+    return _orchestrator()._gated_container(slug, container)
 
 
 def _subnet(net: Any) -> str:
@@ -1158,12 +1166,14 @@ def guard() -> dict[str, str]:
     """
     orch = _orchestrator()
     held: dict[str, str] = {}
+    scanned = False
     try:
         if not orch.docker_available():
             _state["unfenced"] = []
             return {}
         client = orch._get_client()
         _state["unfenced"] = _unfenced(client)
+        scanned = True
         gated = _gated(client)
         if not gated:
             _state["guard"] = {}
@@ -1190,25 +1200,79 @@ def guard() -> dict[str, str]:
                     with contextlib.suppress(RuntimeError, IsolationConflict):
                         apply_fence(client)
             stopped = orch.user_stopped()
+            failed = orch.deploy_failed()
             for c in gated:
                 running = c.status == "running" and c.name not in stopped_now
-                problem = fence or orch.gated_spec_problem(c, mode) or (None if deploying else orch.identity_problem(c))
+                problem = (
+                    fence
+                    or (FAILED_DEPLOY if c.name in failed else None)
+                    or orch.gated_spec_problem(c, mode)
+                    or (None if deploying else orch.identity_problem(c))
+                )
                 if problem:
                     held[c.name] = problem
                     if running:
                         _guard_stop(c, problem)
-                elif not deploying and c.status in ("exited", "created") and c.name not in stopped:
+                elif (
+                    not deploying
+                    and c.status in ("exited", "created")
+                    and c.name not in stopped
+                    # The old node a deploy moved aside: put back by its roll-back, never by the guard.
+                    and not c.name.endswith(orch.REPLACED_SUFFIX)
+                ):
                     c.start()
-                    logger.info("Started %s: the LAN fence is confirmed", c.name)
+                    if problem := _started_unattached(c, mode):
+                        # Up with no address on its network: never started again
+                        # by the guard until a deploy succeeds.
+                        held[c.name] = problem
+                        _guard_stop(c, problem)
+                        if not problem.startswith(UNREAD):
+                            orch._mark_failed(c.name, True)
+                    else:
+                        logger.info("Started %s: the LAN fence is confirmed and it is on its network", c.name)
         finally:
             if not deploying:
                 orch.GATED_DEPLOY_LOCK.release()
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
         logger.warning("Fence guard pass failed: %s", exc)
-        # Not a fresh scan: no Fleet button on a report that may be stale.
-        _state["unfenced"] = []
+        # No Fleet button on a report the scan could not refresh. A later step
+        # failing (another node's start) leaves a fresh report as it is.
+        if not scanned:
+            _state["unfenced"] = []
     _state["guard"] = held
     return held
+
+
+#: Why the guard holds a container a failed deploy left behind.
+FAILED_DEPLOY = "its last deploy failed and left this container behind. Redeploy it from the dashboard"
+
+
+#: A start the guard could not read back: stopped, but tried again next pass.
+UNREAD = "it could not be read back after its start"
+
+
+def _started_unattached(container: Any, mode: str | None) -> str | None:
+    """Why a container just started must stop: not running, or no address on its network.
+
+    Judged in ``on`` and ``operator`` mode, the only ones a fence-gated
+    container runs in (mode_problem).
+    """
+    if mode not in (MODE_ON, MODE_OPERATOR):
+        return None
+    expected = NETWORK_NAME if mode == MODE_ON else _orchestrator()._CONTAINER_NETWORK
+    try:
+        container.reload()
+    except Exception as exc:  # noqa: BLE001 - not confirmed is not attached
+        return f"{UNREAD} ({exc})"
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
+    nets = ((attrs.get("NetworkSettings") or {}).get("Networks") or {}) if isinstance(attrs, dict) else {}
+    address = str(((nets.get(expected) or {}) if isinstance(nets, dict) else {}).get("IPAddress") or "")
+    if state and not state.get("Running"):
+        return "it exited right after its start"
+    if not address:
+        return f"it started with no address on {expected}, so it has no network"
+    return None
 
 
 def _guard_stop(container: Any, reason: str) -> None:

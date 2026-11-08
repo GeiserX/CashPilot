@@ -53,13 +53,17 @@ docker:
         same range on your router. Each session takes about two ports, so the
         default 30 carry about 15 sessions at once, more than a home node gets.
         Every published port costs about 2.5 MB of memory in Docker's port
-        proxy, so a wider range only costs more. A forward you already have for
-        a wider range that contains this one (56000-56100) keeps working.
-      default: "56000:56029"
+        proxy, so a wider range only costs more. Keep it below 32768: ports
+        32768-60999 are Linux's ephemeral range, where any program on the host
+        can hold one for a moment, and one taken port fails the node's start.
+        A node that already has a range keeps it.
+      default: "23000:23029"
       # Without it the node picks from 10000:60000, so a forwarded range is
-      # never used and every session falls back to hole punching. 30 ports, a
-      # sub-range of the 56000:56100 default through 2.0.6, so the router
-      # forwards made for that one stay valid.
+      # never used and every session falls back to hole punching. 30 ports,
+      # below Linux's ephemeral range (32768-60999): Docker publishes the range
+      # 1:1 and fails the whole start on one port a host process holds, where a
+      # node on the host's network just skipped it. Through 2.1.0 the default
+      # was 56000:56029 (56000:56100 through 2.0.6); a range on record is kept.
       # ASCII digits only, as above; port_range checks start <= end <= 65535.
       pattern: '[0-9]{4,5}:[0-9]{4,5}'
       port_range: true
@@ -175,7 +179,7 @@ earnings:
   monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 (loopback by default) for management. VPS accepted. Port forwarding UDP 56000-56029 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 (loopback by default) for management. VPS accepted. Port forwarding UDP 23000-23029 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
 
 cashout:
   method: auto

@@ -803,6 +803,13 @@ class TestReattach:
         net.connect.assert_called_once_with(c)
         c.start.assert_called_once()
 
+    def test_a_fence_gated_one_is_moved_but_left_to_the_guard(self):
+        net = _network()
+        c = _orphan("cashpilot-mysterium", "old-id", error=self.GONE)
+        assert lan_fence.reattach(_docker(net, earners=[c]), net) == ["cashpilot-mysterium"]
+        net.connect.assert_called_once_with(c)
+        c.start.assert_not_called()
+
     def test_one_the_owner_stopped_is_moved_but_left_stopped(self):
         net = _network()
         c = _orphan("cashpilot-storj", "old-id")

@@ -167,9 +167,10 @@ every other earner:
   its namespace (flush its tables, take a LAN address, add a LAN route), what
   it sends to your LAN, the host, a tailnet or cloud metadata is dropped on
   the host.
-- Its UDP range (`UDP_PORTS`, 56000:56029 by default, inside the 56000:56100
-  default through 2.0.6) is published 1:1, so the forward on your router stays
-  valid. Each port goes to the same port in
+- Its UDP range (`UDP_PORTS`, 23000:23029 by default) is published 1:1, so
+  the forward on your router is the same as on the host's network. Docker
+  fails the whole start when a host program holds one of its ports, so the
+  default sits below Linux's ephemeral range (32768-60999). Each port goes to the same port in
   the node, with the customer's own source address. At most 1000 ports.
 - Its WebUI listens on `0.0.0.0` inside its namespace and is published only
   on the host addresses in `UI_ADDRESS`, `127.0.0.1` by default. The Tequila
