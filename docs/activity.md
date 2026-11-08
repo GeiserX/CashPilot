@@ -64,7 +64,8 @@ for the dashboard's usage graphs; Activity stores no second byte counter.
 
 ## Limits
 
-- **Host network** (Mysterium, for example): the earner shares the machine's
+- **Host network** (no catalog service; Mysterium shared it through 2.0.3, and
+  the socket proxy now refuses the helper described here): the earner shares the machine's
   socket table, so reading `/proc/net` would show every socket on the machine.
   Its helper joins the host network instead and asks the kernel for the socket
   list over `sock_diag`, which reports the cgroup each socket was created in.

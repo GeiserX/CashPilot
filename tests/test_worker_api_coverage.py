@@ -159,11 +159,7 @@ class TestValidateDeploySpecRejections:
             _validate_deploy_spec(spec)
         assert ei.value.status_code == 403
 
-    def test_host_network_mode_allowed_for_mysterium(self):
-        # mysterium.yml is the only catalog service declaring network_mode: host.
-        _validate_deploy_spec(DeploySpec(image="x", network_mode="host"), slug="mysterium")  # must not raise
-
-    @pytest.mark.parametrize("slug", ["honeygain", "storj", "not-a-real-slug", None])
+    @pytest.mark.parametrize("slug", ["mysterium", "honeygain", "storj", "not-a-real-slug", None])
     def test_host_network_mode_rejected_for_non_allowlisted_slug(self, slug):
         spec = DeploySpec(image="x", network_mode="host")
         with pytest.raises(HTTPException) as ei:

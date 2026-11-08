@@ -493,6 +493,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
     } else if (iso.mode === 'off' && outside.length === 0 && fence.state === 'reduced') {
       line = '<span class="muted">Isolation is off (CASHPILOT_ISOLATION=off). Earners still on the isolated network keep their internet; redeploy them to move them back to Docker\'s default bridge.</span>';
     }
+    // Fence-gated earners (Mysterium) the worker holds stopped, with why.
+    const held = Object.entries(iso.guard || {});
+    if (held.length) {
+      line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">Held stopped until the LAN fence and its settings are back: ${held.map(([n, why]) => `${esc(n)} (${esc(why)})`).join('; ')}. It starts by itself once they are.</span>${line ? '</div>' : ''}`;
+    }
     if (sw) {
       const tone = sw.error ? 'text-fail' : sw.busy ? 'muted' : 'text-ok';
       line += `<div class="iso-line ${tone}">${esc(sw.error || sw.busy || sw.done)}</div>`;

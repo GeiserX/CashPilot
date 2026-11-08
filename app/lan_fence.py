@@ -93,6 +93,9 @@ PODMAN_UNSUPPORTED = (
 
 #: Seconds between checks that the table is still in place.
 RECHECK_SECONDS = 300
+#: Seconds between the guard's checks while a fence-gated service (one that
+#: holds NET_ADMIN in its own namespace, Mysterium) is deployed on this worker.
+GUARD_SECONDS = 30
 
 #: (rule name, destination, sentinel address the isolation check connects to).
 #: A sentinel is an address nobody uses, so the only evidence a connect to it
@@ -524,6 +527,8 @@ _state: dict[str, Any] = {
     "fence": {"state": "n/a", "backend": None, "error": "", "applied_at": None},
     "earners_outside": [],
     "earners_outside_stopped": [],
+    # Fence-gated containers the guard holds stopped, by name, with the reason.
+    "guard": {},
 }
 #: The worker's public egress IP, set from the heartbeat's detection
 #: (app/worker_api.py). The next apply adds its drop.
@@ -1055,6 +1060,103 @@ def network_for_deploy() -> str | None:
     return NETWORK_NAME
 
 
+def fence_problem(client: Any) -> str | None:
+    """Why a fence-gated container must not start now, or None.
+
+    In ``on`` mode the table is read back by the helper and every rule it
+    should hold must be there, IPv6 drops included. Other modes have no fence
+    of ours to wait for: the operator's network carries the operator's rules,
+    and ``off`` or ``legacy`` was the owner's choice (docs/isolation.md).
+    """
+    try:
+        mode = resolve_mode(client)
+    except RuntimeError as exc:
+        return f"the isolation mode could not be read ({exc})"
+    if mode != MODE_ON:
+        return None
+    try:
+        result = read_fence(client)
+    except Exception as exc:  # noqa: BLE001 - the reason is the answer
+        return f"the LAN fence could not be read ({exc})"
+    if result is None:
+        return f"the {NETWORK_NAME} network does not exist, so the LAN fence is not in place"
+    if not result.get("present") or not result.get("matches"):
+        return "the LAN fence is not complete on this host, so the node stays stopped until the worker restores it"
+    return None
+
+
+def _gated(client: Any) -> list[Any]:
+    orch = _orchestrator()
+    from app.constants import LABEL_SERVICE
+
+    return [
+        c
+        for c in _managed(client)
+        if orch.fence_gated(str((c.labels or {}).get(LABEL_SERVICE) or "")) and not orch.is_proxied(c)
+    ]
+
+
+def guard() -> dict[str, str]:
+    """Every GUARD_SECONDS: hold each fence-gated container to the fence. Never raises.
+
+    A fence-gated service has no Docker restart policy, so this is what starts
+    it: after a deploy that left it created, after a reboot or a daemon
+    restart, after a crash. It starts one only when the fence is confirmed and
+    the container's shape is the catalog's, and never one the owner stopped.
+
+    It also stops one within GUARD_SECONDS when either goes: a rule deleted
+    from the table, the container recreated on the host network, privileged,
+    with a capability or an image the catalog does not give it. The fence is
+    then applied again; the next pass starts the container once it reads
+    complete. Returns the containers held stopped, with the reason.
+    """
+    orch = _orchestrator()
+    held: dict[str, str] = {}
+    try:
+        if not orch.docker_available():
+            return {}
+        client = orch._get_client()
+        gated = _gated(client)
+        if not gated:
+            _state["guard"] = {}
+            return {}
+        mode = resolve_mode(client)
+        fence = fence_problem(client)
+        # Container.status is read-only in docker-py; what this pass stopped is kept apart.
+        stopped_now: set[str] = set()
+        if fence and mode == MODE_ON:
+            # Stop first, so nothing runs while the table is put back.
+            for c in gated:
+                if c.status == "running":
+                    _guard_stop(c, fence)
+                    stopped_now.add(c.name)
+            with contextlib.suppress(RuntimeError, IsolationConflict):
+                apply_fence(client)
+        stopped = orch.user_stopped()
+        for c in gated:
+            running = c.status == "running" and c.name not in stopped_now
+            problem = fence or orch.gated_spec_problem(c, mode) or orch.identity_problem(c)
+            if problem:
+                held[c.name] = problem
+                if running:
+                    _guard_stop(c, problem)
+            elif c.status in ("exited", "created") and c.name not in stopped:
+                c.start()
+                logger.info("Started %s: the LAN fence is confirmed", c.name)
+    except Exception as exc:  # noqa: BLE001 - the next pass tries again
+        logger.warning("Fence guard pass failed: %s", exc)
+    _state["guard"] = held
+    return held
+
+
+def _guard_stop(container: Any, reason: str) -> None:
+    from app.constants import LABEL_SERVICE
+
+    slug = str((container.labels or {}).get(LABEL_SERVICE) or "")
+    logger.warning("Stopping %s: %s", container.name, reason)
+    container.stop(timeout=_orchestrator()._get_stop_timeout(slug))
+
+
 def effective_network(client: Any) -> tuple[str, str]:
     """(mode, the network earners should be on, or "" for the default bridge)."""
     mode = resolve_mode(client)
@@ -1204,6 +1306,7 @@ def status() -> dict[str, Any]:
         "fence": dict(_state["fence"]),
         "earners_outside": list(_state["earners_outside"]),
         "earners_outside_stopped": list(_state.get("earners_outside_stopped") or []),
+        "guard": dict(_state.get("guard") or {}),
     }
 
 

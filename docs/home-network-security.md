@@ -48,9 +48,9 @@ with nothing else you care about.
 - **A VLAN** does the same thing on a wired network, with a firewall rule on the
   router that lets the VLAN reach the internet but not your other VLANs.
 
-A segment protects against everything on that machine, including services that
-use the host's network directly, such as Mysterium. The container firewall
-below cannot confine those.
+A segment protects against everything on that machine, including a service
+that uses the host's network directly or breaks out of its container. The
+container firewall below cannot confine those.
 
 Storj, Sia (hostd) and Anyone Protocol need an inbound port forwarded, and
 Mysterium earns more with its UDP port range forwarded. Point those forwards
@@ -240,10 +240,12 @@ add INPUT -i "$BR" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 We checked that these rules load, but tested the blocking only for IPv4.
 
 **What it cannot cover.** A service on host networking uses the host's own
-interfaces, so a rule on a bridge does not apply to it. That is Mysterium today.
-Use a separate segment for the machine, run such services somewhere else, or
-fence its session interfaces as in
-[Mysterium, which uses host networking](isolation-check.md#mysterium-which-uses-host-networking).
+interfaces, so a rule on a bridge does not apply to it. No catalog service runs
+that way: after 2.0.3 Mysterium sits on the bridge in its own network
+namespace, with its UDP range published
+([Mysterium on the fenced bridge](isolation.md#mysterium-on-the-fenced-bridge)).
+For a node you run yourself on host networking, use a separate segment, or
+fence its session interfaces as in [Mysterium](isolation-check.md#mysterium).
 
 !!! warning "Tailscale on the host can bypass these rules"
 
@@ -289,8 +291,11 @@ shipped compose files, and with the raw Docker socket, which is root, in the
   `CASHPILOT_WORKER_BIND_ADDR`: the one the dashboard reaches it on, never
   `0.0.0.0` on a machine with a public address.
 - **Don't publish a node's own management UI to your LAN** unless you need it.
-  Mysterium's WebUI and API bind to the machine itself by default. Reach them
-  over an SSH tunnel, or add only your reverse proxy's address.
+  Mysterium's WebUI is published on `127.0.0.1` only by default, and its API
+  never leaves the node. Reach the WebUI over an SSH tunnel, or add only your
+  reverse proxy's address to `UI_ADDRESS`. A published port goes through
+  Docker's forwarding, so a host `INPUT` rule does not restrict it: limit it
+  with the address you publish on, or a rule in `DOCKER-USER`.
 
 ## 4. Don't run it next to what you cannot lose
 
@@ -376,9 +381,11 @@ was the limit that day, and CPU stayed at about six times runc's: 19 to 20 s for
   that capability back.
 - **A service on host networking gains little.** gVisor's own documentation says
   network passthrough "decreases the isolation to the host", and a service that
-  already shares the host's network, like Mysterium, has nothing left to
-  confine it there. A service that needs host networking
-  plus a TUN device, like Mysterium, is a poor fit.
+  already shares the host's network has nothing left to confine it there.
+- **Mysterium does not run under it.** gVisor gives it a TUN device, but not
+  `iptables-nft` or kernel WireGuard, which the node uses for its customers.
+  Its catalog entry requires `runc`, so `CASHPILOT_CONTAINER_RUNTIME=runsc`
+  does not reach it.
 - **Stock Unraid cannot run it at all.** Unraid runs from its initial RAM
   filesystem. That root has no parent mount, so gVisor cannot `pivot_root` out
   of it, and working around that with a chroot hits a second kernel rule: no new
@@ -429,8 +436,8 @@ For CashPilot's networks, add the passthrough runtimes to
 On an Ubuntu 24.04 host, each of these ran under `runsc-hostnet` on
 `cashpilot-isolated` without restarting and without name-lookup errors: EarnApp, Earn.fm, Honeygain, IPRoyal Pawns, PacketStream, ProxyBase,
 ProxyLite, ProxyRack, Repocket and Traffmonetizer, plus Bitping under
-`runsc-hostnet-raw`. We did not try Mysterium, which needs host networking and a
-TUN device, or Storj, whose disk traffic would pay gVisor's overhead on every
+`runsc-hostnet-raw`. Mysterium cannot run under it (see above). We did not try
+Storj, whose disk traffic would pay gVisor's overhead on every
 read and write.
 
 To make that stick across redeploys, set it on the worker, next to
@@ -443,7 +450,8 @@ CASHPILOT_CONTAINER_RUNTIME_OVERRIDES: bitping=runsc-hostnet-raw
 ```
 
 The runtime applies to containers on bridge networking when they are next
-deployed; host-networked services such as Mysterium keep Docker's default.
+deployed; a service whose catalog entry names a runtime, such as Mysterium
+(`runc`), keeps that one.
 `slug=runc` in the overrides runs one service under `runc`, the runtime Docker ships with; Storj is a good candidate. If the
 daemon does not provide a runtime you named, the deploy is refused and the running
 container is left alone. Nothing selects gVisor unless you set it

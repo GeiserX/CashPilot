@@ -171,9 +171,21 @@ def _service_to_compose(
         compose_svc["environment"] = {key: _escape_value(value) for key, value in env.items()}
 
     # Ports
-    ports = docker_conf.get("ports", [])
+    ports = [str(p) for p in docker_conf.get("ports", [])]
+    # Mysterium's WebUI on each UI_ADDRESS address and its UDP range 1:1, as the
+    # worker publishes them; Compose takes a range in one line.
+    ui = docker_conf.get("ui_port")
+    if isinstance(ui, dict):
+        for address in str(env.get(ui.get("env")) or "127.0.0.1").split(","):
+            address = "127.0.0.1" if address.strip() == "localhost" else address.strip()
+            if address:
+                ports.append(f"{address}:{ui.get('port')}:{ui.get('port')}")
+    rng = docker_conf.get("udp_port_range")
+    if isinstance(rng, dict) and env.get(rng.get("env")):
+        span = str(env[rng["env"]]).replace(":", "-")
+        ports.append(f"{span}:{span}/udp")
     if ports:
-        compose_svc["ports"] = [str(p) for p in ports]
+        compose_svc["ports"] = ports
 
     # Volumes — fill ${VAR} host paths from known values, escape whatever remains.
     #

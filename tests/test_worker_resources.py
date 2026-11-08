@@ -195,7 +195,7 @@ class TestDeployRawResources:
         client = self._mock_client()
         with patch.object(orchestrator, "_get_client", return_value=client):
             orchestrator.deploy_raw(
-                slug="mysterium",
+                slug="hostnode",
                 image="img",
                 ports={"4449/tcp": 4449},
                 network_mode="host",
@@ -256,8 +256,16 @@ class TestDeployRawHardening:
 
     def test_catalog_declared_capability_is_added_back(self):
         # mysterium is the only catalog service declaring a cap; dropping ALL must not
-        # break it — NET_ADMIN is re-added on top of the drop.
-        kwargs = self._run_kwargs(slug="mysterium", image="img", cap_add=["NET_ADMIN"])
+        # break it — NET_ADMIN is re-added on top of the drop. It is fence-gated, so
+        # it is created and started apart, once the fence reads complete.
+        client = self._mock_client()
+        client.containers.create.return_value = client.containers.run.return_value
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch("app.lan_fence.fence_problem", return_value=None),
+        ):
+            orchestrator.deploy_raw(slug="mysterium", image="img", cap_add=["NET_ADMIN"])
+        kwargs = client.containers.create.call_args.kwargs
         assert kwargs["cap_drop"] == ["ALL"]
         assert kwargs["cap_add"] == ["NET_ADMIN"]
 

@@ -61,9 +61,14 @@ def _run_kwargs(**deploy_kwargs):
     client = MagicMock()
     client.containers.get.side_effect = orchestrator.NotFound("nope")
     client.containers.run.return_value = container
-    with patch.object(orchestrator, "_get_client", return_value=client):
+    client.containers.create.return_value = container
+    # Mysterium is fence-gated: created, then started once the fence reads complete.
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch("app.lan_fence.fence_problem", return_value=None),
+    ):
         orchestrator.deploy_raw(**deploy_kwargs)
-    return client.containers.run.call_args.kwargs
+    return (client.containers.create.call_args or client.containers.run.call_args).kwargs
 
 
 class TestTheNodeCanRunSudo:
@@ -78,7 +83,7 @@ class TestTheNodeCanRunSudo:
                 image=docker["image"],
                 cap_add=docker["cap_add"],
                 devices=docker["devices"],
-                network_mode=docker["network_mode"],
+                network_mode=docker.get("network_mode"),
             ),
             "mysterium",
         )

@@ -206,10 +206,13 @@ stands between the worker and root.
   network aliases, which sockguard always lets through. It adds little reach, since the worker
   can already start a container on host networking, but a compromised worker
   can take an earner off the fence.
-- Start a container in the host's cgroup namespace. The Activity reader of a
-  host-network earner such as Mysterium needs it to tell that earner's
-  sockets from the host's. The cgroup tree it shows is read-only and names
-  the host's containers and services, which the worker can list anyway.
+- Start a container on host networking. The LAN fence's helper and the
+  isolation check's control probe need it. The worker itself refuses host
+  networking to every earner, and the catalog refuses it to any service with
+  `NET_ADMIN`, so only those two use it. The proxy no longer allows the host's
+  cgroup namespace: only the Activity reader of a host-network earner needed
+  it, and no earner shares the host's network since Mysterium moved onto the
+  fenced bridge.
 - Pull images from any registry (custom services need it) and set namespaced
   sysctls on its own containers (the tunnel sidecar needs it).
 

@@ -44,6 +44,10 @@ _JUDGED_FIELDS = (
     "volumes",
     "env",
     "command",
+    "fence_gated",
+    "ui_port",
+    "udp_port_range",
+    "runtime",
 )
 
 
@@ -167,17 +171,40 @@ def container_drift(
         found.append("starts with a different entrypoint than the catalog declares")
 
     # Network mode and ports: the record wins on a redeploy, the catalog otherwise.
+    # A fence-gated service is the exception: its namespace is the catalog's
+    # alone (app/main.py _fence_gated_spec), so a record from when it shared
+    # the host's network does not count.
     rec = recorded or {}
-    network_mode = rec.get("network_mode") if "network_mode" in rec else docker_conf.get("network_mode")
+    gated = catalog.fence_gated(svc)
+    if gated:
+        network_mode = docker_conf.get("network_mode")
+    else:
+        network_mode = rec.get("network_mode") if "network_mode" in rec else docker_conf.get("network_mode")
     want_host = network_mode == "host"
     have_host = shape.get("network_mode") == "host"
     if want_host != have_host:
-        found.append("uses its own network, but should share the host's" if want_host else "shares the host's network")
+        found.append(
+            "uses its own network, but should share the host's"
+            if want_host
+            else "shares the host's network"
+            + (
+                ", where its NET_ADMIN reaches the host's firewall; a redeploy moves it onto the fenced bridge"
+                if gated
+                else ""
+            )
+        )
     elif not want_host:
-        recorded_ports = rec.get("ports")
+        recorded_ports = None if gated else rec.get("ports")
         want_ports = set(recorded_ports) if recorded_ports else _catalog_port_keys(docker_conf)
+        if gated and isinstance(docker_conf.get("ui_port"), dict):
+            want_ports.add(f"{docker_conf['ui_port'].get('port')}/tcp")
         if missing := want_ports - set(shape.get("ports") or []):
             found.append(f"does not publish port {_names(missing)}")
+    if gated and shape.get("restart_policy") not in (None, "no"):
+        found.append(
+            f"Docker starts it on its own (restart policy {shape['restart_policy']}), before the worker has "
+            "confirmed the LAN fence"
+        )
 
     # Mounts: a redeploy keeps the recorded ones and adds the ones the catalog gained.
     want_mounts = _volume_targets(docker_conf.get("volumes")) | _volume_targets(rec.get("volumes"))
@@ -216,6 +243,10 @@ def container_drift(
     # "Outdated" by the image check, so only the tag is judged here.
     want_image = custom_image or arch.image_for(docker_conf, worker_arch) or ""
     have_image = str(shape.get("image") or "")
+    if gated and want_image and have_image and have_image != want_image:
+        # It holds NET_ADMIN, so it runs only the image the catalog names exactly.
+        found.append(f"runs {have_image}; the catalog pins {want_image}")
+        return found
     if want_image.startswith(OWN_IMAGE_PREFIX) and have_image:
         w_repo, w_tag = _split_ref(want_image)
         h_repo, h_tag = _split_ref(have_image)

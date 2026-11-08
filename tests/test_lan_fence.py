@@ -693,7 +693,7 @@ class TestDeploys:
             patch.object(orchestrator, "_get_client", return_value=client),
             patch.object(lan_fence, "run_helper") as helper,
         ):
-            orchestrator.deploy_raw(slug="mysterium", image="mysteriumnetwork/myst", network_mode="host")
+            orchestrator.deploy_raw(slug="hostnode", image="example/hostnode", network_mode="host")
         assert client.containers.run.call_args.kwargs["network_mode"] == "host"
         helper.assert_not_called()
 

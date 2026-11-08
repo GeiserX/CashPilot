@@ -23,10 +23,17 @@ def client():
         yield c
 
 
+def _udp(sent):
+    return sorted(k for k in sent["ports"] if k.endswith("/udp"))
+
+
 def test_a_first_deploy_uses_the_range_the_guide_says_to_forward(client):
     resp, sent = _deploy(client, {"env": {}})
     assert resp.status_code == 200, resp.text
     assert " --udp.ports=56000:56100 service " in sent["command"]
+    # Published 1:1 on the bridge, so the router's forward reaches the node unchanged.
+    assert _udp(sent) == [f"{p}/udp" for p in range(56000, 56101)]
+    assert all(sent["ports"][f"{p}/udp"] == p for p in range(56000, 56101))
 
 
 def test_a_node_deployed_before_the_setting_existed_gets_the_default(client):
@@ -39,6 +46,7 @@ def test_a_typed_range_reaches_the_node(client):
     resp, sent = _deploy(client, {"env": {"UDP_PORTS": "41000:41050"}})
     assert resp.status_code == 200, resp.text
     assert " --udp.ports=41000:41050 service " in sent["command"]
+    assert _udp(sent) == [f"{p}/udp" for p in range(41000, 41051)]
 
 
 def test_a_blank_redeploy_keeps_the_range_this_machine_was_given(client):
@@ -47,6 +55,7 @@ def test_a_blank_redeploy_keeps_the_range_this_machine_was_given(client):
         resp, sent = _deploy(client, {"env": env}, recorded=recorded)
         assert resp.status_code == 200, resp.text
         assert " --udp.ports=41000:41050 service " in sent["command"]
+        assert _udp(sent) == [f"{p}/udp" for p in range(41000, 41051)]
 
 
 @pytest.mark.parametrize(
@@ -75,4 +84,6 @@ def test_a_recorded_reversed_range_is_refused_too(client):
 
 def test_the_exported_compose_file_uses_the_default_range():
     exported = yaml.safe_load(compose_generator.generate_compose_single("mysterium"))
-    assert " --udp.ports=56000:56100 service " in exported["services"]["cashpilot-mysterium"]["command"]
+    service = exported["services"]["cashpilot-mysterium"]
+    assert " --udp.ports=56000:56100 service " in service["command"]
+    assert "56000-56100:56000-56100/udp" in service["ports"]

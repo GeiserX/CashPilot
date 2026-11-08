@@ -51,7 +51,7 @@ from app.constants import LABEL_MANAGED, LABEL_SERVICE
 DOCS = "https://geiserx.github.io/CashPilot/"
 FIX_PAGE = DOCS + "isolation-check/#2-fix-it-by-platform"
 OVERLAY_PAGE = DOCS + "isolation-check/#with-tailscale-or-another-overlay-network-on-the-host"
-NODE_FIREWALL_PAGE = DOCS + "isolation-check/#mysterium-which-uses-host-networking"
+NODE_FIREWALL_PAGE = DOCS + "isolation-check/#mysterium"
 BRIDGE_PAGE = DOCS + "home-network-security/#put-the-containers-on-their-own-bridge"
 RULES_PAGE = DOCS + "home-network-security/#the-rules"
 DNS_PAGE = DOCS + "home-network-security/#name-lookups-need-a-resolver-the-rules-allow"
@@ -69,9 +69,10 @@ TAILSCALE_DNS = "100.100.100.100"
 
 #: Reads a node's own nat chain from every iptables backend without creating
 #: anything. The chain name and the blackhole address come from the service's
-#: ``docker.node_firewall`` in the catalog. The node runs on host networking as
-#: root, so a legacy lookup of a nat table that does not exist would make the
-#: kernel load ``iptable_nat`` and register an empty legacy table on the host.
+#: ``docker.node_firewall`` in the catalog. The node runs as root with
+#: NET_ADMIN (in its own namespace after 2.0.3, in the host's before), so a
+#: legacy lookup of a nat table that does not exist would make the kernel load
+#: ``iptable_nat`` and register an empty legacy table there.
 #: The legacy backend is asked only when the host already has its nat table;
 #: the image's plain ``iptables`` only when it is the nf_tables one or that
 #: table exists. Each call gets ``timeout 5`` when the image has it, so a hung
@@ -398,6 +399,43 @@ def _is_bridge(container: Any) -> bool:
 
 def _name(container: Any) -> str:
     return str(getattr(container, "name", "") or "")
+
+
+#: Capabilities that reach a network namespace's firewall, routes and interfaces.
+NETNS_CAPABILITIES = frozenset({"NET_ADMIN", "SYS_ADMIN"})
+
+
+def host_netns_findings(containers: list[Any]) -> list[dict[str, Any]]:
+    """Managed containers holding NET_ADMIN or SYS_ADMIN in the host's network namespace.
+
+    Such a container can rewrite the host's firewall, the LAN fence included,
+    add routes and addresses, and bind any port on every host address. No host
+    rule holds against it, so it is an exposure on its own, whatever the probes
+    find. Mysterium ran this way through 2.0.3; a redeploy moves it onto the
+    fenced bridge.
+    """
+    held = []
+    for c in containers:
+        host = ((c.attrs or {}).get("HostConfig") or {}) if isinstance(getattr(c, "attrs", None), dict) else {}
+        caps = {str(cap).upper().removeprefix("CAP_") for cap in host.get("CapAdd") or []}
+        if host.get("Privileged"):
+            caps |= NETNS_CAPABILITIES
+        if _network_mode(c) == "host" and caps & NETNS_CAPABILITIES:
+            held.append(f"{_name(c)} ({', '.join(sorted(caps & NETNS_CAPABILITIES))})")
+    if not held:
+        return []
+    return [
+        {
+            "kind": "net_admin_in_host_netns",
+            "exposure": True,
+            "detail": (
+                "These containers hold firewall capabilities in this host's own network namespace, so they can "
+                "rewrite the host's firewall, the LAN fence included, and reach everything the host reaches: "
+                f"{', '.join(sorted(held))}. Redeploy them from the dashboard to move them onto the fenced bridge."
+            ),
+            "docs": ISOLATION_PAGE,
+        }
+    ]
 
 
 def placement_findings(earners: list[Any], network: str, mode: str | None = None) -> list[dict[str, Any]]:
@@ -730,7 +768,11 @@ def _run(client: Any) -> dict[str, Any]:
         "internet": None,
         "not_answering_from_host": [],
         "addresses_left_out": [],
-        "findings": placement_findings(every, network, mode) + ipv6_findings(client, every, network),
+        "findings": (
+            host_netns_findings(every)
+            + placement_findings(every, network, mode)
+            + ipv6_findings(client, every, network)
+        ),
         "mode": mode,
         "fence": None,
         "node_firewall": None,
