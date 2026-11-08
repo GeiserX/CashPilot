@@ -8248,13 +8248,16 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         metrics.record_container_lifecycle("deploy", slug)
         _spawn(_run_collection())
     elif body.command == "stop":
-        await database.record_health_event(slug, "stop", worker_id=worker_id)
+        # The worker's plain container route acts on the first copy.
+        await database.record_health_event(slug, "stop", worker_id=worker_id, instance=1)
         metrics.record_container_lifecycle("stop", slug)
     elif body.command == "restart":
-        await database.record_health_event(slug, "restart", worker_id=worker_id)
+        # The worker's plain container route acts on the first copy.
+        await database.record_health_event(slug, "restart", worker_id=worker_id, instance=1)
         metrics.record_container_lifecycle("restart", slug)
     elif body.command == "start":
-        await database.record_health_event(slug, "start", worker_id=worker_id)
+        # The worker's plain container route acts on the first copy.
+        await database.record_health_event(slug, "start", worker_id=worker_id, instance=1)
         metrics.record_container_lifecycle("start", slug)
     elif body.command == "remove":
         await database.remove_deployment(slug, worker_id=worker_id)

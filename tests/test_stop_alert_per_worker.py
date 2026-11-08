@@ -268,3 +268,16 @@ def test_a_removal_records_its_worker():
     ):
         asyncio.run(main._svc_remove(MagicMock(), "urnetwork", 4, False))
     record.assert_awaited_once_with("urnetwork", "remove", worker_id=4)
+
+
+@pytest.mark.parametrize("event", ["stop", "restart", "start"])
+def test_the_raw_worker_command_records_the_first_copy(event):
+    # The worker's plain container route acts on copy 1, so the action names it.
+    record = AsyncMock()
+    with (
+        patch.object(main, "_require_writer", lambda r: None),
+        patch.object(main, "_proxy_to_worker", AsyncMock(return_value={})),
+        patch.object(main.database, "record_health_event", record),
+    ):
+        asyncio.run(main.api_worker_command(MagicMock(), 4, main.WorkerCommand(command=event, slug="urnetwork")))
+    record.assert_awaited_once_with("urnetwork", event, worker_id=4, instance=1)
