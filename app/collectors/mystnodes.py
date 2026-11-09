@@ -144,7 +144,10 @@ class MystNodesCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=(
-                    "No CashPilot worker could read a Mysterium node's own balance"
+                    # A node read before keeps its explanation, so an unreachable
+                    # worker is still named when another node was never read.
+                    "".join(f"{m} " for m in missed)
+                    + "No CashPilot worker could read a Mysterium node's own balance"
                     + (f" ({', '.join(unread)})" if unread else "")
                     + ". CashPilot reads it inside the node, so the node has to run on a CashPilot worker "
                     "that is online and up to date. MystNodes' cloud total covers the last 30 days only, "

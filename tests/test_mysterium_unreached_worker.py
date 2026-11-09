@@ -84,6 +84,12 @@ class TestANodeNoWorkerEverReported:
         result = _collect(READ, known={"0xbb"}, unreached=["box-a"], settling=True)
         assert "couldn't reach worker box-a" in result.warning
 
+    def test_with_nothing_read_a_missed_node_keeps_its_unreached_worker(self):
+        # 0xaa was read before on box-a, 0xbb never: the error still names box-a.
+        result = _collect([], known={"0xaa"}, unreached=["box-a"])
+        assert result.error.startswith("CashPilot couldn't reach worker box-a to read node 0xaa;")
+        assert "No CashPilot worker could read" in result.error and "0xbb" in result.error
+
     def test_control_with_nothing_read_it_is_still_the_error(self):
         result = _collect([])
         assert result.error.startswith("No CashPilot worker could read")
