@@ -4248,12 +4248,16 @@ async def _worker_instances(worker_id: int, slug: str) -> set[int]:
 
 
 def _catalog_stop_timeout(slug: str) -> int:
-    """The seconds the worker waits for ``slug`` to stop cleanly: the catalog's, else Docker's 30."""
+    """The seconds the worker waits for ``slug`` to stop cleanly, read as the worker reads it.
+
+    orchestrator._parse_stop_timeout: unset, unreadable, zero or negative all mean 30.
+    """
     raw = ((catalog.get_service(slug) or {}).get("docker") or {}).get("stop_timeout")
     try:
-        return max(0, int(raw)) if raw is not None else 30
+        timeout = int(raw)
     except (TypeError, ValueError):
         return 30
+    return timeout if timeout > 0 else 30
 
 
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:

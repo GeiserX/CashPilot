@@ -343,3 +343,11 @@ def test_a_stop_waits_as_long_as_the_service_takes_to_stop(command):
     ):
         asyncio.run(main._proxy_worker_command(4, command, "storj"))
     assert call.call_args.kwargs["timeout"] > 300
+
+
+@pytest.mark.parametrize(("raw", "seconds"), [(300, 300), (0, 30), (-5, 30), (None, 30), ("junk", 30)])
+def test_the_stop_timeout_is_read_as_the_worker_reads_it(raw, seconds):
+    from app import orchestrator
+
+    with patch.object(main.catalog, "get_service", lambda slug: {"docker": {"stop_timeout": raw}}):
+        assert main._catalog_stop_timeout("x") == seconds == orchestrator._parse_stop_timeout(raw)
