@@ -206,6 +206,7 @@ def test_a_collection_that_aborts_before_its_collectors_keeps_the_settling_hold(
     # not heartbeated yet is not reported as running on no worker.
     with (
         patch.object(main, "_collected_since_start", False),
+        patch.object(main, "_collection_has_run", False),
         patch.object(main.database, "get_deployments", AsyncMock(side_effect=RuntimeError("database is locked"))),
     ):
         asyncio.run(main._run_collection())
