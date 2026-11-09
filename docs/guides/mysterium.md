@@ -232,9 +232,9 @@ sessions yet is not flagged. The dashboard reloads its list every hour, or when
 you open it.
 
 On the same 30-minute round the worker also asks the node itself, read-only,
-for Mysterium's monitoring status and its last five sessions. It lists the node
-under **Needs fixing** when the monitoring status is `failed`, and when those
-five sessions each ended after about a minute having carried no data. Once a
+for Mysterium's monitoring status and the five sessions that completed last. It
+lists the node under **Needs fixing** when the monitoring status is `failed`,
+and when those five sessions each ended after about a minute having carried no data. Once a
 missing `/dev/net/tun` or `SETUID`/`SETGID` is ruled out, both point at the
 problem in the next section.
 
@@ -309,10 +309,31 @@ On a working line every port comes back with its own number. When every port
 comes back rewritten, the script says so separately: that is a NAT which
 rewrites every port (a symmetric NAT, carrier-grade NAT, a VPN, or Docker
 Desktop's own NAT), where port forwarding cannot work either. The script exits
-0 when every port kept its number, 1 when one was rewritten and 2 when no STUN
-server answered. It only sends a few packets to a public STUN server; it does
+0 when every pair was tested and every port kept its number, 1 when one was
+rewritten, 2 when no STUN server answered, and 3 when nothing was rewritten
+but some pair could not be tested in full (a port that would not bind or got
+no answer), so the result says nothing about pairing; run it again with
+another `--start`. It tries Google's STUN server first and Cloudflare's when
+Google does not answer. It only sends a few packets to a public STUN server; it does
 not touch the node. `--start` picks the first port to test (default 34100);
 keep it outside `UDP_PORTS`, whose ports the node holds.
+
+**Rule out the host's own NAT.** The container's packets also pass Docker's
+NAT on the host before they reach the router. That NAT keeps the source port
+unless two flows clash on it, which is rare, but then it picks another one and
+the script reports `REWRITTEN` with a router that is fine. A pairing router
+rewrites some port every run, a clash does not repeat, so run the script twice.
+To see it directly, look at the host's connection table within a minute of a
+run (as root on the host, with the `conntrack` tool installed):
+
+```bash
+conntrack -L -p udp --orig-port-src 34100
+```
+
+The second half of the line is the answer as the host expects it. When its
+`dport=` is still `34100`, the host sent the packet out on its own port and
+the rewrite happened past it, at the router. When it differs, the host's NAT
+changed it, and the test says nothing about the router.
 
 **Fix.** In the order we would try them:
 

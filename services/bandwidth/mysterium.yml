@@ -163,14 +163,19 @@ docker:
         a session connects directly.
       state: failing
   # What the node itself says, read by the worker every 30 minutes
-  # (app/health_probe.py): Mysterium's monitoring status, then the last 5
-  # completed sessions it provided, of any age (the node returns them newest
-  # first). No date window: a broken node stops being offered, new sessions
-  # stop arriving, and a window would empty out and clear the check while the
-  # node is still broken. The two reads are independent, so a slow or failing
-  # monitoring status (the node asks Mysterium's quality oracle for it) never
-  # costs the sessions read, which needs only the node's own database; the run
-  # fails only when the sessions read does. timeout 12 bounds the whole run
+  # (app/health_probe.py): Mysterium's monitoring status, then the 5 sessions
+  # it provided that completed last, of any age. The node lists sessions by
+  # start time, newest first, so a long session that started before a run of
+  # short ones but ended after them would fall off a plain page of 5: the
+  # command reads 25 and keeps the 5 with the latest end (start + duration).
+  # No date window: a broken node stops being offered, new sessions stop
+  # arriving, and a window would empty out and clear the check while the node
+  # is still broken. The two reads are independent, and each prints a marker
+  # only when it worked ("answered" below): a slow or failing monitoring status
+  # (the node asks Mysterium's quality oracle for it) never costs the sessions
+  # verdict, and a failed sessions read never costs the monitoring one; a check
+  # whose read failed keeps its last verdict. -Y off keeps an inherited
+  # http_proxy away from the loopback reads. timeout 12 bounds the whole run
   # inside the 15 s the worker waits. Seen live
   # (Nov 2026) on two nodes behind routers that rewrite the UDP source port of
   # some connections: monitoring "failed", and every session ending after 55
@@ -184,12 +189,22 @@ docker:
       - "12"
       - sh
       - -c
-      - >-
-        wget -qO- -T 5 http://127.0.0.1:4050/node/monitoring-status;
-        echo;
-        wget -qO- -T 5 "http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=5"
+      - |-
+        if m=$(wget -qO- -Y off -T 5 http://127.0.0.1:4050/node/monitoring-status); then
+          echo "monitoring read: $m"
+        fi
+        if s=$(wget -qO- -Y off -T 5 "http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=25"); then
+          echo "sessions read:"
+          echo "$s" | sed 's/},{/}\n{/g' | awk '
+            match($0, /"created_at":"[^"]+"/) {
+              t = substr($0, RSTART + 14, 19); gsub(/[-T:]/, " ", t)
+              d = 0; if (match($0, /"duration":[0-9]+/)) d = substr($0, RSTART + 11, RLENGTH - 11)
+              print mktime(t) + d, $0
+            }' | sort -rn | head -5
+        fi
     checks:
-      - pattern: '\{"status":"failed"\}'
+      - pattern: 'monitoring read: \{"status":"failed"\}'
+        answered: 'monitoring read: '
         means: >-
           Mysterium's monitoring marks the node on ${WORKER_NAME} as failed, so
           it is left out of the node list most buyers pick from, even when its
@@ -207,6 +222,7 @@ docker:
       - items: '\{"id":[^{}]*"direction":"Provided"[^{}]*\}'
         pattern: '"duration":[4-8][0-9],"bytes_received":0,"bytes_sent":0,'
         min_matches: 5
+        answered: 'sessions read:'
         means: >-
           The last five VPN sessions of the node on ${WORKER_NAME} each ended
           after about a minute having moved no data, so it earns

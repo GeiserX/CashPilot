@@ -17,6 +17,9 @@ The catalog declares the read in ``docker.health_probe``:
         - items: '...'                   # regex for one item of a list
           pattern: '...'                 # what makes an item bad
           min_matches: 3                 # items needed before judging
+          answered: '...'                # (optional) regex the output holds when this
+                                         # check's read worked; without it the check
+                                         # is unread, not clear
           means: "..."
 
 A check without ``items`` holds when ``pattern`` matches the output at least
@@ -25,10 +28,15 @@ at least ``min_matches`` items and every one of them matches ``pattern``: one
 good item clears it, and too few items say nothing. Patterns are
 case-sensitive, like ``collector.node_read``.
 
-The command must start with ``timeout <seconds>`` below READ_TIMEOUT.
-``exec_run`` has no timeout of its own: a read that hung would keep its pool
-thread after the worker stopped waiting, and four of them would leave every
-later read queued behind them for the worker's lifetime.
+A check with ``answered`` is judged only when its marker is in the output,
+so a command that reads two things can lose one without losing the other's
+verdict. A check whose marker is missing is reported in ``unread``.
+
+The command must start with ``timeout <seconds>`` below READ_TIMEOUT, which
+ends the command in the container. The exec itself runs on a Docker client of
+this module's own with a READ_TIMEOUT socket timeout: a stream that stalls
+(the daemon or the socket proxy stops sending) raises instead of holding its
+pool thread, so stalled reads cannot fill the pool for the worker's lifetime.
 
 Read-only by construction, like ``app/node_read.py``: the command comes from
 the catalog in this image, never from a request, and only the indexes of the
@@ -38,19 +46,26 @@ checks that hold leave the worker, never the output.
 from __future__ import annotations
 
 import concurrent.futures
+import hashlib
+import json
 import logging
 import re
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 #: Seconds one container's read may take before it is reported as unread.
 READ_TIMEOUT = 15
+#: Seconds one /api/health-probes answer may take in all. The UI waits 60 s for
+#: it; copies not read by then are reported unread, and the rest still go back.
+BATCH_BUDGET = 40
 
 _pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="health-probe")
 
 
 def _min_matches(check: dict[str, Any]) -> int | None:
+    """A check's min_matches, or None when it is not a positive integer."""
     value = check.get("min_matches", 1)
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         return None
@@ -80,9 +95,9 @@ def spec_errors(spec: Any) -> list[str]:
         if not isinstance(check, dict):
             errors.append(f"checks[{i}] must be a mapping")
             continue
-        for field in ("pattern", "items"):
+        for field in ("pattern", "items", "answered"):
             value = check.get(field)
-            if value is None and field == "items":
+            if value is None and field != "pattern":
                 continue
             try:
                 if not isinstance(value, str) or not value:
@@ -122,30 +137,69 @@ def holds(output: bytes | str | None, check: dict[str, Any]) -> bool:
     return len(items) >= needed and all(pattern.search(item) for item in items)
 
 
+def _text(output: bytes | str | None) -> str:
+    """The command's output as text."""
+    return output.decode(errors="replace") if isinstance(output, bytes) else (output or "")
+
+
+def unanswered(output: bytes | str | None, spec: dict[str, Any]) -> list[int]:
+    """The indexes of the checks whose ``answered`` marker is missing from the output."""
+    text = _text(output)
+    return [i for i, c in enumerate(spec["checks"]) if c.get("answered") and not re.search(c["answered"], text)]
+
+
 def judge(output: bytes | str | None, spec: dict[str, Any]) -> list[int]:
-    """The indexes of the checks that hold on the command's output."""
-    return [i for i, check in enumerate(spec["checks"]) if holds(output, check)]
+    """The indexes of the checks that hold on the command's output (unread ones never do)."""
+    unread = set(unanswered(output, spec))
+    return [i for i, check in enumerate(spec["checks"]) if i not in unread and holds(output, check)]
 
 
-def _read_one(container: Any, spec: dict[str, Any]) -> list[int] | None:
-    code, output = container.exec_run(spec["command"])
-    if code != 0:
+def fingerprint(spec: dict[str, Any]) -> str:
+    """A short hash of a probe declaration.
+
+    The worker sends it with its hits, and the UI uses the hits only when it
+    loads the same declaration: during an upgrade the two often run different
+    catalogs, and an index into another version's checks names the wrong cause.
+    """
+    return hashlib.sha256(json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
+
+
+def _client() -> Any:
+    """A Docker client whose socket reads give up after READ_TIMEOUT seconds."""
+    import docker
+
+    return docker.from_env(timeout=READ_TIMEOUT)
+
+
+def _read_one(client: Any, container_id: str, spec: dict[str, Any]) -> dict[str, list[int]] | None:
+    """Run the probe in one container: hits and unread checks, or None when nothing was read."""
+    api = client.api
+    exec_id = api.exec_create(container_id, spec["command"])["Id"]
+    output = api.exec_start(exec_id)
+    if api.exec_inspect(exec_id).get("ExitCode") != 0:
         return None
-    return judge(output, spec)
+    unread = unanswered(output, spec)
+    if len(unread) == len(spec["checks"]):
+        return None
+    return {"hits": judge(output, spec), "unread": unread}
 
 
 def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One row per running managed copy of a service that declares a probe.
 
-    A row carries ``hits``, the indexes of the checks that hold, when the read
-    worked, and ``error`` when it did not: an unread node is no verdict, never
-    a healthy one.
+    A row carries ``definition`` (see fingerprint) and, when the read worked,
+    ``hits``, the indexes of the checks that hold, and ``unread``, those it
+    could not judge; ``error`` when it did not work at all: an unread node is
+    no verdict, never a healthy one. Copies not reached within BATCH_BUDGET
+    are reported unread, so the ones read in time still count.
     """
     # Imported here: the UI imports this module for nothing but the catalog
     # check, and has no Docker.
     from app import orchestrator
 
     rows: list[dict[str, Any]] = []
+    deadline = time.monotonic() + BATCH_BUDGET
+    client = None
     for slug, spec in sorted(probes(services).items()):
         try:
             copies = orchestrator.service_instances(slug)
@@ -155,18 +209,35 @@ def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for container in copies:
             if getattr(container, "status", "") != "running":
                 continue
-            row: dict[str, Any] = {"slug": slug, "instance": orchestrator._instance_of(container)}
+            row: dict[str, Any] = {
+                "slug": slug,
+                "instance": orchestrator._instance_of(container),
+                "definition": fingerprint(spec),
+            }
+            rows.append(row)
+            left = min(READ_TIMEOUT, deadline - time.monotonic())
+            if left <= 0:
+                row["error"] = "not reached in time"
+                continue
+            future = None
             try:
-                hits = _pool.submit(_read_one, container, spec).result(timeout=READ_TIMEOUT)
+                if client is None:
+                    client = _client()
+                future = _pool.submit(_read_one, client, container.id, spec)
+                read = future.result(timeout=left)
             except concurrent.futures.TimeoutError:
+                # Still queued: never run it. Running: the client's socket
+                # timeout ends it.
+                future.cancel()
                 row["error"] = "timed out"
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Health probe failed for %s: %s", slug, exc)
                 row["error"] = "read failed"
             else:
-                if hits is None:
+                if read is None:
                     row["error"] = "the node did not answer"
                 else:
-                    row["hits"] = hits
-            rows.append(row)
+                    row.update(read)
+    # A read that timed out may still be using the client; it is dropped, not
+    # closed, so that read ends on its own socket timeout.
     return rows
