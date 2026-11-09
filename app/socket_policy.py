@@ -282,16 +282,18 @@ _PROXY_FINGERPRINT = (
 )
 
 
-def update(text: str) -> str:
+def update(text: str, passes: int | None = None) -> str:
     """An operator's compose file brought to this image's policy.
 
     Besides the block and the fingerprints, a file from before the proxy
     carried its own fingerprint gets that line, or every later policy change
     would leave the proxy on the old one. A file whose block went through two
-    interpolation passes (CasaOS writes `$$$$`) keeps two.
+    interpolation passes (CasaOS writes `$$$$`) keeps two. A block with no `$`
+    in it says nothing, so ``passes`` overrides the guess.
     """
-    start, end = text.find(BEGIN), text.find(END)
-    passes = 2 if start >= 0 and "$$$$" in text[start:end] else 1
+    if passes is None:
+        start, end = text.find(BEGIN), text.find(END)
+        passes = 2 if start >= 0 and "$$$$" in text[start:end] else 1
     if len(DIGEST_RE.findall(text)) == 1:
         anchor = _PROXY_ENV_ANCHOR.search(text)
         if anchor is None:
@@ -301,10 +303,20 @@ def update(text: str) -> str:
     return render(text, compose_block(passes=passes), digest())
 
 
-def main() -> int:
-    """Read a compose file on stdin, write it with this image's policy on stdout."""
+def main(argv: list[str] | None = None) -> int:
+    """Read a compose file on stdin, write it with this image's policy on stdout.
+
+    ``--passes N`` sets how many times the file is interpolated before the
+    proxy reads it (1 for Compose, 2 for a CasaOS store template)."""
+    args = sys.argv[1:] if argv is None else argv
+    passes = None
+    if args:
+        if len(args) != 2 or args[0] != "--passes" or args[1] not in ("1", "2"):
+            print("usage: python -m app.socket_policy [--passes 1|2] < compose.yml", file=sys.stderr)
+            return 2
+        passes = int(args[1])
     try:
-        sys.stdout.write(update(sys.stdin.read()))
+        sys.stdout.write(update(sys.stdin.read(), passes))
     except SystemExit as exc:
         print(f"{exc}; take the compose file of this release instead", file=sys.stderr)
         return 1

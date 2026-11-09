@@ -930,13 +930,13 @@ def _stale(text: str, passes: int = 1, proxy_line: bool = True) -> str:
     return socket_policy.render(text, old, "e9a30411b564dc75")
 
 
-def _filter(text: str, monkeypatch, capsys) -> tuple[int, str, str]:
+def _filter(text: str, monkeypatch, capsys, argv: list[str] | None = None) -> tuple[int, str, str]:
     import io
 
     from app import socket_policy
 
     monkeypatch.setattr("sys.stdin", io.StringIO(text))
-    code = socket_policy.main()
+    code = socket_policy.main(argv or [])
     captured = capsys.readouterr()
     return code, captured.out, captured.err
 
@@ -958,6 +958,23 @@ def test_the_image_brings_an_old_compose_file_to_its_policy(name, proxy_line, mo
     assert out == shipped.replace(*mine, 1)
 
 
+def test_passes_overrides_the_guess(monkeypatch, capsys):
+    """An old two-pass block with no `$` in it looks like one pass; --passes says."""
+    from app import socket_policy
+
+    shipped = (ROOT / spp.TWICE_INTERPOLATED[0]).read_text()
+    start, end = shipped.find(socket_policy.BEGIN), shipped.find(socket_policy.END)
+    no_dollar = shipped[:start] + shipped[start:end].replace("$", "") + shipped[end:]
+    old = socket_policy.DIGEST_RE.sub(r"\g<1>e9a30411b564dc75", no_dollar)
+    assert "$$$$" not in old[old.find(socket_policy.BEGIN) : old.find(socket_policy.END)]
+    code, out, _ = _filter(old, monkeypatch, capsys, ["--passes", "2"])
+    assert (code, out) == (0, shipped)
+    code, out, _ = _filter(old, monkeypatch, capsys)
+    assert code == 0 and out != shipped
+    code, out, err = _filter(old, monkeypatch, capsys, ["--passes", "3"])
+    assert (code, out) == (2, "") and "usage" in err
+
+
 def test_the_image_refuses_a_file_with_no_proxy_environment(monkeypatch, capsys):
     from app import socket_policy
 
@@ -974,7 +991,7 @@ def test_the_image_refuses_a_compose_file_without_the_policy_markers(monkeypatch
     from app import socket_policy
 
     monkeypatch.setattr("sys.stdin", io.StringIO("services:\n  cashpilot-worker: {}\n"))
-    assert socket_policy.main() == 1
+    assert socket_policy.main([]) == 1
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "take the compose file of this release" in captured.err
