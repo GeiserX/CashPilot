@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>M2 · Actionable Placement grid</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Tokens copied from CashPilot app/static/css/style.css (origin/main, :root lines 12-78). */
+:root {
+  --bg-primary: #15171a; --bg-secondary: #1a1d21; --bg-tertiary: #1f2227; --bg-hover: #23272c;
+  --bg-input: #101214; --bg-log: #0e1012;
+  --border-color: #2a2e34; --border-light: #353a41; --border-strong: #4a5059;
+  --text-primary: #e2e5e9; --text-secondary: #aab1b9; --text-muted: #8d949d; --text-log: #c9ced4;
+  --accent-hover: #ffffff;
+  --success: #46b37f; --success-strong: #1f7a4f; --success-soft: rgba(70,179,127,.12);
+  --warning: #e0a53c; --warning-soft: rgba(224,165,60,.12);
+  --error: #f06a5f; --error-soft: rgba(240,106,95,.12);
+  --series-1: #3987e5;
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --fs-1: 14px; --fs-2: 15px; --fs-3: 16px; --fs-4: 18px; --fs-5: 23px;
+  /* Mockup-only: annotation colour, deliberately outside the app palette so a
+     callout is never mistaken for a state colour. */
+  --note: #8b7cf6; --note-soft: rgba(139,124,246,.14);
+}
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body { margin: 0; font-family: var(--font-ui); font-size: var(--fs-3); line-height: 1.4; background: #0b0c0e; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+code, kbd, .mono { font-family: var(--font-mono); }
+code { font-size: max(12px, .92em); }
+kbd { display: inline-block; min-width: 16px; padding: 0 4px; line-height: 16px; text-align: center; font-size: var(--fs-1); color: var(--text-muted); border: 1px solid var(--border-light); border-radius: 2px; background: var(--bg-primary); }
+.muted { color: var(--text-muted); } .warn { color: var(--warning); } .fail { color: var(--error); } .ok { color: var(--success); }
+
+/* ---------- document chrome (mockup sheet, not the app) ---------- */
+.doc { width: 1520px; margin: 0 auto; padding: 32px 40px 60px; }
+.doc-head h1 { font-size: 28px; margin: 0 0 4px; font-weight: 600; }
+.doc-head .sub { color: var(--text-secondary); max-width: 120ch; margin: 0 0 6px; }
+.doc-head .meta { color: var(--text-muted); font-size: var(--fs-2); }
+.doc h2.scr { font-size: 20px; font-weight: 600; margin: 44px 0 4px; display: flex; gap: 10px; align-items: baseline; }
+.doc h2.scr .tag { font-family: var(--font-mono); font-size: var(--fs-1); color: var(--note); border: 1px solid var(--note); padding: 0 6px; border-radius: 2px; }
+.doc p.scr-lede { color: var(--text-secondary); margin: 0 0 12px; max-width: 130ch; }
+.frame { width: 1440px; border: 1px solid var(--border-strong); background: var(--bg-primary); position: relative; overflow: hidden; }
+.frame.h900 { height: 900px; }
+.frame-label { font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-muted); margin: 0 0 6px; }
+.notes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 32px; margin: 14px 0 0; padding: 0; list-style: none; max-width: 1440px; }
+.notes li { display: grid; grid-template-columns: 26px 1fr; gap: 8px; font-size: var(--fs-2); color: var(--text-secondary); }
+.notes li b { color: var(--text-primary); font-weight: 600; }
+.notes li code { color: var(--text-primary); }
+.co { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--note); color: #0b0c0e; font: 600 13px/1 var(--font-ui); flex-shrink: 0; }
+.co.abs { position: absolute; z-index: 400; box-shadow: 0 0 0 3px rgba(11,12,14,.85); }
+.kflow { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 12px 0 0; padding: 8px 12px; border: 1px dashed var(--note); background: var(--note-soft); max-width: 1440px; font-size: var(--fs-2); color: var(--text-secondary); }
+.kflow b { color: var(--note); font-weight: 600; margin-right: 4px; }
+.kflow .step { display: inline-flex; gap: 6px; align-items: center; }
+.kflow .arrow { color: var(--text-muted); }
+.before { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; border: 1px solid var(--border-color); padding: 14px; max-width: 1440px; background: var(--bg-primary); }
+.before img { display: block; border: 1px solid var(--border-light); max-width: 760px; }
+.before h3 { margin: 0 0 6px; font-size: var(--fs-3); }
+.before ul { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: var(--fs-2); }
+.before li { margin-bottom: 4px; }
+.count-badge { display: inline-block; font-family: var(--font-mono); font-size: var(--fs-1); padding: 0 6px; border: 1px solid var(--border-light); border-radius: 2px; color: var(--text-primary); }
+.row2 { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+
+/* ---------- app chrome (from style.css topbar/topnav, lines 156-170, 1308-1325) ---------- */
+.topbar { display: flex; align-items: stretch; gap: 28px; height: 48px; padding: 0 20px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+.topbar-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; white-space: nowrap; }
+.sun { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(#FFD54F, #FF9800 40%, #E91E63 72%, #AB47BC); }
+.topnav { display: flex; align-items: stretch; gap: 2px; flex: 1; min-width: 0; }
+.topnav a { display: flex; align-items: center; gap: 6px; padding: 0 10px; color: var(--text-secondary); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.topnav a.active { color: var(--text-primary); border-bottom-color: var(--text-primary); font-weight: 600; }
+.topnav a.focus { outline: 2px solid var(--text-primary); outline-offset: -4px; }
+.topnav a.new::after { content: 'new'; font-size: 11px; font-family: var(--font-mono); color: var(--note); margin-left: 2px; }
+.topbar-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.topbar-earn { font-family: var(--font-mono); font-size: var(--fs-2); color: var(--text-secondary); }
+.avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--bg-tertiary); border: 1px solid var(--border-light); display: grid; place-items: center; font-size: 13px; color: var(--text-secondary); }
+.page { padding: 18px 24px 32px; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.page-title { font-size: var(--fs-5); font-weight: 600; margin: 0; }
+.page-lede { color: var(--text-secondary); max-width: 90ch; margin: 0 0 16px; }
+.page-actions { display: flex; gap: 6px; align-items: center; }
+.page-foot { display: flex; gap: 12px; padding: 10px 24px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: var(--fs-2); position: absolute; left: 0; right: 0; bottom: 0; background: var(--bg-primary); }
+.page-foot .keys { margin-left: auto; }
+
+/* ---------- buttons, badges, blocks (style.css 1340-1600) ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 2px; font: inherit; font-size: var(--fs-3); font-weight: 500; border: 1px solid var(--border-light); background: var(--bg-tertiary); color: var(--text-primary); white-space: nowrap; cursor: pointer; }
+.btn-sm { height: 24px; padding: 0 8px; font-size: var(--fs-2); }
+.btn-primary { background: var(--text-primary); color: var(--bg-primary); border-color: var(--text-primary); }
+.btn-primary kbd { background: transparent; color: #3a3f46; border-color: #9aa2ab; }
+.btn-ghost { background: none; }
+.btn-danger { background: none; color: var(--error); }
+.btn[disabled] { opacity: .4; }
+.btn.focus, .focus-ring { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 0 6px; border-bottom: 1px solid var(--border-light); }
+.block-title { font-size: var(--fs-3); font-weight: 600; margin: 0; }
+.block-meta { font-size: var(--fs-2); color: var(--text-muted); display: flex; gap: 10px; align-items: center; }
+.inline-note { font-size: var(--fs-2); padding: 4px 0 4px 10px; border-left: 2px solid var(--border-strong); color: var(--text-secondary); margin: 0; }
+.inline-note.warn { border-left-color: var(--warning); }
+.inline-note.fail { border-left-color: var(--error); }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-1); padding: 0 6px; height: 20px; border: 1px solid var(--border-light); border-radius: 2px; color: var(--text-secondary); white-space: nowrap; }
+.chip::before { content: ''; width: 7px; height: 7px; background: var(--text-muted); }
+.chip.ok { color: var(--text-primary); } .chip.ok::before { background: var(--success); }
+.chip.warn { color: var(--warning); border-color: rgba(224,165,60,.45); } .chip.warn::before { background: var(--warning); }
+.chip.fail { color: var(--error); border-color: rgba(240,106,95,.45); } .chip.fail::before { background: var(--error); }
+.chip.plain::before { display: none; }
+.stats { display: flex; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); margin: 0 0 20px; }
+.stat { padding: 10px 28px 10px 0; margin-right: 28px; border-right: 1px solid var(--border-color); }
+.stat:last-child { border-right: none; }
+.stat-label { font-size: var(--fs-2); color: var(--text-muted); }
+.stat-value { font-family: var(--font-mono); font-size: var(--fs-5); font-weight: 500; }
+.stat-note { font-size: var(--fs-2); color: var(--text-muted); }
+
+/* ---------- tables ---------- */
+table.t { border-collapse: collapse; width: 100%; }
+table.t th, table.t td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+table.t thead th { font-size: var(--fs-2); color: var(--text-muted); font-weight: 500; background: var(--bg-secondary); }
+table.t td.num, table.t th.num { text-align: right; font-family: var(--font-mono); }
+table.t tr.sub td { font-size: var(--fs-2); color: var(--text-secondary); border-bottom: 1px solid var(--border-color); padding-top: 0; }
+.name { font-weight: 600; }
+.sub2 { font-size: var(--fs-1); color: var(--text-muted); font-weight: 400; }
+.bar { width: 70px; height: 6px; background: var(--bg-tertiary); border: 1px solid var(--border-light); display: inline-block; vertical-align: middle; }
+.bar > i { display: block; height: 100%; background: var(--text-secondary); }
+
+/* ---------- modal (style.css 730-784) ---------- */
+.overlay { position: absolute; inset: 0; background: rgba(0,0,0,.62); display: flex; align-items: flex-start; justify-content: center; padding-top: 70px; z-index: 200; }
+.modal { width: 860px; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 2px; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border-color); }
+.modal-header h3 { margin: 0; font-size: var(--fs-4); font-weight: 600; }
+.modal-body { padding: 14px 16px 16px; }
+.modal-foot { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--border-color); }
+.modal-foot .spacer { flex: 1; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border-light); margin: -4px 0 12px; }
+.tabs a { padding: 6px 12px; color: var(--text-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; display: flex; gap: 6px; align-items: center; }
+.tabs a.on { color: var(--text-primary); border-bottom-color: var(--text-primary); font-weight: 600; }
+.label { font-size: var(--fs-2); color: var(--text-secondary); margin: 0 0 4px; display: block; }
+.input { height: 30px; background: var(--bg-input); border: 1px solid var(--border-light); border-radius: 2px; color: var(--text-primary); padding: 0 8px; font: inherit; display: flex; align-items: center; }
+.textarea { background: var(--bg-input); border: 1px solid var(--border-light); border-radius: 2px; padding: 8px 10px; font-family: var(--font-mono); font-size: var(--fs-2); line-height: 1.6; color: var(--text-log); white-space: pre; }
+.fields { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.cli { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-secondary); background: var(--bg-log); border: 1px solid var(--border-color); padding: 6px 8px; }
+.cli .prompt { color: var(--text-muted); }
+.cli .copy { margin-left: auto; font-family: var(--font-ui); }
+.logbox { background: var(--bg-log); border: 1px solid var(--border-color); font-family: var(--font-mono); font-size: 13px; line-height: 1.5; color: var(--text-log); padding: 8px 10px; white-space: pre; overflow: hidden; }
+.spinner { width: 12px; height: 12px; border: 2px solid var(--border-strong); border-top-color: var(--text-primary); border-radius: 50%; display: inline-block; vertical-align: middle; }
+
+/* M2-only: placement grid, built on style.css 1429-1488 */
+.pt { border-collapse: collapse; width: 100%; }
+.pt th, .pt td { padding: 0 6px; height: 34px; border-bottom: 1px solid var(--border-color); text-align: center; }
+.pt thead th { vertical-align: bottom; padding-bottom: 6px; font-weight: 500; color: var(--text-muted); font-size: var(--fs-2); height: auto; }
+.pt .svc { text-align: left; font-weight: 500; padding-left: 0; white-space: nowrap; }
+.pt .up { font-family: var(--font-mono); font-size: var(--fs-2); text-align: right; color: var(--text-muted); width: 1%; white-space: nowrap; padding-right: 0; }
+.pt .up.fail { color: var(--error); } .pt .up.warn { color: var(--warning); }
+.pt .box { font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-secondary); padding: 8px 4px 6px; width: 64px; }
+.pt .box .bn { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+.pt .box.eg { border: 1px dashed var(--border-strong); border-bottom: 0; }
+.pt td.eg { border-left: 1px dashed var(--border-strong); border-right: 1px dashed var(--border-strong); }
+.pt tbody tr:hover { background: var(--bg-hover); }
+/* New cell: glyph inside the colour, so state never depends on hue alone. */
+.c { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 20px; border-radius: 1px; font: 600 14px/1 var(--font-mono); color: #0d0f11; position: relative; }
+.c-ok { background: var(--success); }
+.c-warn { background: var(--warning); }
+.c-fail { background: var(--error); }
+.c-unk { background: transparent; border: 1px dashed var(--text-muted); color: var(--text-secondary); }
+.c-none { background: none; color: var(--border-strong); font-size: 18px; }
+.c-add { background: none; border: 1px dashed var(--border-strong); color: var(--text-secondary); font-size: 16px; }
+.c.foc { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+.c .n { position: absolute; right: -9px; top: -7px; font-size: 11px; background: var(--bg-primary); color: var(--text-secondary); border: 1px solid var(--border-light); padding: 0 2px; line-height: 13px; }
+.link-chip { position: absolute; right: -12px; bottom: -6px; width: 15px; height: 15px; background: var(--bg-primary); border: 1px solid var(--warning); color: var(--warning); font-size: 10px; display: grid; place-items: center; border-radius: 2px; }
+tr.off td, tr.off th { background: repeating-linear-gradient(135deg, rgba(141,148,157,.10) 0 6px, transparent 6px 12px); color: var(--text-muted); }
+tr.off .svc { color: var(--text-muted); }
+.legend2 { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: var(--fs-2); color: var(--text-muted); }
+.legend2 .c { width: 18px; height: 15px; font-size: 11px; }
+.fresh { font-size: var(--fs-2); color: var(--text-muted); font-family: var(--font-mono); }
+.fresh.stale { color: var(--warning); }
+.pop { position: absolute; width: 560px; background: var(--bg-secondary); border: 1px solid var(--border-strong); z-index: 250; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.pop::before { content: ''; position: absolute; top: 40px; left: -7px; width: 12px; height: 12px; background: var(--bg-secondary); border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); transform: rotate(45deg); }
+.pop-h { padding: 10px 14px 6px; }
+.pop-h b { font-size: var(--fs-3); }
+.pop-why { color: var(--error); font-size: var(--fs-2); margin-top: 2px; }
+.pop-b { padding: 0 14px 10px; }
+.pop-f { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--border-color); }
+.tip { position: absolute; background: var(--bg-tertiary); border: 1px solid var(--border-strong); padding: 6px 10px; font-size: var(--fs-1); color: var(--text-secondary); z-index: 260; white-space: nowrap; }
+.dash-left { display: grid; grid-template-columns: 760px 1fr; gap: 32px; }
+.ghost-block { border-top: 1px solid var(--border-light); padding-top: 6px; color: var(--text-muted); font-size: var(--fs-2); }
+.ghost-line { height: 12px; background: var(--bg-tertiary); margin: 12px 0; }
+.mini-frame { border: 1px solid var(--border-strong); background: var(--bg-primary); padding: 14px 18px; width: 460px; }
+.skel { display: inline-block; width: 26px; height: 20px; background: var(--bg-tertiary); }
+.place-modal .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 14px; font-size: var(--fs-2); }
+.place-modal dt { color: var(--text-muted); } .place-modal dd { margin: 0; }
+</style></head>
+<body><div class="doc">
+
+<header class="doc-head">
+  <h1>M2 · Placement grid you can act on</h1>
+  <p class="sub">Placement is the first thing an operator reads on the Dashboard, but each cell is a coloured span with a tooltip: it cannot be focused, cannot be clicked, does not show proxied copies, and says up or down by hue alone. This plan makes every cell a keyboard-reachable button with a glyph, adds a column per egress, and puts the fix one keypress away.</p>
+  <p class="meta">Mockup, dark theme, data fake. Colours and type from <code>app/static/css/style.css</code> on origin/main. Purple numbered circles are notes for the reader.</p>
+</header>
+
+<h2 class="scr"><span class="tag">BEFORE</span> The grid today</h2>
+<div class="before">
+  <img src="data:image/png;base64,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" alt="Current placement grid: two services, two boxes, colour squares" width="567">
+  <div>
+    <h3>Restarting Honeygain on box-b, the day it dies</h3>
+    <ul>
+      <li>Cells are <code>&lt;span class="cell cell-fail" title=…&gt;</code> (<code>app.js:1481-1485</code>): no tabindex, no click handler. <kbd>Tab</kbd> skips the whole grid (screenshot <code>33-kbd-dash-tab15.png</code>).</li>
+      <li>To act: scroll to the Services table, find Honeygain, expand its copies, find the box-b row, click Restart (<code>app.js:2079-2141</code>): <span class="count-badge">1 scroll + visual search + 2-3 clicks</span>, the cause (exit code, OOM) is not on the way.</li>
+      <li>State is colour only: <code>.cell-ok</code> green vs <code>.cell-fail</code> red differ by luminance 1.16:1 (<code>style.css:1433-1435</code>), so red-green colour-blind users see two equal squares.</li>
+      <li>Proxied copies are dropped before placement sees them (<code>orchestrator.py:3034-3038</code>): a dead copy behind isp-1 never shows on the Dashboard.</li>
+      <li>A service whose account is disabled still shows green cells and an Up count; nothing says the copies earn nothing.</li>
+      <li>No “last updated” time: a grid frozen by a failed poll looks the same as a fresh one.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===================== STATE 1 ===================== -->
+<h2 class="scr"><span class="tag">STATE 1</span> Dashboard, Placement with egress columns and glyphs</h2>
+<p class="scr-lede">Same place on the Dashboard, same hairline style. New: glyphs, egress columns, account and link states, freshness.</p>
+<div class="frame h900" id="s1">
+  <header class="topbar"><div class="topbar-brand"><span class="sun"></span>CashPilot</div><nav class="topnav"><a class="active">Dashboard</a><a>Fleet</a><a>Proxies &amp; VPNs</a><a>Catalog</a><a>Payouts</a><a>Activity</a><a>Settings</a></nav><div class="topbar-right"><span class="btn btn-primary btn-sm">+ Add service</span><span class="topbar-earn">$148.32</span><span class="avatar">S</span></div></header>
+  <div class="page">
+    <div class="page-head"><h1 class="page-title">Dashboard</h1><div class="page-actions"><span class="fresh">updated 12 s ago</span><span class="btn btn-ghost btn-sm">Refresh <kbd>r</kbd></span></div></div>
+    <div class="stats"><div class="stat"><div class="stat-label">Balance</div><div class="stat-value" style="font-size:32px">$148.32</div></div><div class="stat"><div class="stat-label">Today</div><div class="stat-value">$0.94</div></div><div class="stat"><div class="stat-label">This month</div><div class="stat-value">$21.40</div></div><div class="stat" style="margin-left:auto"><div class="stat-label">Copies</div><div class="stat-value" style="font-size:16px">11 up · 1 down · 1 unknown</div></div></div>
+    <div class="dash-left">
+      <section>
+        <div class="block-head"><h2 class="block-title">Placement</h2>
+          <span class="legend2"><span><span class="c c-ok">✓</span> up</span><span><span class="c c-warn">!</span> degraded</span><span><span class="c c-fail">×</span> down</span><span><span class="c c-unk">?</span> unknown</span><span><span class="c c-none">·</span> not placed</span><span>🔒 account off</span><span><span style="color:var(--warning)">⛓</span> pending link</span><span><span style="border:1px dashed var(--border-strong); padding:0 4px">┆</span> via egress</span></span>
+        </div>
+        <table class="pt">
+          <thead><tr><th class="svc">Service</th>
+            <th class="box"><span class="bn">box-a</span></th>
+            <th class="box eg" id="egh"><span class="bn">box-a via isp-1</span></th>
+            <th class="box"><span class="bn">box-b</span></th>
+            <th class="box"><span class="bn">nas-…-2</span></th>
+            <th class="up">Up</th></tr></thead>
+          <tbody>
+            <tr><th class="svc">Honeygain</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-ok">✓</span></td><td><span class="c c-fail">×</span></td><td><span class="c c-ok">✓</span></td><td class="up fail">3/4</td></tr>
+            <tr><th class="svc">EarnApp</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="muted" style="font-size:13px" title="cannot run behind a proxy">n/a</span></td><td><span class="c c-warn">!<span class="link-chip">⛓</span></span></td><td><span class="c c-none">·</span></td><td class="up warn">1/2</td></tr>
+            <tr><th class="svc">Mysterium</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="muted" style="font-size:13px">n/a</span></td><td><span class="c c-unk">?</span></td><td><span class="c c-ok">✓</span></td><td class="up">2/3</td></tr>
+            <tr><th class="svc">Repocket</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-add" style="opacity:.35">+</span></td><td><span class="c c-ok">✓<span class="n">2</span></span></td><td><span class="c c-none">·</span></td><td class="up">3/3</td></tr>
+            <tr class="off"><th class="svc">🔒 IPRoyal Pawns</th><td><span class="c c-ok" style="opacity:.45">✓</span></td><td class="eg"><span class="c c-ok" style="opacity:.45">✓</span></td><td><span class="c c-none">·</span></td><td><span class="c c-none">·</span></td><td class="up" style="color:var(--warning); font-family:var(--font-ui)">account off</td></tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size:var(--fs-2); margin:8px 0 0"><kbd>Tab</kbd> into the grid, arrows to move, <kbd>Enter</kbd> to act. Sorted worst first.</p>
+      </section>
+      <section>
+        <div class="block-head"><h2 class="block-title">Needs attention <span class="muted mono">3</span></h2></div>
+        <div class="ghost-line" style="width:90%"></div><div class="ghost-line" style="width:75%"></div><div class="ghost-line" style="width:82%"></div>
+        <div class="ghost-block" style="margin-top:30px">Resource use per server</div>
+        <div class="ghost-line" style="height:120px"></div>
+      </section>
+    </div>
+  </div>
+  <div class="tip" style="left:600px; top:270px">box-a via isp-1<br>exits x.x.x.10 · Spain · Residential/ISP<br><a style="color:var(--text-primary)">open in Proxies &amp; VPNs →</a></div>
+  <span class="co abs" style="left:1146px; top:72px">1</span>
+  <span class="co abs" style="left:440px; top:422px">2</span>
+  <span class="co abs" style="left:572px; top:272px">3</span>
+  <span class="co abs" style="left:688px; top:456px">4</span>
+  <span class="co abs" style="left:688px; top:524px">5</span>
+  <span class="co abs" style="left:686px; top:558px">6</span>
+  <span class="co abs" style="left:688px; top:378px">7</span>
+  <span class="co abs" style="left:533px; top:590px">8</span>
+</div>
+<ol class="notes">
+  <li><span class="co">1</span><span><b>Freshness next to Refresh.</b> “updated 12 s ago”, counting up. After a failed poll or past 3 minutes it turns amber and says so; the existing <kbd>r</kbd> key (<code>app.js:189</code>) still refreshes.</span></li>
+  <li><span class="co">2</span><span><b>Glyph in every cell</b>: ✓ up, ! degraded, × down, ? unknown (dashed, not filled, so it never reads as a failure), · not placed. State survives greyscale and colour-blindness; colour stays as the fast channel.</span></li>
+  <li><span class="co">3</span><span><b>One column per egress in use</b>, dashed to say “a copy, another IP”. Header tooltip shows exit IP, country, IP type and links to the Proxies &amp; VPNs page. Fed by proxied copies that <code>orchestrator.py:3034-3038</code> currently filters out; <code>app/worker_api.py</code> reports them with their egress id.</span></li>
+  <li><span class="co">4</span><span><b>Pending device link</b>: an amber chain on the cell when EarnApp, Bitping and similar run but the device is not yet claimed in the vendor's dashboard. The cell is degraded, not up, because it earns nothing yet.</span></li>
+  <li><span class="co">5</span><span><b>Several copies on one box</b> show a small count, as the current <code>.cell-n</code> does.</span></li>
+  <li><span class="co">6</span><span><b>Account off.</b> The whole row is hatched with a lock and “account off” replaces the Up count, so green containers on a disabled account no longer look like income. Uses the existing account-disabled flag from Needs attention.</span></li>
+  <li><span class="co">7</span><span><b>Middle-truncated box names</b> (<code>nas-…-2</code>) so two boxes with the same long prefix stay tell-apart; today names are cut at the end at 14 characters (<code>app.js:1468</code>).</span></li>
+  <li><span class="co">8</span><span><b>Empty egress cell</b> (Repocket via isp-1, shown here hovered) stays blank at rest and shows a faint “+” on focus or hover (State 3). n/a where the service cannot run through a proxy, with the reason in the tooltip.</span></li>
+</ol>
+
+<!-- ===================== STATE 2 ===================== -->
+<h2 class="scr"><span class="tag">STATE 2</span> Focused cell, popover with the cause and the fix</h2>
+<p class="scr-lede">Enter on Honeygain × box-b. The popover reads the container state the worker already reports, and the actions call the same endpoints as the Services table buttons.</p>
+<div class="frame h900" id="s2">
+  <header class="topbar"><div class="topbar-brand"><span class="sun"></span>CashPilot</div><nav class="topnav"><a class="active">Dashboard</a><a>Fleet</a><a>Proxies &amp; VPNs</a><a>Catalog</a><a>Payouts</a><a>Activity</a><a>Settings</a></nav><div class="topbar-right"><span class="btn btn-primary btn-sm">+ Add service</span><span class="topbar-earn">$148.32</span><span class="avatar">S</span></div></header>
+  <div class="page">
+    <div class="page-head"><h1 class="page-title">Dashboard</h1><div class="page-actions"><span class="fresh">updated 3 s ago</span><span class="btn btn-ghost btn-sm">Refresh <kbd>r</kbd></span></div></div>
+    <div class="dash-left">
+      <section>
+        <div class="block-head"><h2 class="block-title">Placement</h2><span class="block-meta">↑↓←→ move · Enter act · Esc close</span></div>
+        <table class="pt">
+          <thead><tr><th class="svc">Service</th><th class="box"><span class="bn">box-a</span></th><th class="box eg"><span class="bn">box-a via isp-1</span></th><th class="box"><span class="bn">box-b</span></th><th class="box"><span class="bn">nas-…-2</span></th><th class="up">Up</th></tr></thead>
+          <tbody>
+            <tr><th class="svc">Honeygain</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-ok">✓</span></td><td><span class="c c-fail foc">×</span></td><td><span class="c c-ok">✓</span></td><td class="up fail">3/4</td></tr>
+            <tr><th class="svc">EarnApp</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="muted" style="font-size:13px">n/a</span></td><td><span class="c c-warn">!<span class="link-chip">⛓</span></span></td><td><span class="c c-none">·</span></td><td class="up warn">1/2</td></tr>
+            <tr style="opacity:.5"><th class="svc">Mysterium</th><td><span class="c c-ok">✓</span></td><td class="eg"></td><td><span class="c c-unk">?</span></td><td><span class="c c-ok">✓</span></td><td class="up">2/3</td></tr>
+            <tr style="opacity:.5"><th class="svc">Repocket</th><td><span class="c c-ok">✓</span></td><td class="eg"></td><td><span class="c c-ok">✓</span></td><td><span class="c c-none">·</span></td><td class="up">3/3</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section></section>
+    </div>
+  </div>
+  <div class="pop" style="left:812px; top:252px" role="dialog" aria-label="Honeygain on box-b">
+    <div class="pop-h"><b>Honeygain on box-b</b><div class="pop-why">exited 4 min ago (exit 137, ran out of memory at 256 MB)</div><div class="muted" style="font-size:var(--fs-1); margin-top:2px">restarted 3 times in the last hour · image honeygain/honeygain:0.8.1</div></div>
+    <div class="pop-b"><div class="logbox">2026-11-08 10:41:02 INFO  session started, device 4f2a…
+2026-11-08 10:41:03 INFO  traffic channel open
+2026-11-08 10:43:57 WARN  buffer pool grew to 241 MB
+2026-11-08 10:44:12 WARN  buffer pool grew to 255 MB
+2026-11-08 10:44:13 ERROR runtime: out of memory
+<span class="muted">… 15 more lines · l opens the full log</span></div>
+      <p class="inline-note warn" style="margin-top:8px">Raise the memory limit to 384 MB in Edit settings, or move it to a box with more free memory (box-a has 5.1 GB free).</p></div>
+    <div class="pop-f"><span class="btn btn-primary btn-sm focus">Edit settings <kbd>e</kbd></span><span class="btn btn-ghost btn-sm">Start <kbd>s</kbd></span><span class="btn btn-ghost btn-sm">Restart <kbd>Shift R</kbd></span><span class="btn btn-ghost btn-sm">Logs <kbd>l</kbd></span><span class="btn btn-ghost btn-sm">Redeploy <kbd>d</kbd></span><span class="btn btn-ghost btn-sm" style="margin-left:auto">Copy as CLI</span></div>
+  </div>
+  <span class="co abs" style="left:690px; top:262px">1</span>
+  <span class="co abs" style="left:1384px; top:276px">2</span>
+  <span class="co abs" style="left:1384px; top:360px">3</span>
+  <span class="co abs" style="left:1384px; top:510px">4</span>
+  <span class="co abs" style="left:1384px; top:580px">5</span>
+</div>
+<ol class="notes">
+  <li><span class="co">1</span><span><b>Visible focus ring on the cell.</b> The grid is one Tab stop (roving tabindex): Tab enters on the worst cell, arrows move, Home/End jump to row ends. Screen readers hear “Honeygain on box-b, down, exited out of memory”.</span></li>
+  <li><span class="co">2</span><span><b>The cause, in words, first line.</b> Exit code 137 plus the memory limit becomes “ran out of memory at 256 MB”. Restart count tells a crash loop from a one-off.</span></li>
+  <li><span class="co">3</span><span><b>Last 20 log lines inline</b>, monospace, so most diagnoses need no second click. <kbd>l</kbd> opens the full log viewer that exists today.</span></li>
+  <li><span class="co">4</span><span><b>A suggested fix</b> when the cause is known (OOM, port in use, bad credential, image pull failure), with the numbers from the fleet.</span></li>
+  <li><span class="co">5</span><span><b>Actions with keys</b>, primary first by state: the suggested fix when the cause is known (here Edit settings, since starting it again at 256 MB repeats the out-of-memory stop), Start for a stopped copy with no known cause, Restart for a running but degraded one. Today's path to Start or Restart: scroll, search, expand, click (2-3 clicks plus a search). Now: <span class="count-badge">Tab, arrows, Enter, s</span> (Start). Copy as CLI (wave 3) gives <code>cashpilot service start honeygain --box box-b</code>.</span></li>
+</ol>
+<div class="kflow"><b>Keyboard</b>
+  <span class="step"><kbd>Tab</kbd> enters the grid once, on the worst cell</span><span class="arrow">→</span>
+  <span class="step"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> move</span><span class="arrow">→</span>
+  <span class="step"><kbd>Enter</kbd> opens the popover, focus on its first action</span><span class="arrow">→</span>
+  <span class="step"><kbd>s</kbd> / <kbd>Shift R</kbd> / <kbd>l</kbd> / <kbd>d</kbd> / <kbd>e</kbd> act</span><span class="arrow">→</span>
+  <span class="step"><kbd>Esc</kbd> closes, focus returns to the cell</span>
+</div>
+
+<!-- ===================== STATE 3 ===================== -->
+<h2 class="scr"><span class="tag">STATE 3</span> Enter on an empty egress cell: place it there</h2>
+<p class="scr-lede">The empty cell under “box-a via isp-1” for Repocket is a shortcut to the placement dialog, already filled in, with the vendor reach result from the last egress test (M1, Screen 3).</p>
+<div class="frame" style="height:620px" id="s3">
+  <header class="topbar"><div class="topbar-brand"><span class="sun"></span>CashPilot</div><nav class="topnav"><a class="active">Dashboard</a><a>Fleet</a><a>Proxies &amp; VPNs</a><a>Catalog</a><a>Payouts</a><a>Activity</a><a>Settings</a></nav><div class="topbar-right"><span class="topbar-earn">$148.32</span><span class="avatar">S</span></div></header>
+  <div class="page" style="width:760px">
+    <table class="pt">
+      <thead><tr><th class="svc">Service</th><th class="box"><span class="bn">box-a</span></th><th class="box eg"><span class="bn">box-a via isp-1</span></th><th class="box"><span class="bn">box-b</span></th><th class="box"><span class="bn">nas-…-2</span></th><th class="up">Up</th></tr></thead>
+      <tbody><tr><th class="svc">Repocket</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-add foc">+</span></td><td><span class="c c-ok">✓</span></td><td><span class="c c-none">·</span></td><td class="up">2/2</td></tr></tbody>
+    </table>
+  </div>
+  <div class="overlay" style="left:0; top:48px; background:rgba(0,0,0,.45); padding-top:30px; justify-content:flex-end; padding-right:90px">
+    <div class="modal place-modal" style="width:640px">
+      <div class="modal-header"><h3>Place Repocket on box-a via isp-1</h3><span class="muted"><kbd>Esc</kbd></span></div>
+      <div class="modal-body">
+        <dl class="kv">
+          <dt>Service</dt><dd>Repocket <span class="muted">· same account as the box-a copy</span></dd>
+          <dt>Box</dt><dd>box-a <span class="muted">· 5.1 GB memory free</span></dd>
+          <dt>Egress</dt><dd>isp-1 · x.x.x.10 · Spain · Residential/ISP</dd>
+          <dt>Vendor reach</dt><dd><span class="chip ok">OK</span> <span class="muted">tested 2 h ago</span> <a style="color:var(--text-primary)">retest</a></dd>
+          <dt>Traffic</dt><dd>isp-1 has 7.9 GB left this cycle; Repocket used ~1.4 GB/month per copy</dd>
+          <dt>Kill switch</dt><dd><span class="chip ok">On</span> <span class="muted">stops if isp-1 drops</span></dd>
+        </dl>
+      </div>
+      <div class="modal-foot"><div class="cli" style="flex:1"><span class="prompt">$</span> cashpilot copy apply repocket --egress isp-1 --box box-a<span class="btn btn-ghost btn-sm copy">Copy as CLI</span></div></div>
+      <div class="modal-foot"><span class="spacer"></span><span class="btn btn-ghost">Cancel</span><span class="btn btn-primary focus">Place <kbd>Enter</kbd></span></div>
+    </div>
+  </div>
+  <span class="co abs" style="left:196px; top:240px">1</span>
+  <span class="co abs" style="left:690px; top:180px">2</span>
+  <span class="co abs" style="left:690px; top:250px">3</span>
+  <span class="co abs" style="left:1310px; top:520px">4</span>
+</div>
+<ol class="notes">
+  <li><span class="co">1</span><span><b>Faint “+” only on focus or hover</b>, so the resting grid stays quiet.</span></li>
+  <li><span class="co">2</span><span><b>Prefilled from the cell</b>: service from the row, box and egress from the column, account from the copy that already runs. Today: Fleet → scroll → “Run a copy through a proxy” → three selects → Run (<code>fleet.html:114-123</code>).</span></li>
+  <li><span class="co">3</span><span><b>Vendor reach and traffic budget before committing</b>, so a placement that would earn nothing or blow the cap is visible up front. A failed reach turns the button into “Place anyway” with the reason.</span></li>
+  <li><span class="co">4</span><span><b>Enter places</b>; the cell turns to a loading glyph, then ✓ when the worker reports the copy. Esc returns focus to the cell. <span class="count-badge">Enter, Enter</span> instead of ~6 actions.</span></li>
+</ol>
+
+<h2 class="scr"><span class="tag">STATES</span> Loading, error, empty, and phone</h2>
+<div class="row2">
+  <div><p class="frame-label">loading · first paint</p><div class="mini-frame"><div class="block-head"><span class="block-title">Placement</span><span class="fresh">reading the fleet…</span></div><table class="pt" style="margin-top:4px"><tbody><tr><th class="svc"><span class="skel" style="width:100px"></span></th><td><span class="skel"></span></td><td><span class="skel"></span></td><td><span class="skel"></span></td></tr><tr><th class="svc"><span class="skel" style="width:80px"></span></th><td><span class="skel"></span></td><td><span class="skel"></span></td><td><span class="skel"></span></td></tr></tbody></table></div></div>
+  <div><p class="frame-label">stale · last poll failed</p><div class="mini-frame" style="width:300px"><div class="block-head"><span class="block-title">Placement</span><span class="fresh stale">updated 4 min ago</span></div><p class="muted" style="font-size:var(--fs-2); margin:8px 0 0">Amber after 3 min or a failed poll; title says which.</p></div></div>
+  <div><p class="frame-label">error · workers unreadable (app.js:1437-1439 today)</p><div class="mini-frame"><div class="block-head"><span class="block-title">Placement</span><span class="fresh stale">updated 6 min ago</span></div><p class="inline-note fail" style="margin:10px 0 0">Could not read the workers, so placement is unknown. Showing the last good grid from 6 min ago, dimmed. <span class="btn btn-ghost btn-sm">Retry <kbd>r</kbd></span></p></div></div>
+  <div><p class="frame-label">empty · no services yet</p><div class="mini-frame"><div class="block-head"><span class="block-title">Placement</span></div><p style="margin:10px 0 4px">Nothing placed yet.</p><p class="muted" style="font-size:var(--fs-2); margin:0 0 8px">Pick services and the boxes to run them on; they show up here as rows and columns.</p><span class="btn btn-primary btn-sm">+ Add service <kbd>n</kbd></span></div></div>
+  <div><p class="frame-label">390 wide · phone</p><div class="mini-frame" style="width:390px; padding:10px 12px" id="s-mobile"><div class="block-head"><span class="block-title">Placement</span><span class="fresh">12 s ago</span></div>
+    <table class="pt"><thead><tr><th class="svc">Service</th><th class="box" style="width:44px"><span class="bn">box-a</span></th><th class="box eg" style="width:44px"><span class="bn">via isp-1</span></th><th class="box" style="width:44px"><span class="bn">box-b</span></th><th class="box" style="width:44px"><span class="bn">nas-…-2</span></th><th class="up">Up</th></tr></thead>
+    <tbody><tr><th class="svc">Honeygain</th><td><span class="c c-ok">✓</span></td><td class="eg"><span class="c c-ok">✓</span></td><td><span class="c c-fail">×</span></td><td><span class="c c-ok">✓</span></td><td class="up fail">3/4</td></tr><tr class="off"><th class="svc">🔒 Pawns</th><td></td><td class="eg"></td><td></td><td></td><td class="up" style="color:var(--warning);font-family:var(--font-ui)">off</td></tr></tbody></table>
+    <p class="muted" style="font-size:var(--fs-1); margin:6px 0 0">Tap a cell: the popover opens as a bottom sheet with the same actions.</p></div></div>
+</div>
+
+<h2 class="scr"><span class="tag">CLI · API</span> The grid as data</h2>
+<div class="frame" style="padding:16px 20px; background:var(--bg-log)" id="s4">
+<div class="logbox" style="border:0; padding:0; font-size:14px; line-height:1.55"><span class="muted">$</span> cashpilot service ls --grid
+SERVICE         box-a  box-a/isp-1  box-b   nas-attic-2  UP
+Honeygain       ✓      ✓            ×       ✓            <span class="fail">3/4</span>
+EarnApp         ✓      n/a          !⛓      ·            <span class="warn">1/2</span>
+Mysterium       ✓      n/a          ?       ✓            2/3
+Repocket        ✓      ·            ✓2      ·            3/3
+IPRoyal Pawns   <span class="muted">account off</span>
+<span class="muted">updated 12 s ago · 1 down: cashpilot finding ls --box box-b</span>
+
+<span class="muted">$</span> cashpilot finding ls --box box-b --json
+{ "service": "honeygain", "box": "box-b", "egress": null, "state": "down",
+  "reason": "oom", "exit_code": 137, "mem_limit_mb": 256, "exited_ago_s": 240,
+  "restarts_1h": 3, "suggest": { "action": "edit", "mem_limit_mb": 384 },
+  "log_tail": ["… 20 lines …"] }</div>
+</div>
+<ol class="notes"><li><span class="co">A</span><span><b>Same glyphs in the terminal</b>, so a screenshot from either reads the same. <code>GET /api/placement</code> returns the grid with proxied copies and <code>account_disabled</code>; the CLI and the Dashboard both render it.</span></li></ol>
+
+</div></body></html>
