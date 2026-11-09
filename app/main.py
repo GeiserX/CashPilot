@@ -2071,6 +2071,26 @@ def _probe_step(
     return state, held, f"{reason}, for {int((now - min(stale)) // 3600)} hours"
 
 
+def _kept_probe(
+    key: tuple[str, int, int], spec: dict[str, Any] | None, now: float
+) -> tuple[tuple[str, dict[int, tuple[bool, float]]] | None, list[str]]:
+    """A copy's last probe state and hints, for a sweep that could not redo them.
+
+    Nothing when the catalog's probe changed since: the old indexes may point
+    at other checks. The state stays while its timestamps age; its hints are
+    dropped once a check they show has gone PROBE_STALE_SECONDS unread, so a
+    failing sweep cannot keep showing a verdict longer than a working one.
+    """
+    if spec is None:
+        return None, []
+    definition, state = _probe_state.get(key, (None, {}))
+    if definition != health_probe.fingerprint(spec) or not state:
+        return None, []
+    if any(hit and now - since >= PROBE_STALE_SECONDS for hit, since in state.values()):
+        return (definition, state), []
+    return (definition, state), _probe_hints.get(key, [])
+
+
 async def _sweep_windowed_signals() -> None:
     """Re-read every running copy's windowed log signals and health probe.
 
@@ -2103,11 +2123,15 @@ async def _sweep_windowed_signals() -> None:
         instance = int(c.get("instance") or 1)
         key = (slug, wid, instance)
 
-        def _keep(k: tuple[str, int, int] = key) -> None:
-            """Carry this copy's last verdicts over unchanged."""
-            for new, old in ((signal_hints, _signal_hints), (probe_hints, _probe_hints), (probe_state, _probe_state)):
-                if k in old:
-                    new[k] = old[k]
+        def _keep(k: tuple[str, int, int] = key, probe_spec: dict[str, Any] | None = spec) -> None:
+            """Carry this copy's last log verdicts over, and its probe verdicts while they still apply."""
+            if k in _signal_hints:
+                signal_hints[k] = _signal_hints[k]
+            kept_probe, kept_hints = _kept_probe(k, probe_spec, time.time())
+            if kept_probe is not None:
+                probe_state[k] = kept_probe
+            if kept_hints:
+                probe_hints[k] = kept_hints
 
         try:
             if wid not in workers:
@@ -2173,9 +2197,9 @@ async def _sweep_windowed_signals() -> None:
                     probe_state[key] = (definition, state)
             except Exception as exc:
                 logger.warning("Health probe check failed for %s on worker %s: %s", slug, wid, exc)
-                if kept_state:
-                    probed = _probe_hints.get(key, [])
-                    probe_state[key] = (definition, kept_state)
+                kept_probe, probed = _kept_probe(key, spec, time.time())
+                if kept_probe is not None:
+                    probe_state[key] = kept_probe
             if probed:
                 probe_hints[key] = probed
         if logged or probed:

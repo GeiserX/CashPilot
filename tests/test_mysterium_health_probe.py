@@ -199,7 +199,7 @@ def test_the_session_read_has_no_date_window_and_does_not_hang_on_the_status_rea
     script = _spec()["command"][-1]
     assert "date_from" not in script and "date " not in script
     status, sessions = script.split("\nfi\n", 1)
-    assert "monitoring-status" in status and status.startswith("if ") and sessions.startswith("if ")
+    assert "monitoring-status" in status and status.startswith("if ") and sessions.startswith("set -o pipefail\nif ")
     assert sessions.rstrip().endswith('echo "sessions read: all"\nfi'), "the marker comes after the data"
     assert [c.get("answered") for c in _spec()["checks"]] == ["monitoring read: ", "sessions read: all"]
 
@@ -224,7 +224,7 @@ def test_the_sessions_judged_are_the_five_that_ended_last():
     but ended after a run of short ones must still be among those judged."""
     script = _spec()["command"][-1]
     assert "page_size=100" in script
-    assert "mktime(t) + d" in script and "sort -rn | head -5" in script
+    assert "mktime(t) + d" in script and "| sort -rn)" in script and '"$sorted" | head -5' in script
 
 
 def _awk_has_mktime() -> bool:
@@ -237,7 +237,8 @@ def _awk_has_mktime() -> bool:
 def test_a_long_session_that_ended_last_is_judged_though_it_started_first():
     """Runs the catalog's own sessions pipeline on a page in the API's order."""
     script = _spec()["command"][-1]
-    pipeline = script[script.index('echo "$s" | ') + len('echo "$s" | ') : script.index("| head -5") + len("| head -5")]
+    start = script.index('echo "$s" | ') + len('echo "$s" | ')
+    pipeline = script[start : script.index("| sort -rn") + len("| sort -rn")] + " | head -5"
     dead = [_session(i, 61, 0, 0) | {"created_at": f"2026-11-08T1{i // 6}:{i % 6}0:00Z"} for i in range(30)]
     long_good = _session(99, 40 * 3600, 900_000, 400_000) | {"created_at": "2026-11-07T00:00:00Z"}
     page = {"items": [*reversed(dead), long_good], "page": 1, "page_size": 100, "total_items": 31, "total_pages": 1}
@@ -249,6 +250,38 @@ def test_a_long_session_that_ended_last_is_judged_though_it_started_first():
     env["s"] = json.dumps(dead_only, separators=(",", ":"))
     out = subprocess.run(["sh", "-c", 'echo "$s" | ' + pipeline], capture_output=True, text=True, env=env, check=True)
     assert health_probe.judge(out.stdout + "sessions read: all", _spec()) == [1]
+
+
+def _run_sessions_branch(tmp_path, page: str, *, broken_awk: bool = False) -> str:
+    """Run the catalog command under bash with a stub wget answering ``page``
+    (monitoring fails); ``broken_awk`` makes awk exit with an error."""
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    (stubs / "wget").write_text('#!/bin/sh\ncase "$*" in *monitoring*) exit 1;; esac\nprintf "%s" "$PAGE"\n')
+    if broken_awk:
+        (stubs / "awk").write_text("#!/bin/sh\ncat >/dev/null\nexit 2\n")
+    for stub in stubs.iterdir():
+        stub.chmod(0o755)
+    env = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}", "PAGE": page}
+    script = _spec()["command"][-1]
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env).stdout
+
+
+def test_a_failed_sessions_pipeline_is_no_full_read(tmp_path):
+    """awk or sort failing after a good fetch must leave the sessions check unread,
+    not judged healthy on empty output."""
+    page = json.dumps({"items": [_session(i, 61, 0, 0) for i in range(6)]}, separators=(",", ":"))
+    out = _run_sessions_branch(tmp_path, page, broken_awk=True)
+    assert "sessions read: all" not in out
+    assert health_probe.unanswered(out, _spec()) == [0, 1]
+
+
+@pytest.mark.skipif(not _awk_has_mktime(), reason="this awk has no mktime")
+def test_an_empty_session_list_is_still_a_full_read(tmp_path):
+    """A node with no completed sessions yet was read in full and holds no bad run."""
+    out = _run_sessions_branch(tmp_path, '{"items":[],"page":1,"page_size":100,"total_items":0}')
+    assert out.splitlines() == ["sessions read: all"]
+    assert health_probe.unanswered(out, _spec()) == [0] and health_probe.judge(out, _spec()) == []
 
 
 def test_the_monitoring_finding_sends_to_the_tun_check_first():
@@ -633,6 +666,49 @@ def test_a_stalled_listing_ends_with_the_batch_and_keeps_the_rows_read(monkeypat
     assert took < 2 and [r["slug"] for r in rows] == ["aaa"] and rows[0]["hits"] == [0, 1]
 
 
+def test_a_client_that_cannot_be_made_gives_its_slot_back():
+    """Docker down at the start of a batch must not use up the pool's slots for good."""
+    api = _Api({"fast": (0, FAILING.encode())})
+    with (
+        patch("app.orchestrator.service_instances", return_value=_containers("fast")),
+        patch("app.orchestrator._instance_of", return_value=1),
+    ):
+        for _ in range(health_probe._POOL_SIZE + 1):
+            with patch("app.health_probe._client", side_effect=OSError("no docker")):
+                assert health_probe.read_all(_two_services()) == []
+        with patch("app.health_probe._client", return_value=MagicMock(api=api)):
+            rows = health_probe.read_all(_two_services())
+    assert [r.get("hits") for r in rows] == [[0, 1], [0, 1]]
+
+
+def test_a_listing_that_always_stalls_lets_the_next_service_go_first(monkeypatch):
+    """The cursor moves past a stalled listing, or the services behind it are never read."""
+    release = threading.Event()
+    api = _Api({"fast": (0, FAILING.encode())})
+    listed = []
+
+    def _list(slug, client=None):
+        """aaa's listing always hangs; bbb lists at once."""
+        listed.append(slug)
+        if slug == "aaa":
+            release.wait(10)
+            return []
+        return _containers("fast")
+
+    monkeypatch.setattr(health_probe, "BATCH_BUDGET", 0.3)
+    try:
+        with (
+            patch("app.orchestrator.service_instances", side_effect=_list),
+            patch("app.orchestrator._instance_of", return_value=1),
+            patch("app.health_probe._client", return_value=MagicMock(api=api)),
+        ):
+            assert health_probe.read_all(_two_services()) == []
+            second = health_probe.read_all(_two_services())
+    finally:
+        release.set()
+    assert listed[1] == "bbb" and second[0]["slug"] == "bbb" and second[0]["hits"] == [0, 1]
+
+
 def test_the_worker_endpoint_serves_the_rows():
     """The worker endpoint returns what read_all reads."""
     client = TestClient(worker_api.app)
@@ -661,7 +737,7 @@ def _row(hits=None, *, error=None, unread=(), definition=None):
     return row
 
 
-def _sweep(probes=None, *, probe_error=None, logs="", log_error=None):
+def _sweep(probes=None, *, probe_error=None, logs="", log_error=None, worker_error=None):
     """Run one sweep against fake worker answers; returns the copy's hints and the paths called."""
     calls = []
 
@@ -678,7 +754,12 @@ def _sweep(probes=None, *, probe_error=None, logs="", log_error=None):
 
     with (
         patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[RUNNING]),
-        patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=WORKER),
+        patch(
+            "app.main.database.get_worker",
+            new_callable=AsyncMock,
+            return_value=WORKER,
+            side_effect=worker_error,
+        ),
         patch(
             "app.main.database.get_deployment_spec",
             new_callable=AsyncMock,
@@ -694,8 +775,10 @@ def _sweep(probes=None, *, probe_error=None, logs="", log_error=None):
 def _no_carried_turn():
     """Each test starts read_all with the first copy."""
     health_probe._resume.clear()
+    health_probe._resume_service = None
     yield
     health_probe._resume.clear()
+    health_probe._resume_service = None
 
 
 @pytest.fixture(autouse=True)
@@ -814,6 +897,30 @@ def test_a_verdict_kept_from_another_definition_is_dropped():
             [_row(error="timed out", definition=health_probe.fingerprint(changed["docker"]["health_probe"]))]
         )
     assert hints == [], "the session verdict must not come back as the monitoring one"
+
+
+def test_a_worker_lookup_failure_keeps_log_verdicts_but_not_another_definitions_probe():
+    """When the worker row cannot be read, the log verdict stays, and a probe
+    verdict read against another definition must not come back."""
+    _sweep([_row([1])], logs=FAILED_LOG)
+    changed = copy.deepcopy(catalog.get_service("mysterium"))
+    changed["docker"]["health_probe"]["checks"].reverse()
+    with patch("app.main.catalog.get_service", return_value=changed):
+        hints, _ = _sweep(worker_error=RuntimeError("database is locked"))
+    assert len(hints) == 1 and "forward the UDP port range" in hints[0]
+    assert ("mysterium", 7, 1) not in main._probe_state
+
+
+def test_a_failing_sweep_does_not_keep_a_verdict_past_a_day():
+    """The kept probe hints obey the same one-day limit as a working sweep."""
+    _sweep([_row([1])])
+    later = main.time.time() + main.PROBE_STALE_SECONDS + 3600
+    with patch("app.main.time.time", return_value=later):
+        with patch("app.main._probe_step", side_effect=RuntimeError("boom")):
+            hints, _ = _sweep([_row([1])])
+        assert hints == [], "a day-old verdict must not survive a failing probe step"
+        hints, _ = _sweep(worker_error=RuntimeError("database is locked"))
+        assert hints == [], "nor a failing worker lookup"
 
 
 def test_a_check_unread_for_a_day_says_so():
@@ -975,6 +1082,40 @@ def test_no_socket_is_its_own_status_and_pairs_close_as_they_go(monkeypatch):
     monkeypatch.setattr(stun, "probe", lambda sock, server: sock.port)
     assert stun.run(("192.0.2.1", 3478), 30000, 50) == (100, 0, 50)
     assert peak == 2 and open_now == 0
+
+
+def test_a_rewrite_seen_before_the_sockets_ran_out_still_counts(monkeypatch):
+    """Running out of sockets after a rewrite was measured keeps that verdict, exit 1."""
+    stun = _stun()
+    opened = 0
+
+    class _Few:
+        """UDP sockets until the third, then out of file descriptors."""
+
+        def __init__(self, *a, **k):
+            """Open one, or refuse past two."""
+            nonlocal opened
+            opened += 1
+            if opened > 2:
+                raise OSError(24, "Too many open files")
+            self.port = 0
+
+        def settimeout(self, value):
+            """Accept the timeout."""
+
+        def bind(self, address):
+            """Remember the port."""
+            self.port = address[1]
+
+        def close(self):
+            """Close it."""
+
+    monkeypatch.setattr(stun, "_servers", lambda: [("192.0.2.1", 3478)])
+    monkeypatch.setattr("sys.argv", ["stun_port_pair.py"])
+    monkeypatch.setattr(stun.socket, "socket", _Few)
+    # The odd port goes out first and comes back rewritten; its partner keeps its number.
+    monkeypatch.setattr(stun, "probe", lambda sock, server: sock.port + 100 if sock.port % 2 else sock.port)
+    assert stun.main() == 1
 
 
 def test_every_port_rewritten_makes_no_claim_about_a_forward(monkeypatch, capsys):

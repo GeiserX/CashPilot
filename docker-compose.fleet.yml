@@ -141,7 +141,7 @@ services:
       # The policy's fingerprint. Compose does not recreate a container when
       # only its config's content changes, so this line is what makes
       # `docker compose up -d` restart the proxy on a new policy.
-      - CASHPILOT_PROXY_POLICY=54821ddd893d3689
+      - CASHPILOT_PROXY_POLICY=16092b75e37d2917
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
@@ -225,7 +225,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=54821ddd893d3689
+      - CASHPILOT_PROXY_POLICY=16092b75e37d2917
       # The same two values the proxy gets, so the worker can say what to set
       # before the proxy refuses (the in-app update, a host-folder bind).
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
@@ -352,7 +352,7 @@ configs:
             - ["cat", "/run/ready"]
             - ["sh", "-c", "id=$$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\\{40\\}' | head -1) && wget -qO- -T 5 \"http://127.0.0.1:4050/identities/$$id\" && { echo; wget -qO- -T 5 \"http://127.0.0.1:4050/transactor/settle/history?page_size=1000\" || true; }"]
             - ["sh", "-c", "id=$$(wget -qO- -T 5 http://127.0.0.1:4050/identities | grep -o '0x[0-9a-fA-F]\\{40\\}' | head -1) && wget -qO- -T 5 \"http://127.0.0.1:4050/identities/$$id/beneficiary\""]
-            - ["timeout", "12", "sh", "-c", "if m=$$(wget -qO- -Y off -T 5 http://127.0.0.1:4050/node/monitoring-status); then\n  echo \"monitoring read: $$m\"\nfi\nif s=$$(wget -qO- -Y off -T 5 \"http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=100\"); then\n  echo \"$$s\" | sed 's/},{/}\\n{/g' | awk '\n    match($$0, /\"created_at\":\"[^\"]+\"/) {\n      t = substr($$0, RSTART + 14, 19); gsub(/[-T:]/, \" \", t)\n      d = 0; if (match($$0, /\"duration\":[0-9]+/)) d = substr($$0, RSTART + 11, RLENGTH - 11)\n      print mktime(t) + d, $$0\n    }' | sort -rn | head -5\n  echo \"sessions read: all\"\nfi"]
+            - ["timeout", "12", "sh", "-c", "if m=$$(wget -qO- -Y off -T 5 http://127.0.0.1:4050/node/monitoring-status); then\n  echo \"monitoring read: $$m\"\nfi\nset -o pipefail\nif s=$$(wget -qO- -Y off -T 5 \"http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=100\") &&\n  sorted=$$(echo \"$$s\" | sed 's/},{/}\\n{/g' | awk '\n    match($$0, /\"created_at\":\"[^\"]+\"/) {\n      t = substr($$0, RSTART + 14, 19); gsub(/[-T:]/, \" \", t)\n      d = 0; if (match($$0, /\"duration\":[0-9]+/)) d = substr($$0, RSTART + 11, RLENGTH - 11)\n      print mktime(t) + d, $$0\n    }' | sort -rn); then\n  [ -z \"$$sorted\" ] || echo \"$$sorted\" | head -5\n  echo \"sessions read: all\"\nfi"]
             - ["sh", "-c", "T=\"\"; command -v timeout >/dev/null 2>&1 && T=\"timeout 5\"; $$T iptables-nft -t nat -S MYST 2>/dev/null; if grep -qx nat /proc/net/ip_tables_names 2>/dev/null; then $$T iptables-legacy -t nat -S MYST 2>/dev/null; $$T iptables -t nat -S MYST 2>/dev/null; else case \"$$($$T iptables -V 2>/dev/null)\" in *nf_tables*) $$T iptables -t nat -S MYST 2>/dev/null;; esac; fi"]
             - ["cat", "/etc/anon/anonrc"]
         image_pull:

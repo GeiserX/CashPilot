@@ -308,21 +308,29 @@ def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if _resume_service is None:
             _resume_service = slug
 
-    for slug, spec in declared:
+    def _list(slug: str) -> Any:
+        """Make the client if there is none yet, then list ``slug``'s copies."""
+        nonlocal client
+        if client is None:
+            client = _client()
+        return orchestrator.service_instances(slug, client=client)
+
+    for n, (slug, spec) in enumerate(declared):
         left = min(READ_TIMEOUT, deadline - time.monotonic())
         if left <= 0 or not _slots.acquire(blocking=False):
             # Not listed: the UI keeps these copies' last verdicts.
             _unreached(slug)
             break
         try:
-            if client is None:
-                client = _client()
-            # On the pool and this module's client, so a stalled listing ends
+            # Making the client and listing both run on the pool in the slot
+            # just taken, so a failure gives the slot back and a stall ends
             # within the batch's remaining time.
-            copies = _run_in_pool(functools.partial(orchestrator.service_instances, slug, client=client), left)
+            copies = _run_in_pool(functools.partial(_list, slug), left)
         except TimeoutError:
             logger.warning("Listing %s containers for the health probe ran out of time", slug)
-            _unreached(slug)
+            # The next call starts after this service, so one that always
+            # stalls cannot keep the ones behind it from ever being read.
+            _unreached(declared[(n + 1) % len(declared)][0])
             break
         except Exception as exc:  # noqa: BLE001 - one service never fails the rest
             logger.warning("Could not list %s containers for the health probe: %s", slug, exc)

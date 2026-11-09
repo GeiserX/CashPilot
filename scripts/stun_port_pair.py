@@ -29,7 +29,8 @@ Exit status: 0 when every pair was tested and every port kept its number,
 rewritten but some pair could not be tested in full (a port that did not bind
 or got no answer), so the pairing was not checked: run it again with another
 --start, 4 when --start and --pairs do not give real ports (1 to 65535), and 5
-when the machine would not open a socket, so nothing was tested. A
+when the machine would not open a socket before any rewrite was seen (one
+seen first still gives 1). A
 rewritten port is reported as a pairing
 router when some ports kept their number, and as a NAT that rewrites every
 port when none did. Read-only: it sends a few UDP packets to a public STUN
@@ -108,7 +109,14 @@ def _servers() -> list[tuple[str, int]]:
 
 
 class NoSocket(Exception):
-    """This machine would not give the test a socket (out of file descriptors, or no permission)."""
+    """This machine would not give the test a socket (out of file descriptors, or no permission).
+
+    ``measured`` holds what run had counted before that, as run returns it.
+    """
+
+    def __init__(self, reason: str, measured: tuple[int, int, int]) -> None:
+        super().__init__(reason)
+        self.measured = measured
 
 
 def run(server: tuple[str, int], start: int, pairs: int) -> tuple[int, int, int]:
@@ -130,7 +138,7 @@ def run(server: tuple[str, int], start: int, pairs: int) -> tuple[int, int, int]
                 try:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 except OSError as exc:
-                    raise NoSocket(exc.strerror or str(exc)) from exc
+                    raise NoSocket(exc.strerror or str(exc), (answered, rewritten, complete)) from exc
                 socks.append(sock)
                 try:
                     # A client socket on a chosen source port, so the test knows
@@ -183,8 +191,13 @@ def main() -> int:
         try:
             answered, rewritten, complete = run(server, args.start, args.pairs)
         except NoSocket as exc:
-            print(f"Could not open a UDP socket ({exc}): nothing was tested.")
-            return 5
+            answered, rewritten, complete = exc.measured
+            if not rewritten:
+                print(f"Could not open a UDP socket ({exc}): the test did not finish.")
+                return 5
+            # A rewrite already seen is the verdict, whatever was left untested.
+            print(f"Could not open a UDP socket ({exc}): the test stopped early.")
+            break
         if answered:
             break
         print(f"No answer from {server[0]}:{server[1]}.")
