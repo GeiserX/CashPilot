@@ -18,10 +18,13 @@ the ones uvicorn installs with ``propagate=False``.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
 from urllib.parse import urlsplit
+
+import httpx
 
 _REDACTED = "<redacted>"
 
@@ -54,18 +57,26 @@ def _configured_secrets() -> list[tuple[str, str]]:
         value = os.getenv(name, "").strip()
         if not value:
             continue
-        try:
-            parts = urlsplit(value)
-        except ValueError:
-            pairs.append((value, _REDACTED))
-            continue
-        tail = parts.path + (f"?{parts.query}" if parts.query else "")
-        host = parts.netloc.rpartition("@")[2]
-        if host and tail.strip("/"):
-            # Keep the host so the line still says where the request went.
-            pairs.append((f"{host}{tail}", f"{host}/{_REDACTED}"))
-            if parts.query:
-                pairs.append((f"{host}{parts.path}", f"{host}/{_REDACTED}"))
+        # httpx logs str(request.url), which is normalized: lowercase host, no
+        # default port, spaces and non-ASCII percent-encoded. Match that form as
+        # well as the raw value, or an operator's ``https://Hooks.Example.com/...``
+        # or ``https://ntfy.sh:443/topic`` reaches the log untouched.
+        forms = [value]
+        with contextlib.suppress(Exception):  # an unparsable URL keeps only its raw form
+            forms.append(str(httpx.URL(value)))
+        for form in dict.fromkeys(forms):
+            try:
+                parts = urlsplit(form)
+            except ValueError:
+                pairs.append((form, _REDACTED))
+                continue
+            tail = parts.path + (f"?{parts.query}" if parts.query else "")
+            host = parts.netloc.rpartition("@")[2]
+            if host and tail.strip("/"):
+                # Keep the host so the line still says where the request went.
+                pairs.append((f"{host}{tail}", f"{host}/{_REDACTED}"))
+                if parts.query:
+                    pairs.append((f"{host}{parts.path}", f"{host}/{_REDACTED}"))
     # Longest first, so a URL is replaced before a shorter secret inside it.
     return sorted(pairs, key=lambda p: len(p[0]), reverse=True)
 

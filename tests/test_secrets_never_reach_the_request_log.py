@@ -107,6 +107,34 @@ class TestNotifierRequests:
         assert FAKE_WEBHOOK_TOKEN not in log
         assert "HTTP Request: POST https://hooks.example/<redacted>" in log
 
+    @pytest.mark.parametrize(
+        ("env", "url", "logged_host", "secrets"),
+        [
+            # httpx lowercases the host in its log line.
+            (
+                "CASHPILOT_WEBHOOK_URL",
+                f"https://Hooks.Example/T0/B0/{FAKE_WEBHOOK_TOKEN}",
+                "hooks.example",
+                [FAKE_WEBHOOK_TOKEN],
+            ),
+            # ... drops an explicit default port ...
+            ("CASHPILOT_NTFY_URL", f"https://ntfy.example:443/{FAKE_NTFY_TOPIC}", "ntfy.example", [FAKE_NTFY_TOPIC]),
+            # ... and percent-encodes a space in the path or the query.
+            ("CASHPILOT_NTFY_URL", f"https://ntfy.example/{FAKE_NTFY_TOPIC} x", "ntfy.example", [FAKE_NTFY_TOPIC]),
+            (
+                "CASHPILOT_WEBHOOK_URL",
+                f"https://hooks.example/a/{FAKE_WEBHOOK_TOKEN}?x=1&y=fake words",
+                "hooks.example",
+                [FAKE_WEBHOOK_TOKEN, "fake%20words"],
+            ),
+        ],
+    )
+    def test_a_url_httpx_normalizes_is_still_redacted(self, redacting, caplog, env, url, logged_host, secrets):
+        log = _send_alert(caplog, **{env: url})
+        for secret in secrets:
+            assert secret not in log
+        assert f"HTTP Request: POST https://{logged_host}/<redacted>" in log
+
 
 class TestAnyClientRequest:
     """Collectors and the worker log through the same httpx and urllib3 loggers."""
