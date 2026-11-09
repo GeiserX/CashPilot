@@ -413,9 +413,11 @@ What changes:
 - **The per-IP limits move with the IP.** A copy through the exit node counts
   against that site's public IP. If the box there still runs a service with a
   limit of one device per IP, a copy of the same service through its exit
-  earns nothing; the page warns before you start it
+  earns nothing. The page warns only once the copy is running, since that is
+  when it learns the exit IP
   ([Exit IPs and grouping](#exit-ips-and-grouping)). Move each service, do
-  not double it.
+  not double it: stop it on the second site's worker before you start its
+  copy.
 - **The traffic crosses both connections.** The earner's traffic goes from
   the box running the copy, over the tailnet, to the exit node, and out from
   there. The exit's connection carries it in both directions, and the copy's
@@ -435,6 +437,6 @@ What changes:
 On a Linux machine, the exit node also needs IP forwarding turned on before
 Tailscale lets it advertise itself; Tailscale's
 [exit node guide](https://tailscale.com/kb/1103/exit-nodes) has the commands
-per system. Then set it up with the steps in [Tailscale exit nodes](#tailscale-exit-nodes),
-then add one copy per service you move, and remove that service from the
-second site's worker if one still runs there.
+per system. Then set it up with the steps in [Tailscale exit nodes](#tailscale-exit-nodes).
+For each service you move, first remove it from the second site's worker if
+one still runs there, then add its copy.
