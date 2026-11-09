@@ -561,8 +561,11 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
 
 def _copy_number(container: dict[str, Any]) -> int | None:
     """Which copy a heartbeat entry or deploy spec names: 1 when it says none, None when unreadable."""
+    raw = container.get("instance") or 1
+    if isinstance(raw, float) and not raw.is_integer():
+        return None  # 1.5 is no copy; int() would make it copy 1.
     try:
-        return int(container.get("instance") or 1)
+        return int(raw)
     except (TypeError, ValueError, OverflowError):
         return None
 
@@ -3593,12 +3596,18 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     else:
         spec.pop("instances", None)
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
-    # Recorded once the first copy runs: an extra copy that fails below must not
-    # leave an older stop as the latest action, which would hide this one's crash.
-    await database.record_health_event(slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id)
-    # The extra copies, after the record: if one fails, the next redeploy still
+    # Each copy's start is recorded as its deploy is attempted: one that fails
+    # must not leave an older stop as its latest action, which would hide its
+    # crash, and a copy the deploy never reaches keeps the stop it had.
+    await database.record_health_event(
+        slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=1
+    )
+    # The extra copies, after the save: if one fails, the next redeploy still
     # knows how many this worker should run and tries again.
     for n in range(2, instances + 1):
+        await database.record_health_event(
+            slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
+        )
         await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf))
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
@@ -3851,11 +3860,27 @@ async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance
     return result
 
 
+async def _command_and_record(worker_id: int, command: str, slug: str, instance: int) -> dict[str, Any]:
+    """Start or restart one copy and record it, also when the worker may have done it unanswered.
+
+    A 504 means the worker got the request and did not answer in time. A start
+    it carried out must still replace the copy's older stop, or a later crash of
+    that copy is never alerted.
+    """
+    try:
+        result = await _proxy_worker_command(worker_id, command, slug, instance=instance)
+    except HTTPException as exc:
+        if exc.status_code == 504:
+            await database.record_health_event(slug, command, worker_id=worker_id, instance=instance)
+        raise
+    await database.record_health_event(slug, command, worker_id=worker_id, instance=instance)
+    return result
+
+
 async def _svc_restart(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "restart", slug, instance=instance)
-    await database.record_health_event(slug, "restart", worker_id=worker_id, instance=instance)
+    result = await _command_and_record(worker_id, "restart", slug, instance)
     metrics.record_container_lifecycle("restart", slug)
     return result
 
@@ -5070,8 +5095,7 @@ async def api_service_start(
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     instance = _instance_param(instance)
-    result = await _proxy_worker_command(worker_id, "start", slug, instance=instance)
-    await database.record_health_event(slug, "start", worker_id=worker_id, instance=instance)
+    result = await _command_and_record(worker_id, "start", slug, instance)
     metrics.record_container_lifecycle("start", slug)
     return result
 

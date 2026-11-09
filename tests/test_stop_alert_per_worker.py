@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -194,14 +195,16 @@ def test_the_latest_action_is_read_per_copy_and_a_deploy_counts_for_each(db):
     assert first[0] == "stop" and second[0] == "start" and after_deploy[0] == "start"
 
 
-def test_a_deploy_records_its_start_before_the_extra_copies():
-    # An extra copy that fails must not leave an older stop as the latest action.
+def test_a_deploy_records_each_copys_start_before_deploying_it():
+    # An extra copy that fails must not leave an older stop as its latest action,
+    # and a copy the deploy never reaches must keep its own.
     source = (Path(main.__file__)).read_text(encoding="utf-8")
     body = source[source.index("async def api_deploy(") :]
     body = body[: body.index("\n@app.")]
-    assert body.index('record_health_event(slug, "start"') < body.index(
-        "await _proxy_worker_deploy(worker_id, slug, _instance_spec("
-    )
+    loop = body[body.index("for n in range(2, instances + 1):") :]
+    assert loop.index("instance=n") < loop.index("await _proxy_worker_deploy(worker_id, slug, _instance_spec(")
+    starts = re.findall(r'record_health_event\(\s*slug, "start"[^)]*\)', body)
+    assert len(starts) == 2 and all("instance=" in call for call in starts), "a deploy records a start per copy"
 
 
 def test_a_row_from_before_the_worker_was_recorded_counts_for_every_worker(db):
@@ -304,3 +307,26 @@ def test_the_raw_deploy_records_the_copy_it_deployed(spec, copy):
             main.api_worker_command(MagicMock(), 4, main.WorkerCommand(command="deploy", slug="urnetwork", spec=spec))
         )
     record.assert_awaited_once_with("urnetwork", "start", "deployed to worker 4", worker_id=4, instance=copy)
+
+
+def test_a_fractional_copy_number_still_alerts():
+    alerts = _PerWorker({(1, 1): ("stop", _when(hours=4))})
+    alerts.run([_entry(worker_id=1, instance=1.5, **DOWN)])
+    assert len(alerts.rows) == 1
+
+
+@pytest.mark.parametrize("command", ["start", "restart"])
+@pytest.mark.parametrize(("status", "recorded"), [(504, True), (503, False), (409, False)])
+def test_a_start_the_worker_may_have_done_unanswered_is_recorded(command, status, recorded):
+    # 504: the worker got it and may have done it. 503 never reached it; 409 refused.
+    record = AsyncMock()
+    with (
+        patch.object(main, "_proxy_worker_command", AsyncMock(side_effect=main.HTTPException(status_code=status))),
+        patch.object(main.database, "record_health_event", record),
+        pytest.raises(main.HTTPException),
+    ):
+        asyncio.run(main._command_and_record(4, command, "urnetwork", 2))
+    if recorded:
+        record.assert_awaited_once_with("urnetwork", command, worker_id=4, instance=2)
+    else:
+        record.assert_not_awaited()
