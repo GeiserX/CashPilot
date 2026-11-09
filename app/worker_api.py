@@ -585,6 +585,18 @@ def _ui_host() -> str:
     return host or "<unparseable CASHPILOT_UI_URL>"
 
 
+_migrate_task: asyncio.Task | None = None
+
+
+def _migrate_proxied() -> None:
+    """Move proxied copies of an older worker into one tunnel per proxy (proxy_tunnel.migrate_legacy)."""
+    try:
+        if moved := proxy_tunnel.migrate_legacy():
+            logger.info("Moved %d proxied cop(ies) into a shared tunnel per proxy", len(moved))
+    except Exception as exc:  # noqa: BLE001 - the copies keep running as they are
+        logger.warning("Could not move proxied copies into shared tunnels: %s", proxy_tunnel.redact(str(exc)))
+
+
 def _redact_userinfo(text: str) -> str:
     """Strip URL credentials (user:pass@ / token@) from a URL or a message.
 
@@ -1040,7 +1052,7 @@ def _get_local_ip() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _heartbeat_task, _fence_task, _activity_task, _guard_task
+    global _heartbeat_task, _fence_task, _activity_task, _guard_task, _migrate_task
 
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
@@ -1072,6 +1084,9 @@ async def lifespan(app: FastAPI):
                 logger.info("Removed %d leftover proxy test tunnel(s)", len(swept))
         except Exception as exc:  # noqa: BLE001 - never block the start on it
             logger.warning("Could not look for leftover proxy test tunnels: %s", exc)
+        # Copies an older worker ran with one tunnel each join one shared
+        # tunnel per proxy. In the background: it proves an exit per proxy.
+        _migrate_task = asyncio.create_task(asyncio.to_thread(_migrate_proxied))
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())

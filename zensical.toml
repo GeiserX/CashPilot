@@ -156,6 +156,7 @@ nav = [
       { "Design notes" = [
           { "Fleet upgrades and onboarding" = "research/fleet-upgrades-and-onboarding.md" },
           { "Earnings benchmarks" = "research/earnings-benchmarks.md" },
+          { "One tunnel per proxy" = "research/shared-proxy-tunnel.md" },
         ] },
     ] },
 ]
