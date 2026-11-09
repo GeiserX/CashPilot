@@ -438,5 +438,12 @@ On a Linux machine, the exit node also needs IP forwarding turned on before
 Tailscale lets it advertise itself; Tailscale's
 [exit node guide](https://tailscale.com/kb/1103/exit-nodes) has the commands
 per system. Then set it up with the steps in [Tailscale exit nodes](#tailscale-exit-nodes).
-For each service you move, first remove it from the second site's worker if
-one still runs there, then add its copy.
+For each service you move:
+
+1. Deploy it on the worker that will run the copy, if it is not there yet: a
+   copy runs with that worker's deployment of the service and is refused
+   without one.
+2. Remove it from the second site's worker, if one still runs there. That also
+   removes any proxied copies of it on that worker, so note them first and add
+   them again on another worker.
+3. Add its copy through the exit node.
