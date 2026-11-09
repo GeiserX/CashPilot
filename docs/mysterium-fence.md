@@ -328,9 +328,11 @@ Removing the service from that machine and deploying it again clears the
 record, but the new container mounts the catalog's `mysterium-data` volume, and
 the identity check has no running node to compare with.
 
-First copy the node's data off the container, whatever the checks below say.
-`docker cp` reads through every mount, so this holds the identity wherever it
-lives, and with it you can restore the node if it comes back as a new one:
+First stop the node with **Stop** on the dashboard, so nothing writes while you
+copy, then copy its data off the container, whatever the checks below say.
+`docker cp` works on a stopped container and reads through every mount, so the
+copy holds the identity wherever it lives, and with it you can restore the node
+if it comes back as a new one:
 
 ```bash
 docker cp cashpilot-mysterium:/var/lib/mysterium-node ./mysterium-backup
