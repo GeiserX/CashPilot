@@ -376,7 +376,13 @@ def _is_ip(value: Any) -> bool:
     return True
 
 
-def _remove_quietly(container: Any, stop_timeout: int = 10) -> None:
+# A sidecar on a tailnet logs out when it is stopped, which deletes its
+# ephemeral device; killed sooner, that device stays behind offline. The stop
+# returns as soon as the logout is done, so this is a ceiling, not a wait.
+SIDECAR_STOP_SECONDS = 10
+
+
+def _remove_quietly(container: Any, stop_timeout: int = SIDECAR_STOP_SECONDS) -> None:
     # A failed stop is no reason to keep the container; the removal is what matters.
     with contextlib.suppress(Exception):
         container.stop(timeout=stop_timeout)
@@ -417,7 +423,7 @@ def start_sidecar(
         container.start()
         exit_info = _wait_ready(container)
     except Exception as exc:
-        _remove_quietly(container, 2)
+        _remove_quietly(container, SIDECAR_STOP_SECONDS)
         if isinstance(exc, ProxyTunnelError):
             raise ProxyTunnelError(redact(str(exc), _secret_values(proxy)), exc.status_code) from None
         detail = orchestrator.proxy_refusal(exc) or str(exc)
@@ -459,14 +465,14 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
                 f"Another deploy of this copy started {int(_age_seconds(leftover))} s ago and may still be running. "
                 f"Try again in a few minutes."
             )
-        _remove_quietly(leftover, 2)
+        _remove_quietly(leftover, SIDECAR_STOP_SECONDS)
     sidecar, exit_info = start_sidecar(client, staged, slug, proxy_id, proxy, own_ip, hostname=_hostname(final))
     try:
         with _swap_lock:
             _remove(slug, proxy_id)
             sidecar.rename(final)
     except Exception:
-        _remove_quietly(sidecar, 2)
+        _remove_quietly(sidecar, SIDECAR_STOP_SECONDS)
         raise
     try:
         container_id = orchestrator.deploy_raw(
@@ -483,7 +489,7 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
             name=earner_name(slug, proxy_id),
         )
     except Exception:
-        _remove_quietly(sidecar, 2)
+        _remove_quietly(sidecar, SIDECAR_STOP_SECONDS)
         raise
     return {"container_id": container_id, "tunnel_id": sidecar.id, "exit": exit_info}
 
@@ -526,7 +532,7 @@ def _stop(slug: str, proxy_id: int) -> bool:
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
     was_running = any(_is_ours(c, slug, proxy_id) and getattr(c, "status", "") in _LIVE for c in (earner, sidecar))
     if _is_ours(sidecar, slug, proxy_id):
-        sidecar.stop(timeout=10)
+        sidecar.stop(timeout=SIDECAR_STOP_SECONDS)
     if _is_ours(earner, slug, proxy_id):
         earner.stop(timeout=orchestrator._get_stop_timeout(slug))
     return was_running
@@ -561,7 +567,7 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
             raise ProxyTunnelError(redact(str(exc), _secret_values(proxy)), exc.status_code) from None
         if sidecar.status == "running" and _read_secret_file(sidecar, "settings") != files["settings"]:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
-            sidecar.stop(timeout=10)
+            sidecar.stop(timeout=SIDECAR_STOP_SECONDS)
             sidecar.reload()
         if sidecar.status != "running":
             full = {key: files.get(key, "") for key in SECRET_KEYS}
@@ -588,7 +594,7 @@ def remove(slug: str, proxy_id: int) -> list[str]:
 def _remove(slug: str, proxy_id: int) -> list[str]:
     removed: list[str] = []
     earner, sidecar = _pair(slug, proxy_id)
-    for container, timeout in ((earner, orchestrator._get_stop_timeout(slug)), (sidecar, 10)):
+    for container, timeout in ((earner, orchestrator._get_stop_timeout(slug)), (sidecar, SIDECAR_STOP_SECONDS)):
         if _is_ours(container, slug, proxy_id):
             _remove_quietly(container, timeout)
             removed.append(container.name)
@@ -634,7 +640,7 @@ def sweep_test_tunnels() -> list[str]:
     for container in found:
         if LABEL_PROXY in (container.labels or {}):
             continue
-        _remove_quietly(container, 2)
+        _remove_quietly(container, SIDECAR_STOP_SECONDS)
         swept.append(container.name)
     # And staged sidecars of a deploy that died: they hold the proxy login, and
     # the heartbeat never reports them. Only stale ones, so a deploy another
@@ -644,7 +650,7 @@ def sweep_test_tunnels() -> list[str]:
     )
     for container in staged:
         if str(container.name).endswith(STAGED_SUFFIX) and _age_seconds(container) >= STAGED_STALE_SECONDS:
-            _remove_quietly(container, 2)
+            _remove_quietly(container, SIDECAR_STOP_SECONDS)
             swept.append(container.name)
     return swept
 
@@ -720,7 +726,7 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
             # timeout is a leftover holding the proxy login: removed here, since
             # the startup sweep skips those still young when the worker starts.
             if _age_seconds(container) >= STAGED_STALE_SECONDS:
-                _remove_quietly(container, 2)
+                _remove_quietly(container, SIDECAR_STOP_SECONDS)
             continue
         labels = container.labels or {}
         key = (labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, ""))
@@ -779,4 +785,4 @@ def test(proxy: dict[str, Any], own_ip: str | None) -> dict[str, Any]:
     try:
         return {**exit_info, "ms": int((time.monotonic() - began) * 1000)}
     finally:
-        _remove_quietly(sidecar, 2)
+        _remove_quietly(sidecar, SIDECAR_STOP_SECONDS)

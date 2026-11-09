@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import tarfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -1097,3 +1099,69 @@ class TestReviewFollowUps:
         with patch.object(worker_api, "_verify_api_key"):
             resp = _api().post("/api/proxy-test", json={"proxy": _tailscale(login_server=server)}, headers=AUTH)
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# A stopped tunnel leaves no tailnet device behind
+# ---------------------------------------------------------------------------
+
+_CP_TUNNEL = (Path(__file__).resolve().parent.parent / "tunnel" / "cp-tunnel").read_text()
+
+
+def _logout_seconds() -> int:
+    """How long cp-tunnel gives ``tailscale logout`` when it is stopped."""
+    found = re.search(r"timeout (\d+) tailscale --socket=\S+ logout", _CP_TUNNEL)
+    assert found, "cp-tunnel no longer logs out of the tailnet when it is stopped"
+    return int(found.group(1))
+
+
+class TestATunnelLogsOutOfTheTailnetWhenStopped:
+    """Killed before its logout, a tunnel's ephemeral device stays in the
+    tailnet offline, and the next start of that copy joins as "<name>-1"."""
+
+    def test_the_tunnel_logs_out_on_a_stop(self):
+        assert re.search(r"^trap leave TERM INT$", _CP_TUNNEL, re.M)
+        leave = _CP_TUNNEL.split("leave() {", 1)[1].split("\n}", 1)[0]
+        assert "logout" in leave and "exit 0" in leave
+
+    def _stop_timeout(self, container):
+        container.stop.assert_called_once()
+        return container.stop.call_args.kwargs["timeout"]
+
+    def test_a_proxy_test_gives_its_tunnel_time_to_log_out(self):
+        sidecar = MagicMock()
+        with (
+            patch.object(orchestrator, "_get_client", return_value=MagicMock()),
+            patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
+        ):
+            proxy_tunnel.test(_socks(), None)
+        assert self._stop_timeout(sidecar) > _logout_seconds()
+
+    def test_a_tunnel_that_fails_to_start_gets_time_to_log_out(self):
+        client = MagicMock()
+        created = MagicMock(id="sidecar-id", status="exited")
+        created.put_archive.return_value = True
+        created.logs.return_value = b"the exit node refused"
+        client.containers.create.return_value = created
+        with (
+            patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": "drumsergio/cashpilot-tunnel:1.64.0"}),
+            patch.object(orchestrator, "container_network", return_value=None),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.start_sidecar(client, "cashpilot-tunnel-x-p1", "x", 1, _socks(), None)
+        assert self._stop_timeout(created) > _logout_seconds()
+
+    def test_a_swept_test_tunnel_gets_time_to_log_out(self):
+        leftover = _container("cashpilot-tunnel-test-ab", proxy_tunnel.TEST_SLUG, role="tunnel")
+        client = MagicMock()
+        client.containers.list.side_effect = [[leftover], []]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            proxy_tunnel.sweep_test_tunnels()
+        assert self._stop_timeout(leftover) > _logout_seconds()
+
+    def test_a_removed_copy_gives_its_tunnel_time_to_log_out(self):
+        earner = _container("cashpilot-x-p1", "x", proxy=1)
+        tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
+        with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
+            proxy_tunnel.remove("x", 1)
+        assert self._stop_timeout(tunnel) > _logout_seconds()
