@@ -10,11 +10,17 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## Unreleased
+## [2.1.9] - 2026-11-09
 
 ### Documentation
 
+- Warn operators about the traps that stop Mysterium and proxied copies from earning (#672)
+- Regenerate CHANGELOG.md (#694)
 - Regenerate CHANGELOG.md (#692)
+
+### Fixes
+
+- Stop an aborted first collection from ending the restart grace for node notices (#693)
 
 ## [2.1.8] - 2026-11-09
 
