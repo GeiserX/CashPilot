@@ -31,6 +31,13 @@ NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
 AUTH_KEY = "tskey-auth-kTEST-0123456789"
 
 
+@pytest.fixture(autouse=True)
+def _own_held_marker(tmp_path):
+    """Each test gets its own record of stopped copies (proxy_tunnel.HELD_MARKER)."""
+    with patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")):
+        yield
+
+
 def _container(name, slug, *, proxy=None, role=None, instance=None, status="running"):
     c = MagicMock()
     c.id = f"id-{name}"
@@ -172,8 +179,11 @@ class TestSidecar:
         assert kw["read_only"] is True
         assert "no-new-privileges:true" in kw["security_opt"]
         assert kw["network"] == "cp-isolated"
-        assert kw["volumes"] == [proxy_tunnel.SECRET_DIR]
-        assert not any("docker.sock" in str(v) for v in kw["volumes"])
+        # An anonymous volume, as a Mount: no host path, and it survives a daemon restart.
+        assert "volumes" not in kw
+        assert [(m["Type"], m["Target"], m.get("Source")) for m in kw["mounts"]] == [
+            ("volume", proxy_tunnel.SECRET_DIR, None)
+        ]
         assert "environment" not in kw and "command" not in kw
         assert kw["log_config"] == {"type": "json-file", "config": {"max-size": "1m", "max-file": "2"}}
 
@@ -298,38 +308,6 @@ class TestTunnelImage:
 
 
 class TestOrder:
-    def test_sidecar_is_ready_before_the_earner_is_created(self):
-        calls: list[str] = []
-        sidecar = MagicMock(id="sidecar-id")
-
-        def fake_start_sidecar(*a, **kw):
-            calls.append("sidecar-ready")
-            return sidecar, {"ip": "93.184.215.14", "country": "DE"}
-
-        def fake_deploy_raw(**kw):
-            calls.append("earner")
-            assert kw["network_mode"] == "container:sidecar-id"
-            assert kw["labels"][LABEL_PROXY] == "3"
-            assert "ports" not in kw and "volumes" not in kw
-            return "earner-id"
-
-        sidecar.rename.side_effect = lambda name: calls.append(f"renamed {name}")
-        client = MagicMock()
-        client.containers.get.side_effect = NotFound("gone")
-        with (
-            patch.object(orchestrator, "_get_client", return_value=client),
-            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-            patch.object(proxy_tunnel, "_remove", side_effect=lambda *a: calls.append("old-removed") or []),
-            patch.object(proxy_tunnel, "start_sidecar", side_effect=fake_start_sidecar) as start,
-            patch.object(orchestrator, "deploy_raw", side_effect=fake_deploy_raw),
-        ):
-            result = proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
-        # The new sidecar proves its exit while the old pair still runs, under a staged name.
-        assert calls == ["sidecar-ready", "old-removed", "renamed cashpilot-tunnel-honeygain-p3", "earner"]
-        assert start.call_args.args[1] == "cashpilot-tunnel-honeygain-p3-next"
-        assert start.call_args.kwargs["hostname"] == "tunnel-honeygain-p3"
-        assert result["container_id"] == "earner-id"
-
     def test_a_sidecar_that_cannot_start_keeps_the_running_copy(self):
         client = MagicMock()
         client.containers.get.side_effect = NotFound("gone")
@@ -360,42 +338,6 @@ class TestOrder:
         sidecar.remove.assert_called_once_with(force=True, v=True)
         deploy_raw.assert_not_called()
 
-    def test_a_staged_sidecar_left_behind_is_replaced_but_never_a_stranger(self):
-        leftover = _container("cashpilot-tunnel-honeygain-p3-next", "honeygain", proxy=3, role="tunnel")
-        stranger = _container("cashpilot-tunnel-honeygain-p3-next", "other")
-        sidecar = MagicMock(id="sidecar-id")
-        for found, ok in ((leftover, True), (stranger, False)):
-            client = MagicMock()
-            client.containers.get.return_value = found
-            with (
-                patch.object(orchestrator, "_get_client", return_value=client),
-                patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-                patch.object(proxy_tunnel, "_remove", return_value=[]),
-                patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
-                patch.object(orchestrator, "deploy_raw", return_value="earner-id"),
-            ):
-                if ok:
-                    proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
-                else:
-                    with pytest.raises(proxy_tunnel.ProxyTunnelError, match="did not create"):
-                        proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
-            assert found.remove.called is ok
-
-    def test_a_young_staged_sidecar_is_never_removed_by_another_deploy(self):
-        young = _container("cashpilot-tunnel-honeygain-p3-next", "honeygain", proxy=3, role="tunnel")
-        young.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        client = MagicMock()
-        client.containers.get.return_value = young
-        with (
-            patch.object(orchestrator, "_get_client", return_value=client),
-            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-            patch.object(proxy_tunnel, "start_sidecar") as start,
-            pytest.raises(proxy_tunnel.ProxyTunnelError, match="may still be running"),
-        ):
-            proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
-        young.remove.assert_not_called()
-        start.assert_not_called()
-
     def test_the_heartbeat_removes_a_stale_staged_sidecar_and_keeps_a_young_one(self):
         stale = _container("cashpilot-tunnel-x-p1-next", "x", proxy=1, role="tunnel")
         young = _container("cashpilot-tunnel-y-p1-next", "y", proxy=1, role="tunnel")
@@ -415,7 +357,7 @@ class TestOrder:
         import threading
 
         done = threading.Event()
-        lock = proxy_tunnel._deploy_lock("x", 1)
+        lock = proxy_tunnel._deploy_lock(1)
         lock.acquire()
         try:
             with patch.object(proxy_tunnel, f"_{op}", side_effect=lambda *a: done.set()):
@@ -442,21 +384,6 @@ class TestOrder:
         ):
             entries = proxy_tunnel.status(collect_stats=False)
         assert [(e["slug"], e["tunnel_container_id"]) for e in entries] == [("x", tunnel.short_id)]
-
-    def test_earner_failure_removes_the_sidecar(self):
-        sidecar = MagicMock(id="sidecar-id")
-        client = MagicMock()
-        client.containers.get.side_effect = NotFound("gone")
-        with (
-            patch.object(orchestrator, "_get_client", return_value=client),
-            patch.object(proxy_tunnel, "tunnel_image", return_value="drumsergio/cashpilot-tunnel:1.64.0"),
-            patch.object(proxy_tunnel, "_remove", return_value=[]),
-            patch.object(proxy_tunnel, "start_sidecar", return_value=(sidecar, {"ip": "93.184.215.14"})),
-            patch.object(orchestrator, "deploy_raw", side_effect=RuntimeError("boom")),
-            pytest.raises(RuntimeError),
-        ):
-            proxy_tunnel.deploy("honeygain", 3, {"image": "honeygain/honeygain:1"}, _socks(), None)
-        sidecar.remove.assert_called_once_with(force=True, v=True)
 
     def test_remove_all_takes_earners_before_tunnels(self):
         tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
@@ -939,55 +866,6 @@ class TestStartAppliesTheStoredProxy:
         tunnel.put_archive.return_value = True
         return earner, tunnel
 
-    def test_a_stopped_tunnel_gets_every_setting_rewritten(self):
-        """A new password (or key, port, kind) reached nothing before: start
-        only refreshed proxy_ip. Old keys the new settings do not use are
-        written empty, so cp-tunnel cannot pick them up."""
-        earner, tunnel = self._pair()
-        new = _socks(password=NEW_PASSWORD, port=2080)
-        with (
-            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
-            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
-            patch.object(proxy_tunnel, "refresh_proxy_ip") as refresh,
-        ):
-            proxy_tunnel.start("x", 1, new, "192.0.2.1")
-        files = _files_in(tunnel.put_archive.call_args.args[1])
-        assert set(files) == set(proxy_tunnel.SECRET_KEYS)
-        assert files["proxy_auth"] == f"u1:{NEW_PASSWORD}@" and files["proxy_port"] == "2080"
-        assert files["auth_key"] == files["login_server"] == "" and files["own_ip"] == "192.0.2.1"
-        refresh.assert_not_called()
-        earner.start.assert_called_once()
-
-    def test_a_running_tunnel_on_old_settings_is_stopped_and_rewritten(self):
-        earner, tunnel = self._pair("running", "running")
-
-        def reload():
-            if tunnel.stop.called:
-                tunnel.status = "exited"
-
-        tunnel.reload.side_effect = reload
-        with (
-            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
-            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
-            patch.object(proxy_tunnel, "_read_secret_file", return_value="digest-of-the-old-settings"),
-        ):
-            proxy_tunnel.start("x", 1, _socks(password=NEW_PASSWORD), None)
-        earner.stop.assert_called_once()
-        tunnel.stop.assert_called_once()
-        assert _files_in(tunnel.put_archive.call_args.args[1])["proxy_auth"] == f"u1:{NEW_PASSWORD}@"
-
-    def test_a_running_tunnel_on_the_same_settings_is_left_running(self):
-        earner, tunnel = self._pair("running", "running")
-        same = proxy_tunnel.secret_files(_socks(), None, "x-p1")["settings"]
-        with (
-            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
-            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
-            patch.object(proxy_tunnel, "_read_secret_file", return_value=same),
-        ):
-            proxy_tunnel.start("x", 1, _socks(), "192.0.2.1")
-        tunnel.stop.assert_not_called()
-        tunnel.put_archive.assert_not_called()
-
     def test_a_host_that_no_longer_resolves_stops_the_start(self):
         """Keeping the old address would send the proxy login to whoever holds it now."""
         earner, tunnel = self._pair()
@@ -1041,7 +919,8 @@ class TestReviewFollowUps:
         staged = _container("cashpilot-tunnel-x-p1-next", "x", proxy=1, role="tunnel")
         live = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
         client = MagicMock()
-        client.containers.list.side_effect = [[], [staged, live]]
+        answers = iter([[], [staged, live]])
+        client.containers.list.side_effect = lambda **_kw: next(answers, [])
         with patch.object(orchestrator, "_get_client", return_value=client):
             assert proxy_tunnel.sweep_test_tunnels() == ["cashpilot-tunnel-x-p1-next"]
         live.remove.assert_not_called()

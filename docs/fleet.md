@@ -211,7 +211,8 @@ in each `services/*/*.yml`) are limits, not usage, but they show the spread:
 | GPU compute | Salad, Vast.ai, io.net | The whole GPU, plus CPU and memory while a job runs |
 | Most bandwidth earners | Honeygain, EarnApp, Traffmonetizer, Repocket | Memory caps of 128 to 256 MB |
 
-A [proxied copy](proxies.md) adds a tunnel container next to each earner.
+A [proxied copy](proxies.md) adds its earner; the box runs one tunnel container
+per proxy, shared by every copy through it.
 
 **Measure on the box.** The **Dashboard** shows each container's CPU and
 memory, refreshed every few minutes, for the services it reports; earners
