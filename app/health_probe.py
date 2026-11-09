@@ -74,6 +74,9 @@ _POOL_SIZE = 4
 _pool = concurrent.futures.ThreadPoolExecutor(max_workers=_POOL_SIZE, thread_name_prefix="health-probe")
 #: One per read submitted and not finished, so the pool's queue never grows.
 _slots = threading.BoundedSemaphore(_POOL_SIZE)
+#: Per service, the copy the next read_all starts with: the first one the last
+#: call did not reach, so a slow copy cannot keep the later ones unread.
+_resume: dict[str, int] = {}
 
 
 def _min_matches(check: dict[str, Any]) -> int | None:
@@ -249,14 +252,32 @@ def _read_one(client: Any, container_id: str, spec: dict[str, Any]) -> dict[str,
     return {"hits": judge(output, spec), "unread": unread}
 
 
+def _read_error(exc: Exception, slug: str) -> str:
+    """Why a read raised, as the worker reports it to the UI."""
+    from app import orchestrator
+
+    if orchestrator.proxy_refusal(exc) is None:
+        logger.warning("Health probe failed for %s: %s", slug, exc)
+        return "read failed"
+    logger.warning("The socket proxy refused the %s health probe: %s", slug, exc)
+    if orchestrator.proxy_policy_fix() is not None:
+        return (
+            "the Docker socket proxy refused the read because its policy is older than this "
+            "worker; update it as the worker's status page shows"
+        )
+    return "the Docker socket proxy refused the read"
+
+
 def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One row per running managed copy of a service that declares a probe.
 
     A row carries ``definition`` (see fingerprint) and, when the read worked,
     ``hits``, the indexes of the checks that hold, and ``unread``, those it
     could not judge; ``error`` when it did not work at all: an unread node is
-    no verdict, never a healthy one. Copies not reached within BATCH_BUDGET
-    are reported unread, so the ones read in time still count.
+    no verdict, never a healthy one. Listing the copies and reading them both
+    fit in BATCH_BUDGET: copies not reached are reported unread, so the ones
+    read in time still count, and the next call starts with the first copy
+    this one did not reach, so every copy gets its turn.
     """
     # Imported here: the UI imports this module for nothing but the catalog
     # check, and has no Docker.
@@ -266,50 +287,56 @@ def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
     deadline = time.monotonic() + BATCH_BUDGET
     client = None
     for slug, spec in sorted(probes(services).items()):
+        if time.monotonic() >= deadline:
+            # Not listed: the UI keeps these copies' last verdicts.
+            break
         try:
-            copies = orchestrator.service_instances(slug)
+            if client is None:
+                client = _client()
+            # On this module's client, so a stalled listing ends in READ_TIMEOUT.
+            copies = orchestrator.service_instances(slug, client=client)
         except Exception as exc:  # noqa: BLE001 - one service never fails the rest
             logger.warning("Could not list %s containers for the health probe: %s", slug, exc)
             continue
-        for container in copies:
-            if getattr(container, "status", "") != "running":
-                continue
-            row: dict[str, Any] = {
-                "slug": slug,
-                "instance": orchestrator._instance_of(container),
-                "definition": fingerprint(spec),
-            }
-            rows.append(row)
+        running = [c for c in copies if getattr(c, "status", "") == "running"]
+        mine = [
+            {"slug": slug, "instance": orchestrator._instance_of(c), "definition": fingerprint(spec)} for c in running
+        ]
+        rows.extend(mine)
+        start = _resume.pop(slug, 0) % len(running) if running else 0
+        for i in [*range(start, len(running)), *range(start)]:
+            row = mine[i]
             left = min(READ_TIMEOUT, deadline - time.monotonic())
             if left <= 0:
                 row["error"] = "not reached in time"
-                continue
-            if not _slots.acquire(blocking=False):
+            elif not _slots.acquire(blocking=False):
                 # Every thread still busy with an earlier read: say so rather
                 # than queue behind it.
                 row["error"] = "busy with earlier reads"
-                continue
-            try:
-                try:
-                    if client is None:
-                        client = _client()
-                    future = _pool.submit(_read_one, client, container.id, spec)
-                except BaseException:
-                    _slots.release()
-                    raise
-                future.add_done_callback(lambda _f: _slots.release())
-                read = future.result(timeout=left)
-            except concurrent.futures.TimeoutError:
-                # The read ends by its own deadline and frees its slot then.
-                row["error"] = "timed out"
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Health probe failed for %s: %s", slug, exc)
-                row["error"] = "read failed"
             else:
-                if read is None:
-                    row["error"] = "the node did not answer"
-                else:
-                    row.update(read)
+                row.update(_read_in_pool(client, running[i].id, spec, left, slug))
+            if row.get("error") in ("not reached in time", "busy with earlier reads"):
+                _resume.setdefault(slug, i)
     # A read that timed out may still be using the client; it is dropped, not
     # closed, so that read ends by its own deadline.
     return rows
+
+
+def _read_in_pool(client: Any, container_id: str, spec: dict[str, Any], left: float, slug: str) -> dict[str, Any]:
+    """Run one read on the pool, holding the slot already taken, and wait up to ``left`` seconds."""
+    try:
+        try:
+            future = _pool.submit(_read_one, client, container_id, spec)
+        except BaseException:
+            _slots.release()
+            raise
+        future.add_done_callback(lambda _f: _slots.release())
+        read = future.result(timeout=left)
+    except concurrent.futures.TimeoutError:
+        # The read ends by its own deadline and frees its slot then.
+        return {"error": "timed out"}
+    except Exception as exc:  # noqa: BLE001
+        return {"error": _read_error(exc, slug)}
+    if read is None:
+        return {"error": "the node did not answer"}
+    return read

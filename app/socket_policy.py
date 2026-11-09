@@ -204,7 +204,8 @@ def catalog_commands(services_dir: Path = SERVICES_DIR) -> list[list[str]]:
     from app.isolation_check import CHAIN_READ
 
     found: list[list[str]] = list(FIXED_COMMANDS)
-    for path in sorted(services_dir.rglob("*.yml")):
+    # Both extensions, as app/catalog.py loads both.
+    for path in sorted([*services_dir.rglob("*.yml"), *services_dir.rglob("*.yaml")]):
         if path.name.startswith("_"):
             continue
         svc = yaml.safe_load(path.read_text()) or {}

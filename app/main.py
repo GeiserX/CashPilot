@@ -2152,10 +2152,15 @@ async def _sweep_windowed_signals() -> None:
                 probed = [await _render_signal_means(spec["checks"][i], slug, workers[wid]) for i in held]
                 if unreadable:
                     worker_name = str((workers[wid] or {}).get("name") or "this machine")
+                    # A refusal by the socket proxy names its own fix; the node is not the problem.
+                    advice = (
+                        ""
+                        if "socket proxy" in unreadable
+                        else " Check that the node runs normally and look at its logs."
+                    )
                     probed.append(
                         f"CashPilot has not been able to read this node's own API on {worker_name} "
-                        f"({unreadable}), so part of what it checks on the node is unchecked. "
-                        "Check that the node runs normally and look at its logs."
+                        f"({unreadable}), so part of what it checks on the node is unchecked.{advice}"
                     )
                 if state:
                     probe_state[key] = state

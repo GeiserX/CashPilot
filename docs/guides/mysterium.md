@@ -308,12 +308,16 @@ On a router that pairs ports, the even port of each pair comes back rewritten:
 On a working line every port comes back with its own number. When every port
 comes back rewritten, the script says so separately: that is a NAT which
 rewrites every port (a symmetric NAT, carrier-grade NAT, a VPN, or Docker
-Desktop's own NAT), where port forwarding cannot work either. The script exits
+Desktop's own NAT). The test only measures ports with no forward, so it does
+not say whether your forward of `UDP_PORTS` reaches the node: the node's own
+port check does, and behind carrier-grade NAT or a VPN no forward reaches it.
+The script exits
 0 when every pair was tested and every port kept its number, 1 when one was
 rewritten, 2 when no STUN server answered, and 3 when nothing was rewritten
 but some pair could not be tested in full (a port that would not bind or got
 no answer), so the result says nothing about pairing; run it again with
-another `--start`. It tries Google's STUN server first and Cloudflare's when
+another `--start`. It exits 4 when `--start` and `--pairs` do not give real
+ports. It tries Google's STUN server first and Cloudflare's when
 Google does not answer. It only sends a few packets to a public STUN server; it does
 not touch the node. `--start` picks the first port to test (default 34100);
 keep it outside `UDP_PORTS`, whose ports the node holds.

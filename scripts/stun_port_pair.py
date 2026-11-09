@@ -24,7 +24,8 @@ Exit status: 0 when every pair was tested and every port kept its number,
 1 when one was rewritten, 2 when no STUN server answered, 3 when no port was
 rewritten but some pair could not be tested in full (a port that did not bind
 or got no answer), so the pairing was not checked: run it again with another
---start. A rewritten port is reported as a pairing
+--start, and 4 when --start and --pairs do not give real ports (1 to 65535). A
+rewritten port is reported as a pairing
 router when some ports kept their number, and as a NAT that rewrites every
 port when none did. Read-only: it sends a few UDP packets to a public STUN
 server and changes nothing.
@@ -37,6 +38,7 @@ import os
 import socket
 import struct
 import sys
+from typing import NoReturn
 
 MAGIC = 0x2112A442
 SERVERS = [("stun.l.google.com", 19302), ("stun.cloudflare.com", 3478)]
@@ -137,12 +139,24 @@ def run(server: tuple[str, int], start: int, pairs: int) -> tuple[int, int, int]
     return answered, rewritten, complete
 
 
+class _Parser(argparse.ArgumentParser):
+    """argparse with its own exit status for bad arguments, 4: its usual 2 means no STUN answer here."""
+
+    def error(self, message: str) -> NoReturn:
+        """Print the usage and the problem, then exit 4."""
+        self.print_usage(sys.stderr)
+        self.exit(4, f"{self.prog}: error: {message}\n")
+
+
 def main() -> int:
     """Run the test against the first STUN server that answers; the exit status is the verdict."""
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = _Parser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--start", type=int, default=34100, help="first port to test (default 34100)")
     parser.add_argument("--pairs", type=int, default=4, help="neighbouring pairs to test (default 4)")
     args = parser.parse_args()
+    first = args.start & ~1
+    if args.pairs < 1 or first < 1 or first + 2 * args.pairs - 1 > 65535:
+        parser.error("--start and --pairs must give ports from 1 to 65535 (pairs start on an even port)")
     servers = _servers()
     if not servers:
         print("No STUN server could be resolved: check this namespace's DNS.")
@@ -160,8 +174,10 @@ def main() -> int:
         print(
             f"\nAll {answered} ports left with a different number. Something in the path rewrites "
             "every UDP source port: a symmetric NAT, carrier-grade NAT, a VPN, or Docker Desktop's "
-            "own NAT (run this on a Linux host with Docker Engine, not Docker Desktop). Port "
-            "forwarding cannot work through it either."
+            "own NAT (run this on a Linux host with Docker Engine, not Docker Desktop). This "
+            "only measures ports with no forward: whether a forward of UDP_PORTS reaches the "
+            "node is a separate check (the node's own port check, and none works behind "
+            "carrier-grade NAT or a VPN)."
         )
         return 1
     if rewritten:

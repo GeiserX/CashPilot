@@ -288,6 +288,7 @@ class _Api:
         if answer is None:
 
             def _close_later():
+                """End the silent stream once the test lets go."""
                 self.hang.wait(30)
                 theirs.close()
 
@@ -458,6 +459,91 @@ def test_copies_read_before_the_batch_deadline_still_go_back(monkeypatch):
     assert "late" not in api.ran
 
 
+def test_the_next_call_starts_with_the_copy_this_one_did_not_reach(monkeypatch):
+    """A slow copy that eats the budget every time must not leave the later ones unread for good."""
+    api = _Api({"fast": (0, FAILING.encode()), "slow": None, "late": (0, FAILING.encode())})
+    monkeypatch.setattr(health_probe, "BATCH_BUDGET", 0.5)
+    try:
+        with (
+            patch("app.orchestrator.service_instances", return_value=_containers("fast", "slow", "late")),
+            patch("app.orchestrator._instance_of", side_effect=[1, 2, 3, 1, 2, 3]),
+            patch("app.health_probe._client", return_value=MagicMock(api=api)),
+        ):
+            health_probe.read_all([catalog.get_service("mysterium")])
+            assert api.ran == ["fast", "slow"]
+            rows = health_probe.read_all([catalog.get_service("mysterium")])
+    finally:
+        api.hang.set()
+    assert api.ran[2] == "late", "the copy the first call never reached goes first"
+    assert [r["instance"] for r in rows] == [1, 2, 3], "rows keep the copies' order"
+    assert rows[2]["hits"] == [0, 1]
+
+
+def test_listing_the_copies_uses_the_probe_client_and_the_budget(monkeypatch):
+    """A stalled container listing on the shared client (60 s) would outlast the UI's wait."""
+    probe_client = MagicMock(api=_Api({}))
+    listed = []
+
+    def _list(slug, client=None):
+        """Record which client listed the copies."""
+        listed.append(client)
+        return []
+
+    with (
+        patch("app.orchestrator.service_instances", side_effect=_list),
+        patch("app.health_probe._client", return_value=probe_client),
+    ):
+        health_probe.read_all([catalog.get_service("mysterium")])
+        assert listed == [probe_client]
+        monkeypatch.setattr(health_probe, "BATCH_BUDGET", 0)
+        assert health_probe.read_all([catalog.get_service("mysterium")]) == []
+    assert len(listed) == 1, "no listing starts once the budget is spent"
+
+
+def _proxy_403():
+    """The APIError docker-py raises when sockguard refuses a call."""
+    import docker
+
+    response = MagicMock(status_code=403)
+    response.json.return_value = {"message": "request denied by sockguard policy", "reason": "exec command not allowed"}
+    return docker.errors.APIError("403 Client Error", response=response)
+
+
+@pytest.mark.parametrize(("stale", "says_update"), [(True, True), (False, False)])
+def test_a_proxy_refusal_says_so_and_names_the_fix_when_the_policy_is_old(stale, says_update):
+    """A refused read says the proxy refused it, and names the update when the policy is stale."""
+    refused = MagicMock(api=MagicMock(**{"exec_create.side_effect": _proxy_403()}))
+    with (
+        patch("app.orchestrator.service_instances", return_value=_containers("node")),
+        patch("app.orchestrator._instance_of", return_value=1),
+        patch("app.orchestrator.proxy_policy_fix", return_value={"release": "x"} if stale else None),
+        patch("app.health_probe._client", return_value=refused),
+    ):
+        rows = health_probe.read_all([catalog.get_service("mysterium")])
+    assert "socket proxy refused" in rows[0]["error"]
+    assert ("status page" in rows[0]["error"]) is says_update
+
+
+def test_a_proxy_refusal_does_not_send_the_operator_to_the_node_logs():
+    """A refusal by the proxy names its own fix, not the node's logs."""
+    _sweep([_row(error="the Docker socket proxy refused the read")])
+    later = main.time.time() + main.PROBE_STALE_SECONDS + 3600
+    with patch("app.main.time.time", return_value=later):
+        hints, _ = _sweep([_row(error="the Docker socket proxy refused the read")])
+    assert len(hints) == 1 and "socket proxy refused" in hints[0] and "logs" not in hints[0]
+
+
+def test_a_probe_in_a_yaml_file_reaches_the_proxy_policy(tmp_path):
+    """app/catalog.py loads .yaml as well as .yml, so the policy must list both."""
+    from app import socket_policy
+
+    svc = tmp_path / "bandwidth" / "newnode.yaml"
+    svc.parent.mkdir()
+    command = ["timeout", "5", "cat", "/x"]
+    svc.write_text(json.dumps({"slug": "newnode", "docker": {"health_probe": {"command": command}}}))
+    assert command in socket_policy.catalog_commands(tmp_path)
+
+
 def test_the_worker_endpoint_serves_the_rows():
     """The worker endpoint returns what read_all reads."""
     client = TestClient(worker_api.app)
@@ -513,6 +599,14 @@ def _sweep(probes=None, *, probe_error=None, logs="", log_error=None):
     ):
         asyncio.run(main._check_windowed_signals())
     return main._windowed_hints.get(("mysterium", 7, 1), []), calls
+
+
+@pytest.fixture(autouse=True)
+def _no_carried_turn():
+    """Each test starts read_all with the first copy."""
+    health_probe._resume.clear()
+    yield
+    health_probe._resume.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -683,3 +777,42 @@ def test_an_incomplete_pair_is_inconclusive_not_clean(monkeypatch, result, code)
     monkeypatch.setattr(stun, "run", lambda *a: result)
     monkeypatch.setattr("sys.argv", ["stun_port_pair.py"])
     assert stun.main() == code
+
+
+@pytest.mark.parametrize(
+    ("args", "code"),
+    [
+        (["--start", "1"], 4),
+        (["--start", "65535", "--pairs", "2"], 4),
+        (["--pairs", "0"], 4),
+        (["--start", "70000"], 4),
+    ],
+)
+def test_ports_that_do_not_exist_are_an_input_error_not_a_verdict(monkeypatch, args, code):
+    """Port 0 binds anywhere and ports past 65535 raise: neither may read as a rewrite."""
+    stun = _stun()
+    monkeypatch.setattr(stun, "run", lambda *a: pytest.fail("no port may be tested"))
+    monkeypatch.setattr("sys.argv", ["stun_port_pair.py", *args])
+    with pytest.raises(SystemExit) as stop:
+        stun.main()
+    assert stop.value.code == code
+
+
+def test_the_highest_real_pair_is_still_tested(monkeypatch):
+    """65534 and 65535 are real ports and still tested."""
+    stun = _stun()
+    monkeypatch.setattr(stun, "_servers", lambda: [("192.0.2.1", 3478)])
+    monkeypatch.setattr(stun, "run", lambda server, start, pairs: (2, 0, 1))
+    monkeypatch.setattr("sys.argv", ["stun_port_pair.py", "--start", "65534", "--pairs", "1"])
+    assert stun.main() == 0
+
+
+def test_every_port_rewritten_makes_no_claim_about_a_forward(monkeypatch, capsys):
+    """The test measures ports with no forward, so it says nothing about one."""
+    stun = _stun()
+    monkeypatch.setattr(stun, "_servers", lambda: [("192.0.2.1", 3478)])
+    monkeypatch.setattr(stun, "run", lambda *a: (8, 8, 4))
+    monkeypatch.setattr("sys.argv", ["stun_port_pair.py"])
+    assert stun.main() == 1
+    out = capsys.readouterr().out
+    assert "cannot work" not in out and "only measures ports with no forward" in out
