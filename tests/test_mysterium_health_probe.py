@@ -933,6 +933,18 @@ def test_a_check_unread_for_a_day_says_so():
     assert "has not been able to read" in hints[1] and "did not answer every read" in hints[1]
 
 
+def test_a_day_of_another_probe_definition_names_the_update_not_the_node():
+    """A worker on another CashPilot version for a day is told to update, not
+    to check a node that is fine."""
+    _sweep([_row([])])
+    later = main.time.time() + main.PROBE_STALE_SECONDS + 3600
+    with patch("app.main.time.time", return_value=later):
+        hints, _ = _sweep([_row([], definition="another")])
+    assert len(hints) == 1 and "another version of CashPilot" in hints[0]
+    assert "Update CashPilot on attic-nas" in hints[0]
+    assert "look at its logs" not in hints[0], "the node is not the problem"
+
+
 # --- The two-port STUN test ----------------------------------------------------
 
 

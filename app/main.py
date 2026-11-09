@@ -1949,6 +1949,8 @@ _probe_hints: dict[tuple[str, int, int], list[str]] = {}
 #: another check, so state from another definition is dropped, not reused.
 _probe_state: dict[tuple[str, int, int], tuple[str, dict[int, tuple[bool, float]]]] = {}
 PROBE_STALE_SECONDS = 24 * 3600
+# Why a probe went unread when the worker's catalog differs from this one.
+PROBE_OTHER_VERSION = "the worker runs another version of CashPilot"
 
 
 _DOCKER_POOLS = ipaddress.ip_network("172.16.0.0/12")
@@ -2040,7 +2042,7 @@ def _probe_step(
     if row is not None and row.get("definition") != health_probe.fingerprint(spec):
         # Another catalog version on the worker: its indexes may point at
         # other checks here, so it is no verdict, empty hits included.
-        reason = "the worker runs another version of CashPilot"
+        reason = PROBE_OTHER_VERSION
         row = None
 
     def _indexes(values: Any) -> set[int]:
@@ -2183,12 +2185,14 @@ async def _sweep_windowed_signals() -> None:
                 probed = [await _render_signal_means(spec["checks"][i], slug, workers[wid]) for i in held]
                 if unreadable:
                     worker_name = str((workers[wid] or {}).get("name") or "this machine")
-                    # A refusal by the socket proxy names its own fix; the node is not the problem.
-                    advice = (
-                        ""
-                        if "socket proxy" in unreadable
-                        else " Check that the node runs normally and look at its logs."
-                    )
+                    # A refusal by the socket proxy names its own fix, and a version
+                    # skew is fixed by updating CashPilot; in neither is the node the problem.
+                    if "socket proxy" in unreadable:
+                        advice = ""
+                    elif unreadable.startswith(PROBE_OTHER_VERSION):
+                        advice = f" Update CashPilot on {worker_name} and here to the same version."
+                    else:
+                        advice = " Check that the node runs normally and look at its logs."
                     probed.append(
                         f"CashPilot has not been able to read this node's own API on {worker_name} "
                         f"({unreadable}), so part of what it checks on the node is unchecked.{advice}"
