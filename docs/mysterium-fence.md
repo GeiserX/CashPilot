@@ -343,7 +343,13 @@ docker inspect cashpilot-mysterium --format '{{range .Mounts}}{{if and (eq .Type
 ```
 
 If it prints `catalog volume`, remove the service (that volume stays) and
-deploy it again. If it prints nothing, the data is in a host folder or another
-volume, and removing the node would bring it back with a new identity: keep
-your own range in the form instead, or move the data onto `mysterium-data` by
-hand first.
+deploy it again. If it prints nothing, look at the first command's output for
+`/var/lib/mysterium-node`:
+
+- **A host folder or another volume.** Removing the node would bring it back
+  with a new identity: keep your own range in the form instead, or move the
+  data onto `mysterium-data` by hand first.
+- **No mount at that path.** The data is inside the container itself, and any
+  redeploy or removal deletes it with the container. Copy it out first
+  (`docker cp cashpilot-mysterium:/var/lib/mysterium-node ./mysterium-backup`)
+  and move it onto `mysterium-data` before you change anything.
