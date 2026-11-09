@@ -1018,6 +1018,18 @@ def test_a_commented_out_proxy_fingerprint_does_not_count(monkeypatch, capsys):
     assert f"CASHPILOT_PROXY_POLICY={socket_policy.digest()}" in env
 
 
+def test_the_image_refuses_two_proxy_environments(monkeypatch, capsys):
+    """With two services setting the proxy's bind mounts it cannot tell which is
+    CashPilot's, so it refuses rather than give the line to the wrong one."""
+    from app import socket_policy
+
+    old = _stale((ROOT / "docker-compose.worker.yml").read_text(), proxy_line=False)
+    anchor = socket_policy._PROXY_ENV_ANCHOR.search(old)
+    old = old.replace("services:\n", "services:\n  other-proxy:\n    environment:\n" + anchor.group(0), 1)
+    code, out, err = _filter(old, monkeypatch, capsys)
+    assert (code, out) == (1, "") and "more than one service" in err
+
+
 def test_the_image_refuses_a_file_with_no_proxy_environment(monkeypatch, capsys):
     from app import socket_policy
 

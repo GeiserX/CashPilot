@@ -329,9 +329,15 @@ def update(text: str, passes: int | None = None) -> str:
                 "the policy block has no $ to tell how often the file is interpolated: "
                 "run again with --passes 1 (Compose) or --passes 2 (a CasaOS store template)"
             )
-    anchor = _PROXY_ENV_ANCHOR.search(text)
-    if anchor is None:
+    anchors = list(_PROXY_ENV_ANCHOR.finditer(text))
+    if not anchors:
         raise SystemExit("compose file has no socket proxy environment to give the policy's fingerprint")
+    if len(anchors) > 1:
+        raise SystemExit(
+            "more than one service sets the proxy's bind mounts, so the filter cannot tell which is "
+            "cashpilot-socket-proxy; add its CASHPILOT_PROXY_POLICY line by hand"
+        )
+    anchor = anchors[0]
     if not DIGEST_RE.search(_env_list(text, anchor.start(), anchor.group(1))):
         line = _PROXY_FINGERPRINT.format(indent=anchor.group(1))
         text = text[: anchor.end()] + line + text[anchor.end() :]
