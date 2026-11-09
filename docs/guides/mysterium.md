@@ -151,7 +151,9 @@ first command above), the last file in its output wins; it reads
 after that one, such as `zz-mysterium.conf`, still overrides it. With
 `sysctl --system` and no systemd, `/etc/sysctl.conf` is read after every
 directory and no file name sorts after it: if the other setter is there, put
-the combined list in that line.
+the combined list in that line. If a tool rewrites `/etc/sysctl.conf` itself,
+set the combined list in that tool's own settings, or the next rewrite drops
+your reservation.
 
 **A firewall of your own in `DOCKER-USER` can drop the sessions.** Once the
 node is on CashPilot's bridge, customer packets to its UDP range are forwarded
