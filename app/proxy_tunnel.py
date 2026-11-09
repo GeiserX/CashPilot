@@ -50,7 +50,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from docker.errors import APIError, NotFound
 from docker.types import Mount
@@ -322,13 +322,22 @@ def proxy_auth(username: str, password: str) -> str:
 def _read_secret_file(container: Any, name: str) -> str | None:
     """One file of a sidecar's secret volume; works on a stopped container."""
     try:
-        stream, _ = container.get_archive(f"{SECRET_DIR}/{name}")
-        with tarfile.open(fileobj=io.BytesIO(b"".join(stream))) as tar:
-            member = tar.next()
-            handle = tar.extractfile(member) if member is not None else None
-            return handle.read().decode().strip() if handle is not None else None
-    except Exception:  # noqa: BLE001 - absent or unreadable: nothing to refresh
+        return _read_secret_file_or_raise(container, name)
+    except Exception:  # noqa: BLE001 - unreadable: nothing to refresh
         return None
+
+
+def _read_secret_file_or_raise(container: Any, name: str) -> str | None:
+    """As _read_secret_file, but None only for a file that is not there; any
+    other failure raises. A SOCKS tunnel, for one, has no Tailscale files."""
+    try:
+        stream, _ = container.get_archive(f"{SECRET_DIR}/{name}")
+    except NotFound:
+        return None
+    with tarfile.open(fileobj=io.BytesIO(b"".join(stream))) as tar:
+        member = tar.next()
+        handle = tar.extractfile(member) if member is not None else None
+        return handle.read().decode().strip() if handle is not None else None
 
 
 def refresh_proxy_ip(container: Any) -> None:
@@ -671,6 +680,10 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
     try:
         with contextlib.suppress(Exception):
             member.stop(timeout=orchestrator._get_stop_timeout(service or ""))
+        member.reload()
+        if getattr(member, "status", "") in _LIVE:
+            # Never two of one copy at once: the provider would see one device twice.
+            raise ProxyTunnelError(f"{name} did not stop, so it was not moved")
         member.rename(aside)
     except Exception:
         _remove_quietly(clone, 2)
@@ -832,6 +845,12 @@ def _in_place(
     """
     current.reload()
     running = current.status == "running"
+    # The container's log spans every setting it ever ran on (it is restarted
+    # in place), so the old credentials are redacted from errors too.
+    for key in ("auth_key", "proxy_auth"):
+        if old := _read_secret_file(current, key):
+            password = old.rstrip("@").partition(":")[2]  # proxy_auth is user:password@, URL-encoded
+            secrets = [*secrets, old, password, unquote(password)]
     if running and _read_secret_file(current, "settings") == files["settings"]:
         with contextlib.suppress(ProxyTunnelError):
             return current, _wait_ready(current)
@@ -839,7 +858,12 @@ def _in_place(
         previous = None
     elif running:
         _prove(client, proxy, own_ip, files)
-        previous = {key: _read_secret_file(current, key) or "" for key in SECRET_KEYS}
+        try:
+            previous = {key: _read_secret_file_or_raise(current, key) or "" for key in SECRET_KEYS}
+        except Exception as exc:  # noqa: BLE001 - without them the old settings could not be put back
+            raise ProxyTunnelError(
+                f"Could not read the tunnel's current settings ({redact(str(exc), secrets)}), so nothing was changed"
+            ) from None
     else:
         previous = None
     try:
@@ -853,16 +877,21 @@ def _in_place(
     try:
         exit_info = _wait_ready(current)
     except ProxyTunnelError as exc:
-        with contextlib.suppress(Exception):
+        try:
             if previous is not None:
-                # Proven a moment ago, failed here: back to what ran before.
+                # Proven a moment ago, failed here: back to what ran before,
+                # and its copies back inside it.
                 current.stop(timeout=SIDECAR_STOP_SECONDS)
                 current.put_archive(SECRET_DIR, _secret_tar(previous))
                 current.start()
+                _wait_ready(current)
+                _restart_members(client, current)
             elif not running:
                 # Down, not leaking: its earners have no way out. Stopped so it
                 # does not hold a tailnet device or a proxy session for nothing.
                 current.stop(timeout=SIDECAR_STOP_SECONDS)
+        except Exception as undo:  # noqa: BLE001 - the tunnel stays down, failing closed
+            logger.warning("Could not put the old settings back into %s: %s", current.name, redact(str(undo), secrets))
         raise ProxyTunnelError(redact(str(exc), secrets), exc.status_code) from None
     _restart_members(client, current)
     return current, exit_info
@@ -959,8 +988,17 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
     name = earner_name(slug, proxy_id)
     # A new tunnel image is taken only when no other copy would be recreated
     # for it (see _ensure_tunnel): this copy's own earner is replaced anyway.
-    current = _get(client, shared_tunnel_name(proxy_id))
-    others = [m for m in _members(client, current) if str(m.name) != name] if _is_shared(current, proxy_id) else []
+    # Including a staged tunnel's copies, which _ensure_tunnel may finish first.
+    others = [
+        m
+        for t in (
+            _get(client, shared_tunnel_name(proxy_id)),
+            _get(client, shared_tunnel_name(proxy_id) + STAGED_SUFFIX),
+        )
+        if _is_shared(t, proxy_id)
+        for m in _members(client, t)
+        if str(m.name) != name
+    ]
     tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others)
     # Cleared before anything changes: deploy_raw starts the earner, and a copy
     # left running while recorded as stopped is never restarted after a reboot.
@@ -1257,6 +1295,8 @@ def recover_moves(min_age: float | None = None) -> list[str]:
         clone = by_name.get(name + STAGED_SUFFIX)
         if clone is not None and _age_seconds(clone) < min_age:
             continue
+        if name in by_name and _age_seconds(by_name[name]) < min_age:
+            continue  # may be the clone of a move still running; its aside one is the way back
         try:
             if name in by_name:
                 _remove_quietly(aside, 2)

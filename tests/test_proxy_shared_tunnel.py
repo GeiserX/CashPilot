@@ -1134,3 +1134,93 @@ class TestStartAndRemoveReconcile:
             assert docker.named("cashpilot-honeygain-p3") is not None
         worker.join(5)
         assert result == [["cashpilot-honeygain-p3", "cashpilot-tunnel-p3"]]
+
+
+class TestEditsAndMovesSecondReview:
+    def test_a_copy_that_does_not_stop_is_not_moved(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        member = docker.named("cashpilot-honeygain-p3")
+        member.stop = lambda timeout=None: None  # Docker answers, but it keeps running
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="did not stop"):
+            proxy_tunnel._clone_into(docker, member, tunnel)
+        assert docker.named("cashpilot-honeygain-p3") is member and member.status == "running"
+        assert not [c.name for c in docker.by_id.values() if c.name.endswith(("-next", "-moving"))]
+
+    def test_an_edit_whose_old_settings_cannot_be_read_changes_nothing(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        real = tunnel.get_archive
+
+        def flaky(path):
+            if path.endswith("/proxy_port"):
+                raise APIError("500 Server Error: daemon busy")
+            return real(path)
+
+        tunnel.get_archive = flaky
+        with (
+            patch.object(proxy_tunnel, "_prove"),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not read the tunnel's current settings"),
+        ):
+            _deploy("earnfm", _socks(password=NEW_PASSWORD))
+        assert tunnel.status == "running" and ("stop", "cashpilot-tunnel-p3") not in docker.events
+        assert tunnel.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", PASSWORD)
+
+    def test_a_rolled_back_edit_restarts_the_copies_inside_the_tunnel(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named("cashpilot-honeygain-p3")
+        docker.broken_auth.add(f"u1:{NEW_PASSWORD}@")
+        with patch.object(proxy_tunnel, "_prove"), pytest.raises(proxy_tunnel.ProxyTunnelError):
+            _deploy("earnfm", _socks(password=NEW_PASSWORD))
+        # Back on the old settings, and the copy restarted into the tunnel's new namespace.
+        assert earner.status == "running"
+        assert earner.attrs["State"]["StartedAt"] > tunnel.attrs["State"]["StartedAt"]
+
+    def test_a_failed_edit_keeps_the_old_password_out_of_the_tunnel_log(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.logs = lambda tail=5: f"tun2proxy: auth u1 {PASSWORD} refused".encode()
+        docker.broken_auth.add(f"u1:{NEW_PASSWORD}@")
+        with patch.object(proxy_tunnel, "_prove"), pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
+            _deploy("earnfm", _socks(password=NEW_PASSWORD))
+        assert PASSWORD not in str(err.value) and "Tunnel log" in str(err.value)
+
+    def test_a_redeploy_counts_the_copies_of_a_staged_tunnel_before_taking_a_new_image(self, docker):
+        _deploy("m1")
+        staged = docker.create(
+            name="cashpilot-tunnel-p3-next",
+            image=IMAGE,
+            labels={
+                LABEL_MANAGED: "true",
+                LABEL_ROLE: "tunnel",
+                LABEL_SERVICE: proxy_tunnel.SHARED_SLUG,
+                LABEL_PROXY: "3",
+            },
+        )
+        staged.files = dict(docker.named("cashpilot-tunnel-p3").files)
+        staged.start()
+        m2 = docker.create(
+            name="cashpilot-m2-p3",
+            image="m2/m2:1",
+            labels={LABEL_MANAGED: "true", LABEL_SERVICE: "m2", LABEL_PROXY: "3"},
+            network_mode=f"container:{staged.id}",
+        )
+        m2.start()
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+            _deploy("m1")
+        # The staged change was finished, and m2 (another copy) kept its container.
+        assert docker.named("cashpilot-m2-p3") is m2
+        (tunnel,) = docker.tunnels()
+        assert tunnel is staged and tunnel.kw["image"] == IMAGE
+
+    def test_recovery_keeps_the_aside_copy_while_the_clone_holding_the_name_is_young(self, docker):
+        _deploy("a")
+        a = docker.named("cashpilot-a-p3")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        aside = docker.create(
+            name="cashpilot-a-p3-moving", image="a/a:1", labels=dict(a.labels), network_mode=f"container:{tunnel.id}"
+        )
+        a.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")  # a clone that took the name now
+        assert proxy_tunnel.recover_moves() == []
+        assert aside.id in docker.by_id

@@ -51,8 +51,9 @@ starts.
 
 Every copy through one proxy on one box shares a single tunnel:
 
-1. A **tunnel** container from `drumsergio/cashpilot-tunnel`, at the same
-   exact version as the worker, named `cashpilot-tunnel-p<id>` for proxy
+1. A **tunnel** container from `drumsergio/cashpilot-tunnel`, created at the
+   same exact version as the worker (it keeps that image until it is replaced,
+   see below), named `cashpilot-tunnel-p<id>` for proxy
    `<id>`. It owns a network namespace and makes the proxy the only way out
    of it.
 2. One **earner** per copy, started with `network_mode: container:<tunnel>`.

@@ -49,6 +49,36 @@ MUTANTS: list[tuple[str, str, str]] = [
         "",
     ),
     (
+        "a copy is moved while it still runs, so two of it run at once",
+        '        if getattr(member, "status", "") in _LIVE:\n            # Never two',
+        "        if False:\n            # Never two",
+    ),
+    (
+        "an edit goes on when the old settings could not be read",
+        'previous = {key: _read_secret_file_or_raise(current, key) or "" for key in SECRET_KEYS}',
+        'previous = {key: _read_secret_file(current, key) or "" for key in SECRET_KEYS}',
+    ),
+    (
+        "a rolled back edit leaves the copies outside the tunnel",
+        "                _restart_members(client, current)\n            elif not running:",
+        "                pass\n            elif not running:",
+    ),
+    (
+        "an old password shows in a failed edit's tunnel log",
+        "            secrets = [*secrets, old, password, unquote(password)]",
+        "            pass",
+    ),
+    (
+        "a redeploy ignores the copies of a staged tunnel and takes a new image",
+        "            _get(client, shared_tunnel_name(proxy_id) + STAGED_SUFFIX),\n",
+        "",
+    ),
+    (
+        "recovery removes the aside copy of a move whose clone is still starting",
+        "        if name in by_name and _age_seconds(by_name[name]) < min_age:\n",
+        "        if False:\n",
+    ),
+    (
         "a start leaves a copy in a tunnel that is gone",
         "        if earner is not None and _tunnel_id_of(earner) != shared.id:",
         "        if earner is not None and tunnel is not None and not _is_shared(tunnel):",

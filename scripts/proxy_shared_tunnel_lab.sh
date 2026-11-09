@@ -480,7 +480,7 @@ if [[ " $PARTS " == *" 3 "* ]] && [ -n "$BASE_SRC" ]; then
 fi
 
 restart_daemon() {
-    sh -c "$DOCKERD_RESTART" >/dev/null 2>&1
+    sh -c "$DOCKERD_RESTART" >/dev/null 2>&1 || return 1
     local i
     for i in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
     docker info >/dev/null 2>&1 || return 1
@@ -499,14 +499,16 @@ tunnel_ready() {
 }
 state_of() { docker inspect -f '{{.State.Status}} {{.State.Error}}' "$1" 2>/dev/null || echo missing; }
 ids_of_copies() { docker ps -aq --no-trunc --filter label=cashpilot.proxy=3 | sort | tr '\n' ' '; }
-# r. a daemon restart, run against one tree; prints what it saw, returns 0 if all held.
+# r. a daemon restart, run against one tree; prints what it saw. Returns 0 if
+# every copy held, 1 if one did not, 2 if the case could not be set up (which
+# the control must never count as the failure it expects).
 restart_case() { # src
     local src=$1 ok=0
     wipe_copies
     rm -f "$CASHPILOT_DATA_DIR/.proxied_held"
-    drive "$src" deploy 3 >"$WORK/r.log" 2>&1 || { echo "deploy failed: $(tail -2 "$WORK/r.log")"; return 1; }
-    drive "$src" stop labearner1 >/dev/null 2>&1 || { echo "stop failed"; return 1; }
-    restart_daemon || { echo "the daemon did not come back"; return 1; }
+    drive "$src" deploy 3 >"$WORK/r.log" 2>&1 || { echo "setup: deploy failed: $(tail -2 "$WORK/r.log")"; return 2; }
+    drive "$src" stop labearner1 >/dev/null 2>&1 || { echo "setup: stop failed"; return 2; }
+    restart_daemon || { echo "setup: the daemon restart command failed or the daemon did not come back"; return 2; }
     if tunnel_ready; then echo "tunnel back and ready by itself"; else echo "tunnel: $(state_of cashpilot-tunnel-p3)"; ok=1; fi
     drive "$src" heartbeat >/dev/null 2>&1 || true
     sleep 3
@@ -538,11 +540,12 @@ if [[ " $PARTS " == *" 4 "* ]]; then
             fail "r: daemon restart: $(echo "$out" | tr '\n' ';')"
         fi
         if [ -n "$PREV_SRC" ]; then
-            if out=$(restart_case "$PREV_SRC"); then
-                fail "r control: the bind-volume tree also survived, so case r cannot fail: $(echo "$out" | tr '\n' ';')"
-            else
-                pass "r control: the bind-volume tree fails case r: $(echo "$out" | tr '\n' ';')"
-            fi
+            out=$(restart_case "$PREV_SRC")
+            case $? in
+                0) fail "r control: the bind-volume tree also survived, so case r cannot fail: $(echo "$out" | tr '\n' ';')" ;;
+                1) pass "r control: the bind-volume tree fails case r: $(echo "$out" | tr '\n' ';')" ;;
+                *) fail "r control: could not be set up, so it proves nothing: $(echo "$out" | tr '\n' ';')" ;;
+            esac
         fi
     fi
 
