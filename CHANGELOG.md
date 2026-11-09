@@ -10,6 +10,22 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## Unreleased
+
+### Documentation
+
+- Stop a renamed data volume passing the keep-your-identity check (#696)
+
+## [2.2.0] - 2026-11-09
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#695)
+
+### Features
+
+- Run seven proxied copies on one tunnel's memory, not seven (#690)
+
 ## [2.1.9] - 2026-11-09
 
 ### Documentation
