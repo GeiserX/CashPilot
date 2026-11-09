@@ -18,6 +18,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import socket
 import socket as _socket
 import struct
@@ -389,7 +390,9 @@ def test_a_stalled_exec_stream_does_not_hold_a_pool_thread(monkeypatch):
     later read queued for good. docker-py's own reader polls with no timeout."""
     import docker
 
-    path = os.path.join(tempfile.mkdtemp(dir="/tmp"), "d.sock")
+    # /tmp, not tmp_path: a unix socket path must stay under about 100 characters.
+    folder = tempfile.mkdtemp(dir="/tmp")
+    path = os.path.join(folder, "d.sock")
     stop = threading.Event()
     server = _fake_docker(path, stop)
     monkeypatch.setattr(health_probe, "READ_TIMEOUT", 1)
@@ -413,6 +416,7 @@ def test_a_stalled_exec_stream_does_not_hold_a_pool_thread(monkeypatch):
     finally:
         stop.set()
         server.close()
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def test_reads_never_queue_behind_busy_threads(monkeypatch):
