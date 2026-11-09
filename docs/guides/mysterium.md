@@ -212,10 +212,14 @@ its brackets, so compare them with your range.
 docker logs cashpilot-mysterium 2>&1 | grep -o 'Method:[a-z]* Success:[a-z]*' | sort | uniq -c
 ```
 
-`Method:manual Success:true` means sessions reach the node through the forward.
+`Method:manual Success:true` means buyers' packets reach the node through the
+forward. It does not prove the sessions work: that also needs the node's
+answers to leave from the ports it advertised, and a router that rewrites UDP
+source ports breaks that while this line stays `true` (see
+[Routers that rewrite UDP source ports](#routers-that-rewrite-udp-source-ports)).
 Only `Method:manual Success:false` lines, each followed by
-`Method:holepunching`, mean they do not. The node's `/nat/type` keeps
-reporting `prcone` even when forwarding works, so don't go by it.
+`Method:holepunching`, mean the forward does not work. The node's `/nat/type` keeps
+reporting `prcone` whether forwarding works or not, so don't go by it.
 
 CashPilot checks this too, every 30 minutes. When a node has had at least five
 failed direct connections and not one successful one in the last 6 hours, the
@@ -223,6 +227,107 @@ dashboard lists it under **Needs fixing** with the range and address to forward.
 The item clears by itself once a session connects directly. A node with no
 sessions yet is not flagged. The dashboard reloads its list every hour, or when
 you open it.
+
+On the same 30-minute round the worker also asks the node itself, read-only,
+for Mysterium's monitoring status and its last five sessions. It lists the node
+under **Needs fixing** when the monitoring status is `failed`, and when those
+five sessions each ended after about a minute having carried no data. Both
+point at the problem in the next section when nothing else is listed for the node.
+
+### Routers that rewrite UDP source ports
+
+**Symptom.** The node is online, its port check says `All ports [...] are
+reachable` and the log shows `Method:manual Success:true`, yet it earns
+nothing. Every session ends after about 60 seconds with 0 bytes either way:
+
+```bash
+docker exec cashpilot-mysterium wget -qO- \
+  'http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=10' \
+  | grep -o '"duration":[0-9]*,"bytes_received":[0-9]*,"bytes_sent":[0-9]*'
+```
+
+`/node/monitoring-status` answers `{"status":"failed"}`,
+`/node/monitoring-agent-statuses` shows `connect_fail` with no
+`tun_device_problem`, the node's STUN check logs `NATType:restricted` where a
+working line gives `full`
+(`docker logs cashpilot-mysterium 2>&1 | grep -o 'NATType:[a-z]*' | sort | uniq -c`),
+and Mysterium's discovery stops offering the node to most buyers. A missing
+`SETUID`/`SETGID` or `/dev/net/tun` looks much the same; rule those out first
+with [the section below](#running-but-not-earning-monitoring-failed-quality-0).
+
+**Cause.** The router in front of the machine changes the source port of some
+outgoing UDP flows. Inbound works, so every check that only tests inbound
+passes. But the node advertises the ports it listens on and answers from them,
+and when the router sends an answer out from a different port, the buyer's
+client drops it. The session is set up, never carries a byte, and times out.
+
+One pattern seen on some ISP fibre boxes (an ONT with a built-in router): the
+box reserves outgoing UDP ports in pairs. When it maps port P it also holds P
+XOR 1 (23000 and 23001, 23002 and 23003, and so on), and a later flow from the
+partner port leaves with a random port. Others do it for every port, or only
+when a SIP ALG or the box's own VoIP service owns a range.
+
+**Why a narrow range makes it near certain.** Each session takes about two
+ports from `UDP_PORTS`. In a range of 30 ports the node keeps reusing the same
+few pairs, so a session's second port is almost always the partner of a port
+already mapped, and gets rewritten. With the node's wide default (10000 to
+60000, no `--udp.ports`) collisions are rare enough that a pairing router goes
+unnoticed, which is why a node can work for months and fail the day its range
+is narrowed.
+
+**Confirm it.** Ask a public STUN server which port it sees, from pairs of
+neighbouring ports, inside the node's network namespace. CashPilot ships
+a small script for this with no dependencies beyond Python 3,
+[`scripts/stun_port_pair.py`](https://github.com/GeiserX/CashPilot/blob/main/scripts/stun_port_pair.py).
+Run it in a throwaway container that shares the node's network, on the machine
+running the node:
+
+```bash
+curl -fsSLo /tmp/stun_port_pair.py \
+  https://raw.githubusercontent.com/GeiserX/CashPilot/main/scripts/stun_port_pair.py
+docker run --rm --network container:cashpilot-mysterium \
+  -v /tmp/stun_port_pair.py:/t.py:ro python:3.15.2-alpine python /t.py
+```
+
+On a router that pairs ports, the even port of each pair comes back rewritten:
+
+```
+34101 -> 34101  kept
+34100 -> 46948  REWRITTEN
+34103 -> 34103  kept
+34102 -> 46950  REWRITTEN
+```
+
+On a working line every port comes back with its own number. The script exits
+0 when every port kept its number, 1 when one was rewritten and 2 when no STUN
+server answered. It only sends a few packets to a public STUN server; it does
+not touch the node. `--start` picks the first port to test (default 34100);
+keep it outside `UDP_PORTS`, whose ports the node holds.
+
+**Fix.** In order, from least to most disruptive:
+
+1. **Turn off the router's SIP ALG and, if you do not use it, its own VoIP or
+   phone service.** Both rewrite UDP flows. Look under NAT, ALG, VoIP or
+   Telephony in the router's admin page. Some ISP boxes hide the setting; the
+   ISP's support can usually change it.
+2. **Look for a setting that keeps ports.** Some routers call it port
+   preservation, endpoint-independent mapping, "full cone" NAT or NAT type 1.
+   Turn it on if it is there.
+3. **Bridge mode with your own router.** Put the ISP box in bridge mode (some
+   ISPs call it ONT mode or "router off") and do NAT on a router of your own
+   that keeps source ports; most Linux-based routers and OpenWrt do. Then
+   forward `UDP_PORTS` on your router instead. This takes the whole house
+   offline for a few minutes and may need the ISP's help.
+4. **A much wider `UDP_PORTS` range.** Fewer collisions, never none: the
+   sessions that land on a reserved partner still fail. Each published port
+   costs about 2.5 MB of memory in Docker's port proxy, the range must stay
+   free of other programs (see *Port forwarding*), and you forward the whole
+   range on the router. A range of 1,000 ports costs about 2.5 GB, which is
+   why this comes last.
+
+Run the script again after each change. Once every port keeps its number,
+Mysterium's monitoring re-scores the node within a few hours, the next sessions
+carry data, and the **Needs fixing** item clears by itself.
 
 ### WebUI address
 

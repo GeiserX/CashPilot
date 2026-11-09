@@ -44,6 +44,7 @@ from app import (
     activity,
     egress,
     fleet_key,
+    health_probe,
     isolation_check,
     lan_fence,
     node_read,
@@ -2333,6 +2334,25 @@ async def api_node_earnings(request: Request) -> dict[str, Any]:
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     return {"nodes": rows}
+
+
+@app.get("/api/health-probes")
+async def api_health_probes(request: Request) -> dict[str, Any]:
+    """Which declared health checks hold for each node on this worker.
+
+    Only for services whose catalog entry declares ``docker.health_probe``
+    (Mysterium's monitoring status and recent sessions). Read-only, and only
+    the indexes of the checks that hold leave the worker: see
+    app/health_probe.py.
+    """
+    _verify_api_key(request)
+    if not _catalog_get_services:
+        return {"probes": []}
+    try:
+        rows = await asyncio.to_thread(health_probe.read_all, _catalog_get_services())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {"probes": rows}
 
 
 @app.get("/api/update/info")

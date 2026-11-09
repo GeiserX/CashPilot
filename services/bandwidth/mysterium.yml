@@ -160,6 +160,52 @@ docker:
         same range on both sides) to ${HOST_ADDRESS}. This clears by itself once
         a session connects directly.
       state: failing
+  # What the node itself says, read by the worker every 30 minutes
+  # (app/health_probe.py): Mysterium's monitoring status, then the last 5
+  # completed sessions it provided in the past 14 days, newest first. Seen live
+  # (Nov 2026) on two nodes behind routers that rewrite the UDP source port of
+  # some connections: monitoring "failed", and every session ending after 55
+  # to 62 s with 0 bytes, while the node logged "Method:manual Success:true"
+  # and "All ports reachable". A node on a working line reads "success" and
+  # its sessions carry data. /nat/type answers "prcone" on both, so it is not
+  # read. Only GETs on the node's loopback; nothing here changes the node.
+  health_probe:
+    command:
+      - sh
+      - -c
+      - >-
+        d=$(date -u -d @$(( $(date +%s) - 1209600 )) +%Y-%m-%d)
+        && wget -qO- -T 5 http://127.0.0.1:4050/node/monitoring-status
+        && echo
+        && wget -qO- -T 5 "http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=5&date_from=$d"
+    checks:
+      - pattern: '\{"status":"failed"\}'
+        means: >-
+          Mysterium's monitoring marks the node on ${WORKER_NAME} as failed, so
+          it is left out of the node list most buyers pick from, even when its
+          own check says every port is reachable. When nothing else is listed
+          for this node, a common cause is the router in front of
+          ${WORKER_NAME} rewriting the UDP source port of some of the node's
+          connections. Run the two-port test in the guide:
+          https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports
+      # Each item is one session object (they hold no nested objects); a bad
+      # one lasted 40 to 89 s and moved no byte either way. Five in a row: a
+      # working node also gets the odd empty session, but those end within a
+      # few seconds, and its next real one clears the check.
+      - items: '\{"id":[^{}]*"direction":"Provided"[^{}]*\}'
+        pattern: '"duration":[4-8][0-9],"bytes_received":0,"bytes_sent":0,'
+        min_matches: 5
+        means: >-
+          The last five VPN sessions of the node on ${WORKER_NAME} each ended
+          after about a minute having moved no data, so it earns
+          nothing while it looks online. The likely cause is the router in
+          front of ${WORKER_NAME}: it rewrites the UDP source port of some of
+          the node's connections (some fibre boxes reserve ports in pairs, and
+          in a narrow forwarded range nearly every session hits one), so
+          buyers drop the node's answers. Run the two-port test and see the
+          fixes in the guide:
+          https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports
+          This clears once a session carries data.
 
 requirements:
   residential_ip: false

@@ -82,6 +82,9 @@ COPY --chown=cashpilot:root app/procnet.py ./app/
 COPY --chown=cashpilot:root app/payout_read.py ./app/
 # Reads a node's own earnings figures from inside it (Mysterium, issue #488).
 COPY --chown=cashpilot:root app/node_read.py ./app/
+# Asks a running node how it is doing from inside it (docker.health_probe);
+# catalog.py also validates the declaration with it.
+COPY --chown=cashpilot:root app/health_probe.py ./app/
 COPY --chown=cashpilot:root app/arch.py ./app/
 COPY --chown=cashpilot:root app/catalog.py ./app/
 # catalog.py validates each entry's rating block with it (the rules ship in services/).

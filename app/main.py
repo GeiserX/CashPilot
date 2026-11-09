@@ -1932,6 +1932,10 @@ _windowed_hints: dict[tuple[str, int, int], list[str]] = {}
 # The startup sweep and the scheduled one must not overlap: the older would
 # finish last and put back stale hints.
 _windowed_lock = asyncio.Lock()
+#: The part of _windowed_hints that came from a node's health probe
+#: (docker.health_probe), per copy, so a probe that could not be read this
+#: time keeps its last verdict without holding back the log signals.
+_probe_hints: dict[tuple[str, int, int], list[str]] = {}
 
 
 _DOCKER_POOLS = ipaddress.ip_network("172.16.0.0/12")
@@ -1967,11 +1971,12 @@ async def _render_signal_means(signal: dict[str, Any], slug: str, worker: dict[s
     recorded_env = {k: str(v) for k, v in ((recorded or {}).get("env") or {}).items() if str(v)}
     env.update(recorded_env)
     env["HOST_ADDRESS"] = _private_ipv4((worker or {}).get("url", "")) or "this machine's LAN address"
+    env["WORKER_NAME"] = str((worker or {}).get("name") or "this machine")
     text = " ".join(str(signal.get("means") or "").split())
     # A copy deployed before a setting existed does not run with its default yet
     # (Mysterium without UDP_PORTS picks from 10000:60000), so naming the default
     # alone would send the operator to forward a range the node does not use.
-    used = set(re.findall(r"\$\{(\w+)\}", text)) - {"HOST_ADDRESS"}
+    used = set(re.findall(r"\$\{(\w+)\}", text)) - {"HOST_ADDRESS", "WORKER_NAME"}
     if recorded is not None and any(key not in recorded_env for key in used):
         text = (
             "This copy was deployed before CashPilot set these values, so it does not use them yet: "
@@ -1990,22 +1995,43 @@ async def _check_windowed_signals() -> None:
         await _sweep_windowed_signals()
 
 
+async def _health_probe_rows(wid: int, cache: dict[int, list[dict[str, Any]] | None]) -> list[dict[str, Any]] | None:
+    """What a worker's /api/health-probes says, asked once per sweep; None when it did not answer.
+
+    A worker from before the endpoint answers 404, which is no verdict.
+    """
+    if wid not in cache:
+        try:
+            result = await _proxy_to_worker(wid, "GET", "/api/health-probes", timeout=60)
+            rows = result.get("probes") if isinstance(result, dict) else None
+            cache[wid] = rows if isinstance(rows, list) else None
+        except Exception as exc:  # noqa: BLE001 - one worker never fails the sweep
+            logger.info("Health probes unread on worker %s: %s", wid, exc)
+            cache[wid] = None
+    return cache[wid]
+
+
 async def _sweep_windowed_signals() -> None:
-    global _windowed_hints
+    global _windowed_hints, _probe_hints
     try:
         containers = await _get_all_worker_containers()
     except Exception as exc:
         logger.warning("Windowed signal check skipped: %s", exc)
         return
     hints: dict[tuple[str, int, int], list[str]] = {}
+    probe_hints: dict[tuple[str, int, int], list[str]] = {}
+    probe_rows: dict[int, list[dict[str, Any]] | None] = {}
     workers: dict[int, dict[str, Any] | None] = {}
     for c in containers:
         slug = egress.container_slug(c)
         wid = c.get("_worker_id")
         if not slug or wid is None or str(c.get("status", "")).lower() != "running":
             continue
-        signals = [s for s in producer_state.signals_for(catalog.get_service(slug)) if producer_state.is_windowed(s)]
-        if not signals:
+        service = catalog.get_service(slug)
+        signals = [s for s in producer_state.signals_for(service) if producer_state.is_windowed(s)]
+        probe = ((service or {}).get("docker") or {}).get("health_probe")
+        checks = probe.get("checks") if isinstance(probe, dict) and isinstance(probe.get("checks"), list) else []
+        if not signals and not checks:
             continue
         instance = int(c.get("instance") or 1)
         key = (slug, wid, instance)
@@ -2029,14 +2055,43 @@ async def _sweep_windowed_signals() -> None:
                     continue
                 if producer_state.windowed_hit(resp.get("logs", ""), signal):
                     found.append(await _render_signal_means(signal, slug, workers[wid]))
+            if checks:
+                rows = await _health_probe_rows(wid, probe_rows)
+                row = next(
+                    (
+                        r
+                        for r in rows or []
+                        if isinstance(r, dict)
+                        and r.get("slug") == slug
+                        and r.get("instance") == instance
+                        and isinstance(r.get("hits"), list)
+                    ),
+                    None,
+                )
+                if row is None:
+                    # Not read this time (worker busy, node slow to answer): the
+                    # last verdict stands, as for the log signals.
+                    probed = _probe_hints.get(key, [])
+                else:
+                    probed = [
+                        await _render_signal_means(checks[i], slug, workers[wid])
+                        for i in row["hits"]
+                        if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(checks)
+                    ]
+                if probed:
+                    probe_hints[key] = probed
+                    found += probed
         except Exception as exc:
             logger.warning("Windowed signal check failed for %s on worker %s: %s", slug, wid, exc)
             if key in _windowed_hints:
                 hints[key] = _windowed_hints[key]
+            if key in _probe_hints:
+                probe_hints[key] = _probe_hints[key]
             continue
         if found:
             hints[key] = found
     _windowed_hints = hints
+    _probe_hints = probe_hints
 
 
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
@@ -6073,7 +6128,9 @@ async def api_producer_state(request: Request, slug: str, worker_id: int | None 
             # cost of the rest of the verdict.
             with contextlib.suppress(Exception):
                 address_mismatch = await _advertised_address_mismatch(matches, worker_id)
-        if signals and running:
+        # A health probe's verdicts ride in the same sweep hints as the windowed log signals.
+        probed = bool(((service or {}).get("docker") or {}).get("health_probe"))
+        if (signals or probed) and running:
             wid = worker_id if worker_id is not None else (matches[0].get("_worker_id") if matches else None)
             if wid is not None:
                 # The sweep's verdicts first, so a failed tail read below cannot drop them.

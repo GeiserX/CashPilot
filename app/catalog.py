@@ -18,7 +18,7 @@ from urllib.parse import quote
 
 import yaml
 
-from app import arch, ratings
+from app import arch, health_probe, ratings
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +312,11 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                     errors.append(
                         f"{path.name}: docker.health_signals[{i}]: state account_disabled cannot have window_hours"
                     )
+        if "health_probe" in docker:
+            # A probe that cannot be read is no check at all: the node would
+            # look fine for want of a working regex.
+            for problem in health_probe.spec_errors(docker["health_probe"]):
+                errors.append(f"{path.name}: docker.health_probe: {problem}")
         ports = docker.get("ports")
         if isinstance(ports, list):
             # A bad mapping used to load fine and then 500 the deploy, on
