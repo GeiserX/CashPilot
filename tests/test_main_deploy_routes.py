@@ -1084,6 +1084,7 @@ class TestWorkerCommand:
             _auth_writer(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
             patch("app.main.database.remove_deployment", new_callable=AsyncMock) as rm_dep,
+            patch("app.main.database.delete_proxied_copies_of", new_callable=AsyncMock) as rm_copies,
             patch("app.main.database.record_health_event", new_callable=AsyncMock) as health_evt,
             patch("app.main.httpx.AsyncClient", return_value=mock_client),
             patch("app.main.FLEET_API_KEY", "test-key"),
@@ -1096,9 +1097,27 @@ class TestWorkerCommand:
                 },
             )
             assert resp.status_code == 200
-            # A remove via the command route must clean up the deployments row.
+            # A remove via the command route must clean up the deployments row,
+            # and, as in _svc_remove, the records of the proxied copies the worker removed.
             rm_dep.assert_awaited_once()
+            rm_copies.assert_awaited_once_with(1, "honeygain")
             health_evt.assert_awaited()
+
+    def test_command_remove_keeps_the_records_of_proxied_copies_that_survived(self, client):
+        worker, mock_client = self._setup()
+        mock_client.delete.return_value = _mock_httpx_resp(200, {"status": "ok", "proxied_error": "p4 left"})
+        with (
+            _auth_writer(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.remove_deployment", new_callable=AsyncMock),
+            patch("app.main.database.delete_proxied_copies_of", new_callable=AsyncMock) as rm_copies,
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post("/api/workers/1/command", json={"command": "remove", "slug": "honeygain"})
+            assert resp.status_code == 200
+            rm_copies.assert_not_awaited()
 
     def test_command_restart(self, client):
         worker, mock_client = self._setup()

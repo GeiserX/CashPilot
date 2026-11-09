@@ -57,9 +57,13 @@ def _proxy(pid=3, **state):
 class _Alerts:
     """The alerts table and its dedupe, in memory."""
 
-    def __init__(self, copies, proxies=None):
+    def __init__(self, copies, proxies=None, placements=None):
         self.copies = copies
         self.proxies = proxies if proxies is not None else [_proxy()]
+        # Every copy's service is deployed on its box unless a test says otherwise.
+        self.placements = (
+            placements if placements is not None else [{"slug": c["slug"], "worker_id": c["worker_id"]} for c in copies]
+        )
         self.rows: dict[str, str] = {}
         self.titles: list[str] = []
 
@@ -87,6 +91,7 @@ class _Alerts:
             patch.object(main.database, "clear_alerts", self.clear),
             patch.object(main.database, "list_proxied_copies", AsyncMock(return_value=self.copies)),
             patch.object(main.database, "list_proxies", AsyncMock(return_value=self.proxies)),
+            patch.object(main.database, "list_deployment_placements", AsyncMock(return_value=self.placements)),
             patch.object(main, "_spawn", spawn),
         ):
             if age is not None:
@@ -181,6 +186,21 @@ class TestNothingCashPilotDidOnPurpose:
         workers = [_worker([_entry("earnfm", status="exited", tunnel="exited", held=None)])]
         _past_grace(alerts, workers)
         assert list(alerts.rows) == ["cashpilot-honeygain-p3@1"]
+
+    def test_a_copy_whose_service_was_removed_from_the_box_is_quiet(self):
+        # The worker's remove_all took the copies with the service, but a
+        # partial failure (proxied_error) or a raw remove left their records.
+        alerts = _Alerts([_copy("earnfm"), _copy("earnfm", pid=4)], [_proxy(), _proxy(4)], placements=[])
+        _past_grace(alerts, [_worker([_entry("earnfm", pid=4)])])
+        assert not alerts.rows
+
+    def test_a_stored_alert_clears_once_the_service_is_removed_from_the_box(self):
+        alerts = _Alerts([_copy("earnfm")])
+        _past_grace(alerts, [_worker([])])
+        assert alerts.rows
+        alerts.placements = []
+        alerts.run([_worker([])])
+        assert not alerts.rows and not main._collector_alerts
 
     def test_a_disabled_account_is_quiet(self, monkeypatch):
         monkeypatch.setattr(main, "_account_disabled", {"earnfm": "disabled"})

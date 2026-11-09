@@ -912,11 +912,16 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
         faults: dict[str, dict[str, Any]] = {}
         unjudged: set[str] = set()
         tunnel_faults: dict[str, dict[str, Any]] = {}
+        # A copy runs with its service's settings on that box; once the service
+        # is removed there, its copies went with it (worker remove_all), even
+        # when a partial failure kept their records.
+        placed = {(p["slug"], p["worker_id"]) for p in await database.list_deployment_placements()}
         for copy in await database.list_proxied_copies():
             pid, wid, slug = copy["proxy_id"], copy["worker_id"], copy["slug"]
             proxy = proxy_rows.get(pid)
             if (
                 proxy is None
+                or (slug, wid) not in placed
                 or copy.get("removing_since")
                 or copy.get("stopped_by_cap")
                 or (proxy.get("state") or {}).get("capped_at")
@@ -8686,6 +8691,9 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         metrics.record_container_lifecycle("start", slug)
     elif body.command == "remove":
         await database.remove_deployment(slug, worker_id=worker_id)
+        # As in _svc_remove: the worker removed the proxied copies with the service.
+        if not (isinstance(result, dict) and result.get("proxied_error")):
+            await database.delete_proxied_copies_of(worker_id, slug)
         await database.record_health_event(slug, "remove", worker_id=worker_id)
         metrics.record_container_lifecycle("remove", slug)
     return result
