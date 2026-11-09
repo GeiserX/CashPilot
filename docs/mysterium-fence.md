@@ -339,7 +339,8 @@ B=./mysterium-backup-$(date +%Y%m%d-%H%M%S)   # a new folder each time
 docker cp cashpilot-mysterium:/var/lib/mysterium-node "$B" && ls "$B/keystore"
 ```
 
-The `ls` must list the keystore's files; if it fails, stop here.
+The `ls` must list the keystore's files. If it fails, stop here and press
+**Start** on the dashboard to bring the node back as it was.
 
 Then check where the node keeps its data:
 
@@ -364,7 +365,8 @@ its own `mysterium-data`. Otherwise, removing the node would bring it back with
 a new identity:
 
 - **A host folder or another volume at that path or above it, or a mount
-  below it.** Keep your own range in the form instead, or move the data onto
+  below it.** Keep your own range: press **Start** on the dashboard to bring
+  the node back as it was, without a redeploy. Or move the data onto
   `mysterium-data` by hand first, while no other container uses that volume.
 - **No mount at or above that path.** The data is inside the container
   itself, and any redeploy or removal deletes it with the container. Move the
