@@ -326,30 +326,41 @@ To go back to the catalog's default range, typing it in is not enough: the
 form treats the prefilled default as untouched and keeps the range on record.
 Removing the service from that machine and deploying it again clears the
 record, but the new container mounts the catalog's `mysterium-data` volume, and
-the identity check has no running node to compare with. First check where the
-node keeps its data:
+the identity check has no running node to compare with.
+
+First copy the node's data off the container, whatever the checks below say.
+`docker cp` reads through every mount, so this holds the identity wherever it
+lives, and with it you can restore the node if it comes back as a new one:
+
+```bash
+docker cp cashpilot-mysterium:/var/lib/mysterium-node ./mysterium-backup
+```
+
+Then check where the node keeps its data:
 
 ```bash
 docker inspect cashpilot-mysterium --format '{{range .Mounts}}{{.Type}} {{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}} -> {{.Destination}}{{println}}{{end}}'
 ```
 
-A fresh deploy mounts the volume named exactly `mysterium-data`. A volume with
-any other name, even one that contains it such as `project-mysterium-data`, is
-not the one the node comes back on. This prints `catalog volume` only when the
-name matches exactly:
+A fresh deploy mounts the volume named exactly `mysterium-data` at
+`/var/lib/mysterium-node`, and nothing else there. A volume with any other
+name, even one that contains it such as `project-mysterium-data`, is not the
+one the node comes back on. This prints `catalog volume` only when the name
+matches exactly:
 
 ```bash
 docker inspect cashpilot-mysterium --format '{{range .Mounts}}{{if and (eq .Type "volume") (eq .Name "mysterium-data") (eq .Destination "/var/lib/mysterium-node")}}catalog volume{{end}}{{end}}'
 ```
 
-If it prints `catalog volume`, remove the service (that volume stays) and
-deploy it again. If it prints nothing, look at the first command's output for
-`/var/lib/mysterium-node`:
+If it prints `catalog volume` and the first command shows no other mount below
+`/var/lib/mysterium-node`, remove the service with **Remove** on the dashboard
+(it keeps the volume) and deploy it again on the same worker: each worker has
+its own `mysterium-data`. Otherwise, removing the node would bring it back with
+a new identity:
 
-- **A host folder or another volume.** Removing the node would bring it back
-  with a new identity: keep your own range in the form instead, or move the
-  data onto `mysterium-data` by hand first.
-- **No mount at that path.** The data is inside the container itself, and any
-  redeploy or removal deletes it with the container. Copy it out first
-  (`docker cp cashpilot-mysterium:/var/lib/mysterium-node ./mysterium-backup`)
-  and move it onto `mysterium-data` before you change anything.
+- **A host folder or another volume at that path or above it, or a mount
+  below it.** Keep your own range in the form instead, or move the data onto
+  `mysterium-data` by hand first, while no other container uses that volume.
+- **No mount at or above that path.** The data is inside the container
+  itself, and any redeploy or removal deletes it with the container. Move the
+  backup onto `mysterium-data` before you change anything.
