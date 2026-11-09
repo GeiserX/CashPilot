@@ -333,8 +333,17 @@ node keeps its data:
 docker inspect cashpilot-mysterium --format '{{range .Mounts}}{{.Type}} {{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}} -> {{.Destination}}{{println}}{{end}}'
 ```
 
-If `/var/lib/mysterium-node` is on a volume whose name ends in
-`mysterium-data`, remove the service (that volume stays) and deploy it again.
-If it is a host folder or another volume, removing the node would bring it back
-with a new identity: keep your own range in the form instead, or move the data
-onto that volume by hand first.
+A fresh deploy mounts the volume named exactly `mysterium-data`. A volume with
+any other name, even one that contains it such as `project-mysterium-data`, is
+not the one the node comes back on. This prints `catalog volume` only when the
+name matches exactly:
+
+```bash
+docker inspect cashpilot-mysterium --format '{{range .Mounts}}{{if and (eq .Type "volume") (eq .Name "mysterium-data") (eq .Destination "/var/lib/mysterium-node")}}catalog volume{{end}}{{end}}'
+```
+
+If it prints `catalog volume`, remove the service (that volume stays) and
+deploy it again. If it prints nothing, the data is in a host folder or another
+volume, and removing the node would bring it back with a new identity: keep
+your own range in the form instead, or move the data onto `mysterium-data` by
+hand first.
