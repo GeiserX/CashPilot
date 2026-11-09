@@ -15,6 +15,7 @@ under Needs fixing.
 from __future__ import annotations
 
 import asyncio
+import copy
 import importlib.util
 import json
 import os
@@ -63,17 +64,17 @@ def _session(n: int, duration: int, received: int, sent: int) -> dict:
 
 
 def _answer(status: str | None, sessions: list[dict] | None) -> str:
-    """What the catalog command prints: each read that worked, behind its marker.
+    """What the catalog command prints: each read that worked, with its marker.
 
     The sessions come one per line behind their end time, as the command's awk
-    prints them; None leaves a read out, as when it failed.
+    prints them, then their marker; None leaves a read out, as when it failed.
     """
     out = []
     if status is not None:
         out.append("monitoring read: " + json.dumps({"status": status}, separators=(",", ":")))
     if sessions is not None:
-        out.append("sessions read:")
         out += [f"{1793806663 - i} " + json.dumps(x, separators=(",", ":")) for i, x in enumerate(sessions)]
+        out.append("sessions read: all")
     return "\n".join(out)
 
 
@@ -199,7 +200,8 @@ def test_the_session_read_has_no_date_window_and_does_not_hang_on_the_status_rea
     assert "date_from" not in script and "date " not in script
     status, sessions = script.split("\nfi\n", 1)
     assert "monitoring-status" in status and status.startswith("if ") and sessions.startswith("if ")
-    assert [c.get("answered") for c in _spec()["checks"]] == ["monitoring read: ", "sessions read:"]
+    assert sessions.rstrip().endswith('echo "sessions read: all"\nfi'), "the marker comes after the data"
+    assert [c.get("answered") for c in _spec()["checks"]] == ["monitoring read: ", "sessions read: all"]
 
 
 def test_one_failed_read_costs_only_its_own_checks():
@@ -235,18 +237,18 @@ def _awk_has_mktime() -> bool:
 def test_a_long_session_that_ended_last_is_judged_though_it_started_first():
     """Runs the catalog's own sessions pipeline on a page in the API's order."""
     script = _spec()["command"][-1]
-    pipeline = script[script.index('echo "$s" | ') + len('echo "$s" | ') : script.rindex("\nfi")]
+    pipeline = script[script.index('echo "$s" | ') + len('echo "$s" | ') : script.index("| head -5") + len("| head -5")]
     dead = [_session(i, 61, 0, 0) | {"created_at": f"2026-11-08T1{i // 6}:{i % 6}0:00Z"} for i in range(30)]
     long_good = _session(99, 40 * 3600, 900_000, 400_000) | {"created_at": "2026-11-07T00:00:00Z"}
     page = {"items": [*reversed(dead), long_good], "page": 1, "page_size": 100, "total_items": 31, "total_pages": 1}
     env = {**os.environ, "s": json.dumps(page, separators=(",", ":"))}
     out = subprocess.run(["sh", "-c", 'echo "$s" | ' + pipeline], capture_output=True, text=True, env=env, check=True)
     assert len(out.stdout.splitlines()) == 5 and "00000000-0000-4000-8000-000000000099" in out.stdout
-    assert health_probe.judge(_answer("success", None) + "\nsessions read:\n" + out.stdout, _spec()) == []
+    assert health_probe.judge(_answer("success", None) + "\n" + out.stdout + "sessions read: all", _spec()) == []
     dead_only = {**page, "items": list(reversed(dead))}
     env["s"] = json.dumps(dead_only, separators=(",", ":"))
     out = subprocess.run(["sh", "-c", 'echo "$s" | ' + pipeline], capture_output=True, text=True, env=env, check=True)
-    assert health_probe.judge("sessions read:\n" + out.stdout, _spec()) == [1]
+    assert health_probe.judge(out.stdout + "sessions read: all", _spec()) == [1]
 
 
 def test_the_monitoring_finding_sends_to_the_tun_check_first():
@@ -549,6 +551,88 @@ def test_a_probe_in_a_yaml_file_reaches_the_proxy_policy(tmp_path):
     assert command in socket_policy.catalog_commands(tmp_path)
 
 
+def test_a_read_cut_short_keeps_the_checks_it_finished():
+    """timeout ends the command during the sessions read: the monitoring verdict
+    already printed stands, and the unfinished sessions read counts as unread,
+    never as healthy."""
+    cut = ("monitoring read: " + '{"status":"failed"}\n' + "1793806663 " + json.dumps(DEAD[0])).encode()
+    api = _Api({"cut": (124, cut), "nothing": (124, b"")})
+    with (
+        patch("app.orchestrator.service_instances", return_value=_containers("cut", "nothing")),
+        patch("app.orchestrator._instance_of", side_effect=[1, 2]),
+        patch("app.health_probe._client", return_value=MagicMock(api=api)),
+    ):
+        rows = health_probe.read_all([catalog.get_service("mysterium")])
+    assert rows[0]["hits"] == [0] and rows[0]["unread"] == [1]
+    assert rows[1]["error"] == "the node did not answer"
+
+
+def test_a_check_without_a_marker_is_unread_when_the_command_fails():
+    spec = {"command": ["timeout", "5", "true"], "checks": [{"pattern": "bad", "means": "m"}]}
+    api = _Api({"x": (1, b"")})
+    assert health_probe._read_one(MagicMock(api=api), "x", spec) is None
+
+
+def _two_services():
+    """Two services that declare the same probe, so a batch can run out between them."""
+    spec = _spec()
+    return [{"slug": "aaa", "docker": {"health_probe": spec}}, {"slug": "bbb", "docker": {"health_probe": spec}}]
+
+
+def test_the_next_batch_starts_with_the_service_this_one_did_not_reach(monkeypatch):
+    """A slow first service that eats the budget every time must not leave the next one unread."""
+    api = _Api({"slow": None, "fast": (0, FAILING.encode())})
+    listed = []
+
+    def _list(slug, client=None):
+        """aaa's only copy never answers; bbb's answers at once."""
+        listed.append(slug)
+        return _containers("slow" if slug == "aaa" else "fast")
+
+    monkeypatch.setattr(health_probe, "BATCH_BUDGET", 0.5)
+    try:
+        with (
+            patch("app.orchestrator.service_instances", side_effect=_list),
+            patch("app.orchestrator._instance_of", return_value=1),
+            patch("app.health_probe._client", return_value=MagicMock(api=api)),
+        ):
+            first = health_probe.read_all(_two_services())
+            api.hang.set()
+            second = health_probe.read_all(_two_services())
+    finally:
+        api.hang.set()
+    assert [r["slug"] for r in first] == ["aaa"] and listed[:1] == ["aaa"]
+    assert listed[1] == "bbb", "the service the first batch never reached goes first"
+    assert second[0]["slug"] == "bbb" and second[0]["hits"] == [0, 1]
+
+
+def test_a_stalled_listing_ends_with_the_batch_and_keeps_the_rows_read(monkeypatch):
+    """The UI waits 60 s in all; a listing that hangs must not cost the rows already read."""
+    release = threading.Event()
+    api = _Api({"fast": (0, FAILING.encode())})
+
+    def _list(slug, client=None):
+        """aaa lists at once; bbb's listing hangs."""
+        if slug == "bbb":
+            release.wait(10)
+            return []
+        return _containers("fast")
+
+    monkeypatch.setattr(health_probe, "BATCH_BUDGET", 0.5)
+    try:
+        with (
+            patch("app.orchestrator.service_instances", side_effect=_list),
+            patch("app.orchestrator._instance_of", return_value=1),
+            patch("app.health_probe._client", return_value=MagicMock(api=api)),
+        ):
+            started = time.monotonic()
+            rows = health_probe.read_all(_two_services())
+            took = time.monotonic() - started
+    finally:
+        release.set()
+    assert took < 2 and [r["slug"] for r in rows] == ["aaa"] and rows[0]["hits"] == [0, 1]
+
+
 def test_the_worker_endpoint_serves_the_rows():
     """The worker endpoint returns what read_all reads."""
     client = TestClient(worker_api.app)
@@ -719,6 +803,19 @@ def test_an_unread_check_keeps_its_verdict_while_the_other_updates():
     assert len(hints) == 2
 
 
+def test_a_verdict_kept_from_another_definition_is_dropped():
+    """After a catalog change an old index could name another check: an unread
+    probe must not keep a verdict read against another definition."""
+    _sweep([_row([1])])
+    changed = copy.deepcopy(catalog.get_service("mysterium"))
+    changed["docker"]["health_probe"]["checks"].reverse()
+    with patch("app.main.catalog.get_service", return_value=changed):
+        hints, _ = _sweep(
+            [_row(error="timed out", definition=health_probe.fingerprint(changed["docker"]["health_probe"]))]
+        )
+    assert hints == [], "the session verdict must not come back as the monitoring one"
+
+
 def test_a_check_unread_for_a_day_says_so():
     """A check unread for a day is reported as unreadable."""
     _sweep([_row([0, 1])])
@@ -812,6 +909,74 @@ def test_the_highest_real_pair_is_still_tested(monkeypatch):
     assert stun.main() == 0
 
 
+def test_stray_datagrams_cannot_keep_a_try_waiting():
+    """Each try ends on its own deadline, whatever arrives meanwhile."""
+    stun = _stun()
+    started = time.monotonic()
+
+    class _Noisy:
+        """A socket that receives a datagram that is not the answer, again and again."""
+
+        def settimeout(self, value):
+            """Accept the timeout."""
+
+        def sendto(self, data, server):
+            """Send nothing."""
+
+        def recvfrom(self, size):
+            """Something that is not a STUN answer, at once, until the test gives up."""
+            if time.monotonic() - started > 3:
+                raise RuntimeError("the try never ended")
+            return b"not stun", ("192.0.2.9", 1)
+
+    assert stun.probe(_Noisy(), ("192.0.2.1", 3478), tries=2, wait=0.2) is None
+    assert time.monotonic() - started < 1.5
+
+
+def test_no_socket_is_its_own_status_and_pairs_close_as_they_go(monkeypatch):
+    """Running out of sockets is no rewrite (exit 5), and a long run keeps only one pair open."""
+    stun = _stun()
+    real = socket.socket
+
+    def _refuse(*a, **k):
+        """This machine is out of file descriptors."""
+        raise OSError(24, "Too many open files")
+
+    monkeypatch.setattr(stun, "_servers", lambda: [("192.0.2.1", 3478)])
+    monkeypatch.setattr("sys.argv", ["stun_port_pair.py"])
+    monkeypatch.setattr(stun.socket, "socket", _refuse)
+    assert stun.main() == 5
+    monkeypatch.setattr(stun.socket, "socket", real)
+    open_now = peak = 0
+
+    class _Counted:
+        """A UDP socket that counts how many are open at once."""
+
+        def __init__(self, *a, **k):
+            """Open one."""
+            nonlocal open_now, peak
+            open_now += 1
+            peak = max(peak, open_now)
+            self.port = 0
+
+        def settimeout(self, value):
+            """Accept the timeout."""
+
+        def bind(self, address):
+            """Remember the port."""
+            self.port = address[1]
+
+        def close(self):
+            """Close one."""
+            nonlocal open_now
+            open_now -= 1
+
+    monkeypatch.setattr(stun.socket, "socket", _Counted)
+    monkeypatch.setattr(stun, "probe", lambda sock, server: sock.port)
+    assert stun.run(("192.0.2.1", 3478), 30000, 50) == (100, 0, 50)
+    assert peak == 2 and open_now == 0
+
+
 def test_every_port_rewritten_makes_no_claim_about_a_forward(monkeypatch, capsys):
     """The test measures ports with no forward, so it says nothing about one."""
     stun = _stun()
@@ -821,3 +986,13 @@ def test_every_port_rewritten_makes_no_claim_about_a_forward(monkeypatch, capsys
     assert stun.main() == 1
     out = capsys.readouterr().out
     assert "cannot work" not in out and "only measures ports with no forward" in out
+    assert "or a VPN" not in out, "some VPNs forward UDP ports"
+
+
+def test_the_guide_stops_the_node_from_cashpilot_for_the_decisive_test():
+    """A plain docker stop is not a stop the worker knows about; it can start the node mid-test."""
+    guide = (Path(__file__).resolve().parents[1] / "docs" / "guides" / "mysterium.md").read_text()
+    section = guide[guide.index("**Confirm it.**") : guide.index("**Fix.**")]
+    assert "docker stop cashpilot" not in section and "docker start cashpilot" not in section
+    assert "**Stop**" in section and "**Start**" in section
+    assert "port-check-servers" not in guide and "Tried without success" in guide

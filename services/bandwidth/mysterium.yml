@@ -181,7 +181,8 @@ docker:
   # only when it worked ("answered" below): a slow or failing monitoring status
   # (the node asks Mysterium's quality oracle for it) never costs the sessions
   # verdict, and a failed sessions read never costs the monitoring one; a check
-  # whose read failed keeps its last verdict. -Y off keeps an inherited
+  # whose read failed keeps its last verdict. Each marker comes after its
+  # data, so a run that timeout cuts short never passes for a full read. -Y off keeps an inherited
   # http_proxy away from the loopback reads. timeout 12 bounds the whole run
   # inside the 15 s the worker waits. Seen live
   # (Nov 2026) on two nodes behind routers that rewrite the UDP source port of
@@ -201,13 +202,13 @@ docker:
           echo "monitoring read: $m"
         fi
         if s=$(wget -qO- -Y off -T 5 "http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=100"); then
-          echo "sessions read:"
           echo "$s" | sed 's/},{/}\n{/g' | awk '
             match($0, /"created_at":"[^"]+"/) {
               t = substr($0, RSTART + 14, 19); gsub(/[-T:]/, " ", t)
               d = 0; if (match($0, /"duration":[0-9]+/)) d = substr($0, RSTART + 11, RLENGTH - 11)
               print mktime(t) + d, $0
             }' | sort -rn | head -5
+          echo "sessions read: all"
         fi
     checks:
       - pattern: 'monitoring read: \{"status":"failed"\}'
@@ -230,7 +231,7 @@ docker:
       - items: '\{"id":[^{}]*"direction":"Provided"[^{}]*\}'
         pattern: '"duration":[4-8][0-9],"bytes_received":0,"bytes_sent":0,'
         min_matches: 5
-        answered: 'sessions read:'
+        answered: 'sessions read: all'
         means: >-
           The last five VPN sessions of the node on ${WORKER_NAME} each ended
           after about a minute having moved no data, so it earns

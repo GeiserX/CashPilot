@@ -28,7 +28,8 @@ Exit status: 0 when every pair was tested and every port kept its number,
 1 when one was rewritten, 2 when no STUN server answered, 3 when no port was
 rewritten but some pair could not be tested in full (a port that did not bind
 or got no answer), so the pairing was not checked: run it again with another
---start, and 4 when --start and --pairs do not give real ports (1 to 65535). A
+--start, 4 when --start and --pairs do not give real ports (1 to 65535), and 5
+when the machine would not open a socket, so nothing was tested. A
 rewritten port is reported as a pairing
 router when some ports kept their number, and as a NAT that rewrites every
 port when none did. Read-only: it sends a few UDP packets to a public STUN
@@ -42,6 +43,7 @@ import os
 import socket
 import struct
 import sys
+import time
 from typing import NoReturn
 
 MAGIC = 0x2112A442
@@ -68,17 +70,21 @@ def _mapped_port(data: bytes, txid: bytes) -> int | None:
     return plain
 
 
-def probe(sock: socket.socket, server: tuple[str, int], tries: int = 3) -> int | None:
+def probe(sock: socket.socket, server: tuple[str, int], tries: int = 3, wait: float = 2) -> int | None:
     """The source port the STUN server saw for packets from ``sock``; None for no answer.
 
     A network error (no route, the packet refused) is no answer too, never a
-    traceback, which would exit 1 and read as a rewritten port.
+    traceback, which would exit 1 and read as a rewritten port. Each try ends
+    ``wait`` seconds after its request whatever arrives meanwhile: datagrams
+    that are not the answer cannot keep it waiting.
     """
     for _ in range(tries):
         txid = os.urandom(12)
+        deadline = time.monotonic() + wait
         try:
             sock.sendto(struct.pack("!HHI", 0x0001, 0, MAGIC) + txid, server)
-            while True:
+            while (left := deadline - time.monotonic()) > 0:
+                sock.settimeout(left)
                 data, _ = sock.recvfrom(2048)
                 port = _mapped_port(data, txid)
                 if port is not None:
@@ -101,6 +107,10 @@ def _servers() -> list[tuple[str, int]]:
     return found
 
 
+class NoSocket(Exception):
+    """This machine would not give the test a socket (out of file descriptors, or no permission)."""
+
+
 def run(server: tuple[str, int], start: int, pairs: int) -> tuple[int, int, int]:
     """Test ``pairs`` neighbouring pairs from ``start`` against one server.
 
@@ -108,16 +118,19 @@ def run(server: tuple[str, int], start: int, pairs: int) -> tuple[int, int, int]
     """
     first = start & ~1
     rewritten = answered = complete = 0
-    socks = []
-    try:
-        for n in range(pairs):
-            even = first + 2 * n
-            both = True
+    for n in range(pairs):
+        even = first + 2 * n
+        both = True
+        # Only one pair is open at a time, so --pairs never runs out of sockets.
+        socks = []
+        try:
             # The odd port first, then its even partner while the first is still
             # open: a router that reserves pairs gives the second one away.
             for port in (even + 1, even):
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.settimeout(2)
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                except OSError as exc:
+                    raise NoSocket(exc.strerror or str(exc)) from exc
                 socks.append(sock)
                 try:
                     # A client socket on a chosen source port, so the test knows
@@ -136,10 +149,10 @@ def run(server: tuple[str, int], start: int, pairs: int) -> tuple[int, int, int]
                 kept = seen == port
                 rewritten += not kept
                 print(f"{port} -> {seen}  {'kept' if kept else 'REWRITTEN'}")
-            complete += both
-    finally:
-        for sock in socks:
-            sock.close()
+        finally:
+            for sock in socks:
+                sock.close()
+        complete += both
     return answered, rewritten, complete
 
 
@@ -167,7 +180,11 @@ def main() -> int:
         return 2
     answered = rewritten = complete = 0
     for server in servers:
-        answered, rewritten, complete = run(server, args.start, args.pairs)
+        try:
+            answered, rewritten, complete = run(server, args.start, args.pairs)
+        except NoSocket as exc:
+            print(f"Could not open a UDP socket ({exc}): nothing was tested.")
+            return 5
         if answered:
             break
         print(f"No answer from {server[0]}:{server[1]}.")
@@ -180,8 +197,7 @@ def main() -> int:
             "every UDP source port: a symmetric NAT, carrier-grade NAT, a VPN, or Docker Desktop's "
             "own NAT (run this on a Linux host with Docker Engine, not Docker Desktop). This "
             "only measures ports with no forward: whether a forward of UDP_PORTS reaches the "
-            "node is a separate check (the node's own port check, and none works behind "
-            "carrier-grade NAT or a VPN)."
+            "node is a separate check, and the node's own port check is the one to read."
         )
         return 1
     if rewritten:

@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import contextlib
+import functools
 import hashlib
 import json
 import logging
@@ -77,6 +78,9 @@ _slots = threading.BoundedSemaphore(_POOL_SIZE)
 #: Per service, the copy the next read_all starts with: the first one the last
 #: call did not reach, so a slow copy cannot keep the later ones unread.
 _resume: dict[str, int] = {}
+#: The service the next read_all starts with: the first one the last call did
+#: not finish, so a slow service cannot keep the later ones unread.
+_resume_service: str | None = None
 
 
 def _min_matches(check: dict[str, Any]) -> int | None:
@@ -163,9 +167,9 @@ def unanswered(output: bytes | str | None, spec: dict[str, Any]) -> list[int]:
     return [i for i, c in enumerate(spec["checks"]) if c.get("answered") and not re.search(c["answered"], text)]
 
 
-def judge(output: bytes | str | None, spec: dict[str, Any]) -> list[int]:
+def judge(output: bytes | str | None, spec: dict[str, Any], unread: list[int] | None = None) -> list[int]:
     """The indexes of the checks that hold on the command's output (unread ones never do)."""
-    unread = set(unanswered(output, spec))
+    unread = set(unanswered(output, spec) if unread is None else unread)
     return [i for i, check in enumerate(spec["checks"]) if i not in unread and holds(output, check)]
 
 
@@ -244,12 +248,15 @@ def _read_one(client: Any, container_id: str, spec: dict[str, Any]) -> dict[str,
         output = _read_stream(sock, deadline)
     finally:
         _close_exec_socket(sock)
-    if api.exec_inspect(exec_id).get("ExitCode") != 0:
-        return None
     unread = unanswered(output, spec)
+    if api.exec_inspect(exec_id).get("ExitCode") != 0:
+        # The command failed or ran out of time part way. A check whose marker
+        # made it out was read in full (the marker comes after its data); a
+        # check without a marker cannot tell, so it counts as unread.
+        unread = sorted({*unread, *(i for i, c in enumerate(spec["checks"]) if not c.get("answered"))})
     if len(unread) == len(spec["checks"]):
         return None
-    return {"hits": judge(output, spec), "unread": unread}
+    return {"hits": judge(output, spec, unread), "unread": unread}
 
 
 def _read_error(exc: Exception, slug: str) -> str:
@@ -275,26 +282,48 @@ def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ``hits``, the indexes of the checks that hold, and ``unread``, those it
     could not judge; ``error`` when it did not work at all: an unread node is
     no verdict, never a healthy one. Listing the copies and reading them both
-    fit in BATCH_BUDGET: copies not reached are reported unread, so the ones
-    read in time still count, and the next call starts with the first copy
-    this one did not reach, so every copy gets its turn.
+    fit in BATCH_BUDGET: what is not reached is reported unread or not listed,
+    and the rows already read still go back. The next call starts with the
+    first service, and within it the first copy, this one did not reach, so a
+    slow service or copy cannot keep the others unread.
     """
     # Imported here: the UI imports this module for nothing but the catalog
     # check, and has no Docker.
     from app import orchestrator
 
+    global _resume_service
     rows: list[dict[str, Any]] = []
     deadline = time.monotonic() + BATCH_BUDGET
     client = None
-    for slug, spec in sorted(probes(services).items()):
-        if time.monotonic() >= deadline:
+    declared = sorted(probes(services).items())
+    names = [slug for slug, _ in declared]
+    if _resume_service in names:
+        k = names.index(_resume_service)
+        declared = declared[k:] + declared[:k]
+    _resume_service = None
+
+    def _unreached(slug: str) -> None:
+        """Remember the first service this call did not finish."""
+        global _resume_service
+        if _resume_service is None:
+            _resume_service = slug
+
+    for slug, spec in declared:
+        left = min(READ_TIMEOUT, deadline - time.monotonic())
+        if left <= 0 or not _slots.acquire(blocking=False):
             # Not listed: the UI keeps these copies' last verdicts.
+            _unreached(slug)
             break
         try:
             if client is None:
                 client = _client()
-            # On this module's client, so a stalled listing ends in READ_TIMEOUT.
-            copies = orchestrator.service_instances(slug, client=client)
+            # On the pool and this module's client, so a stalled listing ends
+            # within the batch's remaining time.
+            copies = _run_in_pool(functools.partial(orchestrator.service_instances, slug, client=client), left)
+        except TimeoutError:
+            logger.warning("Listing %s containers for the health probe ran out of time", slug)
+            _unreached(slug)
+            break
         except Exception as exc:  # noqa: BLE001 - one service never fails the rest
             logger.warning("Could not list %s containers for the health probe: %s", slug, exc)
             continue
@@ -317,22 +346,32 @@ def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 row.update(_read_in_pool(client, running[i].id, spec, left, slug))
             if row.get("error") in ("not reached in time", "busy with earlier reads"):
                 _resume.setdefault(slug, i)
+                _unreached(slug)
     # A read that timed out may still be using the client; it is dropped, not
     # closed, so that read ends by its own deadline.
     return rows
 
 
+def _run_in_pool(fn: Any, left: float) -> Any:
+    """Run ``fn`` on the pool in the slot already taken, waiting up to ``left`` seconds.
+
+    Raises TimeoutError when it takes longer; the work then ends by its own
+    timeout and gives the slot back.
+    """
+    try:
+        future = _pool.submit(fn)
+    except BaseException:
+        _slots.release()
+        raise
+    future.add_done_callback(lambda _f: _slots.release())
+    return future.result(timeout=left)
+
+
 def _read_in_pool(client: Any, container_id: str, spec: dict[str, Any], left: float, slug: str) -> dict[str, Any]:
     """Run one read on the pool, holding the slot already taken, and wait up to ``left`` seconds."""
     try:
-        try:
-            future = _pool.submit(_read_one, client, container_id, spec)
-        except BaseException:
-            _slots.release()
-            raise
-        future.add_done_callback(lambda _f: _slots.release())
-        read = future.result(timeout=left)
-    except concurrent.futures.TimeoutError:
+        read = _run_in_pool(functools.partial(_read_one, client, container_id, spec), left)
+    except TimeoutError:
         # The read ends by its own deadline and frees its slot then.
         return {"error": "timed out"}
     except Exception as exc:  # noqa: BLE001

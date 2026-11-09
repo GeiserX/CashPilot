@@ -297,7 +297,9 @@ its own NAT in front of every container, which rewrites every port whatever
 the router does.
 
 1. Pick two even ports in `UDP_PORTS`, say `23010` and `23020`, and stop the
-   node: `docker stop cashpilot-mysterium`.
+   node with **Stop** on CashPilot's dashboard. A plain `docker stop` is not
+   recorded as a stop you meant, so the worker can start the node again in
+   the middle of the test.
 2. From the outside machine, send one packet to `23020` on your public address
    (and nothing to `23010`):
    `echo x | nc -u -w1 <your public IP> 23020`.
@@ -311,7 +313,7 @@ the router does.
       python:3.15.2-alpine sh -c 'python /t.py --start 23010 --pairs 1; python /t.py --start 23020 --pairs 1'
     ```
 
-4. Start the node again: `docker start cashpilot-mysterium`.
+4. Start the node again with **Start** on the dashboard.
 
 On a router with this mapping, `23020` comes back `REWRITTEN` and `23010`
 comes back `kept`. On a working router both keep their number. If `23010` is
@@ -349,14 +351,15 @@ comes back rewritten, the script says so separately: that is a NAT which
 rewrites every port (a symmetric NAT, carrier-grade NAT, a VPN, or Docker
 Desktop's own NAT). The test only measures ports with no forward, so it does
 not say whether your forward of `UDP_PORTS` reaches the node: the node's own
-port check does, and behind carrier-grade NAT or a VPN no forward reaches it.
+port check does. Behind carrier-grade NAT no forward reaches it; behind a VPN
+only one whose provider forwards UDP ports to you.
 The script exits
 0 when every pair was tested and every port kept its number, 1 when one was
 rewritten, 2 when no STUN server answered, and 3 when nothing was rewritten
 but some pair could not be tested in full (a port that would not bind or got
 no answer), so the result says nothing about pairing; run it again with
 another `--start`. It exits 4 when `--start` and `--pairs` do not give real
-ports. It tries Google's STUN server first and Cloudflare's when
+ports, and 5 when the machine would not open a socket. It tries Google's STUN server first and Cloudflare's when
 Google does not answer. It only sends a few packets to a public STUN server; it does
 not touch the node. `--start` picks the first port to test (default 34100);
 keep it outside `UDP_PORTS`, whose ports the node holds.
@@ -380,7 +383,7 @@ the rewrite happened past it, at the router. When it differs, the host's NAT
 changed it, and the test says nothing about the router.
 
 **Fix.** A wider `UDP_PORTS` range does not help on this kind of router (see
-*Cause*). In the order we would try them:
+*Cause*). What works:
 
 1. **Bridge mode with your own router.** Put the ISP box in bridge mode (some
    ISPs call it ONT mode or "router off") and do NAT on a router of your own
@@ -390,16 +393,18 @@ changed it, and the test says nothing about the router.
    instead. If the ISP box itself has a setting by one of those names, turning
    it on may be enough. Cost: the whole house goes offline for a few minutes,
    and it may need the ISP's help.
-2. **Untested: turn off the node's port check.** Mysterium's node has a hidden
-   flag, `--port-check-servers`. Set empty, the node skips the check whose
-   inbound packet marks the port, and falls back to hole punching. We have not
-   tried it, and many buyers fail at hole punching. It only removes the node's
-   own packet: a port scanner, or a buyer whose first packet reaches the port
-   before the node answers, marks the port all the same. CashPilot runs the
-   node with a fixed command, so this means running the node by hand, and a
-   redeploy from CashPilot drops the flag.
 
-Run the decisive test again after each change. Once a port that got an inbound
+Tried without success: skipping the node's port check. With
+`traversal = "holepunching"` in the node's `config-mainnet.toml`, the node
+skips the manual method and its port check, and falls back to hole punching.
+On an affected node it ran for 90 minutes: every config exchange logged
+`Method:holepunching Success:true`, yet no buyer ever acknowledged and no
+session started, and monitoring stayed failed. The attempts stopped after the
+node's config reply over NATS, before any packet between the peers, so part of
+the cause may be on the buyer's side; it is not fully explained yet. We do not
+recommend it.
+
+Run the decisive test again after the change. Once a port that got an inbound
 packet keeps its number,
 Mysterium's monitoring re-scores the node within a few hours, the next sessions
 carry data, and the **Needs fixing** item clears by itself.

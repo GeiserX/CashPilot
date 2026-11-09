@@ -1944,7 +1944,10 @@ _probe_hints: dict[tuple[str, int, int], list[str]] = {}
 #: last verdict outlives an unread check by at most PROBE_STALE_SECONDS; after
 #: that it is dropped, and a copy the worker keeps reporting as unreadable gets
 #: a hint saying so instead.
-_probe_state: dict[tuple[str, int, int], dict[int, tuple[bool, float]]] = {}
+#: Kept with the fingerprint of the probe definition it was read against
+#: (health_probe.fingerprint): after a catalog change an old index could name
+#: another check, so state from another definition is dropped, not reused.
+_probe_state: dict[tuple[str, int, int], tuple[str, dict[int, tuple[bool, float]]]] = {}
 PROBE_STALE_SECONDS = 24 * 3600
 
 
@@ -2083,7 +2086,7 @@ async def _sweep_windowed_signals() -> None:
     hints: dict[tuple[str, int, int], list[str]] = {}
     signal_hints: dict[tuple[str, int, int], list[str]] = {}
     probe_hints: dict[tuple[str, int, int], list[str]] = {}
-    probe_state: dict[tuple[str, int, int], dict[int, tuple[bool, float]]] = {}
+    probe_state: dict[tuple[str, int, int], tuple[str, dict[int, tuple[bool, float]]]] = {}
     probe_rows: dict[int, list[dict[str, Any]] | None] = {}
     workers: dict[int, dict[str, Any] | None] = {}
     for c in containers:
@@ -2141,6 +2144,10 @@ async def _sweep_windowed_signals() -> None:
             signal_hints[key] = logged
         probed: list[str] = []
         if spec is not None:
+            definition = health_probe.fingerprint(spec)
+            kept_definition, kept_state = _probe_state.get(key, (None, {}))
+            if kept_definition != definition:
+                kept_state = {}
             try:
                 rows = await _health_probe_rows(wid, probe_rows)
                 mine = [
@@ -2148,7 +2155,7 @@ async def _sweep_windowed_signals() -> None:
                     for r in rows or []
                     if isinstance(r, dict) and r.get("slug") == slug and r.get("instance") == instance
                 ]
-                state, held, unreadable = _probe_step(spec, mine, _probe_state.get(key, {}), time.time())
+                state, held, unreadable = _probe_step(spec, mine, kept_state, time.time())
                 probed = [await _render_signal_means(spec["checks"][i], slug, workers[wid]) for i in held]
                 if unreadable:
                     worker_name = str((workers[wid] or {}).get("name") or "this machine")
@@ -2163,12 +2170,12 @@ async def _sweep_windowed_signals() -> None:
                         f"({unreadable}), so part of what it checks on the node is unchecked.{advice}"
                     )
                 if state:
-                    probe_state[key] = state
+                    probe_state[key] = (definition, state)
             except Exception as exc:
                 logger.warning("Health probe check failed for %s on worker %s: %s", slug, wid, exc)
-                probed = _probe_hints.get(key, [])
-                if key in _probe_state:
-                    probe_state[key] = _probe_state[key]
+                if kept_state:
+                    probed = _probe_hints.get(key, [])
+                    probe_state[key] = (definition, kept_state)
             if probed:
                 probe_hints[key] = probed
         if logged or probed:
