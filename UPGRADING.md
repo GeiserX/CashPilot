@@ -299,7 +299,9 @@ no longer mounts the socket.
    worker behind it. The containers the worker deployed keep running.
 5. Open the worker's status page: it should say *Docker access: socket proxy*.
    If it adds that the policy is not the one the image expects, a later
-   release changed the policy: take that release's compose file the same way.
+   release changed the policy. The message gives the command that updates
+   only the policy in your compose file, and the `docker compose up -d
+   --force-recreate cashpilot-socket-proxy cashpilot-worker` that loads it.
 
 **If something is refused.** The dashboard shows the proxy's reason, and
 `docker logs cashpilot-socket-proxy` lists every refused call. A bind outside

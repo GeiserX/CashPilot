@@ -7,12 +7,25 @@ worker imports the same module, so it can tell when the policy the proxy
 loaded is older than the image it runs (``digest`` against the
 CASHPILOT_PROXY_POLICY value the compose file gives it), and refuse a runtime
 the proxy would refuse before a running container is touched.
+
+The policy stays in the operator's compose file, never in the image: the image
+is what the policy restricts, so an image update must not be able to widen it.
+An operator who keeps their own compose file brings the policy up to date with
+this image, without giving the image any access to that file:
+
+    docker run --rm -i --network none drumsergio/cashpilot-worker:<version> \
+        python -m app.socket_policy < docker-compose.yml > docker-compose.new.yml
+
+It replaces the block between the policy markers and the fingerprint, changes
+nothing else, and the operator reads the diff before using the new file.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
+import sys
 from pathlib import Path
 
 import yaml
@@ -230,3 +243,42 @@ def policy(services_dir: Path = SERVICES_DIR) -> str:
 def digest(services_dir: Path = SERVICES_DIR) -> str:
     """A short fingerprint of the policy, carried next to it in each compose file."""
     return hashlib.sha256(policy(services_dir).encode()).hexdigest()[:16]
+
+
+BEGIN = "      # BEGIN socket proxy policy: written by scripts/socket_proxy_policy.py, do not edit by hand\n"
+END = "      # END socket proxy policy\n"
+#: The worker's copy of the policy's fingerprint, so it can tell when its image
+#: is newer than the policy the proxy loaded.
+DIGEST_RE = re.compile(r"(CASHPILOT_PROXY_POLICY=)[0-9a-f]*")
+
+
+def compose_block(services_dir: Path = SERVICES_DIR, passes: int = 1) -> str:
+    """The policy as it sits in a compose file: indented, each `$` doubled once
+    per interpolation pass the file goes through (`$$` for plain Compose)."""
+    body = "".join(f"      {line}\n" if line else "\n" for line in policy(services_dir).splitlines())
+    return BEGIN + body.replace("$", "$" * 2**passes) + END
+
+
+def render(text: str, block: str, fingerprint: str) -> str:
+    """A compose file with its policy block and fingerprint replaced, nothing else."""
+    start, end = text.find(BEGIN), text.find(END)
+    if start < 0 or end < start:
+        raise SystemExit("compose file has no socket proxy policy markers")
+    if not DIGEST_RE.search(text):
+        raise SystemExit("compose file gives the worker no CASHPILOT_PROXY_POLICY")
+    text = text[:start] + block + text[end + len(END) :]
+    return DIGEST_RE.sub(lambda m: m.group(1) + fingerprint, text)
+
+
+def main() -> int:
+    """Read a compose file on stdin, write it with this image's policy on stdout."""
+    try:
+        sys.stdout.write(render(sys.stdin.read(), compose_block(), digest()))
+    except SystemExit as exc:
+        print(f"{exc}; take the compose file of this release instead", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

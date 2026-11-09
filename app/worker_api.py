@@ -1059,8 +1059,8 @@ async def lifespan(app: FastAPI):
     logger.info(
         "Docker: %s (%s)", docker_mode, "through the socket proxy" if orchestrator.proxied() else "direct socket"
     )
-    if orchestrator.proxy_policy_current() is False:
-        logger.warning("Docker socket proxy: %s", PROXY_POLICY_STALE)
+    if fix := orchestrator.proxy_policy_fix():
+        logger.warning("Docker socket proxy: %s", orchestrator.proxy_policy_fix_text(fix))
 
     # The fence goes in before anything else, so the gap after a reboot in
     # which earners run without it is as short as this worker can make it.
@@ -1141,17 +1141,11 @@ def jsonable_errors(errors: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-PROXY_POLICY_STALE = (
-    "its policy is not the one this worker image expects, so some calls may be refused. "
-    "Replace your compose file with the one from this release (keep your .env), then run docker compose up -d."
-)
-
-
 def _docker_access_text() -> str:
     if not orchestrator.proxied():
         return "direct socket (root on this host)"
-    if orchestrator.proxy_policy_current() is False:
-        return f"socket proxy: {PROXY_POLICY_STALE}"
+    if fix := orchestrator.proxy_policy_fix():
+        return f"socket proxy: {orchestrator.proxy_policy_fix_text(fix)}"
     return "socket proxy"
 
 

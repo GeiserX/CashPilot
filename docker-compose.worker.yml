@@ -90,6 +90,10 @@ services:
       # The placeholders sit under /dev/null, where no directory can ever exist
       # (Docker cannot create one there), so an unset variable allows nothing.
       - SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=${CASHPILOT_COMPOSE_DIR:-/dev/null/cashpilot-compose-dir-unset},${CASHPILOT_PROXY_BIND_MOUNTS:-/dev/null/cashpilot-bind-mounts-unset}
+      # The policy's fingerprint. Compose does not recreate a container when
+      # only its config's content changes, so this line is what makes
+      # `docker compose up -d` restart the proxy on a new policy.
+      - CASHPILOT_PROXY_POLICY=4c547983d8a0aaa1
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
