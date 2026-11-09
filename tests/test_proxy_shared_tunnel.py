@@ -1516,3 +1516,32 @@ class TestFifthReview:
             proxy_tunnel.start("honeygain", 3, _tailscale(), None)
         shared = docker.named("cashpilot-tunnel-p3")
         assert shared is None or shared.status != "running"
+
+
+# ---------------------------------------------------------------------------
+# What the heartbeat tells the UI's proxied-copy alert
+# ---------------------------------------------------------------------------
+
+
+class TestHeartbeatForTheAlert:
+    def test_a_copy_the_owner_stopped_is_reported_as_held_and_a_crashed_one_is_not(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        proxy_tunnel.stop("honeygain", 3)
+        entries = {e["slug"]: e for e in _heartbeat()}
+        assert entries["honeygain"]["held"] is True
+        assert entries["earnfm"]["held"] is False
+
+    def test_an_unreadable_stop_marker_says_nothing_about_held(self, docker):
+        _deploy("honeygain")
+        with patch.object(proxy_tunnel, "held", side_effect=OSError("denied")):
+            entries = _heartbeat()
+        assert "held" not in entries[0]
+
+    def test_a_listing_that_fails_raises_instead_of_reporting_no_copies(self, docker):
+        """An empty list would read as every copy gone; the worker sends None instead."""
+        with (
+            patch.object(docker, "list", side_effect=RuntimeError("daemon down")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            _heartbeat()

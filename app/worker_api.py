@@ -688,12 +688,15 @@ async def _send_heartbeat() -> None:
     features = (
         ["instances", "isolation_check", "state_backup", "activity", "proxy_tunnel"] if docker_ok else ["instances"]
     )
-    proxied: list[dict[str, Any]] = []
+    # None, not an empty list, when they could not be read: the UI alerts on a
+    # copy this list leaves out, and "could not look" must not read as "gone".
+    proxied: list[dict[str, Any]] | None = []
     if docker_ok:
         try:
             proxied = await asyncio.to_thread(proxy_tunnel.status)
         except Exception as exc:  # noqa: BLE001 - one missed reading, not a missed heartbeat
             logger.warning("Failed to read proxied copies for heartbeat: %s", exc)
+            proxied = None
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,

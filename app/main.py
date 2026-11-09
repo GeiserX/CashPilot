@@ -435,6 +435,7 @@ async def _run_health_check() -> None:
         await _container_down_check(statuses)
         await _account_disabled_check(statuses)
         await _missing_deployment_check(workers)
+        await _proxied_copy_check(workers)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
 
@@ -847,6 +848,182 @@ def _missing_deployment_message(slug: str, item: dict[str, Any]) -> str:
     )
 
 
+# When each proxied-copy fault was first seen, keyed by alert subject. See _proxied_copy_check.
+_proxied_first_seen: dict[str, datetime] = {}
+# The bell entries the proxied-copy check stands behind, re-added after every
+# collection like the container-down ones.
+_proxied_bell: dict[str, dict[str, Any]] = {}
+_LIVE_STATES = ("running", "restarting")
+
+
+def _proxied_subject(container: str, worker_id: Any) -> str:
+    """One proxied-copy alert: a container name on one box (``name@worker_id``)."""
+    return f"{container}@{worker_id}"
+
+
+def _proxied_subject_worker(subject: str) -> str:
+    return subject.rpartition("@")[2]
+
+
+def _proxied_reportable(worker: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+    """What a worker last said about its proxied copies, or None when that says nothing.
+
+    None for a box that is offline, cannot read Docker, is too old to run
+    proxied copies, or could not read them on its last heartbeat: a copy it
+    does not list may still be running there.
+    """
+    if worker is None or worker.get("status") != "online" or not placement.can_see_docker(worker):
+        return None
+    info = placement.system_info(worker)
+    features = info.get("features")
+    if not isinstance(features, list) or "proxy_tunnel" not in features:
+        return None
+    entries = info.get("proxied")
+    if not isinstance(entries, list):
+        return None
+    return [e for e in entries if isinstance(e, dict)]
+
+
+async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> None:
+    """Alert when a proxied copy or its tunnel that CashPilot expects is gone or down.
+
+    The status report the container-down and missing-deployment checks read
+    leaves proxied copies and their tunnels out (orchestrator.is_proxied), so a
+    copy or a shared tunnel removed or dead outside CashPilot told nobody. This
+    reads the proxied_copies records against each worker's ``proxied`` report.
+
+    Quiet for what CashPilot did on purpose: a copy being removed, one the cap
+    stopped or whose proxy is capped, one the owner stopped (the worker reports
+    it as held), and a service whose account the provider disabled. Staged and
+    aside containers of a deploy or a move are never in the report, and a
+    deploy or a move ends well inside CONTAINER_DOWN_GRACE. A box that cannot
+    tell (offline, blind, too old, or a failed read) neither raises nor clears.
+    A missing or stopped tunnel is one alert naming the copies that leave
+    through it. Never raises.
+    """
+    global _collector_alerts
+    try:
+        if workers is None:
+            workers = await database.list_workers()
+        now = datetime.now(UTC)
+        by_id = {w.get("id"): w for w in workers}
+        proxy_rows = {p["id"]: p for p in await database.list_proxies()}
+        stored = await database.get_alert_subjects("proxied")
+        faults: dict[str, dict[str, Any]] = {}
+        unjudged: set[str] = set()
+        tunnel_faults: dict[str, dict[str, Any]] = {}
+        for copy in await database.list_proxied_copies():
+            pid, wid, slug = copy["proxy_id"], copy["worker_id"], copy["slug"]
+            proxy = proxy_rows.get(pid)
+            if (
+                proxy is None
+                or copy.get("removing_since")
+                or copy.get("stopped_by_cap")
+                or (proxy.get("state") or {}).get("capped_at")
+                or slug in _account_disabled
+            ):
+                continue
+            entries = _proxied_reportable(by_id.get(wid))
+            if entries is None:
+                unjudged.add(str(wid))
+                continue
+            box = str((by_id.get(wid) or {}).get("name") or wid)
+            pname = str((proxy.get("definition") or {}).get("name") or f"proxy {pid}")
+            svc = (catalog.get_service(slug) or {}).get("name") or slug
+            earner = f"{constants.CONTAINER_PREFIX}{slug}-p{pid}"
+            entry = next(
+                (e for e in entries if e.get("proxy_id") == pid and egress.container_slug(e) == slug),
+                None,
+            )
+            base = {"svc": svc, "box": box, "proxy": pname, "earner": earner, "created_at": copy.get("created_at")}
+            if entry is None or entry.get("status") == "missing":
+                faults[_proxied_subject(earner, wid)] = {**base, "what": "copy_missing"}
+                continue
+            # A copy the owner or the cap stopped: its tunnel may be down with it.
+            # An older worker does not say; then only what is gone counts.
+            held = entry.get("held")
+            tunnel_status = str(entry.get("tunnel_status") or "")
+            if tunnel_status == "missing" or (held is False and tunnel_status not in _LIVE_STATES):
+                shared = entry.get("tunnel_shared") or tunnel_status == "missing"
+                tunnel = (
+                    f"{constants.CONTAINER_PREFIX}tunnel-p{pid}"
+                    if shared
+                    else f"{constants.CONTAINER_PREFIX}tunnel-{slug}-p{pid}"
+                )
+                # One alert per tunnel, however many copies leave through it.
+                fault = tunnel_faults.setdefault(
+                    _proxied_subject(tunnel, wid),
+                    {**base, "what": "tunnel", "tunnel": tunnel, "gone": tunnel_status == "missing", "copies": []},
+                )
+                fault["copies"].append(earner)
+                continue
+            if held is False and str(entry.get("status") or "") not in _LIVE_STATES:
+                faults[_proxied_subject(earner, wid)] = {**base, "what": "copy_down"}
+        faults.update(tunnel_faults)
+
+        for subject in faults:
+            _proxied_first_seen.setdefault(subject, now)
+        for subject in list(_proxied_first_seen):
+            if subject not in faults and _proxied_subject_worker(subject) not in unjudged:
+                _proxied_first_seen.pop(subject)
+
+        alerting: dict[str, tuple[str, str]] = {}
+        for subject, fault in faults.items():
+            start = _proxied_first_seen[subject]
+            # A fresh copy gets the whole grace from its record, so a slow first pull is not news.
+            created = placement._sqlite_time(fault.get("created_at"))
+            if created is not None and fault["what"] != "tunnel":
+                start = max(start, created)
+            if subject not in stored and now - start < CONTAINER_DOWN_GRACE:
+                continue
+            alerting[subject] = _proxied_alert_text(fault, _proxied_first_seen[subject])
+
+        for subject in stored:
+            if subject in faults or _proxied_subject_worker(subject) in unjudged:
+                continue
+            await database.clear_alerts("proxied", subject)
+            logger.info("%s is back, or no longer expected; cleared its alert", subject)
+        for subject in list(_proxied_bell):
+            if subject not in alerting and (subject in faults or _proxied_subject_worker(subject) not in unjudged):
+                _proxied_bell.pop(subject)
+
+        for subject, (title, message) in alerting.items():
+            _proxied_bell[subject] = {"kind": "proxied", "platform": subject.rpartition("@")[0], "error": message}
+            if alert_id := await database.record_alert("proxied", subject, message):
+                _spawn(_push_alert("proxied", subject, title, message, alert_id))
+        _collector_alerts = [a for a in _collector_alerts if a.get("kind") != "proxied"]
+        _collector_alerts.extend(_proxied_bell.values())
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
+        logger.warning("Proxied-copy check failed: %s", exc)
+
+
+def _proxied_alert_text(fault: dict[str, Any], since: datetime) -> tuple[str, str]:
+    """The push title and the message of one proxied-copy fault."""
+    svc, box, proxy = fault["svc"], fault["box"], fault["proxy"]
+    if fault["what"] == "tunnel":
+        tunnel, copies = fault["tunnel"], ", ".join(sorted(fault["copies"]))
+        how = "is gone" if fault["gone"] else f"has not been running since {since:%Y-%m-%d %H:%M} UTC"
+        return (
+            f"CashPilot: {tunnel} " + ("is gone from " + box if fault["gone"] else "has stopped running"),
+            f"The tunnel {tunnel} of {proxy} on {box} {how}, so the copies that leave through it ({copies}) "
+            "have no way out and are not earning. Start one of them from the Fleet page, which brings the "
+            "tunnel back, or remove them there if you removed the tunnel on purpose.",
+        )
+    earner = fault["earner"]
+    if fault["what"] == "copy_missing":
+        return (
+            f"CashPilot: {earner} is gone from {box}",
+            f"{svc} through {proxy} ({earner}) was added on {box}, but that box no longer runs it, so it is "
+            "not earning. Add the copy again from the Fleet page, or remove it there if you removed it on purpose.",
+        )
+    return (
+        f"CashPilot: {earner} has stopped running",
+        f"{svc} through {proxy} ({earner}) has not been running since {since:%Y-%m-%d %H:%M} UTC on {box}, so it "
+        "is not earning. Start it from the Fleet page. If you stopped it on purpose, stop it from there too: "
+        "a stop made there keeps this alert quiet.",
+    )
+
+
 async def _push_alert(kind: str, subject: str, title: str, message: str, alert_id: int) -> None:
     """Push an alert out-of-band, and make a total delivery failure retryable.
 
@@ -1217,6 +1394,7 @@ async def _warm_collector_alerts() -> None:
             "container",
             "missing",
             "account_disabled",
+            "proxied",
         ):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
@@ -1255,6 +1433,12 @@ async def _warm_collector_alerts() -> None:
         if e["kind"] == "missing":
             name = (catalog.get_service(e["platform"]) or {}).get("name") or e["platform"]
             _missing_bell.setdefault(e["platform"], {**e, "name": name})
+    # Likewise a proxied-copy alert, under the container name its subject carries.
+    for e in restored:
+        if e["kind"] == "proxied":
+            subject = e["platform"]
+            e["platform"] = subject.rpartition("@")[0] or subject
+            _proxied_bell.setdefault(subject, e)
     # A restart must not make the bell claim nothing has ever been checked. Any
     # stored alert, or any earnings row, is proof that a collection ran.
     global _collection_has_run
@@ -1722,6 +1906,7 @@ async def _run_collection() -> None:
             # this the hourly rebuild would drop a down container from the bell.
             alerts.extend(_container_down_bell.values())
             alerts.extend(_missing_bell.values())
+            alerts.extend(_proxied_bell.values())
             alerts.extend(_activity_bell)
             alerts.extend(await _proxy_cap_alerts())
             _collector_alerts = _with_account_disabled(alerts)

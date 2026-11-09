@@ -5010,6 +5010,8 @@ const CP = (() => {
         const isActivity = (a.kind || '').startsWith('activity_');
         // A proxy reached its traffic cap: the fix is on the fleet page, never a credential.
         const isProxyCap = a.kind === 'proxy_cap';
+        // A proxied copy or its tunnel is gone or down: start or re-add it on the fleet page.
+        const isProxied = a.kind === 'proxied';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -5026,6 +5028,7 @@ const CP = (() => {
           : isActivity ? (a.kind === 'activity_spike' ? ' — unusual hour' : ' — network activity')
           : isContainer ? ' — not running'
           : isProxyCap ? ' — traffic cap'
+          : isProxied ? ' — proxied copy down'
           : isDisabled ? ' — account disabled'
           : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
           : isQuiet ? ' — gone quiet'
@@ -5036,7 +5039,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isProxied;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">
