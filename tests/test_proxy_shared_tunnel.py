@@ -1065,6 +1065,19 @@ class TestStopsAgainstTheHeartbeat:
         assert docker.named("cashpilot-honeygain-p3").status == "exited"
         assert proxy_tunnel.held() == {"cashpilot-honeygain-p3"}
 
+    def test_a_deploy_that_cannot_clear_its_stop_changes_nothing(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        proxy_tunnel.stop("honeygain", 3)
+        old = docker.named("cashpilot-honeygain-p3")
+        with (
+            patch.object(proxy_tunnel.os, "replace", side_effect=OSError("read-only file system")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="is no longer stopped"),
+        ):
+            _deploy("honeygain")
+        assert docker.named("cashpilot-honeygain-p3") is old and old.status == "exited"
+        assert proxy_tunnel.held() == {"cashpilot-honeygain-p3"}
+
     def test_the_heartbeat_leaves_a_copy_alone_while_its_proxy_is_locked(self, docker):
         _deploy("honeygain")
         _deploy("earnfm")

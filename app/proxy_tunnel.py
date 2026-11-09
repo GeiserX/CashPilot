@@ -962,6 +962,13 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
     current = _get(client, shared_tunnel_name(proxy_id))
     others = [m for m in _members(client, current) if str(m.name) != name] if _is_shared(current, proxy_id) else []
     tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others)
+    # Cleared before anything changes: deploy_raw starts the earner, and a copy
+    # left running while recorded as stopped is never restarted after a reboot.
+    try:
+        _set_held(name, False, strict=True)
+    except ProxyTunnelError:
+        _drop_if_empty(client, tunnel)
+        raise
     with _swap_lock:
         _remove(slug, proxy_id, drop_shared=False)
     try:
@@ -981,7 +988,6 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
     except Exception:
         _drop_if_empty(client, tunnel)
         raise
-    _set_held(name, False, strict=True)
     return {"container_id": container_id, "tunnel_id": tunnel.id, "exit": exit_info}
 
 

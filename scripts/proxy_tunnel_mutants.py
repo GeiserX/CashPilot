@@ -44,6 +44,11 @@ MUTANTS: list[tuple[str, str, str]] = [
         "        exit_info = _wait_ready(tunnel)\n    _set_held(name, False)",
     ),
     (
+        "a deploy starts its copy before it clears the copy's stop",
+        "    try:\n        _set_held(name, False, strict=True)\n    except ProxyTunnelError:\n        _drop_if_empty(client, tunnel)\n        raise\n",
+        "",
+    ),
+    (
         "a start leaves a copy in a tunnel that is gone",
         "        if earner is not None and _tunnel_id_of(earner) != shared.id:",
         "        if earner is not None and tunnel is not None and not _is_shared(tunnel):",
