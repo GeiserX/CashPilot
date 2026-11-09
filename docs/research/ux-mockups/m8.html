@@ -415,7 +415,7 @@ Remove Mysterium from box-a?
     <ul class="notes" style="grid-template-columns:1fr;margin:0">
       <li><span class="co">8</span><div><b>One plan, three surfaces.</b> The dialog, <code>--dry-run --json</code> and the MCP tool all render the same object from <code>_svc_remove(…, dry_run=True)</code> next to the existing <code>delete_volumes</code> path (<span class="cite">app/main.py:3837-3892</span>).</div></li>
       <li><span class="co">9</span><div><b>No silent action from a script</b>: without a TTY and without <code>--yes</code> the CLI prints the plan and exits 5. On a TTY it asks, with “No” as the default (<code>[y/N]</code>), the same safe default as the dialog.</div></li>
-      <li><span class="co">10</span><div><b>The volume flag repeats the slug</b>, the CLI form of “type mysterium to confirm”. A copy-pasted command for the wrong service fails with exit 5.</div></li>
+      <li><span class="co">10</span><div><b>The volume flag repeats the slug</b>, the CLI form of “type mysterium to confirm”. A copy-pasted command for the wrong service fails with exit 2 (usage), before any guard runs.</div></li>
       <li><span class="co">11</span><div><b>For agents</b>: the HTTP API returns the plan and a short-lived <code>plan_id</code>; the destructive call must send it back. An agent cannot skip the plan, and the owner sees the plan in Activity.</div></li>
     </ul>
   </div>
