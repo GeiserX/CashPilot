@@ -191,6 +191,85 @@ A Tailscale exit node on a connection you own has none of the proxy service's
 limits: it carries any port, UDP included. The exit's own network can still
 block a port, the same as for an earner running there.
 
+#### Probe an earner's servers through the proxy
+
+Do this before you rely on a copy, and again whenever one earns nothing. You
+need the host and port the earner connects to. Its log usually names them
+(`docker logs cashpilot-<service>-p<proxy id>`), or the provider's docs do.
+
+**Before you deploy, from any machine.** Ask the proxy directly. curl prints
+the proxy's answer to its `CONNECT` request:
+
+```bash
+# HTTP CONNECT proxy; curl asks for the password, so it stays out of your shell history
+curl -v -m 15 -o /dev/null --noproxy '' -x 'http://gate.example.net:8080' --proxy-user USER https://earner-host.example:443/
+# SOCKS5 proxy, name resolved by the proxy
+curl -v -m 15 -o /dev/null --noproxy '' -x 'socks5h://gate.example.net:7000' --proxy-user USER https://earner-host.example:443/
+```
+
+With `-v`, curl prints the `Proxy-Authorization` header it sends, and that
+header holds your user and password in Base64, which anyone can decode. Delete
+that line before you share the output.
+
+A `403`, `Access violation`, `connection not allowed by ruleset` or a closed
+connection right after the `CONNECT` means the proxy refuses that host or
+port. A `200` to the `CONNECT` means the proxy let it through, so a TLS
+error after that comes from the far server or the protocol, not the proxy.
+Try the earner's real port, not only 443: a proxy that allows 443 and nothing
+else passes a 443 test. These probes speak HTTPS; for an earner whose server
+speaks something else, curl fails on both paths below whatever the proxy does,
+so use a client for that protocol that needs an answer from the server.
+
+**After you deploy, through the copy's own tunnel.** Join the tunnel's
+network namespace with a throwaway container. Run the same probe once from
+the box's own network as the control, so you know what an answer looks like:
+
+```bash
+TUN=cashpilot-tunnel-<service>-p<proxy id>
+URL=https://earner-host.example:443/
+
+# Control: straight from the box
+docker run --rm --cap-drop ALL curlimages/curl:8.10.1 --noproxy '*' -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
+# Through the proxy
+docker run --rm --cap-drop ALL --network "container:$TUN" curlimages/curl:8.10.1 --noproxy '*' -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
+
+# What the proxy answered, if it refused, in the last minute only
+docker logs --since 1m "$TUN" 2>&1 | grep -i 'replied with\|failed\|error'
+```
+
+Any HTTP status from the far server, even `404`, means the path works. A
+TLS error such as `SSL_ERROR_SYSCALL`, `Connection reset by peer` or `Empty
+reply from server` through the tunnel, where the control got a status, means
+something closed the connection. If the proxy refused it, the tunnel's log has
+a line such as `Server replied with 403 [Reason: Access violation]`, naming the
+port, for an HTTP proxy, or `SOCKS connection failed: ...` for a SOCKS5 proxy.
+The address in it is a placeholder from the tunnel's DNS, not the real
+one. The earner's own traffic shares this log, so match the port and the time
+of your probe. With no such line, the earner's server may be refusing the proxy's exit
+IP rather than the proxy refusing the server, since the control and the
+tunnel leave from different addresses.
+
+!!! warning "A plain port check proves nothing through the tunnel"
+
+    `nc -z` and other connect-only checks report the port open through a
+    tunnel even when the proxy refused, and even for an address where nothing
+    exists. The tunnel accepts the connection locally first, then asks the
+    proxy. Use a probe that needs an answer from the far server, as above.
+
+#### A new device the provider accepts only later
+
+Some providers add a new device to your account only after its client has
+been connecting for a while. [ProxyRack](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn)
+knows a new device about five minutes after it first connects, so an add
+right at deploy is refused. This holds for a proxied copy as much as for a
+deploy on the box. When the provider says "not yet", CashPilot keeps the
+device and tries again: first after 6 minutes, then at doubling intervals up
+to 4 hours apart. After 24 hours without success it stops and sends a notice,
+to the bell and to your notification channel, with the manual step. It needs that provider's credentials saved in CashPilot.
+While it is still trying, the dashboard does not ask you to add the device by
+hand. A redeploy after CashPilot gave up starts a new 24 hours; a redeploy
+while it is still trying keeps the current window.
+
 ## Exit IPs and grouping
 
 The exit IP a copy shows is the one the tunnel saw when it came up. Copies are
@@ -308,3 +387,63 @@ start fails the same way. Create a new key, paste it into the proxy's
 settings, then press **Start** on each copy (see [Editing a proxy](#editing-a-proxy)).
 A leaked reusable key lets anyone join your tailnet as that tag,
 which is why it must be ephemeral, tagged and used for nothing else.
+
+### A second site as an exit node instead of a worker
+
+If you have a machine at a second site (a relative's house, a holiday flat)
+you can run a worker and earners there, or only make it a Tailscale exit node
+and run the earners elsewhere as proxied copies that leave through it. The
+second way suits a small box: an exit node only forwards packets, while each
+earner is a container with its own memory and CPU.
+
+It makes sense when:
+
+- the box is short on memory or CPU, or does other work you do not want to
+  slow down;
+- what you want from that site is its residential IP, not its hardware;
+- you would rather keep containers and updates on one machine you look after.
+
+What changes:
+
+- **Only services that can run as a proxied copy move.** Anything that needs
+  published ports, volumes, devices or extra capabilities stays where it runs
+  ([What cannot run through a proxy](#what-cannot-run-through-a-proxy)).
+  That rules out Mysterium and the storage nodes, for example. Earners whose
+  terms forbid proxies or VPNs are refused too.
+- **The per-IP limits move with the IP.** A copy through the exit node counts
+  against that site's public IP. If the box there still runs a service with a
+  limit of one device per IP, a copy of the same service through its exit
+  earns nothing. The page warns only once the copy is running, since that is
+  when it learns the exit IP
+  ([Exit IPs and grouping](#exit-ips-and-grouping)). Move each service, do
+  not double it: stop it on the second site's worker before you start its
+  copy.
+- **The traffic crosses both connections.** The earner's traffic goes from
+  the box running the copy, over the tailnet, to the exit node, and out from
+  there. The exit's connection carries it in both directions, and the copy's
+  own box carries it too, encrypted. Check both upload allowances.
+- **The exit node still does work.** It encrypts and forwards every packet, so
+  its CPU rises with the traffic. Measure it under load (see
+  [Budgeting a small box](fleet.md#budgeting-a-small-box)).
+- **Each copy is two containers on the box that runs it**, the tunnel and the
+  earner. The tunnel joins the tailnet as the copy's own ephemeral node; the
+  earner shares the tunnel's network and never joins it.
+- **The path to the exit node is over the internet.** With
+  [LAN isolation](isolation.md#lan-isolation-by-default) on, the tunnel reaches
+  the exit node over its public endpoints or a DERP relay, never a LAN path. A
+  relay carries the traffic further and slower; a direct connection between
+  the two sites avoids it.
+
+On a Linux machine, the exit node also needs IP forwarding turned on before
+Tailscale lets it advertise itself; Tailscale's
+[exit node guide](https://tailscale.com/kb/1103/exit-nodes) has the commands
+per system. Then set it up with the steps in [Tailscale exit nodes](#tailscale-exit-nodes).
+For each service you move:
+
+1. Deploy it on the worker that will run the copy, if it is not there yet: a
+   copy runs with that worker's deployment of the service and is refused
+   without one.
+2. Remove it from the second site's worker, if one still runs there. That also
+   removes any proxied copies of it on that worker, so note them first and add
+   them again on another worker.
+3. Add its copy through the exit node.
