@@ -1491,7 +1491,7 @@ def _unlinked_devices_warning(result: Any, retrying: set[str] | frozenset[str] =
 
 async def _run_collection() -> None:
     """Collect earnings from all deployed services that have collectors."""
-    global _collector_alerts, _collected_ok_last_run, _collector_says_disabled
+    global _collector_alerts, _collected_ok_last_run, _collector_says_disabled, _collected_since_start
     if _collection_lock.locked():
         logger.info("Collection already in progress, skipping")
         return
@@ -1530,6 +1530,9 @@ async def _run_collection() -> None:
                 if c.device_ids:
                     device_checked.add(slug)
             results = await asyncio.gather(*(_collect_bounded(c) for c in collectors), return_exceptions=True)
+            # Only once the collectors have run: they are what the settling
+            # hold is for, so a run that aborted before them has not used it.
+            _collected_since_start = True
             retrying = await _retrying_device_ids()
             alerts: list[dict[str, str]] = []
             # Platforms that were already failing before this run: used to detect a
@@ -1752,9 +1755,8 @@ async def _run_collection() -> None:
             # Set even on a failed run: the bell's question is "has anything
             # looked", and a run that tried and failed HAS looked — its failure
             # is in the alert list the bell is about to show.
-            global _collection_has_run, _last_collection_finished, _collected_since_start
+            global _collection_has_run, _last_collection_finished
             _collection_has_run = True
-            _collected_since_start = True
             # "The machinery ran", success or not — /api/health and the bell
             # measure staleness of THIS stamp. A run that wedges on the
             # collection lock returns early above and never reaches here, so
