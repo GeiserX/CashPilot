@@ -213,9 +213,10 @@ clear_packets() { # tunnel earner...
         2>"$WORK/tcpdump.err")
     rc=$?
     wait
-    # timeout ends a working capture with 124; anything else means no capture
-    # ran, and a count of 0 would then pass the check.
-    if [ "$rc" -ne 124 ]; then
+    # A working capture ends at the timeout: 124, or 0 when tcpdump exits
+    # cleanly on timeout's SIGTERM. Anything else (no image, no interface, no
+    # permission) means no capture ran, and a count of 0 would pass the check.
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
         echo "no-capture(exit $rc: $(tail -1 "$WORK/tcpdump.err"))"
         return
     fi
@@ -232,7 +233,7 @@ dns_mentions() { # tunnel name earner...
         timeout $((6 + 12 * $#)) tcpdump -n -i eth0 -l -A "udp port 53 or tcp port 53" 2>"$WORK/tcpdump.err")
     rc=$?
     wait
-    if [ "$rc" -ne 124 ]; then # as in clear_packets: no capture is never a count of 0
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then # as in clear_packets: no capture is never a count of 0
         echo "no-capture(exit $rc: $(tail -1 "$WORK/tcpdump.err"))"
         return
     fi
