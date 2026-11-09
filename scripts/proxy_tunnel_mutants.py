@@ -186,10 +186,11 @@ MUTANTS: list[tuple[str, str, str]] = [
 ]
 
 
-TIMED_OUT = -1
+# Not an int: a child killed by a signal returns -signum, so -1 is SIGHUP.
+TIMED_OUT = "timed out"
 
 
-def run(tree: Path) -> int:
+def run(tree: Path) -> int | str:
     try:
         return subprocess.run(
             [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *TESTS],

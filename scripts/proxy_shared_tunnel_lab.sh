@@ -540,8 +540,9 @@ if [[ " $PARTS " == *" 4 "* ]]; then
             fail "r: daemon restart: $(echo "$out" | tr '\n' ';')"
         fi
         if [ -n "$PREV_SRC" ]; then
-            out=$(restart_case "$PREV_SRC")
-            case $? in
+            rc=0
+            out=$(restart_case "$PREV_SRC") || rc=$? # set -e: capture the expected failure
+            case $rc in
                 0) fail "r control: the bind-volume tree also survived, so case r cannot fail: $(echo "$out" | tr '\n' ';')" ;;
                 1) pass "r control: the bind-volume tree fails case r: $(echo "$out" | tr '\n' ';')" ;;
                 *) fail "r control: could not be set up, so it proves nothing: $(echo "$out" | tr '\n' ';')" ;;
