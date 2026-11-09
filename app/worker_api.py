@@ -46,6 +46,7 @@ from app import (
     fleet_key,
     isolation_check,
     lan_fence,
+    log_redaction,
     node_read,
     orchestrator,
     payout_read,
@@ -65,6 +66,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# httpx logs every request URL at INFO; secrets ride in some of them.
+log_redaction.install()
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
