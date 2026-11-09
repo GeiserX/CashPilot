@@ -478,7 +478,13 @@ def _is_ip(value: Any) -> bool:
     return True
 
 
-def _remove_quietly(container: Any, stop_timeout: int = 10) -> None:
+# A tunnel on a tailnet logs out when it is stopped, which deletes its
+# ephemeral device; killed sooner, that device stays behind offline. The stop
+# returns as soon as the logout is done, so this is a ceiling, not a wait.
+SIDECAR_STOP_SECONDS = 10
+
+
+def _remove_quietly(container: Any, stop_timeout: int = SIDECAR_STOP_SECONDS) -> None:
     # A failed stop is no reason to keep the container; the removal is what matters.
     with contextlib.suppress(Exception):
         container.stop(timeout=stop_timeout)
@@ -491,11 +497,6 @@ def _get(client: Any, name: str) -> Any | None:
         return client.containers.get(name)
     except NotFound:
         return None
-
-
-#: Seconds a tunnel gets to stop before Docker kills it. The same value and
-#: name as the logout-on-stop change, so the two meet without a conflict.
-SIDECAR_STOP_SECONDS = 10
 
 
 def start_sidecar(
@@ -536,7 +537,7 @@ def start_sidecar(
         container.start()
         exit_info = _wait_ready(container)
     except Exception as exc:
-        _remove_quietly(container, 2)
+        _remove_quietly(container, SIDECAR_STOP_SECONDS)
         if isinstance(exc, ProxyTunnelError):
             raise ProxyTunnelError(redact(str(exc), secrets), exc.status_code) from None
         detail = orchestrator.proxy_refusal(exc) or str(exc)
@@ -904,7 +905,7 @@ def _prove(client: Any, proxy: dict[str, Any] | None, own_ip: str | None, files:
         trial["hostname"] = _ts_hostname(TEST_SLUG)
     name = f"{CONTAINER_PREFIX}tunnel-test-{uuid.uuid4().hex[:10]}"
     sidecar, _ = start_sidecar(client, name, TEST_SLUG, None, proxy, own_ip, files=trial)
-    _remove_quietly(sidecar, 2)
+    _remove_quietly(sidecar, SIDECAR_STOP_SECONDS)
 
 
 def _restart_members(client: Any, tunnel: Any) -> None:
@@ -1242,7 +1243,7 @@ def sweep_test_tunnels() -> list[str]:
     for container in found:
         if LABEL_PROXY in (container.labels or {}):
             continue
-        _remove_quietly(container, 2)
+        _remove_quietly(container, SIDECAR_STOP_SECONDS)
         swept.append(container.name)
     # And staged tunnels of a deploy that died: they hold the proxy login, and
     # the heartbeat never reports them. Only stale ones, so a deploy another
@@ -1257,7 +1258,7 @@ def sweep_test_tunnels() -> list[str]:
             and _age_seconds(container) >= STAGED_STALE_SECONDS
             and not _members(client, container)
         ):
-            _remove_quietly(container, 2)
+            _remove_quietly(container, SIDECAR_STOP_SECONDS)
             swept.append(container.name)
     return swept
 
@@ -1550,7 +1551,7 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
             if any(_tunnel_id_of(e) == container.id for e in every_earner):
                 _finish_stale_staged(client, container)
             else:
-                _remove_quietly(container, 2)
+                _remove_quietly(container, SIDECAR_STOP_SECONDS)
     with contextlib.suppress(Exception):
         found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
     tunnels: dict[str, Any] = {}
@@ -1628,4 +1629,4 @@ def test(proxy: dict[str, Any], own_ip: str | None) -> dict[str, Any]:
     try:
         return {**exit_info, "ms": int((time.monotonic() - began) * 1000)}
     finally:
-        _remove_quietly(sidecar, 2)
+        _remove_quietly(sidecar, SIDECAR_STOP_SECONDS)

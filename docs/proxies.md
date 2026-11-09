@@ -384,7 +384,8 @@ Before you add one, in this order:
    every Test, every copy and every restart of a copy (a reboot, a worker
    update, a cap reset) joins as a new ephemeral node with the same key. A
    one-off key works once and then every start fails with "the auth key was
-   refused".
+   refused". If your tailnet has device approval turned on, make the key
+   **pre-approved** too, or every start waits for you in the admin console.
 3. On the exit node's machine, turn on **Run as exit node**, and approve it in
    the admin console.
 4. Add the proxy here with the key and the exit node's 100.x address. Not its
@@ -393,9 +394,15 @@ Before you add one, in this order:
    refused".
 
 Each box joins your tailnet once per proxy, as one ephemeral node named
-`cashpilot-p<id>`, however many copies it carries, and is removed from it soon
-after its tunnel stops. A Test joins as a node of its own for the length of the
-test. Keys expire (90 days at most); when one does, every
+`cashpilot-p<id>`, however many copies it carries. A Test joins as a node of
+its own for the length of the test. When a tunnel stops (a removal, a restart,
+the end of a Test, the box shutting down cleanly) it logs out first, which
+deletes its device at once, so it comes back under the same name rather than
+as `cashpilot-p<id>-1`. The logout needs nothing more from the key. A tunnel
+killed without a stop (a power cut, an out-of-memory kill) cannot log out;
+Tailscale removes its ephemeral device once it has been offline a while, and
+until then the next start takes `cashpilot-p<id>-1`. Keys expire (90 days at
+most); when one does, every
 start fails the same way. Create a new key, paste it into the proxy's
 settings, then press **Start** on each copy (see [Editing a proxy](#editing-a-proxy)).
 A leaked reusable key lets anyone join your tailnet as that tag,

@@ -17,7 +17,9 @@
 #   d. with no exit node set at all, the firewall alone holds;
 #   t. the earner cannot reach another tailnet node (the exit node's own
 #      100.x address), even though this test tailnet allows everything;
-#   r. a restarted tunnel joins again with the same reusable key;
+#   r. a restarted tunnel joins again with the same reusable key, and the
+#      control server holds one device for it, not the old one left offline;
+#   x. a removed tunnel leaves no device behind on the control server;
 #   control: the same checks against a namespace opened on purpose must see
 #      the leak.
 #
@@ -101,6 +103,8 @@ for _ in $(seq 1 20); do
 done
 docker exec "$P-hs" headscale users list >/dev/null 2>&1 || { docker logs "$P-hs" 2>&1 | tail -5; exit 1; }
 hs() { docker exec "$P-hs" headscale "$@"; }
+# Devices the control server holds for the tunnel, online or not.
+tunnel_devices() { hs nodes list -o json | tr -d ' \n' | { grep -o '"name":"cashpilot-leaktest"' || true; } | wc -l | tr -d ' '; }
 hs users create cashpilot >/dev/null
 USER_ID=$(hs users list -o json | sed -n 's/.*"id": *\([0-9]*\).*/\1/p' | head -1)
 KEY=$(hs preauthkeys create --user "$USER_ID" --reusable --ephemeral --expiration 1h | tail -1 | tr -d '\r ')
@@ -185,8 +189,9 @@ else
 fi
 docker exec "$P-tun" nft -f /run/cp-tunnel.nft
 
-# r. a restart joins again with the same reusable key and is ready again
-docker restart -t 2 "$P-tun" >/dev/null
+# r. a restart joins again with the same reusable key and is ready again.
+#    The worker stops a tunnel with 10 s to spare, as here.
+docker restart -t 10 "$P-tun" >/dev/null
 for _ in $(seq 1 60); do
     docker exec "$P-tun" test -f /run/ready 2>/dev/null && break
     sleep 1
@@ -197,6 +202,9 @@ else
     fail "r: the restarted tunnel did not come back"
     docker logs "$P-tun" 2>&1 | tail -5
 fi
+n=$(tunnel_devices)
+[ "$n" = 1 ] && pass "r: the control server holds one device for the tunnel" ||
+    fail "r: the control server holds $n devices for the tunnel; the restart left the old one behind"
 docker restart -t 1 "$P-earner" >/dev/null
 
 # b. exit node stopped
@@ -234,6 +242,13 @@ n=$(clear_packets)
 [ "$n" != 0 ] && pass "control: the capture sees $n packets from an opened namespace" || fail "control: the capture saw nothing from an opened namespace"
 
 if docker inspect "$P-tun" | grep -qF "$KEY"; then fail "docker inspect of the tunnel shows the auth key"; else pass "docker inspect of the tunnel has no auth key"; fi
+
+# x. a removal leaves no device behind (the worker stops a tunnel before removing it)
+docker stop -t 10 "$P-tun" >/dev/null
+docker rm -v "$P-tun" >/dev/null
+n=$(tunnel_devices)
+[ "$n" = 0 ] && pass "x: the removed tunnel left no device on the control server" ||
+    fail "x: the removed tunnel left $n devices on the control server"
 
 echo
 if [ "$FAILS" -eq 0 ]; then echo "ALL PASSED"; else echo "$FAILS FAILED"; exit 1; fi

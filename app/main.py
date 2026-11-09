@@ -101,6 +101,14 @@ _collection_has_run: bool = False
 # lock, or a blocked event loop all freeze this — and they used to freeze
 # every other signal green with them.
 _last_collection_finished: float = time.monotonic()
+# When this process started, in SQLite's datetime('now') format, and whether a
+# collection has finished since. Unlike _collection_has_run, neither survives a
+# restart: right after one, workers that have not heartbeated yet cannot say
+# which nodes they run, so a node they did not report proves nothing.
+_PROCESS_STARTED = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+_collected_since_start: bool = False
+# Node id -> name of the worker that last read it, for the unread-node wording.
+_node_reader: dict[str, str] = {}
 _collection_lock = asyncio.Lock()
 _collection_semaphore = asyncio.Semaphore(8)
 
@@ -459,9 +467,6 @@ def _report_blind_workers(blind: list[dict[str, Any]]) -> None:
 # that a node which exited cleanly and stayed down (restart policy "no") is
 # news within the hour instead of after days of check_down rows nobody reads.
 CONTAINER_DOWN_GRACE = timedelta(minutes=30)
-# A stop recorded by CashPilot explains a container that finished within this
-# long after it; a container that finished later stopped for another reason.
-_STOP_EXPLAINS_WITHIN = timedelta(minutes=10)
 # When each stopped container was first seen down, for a worker too old to
 # report Docker's own FinishedAt. Keyed by (worker id, container name).
 _container_first_seen_down: dict[tuple[Any, str], datetime] = {}
@@ -487,8 +492,9 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
     The health check already wrote check_down for such a container every five
     minutes, and nothing read it: three urnetwork containers exited cleanly
     with restart policy "no" and sat down for two days with no alert. One alert
-    per service, cleared when no managed copy of it is down any more. A stop the
-    user made from CashPilot is not an alert. Never raises.
+    per service, cleared when no managed copy of it is down any more. A stop or
+    removal the user made from CashPilot keeps a copy quiet for as long as it is
+    the latest action CashPilot sent for that service to that worker. Never raises.
     """
     global _collector_alerts
     try:
@@ -512,26 +518,40 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
             _container_first_seen_down.pop(key, None)
 
         alerting: dict[str, str] = {}
+        # Services whose every down copy was stopped or removed from CashPilot.
+        stopped_here: set[str] = set()
         for slug, copies in down.items():
-            long_down = [c for c in copies if now - c["_down_since"] >= CONTAINER_DOWN_GRACE]
-            if not long_down:
-                continue
-            last = await database.get_last_lifecycle_event(slug)
-            if last and last[0] in ("stop", "remove"):
-                stopped_at = _docker_time(last[1].replace(" ", "T"))
-                if stopped_at is not None:
-                    long_down = [c for c in long_down if c["_down_since"] > stopped_at + _STOP_EXPLAINS_WITHIN]
+            stopped_on: set[tuple[Any, int]] = set()
+            for wid, copy in {(c.get("_worker_id"), _copy_number(c)) for c in copies}:
+                if copy is None:
+                    continue  # An unreadable copy number never counts as stopped, so it still alerts.
+                last = await database.get_last_lifecycle_event(slug, wid, copy)
+                if last and last[0] in ("stop", "remove"):
+                    stopped_on.add((wid, copy))
+            unexplained = [c for c in copies if (c.get("_worker_id"), _copy_number(c)) not in stopped_on]
+            if not unexplained:
+                stopped_here.add(slug)
+            long_down = [c for c in unexplained if now - c["_down_since"] >= CONTAINER_DOWN_GRACE]
             if long_down:
                 alerting[slug] = _container_down_message(slug, long_down)
 
-        # Recovery: nothing of that service is down any more. A copy that is
-        # down but still inside the grace period (or explained by a stop) is
-        # neither raised nor cleared, so a UI restart cannot clear an alert
-        # just because it forgot when an old worker's container went down.
+        # Recovery: nothing of that service is down any more, or only copies
+        # the user stopped from CashPilot. A copy that is down but still inside
+        # the grace period is neither raised nor cleared, so a UI restart cannot
+        # clear an alert just because it forgot when an old worker's container
+        # went down.
+        listed = {s.get("slug") for s in statuses}
         for slug in await database.get_alert_subjects("container"):
-            if slug not in down:
-                await database.clear_alerts("container", slug)
-                logger.info("%s is running again; cleared its container-down alert", slug)
+            if slug in down and slug not in stopped_here:
+                continue
+            if slug in stopped_here:
+                cause = "was stopped or removed from CashPilot"
+            elif slug in listed:
+                cause = "is running again"
+            else:
+                cause = "is no longer listed on any worker (removed, or its worker stopped reporting)"
+            await database.clear_alerts("container", slug)
+            logger.info("%s %s; cleared its container-down alert", slug, cause)
         for slug in list(_container_down_bell):
             if slug not in alerting:
                 _container_down_bell.pop(slug)
@@ -547,6 +567,17 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
         logger.warning("Container-down check failed: %s", exc)
 
 
+def _copy_number(container: dict[str, Any]) -> int | None:
+    """Which copy a heartbeat entry or deploy spec names: 1 when it says none, None when unreadable."""
+    raw = container.get("instance") or 1
+    if isinstance(raw, float) and not raw.is_integer():
+        return None  # 1.5 is no copy; int() would make it copy 1.
+    try:
+        return int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
     name = (catalog.get_service(slug) or {}).get("name") or slug
     since = min(c["_down_since"] for c in copies).strftime("%Y-%m-%d %H:%M")
@@ -558,7 +589,8 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
         # No restart policy on purpose: the worker starts it once the LAN fence is confirmed.
         return message + (
             " The worker starts it as soon as the LAN fence is confirmed; while it stays down, the Fleet page "
-            "says what holds it. If you stopped it on purpose, start it from the dashboard when you want it back."
+            "says what holds it. If you stopped it on purpose, stop it from the dashboard, which keeps this alert "
+            "quiet, and start it there when you want it back."
         )
     policies = sorted({str(c["restart_policy"]) for c in copies if c.get("restart_policy")} - set(_RESTARTING_POLICIES))
     if policies:
@@ -566,7 +598,10 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
             f' Its restart policy is "{", ".join(policies)}", so Docker will not start it again by itself;'
             " redeploying it from CashPilot sets unless-stopped."
         )
-    return message + " Start it from the dashboard, or remove it if you stopped it on purpose."
+    return message + (
+        " Start it from the dashboard. If you stopped it on purpose, stop it from the dashboard too: "
+        "a stop made there keeps this alert quiet."
+    )
 
 
 # Services whose provider has disabled the account: slug -> the message shown.
@@ -1717,8 +1752,9 @@ async def _run_collection() -> None:
             # Set even on a failed run: the bell's question is "has anything
             # looked", and a run that tried and failed HAS looked — its failure
             # is in the alert list the bell is about to show.
-            global _collection_has_run, _last_collection_finished
+            global _collection_has_run, _last_collection_finished, _collected_since_start
             _collection_has_run = True
+            _collected_since_start = True
             # "The machinery ran", success or not — /api/health and the bell
             # measure staleness of THIS stamp. A run that wedges on the
             # collection lock returns early above and never reaches here, so
@@ -3569,13 +3605,21 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     else:
         spec.pop("instances", None)
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
-    # The extra copies, after the record: if one fails, the next redeploy still
+    # Each copy's start is recorded as its deploy is attempted: one that fails
+    # must not leave an older stop as its latest action, which would hide its
+    # crash, and a copy the deploy never reaches keeps the stop it had.
+    await database.record_health_event(
+        slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=1
+    )
+    # The extra copies, after the save: if one fails, the next redeploy still
     # knows how many this worker should run and tries again.
     for n in range(2, instances + 1):
+        await database.record_health_event(
+            slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
+        )
         await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf))
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
-    await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
@@ -3820,16 +3864,32 @@ async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _proxy_worker_command(worker_id, "stop", slug, instance=instance)
-    await database.record_health_event(slug, "stop")
+    await database.record_health_event(slug, "stop", worker_id=worker_id, instance=instance)
     metrics.record_container_lifecycle("stop", slug)
+    return result
+
+
+async def _command_and_record(worker_id: int, command: str, slug: str, instance: int) -> dict[str, Any]:
+    """Start or restart one copy and record it, also when the worker may have done it unanswered.
+
+    A 504 means the worker got the request and did not answer in time. A start
+    it carried out must still replace the copy's older stop, or a later crash of
+    that copy is never alerted.
+    """
+    try:
+        result = await _proxy_worker_command(worker_id, command, slug, instance=instance)
+    except HTTPException as exc:
+        if exc.status_code == 504:
+            await database.record_health_event(slug, command, worker_id=worker_id, instance=instance)
+        raise
+    await database.record_health_event(slug, command, worker_id=worker_id, instance=instance)
     return result
 
 
 async def _svc_restart(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "restart", slug, instance=instance)
-    await database.record_health_event(slug, "restart")
+    result = await _command_and_record(worker_id, "restart", slug, instance)
     metrics.record_container_lifecycle("restart", slug)
     return result
 
@@ -3866,7 +3926,7 @@ async def _svc_remove(
             await database.delete_proxied_copies_of(worker_id, slug)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Removed %s, but could not drop its proxied copy records: %s", slug, exc)
-    await database.record_health_event(slug, "remove")
+    await database.record_health_event(slug, "remove", worker_id=worker_id)
     metrics.record_container_lifecycle("remove", slug)
     return result
 
@@ -4161,13 +4221,18 @@ async def _proxy_worker_command(
     ``instance`` picks one copy of a service that runs more than once; the first
     copy is addressed without it, so an older worker sees the request it always did.
     """
+    # A stop, restart or removal waits for the container to stop cleanly (300 s
+    # for storj). Cut off sooner, a stop that went through answers 504 and is
+    # never recorded, so the copy raises a container-down alert.
+    timeout = 30 + _catalog_stop_timeout(slug) if command in ("stop", "restart", "remove") else 30
     if command == "remove":
-        return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params)
+        return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout)
     return await _proxy_to_worker(
         worker_id,
         "POST",
         f"/api/containers/{slug}/{command}",
         params={"instance": str(instance)} if instance > 1 else None,
+        timeout=timeout,
     )
 
 
@@ -4191,6 +4256,19 @@ async def _worker_instances(worker_id: int, slug: str) -> set[int]:
     return copies
 
 
+def _catalog_stop_timeout(slug: str) -> int:
+    """The seconds the worker waits for ``slug`` to stop cleanly, read as the worker reads it.
+
+    orchestrator._parse_stop_timeout: unset, unreadable, zero or negative all mean 30.
+    """
+    raw = ((catalog.get_service(slug) or {}).get("docker") or {}).get("stop_timeout")
+    try:
+        timeout = int(raw)
+    except (TypeError, ValueError):
+        return 30
+    return timeout if timeout > 0 else 30
+
+
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -4200,11 +4278,7 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     while the worker was still shutting the old node down cleanly.
     """
     docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
-    raw = docker_conf.get("stop_timeout")
-    try:
-        stop_timeout = max(0, int(raw)) if raw is not None else 30
-    except (TypeError, ValueError):
-        stop_timeout = 30
+    stop_timeout = _catalog_stop_timeout(slug)
     # Which build THIS worker runs is decided here, at the edge, from the
     # architecture in its heartbeat. The deployment record stays on the
     # catalog's default image: it is one row for the whole fleet, and a
@@ -5043,8 +5117,8 @@ async def api_service_start(
 ) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "start", slug, instance=_instance_param(instance))
-    await database.record_health_event(slug, "start")
+    instance = _instance_param(instance)
+    result = await _command_and_record(worker_id, "start", slug, instance)
     metrics.record_container_lifecycle("start", slug)
     return result
 
@@ -6829,31 +6903,38 @@ async def _read_payout_addresses(worker_id: int) -> list[dict[str, Any]]:
     return rows if isinstance(rows, list) else []
 
 
-async def _read_node_figures(slug: str) -> list[dict[str, Any]]:
+async def _read_node_figures(slug: str, unreached: list[str] | None = None) -> list[dict[str, Any]]:
     """What each node of ``slug`` says about its own earnings (issue #488).
 
     Asks every online worker that runs the service (its /api/node-earnings).
     A worker that does not answer, or one from before the endpoint (404), adds
-    nothing: its node keeps the figures it last reported.
+    nothing: its node keeps the figures it last reported. The names of the
+    workers that did not answer go into ``unreached``, so the collector can say
+    a node was missed because its worker was busy, not because it moved.
     """
     try:
         where = placement.runs_on(await database.list_workers())
     except Exception as exc:  # noqa: BLE001 - no fleet means no readings, not a crash
         logger.warning("Could not read the workers for the %s node read: %s", slug, exc)
         return []
-    targets = sorted(
-        {r["worker_id"] for r in where.get(slug, []) if r["online"] and not r["android"] and r["status"] == "running"},
-        key=str,
-    )
+    rows_for = [r for r in where.get(slug, []) if r["online"] and not r["android"] and r["status"] == "running"]
+    names = {r["worker_id"]: str(r.get("name") or r["worker_id"]) for r in rows_for}
+    targets = sorted(names, key=str)
 
     async def _one(worker_id: Any) -> list[dict[str, Any]]:
         try:
             result = await _proxy_to_worker(worker_id, "GET", "/api/node-earnings", timeout=20)
         except Exception as exc:  # noqa: BLE001 - one worker never fails the read
             logger.info("Could not read %s node figures from worker %s: %s", slug, worker_id, exc)
+            if unreached is not None:
+                unreached.append(names[worker_id])
             return []
         rows = result.get("nodes") if isinstance(result, dict) else None
-        return [r for r in rows or [] if isinstance(r, dict) and r.get("slug") == slug and not r.get("error")]
+        found = [r for r in rows or [] if isinstance(r, dict) and r.get("slug") == slug and not r.get("error")]
+        for r in found:
+            if r.get("node"):
+                _node_reader[str(r["node"]).lower()] = names[worker_id]
+        return found
 
     readings: list[dict[str, Any]] = []
     for rows in await asyncio.gather(*(_one(wid) for wid in targets)):
@@ -6898,7 +6979,25 @@ async def _attach_node_readings(collector: Any) -> None:
         return
     if not isinstance(((catalog.get_service(slug) or {}).get("collector") or {}).get("node_read"), dict):
         return
-    collector.node_readings = await _read_node_figures(slug)
+    unreached: list[str] = []
+    collector.node_readings = await _read_node_figures(slug, unreached)
+    collector.unreached_workers = unreached
+    collector.node_readers = dict(_node_reader)
+    try:
+        collector.known_nodes = await database.get_node_ids(slug)
+        workers = await database.list_workers()
+    except Exception as exc:  # noqa: BLE001 - a failed read is no empty history
+        logger.warning("Could not read the known %s nodes: %s", slug, exc)
+        # Without the history every unread node would look never read, and the
+        # "runs on no worker" notice could fire for a node read many times.
+        # Held back like the first collection after a start.
+        collector.workers_settling = True
+        return
+    # The first collection after a start runs before some workers have
+    # heartbeated: a node only they run is unread for no reason the user can act on.
+    collector.workers_settling = not _collected_since_start and any(
+        w.get("status") == "online" and str(w.get("last_heartbeat") or "") < _PROCESS_STARTED for w in workers
+    )
 
 
 @app.get("/api/payout-balances")
@@ -8378,21 +8477,29 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
             spec=body.spec if isinstance(body.spec, dict) else None,
             worker_id=worker_id,
         )
-        await database.record_health_event(slug, "start", f"deployed to worker {worker_id}")
+        # The worker deploys the one copy the spec names, so a start of copy 2 says
+        # nothing about a stopped copy 1.
+        copy = _copy_number(body.spec) if isinstance(body.spec, dict) else 1
+        await database.record_health_event(
+            slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=copy or 1
+        )
         metrics.record_container_lifecycle("deploy", slug)
         _spawn(_run_collection())
     elif body.command == "stop":
-        await database.record_health_event(slug, "stop")
+        # The worker's plain container route acts on the first copy.
+        await database.record_health_event(slug, "stop", worker_id=worker_id, instance=1)
         metrics.record_container_lifecycle("stop", slug)
     elif body.command == "restart":
-        await database.record_health_event(slug, "restart")
+        # The worker's plain container route acts on the first copy.
+        await database.record_health_event(slug, "restart", worker_id=worker_id, instance=1)
         metrics.record_container_lifecycle("restart", slug)
     elif body.command == "start":
-        await database.record_health_event(slug, "start")
+        # The worker's plain container route acts on the first copy.
+        await database.record_health_event(slug, "start", worker_id=worker_id, instance=1)
         metrics.record_container_lifecycle("start", slug)
     elif body.command == "remove":
         await database.remove_deployment(slug, worker_id=worker_id)
-        await database.record_health_event(slug, "remove")
+        await database.record_health_event(slug, "remove", worker_id=worker_id)
         metrics.record_container_lifecycle("remove", slug)
     return result
 
