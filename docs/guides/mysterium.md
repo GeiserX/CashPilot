@@ -152,30 +152,39 @@ Put the whole combined list in one file, comment out the line in every other
 file that sets it, and read `sysctl net.ipv4.ip_local_reserved_ports` again
 after the next reboot. If the other file belongs to a package or a tool that
 rewrites it, your edit will not last: give your file a name that sorts after
-it instead, so the combined list is read last. No file name sorts after
-`/etc/sysctl.conf` itself, because it is read after the directories. If the
-other setter is there, put the combined list in that line.
+it instead, so the combined list is read last. With `systemd-sysctl` (the
+first command above), the last file in its output wins; it reads
+`/etc/sysctl.conf` only through a `99-sysctl.conf` link, so a file named
+after that one, such as `zz-mysterium.conf`, still overrides it. With
+`sysctl --system` and no systemd, `/etc/sysctl.conf` is read after every
+directory and no file name sorts after it: if the other setter is there, put
+the combined list in that line. If a tool rewrites `/etc/sysctl.conf` itself,
+set the combined list in that tool's own settings, or the next rewrite drops
+your reservation.
 
 **A firewall of your own in `DOCKER-USER` can drop the sessions.** Once the
 node is on CashPilot's bridge, customer packets to its UDP range are forwarded
 to a container, no longer delivered to the host itself. They pass Docker's
 `DOCKER-USER` chain. If yours ends with a rule that drops what comes in from
 the internet, such as `-i <wan interface> -j DROP`, every session to the
-forwarded range is dropped there. Add an accept directly above that drop,
+forwarded range is dropped there. Add a rule directly above that drop,
 with your own interface and range, and below any deny rules you already
-have, so they keep applying. Find the drop's position with
+have, so they keep applying. It returns the packet to Docker's own rules
+rather than accepting it, so Docker's filter for unpublished ports still
+applies. Find the drop's position with
 `sudo iptables -L DOCKER-USER --line-numbers` and insert at that number. `cp-isolated` is the bridge CashPilot creates; on a
 network of your own (`CASHPILOT_CONTAINER_NETWORK`), use that network's bridge:
 
 ```bash
 sudo iptables -I DOCKER-USER <drop's line number> -i <wan interface> -o cp-isolated -p udp --dport <start>:<end> \
-  -m conntrack --ctorigdstport <start>:<end> -j ACCEPT
+  -m conntrack --ctstate DNAT --ctorigdstport <start>:<end> -j RETURN
 ```
 
 Docker has already rewritten the destination when a packet reaches this
 chain, so `--dport` alone would also match another container that maps some
 other host port onto a port in this range. The `--ctorigdstport` match checks
-the port the packet was sent to as well. The node publishes its range 1:1 and
+the port the packet was sent to as well, and `--ctstate DNAT` that Docker
+rewrote it, which only a published port gets. The node publishes its range 1:1 and
 holds those host ports, so only its own sessions match.
 
 Then save it wherever your boot loads the rules from (for example

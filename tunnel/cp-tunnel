@@ -121,6 +121,22 @@ probe_until_ready() {
     return 1
 }
 
+# A stop (a removal, a restart, a Test ending, the daemon shutting down) sends
+# SIGTERM here. Without this trap the shell dies at once, the container's init
+# exits and the kernel kills tailscaled before it can log out: its offline
+# device stays in the tailnet until Tailscale reaps it, and the next start of
+# the same copy joins as "<name>-1". Logging an ephemeral node out deletes it.
+leave() {
+    trap - TERM INT
+    if [ "$KIND" = tailscale ] && [ -S /run/ts/ts.sock ]; then
+        timeout 5 tailscale --socket=/run/ts/ts.sock logout >/dev/null 2>&1 ||
+            echo "cp-tunnel: could not log out of the tailnet; Tailscale removes this ephemeral device once it has been offline a while" >&2
+    fi
+    [ -n "${TPID:-}" ] && kill "$TPID" 2>/dev/null
+    exit 0
+}
+trap leave TERM INT
+
 # 3: routes and the tunnel process.
 if [ "$KIND" = tailscale ]; then
     mkdir -p /run/ts
