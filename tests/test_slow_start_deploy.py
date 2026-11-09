@@ -291,3 +291,18 @@ class TestAHeldNodeSaysWhy:
         }
         [entry] = asyncio.run(main._get_all_worker_containers([worker]))
         assert entry["held"] == lan_fence.FAILED_DEPLOY
+
+
+class TestTheMoveAdviceForAWideRange:
+    WIDE_HOST_RECORD = {"env": {"UI_ADDRESS": "127.0.0.1", "UDP_PORTS": "56000:56999"}, "network_mode": "host"}
+
+    def test_a_range_over_the_cap_is_told_to_narrow_not_to_reserve(self):
+        move = drift.move_advice(MYST, _shape(network_mode="host"), self.WIDE_HOST_RECORD, lan_fence.MODE_ON)
+        warning = move["warning"]
+        assert "spans 1000 ports" in warning and "at most 300 ports" in warning
+        assert "reserve it on the host" not in warning
+
+    def test_control_a_range_within_the_cap_keeps_the_reservation_option(self):
+        record = {**self.WIDE_HOST_RECORD, "env": {"UDP_PORTS": "56000:56100"}}
+        warning = drift.move_advice(MYST, _shape(network_mode="host"), record, lan_fence.MODE_ON)["warning"]
+        assert "reserve it on the host" in warning

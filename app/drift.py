@@ -166,13 +166,22 @@ def move_advice(
     key = str(rng.get("env") or "") if isinstance(rng, dict) else ""
     value = str(((recorded or {}).get("env") or {}).get(key) or "").strip() if key else ""
     m = re.fullmatch(r"(\d{1,5}):(\d{1,5})", value)
-    if m and int(m[1]) <= EPHEMERAL_PORTS[1] and int(m[2]) >= EPHEMERAL_PORTS[0]:
-        low = EPHEMERAL_PORTS[0]
-        default = next((str(v.get("default") or "") for v in docker_conf.get("env") or [] if v.get("key") == key), "")
-        example = ""
-        d = re.fullmatch(r"(\d{1,5}):(\d{1,5})", default)
-        if d and int(d[2]) + 100 < low:
-            example = f", such as {int(d[1]) + 100}:{int(d[2]) + 100}"
+    cap = int(rng.get("max_ports") or catalog.MAX_UDP_PORTS) if isinstance(rng, dict) else catalog.MAX_UDP_PORTS
+    low = EPHEMERAL_PORTS[0]
+    default = next((str(v.get("default") or "") for v in docker_conf.get("env") or [] if v.get("key") == key), "")
+    example = ""
+    d = re.fullmatch(r"(\d{1,5}):(\d{1,5})", default)
+    if d and int(d[2]) + 100 < low:
+        example = f", such as {int(d[1]) + 100}:{int(d[2]) + 100}"
+    if m and int(m[2]) - int(m[1]) + 1 > cap:
+        # Wider than a deploy publishes: the redeploy is refused, so reserving it is no way out.
+        advice["warning"] = (
+            f"Its recorded {key}, {value}, spans {int(m[2]) - int(m[1]) + 1} ports, more than the {cap} a deploy "
+            f"publishes, so the redeploy is refused until it is narrower. Before you redeploy, set {key} to a free "
+            f"range of at most {cap} ports below {low} other than the default{example} (a value equal to the default "
+            "keeps the recorded one), and change the router forward to match."
+        )
+    elif m and int(m[1]) <= EPHEMERAL_PORTS[1] and int(m[2]) >= EPHEMERAL_PORTS[0]:
         advice["warning"] = (
             f"Its recorded {key}, {value}, overlaps Linux's ephemeral range ({low}-{EPHEMERAL_PORTS[1]}), which the "
             "redeploy keeps: on its own network every port in it is published, and one a host program holds fails "
