@@ -4212,13 +4212,18 @@ async def _proxy_worker_command(
     ``instance`` picks one copy of a service that runs more than once; the first
     copy is addressed without it, so an older worker sees the request it always did.
     """
+    # A stop, restart or removal waits for the container to stop cleanly (300 s
+    # for storj). Cut off sooner, a stop that went through answers 504 and is
+    # never recorded, so the copy raises a container-down alert.
+    timeout = 30 + _catalog_stop_timeout(slug) if command in ("stop", "restart", "remove") else 30
     if command == "remove":
-        return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params)
+        return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout)
     return await _proxy_to_worker(
         worker_id,
         "POST",
         f"/api/containers/{slug}/{command}",
         params={"instance": str(instance)} if instance > 1 else None,
+        timeout=timeout,
     )
 
 
@@ -4242,6 +4247,15 @@ async def _worker_instances(worker_id: int, slug: str) -> set[int]:
     return copies
 
 
+def _catalog_stop_timeout(slug: str) -> int:
+    """The seconds the worker waits for ``slug`` to stop cleanly: the catalog's, else Docker's 30."""
+    raw = ((catalog.get_service(slug) or {}).get("docker") or {}).get("stop_timeout")
+    try:
+        return max(0, int(raw)) if raw is not None else 30
+    except (TypeError, ValueError):
+        return 30
+
+
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -4251,11 +4265,7 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     while the worker was still shutting the old node down cleanly.
     """
     docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
-    raw = docker_conf.get("stop_timeout")
-    try:
-        stop_timeout = max(0, int(raw)) if raw is not None else 30
-    except (TypeError, ValueError):
-        stop_timeout = 30
+    stop_timeout = _catalog_stop_timeout(slug)
     # Which build THIS worker runs is decided here, at the edge, from the
     # architecture in its heartbeat. The deployment record stays on the
     # catalog's default image: it is one row for the whole fleet, and a

@@ -330,3 +330,16 @@ def test_a_start_the_worker_may_have_done_unanswered_is_recorded(command, status
         record.assert_awaited_once_with("urnetwork", command, worker_id=4, instance=2)
     else:
         record.assert_not_awaited()
+
+
+@pytest.mark.parametrize("command", ["stop", "restart", "remove"])
+def test_a_stop_waits_as_long_as_the_service_takes_to_stop(command):
+    # storj stops in up to 300 s; cut off at 30 s, a stop that went through
+    # answers 504, is never recorded, and the stopped copy raises an alert.
+    call = AsyncMock(return_value={})
+    with (
+        patch.object(main.catalog, "get_service", lambda slug: {"docker": {"stop_timeout": 300}}),
+        patch.object(main, "_proxy_to_worker", call),
+    ):
+        asyncio.run(main._proxy_worker_command(4, command, "storj"))
+    assert call.call_args.kwargs["timeout"] > 300
