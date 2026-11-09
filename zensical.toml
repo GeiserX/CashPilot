@@ -157,6 +157,7 @@ nav = [
       { "Design notes" = [
           { "Fleet upgrades and onboarding" = "research/fleet-upgrades-and-onboarding.md" },
           { "Earnings benchmarks" = "research/earnings-benchmarks.md" },
+          { "UX plan: clicks, keyboard, terminal and agents" = "research/ux-plan.md" },
         ] },
     ] },
 ]
