@@ -196,6 +196,46 @@ The **Fleet** page lists every box:
 
 Starting, stopping, restarting and viewing logs happen on the **Dashboard**. There, a service running on several workers shows an expandable row with one sub-row per instance; the main row shows the average CPU and memory (prefixed with `~`), and each sub-row its own figures and buttons.
 
+## Budgeting a small box
+
+Earners differ a lot in what they use. Measure before you decide what runs
+where, rather than spreading every service over every box.
+
+**The usual heavy ones.** The catalog's memory caps (`docker.resources.mem_limit`
+in each `services/*/*.yml`) are limits, not usage, but they show the spread:
+
+| Kind | Examples | What it costs |
+|---|---|---|
+| Storage nodes | Sia (hostd), Storj | The highest memory caps (4 GB and 2 GB), steady disk I/O, a large data disk |
+| Relays and VPN exits | Anyone Protocol, Mysterium | Memory caps of 1.5 GB and 768 MB, CPU that rises with traffic. Mysterium's published UDP ports also run `docker-proxy` processes outside its container ([what each port costs](mysterium-fence.md#what-each-port-costs)) |
+| GPU compute | Salad, Vast.ai, io.net | The whole GPU, plus CPU and memory while a job runs |
+| Most bandwidth earners | Honeygain, EarnApp, Traffmonetizer, Repocket | Memory caps of 128 to 256 MB |
+
+A [proxied copy](proxies.md) adds its earner; the box runs one tunnel container
+per proxy, shared by every copy through it.
+
+**Measure on the box.** The **Dashboard** shows each container's CPU and
+memory, refreshed every few minutes, for the services it reports; earners
+you started outside CashPilot may not show there. For a snapshot of everything
+at once:
+
+```bash
+docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'
+```
+
+It lists every running container, including earners you started outside
+CashPilot. CPU is per core: `100%` is one full core. Take a few snapshots at different
+times of day, since bandwidth earners and exits are busiest when someone is
+buying traffic. `docker stats` counts only what runs inside containers, so
+also look at the host as a whole (`free -m`, `uptime`) and at the CashPilot UI
+and worker themselves ([Memory](configuration.md#memory)).
+
+**Then decide.** Put storage nodes and GPU work on the machine with the disk
+or the card. Keep a small box to the light earners. When what you want from a
+small box at another site is its IP rather than its hardware, make it an exit
+node instead of a worker
+([A second site as an exit node](proxies.md#a-second-site-as-an-exit-node-instead-of-a-worker)).
+
 ## Cross-Subnet Workers
 
 If the worker and UI are on different subnets (e.g., connected via Tailscale):
