@@ -10,11 +10,20 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## Unreleased
+## [2.2.2] - 2026-11-09
+
+### Dependencies
+
+- Bump ruff from 0.17.3 to 0.17.4 in the minor-and-patch group (#702)
 
 ### Documentation
 
+- Regenerate CHANGELOG.md (#700)
 - Regenerate CHANGELOG.md (#698)
+
+### Packaging
+
+- Bump debian from `f6b08b0` to `a72b443` (#701)
 
 ## [2.2.1] - 2026-11-09
 
