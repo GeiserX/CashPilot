@@ -10,6 +10,18 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## Unreleased
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#692)
+
+## [2.1.8] - 2026-11-09
+
+### Fixes
+
+- Log a Tailscale tunnel out when it stops, so it leaves no offline device behind (#689)
+
 ## [2.1.7] - 2026-11-09
 
 ### Documentation
