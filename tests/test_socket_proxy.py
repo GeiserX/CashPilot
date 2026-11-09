@@ -969,23 +969,40 @@ def test_passes_overrides_the_guess(monkeypatch, capsys):
     assert "$$$$" not in old[old.find(socket_policy.BEGIN) : old.find(socket_policy.END)]
     code, out, _ = _filter(old, monkeypatch, capsys, ["--passes", "2"])
     assert (code, out) == (0, shipped)
-    code, out, _ = _filter(old, monkeypatch, capsys)
-    assert code == 0 and out != shipped
+    code, out, err = _filter(old, monkeypatch, capsys)
+    assert (code, out) == (1, "") and "--passes" in err
     code, out, err = _filter(old, monkeypatch, capsys, ["--passes", "3"])
     assert (code, out) == (2, "") and "usage" in err
 
 
 def test_a_fingerprint_elsewhere_does_not_stand_in_for_the_proxys(monkeypatch, capsys):
     """Only the proxy's own environment counts: a comment (or a second worker)
-    carrying the fingerprint must not stop the proxy getting its line."""
+    carrying the fingerprint must not stop the proxy getting its line, and
+    the filter leaves that comment as it was."""
+    shipped = (ROOT / "docker-compose.worker.yml").read_text()
+    note = "# was CASHPILOT_PROXY_POLICY=e9a30411b564dc75\nservices:\n"
+    old = _stale(shipped, proxy_line=False).replace("services:\n", note, 1)
+    code, out, _ = _filter(old, monkeypatch, capsys)
+    assert code == 0
+    assert out == shipped.replace("services:\n", note, 1)
+
+
+def test_the_whole_fingerprint_value_is_replaced(monkeypatch, capsys):
+    shipped = (ROOT / "docker-compose.worker.yml").read_text()
+    old = _stale(shipped).replace("CASHPILOT_PROXY_POLICY=e9a30411b564dc75", "CASHPILOT_PROXY_POLICY=abcdefXYZ")
+    code, out, _ = _filter(old, monkeypatch, capsys)
+    assert (code, out) == (0, shipped)
+
+
+def test_a_blank_line_does_not_hide_the_proxys_fingerprint(monkeypatch, capsys):
+    """An existing proxy fingerprint after a blank line is found, not duplicated."""
     from app import socket_policy
 
     shipped = (ROOT / "docker-compose.worker.yml").read_text()
-    note = "# was CASHPILOT_PROXY_POLICY={}\nservices:\n"
-    old = _stale(shipped, proxy_line=False).replace("services:\n", note.format("e9a30411b564dc75"), 1)
-    code, out, _ = _filter(old, monkeypatch, capsys)
-    assert code == 0
-    assert out == shipped.replace("services:\n", note.format(socket_policy.digest()), 1)
+    at = socket_policy._PROXY_ENV_ANCHOR.search(shipped).end()
+    spaced = shipped[:at] + "\n" + shipped[at:]
+    code, out, _ = _filter(_stale(spaced), monkeypatch, capsys)
+    assert (code, out) == (0, spaced)
 
 
 def test_a_commented_out_proxy_fingerprint_does_not_count(monkeypatch, capsys):
@@ -1039,7 +1056,7 @@ def test_the_stale_policy_fix_names_this_release(monkeypatch):
     text = orchestrator.proxy_policy_fix_text(fix)
     assert fix["command"] in text and fix["url"] in text and fix["recreate"] in text
     # A build with no release number points at main and the latest image.
-    for unreleased in ("dev", "latest"):
+    for unreleased in ("dev", "latest", "2.2.0-mybuild", "mybuild"):
         monkeypatch.setenv("CASHPILOT_VERSION", unreleased)
         fix = orchestrator.proxy_policy_fix()
         assert "cashpilot-worker:latest " in fix["command"] and "/blob/main/" in fix["url"], unreleased

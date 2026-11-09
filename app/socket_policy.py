@@ -250,7 +250,9 @@ BEGIN = "      # BEGIN socket proxy policy: written by scripts/socket_proxy_poli
 END = "      # END socket proxy policy\n"
 #: The worker's copy of the policy's fingerprint, so it can tell when its image
 #: is newer than the policy the proxy loaded.
-DIGEST_RE = re.compile(r"(CASHPILOT_PROXY_POLICY=)[0-9a-f]*")
+#: Only a real list entry, and its whole value: a comment or another
+#: service's look-alike stays as it is.
+DIGEST_RE = re.compile(r"^( *- CASHPILOT_PROXY_POLICY=)[^\s#]*", re.M)
 
 
 def compose_block(services_dir: Path = SERVICES_DIR, passes: int = 1) -> str:
@@ -274,8 +276,6 @@ def render(text: str, block: str, fingerprint: str) -> str:
 #: Every shipped compose file since the proxy carries this line in the proxy's
 #: environment; the proxy's fingerprint goes right after it.
 _PROXY_ENV_ANCHOR = re.compile(r"^( *)- SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=.*\n", re.M)
-#: A real entry, not a commented-out one.
-_PROXY_ENTRY = re.compile(r"^ *- CASHPILOT_PROXY_POLICY=", re.M)
 _PROXY_FINGERPRINT = (
     "{indent}# The policy's fingerprint. Compose does not recreate a container when\n"
     "{indent}# only its config's content changes, so this line is what makes\n"
@@ -286,7 +286,7 @@ _PROXY_FINGERPRINT = (
 
 def _env_list(text: str, at: int, indent: str) -> str:
     """The environment list around offset ``at``: the run of lines at
-    ``indent`` that are list entries or comments."""
+    ``indent`` that are list entries or comments, blank lines inside it included."""
     lines = text.splitlines(keepends=True)
     offsets, pos = [], 0
     for line in lines:
@@ -297,13 +297,15 @@ def _env_list(text: str, at: int, indent: str) -> str:
     def part_of(line: str) -> bool:
         return line.startswith(indent) and line[len(indent) :].startswith(("- ", "#"))
 
-    first = here
-    while first > 0 and part_of(lines[first - 1]):
-        first -= 1
-    last = here
-    while last + 1 < len(lines) and part_of(lines[last + 1]):
-        last += 1
-    return "".join(lines[first : last + 1])
+    def edge(i: int, step: int) -> int:
+        j = i + step
+        while 0 <= j < len(lines) and (part_of(lines[j]) or not lines[j].strip()):
+            if part_of(lines[j]):
+                i = j
+            j += step
+        return i
+
+    return "".join(lines[edge(here, -1) : edge(here, 1) + 1])
 
 
 def update(text: str, passes: int | None = None) -> str:
@@ -313,15 +315,24 @@ def update(text: str, passes: int | None = None) -> str:
     carried its own fingerprint gets that line, or every later policy change
     would leave the proxy on the old one. A file whose block went through two
     interpolation passes (CasaOS writes `$$$$`) keeps two. A block with no `$`
-    in it says nothing, so ``passes`` overrides the guess.
+    in it says nothing, so then ``passes`` must say.
     """
     if passes is None:
         start, end = text.find(BEGIN), text.find(END)
-        passes = 2 if start >= 0 and "$$$$" in text[start:end] else 1
+        block = text[start:end] if start >= 0 else ""
+        if "$$$$" in block:
+            passes = 2
+        elif "$$" in block or start < 0:
+            passes = 1
+        else:
+            raise SystemExit(
+                "the policy block has no $ to tell how often the file is interpolated: "
+                "run again with --passes 1 (Compose) or --passes 2 (a CasaOS store template)"
+            )
     anchor = _PROXY_ENV_ANCHOR.search(text)
     if anchor is None:
         raise SystemExit("compose file has no socket proxy environment to give the policy's fingerprint")
-    if not _PROXY_ENTRY.search(_env_list(text, anchor.start(), anchor.group(1))):
+    if not DIGEST_RE.search(_env_list(text, anchor.start(), anchor.group(1))):
         line = _PROXY_FINGERPRINT.format(indent=anchor.group(1))
         text = text[: anchor.end()] + line + text[anchor.end() :]
     return render(text, compose_block(passes=passes), digest())
