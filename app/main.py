@@ -101,6 +101,14 @@ _collection_has_run: bool = False
 # lock, or a blocked event loop all freeze this — and they used to freeze
 # every other signal green with them.
 _last_collection_finished: float = time.monotonic()
+# When this process started, in SQLite's datetime('now') format, and whether a
+# collection has finished since. Unlike _collection_has_run, neither survives a
+# restart: right after one, workers that have not heartbeated yet cannot say
+# which nodes they run, so a node they did not report proves nothing.
+_PROCESS_STARTED = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+_collected_since_start: bool = False
+# Node id -> name of the worker that last read it, for the unread-node wording.
+_node_reader: dict[str, str] = {}
 _collection_lock = asyncio.Lock()
 _collection_semaphore = asyncio.Semaphore(8)
 
@@ -1744,8 +1752,9 @@ async def _run_collection() -> None:
             # Set even on a failed run: the bell's question is "has anything
             # looked", and a run that tried and failed HAS looked — its failure
             # is in the alert list the bell is about to show.
-            global _collection_has_run, _last_collection_finished
+            global _collection_has_run, _last_collection_finished, _collected_since_start
             _collection_has_run = True
+            _collected_since_start = True
             # "The machinery ran", success or not — /api/health and the bell
             # measure staleness of THIS stamp. A run that wedges on the
             # collection lock returns early above and never reaches here, so
@@ -6894,31 +6903,38 @@ async def _read_payout_addresses(worker_id: int) -> list[dict[str, Any]]:
     return rows if isinstance(rows, list) else []
 
 
-async def _read_node_figures(slug: str) -> list[dict[str, Any]]:
+async def _read_node_figures(slug: str, unreached: list[str] | None = None) -> list[dict[str, Any]]:
     """What each node of ``slug`` says about its own earnings (issue #488).
 
     Asks every online worker that runs the service (its /api/node-earnings).
     A worker that does not answer, or one from before the endpoint (404), adds
-    nothing: its node keeps the figures it last reported.
+    nothing: its node keeps the figures it last reported. The names of the
+    workers that did not answer go into ``unreached``, so the collector can say
+    a node was missed because its worker was busy, not because it moved.
     """
     try:
         where = placement.runs_on(await database.list_workers())
     except Exception as exc:  # noqa: BLE001 - no fleet means no readings, not a crash
         logger.warning("Could not read the workers for the %s node read: %s", slug, exc)
         return []
-    targets = sorted(
-        {r["worker_id"] for r in where.get(slug, []) if r["online"] and not r["android"] and r["status"] == "running"},
-        key=str,
-    )
+    rows_for = [r for r in where.get(slug, []) if r["online"] and not r["android"] and r["status"] == "running"]
+    names = {r["worker_id"]: str(r.get("name") or r["worker_id"]) for r in rows_for}
+    targets = sorted(names, key=str)
 
     async def _one(worker_id: Any) -> list[dict[str, Any]]:
         try:
             result = await _proxy_to_worker(worker_id, "GET", "/api/node-earnings", timeout=20)
         except Exception as exc:  # noqa: BLE001 - one worker never fails the read
             logger.info("Could not read %s node figures from worker %s: %s", slug, worker_id, exc)
+            if unreached is not None:
+                unreached.append(names[worker_id])
             return []
         rows = result.get("nodes") if isinstance(result, dict) else None
-        return [r for r in rows or [] if isinstance(r, dict) and r.get("slug") == slug and not r.get("error")]
+        found = [r for r in rows or [] if isinstance(r, dict) and r.get("slug") == slug and not r.get("error")]
+        for r in found:
+            if r.get("node"):
+                _node_reader[str(r["node"]).lower()] = names[worker_id]
+        return found
 
     readings: list[dict[str, Any]] = []
     for rows in await asyncio.gather(*(_one(wid) for wid in targets)):
@@ -6963,7 +6979,25 @@ async def _attach_node_readings(collector: Any) -> None:
         return
     if not isinstance(((catalog.get_service(slug) or {}).get("collector") or {}).get("node_read"), dict):
         return
-    collector.node_readings = await _read_node_figures(slug)
+    unreached: list[str] = []
+    collector.node_readings = await _read_node_figures(slug, unreached)
+    collector.unreached_workers = unreached
+    collector.node_readers = dict(_node_reader)
+    try:
+        collector.known_nodes = await database.get_node_ids(slug)
+        workers = await database.list_workers()
+    except Exception as exc:  # noqa: BLE001 - a failed read is no empty history
+        logger.warning("Could not read the known %s nodes: %s", slug, exc)
+        # Without the history every unread node would look never read, and the
+        # "runs on no worker" notice could fire for a node read many times.
+        # Held back like the first collection after a start.
+        collector.workers_settling = True
+        return
+    # The first collection after a start runs before some workers have
+    # heartbeated: a node only they run is unread for no reason the user can act on.
+    collector.workers_settling = not _collected_since_start and any(
+        w.get("status") == "online" and str(w.get("last_heartbeat") or "") < _PROCESS_STARTED for w in workers
+    )
 
 
 @app.get("/api/payout-balances")
