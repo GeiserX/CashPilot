@@ -14,7 +14,21 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ### Documentation
 
+- Regenerate CHANGELOG.md (#698)
+
+## [2.2.1] - 2026-11-09
+
+### Documentation
+
 - Stop a renamed data volume passing the keep-your-identity check (#696)
+
+### Fixes
+
+- Let a tag-only upgrade take a new socket proxy policy in one step (#699)
+
+### Maintenance
+
+- Pin the examples to 2.2 (#697)
 
 ## [2.2.0] - 2026-11-09
 
