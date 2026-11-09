@@ -201,6 +201,19 @@ def test_a_collection_marks_the_process_as_collected(db):
         assert main._collected_since_start is True
 
 
+def test_a_collection_that_aborts_before_its_collectors_keeps_the_settling_hold(db):
+    # The retry still runs as the first collection, so a node whose worker has
+    # not heartbeated yet is not reported as running on no worker.
+    with (
+        patch.object(main, "_collected_since_start", False),
+        patch.object(main, "_collection_has_run", False),
+        patch.object(main.database, "get_deployments", AsyncMock(side_effect=RuntimeError("database is locked"))),
+    ):
+        asyncio.run(main._run_collection())
+        assert main._collected_since_start is False
+        assert main._collection_has_run is True
+
+
 def test_the_known_nodes_are_every_node_ever_read_for_that_platform(db):
     asyncio.run(database.record_node_figures("mysterium", [_node("0xAA", 1.0, 2.0)], "MYST"))
     asyncio.run(database.record_node_figures("other", [_node("0xdd", 1.0, 2.0)], "X"))
