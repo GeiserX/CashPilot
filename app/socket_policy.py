@@ -16,7 +16,8 @@ this image, without giving the image any access to that file:
     docker run --rm -i --network none drumsergio/cashpilot-worker:<version> \
         python -m app.socket_policy < docker-compose.yml > docker-compose.new.yml
 
-It replaces the block between the policy markers and the fingerprint, changes
+It replaces the block between the policy markers and the fingerprints, adds
+the proxy's fingerprint to a file from before the proxy carried one, changes
 nothing else, and the operator reads the diff before using the new file.
 """
 
@@ -270,10 +271,40 @@ def render(text: str, block: str, fingerprint: str) -> str:
     return DIGEST_RE.sub(lambda m: m.group(1) + fingerprint, text)
 
 
+#: Every shipped compose file since the proxy carries this line in the proxy's
+#: environment; the proxy's fingerprint goes right after it.
+_PROXY_ENV_ANCHOR = re.compile(r"^( *)- SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=.*\n", re.M)
+_PROXY_FINGERPRINT = (
+    "{indent}# The policy's fingerprint. Compose does not recreate a container when\n"
+    "{indent}# only its config's content changes, so this line is what makes\n"
+    "{indent}# `docker compose up -d` restart the proxy on a new policy.\n"
+    "{indent}- CASHPILOT_PROXY_POLICY=0\n"
+)
+
+
+def update(text: str) -> str:
+    """An operator's compose file brought to this image's policy.
+
+    Besides the block and the fingerprints, a file from before the proxy
+    carried its own fingerprint gets that line, or every later policy change
+    would leave the proxy on the old one. A file whose block went through two
+    interpolation passes (CasaOS writes `$$$$`) keeps two.
+    """
+    start, end = text.find(BEGIN), text.find(END)
+    passes = 2 if start >= 0 and "$$$$" in text[start:end] else 1
+    if len(DIGEST_RE.findall(text)) == 1:
+        anchor = _PROXY_ENV_ANCHOR.search(text)
+        if anchor is None:
+            raise SystemExit("compose file has no socket proxy environment to give the policy's fingerprint")
+        line = _PROXY_FINGERPRINT.format(indent=anchor.group(1))
+        text = text[: anchor.end()] + line + text[anchor.end() :]
+    return render(text, compose_block(passes=passes), digest())
+
+
 def main() -> int:
     """Read a compose file on stdin, write it with this image's policy on stdout."""
     try:
-        sys.stdout.write(render(sys.stdin.read(), compose_block(), digest()))
+        sys.stdout.write(update(sys.stdin.read()))
     except SystemExit as exc:
         print(f"{exc}; take the compose file of this release instead", file=sys.stderr)
         return 1

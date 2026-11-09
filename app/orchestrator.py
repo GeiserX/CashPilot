@@ -218,7 +218,8 @@ def proxy_policy_fix() -> dict[str, str] | None:
     if proxy_policy_current() is not False:
         return None
     current = version.current()
-    release = current != version.UNKNOWN
+    # A build without a release tag reports dev or latest; neither is a tag to link.
+    release = version.is_release(current)
     tag = current if release else "latest"
     ref = f"v{current}" if release else "main"
     return {

@@ -917,31 +917,55 @@ def test_each_compose_file_recreates_the_proxy_when_the_policy_changes(name):
     assert f"CASHPILOT_PROXY_POLICY={socket_policy.digest()}" in env
 
 
-def _stale(text: str) -> str:
-    """A compose file as an older release shipped it: another policy, another fingerprint."""
+def _stale(text: str, passes: int = 1, proxy_line: bool = True) -> str:
+    """A compose file as an older release shipped it: another policy, another
+    fingerprint and, before this release, no fingerprint on the proxy."""
     from app import socket_policy
 
-    old = socket_policy.compose_block().replace("allow_host_cgroupns: false", "allow_host_cgroupns: true")
+    if not proxy_line:
+        block = socket_policy._PROXY_FINGERPRINT.format(indent="      ").replace("=0", f"={socket_policy.digest()}")
+        assert block in text
+        text = text.replace(block, "", 1)
+    old = socket_policy.compose_block(passes=passes).replace("allow_host_cgroupns: false", "allow_host_cgroupns: true")
     return socket_policy.render(text, old, "e9a30411b564dc75")
 
 
-@pytest.mark.parametrize("name", COMPOSE_FILES)
-def test_the_image_brings_an_old_compose_file_to_its_policy(name, monkeypatch, capsys):
-    """`python -m app.socket_policy` reads a compose file on stdin and writes the
-    one this release ships: the policy and fingerprints change, nothing else."""
+def _filter(text: str, monkeypatch, capsys) -> tuple[int, str, str]:
     import io
 
     from app import socket_policy
 
+    monkeypatch.setattr("sys.stdin", io.StringIO(text))
+    code = socket_policy.main()
+    captured = capsys.readouterr()
+    return code, captured.out, captured.err
+
+
+@pytest.mark.parametrize("proxy_line", (True, False), ids=("proxy-fingerprint", "worker-fingerprint-only"))
+@pytest.mark.parametrize("name", (*COMPOSE_FILES, *spp.TWICE_INTERPOLATED))
+def test_the_image_brings_an_old_compose_file_to_its_policy(name, proxy_line, monkeypatch, capsys):
+    """`python -m app.socket_policy` reads a compose file on stdin and writes the
+    one this release ships: the policy, the fingerprints and, for a file from
+    before the proxy carried one, the proxy's fingerprint. Nothing else. A
+    CasaOS file keeps its two interpolation passes."""
     shipped = (ROOT / name).read_text()
-    old = _stale(shipped)
+    old = _stale(shipped, passes=2 if name in spp.TWICE_INTERPOLATED else 1, proxy_line=proxy_line)
     assert old != shipped and "e9a30411b564dc75" in old
     # The operator's own lines outside the block survive.
-    old = old.replace("    restart: unless-stopped\n", "    restart: unless-stopped\n    # mine\n", 1)
-    monkeypatch.setattr("sys.stdin", io.StringIO(old))
-    assert socket_policy.main() == 0
-    out = capsys.readouterr().out
-    assert out == shipped.replace("    restart: unless-stopped\n", "    restart: unless-stopped\n    # mine\n", 1)
+    mine = ("    restart: unless-stopped\n", "    restart: unless-stopped\n    # mine\n")
+    code, out, _ = _filter(old.replace(*mine, 1), monkeypatch, capsys)
+    assert code == 0
+    assert out == shipped.replace(*mine, 1)
+
+
+def test_the_image_refuses_a_file_with_no_proxy_environment(monkeypatch, capsys):
+    from app import socket_policy
+
+    shipped = (ROOT / "docker-compose.worker.yml").read_text()
+    old = socket_policy._PROXY_ENV_ANCHOR.sub("", _stale(shipped, proxy_line=False))
+    code, out, err = _filter(old, monkeypatch, capsys)
+    assert (code, out) == (1, "")
+    assert "no socket proxy environment" in err
 
 
 def test_the_image_refuses_a_compose_file_without_the_policy_markers(monkeypatch, capsys):
@@ -972,9 +996,10 @@ def test_the_stale_policy_fix_names_this_release(monkeypatch):
     text = orchestrator.proxy_policy_fix_text(fix)
     assert fix["command"] in text and fix["url"] in text and fix["recreate"] in text
     # A build with no release number points at main and the latest image.
-    monkeypatch.delenv("CASHPILOT_VERSION")
-    fix = orchestrator.proxy_policy_fix()
-    assert "cashpilot-worker:latest " in fix["command"] and "/blob/main/" in fix["url"]
+    for unreleased in ("dev", "latest"):
+        monkeypatch.setenv("CASHPILOT_VERSION", unreleased)
+        fix = orchestrator.proxy_policy_fix()
+        assert "cashpilot-worker:latest " in fix["command"] and "/blob/main/" in fix["url"], unreleased
 
 
 def test_no_fix_when_the_policy_is_current_or_unproxied(monkeypatch):
