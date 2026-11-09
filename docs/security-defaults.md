@@ -135,11 +135,23 @@ dangerous containers, not only dangerous URLs:
   sidecar's proxy settings), with no setuid files, device nodes or escaping
   links.
 
-The policy is the `configs` block at the end of each compose file, so it moves
-with the file that pins the CashPilot release. An image update does not rewrite
-that file, so the worker gets the policy's fingerprint (`CASHPILOT_PROXY_POLICY`)
-and compares it with the policy its own catalog needs; when they differ its
-status page says to replace the compose file. `scripts/socket_proxy_policy.py`
+The policy is the `configs` block at the end of each compose file, never part
+of an image: the worker image is what the policy restricts, so an image update
+must not be able to widen it. An image update does not rewrite that file either,
+so the worker gets the policy's fingerprint (`CASHPILOT_PROXY_POLICY`) and
+compares it with the policy its own catalog needs. When they differ, its log,
+its status page and the dashboard's update card name the release and give the
+command that brings your own compose file to that release's policy, changing
+nothing else:
+
+    docker run --rm -i --network none drumsergio/cashpilot-worker:<version> \
+        python -m app.socket_policy < docker-compose.yml > docker-compose.new.yml
+
+The image gets no access to the file and no network; read the diff before you
+use the new file. The proxy carries the same fingerprint in its environment,
+because Compose does not recreate a container when only a config's content
+changes: without it, `docker compose up -d` would leave the proxy on the old
+policy. `scripts/socket_proxy_policy.py`
 writes it from the catalog, and `tests/test_socket_proxy.py` fails when a
 catalog change adds a reader the policy lacks, or when anyone loosens it.
 `scripts/socket_proxy_live_test.sh` runs the real proxy against a real daemon:

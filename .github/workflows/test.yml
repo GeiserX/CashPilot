@@ -53,6 +53,12 @@ jobs:
       - name: Settings failure path
         run: node scripts/settings_failure_check.mjs
 
+      # Also browser-free. The worker sends the commands that update a stale
+      # socket proxy policy; only running the card proves they arrive escaped
+      # and that a worker cannot plant a javascript: link.
+      - name: Proxy policy note
+        run: node scripts/proxy_policy_card_check.mjs
+
       # Also browser-free. The claim modal has to give THREE different answers
       # for what looks like one empty result; only running it proves which.
       - name: Claim modal honesty

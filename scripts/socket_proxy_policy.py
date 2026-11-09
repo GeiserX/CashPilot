@@ -19,7 +19,6 @@ tests/test_socket_proxy.py: the proxy would refuse that reader.
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -27,7 +26,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app import socket_policy  # noqa: E402
-from app.socket_policy import ALLOWED_CALLS, catalog_commands, policy  # noqa: E402,F401
+from app.socket_policy import (  # noqa: E402,F401
+    ALLOWED_CALLS,
+    BEGIN,
+    DIGEST_RE,
+    END,
+    catalog_commands,
+    compose_block,
+    policy,
+    render,
+)
 
 COMPOSE_FILES = (
     "docker-compose.yml",
@@ -42,28 +50,6 @@ COMPOSE_FILES = (
 #: resolves that file again, so each `$` must be written `$$$$` to reach the
 #: proxy as `$`. tests/test_app_store_templates.py checks the rest of the file.
 TWICE_INTERPOLATED = ("contrib/app-stores/casaos/CashPilot/docker-compose.yml",)
-BEGIN = "      # BEGIN socket proxy policy: written by scripts/socket_proxy_policy.py, do not edit by hand\n"
-END = "      # END socket proxy policy\n"
-#: The worker's copy of the policy's fingerprint, so it can tell when its image
-#: is newer than the policy the proxy loaded (app/socket_policy.py).
-DIGEST_RE = re.compile(r"(CASHPILOT_PROXY_POLICY=)[0-9a-f]*")
-
-
-def compose_block(services_dir: Path = socket_policy.SERVICES_DIR, passes: int = 1) -> str:
-    """The policy as it sits in a compose file: indented, each `$` doubled once
-    per interpolation pass the file goes through (`$$` for plain Compose)."""
-    body = "".join(f"      {line}\n" if line else "\n" for line in policy(services_dir).splitlines())
-    return BEGIN + body.replace("$", "$" * 2**passes) + END
-
-
-def render(text: str, block: str, fingerprint: str) -> str:
-    start, end = text.find(BEGIN), text.find(END)
-    if start < 0 or end < start:
-        raise SystemExit("compose file has no socket proxy policy markers")
-    if not DIGEST_RE.search(text):
-        raise SystemExit("compose file gives the worker no CASHPILOT_PROXY_POLICY")
-    text = text[:start] + block + text[end + len(END) :]
-    return DIGEST_RE.sub(lambda m: m.group(1) + fingerprint, text)
 
 
 def main(argv: list[str]) -> int:

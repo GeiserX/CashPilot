@@ -901,9 +901,196 @@ def test_a_fingerprint_that_differs_says_the_policy_is_stale(monkeypatch):
     assert worker_api._docker_access_text() == "socket proxy"
     monkeypatch.setenv("CASHPILOT_PROXY_POLICY", "0123456789abcdef")
     assert orchestrator.proxy_policy_current() is False
-    assert "Replace your compose file" in worker_api._docker_access_text()
+    assert "python -m app.socket_policy" in worker_api._docker_access_text()
     monkeypatch.delenv("DOCKER_HOST")
     assert orchestrator.proxy_policy_current() is None
+
+
+@pytest.mark.parametrize("name", (*COMPOSE_FILES, *spp.TWICE_INTERPOLATED))
+def test_each_compose_file_recreates_the_proxy_when_the_policy_changes(name):
+    """Compose does not recreate a container when only its config's content
+    changes, so a new policy stayed unloaded while the worker's fingerprint
+    said it was current. The proxy's own environment carries the fingerprint."""
+    from app import socket_policy
+
+    env = _compose(name)["services"]["cashpilot-socket-proxy"]["environment"]
+    assert f"CASHPILOT_PROXY_POLICY={socket_policy.digest()}" in env
+
+
+def _stale(text: str, passes: int = 1, proxy_line: bool = True) -> str:
+    """A compose file as an older release shipped it: another policy, another
+    fingerprint and, before this release, no fingerprint on the proxy."""
+    from app import socket_policy
+
+    if not proxy_line:
+        block = socket_policy._PROXY_FINGERPRINT.format(indent="      ").replace("=0", f"={socket_policy.digest()}")
+        assert block in text
+        text = text.replace(block, "", 1)
+    old = socket_policy.compose_block(passes=passes).replace("allow_host_cgroupns: false", "allow_host_cgroupns: true")
+    return socket_policy.render(text, old, "e9a30411b564dc75")
+
+
+def _filter(text: str, monkeypatch, capsys, argv: list[str] | None = None) -> tuple[int, str, str]:
+    import io
+
+    from app import socket_policy
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(text))
+    code = socket_policy.main(argv or [])
+    captured = capsys.readouterr()
+    return code, captured.out, captured.err
+
+
+@pytest.mark.parametrize("proxy_line", (True, False), ids=("proxy-fingerprint", "worker-fingerprint-only"))
+@pytest.mark.parametrize("name", (*COMPOSE_FILES, *spp.TWICE_INTERPOLATED))
+def test_the_image_brings_an_old_compose_file_to_its_policy(name, proxy_line, monkeypatch, capsys):
+    """`python -m app.socket_policy` reads a compose file on stdin and writes the
+    one this release ships: the policy, the fingerprints and, for a file from
+    before the proxy carried one, the proxy's fingerprint. Nothing else. A
+    CasaOS file keeps its two interpolation passes."""
+    shipped = (ROOT / name).read_text()
+    old = _stale(shipped, passes=2 if name in spp.TWICE_INTERPOLATED else 1, proxy_line=proxy_line)
+    assert old != shipped and "e9a30411b564dc75" in old
+    # The operator's own lines outside the block survive.
+    mine = ("    restart: unless-stopped\n", "    restart: unless-stopped\n    # mine\n")
+    code, out, _ = _filter(old.replace(*mine, 1), monkeypatch, capsys)
+    assert code == 0
+    assert out == shipped.replace(*mine, 1)
+
+
+def test_passes_overrides_the_guess(monkeypatch, capsys):
+    """An old two-pass block with no `$` in it looks like one pass; --passes says."""
+    from app import socket_policy
+
+    shipped = (ROOT / spp.TWICE_INTERPOLATED[0]).read_text()
+    start, end = shipped.find(socket_policy.BEGIN), shipped.find(socket_policy.END)
+    no_dollar = shipped[:start] + shipped[start:end].replace("$", "") + shipped[end:]
+    old = socket_policy.DIGEST_RE.sub(r"\g<1>e9a30411b564dc75", no_dollar)
+    assert "$$$$" not in old[old.find(socket_policy.BEGIN) : old.find(socket_policy.END)]
+    code, out, _ = _filter(old, monkeypatch, capsys, ["--passes", "2"])
+    assert (code, out) == (0, shipped)
+    code, out, err = _filter(old, monkeypatch, capsys)
+    assert (code, out) == (1, "") and "--passes" in err
+    code, out, err = _filter(old, monkeypatch, capsys, ["--passes", "3"])
+    assert (code, out) == (2, "") and "usage" in err
+
+
+def test_a_fingerprint_elsewhere_does_not_stand_in_for_the_proxys(monkeypatch, capsys):
+    """Only the proxy's own environment counts: a comment (or a second worker)
+    carrying the fingerprint must not stop the proxy getting its line, and
+    the filter leaves that comment as it was."""
+    shipped = (ROOT / "docker-compose.worker.yml").read_text()
+    note = "# was CASHPILOT_PROXY_POLICY=e9a30411b564dc75\nservices:\n"
+    old = _stale(shipped, proxy_line=False).replace("services:\n", note, 1)
+    code, out, _ = _filter(old, monkeypatch, capsys)
+    assert code == 0
+    assert out == shipped.replace("services:\n", note, 1)
+
+
+def test_the_whole_fingerprint_value_is_replaced(monkeypatch, capsys):
+    shipped = (ROOT / "docker-compose.worker.yml").read_text()
+    old = _stale(shipped).replace("CASHPILOT_PROXY_POLICY=e9a30411b564dc75", "CASHPILOT_PROXY_POLICY=abcdefXYZ")
+    code, out, _ = _filter(old, monkeypatch, capsys)
+    assert (code, out) == (0, shipped)
+
+
+def test_a_blank_line_does_not_hide_the_proxys_fingerprint(monkeypatch, capsys):
+    """An existing proxy fingerprint after a blank line is found, not duplicated."""
+    from app import socket_policy
+
+    shipped = (ROOT / "docker-compose.worker.yml").read_text()
+    at = socket_policy._PROXY_ENV_ANCHOR.search(shipped).end()
+    spaced = shipped[:at] + "\n" + shipped[at:]
+    code, out, _ = _filter(_stale(spaced), monkeypatch, capsys)
+    assert (code, out) == (0, spaced)
+
+
+def test_a_commented_out_proxy_fingerprint_does_not_count(monkeypatch, capsys):
+    """An operator who commented the line out still gets a real one."""
+    from app import socket_policy
+
+    old = _stale((ROOT / "docker-compose.worker.yml").read_text(), proxy_line=False)
+    at = socket_policy._PROXY_ENV_ANCHOR.search(old).end()
+    old = old[:at] + "      # - CASHPILOT_PROXY_POLICY=e9a30411b564dc75\n" + old[at:]
+    code, out, _ = _filter(old, monkeypatch, capsys)
+    assert code == 0
+    env = yaml.safe_load(out)["services"]["cashpilot-socket-proxy"]["environment"]
+    assert f"CASHPILOT_PROXY_POLICY={socket_policy.digest()}" in env
+
+
+def test_the_image_refuses_two_proxy_environments(monkeypatch, capsys):
+    """With two services setting the proxy's bind mounts it cannot tell which is
+    CashPilot's, so it refuses rather than give the line to the wrong one."""
+    from app import socket_policy
+
+    old = _stale((ROOT / "docker-compose.worker.yml").read_text(), proxy_line=False)
+    anchor = socket_policy._PROXY_ENV_ANCHOR.search(old)
+    old = old.replace("services:\n", "services:\n  other-proxy:\n    environment:\n" + anchor.group(0), 1)
+    code, out, err = _filter(old, monkeypatch, capsys)
+    assert (code, out) == (1, "") and "more than one service" in err
+
+
+def test_the_image_refuses_a_file_with_no_proxy_environment(monkeypatch, capsys):
+    from app import socket_policy
+
+    shipped = (ROOT / "docker-compose.worker.yml").read_text()
+    old = socket_policy._PROXY_ENV_ANCHOR.sub("", _stale(shipped, proxy_line=False))
+    code, out, err = _filter(old, monkeypatch, capsys)
+    assert (code, out) == (1, "")
+    assert "no socket proxy environment" in err
+
+
+def test_the_image_refuses_a_compose_file_without_the_policy_markers(monkeypatch, capsys):
+    import io
+
+    from app import socket_policy
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("services:\n  cashpilot-worker: {}\n"))
+    assert socket_policy.main([]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "take the compose file of this release" in captured.err
+
+
+def test_the_stale_policy_fix_names_this_release(monkeypatch):
+    monkeypatch.setattr(orchestrator, "_policy_digest", None)
+    _proxied_env(monkeypatch)
+    monkeypatch.setenv("CASHPILOT_PROXY_POLICY", "0123456789abcdef")
+    monkeypatch.setenv("CASHPILOT_VERSION", "2.1.9")
+    fix = orchestrator.proxy_policy_fix()
+    assert fix["release"] == "v2.1.9"
+    assert fix["command"] == (
+        "docker run --rm -i --network none drumsergio/cashpilot-worker:2.1.9 "
+        "python -m app.socket_policy < docker-compose.yml > docker-compose.new.yml"
+    )
+    assert fix["url"] == "https://github.com/GeiserX/CashPilot/blob/v2.1.9/docker-compose.worker.yml"
+    assert fix["recreate"] == "docker compose up -d --force-recreate cashpilot-socket-proxy cashpilot-worker"
+    text = orchestrator.proxy_policy_fix_text(fix)
+    assert fix["command"] in text and fix["url"] in text and fix["recreate"] in text
+    # A build with no release number points at main and the latest image.
+    for unreleased in ("dev", "latest", "2.2.0-mybuild", "mybuild"):
+        monkeypatch.setenv("CASHPILOT_VERSION", unreleased)
+        fix = orchestrator.proxy_policy_fix()
+        assert "cashpilot-worker:latest " in fix["command"] and "/blob/main/" in fix["url"], unreleased
+
+
+def test_no_fix_when_the_policy_is_current_or_unproxied(monkeypatch):
+    from app import socket_policy
+
+    monkeypatch.setattr(orchestrator, "_policy_digest", None)
+    _proxied_env(monkeypatch)
+    monkeypatch.setenv("CASHPILOT_PROXY_POLICY", socket_policy.digest())
+    assert orchestrator.proxy_policy_fix() is None
+    monkeypatch.setenv("CASHPILOT_PROXY_POLICY", "0123456789abcdef")
+    monkeypatch.delenv("DOCKER_HOST")
+    assert orchestrator.proxy_policy_fix() is None
+
+
+def test_the_worker_image_can_run_the_policy_filter():
+    """The filter runs from the worker image, so everything it imports is copied in."""
+    dockerfile = (ROOT / "Dockerfile.worker").read_text()
+    assert "COPY --chown=cashpilot:root app/socket_policy.py ./app/" in dockerfile
+    assert "COPY --chown=cashpilot:root services/ ./services/" in dockerfile
 
 
 def test_a_new_catalog_reader_changes_the_fingerprint(tmp_path):

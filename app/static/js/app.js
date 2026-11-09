@@ -4405,6 +4405,15 @@ const CP = (() => {
     loadUpdateCard();
   }
 
+  // The URL comes from the worker, so only a link into this project's
+  // repository becomes clickable; anything else is shown as text.
+  function proxyPolicyLink(url) {
+    const text = escapeHtml(url);
+    return String(url || '').startsWith('https://github.com/GeiserX/CashPilot/')
+      ? `<a href="${text}" target="_blank" rel="noopener">${text}</a>`
+      : text;
+  }
+
   function renderUpdateCard(info, onlineWorkers) {
     updateCardWorkerOnly = !!info.ui_by_hand;
     const container = document.getElementById('update-card-container');
@@ -4431,6 +4440,15 @@ const CP = (() => {
     if (info.worker_image) html += line('Worker image', info.worker_image);
     if (info.ui_image) html += line('Dashboard image', info.ui_image);
     html += line('Latest release', latest || 'unknown — check disabled, not yet run, or GitHub unreachable');
+    // The proxy's policy lives in the compose file, which no image update
+    // changes; the worker says which release's policy it needs and how to take it.
+    const fix = info.proxy_policy_fix;
+    if (fix) {
+      html += `
+      <p class="form-hint text-warn">${escapeHtml(`The socket proxy's policy is older than this worker (${fix.release}) needs, so some Docker calls may be refused. An image update never changes it: it lives in your compose file. Run this next to your compose file, check the diff, use the new file in place of yours, then run the second command (with your -f if you use one):`)}</p>
+      <pre class="mono">${escapeHtml(fix.command)}\n${escapeHtml(fix.recreate)}</pre>
+      <p class="form-hint">${escapeHtml('Or copy the lines from "# BEGIN socket proxy policy" to "# END socket proxy policy", and the CASHPILOT_PROXY_POLICY lines, from')} ${proxyPolicyLink(fix.url)}</p>`;
+    }
 
     let action;
     if (info.updater_running) {

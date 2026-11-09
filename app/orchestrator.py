@@ -43,7 +43,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from app import socket_policy  # noqa: E402
+from app import socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
@@ -201,6 +201,49 @@ def proxy_policy_current() -> bool | None:
     if _policy_digest is None:
         _policy_digest = socket_policy.digest()
     return os.getenv("CASHPILOT_PROXY_POLICY", "").strip() == _policy_digest
+
+
+#: Compose does not recreate a container when only its config's content
+#: changes, so the proxy is named: a plain `up -d` can leave it on the old policy.
+PROXY_RECREATE = f"docker compose up -d --force-recreate {PROXY_SERVICE} cashpilot-worker"
+
+
+def proxy_policy_fix() -> dict[str, str] | None:
+    """How to bring the proxy's policy up to this image's, or None when it is.
+
+    The worker never rewrites the policy itself: it is what the policy
+    restricts (app/socket_policy.py). It names this release and both ways to
+    take its policy, so the operator does it in one step.
+    """
+    if proxy_policy_current() is not False:
+        return None
+    current = version.current()
+    # Only a plain X.Y.Z is a published tag and image; dev, latest or a custom
+    # build string links main and the latest image instead.
+    release = re.fullmatch(r"\d+\.\d+\.\d+", current) is not None
+    tag = current if release else "latest"
+    ref = f"v{current}" if release else "main"
+    return {
+        "release": version.display(),
+        "command": (
+            f"docker run --rm -i --network none drumsergio/cashpilot-worker:{tag} "
+            "python -m app.socket_policy < docker-compose.yml > docker-compose.new.yml"
+        ),
+        "url": f"https://github.com/GeiserX/CashPilot/blob/{ref}/docker-compose.worker.yml",
+        "recreate": PROXY_RECREATE,
+    }
+
+
+def proxy_policy_fix_text(fix: dict[str, str]) -> str:
+    """The fix as one sentence for the log and the status page."""
+    return (
+        f"its policy is not the one this worker image ({fix['release']}) expects, so some calls may be "
+        "refused. An image update never changes the policy: it lives in your compose file. Update it with "
+        f"`{fix['command']}`, check the diff, use the new file in place of yours, then run "
+        f"`{PROXY_RECREATE}` (with your -f if you use one). "
+        "Or copy the lines from '# BEGIN socket proxy policy' to '# END socket proxy policy', and the "
+        f"CASHPILOT_PROXY_POLICY line, from {fix['url']} (the same in every compose file of the release)."
+    )
 
 
 def proxy_refusal(exc: BaseException) -> str | None:
@@ -2412,6 +2455,7 @@ def self_update_info() -> dict[str, Any]:
         "updater_running": False,
         "docker_access": docker_access(),
         "proxy_policy_current": proxy_policy_current(),
+        "proxy_policy_fix": proxy_policy_fix(),
     }
     if me is not None:
         project = _compose_project(me)

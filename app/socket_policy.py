@@ -7,12 +7,26 @@ worker imports the same module, so it can tell when the policy the proxy
 loaded is older than the image it runs (``digest`` against the
 CASHPILOT_PROXY_POLICY value the compose file gives it), and refuse a runtime
 the proxy would refuse before a running container is touched.
+
+The policy stays in the operator's compose file, never in the image: the image
+is what the policy restricts, so an image update must not be able to widen it.
+An operator who keeps their own compose file brings the policy up to date with
+this image, without giving the image any access to that file:
+
+    docker run --rm -i --network none drumsergio/cashpilot-worker:<version> \
+        python -m app.socket_policy < docker-compose.yml > docker-compose.new.yml
+
+It replaces the block between the policy markers and the fingerprints, adds
+the proxy's fingerprint to a file from before the proxy carried one, changes
+nothing else, and the operator reads the diff before using the new file.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
+import sys
 from pathlib import Path
 
 import yaml
@@ -230,3 +244,125 @@ def policy(services_dir: Path = SERVICES_DIR) -> str:
 def digest(services_dir: Path = SERVICES_DIR) -> str:
     """A short fingerprint of the policy, carried next to it in each compose file."""
     return hashlib.sha256(policy(services_dir).encode()).hexdigest()[:16]
+
+
+BEGIN = "      # BEGIN socket proxy policy: written by scripts/socket_proxy_policy.py, do not edit by hand\n"
+END = "      # END socket proxy policy\n"
+#: The worker's copy of the policy's fingerprint, so it can tell when its image
+#: is newer than the policy the proxy loaded.
+#: Only a real list entry, and its whole value: a comment or another
+#: service's look-alike stays as it is.
+DIGEST_RE = re.compile(r"^( *- CASHPILOT_PROXY_POLICY=)[^\s#]*", re.M)
+
+
+def compose_block(services_dir: Path = SERVICES_DIR, passes: int = 1) -> str:
+    """The policy as it sits in a compose file: indented, each `$` doubled once
+    per interpolation pass the file goes through (`$$` for plain Compose)."""
+    body = "".join(f"      {line}\n" if line else "\n" for line in policy(services_dir).splitlines())
+    return BEGIN + body.replace("$", "$" * 2**passes) + END
+
+
+def render(text: str, block: str, fingerprint: str) -> str:
+    """A compose file with its policy block and fingerprint replaced, nothing else."""
+    start, end = text.find(BEGIN), text.find(END)
+    if start < 0 or end < start:
+        raise SystemExit("compose file has no socket proxy policy markers")
+    if not DIGEST_RE.search(text):
+        raise SystemExit("compose file gives the worker no CASHPILOT_PROXY_POLICY")
+    text = text[:start] + block + text[end + len(END) :]
+    return DIGEST_RE.sub(lambda m: m.group(1) + fingerprint, text)
+
+
+#: Every shipped compose file since the proxy carries this line in the proxy's
+#: environment; the proxy's fingerprint goes right after it.
+_PROXY_ENV_ANCHOR = re.compile(r"^( *)- SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=.*\n", re.M)
+_PROXY_FINGERPRINT = (
+    "{indent}# The policy's fingerprint. Compose does not recreate a container when\n"
+    "{indent}# only its config's content changes, so this line is what makes\n"
+    "{indent}# `docker compose up -d` restart the proxy on a new policy.\n"
+    "{indent}- CASHPILOT_PROXY_POLICY=0\n"
+)
+
+
+def _env_list(text: str, at: int, indent: str) -> str:
+    """The environment list around offset ``at``: the run of lines at
+    ``indent`` that are list entries or comments, blank lines inside it included."""
+    lines = text.splitlines(keepends=True)
+    offsets, pos = [], 0
+    for line in lines:
+        offsets.append(pos)
+        pos += len(line)
+    here = max(i for i, o in enumerate(offsets) if o <= at)
+
+    def part_of(line: str) -> bool:
+        return line.startswith(indent) and line[len(indent) :].startswith(("- ", "#"))
+
+    def edge(i: int, step: int) -> int:
+        j = i + step
+        while 0 <= j < len(lines) and (part_of(lines[j]) or not lines[j].strip()):
+            if part_of(lines[j]):
+                i = j
+            j += step
+        return i
+
+    return "".join(lines[edge(here, -1) : edge(here, 1) + 1])
+
+
+def update(text: str, passes: int | None = None) -> str:
+    """An operator's compose file brought to this image's policy.
+
+    Besides the block and the fingerprints, a file from before the proxy
+    carried its own fingerprint gets that line, or every later policy change
+    would leave the proxy on the old one. A file whose block went through two
+    interpolation passes (CasaOS writes `$$$$`) keeps two. A block with no `$`
+    in it says nothing, so then ``passes`` must say.
+    """
+    if passes is None:
+        start, end = text.find(BEGIN), text.find(END)
+        block = text[start:end] if start >= 0 else ""
+        if "$$$$" in block:
+            passes = 2
+        elif "$$" in block or start < 0:
+            passes = 1
+        else:
+            raise SystemExit(
+                "the policy block has no $ to tell how often the file is interpolated: "
+                "run again with --passes 1 (Compose) or --passes 2 (a CasaOS store template)"
+            )
+    anchors = list(_PROXY_ENV_ANCHOR.finditer(text))
+    if not anchors:
+        raise SystemExit("compose file has no socket proxy environment to give the policy's fingerprint")
+    if len(anchors) > 1:
+        raise SystemExit(
+            "more than one service sets the proxy's bind mounts, so the filter cannot tell which is "
+            "cashpilot-socket-proxy; add its CASHPILOT_PROXY_POLICY line by hand"
+        )
+    anchor = anchors[0]
+    if not DIGEST_RE.search(_env_list(text, anchor.start(), anchor.group(1))):
+        line = _PROXY_FINGERPRINT.format(indent=anchor.group(1))
+        text = text[: anchor.end()] + line + text[anchor.end() :]
+    return render(text, compose_block(passes=passes), digest())
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Read a compose file on stdin, write it with this image's policy on stdout.
+
+    ``--passes N`` sets how many times the file is interpolated before the
+    proxy reads it (1 for Compose, 2 for a CasaOS store template)."""
+    args = sys.argv[1:] if argv is None else argv
+    passes = None
+    if args:
+        if len(args) != 2 or args[0] != "--passes" or args[1] not in ("1", "2"):
+            print("usage: python -m app.socket_policy [--passes 1|2] < compose.yml", file=sys.stderr)
+            return 2
+        passes = int(args[1])
+    try:
+        sys.stdout.write(update(sys.stdin.read(), passes))
+    except SystemExit as exc:
+        print(f"{exc}; take the compose file of this release instead", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
