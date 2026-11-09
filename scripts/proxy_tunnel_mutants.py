@@ -65,8 +65,8 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "an old password shows in a failed edit's tunnel log",
-        "            secrets = [*secrets, old, password, unquote(password)]",
-        "            pass",
+        "        secrets = [*secrets, *_auth_secrets(old)]",
+        "        pass",
     ),
     (
         "a redeploy ignores the copies of a staged tunnel and takes a new image",
@@ -84,9 +84,9 @@ MUTANTS: list[tuple[str, str, str]] = [
         "        if earner is not None and tunnel is not None and not _is_shared(tunnel):",
     ),
     (
-        "a migrated pair whose tunnel Docker could not start is held as stopped",
-        "                if not was_up and not failed:\n",
-        "                if not was_up:\n",
+        "a migrated pair whose tunnel Docker could not start is left behind",
+        "        if not was_up and not failed:\n",
+        "        if not was_up:\n",
     ),
     (
         "removing a service deletes copies without the proxy's lock",
@@ -139,9 +139,9 @@ MUTANTS: list[tuple[str, str, str]] = [
         "        cap_drop=None,",
     ),
     (
-        "a migrated stopped pair is started",
-        "                if not was_up and not failed:\n",
-        "                if False:\n",
+        "a stopped legacy pair is moved by the migration",
+        "        if not was_up and not failed:\n",
+        "        if False:\n",
     ),
     (
         "every copy reports its own tunnel id, so the cap counts it N times",
@@ -182,6 +182,41 @@ MUTANTS: list[tuple[str, str, str]] = [
         "a staged tunnel copies live in is swept",
         "            and not _members(client, container)\n",
         "\n",
+    ),
+    (
+        "a migrated password is logged in its decoded form",
+        '*_auth_secrets(files.get("proxy_auth", ""))]',
+        'files.get("proxy_auth", "")]',
+    ),
+    (
+        "one Docker refusal replaces the tunnel",
+        "    for attempt in (1, 2):\n",
+        "    for attempt in (2,):\n",
+    ),
+    (
+        "a copy whose start failed is left created",
+        "        if (left := _get(client, name)) is not None and _is_ours(left, slug, proxy_id):\n",
+        "        if False:\n",
+    ),
+    (
+        "a settings read error is read as an empty file",
+        '    return {key: _read_secret_file_or_raise(container, key) or "" for key in SECRET_KEYS if key != "settings"}',
+        '    return {key: _read_secret_file(container, key) or "" for key in SECRET_KEYS if key != "settings"}',
+    ),
+    (
+        "the migration decides on the listing, not on the tunnel as it is",
+        "            tunnel.reload()  # read under the proxy's lock, not from the listing\n",
+        "            pass\n",
+    ),
+    (
+        "an empty shared tunnel is kept",
+        "        if tunnel.id not in used and _is_shared(tunnel) and _age_seconds(tunnel) >= STAGED_STALE_SECONDS:\n",
+        "        if False:\n",
+    ),
+    (
+        "a young empty shared tunnel is removed under a filling deploy",
+        "        if tunnel.id not in used and _is_shared(tunnel) and _age_seconds(tunnel) >= STAGED_STALE_SECONDS:\n",
+        "        if tunnel.id not in used and _is_shared(tunnel):\n",
     ),
 ]
 

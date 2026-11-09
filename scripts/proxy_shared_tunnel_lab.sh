@@ -240,6 +240,8 @@ dns_mentions() { # tunnel name earner...
     printf '%s' "$out" | grep -c "${name%%.*}" || true
 }
 # The fail-closed verdict for a set of earners: no escape, no packet. 0 = closed.
+# Returns 0 closed, 1 a leak seen, 2 the capture itself failed (so a negative
+# control can tell "the checks saw the leak" from "the checks did not run").
 closed() { # label tunnel earner...
     local label=$1 tun=$2 e n bad=0
     shift 2
@@ -247,6 +249,10 @@ closed() { # label tunnel earner...
         if escapes "$e"; then echo "      $label: $e escaped"; bad=1; fi
     done
     n=$(clear_packets "$tun" "$@")
+    if ! [[ "$n" =~ ^[0-9]+$ ]]; then
+        echo "      $label: capture failed: $n"
+        return 2
+    fi
     if [ "$n" != 0 ]; then echo "      $label: $n packets left eth0"; bad=1; fi
     return $bad
 }
@@ -353,7 +359,13 @@ if [[ " $PARTS " == *" 1 "* ]]; then
     # c1. the firewall deleted (no exit node is set, so the default route is
     #     the box's own): the same checks must see the leak.
     docker exec "$TUN" nft delete table inet cashpilot
-    if closed c1 "$TUN" "$P-a" "$P-b" >/dev/null; then fail "c1: the checks missed an opened namespace"; else pass "c1: the checks see the leak of an opened namespace"; fi
+    rc=0
+    closed c1 "$TUN" "$P-a" "$P-b" >/dev/null || rc=$?
+    case $rc in
+        1) pass "c1: the checks see the leak of an opened namespace" ;;
+        0) fail "c1: the checks missed an opened namespace" ;;
+        *) fail "c1: the capture failed, so the control proves nothing" ;;
+    esac
     n=$(dns_mentions "$TUN" "ctl-$canary" "$P-a")
     [[ "$n" =~ ^[1-9][0-9]*$ ]] && pass "c1: the DNS capture sees the canary in $n packets from an opened namespace" || fail "c1: the DNS capture missed an opened namespace"
 
@@ -381,7 +393,13 @@ EOF
     new_earner "$P-ma" "$P-mut"
     docker exec "$P-mut" tailscale --socket=/run/ts/ts.sock set --exit-node= >/dev/null 2>&1 || true
     sleep 2
-    if closed c3 "$P-mut" "$P-ma" >/dev/null; then fail "c3: a policy-accept tunnel passed case d"; else pass "c3: a policy-accept tunnel fails case d, so d can fail"; fi
+    rc=0
+    closed c3 "$P-mut" "$P-ma" >/dev/null || rc=$?
+    case $rc in
+        1) pass "c3: a policy-accept tunnel fails case d, so d can fail" ;;
+        0) fail "c3: a policy-accept tunnel passed case d" ;;
+        *) fail "c3: the capture failed, so the control proves nothing" ;;
+    esac
     docker rm -fv "$P-a" "$P-b" "$P-ma" "$P-mut" "$TUN" >/dev/null 2>&1 || true
 fi
 

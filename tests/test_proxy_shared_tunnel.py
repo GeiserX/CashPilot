@@ -749,16 +749,22 @@ class TestMigration:
         assert proxy_tunnel.migrate_legacy() == []
         assert {c.id for c in docker.by_id.values()} == before
 
-    def test_a_stopped_pair_moves_and_stays_stopped(self, docker):
+    def test_a_stopped_pair_stays_as_it_was_until_its_next_start(self, docker):
         _legacy_pair(docker, "honeygain")
-        _legacy_pair(docker, "earnfm", running=False)
+        old = _legacy_pair(docker, "earnfm", running=False)
+        earner = docker.named("cashpilot-earnfm-p3")
         proxy_tunnel.migrate_legacy()
-        # Recreated inside the shared tunnel but never started.
-        assert docker.named("cashpilot-earnfm-p3").status == "created"
-        assert proxy_tunnel.held() == {"cashpilot-earnfm-p3"}
-        with patch.object(orchestrator, "_collect_stats_bulk", return_value={}):
-            proxy_tunnel.status()
-        assert docker.named("cashpilot-earnfm-p3").status == "created"
+        # Not moved and not held: whoever stopped it, nothing is decided for it.
+        assert docker.named("cashpilot-tunnel-earnfm-p3") is old and old.status == "exited"
+        assert docker.named("cashpilot-earnfm-p3") is earner and earner.status == "exited"
+        assert proxy_tunnel.held() == set()
+        _heartbeat()
+        assert earner.status == "exited" and old.status == "exited"
+        # Its next start moves it into the shared tunnel.
+        proxy_tunnel.start("earnfm", 3, _tailscale(), None)
+        shared = docker.named("cashpilot-tunnel-p3")
+        assert docker.named("cashpilot-earnfm-p3").status == "running"
+        assert _member_ids(docker, shared) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
 
     def test_a_pair_whose_tunnel_docker_could_not_start_moves_and_runs_again(self, docker):
         _legacy_pair(docker, "honeygain")
@@ -1224,3 +1230,94 @@ class TestEditsAndMovesSecondReview:
         a.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")  # a clone that took the name now
         assert proxy_tunnel.recover_moves() == []
         assert aside.id in docker.by_id
+
+
+class TestThirdReview:
+    def test_a_migrated_password_is_redacted_in_its_decoded_form(self, docker):
+        files = proxy_tunnel.secret_files(_socks(), None, "p3")
+        with (
+            patch.object(proxy_tunnel, "_wait_ready", side_effect=RuntimeError(f"auth u1 {PASSWORD} refused")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError) as err,
+        ):
+            proxy_tunnel.start_sidecar(
+                docker, "cashpilot-tunnel-p3", proxy_tunnel.SHARED_SLUG, 3, None, None, files=files
+            )
+        assert PASSWORD not in str(err.value) and "refused" in str(err.value)
+
+    def test_docker_refusing_an_edit_once_does_not_replace_the_tunnel(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named("cashpilot-honeygain-p3")
+        real, calls = tunnel.put_archive, []
+
+        def once(path, blob):
+            calls.append(path)
+            if len(calls) == 1:
+                raise APIError("500 Server Error: daemon busy")
+            return real(path, blob)
+
+        tunnel.put_archive = once
+        _deploy("earnfm", _socks(password=NEW_PASSWORD))
+        assert docker.tunnels() == [tunnel] and tunnel.status == "running"
+        assert tunnel.files["proxy_auth"] == f"u1:{NEW_PASSWORD}@"
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_a_copy_whose_start_fails_leaves_no_created_earner(self, docker):
+        _deploy("honeygain")
+
+        def created_then_failed(*, name, network_mode, labels, slug, **_kw):
+            docker.create(
+                name=name,
+                image="x",
+                network_mode=network_mode,
+                labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
+            )
+            raise APIError("500 Server Error: start failed")
+
+        with patch.object(orchestrator, "deploy_raw", side_effect=created_then_failed), pytest.raises(APIError):
+            _deploy("earnfm")
+        assert docker.named("cashpilot-earnfm-p3") is None
+        _heartbeat()
+        assert docker.named("cashpilot-earnfm-p3") is None
+
+    def test_a_settings_read_error_leaves_the_legacy_pairs_as_they_were(self, docker):
+        _legacy_pair(docker, "honeygain")
+        before = {c.id: c.status for c in docker.by_id.values()}
+        real = proxy_tunnel._read_secret_file_or_raise
+
+        def flaky(container, key):
+            if key == "exit_node":
+                raise proxy_tunnel.ProxyTunnelError("Could not read the tunnel's current settings")
+            return real(container, key)
+
+        with patch.object(proxy_tunnel, "_read_secret_file_or_raise", side_effect=flaky):
+            assert proxy_tunnel.migrate_legacy() == []
+        assert {c.id: c.status for c in docker.by_id.values()} == before
+        assert docker.named("cashpilot-tunnel-p3") is None
+
+    def test_the_migration_reads_the_tunnel_again_under_the_lock(self, docker):
+        old = _legacy_pair(docker, "honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+
+        def stopped_since_the_listing():
+            old.status = earner.status = "exited"  # the owner stopped it meanwhile
+
+        old.reload = stopped_since_the_listing
+        proxy_tunnel.migrate_legacy()
+        assert docker.named("cashpilot-tunnel-honeygain-p3") is old
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "exited"
+
+    def test_an_empty_shared_tunnel_left_behind_is_removed_by_the_heartbeat(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        docker.named("cashpilot-honeygain-p3").remove(force=True)
+        _heartbeat()
+        assert docker.named("cashpilot-tunnel-p3") is None and tunnel.id not in docker.by_id
+
+    def test_a_young_empty_shared_tunnel_is_left_for_the_deploy_filling_it(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        docker.named("cashpilot-honeygain-p3").remove(force=True)
+        _heartbeat()
+        assert docker.named("cashpilot-tunnel-p3") is tunnel

@@ -445,7 +445,7 @@ curl -s -H "$AUTH" -X POST "$UI/api/proxies/3/copies/1/earnfm/start"
 curl -s -H "$AUTH" -X DELETE "$UI/api/proxies/3/copies/1/earnfm"
 ```
 
-On the box itself, `docker ps --filter label=cashpilot.proxy=3` lists the tunnel
+On the box itself, `docker ps -a --filter label=cashpilot.proxy=3` lists the tunnel
 and every copy through proxy 3; each copy's `docker inspect` shows
 `"NetworkMode": "container:<the tunnel's id>"`.
 

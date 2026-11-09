@@ -142,7 +142,15 @@ def _set_held(name: str, on: bool, *, strict: bool = False) -> None:
             tmp = f"{HELD_MARKER}.tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write("".join(f"{n}\n" for n in sorted(names)))
+                fh.flush()
+                os.fsync(fh.fileno())
             os.replace(tmp, HELD_MARKER)
+            # And the rename itself, or a power cut can bring the old list back.
+            folder = os.open(os.path.dirname(HELD_MARKER) or ".", os.O_RDONLY)
+            try:
+                os.fsync(folder)
+            finally:
+                os.close(folder)
         except OSError as exc:
             if strict:
                 what = "was stopped" if on else "is no longer stopped"
@@ -310,6 +318,12 @@ def _secret_files(proxy: dict[str, Any], own_ip: str | None, label: str) -> dict
     files["proxy_scheme"] = "socks5" if kind == "socks5" else "http"
     files["proxy_auth"] = proxy_auth(str(proxy.get("username") or ""), str(proxy.get("password") or ""))
     return files
+
+
+def _auth_secrets(auth: str) -> list[str]:
+    """What a proxy_auth value (``user:password@``, URL-encoded) gives away."""
+    password = auth.rstrip("@").partition(":")[2]
+    return [v for v in (auth, password, unquote(password)) if v]
 
 
 def proxy_auth(username: str, password: str) -> str:
@@ -522,7 +536,9 @@ def start_sidecar(
         if label is None:
             label = f"{slug}-p{proxy_id}" if proxy_id is not None else slug
         files = secret_files(proxy or {}, own_ip, label)
-    secrets = _secret_values(proxy or {}) + [files.get("auth_key", ""), files.get("proxy_auth", "")]
+    # Files read from another tunnel (a migration) carry the password only
+    # inside proxy_auth, so its decoded form is redacted too.
+    secrets = [*_secret_values(proxy or {}), files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
     image = tunnel_image()
     try:
         client.images.pull(image)
@@ -848,10 +864,10 @@ def _in_place(
     running = current.status == "running"
     # The container's log spans every setting it ever ran on (it is restarted
     # in place), so the old credentials are redacted from errors too.
-    for key in ("auth_key", "proxy_auth"):
-        if old := _read_secret_file(current, key):
-            password = old.rstrip("@").partition(":")[2]  # proxy_auth is user:password@, URL-encoded
-            secrets = [*secrets, old, password, unquote(password)]
+    if old := _read_secret_file(current, "auth_key"):
+        secrets = [*secrets, old]
+    if old := _read_secret_file(current, "proxy_auth"):
+        secrets = [*secrets, *_auth_secrets(old)]
     if running and _read_secret_file(current, "settings") == files["settings"]:
         with contextlib.suppress(ProxyTunnelError):
             return current, _wait_ready(current)
@@ -867,14 +883,25 @@ def _in_place(
             ) from None
     else:
         previous = None
-    try:
-        if running:
+    if running:
+        with contextlib.suppress(APIError):
             current.stop(timeout=SIDECAR_STOP_SECONDS)
-        if not current.put_archive(SECRET_DIR, _secret_tar({key: files.get(key, "") for key in SECRET_KEYS})):
-            raise _Broken("Docker did not take the settings files")
-        current.start()
-    except (APIError, _Broken) as exc:
-        raise _Broken(redact(str(exc), secrets)) from None
+    # Replacing the tunnel recreates every copy in it (a new device to each
+    # provider), so a Docker error gets a second try first: only a container
+    # Docker refuses twice is taken for broken.
+    for attempt in (1, 2):
+        try:
+            if not current.put_archive(SECRET_DIR, _secret_tar({key: files.get(key, "") for key in SECRET_KEYS})):
+                raise _Broken("Docker did not take the settings files")
+            current.start()
+            break
+        except (APIError, _Broken) as exc:
+            if attempt == 2:
+                raise _Broken(redact(str(exc), secrets)) from None
+            logger.warning(
+                "Docker refused the tunnel %s once (%s); trying again", current.name, redact(str(exc), secrets)
+            )
+            time.sleep(2)
     try:
         exit_info = _wait_ready(current)
     except ProxyTunnelError as exc:
@@ -1025,6 +1052,10 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
             name=name,
         )
     except Exception:
+        # docker-py's run leaves the container created when only its start
+        # fails; the heartbeat would start it later, outside the owner's view.
+        if (left := _get(client, name)) is not None and _is_ours(left, slug, proxy_id):
+            _remove_quietly(left, 2)
         _drop_if_empty(client, tunnel)
         raise
     return {"container_id": container_id, "tunnel_id": tunnel.id, "exit": exit_info}
@@ -1358,8 +1389,27 @@ def _finish_stale_staged(client: Any, staged: Any) -> None:
         lock.release()
 
 
+def _drop_empty_shared(client: Any, tunnel: Any) -> None:
+    """Remove a shared tunnel with no copy, under its proxy's lock (skipped when held)."""
+    pid = _labels(tunnel).get(LABEL_PROXY, "")
+    if not pid.isdigit():
+        return
+    lock = _deploy_lock(int(pid))
+    if not lock.acquire(blocking=False):
+        return
+    try:
+        if dropped := _drop_if_empty(client, _get(client, str(tunnel.name))):
+            logger.info("Removed %s: no copy lives in it", ", ".join(dropped))
+    except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
+        logger.warning("Could not remove the empty tunnel %s: %s", tunnel.name, exc)
+    finally:
+        lock.release()
+
+
 def _read_all_files(container: Any) -> dict[str, str]:
-    return {key: _read_secret_file(container, key) or "" for key in SECRET_KEYS if key != "settings"}
+    """Every settings file but the digest. A file that is not there reads as
+    empty; any other read error raises, so a migration never runs on half of them."""
+    return {key: _read_secret_file_or_raise(container, key) or "" for key in SECRET_KEYS if key != "settings"}
 
 
 def migrate_legacy() -> list[str]:
@@ -1370,7 +1420,8 @@ def migrate_legacy() -> list[str]:
     files, read back; nothing is asked of the UI). A proxy with neither is left
     alone: its legacy pairs keep working and move on their next start. Any
     failure leaves the pairs not moved yet as they are: each one is valid and
-    fails closed. Copies whose legacy tunnel was stopped stay stopped.
+    fails closed. A pair whose legacy tunnel is stopped (and did not fail to
+    start) is left as it is, and moves on its next start.
     Running it again does nothing once every pair has moved.
     """
     client = orchestrator._get_client()
@@ -1412,16 +1463,21 @@ def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any]) -> list[str]:
     shared, _ = ready
     moved: list[str] = []
     for tunnel in tunnels:
+        try:
+            tunnel.reload()  # read under the proxy's lock, not from the listing
+        except NotFound:
+            continue
         was_up = getattr(tunnel, "status", "") in _LIVE
-        # Older workers stopped a pair by stopping its tunnel, which Docker
-        # (unless-stopped) then leaves down. One Docker tried to start and could
-        # not (State.Error, e.g. after a daemon restart) was not stopped by anyone.
+        # A pair down because Docker could not start its tunnel (State.Error,
+        # e.g. after a daemon restart) moves, unheld, so the heartbeat starts it
+        # in the shared tunnel. Any other stopped pair may be one the owner
+        # stopped or one Docker has yet to restart: nothing tells them apart, so
+        # it stays as it is, valid and closed, and moves on its next start.
         failed = bool(((getattr(tunnel, "attrs", None) or {}).get("State") or {}).get("Error"))
+        if not was_up and not failed:
+            continue
         with _swap_lock:
             for member in _members(client, tunnel):
-                if not was_up and not failed:
-                    # The owner or the cap stopped this pair: it stays stopped.
-                    _set_held(str(member.name), True, strict=True)
                 clone = _clone_into(client, member, shared, start=was_up and getattr(member, "status", "") in _LIVE)
                 moved.append(str(clone.name))
             _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
@@ -1582,7 +1638,12 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         if tunnel is not None:
             used.add(tunnel.id)
         pairs[(labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, ""))] = (earner, tunnel)
-    for tunnel in tunnels.values():
+    for tunnel in list(tunnels.values()):
+        # A shared tunnel no copy lives in holds the proxy login (and a tailnet
+        # device) for nothing. Not a young one, which a deploy may be filling.
+        if tunnel.id not in used and _is_shared(tunnel) and _age_seconds(tunnel) >= STAGED_STALE_SECONDS:
+            _drop_empty_shared(client, tunnel)
+            continue
         # A legacy tunnel whose earner is gone still reports, so the UI sees it.
         if tunnel.id not in used and not _is_shared(tunnel):
             labels = _labels(tunnel)
