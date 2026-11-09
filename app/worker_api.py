@@ -1078,6 +1078,12 @@ async def lifespan(app: FastAPI):
         await _guard_once()
         _guard_task = asyncio.create_task(_guard_loop())
     if docker_mode == "direct":
+        # A proxied copy this worker was moving into another tunnel when it
+        # stopped: finished or put back before anything else looks at it.
+        try:
+            await asyncio.to_thread(proxy_tunnel.recover_moves)
+        except Exception as exc:  # noqa: BLE001 - never block the start on it; the heartbeat tries again
+            logger.warning("Could not look for half-done proxied copy moves: %s", exc)
         # A proxy Test tunnel this worker left behind when it stopped mid-test.
         try:
             if swept := await asyncio.to_thread(proxy_tunnel.sweep_test_tunnels):

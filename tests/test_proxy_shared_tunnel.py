@@ -26,7 +26,7 @@ import pytest  # noqa: E402
 
 pytest.importorskip("docker")
 
-from docker.errors import NotFound  # noqa: E402
+from docker.errors import APIError, NotFound  # noqa: E402
 
 from app import orchestrator, proxies, proxy_tunnel  # noqa: E402
 from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_SERVICE  # noqa: E402
@@ -85,6 +85,8 @@ class FakeContainer:
 
     def start(self):
         self._alive()
+        if self.id in self._d.broken:
+            raise APIError("500 Server Error: get: no such volume")
         joined = self.attrs["HostConfig"]["NetworkMode"]
         if joined.startswith("container:"):
             host = self._d.by_id.get(joined.removeprefix("container:"))
@@ -118,6 +120,10 @@ class FakeContainer:
 
     # --- the tunnel's secret volume and ready file
     def put_archive(self, path, blob):
+        if self.id in self._d.broken:
+            # What Docker 29 answers for a container a daemon restart left
+            # with a Binds entry that has no source.
+            raise APIError(f'500 Server Error: /containers/{self.id}/archive ("get: no such volume")')
         with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
             for m in tar.getmembers():
                 self.files[m.name] = tar.extractfile(m).read().decode()
@@ -150,6 +156,7 @@ class FakeDocker:
         self.by_id: dict[str, FakeContainer] = {}
         self.events: list[tuple[str, str]] = []
         self.broken_auth: set[str] = set()  # proxy_auth values whose tunnel never gets an exit
+        self.broken: set[str] = set()  # container ids Docker can no longer write to or start
         self.containers = self
         self.images = self
 
@@ -288,45 +295,75 @@ class TestOneTunnelPerProxy:
         _deploy("honeygain", proxy_id=4)
         assert sorted(t.name for t in docker.tunnels()) == ["cashpilot-tunnel-p3", "cashpilot-tunnel-p4"]
 
-    def test_new_settings_replace_the_tunnel_and_recreate_every_copy_inside_the_new_one(self, docker):
+    def test_new_settings_restart_the_tunnel_in_place_and_recreate_no_copy(self, docker):
+        # Earners keep their device id in their writable layer: a recreated copy
+        # is a new device to its provider, so an edit must never recreate one.
         _deploy("honeygain")
-        old = docker.named("cashpilot-tunnel-p3")
-        old_earner = docker.named("cashpilot-honeygain-p3")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named("cashpilot-honeygain-p3")
+        starts = earner.starts
         _deploy("earnfm", _socks(password=NEW_PASSWORD))
-        (tunnel,) = docker.tunnels()
-        assert tunnel.id != old.id and tunnel.name == "cashpilot-tunnel-p3"
-        assert old.id not in docker.by_id
-        moved = docker.named("cashpilot-honeygain-p3")
-        assert moved is not old_earner and moved.status == "running"
-        assert moved.attrs["HostConfig"]["NetworkMode"] == f"container:{tunnel.id}"
-        # Cloned from what Docker recorded: same image, env, labels, hardening.
-        assert moved.kw["image"] == "honeygain/honeygain:1" and moved.kw["environment"] == ["K=honeygain"]
-        assert moved.labels[LABEL_PROXY] == "3" and moved.kw["cap_drop"] == ["ALL"]
-        assert moved.kw["restart_policy"] == {"Name": "no"} and moved.kw["privileged"] is False
-        assert "hostname" not in moved.kw
+        assert docker.tunnels() == [tunnel] and tunnel.status == "running"
         assert tunnel.files["proxy_auth"] == f"u1:{NEW_PASSWORD}@"
-        # The new tunnel was ready before the old one went.
-        events = [e for e in docker.events if e[1] in ("cashpilot-tunnel-p3-next", "cashpilot-tunnel-p3")]
-        assert events.index(("create", "cashpilot-tunnel-p3-next")) < events.index(("remove", "cashpilot-tunnel-p3"))
+        assert docker.named("cashpilot-honeygain-p3") is earner
+        # Restarted into the tunnel's new namespace, not left in the old one.
+        assert earner.status == "running" and earner.starts == starts + 1
+        assert earner.attrs["State"]["StartedAt"] > tunnel.attrs["State"]["StartedAt"]
+        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
+        # The new settings proved an exit in a throwaway tunnel first, which is gone.
+        created = [n for op, n in docker.events if op == "create"]
+        assert any(n.startswith("cashpilot-tunnel-test-") for n in created)
+        assert [c.name for c in docker.by_id.values() if "tunnel-test" in c.name] == []
+        assert ("create", "cashpilot-honeygain-p3-next") not in docker.events
 
-    def test_a_new_tunnel_image_replaces_the_tunnel(self, docker):
+    def test_new_settings_that_fail_in_the_tunnel_after_the_test_put_the_old_ones_back(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        docker.broken_auth.add(f"u1:{NEW_PASSWORD}@")
+        with (
+            patch.object(proxy_tunnel, "_prove"),
+            pytest.raises(proxy_tunnel.ProxyTunnelError) as err,
+        ):
+            _deploy("earnfm", _socks(password=NEW_PASSWORD))
+        assert NEW_PASSWORD not in str(err.value)
+        assert docker.tunnels() == [tunnel] and tunnel.status == "running"
+        assert tunnel.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", PASSWORD)
+        assert docker.named("cashpilot-honeygain-p3").status == "running"
+
+    def test_a_new_tunnel_image_never_recreates_another_copy(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named("cashpilot-honeygain-p3")
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+            _deploy("earnfm")
+            proxy_tunnel.stop("honeygain", 3)
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert docker.tunnels() == [tunnel] and tunnel.kw["image"] == IMAGE
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
+
+    def test_a_new_tunnel_image_is_taken_by_a_redeploy_with_no_other_copy(self, docker):
         _deploy("honeygain")
         old = docker.named("cashpilot-tunnel-p3")
         with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
-            _deploy("earnfm")
+            _deploy("honeygain")
         (tunnel,) = docker.tunnels()
         assert tunnel.id != old.id and tunnel.kw["image"] == NEW_IMAGE
-        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
+        assert _member_ids(docker, tunnel) == ["cashpilot-honeygain-p3"]
 
     def test_a_tunnel_that_cannot_start_costs_the_running_copies_nothing(self, docker):
         _deploy("honeygain")
         old = docker.named("cashpilot-tunnel-p3")
         earner = docker.named("cashpilot-honeygain-p3")
+        starts = (old.starts, earner.starts)
         docker.broken_auth.add("u1:wrong@")
         with pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
             _deploy("earnfm", _socks(password="wrong"))
         assert "wrong" not in str(err.value)
         assert docker.tunnels() == [old] and old.status == "running"
+        assert (
+            old.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", PASSWORD) and (old.starts, earner.starts) == starts
+        )
         assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
         assert docker.named("cashpilot-earnfm-p3") is None
 
@@ -505,17 +542,19 @@ class TestStopStartRemove:
         assert set(tunnel.files) == set(proxy_tunnel.SECRET_KEYS)
         assert tunnel.files["auth_key"] == "" and tunnel.files["own_ip"] == "192.0.2.1"
 
-    def test_start_with_an_edited_proxy_while_others_run_replaces_the_tunnel_without_a_gap(self, docker):
+    def test_start_with_an_edited_proxy_while_others_run_keeps_every_container(self, docker):
         _deploy("honeygain")
         _deploy("earnfm")
         proxy_tunnel.stop("honeygain", 3)
-        old = docker.named("cashpilot-tunnel-p3")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        before = {c.id for c in docker.by_id.values()}
         proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
-        (tunnel,) = docker.tunnels()
-        assert tunnel.id != old.id
-        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
-        assert docker.named("cashpilot-earnfm-p3").status == "running"
-        assert docker.named("cashpilot-honeygain-p3").status == "running"
+        assert {c.id for c in docker.by_id.values()} == before
+        assert tunnel.files["proxy_auth"] == f"u1:{NEW_PASSWORD}@"
+        for slug in ("earnfm", "honeygain"):
+            earner = docker.named(f"cashpilot-{slug}-p3")
+            assert earner.status == "running"
+            assert earner.attrs["State"]["StartedAt"] > tunnel.attrs["State"]["StartedAt"]
 
     def test_start_without_settings_uses_the_tunnel_as_it_is(self, docker):
         _deploy("honeygain")
@@ -641,10 +680,12 @@ class TestHeartbeat:
         _deploy("honeygain")
         tunnel = docker.named("cashpilot-tunnel-p3")
         tunnel.name = "cashpilot-tunnel-p3-next"  # a swap that failed after moving the copy
-        with patch.object(orchestrator, "_collect_stats_bulk", return_value={}):
-            proxy_tunnel.status()
         assert proxy_tunnel.sweep_test_tunnels() == []
         assert tunnel.id in docker.by_id
+        # The heartbeat finishes that change instead of sweeping it.
+        with patch.object(orchestrator, "_collect_stats_bulk", return_value={}):
+            proxy_tunnel.status()
+        assert tunnel.id in docker.by_id and tunnel.name == "cashpilot-tunnel-p3"
 
 
 # ---------------------------------------------------------------------------
@@ -771,3 +812,203 @@ class TestHeldMarker:
             proxy_tunnel._set_held("a", False)
             assert proxy_tunnel.held() == {"b"}
             assert (tmp_path / "held").read_text() == "b\n"
+
+
+# ---------------------------------------------------------------------------
+# A daemon restart, and moves that fail or that a worker dies in
+# ---------------------------------------------------------------------------
+
+
+def _heartbeat():
+    with patch.object(orchestrator, "_collect_stats_bulk", return_value={}):
+        return proxy_tunnel.status()
+
+
+def _break_tunnel(docker, tunnel):
+    """A daemon restart that left the tunnel unable to start (the Binds form)."""
+    for c in docker.by_id.values():
+        c.status = "exited"
+    docker.broken.add(tunnel.id)
+
+
+class TestBrokenTunnel:
+    def test_the_secret_volume_is_a_mount_not_a_bind_with_no_source(self, docker):
+        kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-p3", proxy_tunnel.SHARED_SLUG, 3, None, "tunnel-p3")
+        assert "volumes" not in kw
+        (mount,) = kw["mounts"]
+        assert mount["Type"] == "volume" and mount["Target"] == proxy_tunnel.SECRET_DIR
+        assert mount.get("Source") in (None, "")
+
+    def test_a_start_replaces_a_tunnel_docker_cannot_start_and_keeps_held_copies_stopped(self, docker):
+        for slug in ("honeygain", "earnfm", "repocket"):
+            _deploy(slug)
+        proxy_tunnel.stop("repocket", 3)
+        old = docker.named("cashpilot-tunnel-p3")
+        _break_tunnel(docker, old)
+        proxy_tunnel.start("honeygain", 3, _socks(), None)
+        (tunnel,) = docker.tunnels()
+        assert tunnel.id != old.id and tunnel.name == "cashpilot-tunnel-p3" and tunnel.status == "running"
+        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3", "cashpilot-repocket-p3"]
+        moved = docker.named("cashpilot-honeygain-p3")
+        assert moved.status == "running"
+        # Recreated from what Docker recorded, hardening included.
+        assert moved.kw["image"] == "honeygain/honeygain:1" and moved.kw["environment"] == ["K=honeygain"]
+        assert moved.kw["cap_drop"] == ["ALL"] and moved.kw["privileged"] is False
+        assert moved.kw["restart_policy"] == {"Name": "no"} and moved.labels[LABEL_PROXY] == "3"
+        _heartbeat()
+        assert docker.named("cashpilot-earnfm-p3").status == "running"
+        assert docker.named("cashpilot-repocket-p3").status != "running"
+        assert proxy_tunnel.held() == {"cashpilot-repocket-p3"}
+
+    def test_a_redeploy_replaces_a_tunnel_docker_cannot_start(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        old = docker.named("cashpilot-tunnel-p3")
+        _break_tunnel(docker, old)
+        _deploy("earnfm")
+        (tunnel,) = docker.tunnels()
+        assert tunnel.id != old.id
+        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
+
+
+def _three_copies_on_a_broken_tunnel(docker):
+    for slug in ("m1", "m2", "m3"):
+        _deploy(slug)
+    old = docker.named("cashpilot-tunnel-p3")
+    old.stop()
+    docker.broken.add(old.id)
+    return old
+
+
+def _rename_fails_for(name, exc):
+    real = FakeContainer.rename
+
+    def rename(self, new):
+        if new == name and self.name.endswith("-next"):
+            raise exc
+        return real(self, new)
+
+    return patch.object(FakeContainer, "rename", rename)
+
+
+class TestMoves:
+    def test_a_worker_that_dies_mid_move_loses_no_copy(self, docker):
+        _three_copies_on_a_broken_tunnel(docker)
+        with _rename_fails_for("cashpilot-m3-p3", SystemExit("worker killed")), pytest.raises(SystemExit):
+            proxy_tunnel.start("m1", 3, _socks(), None)
+        names = {c.name for c in docker.by_id.values()}
+        # Nothing of m3 was removed: its container is aside, its clone staged.
+        assert {"cashpilot-m3-p3-moving", "cashpilot-m3-p3-next"} <= names
+        # The next heartbeat (the change is past its timeout) puts it all together.
+        _heartbeat()
+        (tunnel,) = docker.tunnels()
+        assert tunnel.name == "cashpilot-tunnel-p3"
+        assert _member_ids(docker, tunnel) == ["cashpilot-m1-p3", "cashpilot-m2-p3", "cashpilot-m3-p3"]
+        assert not [c.name for c in docker.by_id.values() if c.name.endswith(("-next", "-moving"))]
+        _heartbeat()
+        assert {docker.named(f"cashpilot-{s}-p3").status for s in ("m1", "m2", "m3")} == {"running"}
+
+    def test_a_young_half_move_holds_the_staged_tunnel_until_it_is_settled(self, docker):
+        # Right after a worker restart the clone is young: recover_moves leaves
+        # it, and the staged tunnel must wait too, or the copy's container aside
+        # would be cloned as if it were a copy of its own.
+        _three_copies_on_a_broken_tunnel(docker)
+        with _rename_fails_for("cashpilot-m3-p3", SystemExit("worker killed")), pytest.raises(SystemExit):
+            proxy_tunnel.start("m1", 3, _socks(), None)
+        clone = docker.named("cashpilot-m3-p3-next")
+        clone.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        before = sorted(c.name for c in docker.by_id.values())
+        _heartbeat()
+        assert sorted(c.name for c in docker.by_id.values()) == before
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="still being moved"):
+            proxy_tunnel.start("m1", 3, _socks(), None)
+        clone.attrs["Created"] = (datetime.now(UTC) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        _heartbeat()
+        (tunnel,) = docker.tunnels()
+        assert tunnel.name == "cashpilot-tunnel-p3"
+        assert _member_ids(docker, tunnel) == ["cashpilot-m1-p3", "cashpilot-m2-p3", "cashpilot-m3-p3"]
+
+    def test_recover_moves_reads_the_stale_age_when_it_runs(self, docker):
+        _deploy("a")
+        a = docker.named("cashpilot-a-p3")
+        a.rename("cashpilot-a-p3-moving")
+        clone = docker.create(name="cashpilot-a-p3-next", image="a/a:1", labels=dict(a.labels))
+        clone.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        with patch.object(proxy_tunnel, "STAGED_STALE_SECONDS", 0):
+            assert proxy_tunnel.recover_moves() == ["restored cashpilot-a-p3"]
+
+    def test_a_failed_move_puts_the_copy_back_and_leaves_nothing_in_the_way(self, docker):
+        old = _three_copies_on_a_broken_tunnel(docker)
+        with _rename_fails_for("cashpilot-m3-p3", RuntimeError("daemon timeout")), pytest.raises(RuntimeError):
+            proxy_tunnel.start("m1", 3, _socks(), None)
+        # Every copy back in the old tunnel under its own name; the staged one gone.
+        assert docker.tunnels() == [old]
+        assert _member_ids(docker, old) == ["cashpilot-m1-p3", "cashpilot-m2-p3", "cashpilot-m3-p3"]
+        # And the next start is not blocked by a half-done change.
+        proxy_tunnel.start("m1", 3, _socks(), None)
+        (tunnel,) = docker.tunnels()
+        assert _member_ids(docker, tunnel) == ["cashpilot-m1-p3", "cashpilot-m2-p3", "cashpilot-m3-p3"]
+
+    def test_recover_moves_settles_each_half_done_state(self, docker):
+        _deploy("a")
+        _deploy("b")
+        _deploy("c")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        # a: the clone holds the name, the original is still aside.
+        a = docker.named("cashpilot-a-p3")
+        twin = docker.create(
+            name="cashpilot-a-p3-moving", image="a/a:1", labels=dict(a.labels), network_mode=f"container:{tunnel.id}"
+        )
+        # b: aside, with a half-made clone and the name free.
+        b = docker.named("cashpilot-b-p3")
+        b.rename("cashpilot-b-p3-moving")
+        docker.create(
+            name="cashpilot-b-p3-next", image="b/b:1", labels=dict(b.labels), network_mode=f"container:{tunnel.id}"
+        )
+        # c: only a clone, the name free.
+        c = docker.named("cashpilot-c-p3")
+        c.rename("cashpilot-c-p3-next")
+        assert sorted(proxy_tunnel.recover_moves()) == [
+            "finished cashpilot-c-p3",
+            "removed cashpilot-a-p3-moving",
+            "restored cashpilot-b-p3",
+        ]
+        assert twin.id not in docker.by_id
+        assert docker.named("cashpilot-b-p3") is b and docker.named("cashpilot-c-p3") is c
+        assert not [x.name for x in docker.by_id.values() if x.name.endswith(("-next", "-moving"))]
+
+    def test_a_young_clone_belongs_to_a_move_still_running(self, docker):
+        _deploy("a")
+        a = docker.named("cashpilot-a-p3")
+        a.rename("cashpilot-a-p3-moving")
+        clone = docker.create(name="cashpilot-a-p3-next", image="a/a:1", labels=dict(a.labels))
+        clone.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        assert proxy_tunnel.recover_moves() == []
+        assert clone.id in docker.by_id and a.name == "cashpilot-a-p3-moving"
+
+    def test_the_heartbeat_never_sweeps_a_staged_tunnel_only_a_staged_copy_lives_in(self, docker):
+        _deploy("m1")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        staged = docker.create(
+            name="cashpilot-tunnel-p3-next",
+            image=IMAGE,
+            labels={
+                LABEL_MANAGED: "true",
+                LABEL_ROLE: "tunnel",
+                LABEL_SERVICE: proxy_tunnel.SHARED_SLUG,
+                LABEL_PROXY: "3",
+            },
+        )
+        staged.start()
+        m2 = docker.create(
+            name="cashpilot-m2-p3-next",
+            image="m2/m2:1",
+            labels={LABEL_MANAGED: "true", LABEL_SERVICE: "m2", LABEL_PROXY: "3"},
+            network_mode=f"container:{staged.id}",
+        )
+        _heartbeat()
+        assert m2.id in docker.by_id and m2.name == "cashpilot-m2-p3"
+        # The change was finished instead: every copy in one tunnel, under its name.
+        (only,) = docker.tunnels()
+        assert only is staged and staged.name == "cashpilot-tunnel-p3" and tunnel.id not in docker.by_id
+        assert _member_ids(docker, staged) == ["cashpilot-m1-p3", "cashpilot-m2-p3"]

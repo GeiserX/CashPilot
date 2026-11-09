@@ -177,8 +177,11 @@ class TestSidecar:
         assert kw["read_only"] is True
         assert "no-new-privileges:true" in kw["security_opt"]
         assert kw["network"] == "cp-isolated"
-        assert kw["volumes"] == [proxy_tunnel.SECRET_DIR]
-        assert not any("docker.sock" in str(v) for v in kw["volumes"])
+        # An anonymous volume, as a Mount: no host path, and it survives a daemon restart.
+        assert "volumes" not in kw
+        assert [(m["Type"], m["Target"], m.get("Source")) for m in kw["mounts"]] == [
+            ("volume", proxy_tunnel.SECRET_DIR, None)
+        ]
         assert "environment" not in kw and "command" not in kw
         assert kw["log_config"] == {"type": "json-file", "config": {"max-size": "1m", "max-file": "2"}}
 

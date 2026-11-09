@@ -53,6 +53,7 @@ from typing import Any
 from urllib.parse import quote
 
 from docker.errors import APIError, NotFound
+from docker.types import Mount
 
 from app import orchestrator, version
 from app.constants import (
@@ -81,6 +82,10 @@ _FLOATING_TAGS = {"", "latest", "stable", "edge", "main", "master"}
 #: to the copy that runs now, and gives it the final name only once the old pair
 #: is gone. The heartbeat (status()) never reports a staged sidecar.
 STAGED_SUFFIX = "-next"
+#: An earner being moved into another tunnel keeps its container under its name
+#: plus this suffix until its clone runs (see _clone_into), so a worker that dies
+#: midway never leaves a copy with no container at all.
+MOVING_SUFFIX = "-moving"
 # deploy() swapping the old pair for the staged one, and status(), take turns: a
 # heartbeat must not start an earner that is being removed, or read a half swap.
 _swap_lock = threading.Lock()
@@ -366,6 +371,11 @@ def _secret_values(proxy: dict[str, Any]) -> list[str]:
 TEST_SLUG = "proxy-test"
 
 
+def secret_mount() -> Mount:
+    """The tunnel's settings volume: anonymous, removed with the tunnel."""
+    return Mount(SECRET_DIR, None, type="volume")
+
+
 def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | None, hostname: str) -> dict[str, Any]:
     """Everything the sidecar is created with. No secret appears here.
 
@@ -398,7 +408,11 @@ def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | No
         "pids_limit": 64,
         "read_only": True,
         "tmpfs": {"/run": "size=8m,mode=0755"},
-        "volumes": [SECRET_DIR],
+        # An anonymous volume as a Mount, never as volumes=[SECRET_DIR]: docker-py
+        # writes that as a Binds entry with no source, and Docker 29 brings such
+        # a container back from a daemon restart as "get: no such volume", for
+        # good. The Mount form comes back with its files.
+        "mounts": [secret_mount()],
         "init": True,
         "sysctls": {
             "net.ipv6.conf.all.disable_ipv6": "1",
@@ -599,21 +613,29 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
 
     A container's network namespace is fixed when it is created, so moving an
     earner to another tunnel means a new container. The worker rebuilds it from
-    ``inspect``, so it needs neither the UI nor the catalog. The clone is
-    created first under a staged name: if Docker refuses it, the member is
-    left as it was. ``start`` defaults to whether the member was running.
+    ``inspect``, so it needs neither the UI nor the catalog. ``start``
+    defaults to whether the member was running.
+
+    Nothing is removed before its replacement holds the name: the clone is
+    created under a staged name, the member is renamed aside (MOVING_SUFFIX),
+    the clone takes the name and starts, and only then is the member removed.
+    A failure on the way puts the member back as it was. A worker that dies
+    on the way leaves both, and recover_moves() finishes or undoes the move.
     """
     member.reload()
     attrs = member.attrs or {}
     cfg = attrs.get("Config") or {}
     hc = attrs.get("HostConfig") or {}
     name = str(member.name)
+    service = _labels(member).get(LABEL_SERVICE)
     was_running = getattr(member, "status", "") in _LIVE
     staged = name + STAGED_SUFFIX
-    if (leftover := _get(client, staged)) is not None:
-        if not (_is_earner(leftover) and _labels(leftover).get(LABEL_SERVICE) == _labels(member).get(LABEL_SERVICE)):
-            raise ProxyTunnelError(f"A container named {staged} that CashPilot did not create is in the way")
-        _remove_quietly(leftover, 2)
+    aside = name + MOVING_SUFFIX
+    for leftover_name in (staged, aside):
+        if (leftover := _get(client, leftover_name)) is not None:
+            if not (_is_earner(leftover) and _labels(leftover).get(LABEL_SERVICE) == service):
+                raise ProxyTunnelError(f"A container named {leftover_name} that CashPilot did not create is in the way")
+            _remove_quietly(leftover, 2)
     optional = {
         "entrypoint": cfg.get("Entrypoint"),
         "command": cfg.get("Cmd"),
@@ -646,18 +668,38 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
     )
     try:
         with contextlib.suppress(Exception):
-            member.stop(timeout=orchestrator._get_stop_timeout(_labels(member).get(LABEL_SERVICE, "")))
+            member.stop(timeout=orchestrator._get_stop_timeout(service or ""))
+        member.rename(aside)
+    except Exception:
+        _remove_quietly(clone, 2)
+        _put_back(member, name, was_running)
+        raise
+    try:
+        clone.rename(name)
+        if start if start is not None else was_running:
+            clone.start()
+    except Exception:
+        _remove_quietly(clone, 2)
+        _put_back(member, name, was_running)
+        raise
+    try:
         member.remove(force=True, v=True)
     except NotFound:
         pass
-    except Exception:
-        _remove_quietly(clone, 2)
-        raise
-    clone.rename(name)
-    if start if start is not None else was_running:
-        clone.start()
+    except Exception as exc:  # noqa: BLE001 - a leftover only: recover_moves removes it
+        logger.warning("Could not remove %s after it moved: %s", aside, exc)
     clone.reload()
     return clone
+
+
+def _put_back(member: Any, name: str, was_running: bool) -> None:
+    """Give a member whose move failed its name back, running if it ran."""
+    with contextlib.suppress(Exception):
+        member.reload()
+        if str(member.name) != name:
+            member.rename(name)
+        if was_running and getattr(member, "status", "") not in _LIVE:
+            member.start()
 
 
 def _move_members(client: Any, old: Any, new: Any) -> None:
@@ -667,9 +709,14 @@ def _move_members(client: Any, old: Any, new: Any) -> None:
         for member in _members(client, old):
             moved.append(_clone_into(client, member, new))
     except Exception:
+        with contextlib.suppress(Exception):
+            old.reload()
+        back_up = getattr(old, "status", "") == "running"
         for clone in moved:
+            # Started again only where they can run: a tunnel Docker could not
+            # start keeps them stopped, under their own names, for the next start.
             with contextlib.suppress(Exception):
-                _clone_into(client, clone, old)
+                _clone_into(client, clone, old, start=back_up and getattr(clone, "status", "") in _LIVE)
         raise
 
 
@@ -683,20 +730,36 @@ def _shared_ready(client: Any, proxy_id: int) -> tuple[Any, dict[str, Any]] | No
 
 
 def _ensure_tunnel(
-    client: Any, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str | None, *, files: dict[str, str] | None = None
+    client: Any,
+    proxy_id: int,
+    proxy: dict[str, Any] | None,
+    own_ip: str | None,
+    *,
+    files: dict[str, str] | None = None,
+    upgrade: bool = False,
 ) -> tuple[Any, dict[str, Any]]:
     """The proxy's shared tunnel, running on the given settings and ready.
 
-    * running on the same settings and image: used as it is;
-    * stopped, same image: the settings are written over and it is started
-      again in place. Its earners keep their NetworkMode (the container id does
-      not change) and are restarted into the new namespace by the caller or
-      the heartbeat;
-    * otherwise (new settings while running, a new tunnel image, none yet): a
-      new tunnel starts under a staged name and proves its exit while the old
-      one keeps carrying its earners. Only then is every earner recreated
-      inside the new one, and the old tunnel removed. A tunnel that cannot
-      start therefore costs the running copies nothing.
+    Its earners are never recreated for a settings change. A container's state
+    lives in its writable layer (proxied copies have no volumes), and several
+    earners keep their device id there, so a recreated copy is a new device to
+    its provider. So:
+
+    * running on the same settings: used as it is; restarted in place when it
+      has no exit;
+    * running on other settings: the new settings first prove an exit in a
+      throwaway Test tunnel, which costs the running copies nothing when it
+      fails. Then they are written into this tunnel, which restarts in place;
+    * stopped: the settings are written over and it starts in place.
+
+    In place means the same container id, so every earner keeps its
+    NetworkMode and is restarted into the new namespace (here, by the caller
+    or by the heartbeat). A new tunnel image does not replace a tunnel that
+    copies live in; ``upgrade`` (a deploy with no other copy in it) does.
+
+    A new tunnel under a staged name, with every earner recreated inside it,
+    is the way only when there is none yet, for an upgrade, or when Docker
+    cannot start this one at all (its container is broken).
     """
     label = shared_label(proxy_id)
     if files is None:
@@ -704,32 +767,23 @@ def _ensure_tunnel(
             files = secret_files(proxy or {}, own_ip, label)
         except ProxyTunnelError as exc:
             raise ProxyTunnelError(redact(str(exc), _secret_values(proxy or {})), exc.status_code) from None
+    secrets = _secret_values(proxy or {}) + [files.get("auth_key", ""), files.get("proxy_auth", "")]
     image = tunnel_image()
     final = shared_tunnel_name(proxy_id)
+    staged = final + STAGED_SUFFIX
     current = _get(client, final)
     if current is not None and not _is_shared(current, proxy_id):
         raise ProxyTunnelError(f"A container named {final} that CashPilot did not create is in the way")
-    if current is not None and _image_of(current) == image:
-        current.reload()
-        same = _read_secret_file(current, "settings") == files["settings"]
-        if current.status == "running" and same:
-            with contextlib.suppress(ProxyTunnelError):
-                return current, _wait_ready(current)
-            logger.warning("The tunnel of proxy %s runs but has no exit; replacing it", proxy_id)
-        elif current.status != "running":
-            full = {key: files.get(key, "") for key in SECRET_KEYS}
-            if not current.put_archive(SECRET_DIR, _secret_tar(full)):
-                raise ProxyTunnelError("Could not hand the proxy settings to the tunnel container")
-            current.start()
-            try:
-                return current, _wait_ready(current)
-            except ProxyTunnelError as exc:
-                # Down, not leaking: its earners have no way out. Stopped so it
-                # does not hold a tailnet device or a proxy session for nothing.
-                with contextlib.suppress(Exception):
-                    current.stop(timeout=SIDECAR_STOP_SECONDS)
-                raise ProxyTunnelError(redact(str(exc), _secret_values(proxy or {})), exc.status_code) from None
-    staged = final + STAGED_SUFFIX
+    leftover = _get(client, staged)
+    if _is_shared(leftover, proxy_id) and _age_seconds(leftover) >= STAGED_STALE_SECONDS and _members(client, leftover):
+        # A change that died after it began moving copies: finish it first.
+        with _swap_lock:
+            current = _finish_staged(client, leftover, current, final)
+    if current is not None and (_image_of(current) == image or not upgrade):
+        try:
+            return _in_place(client, current, proxy, own_ip, files, secrets)
+        except _Broken as exc:
+            logger.warning("The tunnel of proxy %s cannot start in place (%s); replacing it", proxy_id, exc)
     # Left by a deploy that died midway, on this name only if it is ours. A young
     # one can belong to a deploy another worker on this daemon is running.
     if (leftover := _get(client, staged)) is not None:
@@ -739,11 +793,6 @@ def _ensure_tunnel(
             raise ProxyTunnelError(
                 f"Another change to this proxy's tunnel started {int(_age_seconds(leftover))} s ago and may still "
                 f"be running. Try again in a few minutes."
-            )
-        if _members(client, leftover):
-            raise ProxyTunnelError(
-                f"{staged} still carries copies from a change that failed halfway. Remove and add those copies "
-                f"again, or remove {staged} by hand."
             )
         _remove_quietly(leftover, SIDECAR_STOP_SECONDS)
     new, exit_info = start_sidecar(
@@ -760,6 +809,112 @@ def _ensure_tunnel(
             _remove_quietly(new, SIDECAR_STOP_SECONDS)
         raise
     return new, exit_info
+
+
+class _Broken(Exception):
+    """Docker cannot write to or start this tunnel container at all."""
+
+
+def _in_place(
+    client: Any,
+    current: Any,
+    proxy: dict[str, Any] | None,
+    own_ip: str | None,
+    files: dict[str, str],
+    secrets: list[str],
+) -> tuple[Any, dict[str, Any]]:
+    """Bring ``current`` up on ``files`` without replacing the container. See _ensure_tunnel.
+
+    Raises _Broken when Docker refuses the container itself (a daemon restart
+    can leave one that cannot start), so the caller replaces it.
+    """
+    current.reload()
+    running = current.status == "running"
+    if running and _read_secret_file(current, "settings") == files["settings"]:
+        with contextlib.suppress(ProxyTunnelError):
+            return current, _wait_ready(current)
+        logger.warning("The tunnel %s runs but has no exit; restarting it", current.name)
+        previous = None
+    elif running:
+        _prove(client, proxy, own_ip, files)
+        previous = {key: _read_secret_file(current, key) or "" for key in SECRET_KEYS}
+    else:
+        previous = None
+    try:
+        if running:
+            current.stop(timeout=SIDECAR_STOP_SECONDS)
+        if not current.put_archive(SECRET_DIR, _secret_tar({key: files.get(key, "") for key in SECRET_KEYS})):
+            raise _Broken("Docker did not take the settings files")
+        current.start()
+    except (APIError, _Broken) as exc:
+        raise _Broken(redact(str(exc), secrets)) from None
+    try:
+        exit_info = _wait_ready(current)
+    except ProxyTunnelError as exc:
+        with contextlib.suppress(Exception):
+            if previous is not None:
+                # Proven a moment ago, failed here: back to what ran before.
+                current.stop(timeout=SIDECAR_STOP_SECONDS)
+                current.put_archive(SECRET_DIR, _secret_tar(previous))
+                current.start()
+            elif not running:
+                # Down, not leaking: its earners have no way out. Stopped so it
+                # does not hold a tailnet device or a proxy session for nothing.
+                current.stop(timeout=SIDECAR_STOP_SECONDS)
+        raise ProxyTunnelError(redact(str(exc), secrets), exc.status_code) from None
+    _restart_members(client, current)
+    return current, exit_info
+
+
+def _prove(client: Any, proxy: dict[str, Any] | None, own_ip: str | None, files: dict[str, str]) -> None:
+    """Start a throwaway Test tunnel on ``files`` and wait for its exit; it never stays."""
+    trial = dict(files)
+    if trial.get("kind") == "tailscale":
+        trial["hostname"] = _ts_hostname(TEST_SLUG)
+    name = f"{CONTAINER_PREFIX}tunnel-test-{uuid.uuid4().hex[:10]}"
+    sidecar, _ = start_sidecar(client, name, TEST_SLUG, None, proxy, own_ip, files=trial)
+    _remove_quietly(sidecar, 2)
+
+
+def _restart_members(client: Any, tunnel: Any) -> None:
+    """Restart the running, not held earners of a tunnel that restarted in place,
+    so they join its new namespace now rather than at the next heartbeat."""
+    stopped = held()
+    for member in _members(client, tunnel):
+        if str(member.name) in stopped or getattr(member, "status", "") not in _LIVE:
+            continue
+        try:
+            member.restart(timeout=orchestrator._get_stop_timeout(_labels(member).get(LABEL_SERVICE, "")))
+        except Exception as exc:  # noqa: BLE001 - the heartbeat tries again
+            logger.warning("Could not restart %s into its tunnel: %s", member.name, exc)
+
+
+def _moving(client: Any, proxy_id: str) -> list[str]:
+    """Copies of a proxy that are half moved: aside or staged (see _clone_into)."""
+    found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", f"{LABEL_PROXY}={proxy_id}"]})
+    return [str(c.name) for c in found if _is_earner(c) and str(c.name).endswith((STAGED_SUFFIX, MOVING_SUFFIX))]
+
+
+def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) -> Any:
+    """Finish a tunnel change a worker died in: the staged tunnel had proved its
+    exit before any copy moved into it, so the copies left in ``current`` move
+    across and it takes the final name. Returns the tunnel under ``final``.
+
+    Refused while a copy of the proxy is still half moved: recover_moves must
+    settle it first, or its container aside would be taken for a copy."""
+    if half := _moving(client, _labels(staged).get(LABEL_PROXY, "")):
+        raise ProxyTunnelError(
+            f"{', '.join(sorted(half))} {'is' if len(half) == 1 else 'are'} still being moved into a new tunnel; "
+            "the worker settles that within a few minutes. Try again then."
+        )
+    run = getattr(staged, "status", "") == "running"
+    if current is not None:
+        for member in _members(client, current):
+            _clone_into(client, member, staged, start=run and getattr(member, "status", "") in _LIVE)
+        _remove_quietly(current, SIDECAR_STOP_SECONDS)
+    staged.rename(final)
+    logger.info("Finished moving the copies of %s into its new tunnel", final)
+    return staged
 
 
 def _drop_if_empty(client: Any, tunnel: Any | None) -> list[str]:
@@ -795,8 +950,12 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
     # no tunnel image) fail fast, before a tunnel is created.
     secret_files(proxy, own_ip, shared_label(proxy_id))
     tunnel_image()
-    tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip)
     name = earner_name(slug, proxy_id)
+    # A new tunnel image is taken only when no other copy would be recreated
+    # for it (see _ensure_tunnel): this copy's own earner is replaced anyway.
+    current = _get(client, shared_tunnel_name(proxy_id))
+    others = [m for m in _members(client, current) if str(m.name) != name] if _is_shared(current, proxy_id) else []
+    tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others)
     with _swap_lock:
         _remove(slug, proxy_id, drop_shared=False)
     try:
@@ -914,7 +1073,8 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
     _set_held(name, False)
     earner.reload()
     if earner.status == "running":
-        earner.restart(timeout=orchestrator._get_stop_timeout(slug))
+        if earner_action(earner, shared if proxy is not None else tunnel, True) == "restart":
+            earner.restart(timeout=orchestrator._get_stop_timeout(slug))
     else:
         earner.start()
     return {"exit": exit_info}
@@ -1033,6 +1193,99 @@ def sweep_test_tunnels() -> list[str]:
             _remove_quietly(container, 2)
             swept.append(container.name)
     return swept
+
+
+def recover_moves(min_age: float | None = None) -> list[str]:
+    """Finish or undo moves a worker died in (see _clone_into). Returns what it did.
+
+    Run at worker start and by the heartbeat. Per copy:
+
+    * its container is aside (``<name>-moving``) and its clone already holds
+      the name: the move finished; the aside one is removed;
+    * aside, and the name is free: it gets its name back and the half-made
+      clone goes, unless the tunnel it lived in is gone while the clone's
+      exists, in which case the clone takes the name instead;
+    * a clone (``<name>-next``) with no aside one: it takes the name when the
+      name is free, or is removed as a leftover when the copy holds it.
+
+    A clone younger than ``min_age`` (default STAGED_STALE_SECONDS) may belong
+    to a move another worker on this daemon is making, and is left alone.
+    """
+    if min_age is None:
+        min_age = STAGED_STALE_SECONDS
+    client = orchestrator._get_client()
+    done: list[str] = []
+
+    def earners() -> dict[str, Any]:
+        found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
+        return {str(c.name): c for c in found if _is_earner(c)}
+
+    by_name = earners()
+    for aside_name, aside in sorted(by_name.items()):
+        if not aside_name.endswith(MOVING_SUFFIX):
+            continue
+        name = aside_name.removesuffix(MOVING_SUFFIX)
+        clone = by_name.get(name + STAGED_SUFFIX)
+        if clone is not None and _age_seconds(clone) < min_age:
+            continue
+        try:
+            if name in by_name:
+                _remove_quietly(aside, 2)
+                done.append(f"removed {aside_name}")
+            elif (
+                clone is not None and _get(client, _tunnel_id_of(aside)) is None and _get(client, _tunnel_id_of(clone))
+            ):
+                clone.rename(name)
+                _remove_quietly(aside, 2)
+                done.append(f"finished {name}")
+            else:
+                if clone is not None:
+                    _remove_quietly(clone, 2)
+                aside.rename(name)
+                done.append(f"restored {name}")
+        except Exception as exc:  # noqa: BLE001 - the next pass tries again
+            logger.warning("Could not recover the move of %s: %s", name, exc)
+    by_name = earners()
+    for staged_name, clone in sorted(by_name.items()):
+        if not staged_name.endswith(STAGED_SUFFIX) or _age_seconds(clone) < min_age:
+            continue
+        name = staged_name.removesuffix(STAGED_SUFFIX)
+        if name + MOVING_SUFFIX in by_name:
+            continue
+        try:
+            if name in by_name:
+                _remove_quietly(clone, 2)
+                done.append(f"removed {staged_name}")
+            else:
+                clone.rename(name)
+                done.append(f"finished {name}")
+        except Exception as exc:  # noqa: BLE001 - the next pass tries again
+            logger.warning("Could not recover the move of %s: %s", name, exc)
+    for line in done:
+        logger.info("A move a worker died in: %s", line)
+    return done
+
+
+def _finish_stale_staged(client: Any, staged: Any) -> None:
+    """A staged shared tunnel copies still live in, past any change's timeout:
+    finish that change, unless one of this proxy is running now."""
+    pid = _labels(staged).get(LABEL_PROXY, "")
+    if not pid.isdigit() or not _is_shared(staged, int(pid)):
+        return
+    if _moving(client, pid):
+        return  # recover_moves settles those first, at a later heartbeat
+    lock = _deploy_lock(int(pid))
+    if not lock.acquire(blocking=False):
+        return
+    try:
+        current = _get(client, shared_tunnel_name(int(pid)))
+        if current is not None and not _is_shared(current, int(pid)):
+            return
+        _finish_staged(client, staged, current, shared_tunnel_name(int(pid)))
+    except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
+        logger.warning("Could not finish the tunnel change of proxy %s: %s", pid, exc)
+    finally:
+        lock.release()
 
 
 def _read_all_files(container: Any) -> dict[str, str]:
@@ -1170,26 +1423,37 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001 - a heartbeat must not fail on this
         logger.debug("Could not list proxied copies: %s", exc)
         return []
+    # Moves a worker died in come first: a copy aside or staged is still a copy.
+    if any(str(getattr(c, "name", "")).endswith((STAGED_SUFFIX, MOVING_SUFFIX)) for c in found):
+        with contextlib.suppress(Exception):
+            recover_moves()
+            found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
+    # A staged tunnel past any change's timeout: one copies live in (staged or
+    # aside ones included) is a change to finish; an empty one is a leftover
+    # holding the proxy login, removed here, since the startup sweep skips those
+    # still young when the worker starts.
+    every_earner = [c for c in found if _labels(c).get(LABEL_ROLE) != ROLE_TUNNEL]
+    for container in found:
+        if (
+            str(getattr(container, "name", "")).endswith(STAGED_SUFFIX)
+            and _labels(container).get(LABEL_ROLE) == ROLE_TUNNEL
+            and _age_seconds(container) >= STAGED_STALE_SECONDS
+        ):
+            if any(_tunnel_id_of(e) == container.id for e in every_earner):
+                _finish_stale_staged(client, container)
+            else:
+                _remove_quietly(container, 2)
+    with contextlib.suppress(Exception):
+        found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
     tunnels: dict[str, Any] = {}
     earners: list[Any] = []
     for container in found:
-        if str(getattr(container, "name", "")).endswith(STAGED_SUFFIX):
+        if str(getattr(container, "name", "")).endswith((STAGED_SUFFIX, MOVING_SUFFIX)):
             continue
         if _labels(container).get(LABEL_ROLE) == ROLE_TUNNEL:
             tunnels[container.id] = container
         else:
             earners.append(container)
-    # A redeploy's tunnel or earner, not promoted yet. One past any deploy's
-    # timeout is a leftover (a tunnel holding the proxy login): removed here,
-    # since the startup sweep skips those still young when the worker starts.
-    # Never a tunnel copies still live in.
-    for container in found:
-        if (
-            str(getattr(container, "name", "")).endswith(STAGED_SUFFIX)
-            and _age_seconds(container) >= STAGED_STALE_SECONDS
-            and not any(_tunnel_id_of(e) == container.id for e in earners)
-        ):
-            _remove_quietly(container, 2)
     pairs: dict[tuple[str, str], tuple[Any | None, Any | None]] = {}
     used: set[str] = set()
     for earner in earners:

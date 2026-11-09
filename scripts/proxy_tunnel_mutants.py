@@ -34,14 +34,24 @@ MUTANTS: list[tuple[str, str, str]] = [
         "    if tunnel is not None and not _is_shared(tunnel):",
     ),
     (
-        "every copy gets a tunnel of its own again",
-        '        if current.status == "running" and same:',
-        "        if False:",
+        "a ready tunnel on the same settings is restarted for every new copy",
+        '    if running and _read_secret_file(current, "settings") == files["settings"]:',
+        "    if False:",
     ),
     (
         "a running tunnel on new settings is kept",
-        'same = _read_secret_file(current, "settings") == files["settings"]',
-        "same = True",
+        '    if running and _read_secret_file(current, "settings") == files["settings"]:',
+        "    if running:",
+    ),
+    (
+        "new settings reach the running tunnel before they proved an exit",
+        "        _prove(client, proxy, own_ip, files)\n",
+        "        pass\n",
+    ),
+    (
+        "a new tunnel image recreates every copy on the proxy",
+        "upgrade=not others)",
+        "upgrade=True)",
     ),
     (
         "stopping one copy stops the tunnel under the others",
@@ -74,9 +84,34 @@ MUTANTS: list[tuple[str, str, str]] = [
         '                "tunnel_container_id": (earner.short_id if earner is not None else ""),',
     ),
     (
-        "a stopped tunnel is replaced instead of restarted in place",
-        '        elif current.status != "running":',
-        "        elif False:",
+        "a tunnel is replaced instead of restarted in place",
+        "    if current is not None and (_image_of(current) == image or not upgrade):",
+        "    if False:",
+    ),
+    (
+        "a tunnel Docker cannot start blocks every later start",
+        "        except _Broken as exc:\n",
+        "        except ZeroDivisionError as exc:\n",
+    ),
+    (
+        "the settings volume is a bind with no source, lost on a daemon restart",
+        '"mounts": [secret_mount()],',
+        '"volumes": [SECRET_DIR],',
+    ),
+    (
+        "a moved copy is removed before its clone holds its name",
+        "        member.rename(aside)\n",
+        "        member.remove(force=True, v=True)\n",
+    ),
+    (
+        "the heartbeat removes a staged tunnel that copies still live in",
+        "            if any(_tunnel_id_of(e) == container.id for e in every_earner):",
+        "            if False:",
+    ),
+    (
+        "a staged tunnel is finished while a copy is still half moved",
+        '    if half := _moving(client, _labels(staged).get(LABEL_PROXY, "")):\n',
+        "    if half := []:\n",
     ),
     (
         "a staged tunnel copies live in is swept",

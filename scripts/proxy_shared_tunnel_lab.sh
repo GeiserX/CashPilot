@@ -34,8 +34,23 @@
 # Part 3, migration: copies deployed by BASE_SRC (one tunnel each) are moved by
 # this tree's migrate_legacy into one tunnel, and still reach the internet.
 #
+# Part 4, what must never cost a copy (needs DOCKERD_RESTART, a command that
+# restarts the Docker daemon the lab talks to):
+#   r.  a daemon restart with 3 copies, one stopped by its owner: the tunnel
+#       comes back ready by itself, the heartbeat starts the other two, the
+#       stopped one stays stopped, and a start of it works. With PREV_SRC (a
+#       tree whose tunnel's settings volume is a bind with no source) the same
+#       check must fail: that is the control that shows it can;
+#   e.  an edited proxy (a second auth key) while 3 copies run: the tunnel and
+#       every copy keep their container ids, a file written inside a copy is
+#       still there, and every copy reaches the internet again;
+#   m.  the worker killed the moment a copy's clone would take its name during
+#       a tunnel replacement: no copy is lost, and the next heartbeat leaves one
+#       tunnel with all 3 copies under their names, reaching the internet.
+#
 # Usage: TUNNEL_IMAGE=drumsergio/cashpilot-tunnel:<v> LAN_PROBE=<a LAN address> \
-#        [BASE_SRC=<checkout of the base branch>] [SRC=<tree under test>] [PARTS="1 2 3"] \
+#        [BASE_SRC=<checkout of the base branch>] [SRC=<tree under test>] [PARTS="1 2 3 4"] \
+#        [DOCKERD_RESTART="<command>"] [PREV_SRC=<tree for the part 4 control>] \
 #        scripts/proxy_shared_tunnel_lab.sh
 set -euo pipefail
 
@@ -44,7 +59,9 @@ LAN_PROBE=${LAN_PROBE:-192.168.1.1}
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${SRC:-$HERE}
 BASE_SRC=${BASE_SRC:-}
-PARTS=${PARTS:-1 2 3}
+PARTS=${PARTS:-1 2 3 4}
+DOCKERD_RESTART=${DOCKERD_RESTART:-}
+PREV_SRC=${PREV_SRC:-}
 PYTHON=${PYTHON:-python3}
 HEADSCALE=headscale/headscale:0.29.7@sha256:11f81665e842809db9fe3006a38c56a66e968baa5abd4bac498e86445572b970
 TAILSCALE=tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
@@ -441,6 +458,123 @@ if [[ " $PARTS " == *" 3 "* ]] && [ -n "$BASE_SRC" ]; then
     drive "$SRC" heartbeat >/dev/null
     r=$(earners_reach)
     [ "$r" = 2 ] && pass "stop: one copy stopped, the other 2 still reach 1.1.1.1 and the heartbeat did not start it" || fail "stop: $r copies reach after one stop"
+fi
+
+restart_daemon() {
+    sh -c "$DOCKERD_RESTART" >/dev/null 2>&1
+    local i
+    for i in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
+    docker info >/dev/null 2>&1 || return 1
+    # The lab's control server and exit node have no restart policy; the
+    # tunnel (unless-stopped) is what Docker brings back on its own.
+    docker start "$P-hs" "$P-exit" >/dev/null
+}
+# Waits up to 90 s for the proxy's tunnel to run and write /run/ready.
+tunnel_ready() {
+    local i
+    for i in $(seq 45); do
+        docker exec cashpilot-tunnel-p3 cat /run/ready >/dev/null 2>&1 && return 0
+        sleep 2
+    done
+    return 1
+}
+state_of() { docker inspect -f '{{.State.Status}} {{.State.Error}}' "$1" 2>/dev/null || echo missing; }
+ids_of_copies() { docker ps -aq --no-trunc --filter label=cashpilot.proxy=3 | sort | tr '\n' ' '; }
+# r. a daemon restart, run against one tree; prints what it saw, returns 0 if all held.
+restart_case() { # src
+    local src=$1 ok=0
+    wipe_copies
+    rm -f "$CASHPILOT_DATA_DIR/.proxied_held"
+    drive "$src" deploy 3 >"$WORK/r.log" 2>&1 || { echo "deploy failed: $(tail -2 "$WORK/r.log")"; return 1; }
+    drive "$src" stop labearner1 >/dev/null 2>&1 || { echo "stop failed"; return 1; }
+    restart_daemon || { echo "the daemon did not come back"; return 1; }
+    if tunnel_ready; then echo "tunnel back and ready by itself"; else echo "tunnel: $(state_of cashpilot-tunnel-p3)"; ok=1; fi
+    drive "$src" heartbeat >/dev/null 2>&1 || true
+    sleep 3
+    local r
+    r=$(earners_reach)
+    echo "after one heartbeat $r copies reach 1.1.1.1, the stopped one is $(state_of cashpilot-labearner1-p3)"
+    [ "$r" = 2 ] || ok=1
+    [ "$(docker inspect -f '{{.State.Status}}' cashpilot-labearner1-p3 2>/dev/null)" = running ] && ok=1
+    if drive "$src" start labearner1 >"$WORK/r.log" 2>&1; then
+        sleep 3
+        r=$(earners_reach)
+        echo "start of the stopped copy worked; $r copies reach 1.1.1.1"
+        [ "$r" = 3 ] || ok=1
+    else
+        echo "start of the stopped copy failed: $(tail -1 "$WORK/r.log" | cut -c1-200)"
+        ok=1
+    fi
+    return $ok
+}
+
+if [[ " $PARTS " == *" 4 "* ]]; then
+    echo "== part 4: a daemon restart, an edit and a worker killed mid-move cost no copy"
+    if [ -z "$DOCKERD_RESTART" ]; then
+        fail "r: DOCKERD_RESTART is not set, so the daemon restart case did not run"
+    else
+        if out=$(restart_case "$SRC"); then
+            pass "r: daemon restart: $(echo "$out" | tr '\n' ';')"
+        else
+            fail "r: daemon restart: $(echo "$out" | tr '\n' ';')"
+        fi
+        if [ -n "$PREV_SRC" ]; then
+            if out=$(restart_case "$PREV_SRC"); then
+                fail "r control: the bind-volume tree also survived, so case r cannot fail: $(echo "$out" | tr '\n' ';')"
+            else
+                pass "r control: the bind-volume tree fails case r: $(echo "$out" | tr '\n' ';')"
+            fi
+        fi
+    fi
+
+    # e. an edited proxy keeps every container and what the copies wrote.
+    wipe_copies
+    rm -f "$CASHPILOT_DATA_DIR/.proxied_held"
+    drive "$SRC" deploy 3 >/dev/null
+    docker exec cashpilot-labearner0-p3 sh -c 'echo lab-device-id > /tmp/deviceid'
+    before=$(ids_of_copies)
+    export LAB_AUTH_KEY2
+    LAB_AUTH_KEY2=$(hs preauthkeys create --user "$USER_ID" --reusable --ephemeral --expiration 2h | tail -1 | tr -d '\r ')
+    if drive "$SRC" edit labearner0 >"$WORK/e.log" 2>&1; then
+        sleep 3
+        after=$(ids_of_copies)
+        kept=$(docker exec cashpilot-labearner0-p3 cat /tmp/deviceid 2>/dev/null || echo gone)
+        r=$(earners_reach)
+        key_now=$(docker exec cashpilot-tunnel-p3 cat /run/cashpilot-secret/auth_key 2>/dev/null || true)
+        if [ "$before" = "$after" ] && [ "$kept" = lab-device-id ] && [ "$r" = 3 ] && [ "$key_now" = "$LAB_AUTH_KEY2" ]; then
+            pass "e: an edited proxy kept all 4 container ids and the copy's file, and 3 of 3 copies reach 1.1.1.1"
+        else
+            fail "e: ids kept=$([ "$before" = "$after" ] && echo yes || echo no) file=$kept reach=$r new key in the tunnel=$([ "$key_now" = "$LAB_AUTH_KEY2" ] && echo yes || echo no)"
+        fi
+    else
+        fail "e: the edit failed: $(tail -1 "$WORK/e.log" | cut -c1-200)"
+    fi
+
+    # m. a worker killed mid-move, then the heartbeat.
+    wipe_copies
+    rm -f "$CASHPILOT_DATA_DIR/.proxied_held"
+    drive "$SRC" deploy 3 >/dev/null
+    docker tag "$TUNNEL_IMAGE" "$P-tunnel-next:1" >/dev/null
+    code=0
+    CASHPILOT_TUNNEL_IMAGE=$P-tunnel-next:1 drive "$SRC" die-mid-move labearner2 >"$WORK/m.log" 2>&1 || code=$?
+    names=$(docker ps -a --filter label=cashpilot.proxy=3 --format '{{.Names}}' | sort | tr '\n' ' ')
+    echo "      after the kill (exit $code): $names"
+    lost=0
+    for i in 0 1 2; do
+        docker ps -a --format '{{.Names}}' | grep -q "^cashpilot-labearner$i-p3" || lost=1
+    done
+    [ "$code" = 9 ] && [ "$lost" = 0 ] && pass "m: killed mid-move, every copy still has a container" ||
+        fail "m: exit $code, a copy lost: $names"
+    LAB_STALE=0 CASHPILOT_TUNNEL_IMAGE=$P-tunnel-next:1 drive "$SRC" heartbeat >/dev/null 2>&1 || true
+    tunnel_ready || true
+    LAB_STALE=0 CASHPILOT_TUNNEL_IMAGE=$P-tunnel-next:1 drive "$SRC" heartbeat >/dev/null 2>&1 || true
+    sleep 3
+    names=$(docker ps -a --filter label=cashpilot.proxy=3 --format '{{.Names}}' | sort | tr '\n' ' ')
+    r=$(earners_reach)
+    want="cashpilot-labearner0-p3 cashpilot-labearner1-p3 cashpilot-labearner2-p3 cashpilot-tunnel-p3 "
+    [ "$names" = "$want" ] && [ "$r" = 3 ] && pass "m: the heartbeat left one tunnel and 3 copies, all reaching 1.1.1.1" ||
+        fail "m: after the heartbeat: $names; $r copies reach"
+    docker rmi "$P-tunnel-next:1" >/dev/null 2>&1 || true
 fi
 
 echo

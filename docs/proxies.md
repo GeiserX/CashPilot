@@ -186,20 +186,36 @@ hardening of both containers and everything you set up. What changes:
   different proxies.
 - **One tunnel failure stops every copy on that proxy on that box.** It fails
   closed, as above. They already depended on the same proxy.
-- **An edited proxy replaces the tunnel.** A start with new settings (see
-  [Editing a proxy](#editing-a-proxy)) starts a new tunnel next to the old one,
-  proves its exit, then moves every copy into it and removes the old one.
-  Moving a copy recreates its container from what Docker recorded (same image,
-  environment, labels and limits), because a container's network namespace is
-  fixed when it is created. A tunnel on new settings that cannot reach the
-  internet costs the running copies nothing.
+- **An edited proxy restarts the tunnel in place.** A start with new settings
+  (see [Editing a proxy](#editing-a-proxy)) first proves them in a throwaway
+  Test tunnel. Only once that tunnel reaches the internet are they written into
+  the proxy's tunnel, which restarts; its copies restart inside it. Settings
+  that cannot reach the internet cost the running copies nothing. If the new
+  settings pass the test and then fail in the tunnel, the old ones go back.
+- **Copies are recreated as rarely as possible.** A copy keeps whatever its
+  provider wrote inside the container (several write a device id there), and a
+  recreated container starts without it, so the provider sees a new device. An
+  edit, a worker update and a reboot never recreate a copy. The tunnel keeps
+  the image it was created with until it is replaced, which happens only when
+  you redeploy the only copy in it, or when Docker can no longer start it at
+  all. In that last case a new tunnel proves its exit first, then every copy is
+  recreated inside it (same image, environment, labels and limits, from what
+  Docker recorded), because a container's network namespace is fixed when it
+  is created.
+- **A move never loses a copy.** While a copy is recreated, its old container
+  is kept under `<name>-moving` until the new one holds the name and runs. A
+  move that fails puts the old container back. If the worker stops in the
+  middle, it finishes or undoes the move when it starts again or, at the
+  latest, at a heartbeat about five minutes later.
 - **The tunnel stops when the last copy that should run stops**, and is
   removed with its settings volume when the last copy is removed.
 
 Upgrading a worker from one tunnel per copy needs nothing from you. At start
 the worker moves each proxy's copies into one tunnel, reusing the settings of
 a running tunnel of that proxy, then removes the old tunnels. Each copy is
-down for a few seconds, once. Copies you had stopped stay stopped. A proxy
+down for a few seconds, once, and is recreated, so a provider that keeps its
+device id inside the container sees a new device once and the old one goes
+offline. Copies you had stopped stay stopped. A proxy
 with no running tunnel at that moment moves on the next start of one of its
 copies; until then its old tunnels keep working as before.
 
@@ -289,7 +305,8 @@ edit (a new password, host, port, type, auth key or exit node) reaches them the
 next time any copy through that proxy on that box is started from the page or
 by a cap reset. If the tunnel is stopped, the worker writes the proxy's current
 settings into it and starts it. If it is running for other copies, the worker
-replaces it with one on the new settings and moves every copy across (see
+tests the new settings in a throwaway tunnel, then writes them into the running
+one and restarts it with its copies (see
 [One tunnel per proxy](#one-tunnel-per-proxy)). To apply an edit now, press
 **Stop**, then **Start** on one copy on each box. A restart that Docker does on
 its own, after a reboot or a Docker restart, uses the settings of the last

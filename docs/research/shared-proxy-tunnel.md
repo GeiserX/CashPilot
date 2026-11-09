@@ -93,17 +93,36 @@ Not ranked:
   the same settings (a digest kept in its root-only secret volume, never a
   label) and the same image, only the earner is created. No other copy is
   touched.
-- **Replacing the tunnel** (an edited proxy, a new tunnel image): a new tunnel
-  starts under a staged name and proves its exit while the old one keeps
-  carrying its copies. Then each copy is recreated inside the new one. A
-  container's namespace is fixed when it is created, so a restart is not
-  enough. The worker rebuilds each copy from `docker inspect` (image,
-  environment, command, labels, capabilities, limits), creating the clone
-  first so a refusal leaves the copy as it was. Then the old tunnel goes. On a
-  failure halfway, the copies already moved are moved back.
-- **A stopped tunnel** on the same image is started in place with the
-  settings rewritten. Its copies keep their `NetworkMode`, since the container
-  id does not change, and are restarted into the new namespace.
+- **Copies are not recreated for a change.** Several earners keep a device id
+  in their writable layer (`docker diff` shows, for example,
+  `/.config/traffmonetizer/cli_device_ids.json`, `/etc/earnfm/deviceid`,
+  `/mnt/app/InstallationId.ini`, `/root/.packetstream/data`), and proxied
+  copies have no volumes. A recreated copy is a new device to its provider,
+  so the tunnel changes in place wherever it can:
+  - **an edited proxy** while the tunnel runs: the new settings first prove an
+    exit in a throwaway Test tunnel, then are written into the running tunnel,
+    which restarts. Its copies keep their `NetworkMode` (the container id does
+    not change) and are restarted into the new namespace. If the tunnel then
+    fails on settings the test passed, the old settings go back;
+  - **a stopped tunnel** is started in place with the settings rewritten;
+  - **a new tunnel image** (each worker release) does not replace a tunnel
+    copies live in. A deploy takes it only when no other copy is in the tunnel.
+- **Replacing the tunnel** is left for when there is no other way: Docker
+  cannot start the container at all, or the image changes on a deploy of the
+  only copy. A new tunnel starts under a staged name and proves its exit, then
+  each copy is recreated inside it from `docker inspect` (image, environment,
+  command, labels, capabilities, limits), because a container's namespace is
+  fixed when it is created. Each move creates the clone under `<name>-next`,
+  renames the copy aside to `<name>-moving`, gives the clone the name, starts
+  it, and only then removes the old container; a failure puts it back. A
+  worker that dies midway leaves both, and `recover_moves` (worker start, and
+  the heartbeat) finishes or undoes the move. A staged tunnel copies live in
+  is finished, never swept.
+- **The settings volume is a `Mount`, not `volumes=[path]`.** docker-py turns
+  the latter into a `Binds` entry with no source. On Docker 29 such a container
+  comes back from a daemon restart as `get: no such volume` and cannot be
+  started again; the `Mount` form (`HostConfig.Mounts`, type volume, no source)
+  comes back with its files.
 - **Stops are written down.** With a tunnel per copy, a stopped earner beside
   a ready tunnel could only mean a reboot or a crash, so the heartbeat started
   it. With a shared tunnel that is also what a stopped copy looks like while
