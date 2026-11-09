@@ -35,6 +35,7 @@ IMAGE = "drumsergio/cashpilot-tunnel:2.2.0"
 NEW_IMAGE = "drumsergio/cashpilot-tunnel:2.3.0"
 EXIT = {"ip": "93.184.215.14", "country": "DE"}
 PASSWORD = "s3cr3t-p@ss"
+NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
 _clock = itertools.count(1)
 
 
@@ -291,7 +292,7 @@ class TestOneTunnelPerProxy:
         _deploy("honeygain")
         old = docker.named("cashpilot-tunnel-p3")
         old_earner = docker.named("cashpilot-honeygain-p3")
-        _deploy("earnfm", _socks(password="n3w-pass"))
+        _deploy("earnfm", _socks(password=NEW_PASSWORD))
         (tunnel,) = docker.tunnels()
         assert tunnel.id != old.id and tunnel.name == "cashpilot-tunnel-p3"
         assert old.id not in docker.by_id
@@ -303,7 +304,7 @@ class TestOneTunnelPerProxy:
         assert moved.labels[LABEL_PROXY] == "3" and moved.kw["cap_drop"] == ["ALL"]
         assert moved.kw["restart_policy"] == {"Name": "no"} and moved.kw["privileged"] is False
         assert "hostname" not in moved.kw
-        assert tunnel.files["proxy_auth"] == "u1:n3w-pass@"
+        assert tunnel.files["proxy_auth"] == f"u1:{NEW_PASSWORD}@"
         # The new tunnel was ready before the old one went.
         events = [e for e in docker.events if e[1] in ("cashpilot-tunnel-p3-next", "cashpilot-tunnel-p3")]
         assert events.index(("create", "cashpilot-tunnel-p3-next")) < events.index(("remove", "cashpilot-tunnel-p3"))
@@ -498,9 +499,9 @@ class TestStopStartRemove:
         _deploy("honeygain")
         proxy_tunnel.stop("honeygain", 3)
         tunnel = docker.named("cashpilot-tunnel-p3")
-        proxy_tunnel.start("honeygain", 3, _socks(password="n3w-pass", port=2080), "192.0.2.1")
+        proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD, port=2080), "192.0.2.1")
         assert docker.named("cashpilot-tunnel-p3") is tunnel
-        assert tunnel.files["proxy_auth"] == "u1:n3w-pass@" and tunnel.files["proxy_port"] == "2080"
+        assert tunnel.files["proxy_auth"] == f"u1:{NEW_PASSWORD}@" and tunnel.files["proxy_port"] == "2080"
         assert set(tunnel.files) == set(proxy_tunnel.SECRET_KEYS)
         assert tunnel.files["auth_key"] == "" and tunnel.files["own_ip"] == "192.0.2.1"
 
@@ -509,7 +510,7 @@ class TestStopStartRemove:
         _deploy("earnfm")
         proxy_tunnel.stop("honeygain", 3)
         old = docker.named("cashpilot-tunnel-p3")
-        proxy_tunnel.start("honeygain", 3, _socks(password="n3w-pass"), None)
+        proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
         (tunnel,) = docker.tunnels()
         assert tunnel.id != old.id
         assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
