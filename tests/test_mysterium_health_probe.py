@@ -1,7 +1,8 @@
 """A Mysterium node behind a router that rewrites UDP source ports is flagged, not shown healthy.
 
-Some routers change the source port of part of a node's outgoing UDP flows (a
-fibre box that reserves ports in pairs, a SIP ALG). Inbound still works, so the
+Some routers rewrite the source port of a node's answers from a port that has
+had a packet in from outside, and every session starts with one (the node's
+own port check). Inbound still works, so the
 node's own port check passes and its log says "Method:manual Success:true",
 but buyers drop its answers: every session ends after about a minute having
 carried nothing. Two nodes sat like that for ten days with nothing on the

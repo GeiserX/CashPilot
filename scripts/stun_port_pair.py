@@ -3,17 +3,21 @@
 
 A Mysterium node advertises the UDP ports it listens on and expects buyers'
 packets to reach it, and its answers to leave, on those same ports. Some
-routers keep a port's number only for some ports: a few fibre boxes reserve
-ports in pairs (P and P XOR 1), so once one of a pair is in use the other
-leaves with a random number. The node's own reachability check still passes,
-because inbound traffic works; the sessions fail.
+routers switch a port to an address-dependent mapping once any packet from
+outside has arrived on it: from then on, a flow out of that port to another
+address leaves with a rewritten source port. Every session starts with such a
+packet (the node's own port check), so the node's answers are rewritten and
+buyers drop them, while every inbound check passes. Some of these routers also
+reserve ports in pairs (P and P XOR 1), a secondary effect.
 
 This sends a STUN binding request from pairs of neighbouring source ports and
 prints the port the internet saw for each. Every port should come back with
-its own number. Run it in the node's network namespace (docs/guides/mysterium.md,
-"Routers that rewrite UDP source ports"), on a Linux host with Docker Engine
-(Docker Desktop's own NAT rewrites every port), with no other dependency than
-Python 3. From the root of a CashPilot checkout:
+its own number. On its own it finds the pairing effect. The decisive test
+needs one packet sent in to a port from another network first, then this
+script run from that port on the host's network; docs/guides/mysterium.md,
+"Routers that rewrite UDP source ports", gives the steps. Run it on a Linux
+host with Docker Engine (Docker Desktop's own NAT rewrites every port), with
+no other dependency than Python 3. From the root of a CashPilot checkout:
 
     docker run --rm --network container:cashpilot-mysterium \\
       -v "$PWD/scripts/stun_port_pair.py:/t.py:ro" python:3.15.2-alpine python /t.py
@@ -183,10 +187,11 @@ def main() -> int:
     if rewritten:
         print(
             f"\n{rewritten} of {answered} ports left with a different number while others kept "
-            "theirs. The router rewrites some UDP source ports (some fibre boxes reserve ports in "
-            "pairs), and a Mysterium node behind it fails its sessions. Run it again: a pairing "
-            "router rewrites some port every time, while a rare clash in this machine's own NAT "
-            "does not repeat (the guide shows how to check the host)."
+            "theirs. If a packet from outside reached those ports first, the router rewrites the "
+            "source port of later flows from a port that got inbound traffic, and a Mysterium "
+            "node behind it fails its sessions. If nothing came in first, the router reserves "
+            "ports in pairs, or this machine's own NAT clashed once: run it again, a clash does "
+            "not repeat (the guide shows how to check the host and the decisive test)."
         )
         return 1
     if complete < args.pairs:

@@ -52,10 +52,13 @@ docker:
         The UDP ports the node uses for VPN sessions, as start:end. Forward this
         same range on your router. Each session takes about two ports, so the
         default 30 carry about 15 sessions at once, more than a home node gets.
-        Every published port costs about 2.5 MB of memory in Docker's port
-        proxy. On a router that reserves UDP ports in pairs, a narrow range
-        makes sessions fail: see "Routers that rewrite UDP source ports" in
-        the Mysterium guide. Keep it below 32768: ports
+        A wider range fixes nothing and costs more: every published port
+        slows the node's start and removal (300 ports take about 12 s to
+        start), past about 350 a deploy runs over the socket proxy's time
+        limit and fails, and with Docker's default userland proxy each port
+        also takes about 2.5 MB of memory. Sessions that all fail are a
+        router problem, not too few ports: see "Routers that rewrite UDP
+        source ports" in the Mysterium guide. Keep it below 32768: ports
         32768-60999 are Linux's ephemeral range, where any program on the host
         can hold one for a moment, and one taken port fails the node's start.
         A node that already has a range keeps it.
@@ -216,8 +219,9 @@ docker:
           /dev/net/tun and SETUID/SETGID, which fail it the same way:
           https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0
           With those in place, a common cause is the router in front of
-          ${WORKER_NAME} rewriting the UDP source port of some of the node's
-          connections. Run the two-port test in the guide:
+          ${WORKER_NAME} rewriting the UDP source port of the node's answers
+          once a packet from outside has reached that port. See the test in
+          the guide:
           https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports
       # Each item is one session object (they hold no nested objects); a bad
       # one lasted 40 to 89 s and moved no byte either way. Five in a row: a
@@ -231,11 +235,11 @@ docker:
           The last five VPN sessions of the node on ${WORKER_NAME} each ended
           after about a minute having moved no data, so it earns
           nothing while it looks online. The likely cause is the router in
-          front of ${WORKER_NAME}: it rewrites the UDP source port of some of
-          the node's connections (some fibre boxes reserve ports in pairs, and
-          in a narrow forwarded range nearly every session hits one), so
-          buyers drop the node's answers. Run the two-port test and see the
-          fixes in the guide:
+          front of ${WORKER_NAME}: once a packet from outside reaches a port,
+          it rewrites the source port of the node's later answers from that
+          port, and every session starts with such a packet (the node's own
+          port check), so buyers drop the node's answers. A wider port range
+          does not help. See the test and the fixes in the guide:
           https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports
           This clears once a session carries data.
 
