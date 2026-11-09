@@ -14,7 +14,7 @@ under its own device name (`cashpilot-box-p3` for proxy 3).
 |---|---|---|
 | SOCKS5 | host, port, optional user and password | TCP only: the tunnel lets out only TCP to the proxy's port, so SOCKS5 UDP relays are dropped. Name lookups still work (see [DNS](#dns)). |
 | HTTP CONNECT | host, port, optional user and password | TCP only. Name lookups still work (see [DNS](#dns)). |
-| Tailscale exit node | an auth key and the exit node's name or 100.x address | Traffic leaves from the exit node's connection, UDP included. See [Tailscale exit nodes](#tailscale-exit-nodes). |
+| Tailscale exit node | an auth key and the exit node's 100.x address | Traffic leaves from the exit node's connection, UDP included. See [Tailscale exit nodes](#tailscale-exit-nodes). |
 
 Any provider works. Nothing in CashPilot is specific to one.
 
@@ -385,7 +385,10 @@ Before you add one, in this order:
    refused".
 3. On the exit node's machine, turn on **Run as exit node**, and approve it in
    the admin console.
-4. Add the proxy here with the key and the exit node's name or 100.x address.
+4. Add the proxy here with the key and the exit node's 100.x address. Not its
+   name: the tunnel sets the exit node while Tailscale is still starting, when
+   names do not resolve yet, and the start then fails with "the auth key was
+   refused".
 
 Each box joins your tailnet once per proxy, as one ephemeral node named
 `cashpilot-p<id>`, however many copies it carries, and is removed from it soon
@@ -408,7 +411,7 @@ AUTH="Authorization: Bearer $CASHPILOT_ADMIN_API_KEY"
 
 # 1. Add the proxy (for SOCKS5: "kind": "socks5", "host", "port", "username", "password").
 curl -s -H "$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies" \
-  -d '{"name": "Exit at home", "kind": "tailscale", "auth_key": "tskey-auth-...", "exit_node": "exit-box"}'
+  -d '{"name": "Exit at home", "kind": "tailscale", "auth_key": "tskey-auth-...", "exit_node": "100.101.102.103"}'
 # -> {"id": 3, ...}
 
 # 2. Test it from a box (the worker id from GET /api/workers): the exit IP it gets.
