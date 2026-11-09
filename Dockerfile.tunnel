@@ -10,7 +10,7 @@
 # exact version it was released with, never a floating tag.
 
 # -- tun2proxy: the release zip, checked against the sha256 GitHub publishes --
-FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS tun2proxy
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS tun2proxy
 ARG TARGETARCH
 ARG TUN2PROXY_VERSION=v0.8.7
 RUN apt-get update \
@@ -30,7 +30,7 @@ RUN set -eu; \
 # -- tailscale: the official image, for its two static binaries --
 FROM tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c AS tailscale
 
-FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 
 ARG CASHPILOT_VERSION=dev
 # Read by build.yml's verify step, which requires every published image to
