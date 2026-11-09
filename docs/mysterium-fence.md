@@ -20,7 +20,11 @@ redeploy it. Nothing moves on its own, so you choose when.
   then reaches only its own namespace, and the host's fence drops anything it
   sends to your LAN, the host, a tailnet or cloud metadata.
 - Its UDP range (`UDP_PORTS`) is published 1:1 on the host, so the forward on
-  your router stays the same. Read [Choosing the UDP port range](#choosing-the-udp-port-range)
+  your router stays the same, as long as the range does. A node deployed
+  before CashPilot set `UDP_PORTS` comes back on the catalog's default range,
+  not the ports it used before: after the redeploy, run
+  `docker inspect cashpilot-mysterium --format '{{range .Config.Env}}{{println .}}{{end}}' | grep UDP_PORTS`
+  and make the router forward match that range. Read [Choosing the UDP port range](#choosing-the-udp-port-range)
   before you redeploy: on the host's network a busy port was skipped; now a
   busy port stops the whole start.
 - Docker never starts it by itself. The worker starts it once it has read the
@@ -240,8 +244,9 @@ start.
     ```
 
     Put the same full list in a file under `/etc/sysctl.d/` so it survives a
-    reboot, and check no other sysctl file (`/etc/sysctl.conf`,
-    `/usr/lib/sysctl.d/`, `/run/sysctl.d/`) sets it too. After the next
+    reboot, and check no other sysctl file (`/etc/sysctl.conf`, `/run/sysctl.d/`,
+    `/usr/local/lib/sysctl.d/`, `/usr/lib/sysctl.d/`, `/lib/sysctl.d/`) sets
+    it too. After the next
     reboot, read the value again. On Unraid, `/etc` is
     rebuilt at every boot: add the `sysctl -w` line to `/boot/config/go`,
     above the line that starts `emhttp`, so it runs before Docker starts.
