@@ -335,8 +335,11 @@ copy holds the identity wherever it lives, and with it you can restore the node
 if it comes back as a new one:
 
 ```bash
-docker cp cashpilot-mysterium:/var/lib/mysterium-node ./mysterium-backup
+B=./mysterium-backup-$(date +%Y%m%d-%H%M%S)   # a new folder each time
+docker cp cashpilot-mysterium:/var/lib/mysterium-node "$B" && ls "$B/keystore"
 ```
+
+The `ls` must list the keystore's files; if it fails, stop here.
 
 Then check where the node keeps its data:
 
