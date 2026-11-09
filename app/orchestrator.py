@@ -1374,8 +1374,11 @@ def _await_start(client: Any, name: str, created: Any | None, began: float, exc:
                 why = state.get("Error") or f"it is {status}"
                 raise ContainerRuntimeError(f"{name} did not start: {why}.", 500) from exc
         if time.monotonic() >= deadline:
+            # 500, not 504: the deploy is rolled back by the time this is answered,
+            # and a 504 tells a caller the worker may still be at it (main keeps a
+            # proxied copy's record on one).
             raise ContainerRuntimeError(
-                f"{name} was not running {START_SETTLE_SECONDS} s after Docker was asked to start it ({exc}).", 504
+                f"{name} was not running {START_SETTLE_SECONDS} s after Docker was asked to start it ({exc}).", 500
             ) from exc
         time.sleep(_START_POLL_SECONDS)
 

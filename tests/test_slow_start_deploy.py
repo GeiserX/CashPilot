@@ -138,10 +138,15 @@ class TestASlowStartIsNotAFailedDeploy:
         clock = iter(range(0, 10**6, 30))
         with (
             patch.object(orchestrator.time, "monotonic", side_effect=lambda: next(clock)),
-            pytest.raises(orchestrator.ContainerRuntimeError, match=f"not running {constants.START_SETTLE_SECONDS} s"),
+            pytest.raises(
+                orchestrator.ContainerRuntimeError, match=f"not running {constants.START_SETTLE_SECONDS} s"
+            ) as failed,
         ):
             _raw_deploy(client=docker.client, old=old)
         assert docker.get("cashpilot-mysterium") is old
+        # Rolled back, so final: a 504 would tell main the worker may still be
+        # deploying, and main keeps a proxied copy's record for a copy no box runs.
+        assert failed.value.status_code != 504
 
     def test_control_a_refusal_is_not_waited_on(self, markers, fast_poll):
         old = _running_old()
@@ -171,6 +176,26 @@ class TestASlowStartIsNotAFailedDeploy:
         with patch("app.main._proxy_to_worker", proxy):
             asyncio.run(main._proxy_worker_deploy(1, "mysterium", {}))
         assert proxy.call_args.kwargs["timeout"] >= 60 + 30 + constants.START_SETTLE_SECONDS
+
+    @pytest.mark.parametrize(("slug", "waits_for_deploy"), [("mysterium", True), ("honeygain", False)])
+    def test_a_stop_sent_during_a_redeploy_waits_for_the_deploy_lock(self, slug, waits_for_deploy):
+        # The worker stops a fence-gated node under the lock deploy_raw holds
+        # while it waits out a slow start. Cut off sooner, a stop that goes
+        # through answers 504, is never recorded, and the container-down alert
+        # fires for a node stopped on purpose. A service without the fence
+        # takes no lock, and its wait is unchanged (the control).
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from app import main
+
+        proxy = AsyncMock(return_value={})
+        with patch("app.main._proxy_to_worker", proxy):
+            asyncio.run(main._proxy_worker_command(1, "stop", slug))
+            stop_alone = 30 + main._catalog_stop_timeout(slug)
+            deploy = main._deploy_timeout(slug)
+        expected = stop_alone + deploy if waits_for_deploy else stop_alone
+        assert proxy.call_args.kwargs["timeout"] == expected
 
 
 # ---------------------------------------------------------------------------

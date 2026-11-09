@@ -4242,6 +4242,10 @@ async def _proxy_worker_command(
     # for storj). Cut off sooner, a stop that went through answers 504 and is
     # never recorded, so the copy raises a container-down alert.
     timeout = 30 + _catalog_stop_timeout(slug) if command in ("stop", "restart", "remove") else 30
+    if command == "stop" and catalog.fence_gated(catalog.get_service(slug)):
+        # The worker stops a fence-gated node under the lock a redeploy holds
+        # (orchestrator.GATED_DEPLOY_LOCK), so a Stop sent during one waits for it first.
+        timeout += _deploy_timeout(slug)
     if command == "remove":
         return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout)
     return await _proxy_to_worker(
@@ -4286,6 +4290,15 @@ def _catalog_stop_timeout(slug: str) -> int:
     return timeout if timeout > 0 else 30
 
 
+def _deploy_timeout(slug: str) -> int:
+    """How long a deploy of ``slug`` may take on the worker.
+
+    It stops the old container first, and a start Docker is slow to answer is
+    waited out for up to START_SETTLE_SECONDS (orchestrator._await_start).
+    """
+    return 60 + _catalog_stop_timeout(slug) + constants.START_SETTLE_SECONDS
+
+
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -4295,7 +4308,6 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     while the worker was still shutting the old node down cleanly.
     """
     docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
-    stop_timeout = _catalog_stop_timeout(slug)
     # Which build THIS worker runs is decided here, at the edge, from the
     # architecture in its heartbeat. The deployment record stays on the
     # catalog's default image: it is one row for the whole fleet, and a
@@ -4308,14 +4320,8 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
         image = _image_for_arch(docker_conf, arch)
         if image:
             spec = {**spec, "image": image}
-    # A start Docker is slow to answer is waited out by the worker for up to
-    # START_SETTLE_SECONDS (orchestrator._await_start), so the wait here covers it.
     return await _proxy_to_worker(
-        worker_id,
-        "POST",
-        f"/api/containers/{slug}/deploy",
-        json=spec,
-        timeout=60 + stop_timeout + constants.START_SETTLE_SECONDS,
+        worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
 
 
