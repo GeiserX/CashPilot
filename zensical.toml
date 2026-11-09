@@ -157,6 +157,7 @@ nav = [
           { "Fleet upgrades and onboarding" = "research/fleet-upgrades-and-onboarding.md" },
           { "Earnings benchmarks" = "research/earnings-benchmarks.md" },
           { "One tunnel per proxy" = "research/shared-proxy-tunnel.md" },
+          { "UX plan: clicks, keyboard, terminal and agents" = "research/ux-plan.md" },
         ] },
     ] },
 ]
