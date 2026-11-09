@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FAKE_BOT_TOKEN = "123456789:FAKE_TEST_TOKEN_not_a_real_bot_0000000"
 FAKE_WEBHOOK_TOKEN = "fake-webhook-token-not-real-0000"
 FAKE_NTFY_TOPIC = "fake-private-topic-not-real-0000"
-FAKE_PASSWORD = "fake-password-not-real"
+FAKE_USERINFO = "fake-userinfo-not-real"
 FAKE_API_KEY = "fake-api-key-not-real-0000"
 
 _NOTIFY_ENV = {
@@ -86,7 +86,7 @@ class TestNotifierRequests:
         odd = "fake-odd-shaped-bot-token"
         log = _send_alert(caplog, CASHPILOT_TELEGRAM_BOT_TOKEN=odd, CASHPILOT_TELEGRAM_CHAT_ID="42")
         assert odd not in log
-        assert "api.telegram.org" in log
+        assert "HTTP Request: POST https://api.telegram.org/bot<redacted>/sendMessage" in log
 
     def test_the_webhook_path_token_is_not_logged(self, redacting, caplog):
         url = f"https://discord.example/api/webhooks/1234/{FAKE_WEBHOOK_TOKEN}"
@@ -95,17 +95,17 @@ class TestNotifierRequests:
         assert "HTTP Request: POST https://discord.example/<redacted>" in log
 
     def test_the_ntfy_topic_and_its_password_are_not_logged(self, redacting, caplog):
-        url = f"https://alerts:{FAKE_PASSWORD}@ntfy.example/{FAKE_NTFY_TOPIC}"
+        url = f"https://alerts:{FAKE_USERINFO}@ntfy.example/{FAKE_NTFY_TOPIC}"
         log = _send_alert(caplog, CASHPILOT_NTFY_URL=url)
         assert FAKE_NTFY_TOPIC not in log
-        assert FAKE_PASSWORD not in log
+        assert FAKE_USERINFO not in log
         assert "ntfy.example/<redacted>" in log
 
     def test_a_webhook_token_in_the_query_is_not_logged(self, redacting, caplog):
         url = f"https://hooks.example/notify?token={FAKE_WEBHOOK_TOKEN}"
         log = _send_alert(caplog, CASHPILOT_WEBHOOK_URL=url)
         assert FAKE_WEBHOOK_TOKEN not in log
-        assert "hooks.example" in log
+        assert "HTTP Request: POST https://hooks.example/<redacted>" in log
 
 
 class TestAnyClientRequest:
@@ -125,9 +125,9 @@ class TestAnyClientRequest:
     def test_other_loggers_are_covered_too(self, redacting, caplog, logger_name):
         with caplog.at_level(logging.DEBUG):
             logging.getLogger(logger_name).warning(
-                "GET %s failed", f"https://user:{FAKE_PASSWORD}@ui.example/bot{FAKE_BOT_TOKEN}/x"
+                "GET %s failed", f"https://user:{FAKE_USERINFO}@ui.example/bot{FAKE_BOT_TOKEN}/x"
             )
-        assert FAKE_PASSWORD not in caplog.text
+        assert FAKE_USERINFO not in caplog.text
         assert FAKE_BOT_TOKEN not in caplog.text
         assert "https://<redacted>@ui.example/bot<redacted>/x" in caplog.text
 
