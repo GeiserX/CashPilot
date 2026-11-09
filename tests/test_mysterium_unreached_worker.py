@@ -90,6 +90,13 @@ class TestANodeNoWorkerEverReported:
         assert result.error.startswith("CashPilot couldn't reach worker box-a to read node 0xaa;")
         assert "No CashPilot worker could read" in result.error and "0xbb" in result.error
 
+    def test_with_nothing_read_and_no_node_list_the_unreached_workers_are_named(self):
+        client, c = _collector(None)
+        with patch("app.collectors.mystnodes.httpx.AsyncClient", return_value=client):
+            c.node_readings, c.unreached_workers = [], ["box-a", "box-b"]
+            result = asyncio.run(c.collect())
+        assert result.error.startswith("CashPilot couldn't reach workers box-a, box-b. No CashPilot worker could read")
+
     def test_control_with_nothing_read_it_is_still_the_error(self):
         result = _collect([])
         assert result.error.startswith("No CashPilot worker could read")
@@ -174,6 +181,18 @@ def db(tmp_path):
     with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"):
         asyncio.run(database.init_db())
         yield
+
+
+def test_a_failed_history_read_holds_the_never_read_notice_back():
+    from app.collectors.mystnodes import MystNodesCollector
+
+    c = MystNodesCollector(email="a@b.c", password="p")
+    with (
+        patch.object(main, "_read_node_figures", AsyncMock(return_value=[])),
+        patch.object(main.database, "get_node_ids", AsyncMock(side_effect=RuntimeError("database is locked"))),
+    ):
+        asyncio.run(main._attach_node_readings(c))
+    assert c.workers_settling is True
 
 
 def test_a_collection_marks_the_process_as_collected(db):

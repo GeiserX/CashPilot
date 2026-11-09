@@ -6921,8 +6921,12 @@ async def _attach_node_readings(collector: Any) -> None:
     try:
         collector.known_nodes = await database.get_node_ids(slug)
         workers = await database.list_workers()
-    except Exception as exc:  # noqa: BLE001 - the wording falls back to "never read"
+    except Exception as exc:  # noqa: BLE001 - a failed read is no empty history
         logger.warning("Could not read the known %s nodes: %s", slug, exc)
+        # Without the history every unread node would look never read, and the
+        # "runs on no worker" notice could fire for a node read many times.
+        # Held back like the first collection after a start.
+        collector.workers_settling = True
         return
     # The first collection after a start runs before some workers have
     # heartbeated: a node only they run is unread for no reason the user can act on.
