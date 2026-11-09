@@ -207,12 +207,18 @@ curl -v -m 15 -o /dev/null --noproxy '' -x 'http://gate.example.net:8080' --prox
 curl -v -m 15 -o /dev/null --noproxy '' -x 'socks5h://gate.example.net:7000' --proxy-user USER https://earner-host.example:443/
 ```
 
+With `-v`, curl prints the `Proxy-Authorization` header it sends, and that
+header holds your user and password in Base64, which anyone can decode. Delete
+that line before you share the output.
+
 A `403`, `Access violation`, `connection not allowed by ruleset` or a closed
 connection right after the `CONNECT` means the proxy refuses that host or
 port. A `200` to the `CONNECT` means the proxy let it through, so a TLS
 error after that comes from the far server or the protocol, not the proxy.
 Try the earner's real port, not only 443: a proxy that allows 443 and nothing
-else passes a 443 test.
+else passes a 443 test. These probes speak HTTPS; for an earner whose server
+speaks something else, curl fails on both paths below whatever the proxy does,
+so use a client for that protocol that needs an answer from the server.
 
 **After you deploy, through the copy's own tunnel.** Join the tunnel's
 network namespace with a throwaway container. Run the same probe once from
@@ -228,7 +234,7 @@ docker run --rm --cap-drop ALL curlimages/curl:8.10.1 --noproxy '*' -sS -m 10 -o
 docker run --rm --cap-drop ALL --network "container:$TUN" curlimages/curl:8.10.1 --noproxy '*' -sS -m 10 -o /dev/null -w '%{http_code}\n' "$URL"
 
 # What the proxy answered, if it refused, in the last minute only
-docker logs --since 1m "$TUN" 2>&1 | grep -i 'replied with\|error'
+docker logs --since 1m "$TUN" 2>&1 | grep -i 'replied with\|failed\|error'
 ```
 
 Any HTTP status from the far server, even `404`, means the path works. A
@@ -236,7 +242,8 @@ TLS error such as `SSL_ERROR_SYSCALL`, `Connection reset by peer` or `Empty
 reply from server` through the tunnel, where the control got a status, means
 something closed the connection. If the proxy refused it, the tunnel's log has
 a line such as `Server replied with 403 [Reason: Access violation]`, naming the
-port; the address in it is a placeholder from the tunnel's DNS, not the real
+port, for an HTTP proxy, or `SOCKS connection failed: ...` for a SOCKS5 proxy.
+The address in it is a placeholder from the tunnel's DNS, not the real
 one. The earner's own traffic shares this log, so match the port and the time
 of your probe. With no such line, the earner's server may be refusing the proxy's exit
 IP rather than the proxy refusing the server, since the control and the

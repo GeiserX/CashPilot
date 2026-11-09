@@ -179,8 +179,12 @@ docker logs cashpilot-mysterium 2>&1 | grep -E 'All ports .* are reachable|Faile
 ```
 
 `All ports [<port> <port>] are reachable`, with ports from your range, means the router forward
-works. `Failed to check manual ports ... globally` means it does not. Both
-lines appear only when a session starts, so wait for some traffic.
+works for the ports listed. The node checks only the ports it picked for that
+session, not the whole range, so a forward that covers part of the range can
+pass here while other sessions fail: check that the router rule covers the
+whole range. `Failed to check manual ports ... globally` means the forward does
+not work. Both lines appear only when a session starts, so wait for some
+traffic.
 [Port forwarding](guides/mysterium.md#port-forwarding) in the MystNodes guide
 has the per-session count and the dashboard check that flags a node whose
 sessions never connect directly.
@@ -304,12 +308,28 @@ always has a working forward:
 1. Add a router forward for the new range, next to the old one.
 2. Set `UDP_PORTS` to the new range in the deploy form, and redeploy the node
    on that machine.
-3. Confirm sessions reach it: `All ports [...] are reachable` with the new
-   ports in the node's log, or `Method:manual Success:true` lines
-   ([Port forwarding](guides/mysterium.md#port-forwarding)).
+3. Confirm the node runs with the new range, then that sessions reach it.
+   `docker inspect cashpilot-mysterium --format '{{range .Config.Env}}{{println .}}{{end}}' | grep UDP_PORTS`
+   must print the new range. Then look for `All ports [...] are reachable`
+   with ports from the new range in the node's log
+   ([Port forwarding](guides/mysterium.md#port-forwarding)). A
+   `Method:manual Success:true` line does not name the range, so it cannot
+   tell the old forward from the new one.
 4. Delete the old forward.
 
 To go back to the catalog's default range, typing it in is not enough: the
 form treats the prefilled default as untouched and keeps the range on record.
-Remove the service from that machine (its data volume stays) and deploy it
-again.
+Removing the service from that machine and deploying it again clears the
+record, but the new container mounts the catalog's `mysterium-data` volume, and
+the identity check has no running node to compare with. First check where the
+node keeps its data:
+
+```bash
+docker inspect cashpilot-mysterium --format '{{range .Mounts}}{{.Type}} {{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}} -> {{.Destination}}{{println}}{{end}}'
+```
+
+If `/var/lib/mysterium-node` is on a volume whose name ends in
+`mysterium-data`, remove the service (that volume stays) and deploy it again.
+If it is a host folder or another volume, removing the node would bring it back
+with a new identity: keep your own range in the form instead, or move the data
+onto that volume by hand first.
