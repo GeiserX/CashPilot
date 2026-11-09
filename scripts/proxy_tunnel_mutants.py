@@ -40,8 +40,8 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "a start that cannot clear its stop starts the copy anyway",
-        "        exit_info = _wait_ready(tunnel)\n    _set_held(name, False, strict=True)",
-        "        exit_info = _wait_ready(tunnel)\n    _set_held(name, False)",
+        "        _set_held(name, False, strict=True)\n    except ProxyTunnelError:\n        # The tunnel was started",
+        "        _set_held(name, False)\n    except ProxyTunnelError:\n        # The tunnel was started",
     ),
     (
         "a deploy starts its copy before it clears the copy's stop",
@@ -185,8 +185,13 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "a migrated password is logged in its decoded form",
-        '*_auth_secrets(files.get("proxy_auth", ""))]',
-        'files.get("proxy_auth", "")]',
+        '*_auth_secrets(files.get("proxy_auth", ""))]\n    image = tunnel_image()\n    try:',
+        'files.get("proxy_auth", "")]\n    image = tunnel_image()\n    try:',
+    ),
+    (
+        "a migration's edit logs the decoded password",
+        '*_auth_secrets(files.get("proxy_auth", ""))]\n    image = tunnel_image()\n    final',
+        'files.get("proxy_auth", "")]\n    image = tunnel_image()\n    final',
     ),
     (
         "one Docker refusal replaces the tunnel",
@@ -217,6 +222,16 @@ MUTANTS: list[tuple[str, str, str]] = [
         "a young empty shared tunnel is removed under a filling deploy",
         "        if tunnel.id not in used and _is_shared(tunnel) and _age_seconds(tunnel) >= STAGED_STALE_SECONDS:\n",
         "        if tunnel.id not in used and _is_shared(tunnel):\n",
+    ),
+    (
+        "a start that cannot clear the stop leaves the tunnel running",
+        "            if not any(str(m.name) not in stopped for m in _members(client, current)):\n                current.stop(timeout=SIDECAR_STOP_SECONDS)\n",
+        "            if not any(str(m.name) not in stopped for m in _members(client, current)):\n                pass\n",
+    ),
+    (
+        "a start that cannot clear the stop stops a tunnel another copy runs in",
+        "            if not any(str(m.name) not in stopped for m in _members(client, current)):\n",
+        "            if True:\n",
     ),
 ]
 

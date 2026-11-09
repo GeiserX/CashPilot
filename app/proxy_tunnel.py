@@ -799,7 +799,7 @@ def _ensure_tunnel(
             files = secret_files(proxy or {}, own_ip, label)
         except ProxyTunnelError as exc:
             raise ProxyTunnelError(redact(str(exc), _secret_values(proxy or {})), exc.status_code) from None
-    secrets = _secret_values(proxy or {}) + [files.get("auth_key", ""), files.get("proxy_auth", "")]
+    secrets = [*_secret_values(proxy or {}), files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
     image = tunnel_image()
     final = shared_tunnel_name(proxy_id)
     staged = final + STAGED_SUFFIX
@@ -1161,10 +1161,20 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
             refresh_proxy_ip(tunnel)
             tunnel.start()
         exit_info = _wait_ready(tunnel)
-    _set_held(name, False, strict=True)
+    current = shared if proxy is not None else tunnel
+    try:
+        _set_held(name, False, strict=True)
+    except ProxyTunnelError:
+        # The tunnel was started for this copy, which stays stopped: down
+        # again unless another copy in it should run.
+        with contextlib.suppress(Exception):
+            stopped = held()
+            if not any(str(m.name) not in stopped for m in _members(client, current)):
+                current.stop(timeout=SIDECAR_STOP_SECONDS)
+        raise
     earner.reload()
     if earner.status == "running":
-        if earner_action(earner, shared if proxy is not None else tunnel, True) == "restart":
+        if earner_action(earner, current, True) == "restart":
             earner.restart(timeout=orchestrator._get_stop_timeout(slug))
     else:
         earner.start()

@@ -1321,3 +1321,52 @@ class TestThirdReview:
         docker.named("cashpilot-honeygain-p3").remove(force=True)
         _heartbeat()
         assert docker.named("cashpilot-tunnel-p3") is tunnel
+
+    def test_a_start_that_cannot_clear_the_stop_leaves_the_tunnel_down(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.stop("honeygain", 3)
+        assert tunnel.status == "exited"
+        real = proxy_tunnel._set_held
+
+        def read_only(name, on, *, strict=False):
+            if not on:
+                raise proxy_tunnel.ProxyTunnelError("Could not record the stop")
+            return real(name, on, strict=strict)
+
+        with (
+            patch.object(proxy_tunnel, "_set_held", side_effect=read_only),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert tunnel.status == "exited" and docker.named("cashpilot-honeygain-p3").status == "exited"
+
+    def test_a_start_that_cannot_clear_the_stop_keeps_a_tunnel_another_copy_runs_in(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.stop("honeygain", 3)
+        real = proxy_tunnel._set_held
+
+        def read_only(name, on, *, strict=False):
+            if not on:
+                raise proxy_tunnel.ProxyTunnelError("Could not record the stop")
+            return real(name, on, strict=strict)
+
+        with (
+            patch.object(proxy_tunnel, "_set_held", side_effect=read_only),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert tunnel.status == "running" and docker.named("cashpilot-earnfm-p3").status == "running"
+
+    def test_a_migrated_edit_keeps_the_decoded_password_out_of_the_tunnel_log(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.logs = lambda tail=5: f"tun2proxy: auth u1 {NEW_PASSWORD} refused".encode()
+        docker.broken_auth.add(f"u1:{NEW_PASSWORD}@")
+        # Settings read from a legacy tunnel: no proxy dict, the password only inside proxy_auth.
+        files = proxy_tunnel.secret_files(_socks(password=NEW_PASSWORD), None, "p3")
+        with patch.object(proxy_tunnel, "_prove"), pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
+            proxy_tunnel._ensure_tunnel(docker, 3, None, None, files=files)
+        assert NEW_PASSWORD not in str(err.value) and "Tunnel log" in str(err.value)

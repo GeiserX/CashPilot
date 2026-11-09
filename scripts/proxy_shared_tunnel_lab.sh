@@ -418,22 +418,27 @@ mib() { awk -v b="$1" 'BEGIN { printf "%.1f", b / 1048576 }'; }
 cgroup_sum() { # filter...
     cgroup_sum_ids "$(docker ps -q --no-trunc "$@" | tr '\n' ' ')"
 }
-cgroup_sum_ids() { # "id id ..."; the cgroupfs and the systemd driver's paths
+cgroup_sum_ids() { # "id id ..."; the cgroupfs and the systemd driver's paths. Fails when unreadable.
     local ids=$1
     [ -n "${ids// /}" ] || { echo 0; return; }
     docker run --rm -v /sys/fs/cgroup:/cg:ro "$ALPINE" sh -c \
-        "t=0; for i in $ids; do f=/cg/docker/\$i/memory.current; [ -f \$f ] || f=/cg/system.slice/docker-\$i.scope/memory.current; t=\$((t + \$(cat \$f))); done; echo \$t"
+        "t=0; for i in $ids; do f=/cg/docker/\$i/memory.current; [ -f \$f ] || f=/cg/system.slice/docker-\$i.scope/memory.current; [ -f \$f ] || exit 1; v=\$(cat \$f) || exit 1; t=\$((t + v)); done; echo \$t"
 }
 measure() { # label n
     local label=$1 n=$2 tunnels tmem emem
     sleep 25 # past the tunnels' startup peak
     tunnels=$(docker ps -q --filter label=cashpilot.role=tunnel --filter label=cashpilot.proxy=3 | wc -l | tr -d ' ')
-    tmem=$(cgroup_sum --filter label=cashpilot.role=tunnel --filter label=cashpilot.proxy=3)
+    tmem=$(cgroup_sum --filter label=cashpilot.role=tunnel --filter label=cashpilot.proxy=3) || tmem=unavailable
     emem=$(docker ps -q --no-trunc --filter label=cashpilot.proxy=3 | while read -r id; do
         [ "$(docker inspect -f '{{index .Config.Labels "cashpilot.role"}}' "$id")" = tunnel ] || echo "$id"; done | tr '\n' ' ')
-    emem=$(cgroup_sum_ids "$emem")
-    echo "RAM   $label N=$n: tunnels=$tunnels tunnel_mem=$(mib "$tmem") MiB earner_mem=$(mib "$emem") MiB per_copy_tunnel=$(mib $((tmem / n))) MiB"
-    printf '%s %s %s %s %s\n' "$label" "$n" "$tunnels" "$tmem" "$emem" >>"$WORK/ram"
+    emem=$(cgroup_sum_ids "$emem") || emem=unavailable
+    if [ "$tmem" = unavailable ] || [ "$emem" = unavailable ]; then
+        # No row: a missing number must never read as zero in the summary.
+        fail "$label N=$n: the RAM of the containers could not be read"
+    else
+        echo "RAM   $label N=$n: tunnels=$tunnels tunnel_mem=$(mib "$tmem") MiB earner_mem=$(mib "$emem") MiB per_copy_tunnel=$(mib $((tmem / n))) MiB"
+        printf '%s %s %s %s %s\n' "$label" "$n" "$tunnels" "$tmem" "$emem" >>"$WORK/ram"
+    fi
     LAST_TUNNELS=$tunnels
 }
 earners_reach() { # how many proxied earners reach 1.1.1.1
