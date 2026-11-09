@@ -10,6 +10,17 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.1.6] - 2026-11-09
+
+### Documentation
+
+- Plan to make every CashPilot task doable by click or keyboard (#680)
+- Regenerate CHANGELOG.md (#688)
+
+### Fixes
+
+- Name the worker that could not be reached instead of saying the node runs nowhere (#686)
+
 ## [2.1.5] - 2026-11-08
 
 ### Documentation
