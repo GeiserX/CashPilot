@@ -41,6 +41,13 @@ class MystNodesCollector(BaseCollector):
         #: What the workers read from each node, set by the caller before
         #: collect(): dicts with ``node``, ``balance`` and ``lifetime``.
         self.node_readings: list[dict[str, Any]] | None = None
+        #: Set with node_readings: names of the workers that did not answer this
+        #: time, node id -> the worker that last read it, every node id a worker
+        #: has ever read, and whether some worker has not heartbeated since start.
+        self.unreached_workers: list[str] = []
+        self.node_readers: dict[str, str] = {}
+        self.known_nodes: set[str] = set()
+        self.workers_settling = False
 
     async def _authenticate(self, client: httpx.AsyncClient) -> str:
         """Obtain access token via cloud login."""
@@ -118,6 +125,18 @@ class MystNodesCollector(BaseCollector):
         # what they hold, so the user is told the balance leaves them out.
         read_ids = {str(n["node"]).lower() for n in nodes}
         unread = sorted(i for i in account_nodes or [] if i not in read_ids)
+        # A node a worker has read before was missed, not misplaced: its worker
+        # did not answer (restarting, busy) or did not report it this time.
+        unreached = list(dict.fromkeys(self.unreached_workers))
+        missed = [self._missed(i, unreached) for i in unread if i in self.known_nodes]
+        never = [i for i in unread if i not in self.known_nodes]
+        if not nodes and missed and not never:
+            return EarningsResult(
+                platform=self.platform,
+                balance=0.0,
+                error=" ".join(missed) + " CashPilot tries again on the next collection.",
+                error_kind=base.KIND_UNREAD,
+            )
         if not nodes:
             # No fallback to the cloud figure: a 30-day sum stored as a balance
             # is the bug this replaced, and it looks like a real reading.
@@ -125,7 +144,17 @@ class MystNodesCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=(
-                    "No CashPilot worker could read a Mysterium node's own balance"
+                    # A node read before keeps its explanation, so an unreachable
+                    # worker is still named when another node was never read;
+                    # with none to explain, the workers that did not answer are named.
+                    "".join(f"{m} " for m in missed)
+                    + (
+                        f"CashPilot couldn't reach {'worker' if len(unreached) == 1 else 'workers'} "
+                        f"{', '.join(unreached)}. "
+                        if unreached and not missed
+                        else ""
+                    )
+                    + "No CashPilot worker could read a Mysterium node's own balance"
                     + (f" ({', '.join(unread)})" if unread else "")
                     + ". CashPilot reads it inside the node, so the node has to run on a CashPilot worker "
                     "that is online and up to date. MystNodes' cloud total covers the last 30 days only, "
@@ -134,14 +163,19 @@ class MystNodesCollector(BaseCollector):
                 # The login worked: the credentials are not what is wrong.
                 error_kind=base.KIND_UNREAD,
             )
-        warning = None
-        if unread:
-            which = "1 online node" if len(unread) == 1 else f"{len(unread)} online nodes"
-            warning = (
+        if self.workers_settling:
+            # Right after a start, a node never read may run on a worker that
+            # has not heartbeated yet: say nothing until the next collection.
+            never = []
+        sentences = list(missed)
+        if never:
+            which = "1 online node" if len(never) == 1 else f"{len(never)} online nodes"
+            sentences.append(
                 f"{which} on your MystNodes account ran on no CashPilot worker this time, so the Mysterium "
-                f"balance leaves out what they hold, or uses what they last reported: {', '.join(unread)}. "
+                f"balance leaves out what they hold, or uses what they last reported: {', '.join(never)}. "
                 "CashPilot can only read a node that runs on one of its workers."
             )
+        warning = " ".join(sentences) or None
         return EarningsResult(
             platform=self.platform,
             balance=round(sum(float(n["balance"]) for n in nodes), 6),
@@ -157,6 +191,16 @@ class MystNodesCollector(BaseCollector):
                 for n in nodes
             ],
         )
+
+    def _missed(self, node: str, unreached: list[str]) -> str:
+        """Why a node read before was not read now, in one sentence."""
+        reader = self.node_readers.get(node)
+        if unreached and (reader is None or reader in unreached):
+            where = reader or ", ".join(unreached)
+            worker = "worker" if reader or len(unreached) == 1 else "workers"
+            return f"CashPilot couldn't reach {worker} {where} to read node {node}; the balance uses its last reading."
+        last = f", last read on {reader}" if reader else ""
+        return f"No worker reported node {node} this time{last}; the balance uses its last reading."
 
     async def _online_node_ids(self, client: httpx.AsyncClient) -> list[str] | None:
         """Lowercase ids of the account's online nodes, or None if the list could not be read.
