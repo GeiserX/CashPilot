@@ -53,7 +53,9 @@ docker:
         same range on your router. Each session takes about two ports, so the
         default 30 carry about 15 sessions at once, more than a home node gets.
         Every published port costs about 2.5 MB of memory in Docker's port
-        proxy, so a wider range only costs more. Keep it below 32768: ports
+        proxy. On a router that reserves UDP ports in pairs, a narrow range
+        makes sessions fail: see "Routers that rewrite UDP source ports" in
+        the Mysterium guide. Keep it below 32768: ports
         32768-60999 are Linux's ephemeral range, where any program on the host
         can hold one for a moment, and one taken port fails the node's start.
         A node that already has a range keeps it.
@@ -162,7 +164,14 @@ docker:
       state: failing
   # What the node itself says, read by the worker every 30 minutes
   # (app/health_probe.py): Mysterium's monitoring status, then the last 5
-  # completed sessions it provided in the past 14 days, newest first. Seen live
+  # completed sessions it provided, of any age (the node returns them newest
+  # first). No date window: a broken node stops being offered, new sessions
+  # stop arriving, and a window would empty out and clear the check while the
+  # node is still broken. The two reads are independent, so a slow or failing
+  # monitoring status (the node asks Mysterium's quality oracle for it) never
+  # costs the sessions read, which needs only the node's own database; the run
+  # fails only when the sessions read does. timeout 12 bounds the whole run
+  # inside the 15 s the worker waits. Seen live
   # (Nov 2026) on two nodes behind routers that rewrite the UDP source port of
   # some connections: monitoring "failed", and every session ending after 55
   # to 62 s with 0 bytes, while the node logged "Method:manual Success:true"
@@ -171,20 +180,23 @@ docker:
   # read. Only GETs on the node's loopback; nothing here changes the node.
   health_probe:
     command:
+      - timeout
+      - "12"
       - sh
       - -c
       - >-
-        d=$(date -u -d @$(( $(date +%s) - 1209600 )) +%Y-%m-%d)
-        && wget -qO- -T 5 http://127.0.0.1:4050/node/monitoring-status
-        && echo
-        && wget -qO- -T 5 "http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=5&date_from=$d"
+        wget -qO- -T 5 http://127.0.0.1:4050/node/monitoring-status;
+        echo;
+        wget -qO- -T 5 "http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=5"
     checks:
       - pattern: '\{"status":"failed"\}'
         means: >-
           Mysterium's monitoring marks the node on ${WORKER_NAME} as failed, so
           it is left out of the node list most buyers pick from, even when its
-          own check says every port is reachable. When nothing else is listed
-          for this node, a common cause is the router in front of
+          own check says every port is reachable. First make sure the node has
+          /dev/net/tun and SETUID/SETGID, which fail it the same way:
+          https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0
+          With those in place, a common cause is the router in front of
           ${WORKER_NAME} rewriting the UDP source port of some of the node's
           connections. Run the two-port test in the guide:
           https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports

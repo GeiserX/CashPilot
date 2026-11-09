@@ -1936,6 +1936,12 @@ _windowed_lock = asyncio.Lock()
 #: (docker.health_probe), per copy, so a probe that could not be read this
 #: time keeps its last verdict without holding back the log signals.
 _probe_hints: dict[tuple[str, int, int], list[str]] = {}
+#: Per copy, when its probe was last read (or, for a copy never read, when the
+#: worker first reported it unreadable). A last verdict outlives an unread
+#: probe by at most PROBE_STALE_SECONDS; after that it is dropped, and a copy
+#: the worker keeps reporting as unreadable gets a hint saying so instead.
+_probe_read_at: dict[tuple[str, int, int], float] = {}
+PROBE_STALE_SECONDS = 24 * 3600
 
 
 _DOCKER_POOLS = ipaddress.ip_network("172.16.0.0/12")
@@ -2012,7 +2018,7 @@ async def _health_probe_rows(wid: int, cache: dict[int, list[dict[str, Any]] | N
 
 
 async def _sweep_windowed_signals() -> None:
-    global _windowed_hints, _probe_hints
+    global _windowed_hints, _probe_hints, _probe_read_at
     try:
         containers = await _get_all_worker_containers()
     except Exception as exc:
@@ -2020,6 +2026,7 @@ async def _sweep_windowed_signals() -> None:
         return
     hints: dict[tuple[str, int, int], list[str]] = {}
     probe_hints: dict[tuple[str, int, int], list[str]] = {}
+    probe_read_at: dict[tuple[str, int, int], float] = {}
     probe_rows: dict[int, list[dict[str, Any]] | None] = {}
     workers: dict[int, dict[str, Any] | None] = {}
     for c in containers:
@@ -2057,22 +2064,37 @@ async def _sweep_windowed_signals() -> None:
                     found.append(await _render_signal_means(signal, slug, workers[wid]))
             if checks:
                 rows = await _health_probe_rows(wid, probe_rows)
-                row = next(
-                    (
-                        r
-                        for r in rows or []
-                        if isinstance(r, dict)
-                        and r.get("slug") == slug
-                        and r.get("instance") == instance
-                        and isinstance(r.get("hits"), list)
-                    ),
-                    None,
-                )
+                mine = [
+                    r
+                    for r in rows or []
+                    if isinstance(r, dict) and r.get("slug") == slug and r.get("instance") == instance
+                ]
+                row = next((r for r in mine if isinstance(r.get("hits"), list)), None)
+                now = time.time()
                 if row is None:
                     # Not read this time (worker busy, node slow to answer): the
-                    # last verdict stands, as for the log signals.
-                    probed = _probe_hints.get(key, [])
+                    # last verdict stands, as for the log signals, but not for
+                    # ever. A copy the worker reports as unreadable for longer
+                    # than that says so, rather than keeping an old verdict or
+                    # showing nothing.
+                    unread = next((str(r.get("error")) for r in mine if r.get("error")), None)
+                    since = _probe_read_at.get(key, now if unread else None)
+                    if since is not None:
+                        probe_read_at[key] = since
+                    if since is None or now - since < PROBE_STALE_SECONDS:
+                        probed = _probe_hints.get(key, [])
+                    elif unread:
+                        worker_name = str((workers[wid] or {}).get("name") or "this machine")
+                        probed = [
+                            f"CashPilot has not been able to read this node's own API on {worker_name} "
+                            f"for {int((now - since) // 3600)} hours ({unread}), so its monitoring "
+                            "status and recent sessions are unchecked. Check that the node runs "
+                            "normally and look at its logs."
+                        ]
+                    else:
+                        probed = []
                 else:
+                    probe_read_at[key] = now
                     probed = [
                         await _render_signal_means(checks[i], slug, workers[wid])
                         for i in row["hits"]
@@ -2087,11 +2109,14 @@ async def _sweep_windowed_signals() -> None:
                 hints[key] = _windowed_hints[key]
             if key in _probe_hints:
                 probe_hints[key] = _probe_hints[key]
+            if key in _probe_read_at:
+                probe_read_at[key] = _probe_read_at[key]
             continue
         if found:
             hints[key] = found
     _windowed_hints = hints
     _probe_hints = probe_hints
+    _probe_read_at = probe_read_at
 
 
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:

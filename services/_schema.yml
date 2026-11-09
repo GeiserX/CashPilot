@@ -124,7 +124,8 @@
 #     container, for failures no log line shows (app/health_probe.py). The worker runs
 #     the command every 30 minutes and sends back only which checks hold; each one is
 #     shown as "Needs fixing" for that box, ${VAR} filled as in health_signals.
-#       command: ["sh", "-c", "..."]   read-only, run inside the container
+#       command: ["timeout", "12", "sh", "-c", "..."]   read-only, run inside the
+#                                        container; must start with timeout <s>, s < 15
 #       checks:
 #         - pattern: '...'             regex on the output, case-sensitive; holds when it
 #                                        matches at least min_matches times

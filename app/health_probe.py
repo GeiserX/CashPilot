@@ -10,7 +10,7 @@ having carried nothing. The node's own API knows: its monitoring status reads
 The catalog declares the read in ``docker.health_probe``:
 
     health_probe:
-      command: ["sh", "-c", "..."]       # run inside the container, read-only
+      command: ["timeout", "12", "sh", "-c", "..."]   # run inside the container, read-only
       checks:
         - pattern: '...'                 # regex on the command's output
           means: "..."                   # shown under Needs fixing
@@ -24,6 +24,11 @@ A check without ``items`` holds when ``pattern`` matches the output at least
 at least ``min_matches`` items and every one of them matches ``pattern``: one
 good item clears it, and too few items say nothing. Patterns are
 case-sensitive, like ``collector.node_read``.
+
+The command must start with ``timeout <seconds>`` below READ_TIMEOUT.
+``exec_run`` has no timeout of its own: a read that hung would keep its pool
+thread after the worker stopped waiting, and four of them would leave every
+later read queued behind them for the worker's lifetime.
 
 Read-only by construction, like ``app/node_read.py``: the command comes from
 the catalog in this image, never from a request, and only the indexes of the
@@ -60,6 +65,14 @@ def spec_errors(spec: Any) -> list[str]:
     command = spec.get("command")
     if not (isinstance(command, list) and command and all(isinstance(p, str) for p in command)):
         errors.append("command must be a non-empty list of strings")
+    elif not (
+        len(command) > 2
+        and command[0] == "timeout"
+        and command[1].isascii()
+        and command[1].isdigit()
+        and 0 < int(command[1]) < READ_TIMEOUT
+    ):
+        errors.append(f"command must start with timeout <seconds>, under {READ_TIMEOUT}")
     checks = spec.get("checks")
     if not (isinstance(checks, list) and checks):
         return [*errors, "checks must be a non-empty list"]

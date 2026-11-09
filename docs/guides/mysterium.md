@@ -101,8 +101,11 @@ Keep the range below 32768. Ports 32768 to 60999 are Linux's ephemeral range: an
 Each session takes about two ports, so the default 30 ports carry about 15
 sessions at once, more than a home node gets. Every published port costs about
 2.5 MB of memory on the machine (Docker starts two small proxy processes per
-port; 101 ports measured about 250 MB), so a wider range only costs more. A
-range of 20 to 30 ports is enough. The default was `56000:56100` through
+port; 101 ports measured about 250 MB). A range of 20 to 30 ports is enough on
+most routers. On a router that reserves UDP ports in pairs, a narrow range
+makes sessions fail; see
+[Routers that rewrite UDP source ports](#routers-that-rewrite-udp-source-ports).
+The default was `56000:56100` through
 2.0.6 and `56000:56029` in 2.0.7 and 2.1.0, both inside the ephemeral range. A node keeps
 the range it has on record on a redeploy. To move it, set `UDP_PORTS` to a
 free range below 32768 other than the default, such as `23100:23129`, change
@@ -231,8 +234,9 @@ you open it.
 On the same 30-minute round the worker also asks the node itself, read-only,
 for Mysterium's monitoring status and its last five sessions. It lists the node
 under **Needs fixing** when the monitoring status is `failed`, and when those
-five sessions each ended after about a minute having carried no data. Both
-point at the problem in the next section when nothing else is listed for the node.
+five sessions each ended after about a minute having carried no data. Once a
+missing `/dev/net/tun` or `SETUID`/`SETGID` is ruled out, both point at the
+problem in the next section.
 
 ### Routers that rewrite UDP source ports
 
@@ -273,14 +277,17 @@ few pairs, so a session's second port is almost always the partner of a port
 already mapped, and gets rewritten. With the node's wide default (10000 to
 60000, no `--udp.ports`) collisions are rare enough that a pairing router goes
 unnoticed, which is why a node can work for months and fail the day its range
-is narrowed.
+is narrowed. CashPilot always passes `--udp.ports`, so that wide default is not
+an option here; the range is `UDP_PORTS`.
 
 **Confirm it.** Ask a public STUN server which port it sees, from pairs of
 neighbouring ports, inside the node's network namespace. CashPilot ships
 a small script for this with no dependencies beyond Python 3,
 [`scripts/stun_port_pair.py`](https://github.com/GeiserX/CashPilot/blob/main/scripts/stun_port_pair.py).
 Run it in a throwaway container that shares the node's network, on the machine
-running the node:
+running the node. The test only means something on a Linux host with Docker
+Engine: Docker Desktop (macOS, Windows) puts its own NAT in front of every
+container, which rewrites every port whatever the router does.
 
 ```bash
 curl -fsSLo /tmp/stun_port_pair.py \
@@ -298,32 +305,37 @@ On a router that pairs ports, the even port of each pair comes back rewritten:
 34102 -> 46950  REWRITTEN
 ```
 
-On a working line every port comes back with its own number. The script exits
+On a working line every port comes back with its own number. When every port
+comes back rewritten, the script says so separately: that is a NAT which
+rewrites every port (a symmetric NAT, carrier-grade NAT, a VPN, or Docker
+Desktop's own NAT), where port forwarding cannot work either. The script exits
 0 when every port kept its number, 1 when one was rewritten and 2 when no STUN
 server answered. It only sends a few packets to a public STUN server; it does
 not touch the node. `--start` picks the first port to test (default 34100);
 keep it outside `UDP_PORTS`, whose ports the node holds.
 
-**Fix.** In order, from least to most disruptive:
+**Fix.** In the order we would try them:
 
 1. **Turn off the router's SIP ALG and, if you do not use it, its own VoIP or
    phone service.** Both rewrite UDP flows. Look under NAT, ALG, VoIP or
    Telephony in the router's admin page. Some ISP boxes hide the setting; the
-   ISP's support can usually change it.
+   ISP's support can usually change it. Cost: one router setting.
 2. **Look for a setting that keeps ports.** Some routers call it port
    preservation, endpoint-independent mapping, "full cone" NAT or NAT type 1.
-   Turn it on if it is there.
+   Turn it on if it is there. Cost: one router setting.
 3. **Bridge mode with your own router.** Put the ISP box in bridge mode (some
    ISPs call it ONT mode or "router off") and do NAT on a router of your own
    that keeps source ports; most Linux-based routers and OpenWrt do. Then
-   forward `UDP_PORTS` on your router instead. This takes the whole house
-   offline for a few minutes and may need the ISP's help.
+   forward `UDP_PORTS` on your router instead. Cost: the whole house goes
+   offline for a few minutes, and it may need the ISP's help.
 4. **A much wider `UDP_PORTS` range.** Fewer collisions, never none: the
-   sessions that land on a reserved partner still fail. Each published port
-   costs about 2.5 MB of memory in Docker's port proxy, the range must stay
-   free of other programs (see *Port forwarding*), and you forward the whole
-   range on the router. A range of 1,000 ports costs about 2.5 GB, which is
-   why this comes last.
+   sessions that land on a reserved partner still fail. CashPilot caps the
+   range at 1,000 ports and it must stay below 32768 (for example
+   `23000:23999`). Cost: one redeploy and a router forward edit, but each
+   published port takes about 2.5 MB of memory in Docker's port proxy, so
+   1,000 ports take about 2.5 GB, and the range must stay free of other
+   programs (see *Port forwarding*). That memory, not the disruption, is why
+   this comes last.
 
 Run the script again after each change. Once every port keeps its number,
 Mysterium's monitoring re-scores the node within a few hours, the next sessions

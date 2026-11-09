@@ -11,15 +11,20 @@ because inbound traffic works; the sessions fail.
 This sends a STUN binding request from pairs of neighbouring source ports and
 prints the port the internet saw for each. Every port should come back with
 its own number. Run it in the node's network namespace (docs/guides/mysterium.md,
-"Routers that rewrite UDP source ports"), with no other dependency than
-Python 3:
+"Routers that rewrite UDP source ports"), on a Linux host with Docker Engine
+(Docker Desktop's own NAT rewrites every port), with no other dependency than
+Python 3. From the root of a CashPilot checkout:
 
     docker run --rm --network container:cashpilot-mysterium \\
-      -v "$PWD/scripts/stun_port_pair.py:/t.py:ro" python:3.13-alpine python /t.py
+      -v "$PWD/scripts/stun_port_pair.py:/t.py:ro" python:3.15.2-alpine python /t.py
+
+or fetch the script to /tmp first, as the guide shows.
 
 Exit status: 0 when every port kept its number, 1 when one was rewritten,
-2 when no STUN server answered. Read-only: it sends a few UDP packets to a
-public STUN server and changes nothing.
+2 when no STUN server answered. A rewritten port is reported as a pairing
+router when some ports kept their number, and as a NAT that rewrites every
+port when none did. Read-only: it sends a few UDP packets to a public STUN
+server and changes nothing.
 """
 
 from __future__ import annotations
@@ -119,10 +124,19 @@ def main() -> int:
     if not answered:
         print(f"No answer from {server[0]}:{server[1]}: outbound UDP may be blocked.")
         return 2
+    if rewritten == answered:
+        print(
+            f"\nAll {answered} ports left with a different number. Something in the path rewrites "
+            "every UDP source port: a symmetric NAT, carrier-grade NAT, a VPN, or Docker Desktop's "
+            "own NAT (run this on a Linux host with Docker Engine, not Docker Desktop). Port "
+            "forwarding cannot work through it either."
+        )
+        return 1
     if rewritten:
         print(
-            f"\n{rewritten} of {answered} ports left with a different number. The router rewrites "
-            "UDP source ports, and a Mysterium node behind it fails its sessions."
+            f"\n{rewritten} of {answered} ports left with a different number while others kept "
+            "theirs. The router rewrites some UDP source ports (some fibre boxes reserve ports in "
+            "pairs), and a Mysterium node behind it fails its sessions."
         )
         return 1
     print(f"\nAll {answered} ports kept their number.")

@@ -116,7 +116,7 @@ def test_the_probe_only_reads_the_node():
     """Nothing in it may change the node: plain GETs on the node's own loopback."""
     script = " ".join(_spec()["command"])
     assert "--post" not in script and "-X" not in script and "curl" not in script
-    urls = [w.strip('"') for w in script.split() if "http" in w]
+    urls = [w.strip('";') for w in script.split() if "http" in w]
     assert urls and all(u.startswith("http://127.0.0.1:4050/") for u in urls)
     assert {u.split("?")[0].split("4050")[1] for u in urls} == {"/node/monitoring-status", "/sessions"}
 
@@ -132,12 +132,15 @@ def test_the_finding_names_the_cause_and_the_guide_section():
     [
         None,
         {"command": "wget x", "checks": [{"pattern": "a", "means": "m"}]},
-        {"command": ["sh"], "checks": []},
-        {"command": ["sh"], "checks": [{"pattern": "(", "means": "m"}]},
-        {"command": ["sh"], "checks": [{"pattern": "a", "items": "(", "means": "m"}]},
-        {"command": ["sh"], "checks": [{"pattern": "a", "means": " "}]},
-        {"command": ["sh"], "checks": [{"pattern": "a", "means": "m", "min_matches": 0}]},
-        {"command": ["sh"], "checks": [{"pattern": "a", "means": "m", "min_matches": True}]},
+        # exec_run has no timeout: an unbounded command could hold a pool thread for ever.
+        {"command": ["sh", "-c", "x"], "checks": [{"pattern": "a", "means": "m"}]},
+        {"command": ["timeout", "15", "sh"], "checks": [{"pattern": "a", "means": "m"}]},
+        {"command": ["timeout", "12", "sh"], "checks": []},
+        {"command": ["timeout", "12", "sh"], "checks": [{"pattern": "(", "means": "m"}]},
+        {"command": ["timeout", "12", "sh"], "checks": [{"pattern": "a", "items": "(", "means": "m"}]},
+        {"command": ["timeout", "12", "sh"], "checks": [{"pattern": "a", "means": " "}]},
+        {"command": ["timeout", "12", "sh"], "checks": [{"pattern": "a", "means": "m", "min_matches": 0}]},
+        {"command": ["timeout", "12", "sh"], "checks": [{"pattern": "a", "means": "m", "min_matches": True}]},
     ],
 )
 def test_a_malformed_probe_is_rejected_and_never_read(spec):
@@ -147,6 +150,21 @@ def test_a_malformed_probe_is_rejected_and_never_read(spec):
 
 def test_the_catalog_entry_is_well_formed():
     assert health_probe.spec_errors(_spec()) == []
+
+
+def test_the_session_read_has_no_date_window_and_does_not_hang_on_the_status_read():
+    """A date window empties out on a broken node no one is offered any more, and the
+    check would clear itself; the status read (which asks a remote oracle) must not
+    cost the local sessions read."""
+    script = _spec()["command"][-1]
+    assert "date_from" not in script and "date " not in script
+    status, sessions = script.split("monitoring-status", 1)
+    assert "&&" not in script and sessions.lstrip().startswith(";")
+
+
+def test_the_monitoring_finding_sends_to_the_tun_check_first():
+    means = _spec()["checks"][0]["means"]
+    assert "/dev/net/tun" in means and "#running-but-not-earning-monitoring-failed-quality-0" in means
 
 
 # --- The worker's read ---------------------------------------------------------
@@ -213,9 +231,9 @@ def _sweep(probes=None, *, probe_error=None, logs=""):
 
 @pytest.fixture(autouse=True)
 def _clean_hints():
-    main._windowed_hints, main._probe_hints = {}, {}
+    main._windowed_hints, main._probe_hints, main._probe_read_at = {}, {}, {}
     yield
-    main._windowed_hints, main._probe_hints = {}, {}
+    main._windowed_hints, main._probe_hints, main._probe_read_at = {}, {}, {}
 
 
 def test_the_sweep_lists_a_failing_node_by_box_with_the_guide():
@@ -238,6 +256,24 @@ def test_an_unread_probe_keeps_the_last_verdict_and_a_healthy_read_clears_it():
     hints, _ = _sweep([{"slug": "mysterium", "instance": 1, "error": "timed out"}])
     assert len(hints) == 1
     hints, _ = _sweep([{"slug": "mysterium", "instance": 1, "hits": []}])
+    assert hints == []
+
+
+def test_a_verdict_does_not_outlive_a_day_of_unread_probes():
+    _sweep([{"slug": "mysterium", "instance": 1, "hits": [1]}])
+    later = main.time.time() + main.PROBE_STALE_SECONDS + 3600
+    with patch("app.main.time.time", return_value=later):
+        hints, _ = _sweep([{"slug": "mysterium", "instance": 1, "error": "timed out"}])
+    assert len(hints) == 1 and "has not been able to read" in hints[0] and "attic-nas" in hints[0]
+    assert "about a minute" not in hints[0], "the stale verdict is gone"
+    with patch("app.main.time.time", return_value=later):
+        hints, _ = _sweep(probe_error=HTTPException(status_code=504, detail="slow"))
+    assert hints == [], "a worker that does not answer at all drops the stale verdict without a claim"
+
+
+def test_a_short_unread_spell_names_nothing_new():
+    _sweep([{"slug": "mysterium", "instance": 1, "error": "timed out"}])
+    hints, _ = _sweep([{"slug": "mysterium", "instance": 1, "error": "timed out"}])
     assert hints == []
 
 
