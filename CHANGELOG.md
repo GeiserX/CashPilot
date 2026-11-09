@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.1.7] - 2026-11-09
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#691)
+
+### Fixes
+
+- Keep a dashboard stop quiet on its own box until the next action there (#687)
+
 ## [2.1.6] - 2026-11-09
 
 ### Documentation
