@@ -167,7 +167,11 @@ docker:
   # it provided that completed last, of any age. The node lists sessions by
   # start time, newest first, so a long session that started before a run of
   # short ones but ended after them would fall off a plain page of 5: the
-  # command reads 25 and keeps the 5 with the latest end (start + duration).
+  # command reads 100 and keeps the 5 with the latest end (start + duration).
+  # A session that started before all 100 is still missed; the API has no
+  # end-time order or filter, and reading the whole history grows without
+  # bound. A home node gets a few sessions a day, so that takes one session
+  # outlasting a hundred others.
   # No date window: a broken node stops being offered, new sessions stop
   # arriving, and a window would empty out and clear the check while the node
   # is still broken. The two reads are independent, and each prints a marker
@@ -193,7 +197,7 @@ docker:
         if m=$(wget -qO- -Y off -T 5 http://127.0.0.1:4050/node/monitoring-status); then
           echo "monitoring read: $m"
         fi
-        if s=$(wget -qO- -Y off -T 5 "http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=25"); then
+        if s=$(wget -qO- -Y off -T 5 "http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=100"); then
           echo "sessions read:"
           echo "$s" | sed 's/},{/}\n{/g' | awk '
             match($0, /"created_at":"[^"]+"/) {

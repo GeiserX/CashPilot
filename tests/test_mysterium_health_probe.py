@@ -17,7 +17,11 @@ import asyncio
 import importlib.util
 import json
 import os
+import re
 import socket
+import socket as _socket
+import struct
+import subprocess
 import tempfile
 import threading
 import time
@@ -172,6 +176,14 @@ def test_a_malformed_probe_is_rejected_and_never_read(spec):
     assert health_probe.probes([{"slug": "x", "docker": {"health_probe": spec}}]) == {}
 
 
+def test_the_socket_proxy_lets_the_worker_run_the_probe():
+    """Behind the shipped socket proxy only listed exec commands run; an unlisted
+    probe would be refused on every read and the node shown as unreadable."""
+    from app import socket_policy
+
+    assert _spec()["command"] in socket_policy.catalog_commands()
+
+
 def test_the_catalog_entry_is_well_formed():
     """The shipped Mysterium probe passes the checks."""
     assert health_probe.spec_errors(_spec()) == []
@@ -207,8 +219,32 @@ def test_the_sessions_judged_are_the_five_that_ended_last():
     """TequilAPI lists sessions by start time; a long session that started first
     but ended after a run of short ones must still be among those judged."""
     script = _spec()["command"][-1]
-    assert "page_size=25" in script
+    assert "page_size=100" in script
     assert "mktime(t) + d" in script and "sort -rn | head -5" in script
+
+
+def _awk_has_mktime() -> bool:
+    """Whether this machine's awk has mktime, as BusyBox's and mawk's do (macOS's does not)."""
+    probe = subprocess.run(["awk", 'BEGIN { print mktime("2026 11 04 15 36 42") }'], capture_output=True, text=True)
+    return probe.returncode == 0 and probe.stdout.strip().isdigit()
+
+
+@pytest.mark.skipif(not _awk_has_mktime(), reason="this awk has no mktime")
+def test_a_long_session_that_ended_last_is_judged_though_it_started_first():
+    """Runs the catalog's own sessions pipeline on a page in the API's order."""
+    script = _spec()["command"][-1]
+    pipeline = script[script.index('echo "$s" | ') + len('echo "$s" | ') : script.rindex("\nfi")]
+    dead = [_session(i, 61, 0, 0) | {"created_at": f"2026-11-08T1{i // 6}:{i % 6}0:00Z"} for i in range(30)]
+    long_good = _session(99, 40 * 3600, 900_000, 400_000) | {"created_at": "2026-11-07T00:00:00Z"}
+    page = {"items": [*reversed(dead), long_good], "page": 1, "page_size": 100, "total_items": 31, "total_pages": 1}
+    env = {**os.environ, "s": json.dumps(page, separators=(",", ":"))}
+    out = subprocess.run(["sh", "-c", 'echo "$s" | ' + pipeline], capture_output=True, text=True, env=env, check=True)
+    assert len(out.stdout.splitlines()) == 5 and "00000000-0000-4000-8000-000000000099" in out.stdout
+    assert health_probe.judge(_answer("success", None) + "\nsessions read:\n" + out.stdout, _spec()) == []
+    dead_only = {**page, "items": list(reversed(dead))}
+    env["s"] = json.dumps(dead_only, separators=(",", ":"))
+    out = subprocess.run(["sh", "-c", 'echo "$s" | ' + pipeline], capture_output=True, text=True, env=env, check=True)
+    assert health_probe.judge("sessions read:\n" + out.stdout, _spec()) == [1]
 
 
 def test_the_monitoring_finding_sends_to_the_tun_check_first():
@@ -220,30 +256,51 @@ def test_the_monitoring_finding_sends_to_the_tun_check_first():
 # --- The worker's read ---------------------------------------------------------
 
 
+def _frames(output: bytes) -> bytes:
+    """Docker's multiplexed exec stream for ``output``, split over two stdout frames."""
+    half = len(output) // 2
+    return b"".join(struct.pack(">BxxxI", 1, len(part)) + part for part in (output[:half], output[half:]))
+
+
 class _Api:
-    """The low-level Docker API calls the probe makes, answering per container id."""
+    """The low-level Docker API calls the probe makes, answering per container id.
+
+    An answer is (exit code, output), or None for an exec stream that never
+    sends: its socket stays silent until ``hang`` is set.
+    """
 
     def __init__(self, answers):
-        """Map container id to (exit code, output), or to a callable producing the output."""
+        """Map container id to its answer."""
         self.answers = answers
         self.ran = []
+        self.hang = threading.Event()
 
     def exec_create(self, container_id, cmd):
         """Record the exec; its id is the container id."""
         self.ran.append(container_id)
         return {"Id": container_id}
 
-    def exec_start(self, exec_id):
-        """The container's output."""
+    def exec_start(self, exec_id, socket=False):
+        """The raw socket of the exec stream, as docker-py hands it out."""
+        assert socket, "the probe must read the raw socket, never docker-py's unbounded reader"
+        ours, theirs = _socket.socketpair()
         answer = self.answers[exec_id]
-        if callable(answer):
-            return answer()
-        return answer[1]
+        if answer is None:
+
+            def _close_later():
+                self.hang.wait(30)
+                theirs.close()
+
+            threading.Thread(target=_close_later, daemon=True).start()
+        else:
+            theirs.sendall(_frames(answer[1]))
+            theirs.close()
+        return ours
 
     def exec_inspect(self, exec_id):
         """The container's exit code."""
         answer = self.answers[exec_id]
-        return {"ExitCode": 0 if callable(answer) else answer[0]}
+        return {"ExitCode": 0 if answer is None else answer[0]}
 
 
 def _containers(*names, status="running"):
@@ -278,30 +335,62 @@ def test_the_worker_sends_back_only_which_checks_hold():
     assert "consumer_id" not in json.dumps(rows), "the node's answer never leaves the worker"
 
 
-def test_a_stalled_exec_stream_does_not_hold_a_pool_thread(monkeypatch):
-    """A Docker socket that accepts the exec and never answers must not keep a pool
-    thread: four of them would leave every later read queued for good."""
-    import docker
-
-    folder = tempfile.mkdtemp(dir="/tmp")
-    path = os.path.join(folder, "d.sock")
+def _fake_docker(path: str, stop: threading.Event) -> socket.socket:
+    """A Docker API on a unix socket that creates the exec, starts its stream, then never sends."""
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(path)
     server.listen(32)
-    held = []
+
+    def _serve(conn):
+        """Answer one connection's requests until the exec stream starts."""
+        buf = b""
+        while not stop.is_set():
+            while b"\r\n\r\n" not in buf:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    return
+                buf += chunk
+            head, buf = buf.split(b"\r\n\r\n", 1)
+            length = int(re.search(rb"(?i)content-length: *(\d+)", head).group(1)) if b"ength:" in head else 0
+            while len(buf) < length:
+                buf += conn.recv(65536)
+            buf = buf[length:]
+            if b"/exec/stalled-exec/start" in head:
+                conn.sendall(
+                    b"HTTP/1.1 101 UPGRADED\r\nContent-Type: application/vnd.docker.raw-stream\r\n"
+                    b"Connection: Upgrade\r\nUpgrade: tcp\r\n\r\n"
+                )
+                stop.wait(30)  # the stream has started and never sends a byte
+                return
+            body = b'{"Id":"stalled-exec"}'
+            conn.sendall(
+                b"HTTP/1.1 201 Created\r\nContent-Type: application/json\r\n"
+                + f"Content-Length: {len(body)}\r\n\r\n".encode()
+                + body
+            )
 
     def _accept():
-        """Accept connections and never answer them."""
+        """Serve every connection on its own thread."""
         while True:
             try:
-                held.append(server.accept()[0])
+                conn = server.accept()[0]
             except OSError:
                 return
+            threading.Thread(target=_serve, args=(conn,), daemon=True).start()
 
     threading.Thread(target=_accept, daemon=True).start()
-    release = threading.Event()
-    stalled = MagicMock(status="running", id="stalled")
-    stalled.exec_run.side_effect = lambda *a, **k: (release.wait(30), (0, b""))[1]
+    return server
+
+
+def test_a_stalled_exec_stream_does_not_hold_a_pool_thread(monkeypatch):
+    """The daemon creates the exec and starts its stream, then never sends: the read
+    must end by its deadline and free its thread, or four of them leave every
+    later read queued for good. docker-py's own reader polls with no timeout."""
+    import docker
+
+    path = os.path.join(tempfile.mkdtemp(dir="/tmp"), "d.sock")
+    stop = threading.Event()
+    server = _fake_docker(path, stop)
     monkeypatch.setattr(health_probe, "READ_TIMEOUT", 1)
     monkeypatch.setattr(health_probe, "probes", lambda services: {"mysterium": _spec()})
     monkeypatch.setattr(
@@ -309,26 +398,49 @@ def test_a_stalled_exec_stream_does_not_hold_a_pool_thread(monkeypatch):
     )
     try:
         with (
-            patch("app.orchestrator.service_instances", return_value=[stalled]),
+            patch("app.orchestrator.service_instances", return_value=_containers("stalled")),
             patch("app.orchestrator._instance_of", return_value=1),
         ):
-            for _ in range(5):
+            for _ in range(6):
                 rows = health_probe.read_all([catalog.get_service("mysterium")])
                 assert "hits" not in rows[0] and rows[0]["error"] in {"timed out", "read failed"}
-        assert health_probe._pool.submit(lambda: "free").result(timeout=4) == "free"
+                time.sleep(0.3)
+            time.sleep(1.5)
+            rows = health_probe.read_all([catalog.get_service("mysterium")])
+        assert rows[0]["error"] != "busy with earlier reads", "every stalled read ended and gave back its slot"
+        assert health_probe._pool.submit(lambda: "free").result(timeout=2) == "free"
     finally:
-        release.set()
+        stop.set()
         server.close()
-        for conn in held:
-            conn.close()
+
+
+def test_reads_never_queue_behind_busy_threads(monkeypatch):
+    """With every thread on a read that has not ended, the next copy is reported
+    busy at once instead of waiting in the pool's queue."""
+    api = _Api({f"c{i}": None for i in range(6)})
+    monkeypatch.setattr(health_probe, "READ_TIMEOUT", 0.2)
+    monkeypatch.setattr(health_probe, "probes", lambda services: {"mysterium": _spec()})
+    monkeypatch.setattr(health_probe, "_recv", lambda sock, deadline: (api.hang.wait(30), b"")[1])
+    try:
+        with (
+            patch("app.orchestrator.service_instances", return_value=_containers(*api.answers)),
+            patch("app.orchestrator._instance_of", side_effect=range(1, 7)),
+            patch("app.health_probe._client", return_value=MagicMock(api=api)),
+        ):
+            rows = health_probe.read_all([catalog.get_service("mysterium")])
+        assert [r["error"] for r in rows] == ["timed out"] * 4 + ["busy with earlier reads"] * 2
+        assert api.ran == ["c0", "c1", "c2", "c3"]
+    finally:
+        api.hang.set()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and not health_probe._slots.acquire(blocking=False):
+        time.sleep(0.05)
+    health_probe._slots.release()
 
 
 def test_copies_read_before_the_batch_deadline_still_go_back(monkeypatch):
     """The UI waits 60 s for the whole answer; one slow copy must not cost the others."""
-    release = threading.Event()
-    api = _Api(
-        {"fast": (0, FAILING.encode()), "slow": lambda: (release.wait(10), FAILING.encode())[1], "late": (0, b"")}
-    )
+    api = _Api({"fast": (0, FAILING.encode()), "slow": None, "late": (0, b"")})
     monkeypatch.setattr(health_probe, "BATCH_BUDGET", 0.5)
     try:
         with (
@@ -340,7 +452,7 @@ def test_copies_read_before_the_batch_deadline_still_go_back(monkeypatch):
             rows = health_probe.read_all([catalog.get_service("mysterium")])
         assert time.monotonic() - started < 2
     finally:
-        release.set()
+        api.hang.set()
     assert rows[0]["hits"] == [0, 1]
     assert rows[1]["error"] == "timed out" and rows[2]["error"] == "not reached in time"
     assert "late" not in api.ran

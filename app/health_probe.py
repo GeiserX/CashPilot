@@ -33,10 +33,14 @@ so a command that reads two things can lose one without losing the other's
 verdict. A check whose marker is missing is reported in ``unread``.
 
 The command must start with ``timeout <seconds>`` below READ_TIMEOUT, which
-ends the command in the container. The exec itself runs on a Docker client of
-this module's own with a READ_TIMEOUT socket timeout: a stream that stalls
-(the daemon or the socket proxy stops sending) raises instead of holding its
-pool thread, so stalled reads cannot fill the pool for the worker's lifetime.
+ends the command in the container. That does not bound the exec stream: if the
+daemon or the socket proxy stops sending, docker-py's own reader waits on the
+socket with no timeout (``docker.utils.socket.read`` polls without one). So the
+exec runs on a client of this module's own with a READ_TIMEOUT socket timeout
+for the API calls, and its output is read here from the raw socket against a
+READ_TIMEOUT deadline (_read_stream). A stalled read ends and frees its thread,
+and at most as many reads as the pool has threads are ever in flight or queued
+(_slots): a copy that finds them all taken is reported unread, never queued.
 
 Read-only by construction, like ``app/node_read.py``: the command comes from
 the catalog in this image, never from a request, and only the indexes of the
@@ -46,10 +50,15 @@ checks that hold leave the worker, never the output.
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import hashlib
 import json
 import logging
 import re
+import select
+import socket
+import struct
+import threading
 import time
 from typing import Any
 
@@ -61,7 +70,10 @@ READ_TIMEOUT = 15
 #: it; copies not read by then are reported unread, and the rest still go back.
 BATCH_BUDGET = 40
 
-_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="health-probe")
+_POOL_SIZE = 4
+_pool = concurrent.futures.ThreadPoolExecutor(max_workers=_POOL_SIZE, thread_name_prefix="health-probe")
+#: One per read submitted and not finished, so the pool's queue never grows.
+_slots = threading.BoundedSemaphore(_POOL_SIZE)
 
 
 def _min_matches(check: dict[str, Any]) -> int | None:
@@ -171,11 +183,64 @@ def _client() -> Any:
     return docker.from_env(timeout=READ_TIMEOUT)
 
 
+def _recv(sock: Any, deadline: float) -> bytes:
+    """One chunk from the exec socket, waiting no later than ``deadline``; b"" at its end."""
+    left = deadline - time.monotonic()
+    if left <= 0 or not select.select([sock], [], [], left)[0]:
+        raise TimeoutError("the exec stream stalled")
+    if hasattr(sock, "recv"):
+        return sock.recv(65536)
+    return sock.read(65536) or b""
+
+
+def _read_stream(sock: Any, deadline: float) -> bytes:
+    """The stdout and stderr of a non-tty exec, read from its raw socket by ``deadline``.
+
+    The stream is Docker's multiplexed format: an 8-byte header (stream, three
+    zero bytes, payload size) before each payload.
+    """
+    data = b""
+    while True:
+        chunk = _recv(sock, deadline)
+        if not chunk:
+            break
+        data += chunk
+    out, pos = [], 0
+    while pos + 8 <= len(data):
+        size = struct.unpack(">I", data[pos + 4 : pos + 8])[0]
+        out.append(data[pos + 8 : pos + 8 + size])
+        pos += 8 + size
+    return b"".join(out)
+
+
+def _close_exec_socket(sock: Any) -> None:
+    """Close an exec's hijacked connection now, whatever state the read left it in.
+
+    A read that hit its deadline leaves the exec running on the other end, so
+    the connection is shut down first rather than left to the garbage
+    collector. Closing only the socket would leave the HTTP response docker-py
+    hangs on it to fail on its own close later, so that is closed too.
+    """
+    raw = getattr(sock, "_sock", sock)
+    with contextlib.suppress(OSError):
+        raw.shutdown(socket.SHUT_RDWR)
+    response = getattr(sock, "_response", None)
+    for thing in (response, sock, raw):
+        if thing is not None:
+            with contextlib.suppress(Exception):
+                thing.close()
+
+
 def _read_one(client: Any, container_id: str, spec: dict[str, Any]) -> dict[str, list[int]] | None:
     """Run the probe in one container: hits and unread checks, or None when nothing was read."""
+    deadline = time.monotonic() + READ_TIMEOUT
     api = client.api
     exec_id = api.exec_create(container_id, spec["command"])["Id"]
-    output = api.exec_start(exec_id)
+    sock = api.exec_start(exec_id, socket=True)
+    try:
+        output = _read_stream(sock, deadline)
+    finally:
+        _close_exec_socket(sock)
     if api.exec_inspect(exec_id).get("ExitCode") != 0:
         return None
     unread = unanswered(output, spec)
@@ -219,16 +284,23 @@ def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
             if left <= 0:
                 row["error"] = "not reached in time"
                 continue
-            future = None
+            if not _slots.acquire(blocking=False):
+                # Every thread still busy with an earlier read: say so rather
+                # than queue behind it.
+                row["error"] = "busy with earlier reads"
+                continue
             try:
-                if client is None:
-                    client = _client()
-                future = _pool.submit(_read_one, client, container.id, spec)
+                try:
+                    if client is None:
+                        client = _client()
+                    future = _pool.submit(_read_one, client, container.id, spec)
+                except BaseException:
+                    _slots.release()
+                    raise
+                future.add_done_callback(lambda _f: _slots.release())
                 read = future.result(timeout=left)
             except concurrent.futures.TimeoutError:
-                # Still queued: never run it. Running: the client's socket
-                # timeout ends it.
-                future.cancel()
+                # The read ends by its own deadline and frees its slot then.
                 row["error"] = "timed out"
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Health probe failed for %s: %s", slug, exc)
@@ -239,5 +311,5 @@ def read_all(services: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 else:
                     row.update(read)
     # A read that timed out may still be using the client; it is dropped, not
-    # closed, so that read ends on its own socket timeout.
+    # closed, so that read ends by its own deadline.
     return rows
