@@ -94,7 +94,8 @@ docker build -q -t "$P-tcpdump-img" - >/dev/null <<EOF
 FROM $ALPINE
 RUN apk add --no-cache tcpdump
 EOF
-docker pull -q "$TUNNEL_IMAGE" >/dev/null
+# A local build (an unreleased tunnel) is used as it is; anything else is pulled.
+docker image inspect "$TUNNEL_IMAGE" >/dev/null 2>&1 || docker pull -q "$TUNNEL_IMAGE" >/dev/null
 docker pull -q "$CURL" >/dev/null
 
 # --- control server (as in proxy_leak_test_tailscale.sh) ---
