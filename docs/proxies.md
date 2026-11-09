@@ -14,7 +14,7 @@ under its own device name (`cashpilot-box-p3` for proxy 3).
 |---|---|---|
 | SOCKS5 | host, port, optional user and password | TCP only: the tunnel lets out only TCP to the proxy's port, so SOCKS5 UDP relays are dropped. Name lookups still work (see [DNS](#dns)). |
 | HTTP CONNECT | host, port, optional user and password | TCP only. Name lookups still work (see [DNS](#dns)). |
-| Tailscale exit node | an auth key and the exit node's name or 100.x address | Traffic leaves from the exit node's connection, UDP included. See [Tailscale exit nodes](#tailscale-exit-nodes). |
+| Tailscale exit node | an auth key and the exit node's 100.x address | Traffic leaves from the exit node's connection, UDP included. See [Tailscale exit nodes](#tailscale-exit-nodes). |
 
 Any provider works. Nothing in CashPilot is specific to one.
 
@@ -49,13 +49,19 @@ starts.
 
 ## How it works
 
-Each copy is two containers on the worker:
+Every copy through one proxy on one box shares a single tunnel:
 
-1. A **tunnel** container from `drumsergio/cashpilot-tunnel`, at the same
-   exact version as the worker. It owns a network namespace and makes the
-   proxy the only way out of it.
-2. The **earner**, started with `network_mode: container:<tunnel>`. It has no
-   network interface of its own.
+1. A **tunnel** container from `drumsergio/cashpilot-tunnel`, created at the
+   same exact version as the worker (it keeps that image until it is replaced,
+   see below), named `cashpilot-tunnel-p<id>` for proxy
+   `<id>`. It owns a network namespace and makes the proxy the only way out
+   of it.
+2. One **earner** per copy, started with `network_mode: container:<tunnel>`.
+   It has no network interface of its own.
+
+So seven copies through one proxy on a box are eight containers, not
+fourteen. See [One tunnel per proxy](#one-tunnel-per-proxy) for why and what it
+changes.
 
 The tunnel sets things up in this order:
 
@@ -75,7 +81,9 @@ The tunnel sets things up in this order:
 4. A probe through the tunnel. The earner is started only after the probe sees
    an exit IP within 45 seconds, and, when the worker knows its own public IP,
    one that is not the box's own. Otherwise the copy is refused and the tunnel
-   removed.
+   removed. A copy added through a proxy whose tunnel already runs on the
+   same settings skips all four steps: its earner is created inside the
+   running tunnel, and no other copy is touched.
 
 The tunnel joins the same network as every other earner. With
 [LAN isolation](isolation.md#lan-isolation-by-default) on, that network is fenced
@@ -87,9 +95,10 @@ DERP relays rather than a direct LAN path.
 ### It fails closed
 
 If the proxy goes down, the tunnel process dies or the tunnel container stops,
-the earner has no way to send a packet anywhere: not to the internet from your
-own IP, not to your LAN, not to the Docker bridge. It stops earning; it never
-leaks.
+no earner in that tunnel has a way to send a packet anywhere: not to the
+internet from your own IP, not to your LAN, not to the Docker bridge. They stop
+earning; they never leak. Copies in one tunnel still share its loopback, so one
+can reach a listener another opened on 127.0.0.1; that never leaves the tunnel.
 
 `scripts/proxy_leak_test.sh` proves this against a real Docker daemon, for
 SOCKS5 and HTTP, each with and without a password:
@@ -105,12 +114,18 @@ SOCKS5 and HTTP, each with and without a password:
 - the tunnel's log names no session or destination the earner reached;
 - `docker inspect` of the tunnel shows no proxy password.
 
+`scripts/proxy_shared_tunnel_lab.sh` runs the same kind of checks with two
+earners in one tunnel, and drives the worker's own code with 1 and 7 copies;
+see [One tunnel per proxy](#one-tunnel-per-proxy).
+
 After a reboot or a Docker restart, Docker starts the tunnel but never the
-earner: a container that shares another's namespace could join it before the
-tunnel's firewall is loaded. The worker starts the earner on its next
+earners: a container that shares another's namespace could join it before the
+tunnel's firewall is loaded. The worker starts the earners on its next
 heartbeat, once the tunnel has written its ready file, which happens only
 after the firewall is in and an exit through the tunnel was seen. The same
-happens when the earner itself crashes.
+happens when an earner itself crashes. A copy you stopped, or the traffic cap
+stopped, stays stopped: the worker writes each stop down in its data folder
+(`.proxied_held`), because the tunnel keeps running for the other copies.
 
 Every leak check is first run against a namespace opened on purpose (the
 firewall table deleted and a default route put back) and must see the leak
@@ -147,6 +162,78 @@ environment or the recorded command. tun2proxy takes the URL on its command
 line, which is visible inside the tunnel container's own process list; the
 earner has a separate process namespace and cannot see it. Anyone with the
 host's Docker socket can, as they can see every earner's credentials today.
+
+### One tunnel per proxy
+
+Copies through the same proxy already leave from the same exit IP, so a tunnel
+each bought them nothing, and a tunnel costs more memory than most earners: a
+Tailscale tunnel holds about 20 MB of heap in tailscaled whatever the traffic,
+plus its own copy of the binaries on storage drivers that do not share page
+cache between containers (btrfs). With seven copies through one exit node we
+measured the seven tunnels at 339 MB of cgroup memory, carrying 190 MB of
+earners. One tunnel per proxy per box costs what one of those tunnels cost,
+however many copies it carries, and is one tailnet device instead of seven.
+
+What stays the same: the firewall, the ready file, the heartbeat gate, the
+hardening of both containers and everything you set up. What changes:
+
+- **The traffic shown and capped is per proxy per box**, not per copy. Every
+  copy in a tunnel moves its bytes over the same interface, so the counters
+  cannot be split between them. The cap counts each tunnel once.
+- **Copies in one tunnel share a network namespace.** Each can see the other
+  copies' sockets in `/proc/net` and reach anything another copy listens on at
+  `127.0.0.1`. None of them can read another's traffic or change the firewall:
+  no proxied earner gets `NET_ADMIN`, `NET_RAW` or `SYS_ADMIN`. If you do not
+  want two providers' software side by side like that, run them through
+  different proxies.
+- **One tunnel failure stops every copy on that proxy on that box.** It fails
+  closed, as above. They already depended on the same proxy.
+- **An edited proxy restarts the tunnel in place.** A start with new settings
+  (see [Editing a proxy](#editing-a-proxy)) first proves them in a throwaway
+  Test tunnel. Only once that tunnel reaches the internet are they written into
+  the proxy's tunnel, which restarts; its copies restart inside it. Settings
+  that cannot reach the internet cost the running copies nothing. If the new
+  settings pass the test and then fail in the tunnel, the old ones go back.
+- **Copies are recreated as rarely as possible.** A copy keeps whatever its
+  provider wrote inside the container (several write a device id there), and a
+  recreated container starts without it, so the provider sees a new device. An
+  edit, a worker update and a reboot never recreate a copy. The tunnel keeps
+  the image it was created with until it is replaced, which happens only when
+  you redeploy the only copy in it, or when Docker can no longer start it at
+  all. In that last case a new tunnel proves its exit first, then every copy is
+  recreated inside it (same image, environment, labels and limits, from what
+  Docker recorded), because a container's network namespace is fixed when it
+  is created.
+- **A move never loses a copy.** While a copy is recreated, its old container
+  is kept under `<name>-moving` until the new one holds the name and runs. A
+  move that fails puts the old container back. If the worker stops in the
+  middle, it finishes or undoes the move when it starts again or, at the
+  latest, at a heartbeat about five minutes later.
+- **The tunnel stops when the last copy that should run stops**, and is
+  removed with its settings volume when the last copy is removed.
+
+Upgrading a worker from one tunnel per copy needs nothing from you. At start
+the worker moves each proxy's copies into one tunnel, reusing the settings of
+a running tunnel of that proxy, then removes the old tunnels. Each copy is
+down for a few seconds, once, and is recreated, so a provider that keeps its
+device id inside the container sees a new device once and the old one goes
+offline. Copies you had stopped stay stopped. A proxy
+with no running tunnel at that moment moves on the next start of one of its
+copies; until then its old tunnels keep working as before.
+
+`scripts/proxy_shared_tunnel_lab.sh` proves this against a local headscale
+tailnet. With two earners in one tunnel: both reach the internet and none of it
+leaves the tunnel's interface in the clear; stopping one earner does not
+interrupt the other; neither reaches another tailnet node; a lookup of a random
+name never shows on the tunnel's interface; while the tunnel restarts neither
+has an interface to send on; and with the exit node stopped, tailscaled frozen
+or killed, or no exit node set, neither reaches the internet or the LAN and a
+capture sees no packet. Three negative controls must turn those checks red: the
+firewall deleted, a copy created on the bridge instead of inside the tunnel,
+and a tunnel image whose output policy is accept. It then drives the worker's
+own code with 1 and 7 copies, checks there is one tunnel, that every copy
+reaches the internet and none does with the exit node stopped, measures the
+memory, and moves copies deployed by the previous release into one tunnel.
 
 ## DNS
 
@@ -198,7 +285,10 @@ need the host and port the earner connects to. Its log usually names them
 (`docker logs cashpilot-<service>-p<proxy id>`), or the provider's docs do.
 
 **Before you deploy, from any machine.** Ask the proxy directly. curl prints
-the proxy's answer to its `CONNECT` request:
+the proxy's answer to its `CONNECT` request. An `http://` proxy and a
+`socks5h://` proxy both receive your user and password unencrypted (only the
+connection to the earner's server is TLS), exactly as they do from the
+tunnel, so probe from a network you trust.
 
 ```bash
 # HTTP CONNECT proxy; curl asks for the password, so it stays out of your shell history
@@ -207,9 +297,9 @@ curl -v -m 15 -o /dev/null --noproxy '' -x 'http://gate.example.net:8080' --prox
 curl -v -m 15 -o /dev/null --noproxy '' -x 'socks5h://gate.example.net:7000' --proxy-user USER https://earner-host.example:443/
 ```
 
-With `-v`, curl prints the `Proxy-Authorization` header it sends, and that
-header holds your user and password in Base64, which anyone can decode. Delete
-that line before you share the output.
+For an HTTP proxy, `-v` makes curl print the `Proxy-Authorization` header it
+sends, and that header holds your user and password in Base64, which anyone
+can decode. Delete that line before you share the output.
 
 A `403`, `Access violation`, `connection not allowed by ruleset` or a closed
 connection right after the `CONNECT` means the proxy refuses that host or
@@ -220,12 +310,12 @@ else passes a 443 test. These probes speak HTTPS; for an earner whose server
 speaks something else, curl fails on both paths below whatever the proxy does,
 so use a client for that protocol that needs an answer from the server.
 
-**After you deploy, through the copy's own tunnel.** Join the tunnel's
+**After you deploy, through the proxy's tunnel.** Join the tunnel's
 network namespace with a throwaway container. Run the same probe once from
 the box's own network as the control, so you know what an answer looks like:
 
 ```bash
-TUN=cashpilot-tunnel-<service>-p<proxy id>
+TUN=cashpilot-tunnel-p<proxy id>
 URL=https://earner-host.example:443/
 
 # Control: straight from the box
@@ -294,12 +384,17 @@ to the old address.
 
 ## Editing a proxy
 
-A copy keeps the settings it was last started with. An edit (a new password,
-host, port, type, auth key or exit node) reaches a copy the next time it is
-started from the page or by a cap reset: the worker writes the proxy's current
-settings into the tunnel before it starts. To apply an edit to a copy that is
-running, press **Stop**, then **Start**. A restart that Docker does on its own,
-after a reboot or a Docker restart, uses the settings of the last start.
+The copies on a box keep the settings their tunnel was last started with. An
+edit (a new password, host, port, type, auth key or exit node) reaches them the
+next time any copy through that proxy on that box is started from the page or
+by a cap reset. If the tunnel is stopped, the worker writes the proxy's current
+settings into it and starts it. If it is running for other copies, the worker
+tests the new settings in a throwaway tunnel, then writes them into the running
+one and restarts it with its copies (see
+[One tunnel per proxy](#one-tunnel-per-proxy)). To apply an edit now, press
+**Stop**, then **Start** on one copy on each box. A restart that Docker does on
+its own, after a reboot or a Docker restart, uses the settings of the last
+start.
 
 This needs a worker at least as new as the UI; an older worker only looks the
 host name up again, and a copy on it keeps the rest until you remove it and run
@@ -312,7 +407,8 @@ sell), the percentage to stop at (90 by default), and a reset day (1 to 28) or
 none for resetting by hand.
 
 Traffic is counted from the tunnel container's own interface, which every byte
-of the earner crosses. That count includes TCP, TLS and WireGuard overhead, so
+of every earner in it crosses, so on each box it is one count for all the copies
+through that proxy. That count includes TCP, TLS and WireGuard overhead, so
 it can differ from your provider's. The tunnel's counters run for the
 container's whole life, so a gap in reports (the UI down for hours, a worker
 that could not reach it) is counted in full when reports come back.
@@ -374,16 +470,27 @@ Before you add one, in this order:
    **pre-approved** too, or every start waits for you in the admin console.
 3. On the exit node's machine, turn on **Run as exit node**, and approve it in
    the admin console.
-4. Add the proxy here with the key and the exit node's name or 100.x address.
+4. Add the proxy here with the key and the exit node's 100.x address. Not its
+   name: the tunnel sets the exit node while Tailscale is still starting, when
+   names do not resolve yet, and the start then fails with "the auth key was
+   refused".
 
-Each tunnel joins your tailnet as its own ephemeral node. When it stops (a
-removal, a restart, the end of a Test, the box shutting down cleanly) it logs
-out first, which deletes its device at once, so a restarted copy comes back
-under the same name rather than as `<name>-1`. The logout needs nothing more
-from the key. A tunnel killed without a stop (a power cut, an out-of-memory
-kill) cannot log out; Tailscale removes its ephemeral device once it has been
-offline a while, and until then the copy's next start takes `<name>-1`. Keys expire (90 days at most); when one does, every
-start fails the same way. Create a new key, paste it into the proxy's
+Each box joins your tailnet once per proxy, as one ephemeral node that asks
+for the name `cashpilot-p<id>`, however many copies it carries. Tailscale
+gives each device a name of its own, so when two boxes carry copies through
+the same proxy, the second one shows as `cashpilot-p<id>-1`. A Test joins as
+a node of its own for the length of the test. When a tunnel stops (a removal,
+a restart, the end of a Test, the box shutting down cleanly) it logs out
+first, which deletes its device at once and frees its name. It usually comes
+back under that name, unless another box on the same proxy took it meanwhile.
+The logout needs nothing more from the key, but it needs to reach Tailscale:
+a tunnel killed without a stop (a power cut, an out-of-memory kill), or one
+that cannot reach Tailscale as it stops, leaves its device behind. Tailscale
+removes an ephemeral device once it has been offline a while, and until then
+the next start gets a `-1` name. Keys expire (90 days at most). A copy still
+starts in a tunnel that is already running, but a tunnel that has to join
+the tailnet again (after a stop, a restart or a settings change) fails the
+same way as a wrong key. Create a new key, paste it into the proxy's
 settings, then press **Start** on each copy (see [Editing a proxy](#editing-a-proxy)).
 A leaked reusable key lets anyone join your tailnet as that tag,
 which is why it must be ephemeral, tagged and used for nothing else.
@@ -425,9 +532,10 @@ What changes:
 - **The exit node still does work.** It encrypts and forwards every packet, so
   its CPU rises with the traffic. Measure it under load (see
   [Budgeting a small box](fleet.md#budgeting-a-small-box)).
-- **Each copy is two containers on the box that runs it**, the tunnel and the
-  earner. The tunnel joins the tailnet as the copy's own ephemeral node; the
-  earner shares the tunnel's network and never joins it.
+- **The box that runs the copies holds one tunnel per proxy**, shared by every
+  copy through it, plus one container per earner. The tunnel joins the tailnet
+  as that box's ephemeral node for the proxy; the earners share its network
+  and never join it.
 - **The path to the exit node is over the internet.** With
   [LAN isolation](isolation.md#lan-isolation-by-default) on, the tunnel reaches
   the exit node over its public endpoints or a DERP relay, never a LAN path. A
@@ -447,3 +555,55 @@ For each service you move:
    removes any proxied copies of it on that worker, so note them first and add
    them again on another worker.
 3. Add its copy through the exit node.
+
+## From the command line or an agent
+
+Everything on the page goes through the UI's API, so a script or an agent such
+as Claude Code can do the same with the admin key (`CASHPILOT_ADMIN_API_KEY` in
+the UI's environment). The proxy's secrets go in once and never come back out.
+The example needs bash or zsh (for `read -s`) and `jq`. The admin key and the
+proxy key never appear on a command line, where other users of the machine
+could read them in the process list.
+
+```bash
+( # a subshell, so the trap below removes the key file however it ends
+UI=http://localhost:8080
+WORKER=1  # the box's worker id, from GET /api/workers
+AUTH=$(mktemp) || exit 1  # the admin key goes to curl from this file, not as an argument
+trap 'rm -f "$AUTH"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+printf 'Authorization: Bearer %s\n' "$CASHPILOT_ADMIN_API_KEY" >"$AUTH"
+
+# 1. Add the proxy (for SOCKS5: "kind": "socks5", "host", "port", "username", "password").
+#    The key is read without echo and sent on stdin.
+read -rs TS_AUTH_KEY
+PROXY=$(printf '{"name": "Exit at home", "kind": "tailscale", "auth_key": "%s", "exit_node": "100.101.102.103"}' \
+  "$TS_AUTH_KEY" | curl -sf -H @"$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies" --data @- |
+  jq -er .id) || { echo "the proxy was not added" >&2; exit 1; }
+
+# 2. Test it from the box: the exit IP it gets.
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/$PROXY/test?worker_id=$WORKER"
+
+# 3. Run copies of services already deployed on that box. The first starts the
+#    tunnel; the others join it.
+for slug in repocket earnfm traffmonetizer; do
+  curl -s -H @"$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies/$PROXY/copies" \
+    -d "{\"worker_id\": $WORKER, \"slug\": \"$slug\"}"
+done
+
+# 4. See them, with the exit IP and the traffic per proxy.
+curl -s -H @"$AUTH" "$UI/api/proxies"
+
+# Stop, start or remove one copy.
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/$PROXY/copies/$WORKER/earnfm/stop"
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/$PROXY/copies/$WORKER/earnfm/start"
+curl -s -H @"$AUTH" -X DELETE "$UI/api/proxies/$PROXY/copies/$WORKER/earnfm"
+)
+```
+
+On the box itself, `docker ps -a --filter label=cashpilot.proxy=<id>` lists the tunnel
+and every copy through that proxy; each copy's `docker inspect` shows
+`"NetworkMode": "container:<the tunnel's id>"`.
+
