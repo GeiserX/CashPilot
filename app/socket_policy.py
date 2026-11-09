@@ -282,6 +282,28 @@ _PROXY_FINGERPRINT = (
 )
 
 
+def _env_list(text: str, at: int, indent: str) -> str:
+    """The environment list around offset ``at``: the run of lines at
+    ``indent`` that are list entries or comments."""
+    lines = text.splitlines(keepends=True)
+    offsets, pos = [], 0
+    for line in lines:
+        offsets.append(pos)
+        pos += len(line)
+    here = max(i for i, o in enumerate(offsets) if o <= at)
+
+    def part_of(line: str) -> bool:
+        return line.startswith(indent) and line[len(indent) :].startswith(("- ", "#"))
+
+    first = here
+    while first > 0 and part_of(lines[first - 1]):
+        first -= 1
+    last = here
+    while last + 1 < len(lines) and part_of(lines[last + 1]):
+        last += 1
+    return "".join(lines[first : last + 1])
+
+
 def update(text: str, passes: int | None = None) -> str:
     """An operator's compose file brought to this image's policy.
 
@@ -294,10 +316,10 @@ def update(text: str, passes: int | None = None) -> str:
     if passes is None:
         start, end = text.find(BEGIN), text.find(END)
         passes = 2 if start >= 0 and "$$$$" in text[start:end] else 1
-    if len(DIGEST_RE.findall(text)) == 1:
-        anchor = _PROXY_ENV_ANCHOR.search(text)
-        if anchor is None:
-            raise SystemExit("compose file has no socket proxy environment to give the policy's fingerprint")
+    anchor = _PROXY_ENV_ANCHOR.search(text)
+    if anchor is None:
+        raise SystemExit("compose file has no socket proxy environment to give the policy's fingerprint")
+    if not DIGEST_RE.search(_env_list(text, anchor.start(), anchor.group(1))):
         line = _PROXY_FINGERPRINT.format(indent=anchor.group(1))
         text = text[: anchor.end()] + line + text[anchor.end() :]
     return render(text, compose_block(passes=passes), digest())

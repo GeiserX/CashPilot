@@ -975,6 +975,19 @@ def test_passes_overrides_the_guess(monkeypatch, capsys):
     assert (code, out) == (2, "") and "usage" in err
 
 
+def test_a_fingerprint_elsewhere_does_not_stand_in_for_the_proxys(monkeypatch, capsys):
+    """Only the proxy's own environment counts: a comment (or a second worker)
+    carrying the fingerprint must not stop the proxy getting its line."""
+    from app import socket_policy
+
+    shipped = (ROOT / "docker-compose.worker.yml").read_text()
+    note = "# was CASHPILOT_PROXY_POLICY={}\nservices:\n"
+    old = _stale(shipped, proxy_line=False).replace("services:\n", note.format("e9a30411b564dc75"), 1)
+    code, out, _ = _filter(old, monkeypatch, capsys)
+    assert code == 0
+    assert out == shipped.replace("services:\n", note.format(socket_policy.digest()), 1)
+
+
 def test_the_image_refuses_a_file_with_no_proxy_environment(monkeypatch, capsys):
     from app import socket_policy
 
