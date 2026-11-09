@@ -177,6 +177,25 @@ class TestASlowStartIsNotAFailedDeploy:
             asyncio.run(main._proxy_worker_deploy(1, "mysterium", {}))
         assert proxy.call_args.kwargs["timeout"] >= 60 + 30 + constants.START_SETTLE_SECONDS
 
+    @pytest.mark.parametrize(("slug", "under_lock"), [("mysterium", True), ("honeygain", False)])
+    def test_a_stop_looks_the_node_up_only_once_a_redeploy_lets_go(self, markers, slug, under_lock):
+        # While a redeploy waits out a slow start, the old node sits renamed
+        # aside and the new one is starting. Looked up before the lock, Stop
+        # would stop the old node (or one the redeploy removes) and leave the
+        # new one running. A service without the fence takes no lock (the control).
+        labels = {"cashpilot.service": slug, "cashpilot.managed": "true"}
+        node = _running_old(f"cashpilot-{slug}", labels)
+        seen = []
+
+        def find(*_args, **_kwargs):
+            seen.append(orchestrator.GATED_DEPLOY_LOCK.locked())
+            return node
+
+        with patch.object(orchestrator, "_find_container", side_effect=find):
+            orchestrator.stop_service(slug)
+        assert seen == [under_lock]
+        node.stop.assert_called_once()
+
     @pytest.mark.parametrize(("slug", "waits_for_deploy"), [("mysterium", True), ("honeygain", False)])
     def test_a_stop_sent_during_a_redeploy_waits_for_the_deploy_lock(self, slug, waits_for_deploy):
         # The worker stops a fence-gated node under the lock deploy_raw holds

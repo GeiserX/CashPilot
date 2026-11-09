@@ -1657,14 +1657,16 @@ def service_name(slug: str) -> str:
 
 def stop_service(slug: str, instance: int = 1) -> None:
     """Stop the container for a service."""
-    container = _find_container(slug, instance)
-    if _gated_container(slug, container):
-        # Recorded before the stop, under the guard's lock: a guard pass that
-        # read the records before this Stop would otherwise start it after.
-        with GATED_DEPLOY_LOCK:
+    # For a fence-gated service the container is looked up under the lock too: a
+    # redeploy holds it while the old node sits renamed aside and the new one
+    # starts, so a lookup made before would stop the old node, or one the
+    # redeploy then removes, and leave the new node running.
+    with GATED_DEPLOY_LOCK if fence_gated(slug) else contextlib.nullcontext():
+        container = _find_container(slug, instance)
+        if _gated_container(slug, container):
+            # Recorded before the stop, under the guard's lock: a guard pass that
+            # read the records before this Stop would otherwise start it after.
             _mark_stopped(container.name, True, strict=True)
-            container.stop(timeout=_get_stop_timeout(slug))
-    else:
         container.stop(timeout=_get_stop_timeout(slug))
     logger.info("Stopped container %s", container.name)
 
