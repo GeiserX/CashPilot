@@ -296,7 +296,9 @@ curl -v -m 15 -o /dev/null --noproxy '' -x 'socks5h://gate.example.net:7000' --p
 
 With `-v`, curl prints the `Proxy-Authorization` header it sends, and that
 header holds your user and password in Base64, which anyone can decode. Delete
-that line before you share the output.
+that line before you share the output. The same header crosses the network to
+an `http://` proxy unencrypted (only the connection to the earner's server is
+TLS), exactly as it does from the tunnel, so probe from a network you trust.
 
 A `403`, `Access violation`, `connection not allowed by ruleset` or a closed
 connection right after the `CONNECT` means the proxy refuses that host or
@@ -472,17 +474,21 @@ Before you add one, in this order:
    names do not resolve yet, and the start then fails with "the auth key was
    refused".
 
-Each box joins your tailnet once per proxy, as one ephemeral node named
-`cashpilot-p<id>`, however many copies it carries. A Test joins as a node of
-its own for the length of the test. When a tunnel stops (a removal, a restart,
-the end of a Test, the box shutting down cleanly) it logs out first, which
-deletes its device at once, so it comes back under the same name rather than
-as `cashpilot-p<id>-1`. The logout needs nothing more from the key. A tunnel
-killed without a stop (a power cut, an out-of-memory kill) cannot log out;
-Tailscale removes its ephemeral device once it has been offline a while, and
-until then the next start takes `cashpilot-p<id>-1`. Keys expire (90 days at
-most); when one does, every
-start fails the same way. Create a new key, paste it into the proxy's
+Each box joins your tailnet once per proxy, as one ephemeral node that asks
+for the name `cashpilot-p<id>`, however many copies it carries. Tailscale
+gives each device a name of its own, so when two boxes carry copies through
+the same proxy, the second one shows as `cashpilot-p<id>-1`. A Test joins as
+a node of its own for the length of the test. When a tunnel stops (a removal,
+a restart, the end of a Test, the box shutting down cleanly) it logs out
+first, which deletes its device at once, so it comes back under its old name.
+The logout needs nothing more from the key, but it needs to reach Tailscale:
+a tunnel killed without a stop (a power cut, an out-of-memory kill), or one
+that cannot reach Tailscale as it stops, leaves its device behind. Tailscale
+removes an ephemeral device once it has been offline a while, and until then
+the next start gets a `-1` name. Keys expire (90 days at most). A copy still
+starts in a tunnel that is already running, but a tunnel that has to join
+the tailnet again (after a stop, a restart or a settings change) fails the
+same way as a wrong key. Create a new key, paste it into the proxy's
 settings, then press **Start** on each copy (see [Editing a proxy](#editing-a-proxy)).
 A leaked reusable key lets anyone join your tailnet as that tag,
 which is why it must be ephemeral, tagged and used for nothing else.
@@ -553,39 +559,46 @@ For each service you move:
 Everything on the page goes through the UI's API, so a script or an agent such
 as Claude Code can do the same with the admin key (`CASHPILOT_ADMIN_API_KEY` in
 the UI's environment). The proxy's secrets go in once and never come back out.
+The example needs bash or zsh (for `read -s`) and `jq`. The admin key and the
+proxy key never appear on a command line, where other users of the machine
+could read them in the process list.
 
-```sh
+```bash
 UI=http://localhost:8080
-AUTH="Authorization: Bearer $CASHPILOT_ADMIN_API_KEY"
+WORKER=1  # the box's worker id, from GET /api/workers
+AUTH=$(mktemp)  # the admin key goes to curl from this file, not as an argument
+printf 'Authorization: Bearer %s\n' "$CASHPILOT_ADMIN_API_KEY" >"$AUTH"
 
 # 1. Add the proxy (for SOCKS5: "kind": "socks5", "host", "port", "username", "password").
-#    The key is read without echo and sent on stdin, so it stays out of the
-#    shell history and the process list.
+#    The key is read without echo and sent on stdin.
 read -rs TS_AUTH_KEY
-printf '{"name": "Exit at home", "kind": "tailscale", "auth_key": "%s", "exit_node": "100.101.102.103"}' \
-  "$TS_AUTH_KEY" | curl -s -H "$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies" --data @-
-# -> {"id": 3, ...}
+PROXY=$(printf '{"name": "Exit at home", "kind": "tailscale", "auth_key": "%s", "exit_node": "100.101.102.103"}' \
+  "$TS_AUTH_KEY" | curl -sf -H @"$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies" --data @- |
+  jq -er .id) || echo "the proxy was not added" >&2
+# ${PROXY:?} below refuses to run any command while PROXY is empty.
 
-# 2. Test it from a box (the worker id from GET /api/workers): the exit IP it gets.
-curl -s -H "$AUTH" -X POST "$UI/api/proxies/3/test?worker_id=1"
+# 2. Test it from the box: the exit IP it gets.
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/${PROXY:?}/test?worker_id=$WORKER"
 
 # 3. Run copies of services already deployed on that box. The first starts the
 #    tunnel; the others join it.
 for slug in repocket earnfm traffmonetizer; do
-  curl -s -H "$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies/3/copies" \
-    -d "{\"worker_id\": 1, \"slug\": \"$slug\"}"
+  curl -s -H @"$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies/${PROXY:?}/copies" \
+    -d "{\"worker_id\": $WORKER, \"slug\": \"$slug\"}"
 done
 
 # 4. See them, with the exit IP and the traffic per proxy.
-curl -s -H "$AUTH" "$UI/api/proxies"
+curl -s -H @"$AUTH" "$UI/api/proxies"
 
 # Stop, start or remove one copy.
-curl -s -H "$AUTH" -X POST "$UI/api/proxies/3/copies/1/earnfm/stop"
-curl -s -H "$AUTH" -X POST "$UI/api/proxies/3/copies/1/earnfm/start"
-curl -s -H "$AUTH" -X DELETE "$UI/api/proxies/3/copies/1/earnfm"
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/${PROXY:?}/copies/$WORKER/earnfm/stop"
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/${PROXY:?}/copies/$WORKER/earnfm/start"
+curl -s -H @"$AUTH" -X DELETE "$UI/api/proxies/${PROXY:?}/copies/$WORKER/earnfm"
+
+rm -f "$AUTH"
 ```
 
-On the box itself, `docker ps -a --filter label=cashpilot.proxy=3` lists the tunnel
-and every copy through proxy 3; each copy's `docker inspect` shows
+On the box itself, `docker ps -a --filter label=cashpilot.proxy=<id>` lists the tunnel
+and every copy through that proxy; each copy's `docker inspect` shows
 `"NetworkMode": "container:<the tunnel's id>"`.
 

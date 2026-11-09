@@ -1370,3 +1370,89 @@ class TestThirdReview:
         with patch.object(proxy_tunnel, "_prove"), pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
             proxy_tunnel._ensure_tunnel(docker, 3, None, None, files=files)
         assert NEW_PASSWORD not in str(err.value) and "Tunnel log" in str(err.value)
+
+
+class TestFourthReview:
+    def test_a_folder_that_cannot_be_flushed_still_records_the_start(self, docker):
+        _deploy("honeygain")
+        proxy_tunnel.stop("honeygain", 3)
+        real = os.fsync
+        calls = []
+
+        def folder_fails(fd):
+            calls.append(fd)
+            if len(calls) % 2 == 0:  # the second fsync of each write is the folder's
+                raise OSError("EIO")
+            return real(fd)
+
+        with patch.object(proxy_tunnel.os, "fsync", side_effect=folder_fails):
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert proxy_tunnel.held() == set()
+        assert docker.named("cashpilot-honeygain-p3").status == "running"
+
+    def test_an_edit_whose_tunnel_does_not_stop_changes_nothing(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.stop = lambda timeout=None: None  # Docker answers, but it keeps running
+        with patch.object(proxy_tunnel, "_prove"), pytest.raises(proxy_tunnel.ProxyTunnelError, match="did not stop"):
+            _deploy("earnfm", _socks(password=NEW_PASSWORD))
+        assert tunnel.status == "running"
+        assert tunnel.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", PASSWORD)
+        assert tunnel.files["settings"] == proxy_tunnel.secret_files(_socks(), None, "p3")["settings"]
+
+    def test_an_edit_redacts_settings_only_the_second_read_found(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.logs = lambda tail=5: f"tun2proxy: auth u1 {PASSWORD} refused".encode()
+        real, seen = tunnel.get_archive, []
+
+        def first_read_fails(path):
+            seen.append(path)
+            if path.endswith("/proxy_auth") and seen.count(path) == 1:
+                raise NotFound(path)
+            return real(path)
+
+        tunnel.get_archive = first_read_fails
+        docker.broken_auth.add(f"u1:{NEW_PASSWORD}@")
+        docker.broken_auth.add(proxy_tunnel.proxy_auth("u1", PASSWORD))  # the rollback fails too
+        with patch.object(proxy_tunnel, "_prove"), pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
+            _deploy("earnfm", _socks(password=NEW_PASSWORD))
+        assert PASSWORD not in str(err.value)
+
+    def test_a_stop_whose_earner_does_not_stop_still_stops_the_tunnel(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named("cashpilot-honeygain-p3")
+
+        def refuses(timeout=None):
+            raise APIError("500 Server Error: cannot stop")
+
+        earner.stop = refuses
+        with pytest.raises(APIError):
+            proxy_tunnel.stop("honeygain", 3)
+        assert tunnel.status == "exited"
+        assert proxy_tunnel.held() == {"cashpilot-honeygain-p3"}
+
+    def test_a_stop_whose_earner_does_not_stop_keeps_a_tunnel_another_copy_runs_in(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+
+        def refuses(timeout=None):
+            raise APIError("500 Server Error: cannot stop")
+
+        docker.named("cashpilot-honeygain-p3").stop = refuses
+        with pytest.raises(APIError):
+            proxy_tunnel.stop("honeygain", 3)
+        assert tunnel.status == "running" and docker.named("cashpilot-earnfm-p3").status == "running"
+
+    def test_an_edit_of_a_stopped_tunnel_keeps_the_old_password_out_of_its_log(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.stop("honeygain", 3)
+        assert tunnel.status == "exited"
+        tunnel.logs = lambda tail=5: f"tun2proxy: auth u1 {PASSWORD} refused".encode()
+        docker.broken_auth.add(f"u1:{NEW_PASSWORD}@")
+        with pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
+            proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
+        assert PASSWORD not in str(err.value) and "Tunnel log" in str(err.value)

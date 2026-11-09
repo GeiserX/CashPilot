@@ -145,17 +145,23 @@ def _set_held(name: str, on: bool, *, strict: bool = False) -> None:
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp, HELD_MARKER)
-            # And the rename itself, or a power cut can bring the old list back.
+        except OSError as exc:
+            if strict:
+                what = "was stopped" if on else "is no longer stopped"
+                raise ProxyTunnelError(f"Could not record that {name} {what} ({exc}); it was left as it was") from None
+            logger.warning("Could not clear the stop of %s: %s", name, exc)
+            return
+        # And the rename itself, or a power cut can bring the old list back.
+        # The marker already holds the new list, so a failure here is only
+        # logged: raising would report a change that was in fact made.
+        try:
             folder = os.open(os.path.dirname(HELD_MARKER) or ".", os.O_RDONLY)
             try:
                 os.fsync(folder)
             finally:
                 os.close(folder)
         except OSError as exc:
-            if strict:
-                what = "was stopped" if on else "is no longer stopped"
-                raise ProxyTunnelError(f"Could not record that {name} {what} ({exc}); it was left as it was") from None
-            logger.warning("Could not clear the stop of %s: %s", name, exc)
+            logger.warning("Could not flush the folder of %s to disk: %s", HELD_MARKER, exc)
 
 
 def _age_seconds(container: Any) -> float:
@@ -877,6 +883,8 @@ def _in_place(
         _prove(client, proxy, own_ip, files)
         try:
             previous = {key: _read_secret_file_or_raise(current, key) or "" for key in SECRET_KEYS}
+            # A first read above may have failed where this one worked.
+            secrets = [*secrets, previous["auth_key"], *_auth_secrets(previous["proxy_auth"])]
         except Exception as exc:  # noqa: BLE001 - without them the old settings could not be put back
             raise ProxyTunnelError(
                 f"Could not read the tunnel's current settings ({redact(str(exc), secrets)}), so nothing was changed"
@@ -886,6 +894,11 @@ def _in_place(
     if running:
         with contextlib.suppress(APIError):
             current.stop(timeout=SIDECAR_STOP_SECONDS)
+        current.reload()
+        if current.status == "running":
+            # Files written under a running tunnel would be recorded as its
+            # settings while it still runs on the old ones.
+            raise ProxyTunnelError(f"Docker did not stop {current.name}, so its settings were not changed")
     # Replacing the tunnel recreates every copy in it (a new device to each
     # provider), so a Docker error gets a second try first: only a container
     # Docker refuses twice is taken for broken.
@@ -1098,15 +1111,23 @@ def _stop(slug: str, proxy_id: int) -> bool:
         if earner is not None:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
         return was_running
+    failure = None
     if earner is not None:
-        earner.stop(timeout=orchestrator._get_stop_timeout(slug))
+        try:
+            earner.stop(timeout=orchestrator._get_stop_timeout(slug))
+        except Exception as exc:  # noqa: BLE001 - raised below, after the tunnel
+            failure = exc
     if tunnel is not None and tunnel_live:
+        # Also when the earner did not stop: with no copy that should run left,
+        # stopping the tunnel cuts the earner's way out all the same.
         try:
             stopped = held()
         except OSError:
-            return was_running  # the tunnel keeps running: safe, and the next stop tries again
-        if not any(str(m.name) not in stopped for m in _members(client, tunnel)):
+            stopped = None  # the tunnel keeps running: safe, and the next stop tries again
+        if stopped is not None and not any(str(m.name) not in stopped for m in _members(client, tunnel)):
             tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
+    if failure is not None:
+        raise failure
     return was_running
 
 

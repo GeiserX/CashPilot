@@ -51,6 +51,7 @@
 # Usage: TUNNEL_IMAGE=drumsergio/cashpilot-tunnel:<v> LAN_PROBE=<a LAN address> \
 #        [BASE_SRC=<checkout of the base branch>] [SRC=<tree under test>] [PARTS="1 2 3 4"] \
 #        [DOCKERD_RESTART="<command>"] [PREV_SRC=<tree for the part 4 control>] \
+#        [TUNNEL_IMAGE_LOCAL=1 (TUNNEL_IMAGE is a local build: not pulled)] \
 #        scripts/proxy_shared_tunnel_lab.sh
 set -euo pipefail
 
@@ -94,8 +95,13 @@ docker build -q -t "$P-tcpdump-img" - >/dev/null <<EOF
 FROM $ALPINE
 RUN apk add --no-cache tcpdump
 EOF
-# A local build (an unreleased tunnel) is used as it is; anything else is pulled.
-docker image inspect "$TUNNEL_IMAGE" >/dev/null 2>&1 || docker pull -q "$TUNNEL_IMAGE" >/dev/null
+# TUNNEL_IMAGE_LOCAL=1 tests a local build (an unreleased tunnel) as it is.
+# Anything else is pulled, so a moved registry tag is never tested from cache.
+if [ "${TUNNEL_IMAGE_LOCAL:-0}" = 1 ]; then
+    docker image inspect "$TUNNEL_IMAGE" >/dev/null
+else
+    docker pull -q "$TUNNEL_IMAGE" >/dev/null
+fi
 docker pull -q "$CURL" >/dev/null
 
 # --- control server (as in proxy_leak_test_tailscale.sh) ---

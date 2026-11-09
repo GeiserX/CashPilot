@@ -120,8 +120,8 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "stopping one copy stops the tunnel under the others",
-        "        if not any(str(m.name) not in stopped for m in _members(client, tunnel)):",
-        "        if True:",
+        "        if stopped is not None and not any(str(m.name) not in stopped for m in _members(client, tunnel)):",
+        "        if stopped is not None:",
     ),
     (
         "a tunnel others use is removed",
@@ -232,6 +232,26 @@ MUTANTS: list[tuple[str, str, str]] = [
         "a start that cannot clear the stop stops a tunnel another copy runs in",
         "            if not any(str(m.name) not in stopped for m in _members(client, current)):\n",
         "            if True:\n",
+    ),
+    (
+        "a folder that cannot be flushed fails a start that was recorded",
+        '            logger.warning("Could not flush the folder of %s to disk: %s", HELD_MARKER, exc)',
+        "            raise",
+    ),
+    (
+        "an edit writes its settings under a tunnel that did not stop",
+        '        if current.status == "running":\n            # Files written under',
+        "        if False:\n            # Files written under",
+    ),
+    (
+        "an edit leaves settings only the second read found unredacted",
+        '            secrets = [*secrets, previous["auth_key"], *_auth_secrets(previous["proxy_auth"])]\n',
+        "",
+    ),
+    (
+        "a stop whose earner did not stop leaves the tunnel running",
+        "        except Exception as exc:  # noqa: BLE001 - raised below, after the tunnel\n            failure = exc\n",
+        "        except Exception:  # noqa: BLE001 - raised below, after the tunnel\n            raise\n",
     ),
 ]
 
