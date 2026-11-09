@@ -227,10 +227,10 @@ a { color: var(--accent-secondary); }
       <div class="svcline"><span class="sq ok"></span><b>PacketStream</b><span class="mono">box-a</span><span>running</span><span class="mono">$0.09</span><span></span></div>
     </div>
     <div class="scrim">
-      <div class="dlg" role="dialog" aria-modal="true">
+      <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="m8-dlg-title">
         <span class="co abs" style="left:-34px;top:8px">1</span><span class="co abs" style="left:-34px;top:160px">2</span>
         <div class="modal">
-          <div class="modal-header">Remove Mysterium from box-a? <span class="cite">Esc</span></div>
+          <div class="modal-header" id="m8-dlg-title">Remove Mysterium from box-a? <span class="cite">Esc</span></div>
           <div class="modal-body">
             <p style="margin:0 0 10px;font-size:var(--fs-2);color:var(--text-secondary)">This is what will happen:</p>
             <div class="plan">
@@ -409,7 +409,7 @@ Remove Mysterium from box-a?
 <span class="t-w">5</span>   <span class="t-m"># needs --yes</span>
 
 <span class="t-p">$</span> <span class="t-c">cashpilot service rm mysterium --box box-a --yes --delete-volume=storj</span>
-<span class="t-e">✗ --delete-volume must name this service (mysterium). Nothing done.</span>  <span class="t-m">exit 5</span></pre>
+<span class="t-e">✗ --delete-volume must name this service (mysterium). Nothing done.</span>  <span class="t-m">exit 2 (usage)</span></pre>
   </div>
   <div class="frame pad">
     <ul class="notes" style="grid-template-columns:1fr;margin:0">

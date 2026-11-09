@@ -298,7 +298,7 @@ tr.off .svc { color: var(--text-muted); }
 2026-11-08 10:44:13 ERROR runtime: out of memory
 <span class="muted">… 15 more lines · l opens the full log</span></div>
       <p class="inline-note warn" style="margin-top:8px">Raise the memory limit to 384 MB in Edit settings, or move it to a box with more free memory (box-a has 5.1 GB free).</p></div>
-    <div class="pop-f"><span class="btn btn-primary btn-sm focus">Start <kbd>s</kbd></span><span class="btn btn-ghost btn-sm">Restart <kbd>Shift R</kbd></span><span class="btn btn-ghost btn-sm">Logs <kbd>l</kbd></span><span class="btn btn-ghost btn-sm">Redeploy <kbd>d</kbd></span><span class="btn btn-ghost btn-sm">Edit settings <kbd>e</kbd></span><span class="btn btn-ghost btn-sm" style="margin-left:auto">Copy as CLI</span></div>
+    <div class="pop-f"><span class="btn btn-primary btn-sm focus">Edit settings <kbd>e</kbd></span><span class="btn btn-ghost btn-sm">Start <kbd>s</kbd></span><span class="btn btn-ghost btn-sm">Restart <kbd>Shift R</kbd></span><span class="btn btn-ghost btn-sm">Logs <kbd>l</kbd></span><span class="btn btn-ghost btn-sm">Redeploy <kbd>d</kbd></span><span class="btn btn-ghost btn-sm" style="margin-left:auto">Copy as CLI</span></div>
   </div>
   <span class="co abs" style="left:690px; top:262px">1</span>
   <span class="co abs" style="left:1384px; top:276px">2</span>
@@ -311,7 +311,7 @@ tr.off .svc { color: var(--text-muted); }
   <li><span class="co">2</span><span><b>The cause, in words, first line.</b> Exit code 137 plus the memory limit becomes “ran out of memory at 256 MB”. Restart count tells a crash loop from a one-off.</span></li>
   <li><span class="co">3</span><span><b>Last 20 log lines inline</b>, monospace, so most diagnoses need no second click. <kbd>l</kbd> opens the full log viewer that exists today.</span></li>
   <li><span class="co">4</span><span><b>A suggested fix</b> when the cause is known (OOM, port in use, bad credential, image pull failure), with the numbers from the fleet.</span></li>
-  <li><span class="co">5</span><span><b>Actions with keys</b>, primary first by state: Start for a stopped copy, Restart for a running but degraded one. Today's path to Start or Restart: scroll, search, expand, click (2-3 clicks plus a search). Now: <span class="count-badge">Tab, arrows, Enter, s</span> (Start). Copy as CLI (wave 3) gives <code>cashpilot service start honeygain --box box-b</code>.</span></li>
+  <li><span class="co">5</span><span><b>Actions with keys</b>, primary first by state: the suggested fix when the cause is known (here Edit settings, since starting it again at 256 MB repeats the out-of-memory stop), Start for a stopped copy with no known cause, Restart for a running but degraded one. Today's path to Start or Restart: scroll, search, expand, click (2-3 clicks plus a search). Now: <span class="count-badge">Tab, arrows, Enter, s</span> (Start). Copy as CLI (wave 3) gives <code>cashpilot service start honeygain --box box-b</code>.</span></li>
 </ol>
 <div class="kflow"><b>Keyboard</b>
   <span class="step"><kbd>Tab</kbd> enters the grid once, on the worst cell</span><span class="arrow">→</span>
@@ -376,11 +376,11 @@ tr.off .svc { color: var(--text-muted); }
 <h2 class="scr"><span class="tag">CLI · API</span> The grid as data</h2>
 <div class="frame" style="padding:16px 20px; background:var(--bg-log)" id="s4">
 <div class="logbox" style="border:0; padding:0; font-size:14px; line-height:1.55"><span class="muted">$</span> cashpilot service ls --grid
-SERVICE         box-a  box-a/isp-1  box-b   nas-…-2  UP
-Honeygain       ✓      ✓            ×       ✓           <span class="fail">3/4</span>
-EarnApp         ✓      n/a          !⛓      ·           <span class="warn">1/2</span>
-Mysterium       ✓      n/a          ?       ✓           2/3
-Repocket        ✓      ·            ✓2      ·           3/3
+SERVICE         box-a  box-a/isp-1  box-b   nas-attic-2  UP
+Honeygain       ✓      ✓            ×       ✓            <span class="fail">3/4</span>
+EarnApp         ✓      n/a          !⛓      ·            <span class="warn">1/2</span>
+Mysterium       ✓      n/a          ?       ✓            2/3
+Repocket        ✓      ·            ✓2      ·            3/3
 IPRoyal Pawns   <span class="muted">account off</span>
 <span class="muted">updated 12 s ago · 1 down: cashpilot finding ls --box box-b</span>
 

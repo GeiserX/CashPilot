@@ -601,7 +601,7 @@ Effort: S is up to a day, M is a few days, L is a week or more. An item marked "
 **Rules**
 
 - One registry, served by `GET /api/actions` and filtered by role and token scope, backs the palette, the list keys, the `?` overlay and `cashpilot actions --json`. A key and a palette entry run the same code path.
-- Every destructive action, by any route, opens `CP.confirm` (N3). Single keys never skip it.
+- In the browser, every destructive action opens `CP.confirm` (N3), and single keys never skip it. The server enforces the plan and its safety conditions on every route (UI, API, CLI, MCP), so the CLI and MCP reach the same guard through `--yes` and the plan id, not a dialog.
 - Every nav link shows its chord on hover and focus (`<kbd>` plus `aria-keyshortcuts`).
 - Focus:
     - On page jump, focus goes to the `h1`.
