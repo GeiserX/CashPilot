@@ -96,7 +96,8 @@ DERP relays rather than a direct LAN path.
 If the proxy goes down, the tunnel process dies or the tunnel container stops,
 no earner in that tunnel has a way to send a packet anywhere: not to the
 internet from your own IP, not to your LAN, not to the Docker bridge. They stop
-earning; they never leak.
+earning; they never leak. Copies in one tunnel still share its loopback, so one
+can reach a listener another opened on 127.0.0.1; that never leaves the tunnel.
 
 `scripts/proxy_leak_test.sh` proves this against a real Docker daemon, for
 SOCKS5 and HTTP, each with and without a password:
@@ -410,8 +411,11 @@ UI=http://localhost:8080
 AUTH="Authorization: Bearer $CASHPILOT_ADMIN_API_KEY"
 
 # 1. Add the proxy (for SOCKS5: "kind": "socks5", "host", "port", "username", "password").
-curl -s -H "$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies" \
-  -d '{"name": "Exit at home", "kind": "tailscale", "auth_key": "tskey-auth-...", "exit_node": "100.101.102.103"}'
+#    The key is read without echo and sent on stdin, so it stays out of the
+#    shell history and the process list.
+read -rs TS_AUTH_KEY
+printf '{"name": "Exit at home", "kind": "tailscale", "auth_key": "%s", "exit_node": "100.101.102.103"}' \
+  "$TS_AUTH_KEY" | curl -s -H "$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies" --data @-
 # -> {"id": 3, ...}
 
 # 2. Test it from a box (the worker id from GET /api/workers): the exit IP it gets.

@@ -760,6 +760,18 @@ class TestMigration:
             proxy_tunnel.status()
         assert docker.named("cashpilot-earnfm-p3").status == "created"
 
+    def test_a_pair_whose_tunnel_docker_could_not_start_moves_and_runs_again(self, docker):
+        _legacy_pair(docker, "honeygain")
+        dead = _legacy_pair(docker, "earnfm", running=False)
+        # unless-stopped, so down only because Docker could not start it (not an owner stop).
+        dead.attrs["State"]["Error"] = "get: no such volume"
+        proxy_tunnel.migrate_legacy()
+        assert proxy_tunnel.held() == set()
+        _heartbeat()
+        assert docker.named("cashpilot-earnfm-p3").status == "running"
+        (tunnel,) = docker.tunnels()
+        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
+
     def test_a_failed_tunnel_leaves_every_pair_as_it_was(self, docker):
         a = _legacy_pair(docker, "honeygain")
         b = _legacy_pair(docker, "earnfm")
@@ -1012,3 +1024,100 @@ class TestMoves:
         (only,) = docker.tunnels()
         assert only is staged and staged.name == "cashpilot-tunnel-p3" and tunnel.id not in docker.by_id
         assert _member_ids(docker, staged) == ["cashpilot-m1-p3", "cashpilot-m2-p3"]
+
+
+# ---------------------------------------------------------------------------
+# Stops, starts and removals against the heartbeat (review fixes)
+# ---------------------------------------------------------------------------
+
+
+class TestStopsAgainstTheHeartbeat:
+    def test_an_unreadable_stop_marker_starts_no_copy(self, docker, tmp_path):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        proxy_tunnel.stop("honeygain", 3)
+        unreadable = tmp_path / "marker-is-a-dir"
+        unreadable.mkdir()
+        with patch.object(proxy_tunnel, "HELD_MARKER", str(unreadable)):
+            _heartbeat()
+        assert docker.named("cashpilot-honeygain-p3").status == "exited"
+
+    def test_a_stop_with_an_unreadable_marker_stops_nothing(self, docker, tmp_path):
+        _deploy("honeygain")
+        unreadable = tmp_path / "marker-is-a-dir"
+        unreadable.mkdir()
+        with (
+            patch.object(proxy_tunnel, "HELD_MARKER", str(unreadable)),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not read which copies are stopped"),
+        ):
+            proxy_tunnel.stop("honeygain", 3)
+        assert docker.named("cashpilot-honeygain-p3").status == "running"
+
+    def test_a_start_that_cannot_clear_its_stop_starts_nothing(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        proxy_tunnel.stop("honeygain", 3)
+        with (
+            patch.object(proxy_tunnel.os, "replace", side_effect=OSError("read-only file system")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="is no longer stopped"),
+        ):
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert docker.named("cashpilot-honeygain-p3").status == "exited"
+        assert proxy_tunnel.held() == {"cashpilot-honeygain-p3"}
+
+    def test_the_heartbeat_leaves_a_copy_alone_while_its_proxy_is_locked(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        docker.named("cashpilot-earnfm-p3").status = "exited"  # a crash
+        lock = proxy_tunnel._deploy_lock(3)
+        with lock:
+            _heartbeat()
+        assert docker.named("cashpilot-earnfm-p3").status == "exited"
+        _heartbeat()
+        assert docker.named("cashpilot-earnfm-p3").status == "running"
+
+    def test_a_stop_made_while_the_heartbeat_decides_is_not_undone(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        docker.named("cashpilot-earnfm-p3").status = "exited"  # a crash, then the owner stops it
+        real = proxy_tunnel.earner_action
+        stopped: list[bool] = []
+
+        def decide_then_stop(earner, sidecar, ready):
+            action = real(earner, sidecar, ready)
+            if earner.name == "cashpilot-earnfm-p3" and not stopped:
+                stopped.append(proxy_tunnel.stop("earnfm", 3))
+            return action
+
+        with patch.object(proxy_tunnel, "earner_action", side_effect=decide_then_stop):
+            _heartbeat()
+        assert stopped == [True]
+        assert docker.named("cashpilot-earnfm-p3").status == "exited"
+
+
+class TestStartAndRemoveReconcile:
+    def test_a_start_recreates_a_copy_whose_tunnel_is_gone_inside_the_shared_tunnel(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        proxy_tunnel.stop("honeygain", 3)
+        old = docker.named("cashpilot-honeygain-p3")
+        old.attrs["HostConfig"]["NetworkMode"] = f"container:{'f' * 64}"  # a tunnel that no longer exists
+        proxy_tunnel.start("honeygain", 3, _socks(), None)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        copy = docker.named("cashpilot-honeygain-p3")
+        assert copy.id != old.id and old.id not in docker.by_id
+        assert copy.status == "running"
+        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", "cashpilot-honeygain-p3"]
+
+    def test_remove_all_waits_for_the_proxys_lock(self, docker):
+        _deploy("honeygain")
+        lock = proxy_tunnel._deploy_lock(3)
+        result: list[list[str]] = []
+        with lock:
+            worker = threading.Thread(target=lambda: result.append(proxy_tunnel.remove_all("honeygain")))
+            worker.start()
+            worker.join(0.3)
+            # A move or a migration of this proxy holds the lock: nothing is removed under it.
+            assert docker.named("cashpilot-honeygain-p3") is not None
+        worker.join(5)
+        assert result == [["cashpilot-honeygain-p3", "cashpilot-tunnel-p3"]]

@@ -207,9 +207,19 @@ clear_packets() { # tunnel earner...
     shift
     (sleep 2; for e in "$@"; do docker exec "$e" curl -s -m 4 http://1.1.1.1 >/dev/null 2>&1
         docker exec "$e" curl -s -m 4 "http://$LAN_PROBE" >/dev/null 2>&1; done) &
-    docker run --rm --network "container:$tun" --cap-drop ALL --cap-add NET_RAW --cap-add NET_ADMIN "$P-tcpdump-img" \
+    local out rc
+    out=$(docker run --rm --network "container:$tun" --cap-drop ALL --cap-add NET_RAW --cap-add NET_ADMIN "$P-tcpdump-img" \
         timeout $((8 + 9 * $#)) tcpdump -n -i eth0 -Q out -l "host 1.1.1.1 or host $LAN_PROBE or tcp port 80" \
-        2>/dev/null | grep -c . || true
+        2>"$WORK/tcpdump.err")
+    rc=$?
+    wait
+    # timeout ends a working capture with 124; anything else means no capture
+    # ran, and a count of 0 would then pass the check.
+    if [ "$rc" -ne 124 ]; then
+        echo "no-capture(exit $rc: $(tail -1 "$WORK/tcpdump.err"))"
+        return
+    fi
+    printf '%s' "$out" | grep -c . || true
 }
 # How many packets on the tunnel's real interface carry a DNS name the earners look up.
 dns_mentions() { # tunnel name earner...
@@ -217,8 +227,16 @@ dns_mentions() { # tunnel name earner...
     shift 2
     (sleep 2; for e in "$@"; do docker exec "$e" nslookup "$name" >/dev/null 2>&1
         docker exec "$e" nslookup "$name" 8.8.8.8 >/dev/null 2>&1; done) &
-    docker run --rm --network "container:$tun" --cap-drop ALL --cap-add NET_RAW --cap-add NET_ADMIN "$P-tcpdump-img" \
-        timeout $((6 + 12 * $#)) tcpdump -n -i eth0 -l -A "udp port 53 or tcp port 53" 2>/dev/null | grep -c "${name%%.*}" || true
+    local out rc
+    out=$(docker run --rm --network "container:$tun" --cap-drop ALL --cap-add NET_RAW --cap-add NET_ADMIN "$P-tcpdump-img" \
+        timeout $((6 + 12 * $#)) tcpdump -n -i eth0 -l -A "udp port 53 or tcp port 53" 2>"$WORK/tcpdump.err")
+    rc=$?
+    wait
+    if [ "$rc" -ne 124 ]; then # as in clear_packets: no capture is never a count of 0
+        echo "no-capture(exit $rc: $(tail -1 "$WORK/tcpdump.err"))"
+        return
+    fi
+    printf '%s' "$out" | grep -c "${name%%.*}" || true
 }
 # The fail-closed verdict for a set of earners: no escape, no packet. 0 = closed.
 closed() { # label tunnel earner...
@@ -336,7 +354,7 @@ if [[ " $PARTS " == *" 1 "* ]]; then
     docker exec "$TUN" nft delete table inet cashpilot
     if closed c1 "$TUN" "$P-a" "$P-b" >/dev/null; then fail "c1: the checks missed an opened namespace"; else pass "c1: the checks see the leak of an opened namespace"; fi
     n=$(dns_mentions "$TUN" "ctl-$canary" "$P-a")
-    [ "$n" != 0 ] && pass "c1: the DNS capture sees the canary in $n packets from an opened namespace" || fail "c1: the DNS capture missed an opened namespace"
+    [[ "$n" =~ ^[1-9][0-9]*$ ]] && pass "c1: the DNS capture sees the canary in $n packets from an opened namespace" || fail "c1: the DNS capture missed an opened namespace"
 
     # c2. a copy that misses its tunnel (created on the bridge): joined() and escapes() must catch it.
     new_tunnel "$TUN" "$TUNNEL_IMAGE"
@@ -379,9 +397,11 @@ drive() { # src args...
 mib() { awk -v b="$1" 'BEGIN { printf "%.1f", b / 1048576 }'; }
 # Sum of cgroup memory.current, in bytes, of the containers matching a label filter.
 cgroup_sum() { # filter...
-    local ids
-    ids=$(docker ps -q --no-trunc "$@" | tr '\n' ' ')
-    [ -n "$ids" ] || { echo 0; return; }
+    cgroup_sum_ids "$(docker ps -q --no-trunc "$@" | tr '\n' ' ')"
+}
+cgroup_sum_ids() { # "id id ..."; the cgroupfs and the systemd driver's paths
+    local ids=$1
+    [ -n "${ids// /}" ] || { echo 0; return; }
     docker run --rm -v /sys/fs/cgroup:/cg:ro "$ALPINE" sh -c \
         "t=0; for i in $ids; do f=/cg/docker/\$i/memory.current; [ -f \$f ] || f=/cg/system.slice/docker-\$i.scope/memory.current; t=\$((t + \$(cat \$f))); done; echo \$t"
 }
@@ -392,8 +412,7 @@ measure() { # label n
     tmem=$(cgroup_sum --filter label=cashpilot.role=tunnel --filter label=cashpilot.proxy=3)
     emem=$(docker ps -q --no-trunc --filter label=cashpilot.proxy=3 | while read -r id; do
         [ "$(docker inspect -f '{{index .Config.Labels "cashpilot.role"}}' "$id")" = tunnel ] || echo "$id"; done | tr '\n' ' ')
-    emem=$( [ -n "$emem" ] && docker run --rm -v /sys/fs/cgroup:/cg:ro "$ALPINE" sh -c \
-        "t=0; for i in $emem; do t=\$((t + \$(cat /cg/docker/\$i/memory.current))); done; echo \$t" || echo 0)
+    emem=$(cgroup_sum_ids "$emem")
     echo "RAM   $label N=$n: tunnels=$tunnels tunnel_mem=$(mib "$tmem") MiB earner_mem=$(mib "$emem") MiB per_copy_tunnel=$(mib $((tmem / n))) MiB"
     printf '%s %s %s %s %s\n' "$label" "$n" "$tunnels" "$tmem" "$emem" >>"$WORK/ram"
     LAST_TUNNELS=$tunnels

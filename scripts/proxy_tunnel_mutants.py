@@ -25,8 +25,38 @@ TESTS = ["tests/test_proxy_shared_tunnel.py", "tests/test_proxy_tunnel.py"]
 MUTANTS: list[tuple[str, str, str]] = [
     (
         "the heartbeat starts a held copy",
-        "if earner is not None and str(earner.name) not in stopped:",
-        "if earner is not None:",
+        "            if str(earner.name) in held():\n",
+        "            if False:\n",
+    ),
+    (
+        "an unreadable stop marker reads as no copy stopped",
+        "    except FileNotFoundError:\n        return set()",
+        "    except OSError:\n        return set()",
+    ),
+    (
+        "the heartbeat starts a copy while a stop of its proxy runs",
+        "    lock = _deploy_lock(int(proxy_id)) if str(proxy_id).isdigit() else None\n",
+        "    lock = None\n",
+    ),
+    (
+        "a start that cannot clear its stop starts the copy anyway",
+        "        exit_info = _wait_ready(tunnel)\n    _set_held(name, False, strict=True)",
+        "        exit_info = _wait_ready(tunnel)\n    _set_held(name, False)",
+    ),
+    (
+        "a start leaves a copy in a tunnel that is gone",
+        "        if earner is not None and _tunnel_id_of(earner) != shared.id:",
+        "        if earner is not None and tunnel is not None and not _is_shared(tunnel):",
+    ),
+    (
+        "a migrated pair whose tunnel Docker could not start is held as stopped",
+        "                if not was_up and not failed:\n",
+        "                if not was_up:\n",
+    ),
+    (
+        "removing a service deletes copies without the proxy's lock",
+        "        with _deploy_lock(int(pid)) if pid.isdigit() else contextlib.nullcontext():",
+        "        with contextlib.nullcontext():",
     ),
     (
         "a stop is not written down",
@@ -75,7 +105,7 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "a migrated stopped pair is started",
-        "                if not was_up:\n",
+        "                if not was_up and not failed:\n",
         "                if False:\n",
     ),
     (
@@ -121,25 +151,33 @@ MUTANTS: list[tuple[str, str, str]] = [
 ]
 
 
+TIMED_OUT = -1
+
+
 def run(tree: Path) -> int:
-    return subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *TESTS],
-        cwd=tree,
-        capture_output=True,
-        text=True,
-        timeout=600,
-    ).returncode
+    try:
+        return subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *TESTS],
+            cwd=tree,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        ).returncode
+    except subprocess.TimeoutExpired:
+        return TIMED_OUT  # a mutant that hangs the tests is caught by them
 
 
 def main() -> int:
     source = (ROOT / TARGET).read_text()
-    if run(ROOT) != 0:
-        print("the tests fail on the unmutated tree; fix that first")
-        return 1
     survivors = 0
     with tempfile.TemporaryDirectory(prefix="cp-mutants-") as tmp:
         tree = Path(tmp) / "tree"
         shutil.copytree(ROOT, tree, ignore=shutil.ignore_patterns(".git", ".venv", "site", "__pycache__"))
+        # The baseline runs in the same scratch tree as the mutants, so a tree
+        # the tests cannot run in is never read as every mutant killed.
+        if run(tree) != 0:
+            print("the tests fail on the unmutated scratch tree; fix that first")
+            return 1
         for label, old, new in MUTANTS:
             if source.count(old) != 1:
                 print(f"STALE   {label}: the text to mutate is not in {TARGET} exactly once")
@@ -147,8 +185,12 @@ def main() -> int:
                 continue
             (tree / TARGET).write_text(source.replace(old, new))
             code = run(tree)
-            print(f"{'KILLED ' if code != 0 else 'SURVIVED'} {label}")
-            survivors += code == 0
+            # pytest exits 1 when tests fail, and a hang is caught too; any
+            # other code (a collection or import error, an interrupt) is not a kill.
+            killed = code in (1, TIMED_OUT)
+            verdict = "KILLED " if killed else "SURVIVED" if code == 0 else f"ERROR {code}"
+            print(f"{verdict} {label}")
+            survivors += not killed
         (tree / TARGET).write_text(source)
     print(f"{len(MUTANTS) - survivors} of {len(MUTANTS)} mutants killed")
     return 1 if survivors else 0

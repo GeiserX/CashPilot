@@ -117,34 +117,36 @@ _held_lock = threading.Lock()
 
 
 def held() -> set[str]:
+    """The earners recorded as stopped. Raises OSError when the marker exists
+    but cannot be read: an empty answer then would restart every stopped copy."""
     try:
         with open(HELD_MARKER, encoding="utf-8") as fh:
             return {line.strip() for line in fh if line.strip()}
-    except OSError:
+    except FileNotFoundError:
         return set()
 
 
 def _set_held(name: str, on: bool, *, strict: bool = False) -> None:
-    """Record or clear a stop. ``strict`` raises when it cannot be written.
+    """Record or clear a stop. ``strict`` raises when it cannot be done.
 
-    A stop that is not recorded is undone by the next heartbeat, so a stop is
-    strict. A start that cannot clear it leaves the copy stopped, which is safe.
+    A stop that is not recorded is undone by the next heartbeat, and a copy
+    started while still recorded is never restarted after a reboot, so a stop
+    and a start are both strict. A removal is not: its container is gone.
     """
     with _held_lock:
-        names = held()
-        if (name in names) == on:
-            return
-        names = names | {name} if on else names - {name}
         try:
+            names = held()
+            if (name in names) == on:
+                return
+            names = names | {name} if on else names - {name}
             tmp = f"{HELD_MARKER}.tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write("".join(f"{n}\n" for n in sorted(names)))
             os.replace(tmp, HELD_MARKER)
         except OSError as exc:
             if strict:
-                raise ProxyTunnelError(
-                    f"Could not record that {name} was stopped ({exc}); it was left as it was"
-                ) from None
+                what = "was stopped" if on else "is no longer stopped"
+                raise ProxyTunnelError(f"Could not record that {name} {what} ({exc}); it was left as it was") from None
             logger.warning("Could not clear the stop of %s: %s", name, exc)
 
 
@@ -879,7 +881,11 @@ def _prove(client: Any, proxy: dict[str, Any] | None, own_ip: str | None, files:
 def _restart_members(client: Any, tunnel: Any) -> None:
     """Restart the running, not held earners of a tunnel that restarted in place,
     so they join its new namespace now rather than at the next heartbeat."""
-    stopped = held()
+    try:
+        stopped = held()
+    except OSError as exc:
+        logger.warning("Could not read which copies are stopped (%s); restarting none", exc)
+        return
     for member in _members(client, tunnel):
         if str(member.name) in stopped or getattr(member, "status", "") not in _LIVE:
             continue
@@ -975,7 +981,7 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
     except Exception:
         _drop_if_empty(client, tunnel)
         raise
-    _set_held(name, False)
+    _set_held(name, False, strict=True)
     return {"container_id": container_id, "tunnel_id": tunnel.id, "exit": exit_info}
 
 
@@ -1004,7 +1010,10 @@ def _stop(slug: str, proxy_id: int) -> bool:
     tunnel = _tunnel_of(client, earner, slug, proxy_id)
     if earner is None and tunnel is None:
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
-    was_held = name in held()
+    try:
+        was_held = name in held()
+    except OSError as exc:
+        raise ProxyTunnelError(f"Could not read which copies are stopped ({exc}); {name} was left as it was") from None
     tunnel_live = tunnel is not None and getattr(tunnel, "status", "") in _LIVE
     was_running = (earner is not None and getattr(earner, "status", "") in _LIVE) or (tunnel_live and not was_held)
     _set_held(name, True, strict=True)
@@ -1016,7 +1025,10 @@ def _stop(slug: str, proxy_id: int) -> bool:
     if earner is not None:
         earner.stop(timeout=orchestrator._get_stop_timeout(slug))
     if tunnel is not None and tunnel_live:
-        stopped = held()
+        try:
+            stopped = held()
+        except OSError:
+            return was_running  # the tunnel keeps running: safe, and the next stop tries again
         if not any(str(m.name) not in stopped for m in _members(client, tunnel)):
             tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
     return was_running
@@ -1050,13 +1062,16 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
         return _start_legacy(slug, earner, tunnel, name)
     if proxy is not None:
         shared, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip)
-        if tunnel is not None and not _is_shared(tunnel):
-            # A legacy pair: its earner moves into the shared tunnel, and its
-            # own tunnel goes.
+        earner = _get(client, name)
+        if earner is not None and _tunnel_id_of(earner) != shared.id:
+            # A legacy pair, or a copy whose tunnel is gone: a namespace is
+            # fixed at create, so its earner is recreated in the shared tunnel.
+            # A legacy tunnel goes with it.
             with _swap_lock:
                 _clone_into(client, earner, shared, start=False)
-                _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
-        earner = _get(client, name)
+                if tunnel is not None and not _is_shared(tunnel):
+                    _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
+            earner = _get(client, name)
         if earner is None:
             raise ProxyTunnelError(f"{name} disappeared while its tunnel was replaced")
     else:
@@ -1070,7 +1085,7 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
             refresh_proxy_ip(tunnel)
             tunnel.start()
         exit_info = _wait_ready(tunnel)
-    _set_held(name, False)
+    _set_held(name, False, strict=True)
     earner.reload()
     if earner.status == "running":
         if earner_action(earner, shared if proxy is not None else tunnel, True) == "restart":
@@ -1087,7 +1102,7 @@ def _start_legacy(slug: str, earner: Any, sidecar: Any, name: str) -> dict[str, 
         refresh_proxy_ip(sidecar)
     sidecar.start()
     exit_info = _wait_ready(sidecar)
-    _set_held(name, False)
+    _set_held(name, False, strict=True)
     earner.reload()
     if earner.status == "running":
         earner.restart(timeout=orchestrator._get_stop_timeout(slug))
@@ -1127,33 +1142,41 @@ def _remove(slug: str, proxy_id: int, *, drop_shared: bool = True) -> list[str]:
 
 def remove_all(slug: str) -> list[str]:
     """Every proxied copy of ``slug``, its legacy tunnels, and each shared tunnel
-    left with no copy, when the service is removed."""
+    left with no copy, when the service is removed.
+
+    One proxy at a time, under its lock, and listed again inside it: a move or
+    a migration of that proxy (both under the same lock) cannot then create a
+    copy beside the deletion."""
     client = orchestrator._get_client()
-    found = client.containers.list(
-        all=True, filters={"label": [f"{LABEL_SERVICE}={slug}", f"{LABEL_MANAGED}=true", LABEL_PROXY]}
-    )
-    shared_ids = {(tid, _labels(c).get(LABEL_PROXY, "")) for c in found if _is_earner(c) and (tid := _tunnel_id_of(c))}
-    # Earners first, so no tunnel is removed under a running earner.
-    found.sort(key=lambda c: _labels(c).get(LABEL_ROLE) == ROLE_TUNNEL)
+
+    def listing() -> list[Any]:
+        return client.containers.list(
+            all=True, filters={"label": [f"{LABEL_SERVICE}={slug}", f"{LABEL_MANAGED}=true", LABEL_PROXY]}
+        )
+
     removed: list[str] = []
     left: list[str] = []
-    for container in found:
-        _remove_quietly(container)
-        try:
-            container.reload()
-        except NotFound:
-            removed.append(container.name)
-            if _is_earner(container):
-                _set_held(str(container.name), False)
-        else:
-            left.append(container.name)
-    for tid, pid in sorted(shared_ids):
-        if not pid.isdigit():
-            continue
-        with _deploy_lock(int(pid)):
-            tunnel = _get(client, tid)
-            if _is_shared(tunnel, int(pid)):
-                removed += _drop_if_empty(client, tunnel)
+    for pid in sorted({_labels(c).get(LABEL_PROXY, "") for c in listing()}):
+        with _deploy_lock(int(pid)) if pid.isdigit() else contextlib.nullcontext():
+            found = [c for c in listing() if _labels(c).get(LABEL_PROXY, "") == pid]
+            shared_ids = {tid for c in found if _is_earner(c) and (tid := _tunnel_id_of(c))}
+            # Earners first, so no tunnel is removed under a running earner.
+            found.sort(key=lambda c: _labels(c).get(LABEL_ROLE) == ROLE_TUNNEL)
+            for container in found:
+                _remove_quietly(container)
+                try:
+                    container.reload()
+                except NotFound:
+                    removed.append(container.name)
+                    if _is_earner(container):
+                        _set_held(str(container.name), False)
+                else:
+                    left.append(container.name)
+            if pid.isdigit():
+                for tid in sorted(shared_ids):
+                    tunnel = _get(client, tid)
+                    if _is_shared(tunnel, int(pid)):
+                        removed += _drop_if_empty(client, tunnel)
     if left:
         # Said out loud, so the UI keeps the records of copies that still exist.
         raise ProxyTunnelError(f"Docker did not remove {', '.join(left)}", status_code=409)
@@ -1343,9 +1366,13 @@ def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any]) -> list[str]:
     moved: list[str] = []
     for tunnel in tunnels:
         was_up = getattr(tunnel, "status", "") in _LIVE
+        # Older workers stopped a pair by stopping its tunnel, which Docker
+        # (unless-stopped) then leaves down. One Docker tried to start and could
+        # not (State.Error, e.g. after a daemon restart) was not stopped by anyone.
+        failed = bool(((getattr(tunnel, "attrs", None) or {}).get("State") or {}).get("Error"))
         with _swap_lock:
             for member in _members(client, tunnel):
-                if not was_up:
+                if not was_up and not failed:
                     # The owner or the cap stopped this pair: it stays stopped.
                     _set_held(str(member.name), True, strict=True)
                 clone = _clone_into(client, member, shared, start=was_up and getattr(member, "status", "") in _LIVE)
@@ -1377,6 +1404,41 @@ def _read_exit(sidecar: Any) -> dict[str, Any] | None:
     except (ValueError, IndexError):
         return None
     return result if isinstance(result, dict) and _is_ip(result.get("ip")) else None
+
+
+def _recover(earner: Any, sidecar: Any, slug: str, proxy_id: str) -> None:
+    """Start or restart an earner inside its ready tunnel, for the heartbeat.
+
+    Under the proxy's lock, with the stop marker and the earner read again
+    inside it: a stop records itself and stops the earner under that lock, so
+    a stop that returned is never undone here. A lock someone holds, or a
+    marker that cannot be read, means nothing is done until the next beat.
+    """
+    lock = _deploy_lock(int(proxy_id)) if str(proxy_id).isdigit() else None
+    if lock is not None and not lock.acquire(blocking=False):
+        return
+    try:
+        try:
+            if str(earner.name) in held():
+                return
+        except OSError as exc:
+            logger.warning("Could not read which copies are stopped (%s); starting none", exc)
+            return
+        earner.reload()
+        action = earner_action(earner, sidecar, True)
+        if action == "restart":
+            earner.restart(timeout=orchestrator._get_stop_timeout(slug))
+        elif action == "start":
+            earner.start()
+        else:
+            return
+        earner.reload()
+        logger.info("Started %s inside its tunnel, which is ready", earner.name)
+    except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
+        logger.warning("Could not start %s inside its tunnel: %s", earner.name, exc)
+    finally:
+        if lock is not None:
+            lock.release()
 
 
 def earner_action(earner: Any, sidecar: Any, ready: bool) -> str | None:
@@ -1481,23 +1543,11 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
     live = {t.id: t for _, t in pairs.values() if t is not None}
     stats = orchestrator._collect_stats_bulk(list(live.values())) if collect_stats else {}
     exits = {tid: _read_exit(t) for tid, t in live.items()}
-    stopped = held()
     out: list[dict[str, Any]] = []
     for (slug, proxy_id), (earner, sidecar) in sorted(pairs.items()):
         exit_info = exits.get(sidecar.id) if sidecar is not None else None
-        action = None
-        if earner is not None and str(earner.name) not in stopped:
-            action = earner_action(earner, sidecar, exit_info is not None)
-        if action is not None:
-            try:
-                if action == "restart":
-                    earner.restart(timeout=orchestrator._get_stop_timeout(slug))
-                else:
-                    earner.start()
-                earner.reload()
-                logger.info("Started %s inside its tunnel, which is ready", earner.name)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Could not start %s inside its tunnel: %s", earner.name, exc)
+        if earner is not None and earner_action(earner, sidecar, exit_info is not None) is not None:
+            _recover(earner, sidecar, slug, proxy_id)
         _, _, rx, tx = stats.get(sidecar.id, (None, None, None, None)) if sidecar is not None else (None,) * 4
         try:
             pid = int(proxy_id)
