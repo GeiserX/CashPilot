@@ -95,6 +95,17 @@ docker build -q -t "$P-tcpdump-img" - >/dev/null <<EOF
 FROM $ALPINE
 RUN apk add --no-cache tcpdump
 EOF
+# The worker refuses a floating tag (see tunnel_image), so parts 2 to 4 would
+# fail on setup, not on what they test. Part 1 alone takes any tag.
+tag=${TUNNEL_IMAGE##*/}
+if [[ "$TUNNEL_IMAGE" != *@sha256:* && " $PARTS " == *[234]* ]]; then
+    case "${tag#*:}" in
+        "$tag" | latest | stable | edge | main | master)
+            echo "TUNNEL_IMAGE=$TUNNEL_IMAGE has a floating tag, which the worker refuses; tag it with a version" >&2
+            exit 2
+            ;;
+    esac
+fi
 # TUNNEL_IMAGE_LOCAL=1 tests a local build (an unreleased tunnel) as it is.
 # Anything else is pulled, so a moved registry tag is never tested from cache.
 if [ "${TUNNEL_IMAGE_LOCAL:-0}" = 1 ]; then
