@@ -285,9 +285,10 @@ need the host and port the earner connects to. Its log usually names them
 (`docker logs cashpilot-<service>-p<proxy id>`), or the provider's docs do.
 
 **Before you deploy, from any machine.** Ask the proxy directly. curl prints
-the proxy's answer to its `CONNECT` request. An `http://` proxy receives your
-user and password unencrypted (only the connection to the earner's server is
-TLS), exactly as it does from the tunnel, so probe from a network you trust.
+the proxy's answer to its `CONNECT` request. An `http://` proxy and a
+`socks5h://` proxy both receive your user and password unencrypted (only the
+connection to the earner's server is TLS), exactly as they do from the
+tunnel, so probe from a network you trust.
 
 ```bash
 # HTTP CONNECT proxy; curl asks for the password, so it stays out of your shell history
@@ -296,9 +297,9 @@ curl -v -m 15 -o /dev/null --noproxy '' -x 'http://gate.example.net:8080' --prox
 curl -v -m 15 -o /dev/null --noproxy '' -x 'socks5h://gate.example.net:7000' --proxy-user USER https://earner-host.example:443/
 ```
 
-With `-v`, curl prints the `Proxy-Authorization` header it sends, and that
-header holds your user and password in Base64, which anyone can decode. Delete
-that line before you share the output.
+For an HTTP proxy, `-v` makes curl print the `Proxy-Authorization` header it
+sends, and that header holds your user and password in Base64, which anyone
+can decode. Delete that line before you share the output.
 
 A `403`, `Access violation`, `connection not allowed by ruleset` or a closed
 connection right after the `CONNECT` means the proxy refuses that host or
