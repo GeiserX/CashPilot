@@ -4394,6 +4394,16 @@ async def record_node_figures(platform: str, nodes: Sequence[Mapping[str, Any]],
         await db.close()
 
 
+async def get_node_ids(platform: str) -> set[str]:
+    """Lowercase ids of every node of ``platform`` a worker has ever read."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT node FROM node_earnings WHERE platform = ?", (platform,))
+        return {str(row["node"]).lower() for row in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
 def _optional_float(value: Any) -> float | None:
     return None if value is None else float(value)
 
