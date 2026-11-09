@@ -988,6 +988,19 @@ def test_a_fingerprint_elsewhere_does_not_stand_in_for_the_proxys(monkeypatch, c
     assert out == shipped.replace("services:\n", note.format(socket_policy.digest()), 1)
 
 
+def test_a_commented_out_proxy_fingerprint_does_not_count(monkeypatch, capsys):
+    """An operator who commented the line out still gets a real one."""
+    from app import socket_policy
+
+    old = _stale((ROOT / "docker-compose.worker.yml").read_text(), proxy_line=False)
+    at = socket_policy._PROXY_ENV_ANCHOR.search(old).end()
+    old = old[:at] + "      # - CASHPILOT_PROXY_POLICY=e9a30411b564dc75\n" + old[at:]
+    code, out, _ = _filter(old, monkeypatch, capsys)
+    assert code == 0
+    env = yaml.safe_load(out)["services"]["cashpilot-socket-proxy"]["environment"]
+    assert f"CASHPILOT_PROXY_POLICY={socket_policy.digest()}" in env
+
+
 def test_the_image_refuses_a_file_with_no_proxy_environment(monkeypatch, capsys):
     from app import socket_policy
 

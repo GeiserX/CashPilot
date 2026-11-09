@@ -274,6 +274,8 @@ def render(text: str, block: str, fingerprint: str) -> str:
 #: Every shipped compose file since the proxy carries this line in the proxy's
 #: environment; the proxy's fingerprint goes right after it.
 _PROXY_ENV_ANCHOR = re.compile(r"^( *)- SOCKGUARD_REQUEST_BODY_CONTAINER_CREATE_ALLOWED_BIND_MOUNTS=.*\n", re.M)
+#: A real entry, not a commented-out one.
+_PROXY_ENTRY = re.compile(r"^ *- CASHPILOT_PROXY_POLICY=", re.M)
 _PROXY_FINGERPRINT = (
     "{indent}# The policy's fingerprint. Compose does not recreate a container when\n"
     "{indent}# only its config's content changes, so this line is what makes\n"
@@ -319,7 +321,7 @@ def update(text: str, passes: int | None = None) -> str:
     anchor = _PROXY_ENV_ANCHOR.search(text)
     if anchor is None:
         raise SystemExit("compose file has no socket proxy environment to give the policy's fingerprint")
-    if not DIGEST_RE.search(_env_list(text, anchor.start(), anchor.group(1))):
+    if not _PROXY_ENTRY.search(_env_list(text, anchor.start(), anchor.group(1))):
         line = _PROXY_FINGERPRINT.format(indent=anchor.group(1))
         text = text[: anchor.end()] + line + text[anchor.end() :]
     return render(text, compose_block(passes=passes), digest())
