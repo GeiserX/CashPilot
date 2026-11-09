@@ -74,7 +74,11 @@ docker:
     port: 4449
   udp_port_range:
     env: UDP_PORTS
-    max_ports: 1000
+    # Each published port slows the node's start: 300 start in about 12 s,
+    # 1,000 in about 51 s, past the 30 s the socket proxy waits (app/catalog.py
+    # MAX_UDP_PORTS). A node already running with a wider range keeps running;
+    # a redeploy of it is refused until the range is narrowed.
+    max_ports: 300
   # Docker never starts this node on its own (restart policy "no"). The worker
   # starts it only after it has confirmed the LAN fence is in place, at deploy,
   # after a reboot and after a crash, and stops it within 30 s if the fence or

@@ -267,7 +267,9 @@ def container_drift(
                 (v.get("default") for v in docker_conf.get("env") or [] if v.get("key") == rng.get("env")), ""
             )
             with contextlib.suppress(ValueError):
-                want_ports |= set(catalog.expand_udp_range(str(value or ""), int(rng.get("max_ports") or 1000)))
+                want_ports |= set(
+                    catalog.expand_udp_range(str(value or ""), int(rng.get("max_ports") or catalog.MAX_UDP_PORTS))
+                )
         if missing := want_ports - set(shape.get("ports") or []):
             found.append(f"does not publish port {_names(missing)}")
     if gated and shape.get("restart_policy") not in (None, "no"):

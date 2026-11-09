@@ -81,8 +81,12 @@ def parse_port(mapping: object) -> tuple[str, int | list[str | int]]:
 NETNS_CAPABILITIES = frozenset({"NET_ADMIN", "SYS_ADMIN"})
 
 #: The most UDP ports one udp_port_range may publish. Each published port is a
-#: rule and, with Docker's userland proxy, a process on the host.
-MAX_UDP_PORTS = 1000
+#: rule and, with Docker's userland proxy, a process on the host, and each one
+#: slows the container's start. Measured on a live node (Nov 2026): 300 ports
+#: start in about 12 s, about 350 take 30 s, where the socket proxy stops
+#: waiting for Docker's answer, and 1,000 take about 51 s. 300 keeps a deploy's
+#: start well inside the proxy's 30 s on a slower host too.
+MAX_UDP_PORTS = 300
 
 
 def is_port_range(value: str) -> bool:
@@ -114,7 +118,12 @@ def expand_udp_range(value: str, cap: int = MAX_UDP_PORTS) -> dict[str, int]:
     start, _, end = value.partition(":")
     first, last = int(start), int(end)
     if last - first + 1 > cap:
-        raise ValueError(f"{value!r} spans {last - first + 1} ports; at most {cap} can be published")
+        raise ValueError(
+            f"{value!r} spans {last - first + 1} ports; at most {cap} can be published, since every published "
+            f"port slows the container's start and a wider range runs past what a deploy can wait for. Choose a "
+            f"range of {cap} ports or fewer, such as {first}:{min(first + cap - 1, 65535)}, and forward the same "
+            "range on your router"
+        )
     return {f"{port}/udp": port for port in range(first, last + 1)}
 
 

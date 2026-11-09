@@ -283,6 +283,9 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # When that refused run ended, to tell a refusal
                             # older than the last balance read (stale) apart.
                             "fatal_at": c.get("fatal_at"),
+                            # Why the worker's fence guard keeps this copy stopped, and
+                            # what brings it back (lan_fence.guard). Absent when it does not.
+                            "held": c.get("held"),
                             # What the container was created with, for the drift
                             # check (app/drift.py). None from a worker too old to send it.
                             "shape": c.get("shape"),
@@ -586,6 +589,10 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
     how = f" (exit code {', '.join(str(code) for code in codes)})" if codes else ""
     message = f"{name} has not been running since {since} UTC on {nodes}{how}, so it is not earning."
     if catalog.fence_gated(catalog.get_service(slug)):
+        # What the worker's guard says holds it; a reason only a redeploy clears
+        # must reach the operator here, not only on the Fleet page.
+        if held := sorted({str(c["held"]) for c in copies if c.get("held")}):
+            return message + f" The worker keeps it stopped: {'; '.join(held)}."
         # No restart policy on purpose: the worker starts it once the LAN fence is confirmed.
         return message + (
             " The worker starts it as soon as the LAN fence is confirmed; while it stays down, the Fleet page "
@@ -2820,6 +2827,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 # What a windowed health signal says is wrong with this copy.
                 "hints": _windowed_hints.get((slug, inst.get("_worker_id"), int(inst.get("instance") or 1)), []),
                 "fatal": inst.get("fatal"),
+                "held": inst.get("held"),
             }
             # Only containers CashPilot made (constants.CASHPILOT_DEPLOYED): a
             # container the user runs by hand is theirs to shape, even when it
@@ -3658,7 +3666,9 @@ def fence_gated_ports(docker_conf: dict[str, Any], env: dict[str, Any]) -> dict[
         ports[f"{int(ui['port'])}/tcp"] = bindings[0] if len(bindings) == 1 else bindings
     rng = docker_conf.get("udp_port_range")
     if isinstance(rng, dict):
-        ports.update(catalog.expand_udp_range(str(env.get(rng["env"]) or ""), int(rng.get("max_ports") or 1000)))
+        ports.update(
+            catalog.expand_udp_range(str(env.get(rng["env"]) or ""), int(rng.get("max_ports") or catalog.MAX_UDP_PORTS))
+        )
     return ports
 
 
@@ -3696,7 +3706,12 @@ async def _fence_gated_spec(
     try:
         ports = fence_gated_ports(docker_conf, env)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid value for {slug}: {exc}") from None
+        # Refused before the worker is asked: a node already running keeps
+        # running as it is, whatever range it has.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid value for {slug}: {exc}. Nothing was deployed; a running {slug} was not touched.",
+        ) from None
     merged = dict(spec)
     # The record's network mode and ports do not win here, so saying they were kept would be false.
     divergence[:] = [d for d in divergence if not d.startswith(("network_mode: keeping", "ports: keeping"))]
@@ -4293,8 +4308,14 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
         image = _image_for_arch(docker_conf, arch)
         if image:
             spec = {**spec, "image": image}
+    # A start Docker is slow to answer is waited out by the worker for up to
+    # START_SETTLE_SECONDS (orchestrator._await_start), so the wait here covers it.
     return await _proxy_to_worker(
-        worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60 + stop_timeout
+        worker_id,
+        "POST",
+        f"/api/containers/{slug}/deploy",
+        json=spec,
+        timeout=60 + stop_timeout + constants.START_SETTLE_SECONDS,
     )
 
 
