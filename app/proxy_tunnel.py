@@ -504,12 +504,12 @@ def _is_ip(value: Any) -> bool:
 SIDECAR_STOP_SECONDS = 10
 
 
-def _remove_quietly(container: Any, stop_timeout: int = SIDECAR_STOP_SECONDS) -> None:
+def _remove_quietly(container: Any, stop_timeout: int = SIDECAR_STOP_SECONDS, *, volumes: bool = True) -> None:
     # A failed stop is no reason to keep the container; the removal is what matters.
     with contextlib.suppress(Exception):
         container.stop(timeout=stop_timeout)
     with contextlib.suppress(NotFound):
-        container.remove(force=True, v=True)
+        container.remove(force=True, v=volumes)
 
 
 def _get(client: Any, name: str) -> Any | None:
@@ -669,7 +669,7 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         if (leftover := _get(client, leftover_name)) is not None:
             if not (_is_earner(leftover) and _labels(leftover).get(LABEL_SERVICE) == service):
                 raise ProxyTunnelError(f"A container named {leftover_name} that CashPilot did not create is in the way")
-            _remove_quietly(leftover, 2)
+            _remove_quietly(leftover, 2, volumes=False)  # they may be the member's own
     optional = {
         "entrypoint": cfg.get("Entrypoint"),
         "command": cfg.get("Cmd"),
@@ -685,6 +685,14 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         "oom_score_adj": hc.get("OomScoreAdj") or None,
         "cpu_shares": hc.get("CpuShares") or None,
         "log_config": hc.get("LogConfig") or None,
+        # Volumes the image declares (an earner may keep its device id in
+        # one) go with the copy: a fresh one would make it a new device.
+        "volumes": {
+            m["Name"]: {"bind": m["Destination"], "mode": "rw" if m.get("RW", True) else "ro"}
+            for m in attrs.get("Mounts") or []
+            if m.get("Type") == "volume" and m.get("Name") and m.get("Destination")
+        }
+        or None,
     }
     clone = client.containers.create(
         image=cfg.get("Image") or _image_of(member),
@@ -709,7 +717,7 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
             raise ProxyTunnelError(f"{name} did not stop, so it was not moved")
         member.rename(aside)
     except Exception:
-        _remove_quietly(clone, 2)
+        _remove_quietly(clone, 2, volumes=False)
         _put_back(member, name, was_running)
         raise
     try:
@@ -717,11 +725,11 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         if start if start is not None else was_running:
             clone.start()
     except Exception:
-        _remove_quietly(clone, 2)
+        _remove_quietly(clone, 2, volumes=False)
         _put_back(member, name, was_running)
         raise
     try:
-        member.remove(force=True, v=True)
+        member.remove(force=True, v=False)  # its volumes are the clone's now
     except NotFound:
         pass
     except Exception as exc:  # noqa: BLE001 - a leftover only: recover_moves removes it
@@ -984,6 +992,16 @@ def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) ->
             "the worker settles that within a few minutes. Try again then."
         )
     run = getattr(staged, "status", "") == "running"
+    if current is not None and not run and any(getattr(m, "status", "") in _LIVE for m in _members(client, current)):
+        # Copies run in the current tunnel: never moved into one that cannot run.
+        try:
+            staged.start()
+            _wait_ready(staged)
+        except Exception:  # noqa: BLE001 - the detail may hold the proxy's secrets
+            raise ProxyTunnelError(
+                f"The new tunnel of {final} could not start, so its copies stay in the tunnel they run in"
+            ) from None
+        run = True
     if current is not None:
         for member in _members(client, current):
             _clone_into(client, member, staged, start=run and getattr(member, "status", "") in _LIVE)
@@ -1159,18 +1177,6 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
         return _start_legacy(slug, earner, tunnel, name)
     if proxy is not None:
         shared, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip)
-        earner = _get(client, name)
-        if earner is not None and _tunnel_id_of(earner) != shared.id:
-            # A legacy pair, or a copy whose tunnel is gone: a namespace is
-            # fixed at create, so its earner is recreated in the shared tunnel.
-            # A legacy tunnel goes with it.
-            with _swap_lock:
-                _clone_into(client, earner, shared, start=False)
-                if tunnel is not None and not _is_shared(tunnel):
-                    _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
-            earner = _get(client, name)
-        if earner is None:
-            raise ProxyTunnelError(f"{name} disappeared while its tunnel was replaced")
     else:
         if tunnel is None:
             raise ProxyTunnelError(
@@ -1184,8 +1190,21 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
         exit_info = _wait_ready(tunnel)
     current = shared if proxy is not None else tunnel
     try:
+        if proxy is not None:
+            earner = _get(client, name)
+            if earner is not None and _tunnel_id_of(earner) != shared.id:
+                # A legacy pair, or a copy whose tunnel is gone: a namespace is
+                # fixed at create, so its earner is recreated in the shared
+                # tunnel. A legacy tunnel goes with it.
+                with _swap_lock:
+                    _clone_into(client, earner, shared, start=False)
+                    if tunnel is not None and not _is_shared(tunnel):
+                        _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
+                earner = _get(client, name)
+            if earner is None:
+                raise ProxyTunnelError(f"{name} disappeared while its tunnel was replaced")
         _set_held(name, False, strict=True)
-    except ProxyTunnelError:
+    except Exception:
         # The tunnel was started for this copy, which stays stopped: down
         # again unless another copy in it should run.
         with contextlib.suppress(Exception):
@@ -1362,17 +1381,17 @@ def recover_moves(min_age: float | None = None) -> list[str]:
             continue  # may be the clone of a move still running; its aside one is the way back
         try:
             if name in by_name:
-                _remove_quietly(aside, 2)
+                _remove_quietly(aside, 2, volumes=False)
                 done.append(f"removed {aside_name}")
             elif (
                 clone is not None and _get(client, _tunnel_id_of(aside)) is None and _get(client, _tunnel_id_of(clone))
             ):
                 clone.rename(name)
-                _remove_quietly(aside, 2)
+                _remove_quietly(aside, 2, volumes=False)
                 done.append(f"finished {name}")
             else:
                 if clone is not None:
-                    _remove_quietly(clone, 2)
+                    _remove_quietly(clone, 2, volumes=False)
                 aside.rename(name)
                 done.append(f"restored {name}")
         except Exception as exc:  # noqa: BLE001 - the next pass tries again
@@ -1386,7 +1405,7 @@ def recover_moves(min_age: float | None = None) -> list[str]:
             continue
         try:
             if name in by_name:
-                _remove_quietly(clone, 2)
+                _remove_quietly(clone, 2, volumes=False)
                 done.append(f"removed {staged_name}")
             else:
                 clone.rename(name)

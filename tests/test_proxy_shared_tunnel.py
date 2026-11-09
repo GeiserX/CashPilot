@@ -72,6 +72,10 @@ class FakeContainer:
                 "SecurityOpt": kw.get("security_opt"),
                 "Memory": kw.get("mem_limit") or 0,
             },
+            "Mounts": [
+                {"Type": "volume", "Name": n, "Destination": d["bind"], "RW": d["mode"] == "rw"}
+                for n, d in (kw.get("volumes") or {}).items()
+            ],
         }
         self.starts = 0
 
@@ -110,6 +114,7 @@ class FakeContainer:
     def remove(self, force=False, v=False):
         self._alive()
         del self._d.by_id[self.id]
+        self._d.removals.append((self.name, v))
         self._d.events.append(("remove", self.name))
 
     def rename(self, name):
@@ -155,6 +160,7 @@ class FakeDocker:
         self.ids = itertools.count(1)
         self.by_id: dict[str, FakeContainer] = {}
         self.events: list[tuple[str, str]] = []
+        self.removals: list[tuple[str, bool]] = []  # (name, whether its volumes went too)
         self.broken_auth: set[str] = set()  # proxy_auth values whose tunnel never gets an exit
         self.broken: set[str] = set()  # container ids Docker can no longer write to or start
         self.containers = self
@@ -1456,3 +1462,57 @@ class TestFourthReview:
         with pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
             proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
         assert PASSWORD not in str(err.value) and "Tunnel log" in str(err.value)
+
+
+class TestFifthReview:
+    def test_a_moved_copy_keeps_the_volumes_its_image_declares(self, docker):
+        _legacy_pair(docker, "honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        earner.attrs["Mounts"] = [{"Type": "volume", "Name": "hg-id", "Destination": "/root/.hg", "RW": True}]
+        proxy_tunnel.migrate_legacy()
+        clone = docker.named("cashpilot-honeygain-p3")
+        assert clone is not earner and clone.kw["volumes"] == {"hg-id": {"bind": "/root/.hg", "mode": "rw"}}
+        assert ("cashpilot-honeygain-p3-moving", False) in docker.removals
+
+    def _staged(self, docker, files):
+        staged = docker.create(
+            name="cashpilot-tunnel-p3-next",
+            image=IMAGE,
+            labels={
+                LABEL_MANAGED: "true",
+                LABEL_ROLE: "tunnel",
+                LABEL_SERVICE: proxy_tunnel.SHARED_SLUG,
+                LABEL_PROXY: "3",
+            },
+        )
+        staged.files = dict(files)
+        return staged
+
+    def test_copies_never_move_into_a_staged_tunnel_that_cannot_run(self, docker):
+        _deploy("m1")
+        current = docker.named("cashpilot-tunnel-p3")
+        staged = self._staged(docker, {**current.files, "proxy_auth": "u1:dead@"})
+        docker.broken_auth.add("u1:dead@")
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="could not start"):
+            proxy_tunnel._finish_staged(docker, staged, current, "cashpilot-tunnel-p3")
+        assert docker.named("cashpilot-tunnel-p3") is current and current.status == "running"
+        assert _member_ids(docker, current) == ["cashpilot-m1-p3"]
+        assert docker.named("cashpilot-m1-p3").status == "running"
+
+    def test_a_stopped_staged_tunnel_is_started_before_running_copies_move_in(self, docker):
+        _deploy("m1")
+        current = docker.named("cashpilot-tunnel-p3")
+        staged = self._staged(docker, current.files)
+        proxy_tunnel._finish_staged(docker, staged, current, "cashpilot-tunnel-p3")
+        assert docker.named("cashpilot-tunnel-p3") is staged and staged.status == "running"
+        assert docker.named("cashpilot-m1-p3").status == "running"
+
+    def test_a_start_whose_move_fails_leaves_no_tunnel_running_for_nobody(self, docker):
+        _legacy_pair(docker, "honeygain", running=False)
+        with (
+            patch.object(proxy_tunnel, "_clone_into", side_effect=APIError("500 Server Error: create failed")),
+            pytest.raises(APIError),
+        ):
+            proxy_tunnel.start("honeygain", 3, _tailscale(), None)
+        shared = docker.named("cashpilot-tunnel-p3")
+        assert shared is None or shared.status != "running"

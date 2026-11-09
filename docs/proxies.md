@@ -480,7 +480,8 @@ gives each device a name of its own, so when two boxes carry copies through
 the same proxy, the second one shows as `cashpilot-p<id>-1`. A Test joins as
 a node of its own for the length of the test. When a tunnel stops (a removal,
 a restart, the end of a Test, the box shutting down cleanly) it logs out
-first, which deletes its device at once, so it comes back under its old name.
+first, which deletes its device at once and frees its name. It usually comes
+back under that name, unless another box on the same proxy took it meanwhile.
 The logout needs nothing more from the key, but it needs to reach Tailscale:
 a tunnel killed without a stop (a power cut, an out-of-memory kill), or one
 that cannot reach Tailscale as it stops, leaves its device behind. Tailscale
@@ -564,9 +565,14 @@ proxy key never appear on a command line, where other users of the machine
 could read them in the process list.
 
 ```bash
+( # a subshell, so the trap below removes the key file however it ends
 UI=http://localhost:8080
 WORKER=1  # the box's worker id, from GET /api/workers
-AUTH=$(mktemp)  # the admin key goes to curl from this file, not as an argument
+AUTH=$(mktemp) || exit 1  # the admin key goes to curl from this file, not as an argument
+trap 'rm -f "$AUTH"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 printf 'Authorization: Bearer %s\n' "$CASHPILOT_ADMIN_API_KEY" >"$AUTH"
 
 # 1. Add the proxy (for SOCKS5: "kind": "socks5", "host", "port", "username", "password").
@@ -574,16 +580,15 @@ printf 'Authorization: Bearer %s\n' "$CASHPILOT_ADMIN_API_KEY" >"$AUTH"
 read -rs TS_AUTH_KEY
 PROXY=$(printf '{"name": "Exit at home", "kind": "tailscale", "auth_key": "%s", "exit_node": "100.101.102.103"}' \
   "$TS_AUTH_KEY" | curl -sf -H @"$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies" --data @- |
-  jq -er .id) || echo "the proxy was not added" >&2
-# ${PROXY:?} below refuses to run any command while PROXY is empty.
+  jq -er .id) || { echo "the proxy was not added" >&2; exit 1; }
 
 # 2. Test it from the box: the exit IP it gets.
-curl -s -H @"$AUTH" -X POST "$UI/api/proxies/${PROXY:?}/test?worker_id=$WORKER"
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/$PROXY/test?worker_id=$WORKER"
 
 # 3. Run copies of services already deployed on that box. The first starts the
 #    tunnel; the others join it.
 for slug in repocket earnfm traffmonetizer; do
-  curl -s -H @"$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies/${PROXY:?}/copies" \
+  curl -s -H @"$AUTH" -H 'Content-Type: application/json' -X POST "$UI/api/proxies/$PROXY/copies" \
     -d "{\"worker_id\": $WORKER, \"slug\": \"$slug\"}"
 done
 
@@ -591,11 +596,10 @@ done
 curl -s -H @"$AUTH" "$UI/api/proxies"
 
 # Stop, start or remove one copy.
-curl -s -H @"$AUTH" -X POST "$UI/api/proxies/${PROXY:?}/copies/$WORKER/earnfm/stop"
-curl -s -H @"$AUTH" -X POST "$UI/api/proxies/${PROXY:?}/copies/$WORKER/earnfm/start"
-curl -s -H @"$AUTH" -X DELETE "$UI/api/proxies/${PROXY:?}/copies/$WORKER/earnfm"
-
-rm -f "$AUTH"
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/$PROXY/copies/$WORKER/earnfm/stop"
+curl -s -H @"$AUTH" -X POST "$UI/api/proxies/$PROXY/copies/$WORKER/earnfm/start"
+curl -s -H @"$AUTH" -X DELETE "$UI/api/proxies/$PROXY/copies/$WORKER/earnfm"
+)
 ```
 
 On the box itself, `docker ps -a --filter label=cashpilot.proxy=<id>` lists the tunnel

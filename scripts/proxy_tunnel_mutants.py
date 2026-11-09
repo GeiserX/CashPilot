@@ -40,8 +40,8 @@ MUTANTS: list[tuple[str, str, str]] = [
     ),
     (
         "a start that cannot clear its stop starts the copy anyway",
-        "        _set_held(name, False, strict=True)\n    except ProxyTunnelError:\n        # The tunnel was started",
-        "        _set_held(name, False)\n    except ProxyTunnelError:\n        # The tunnel was started",
+        "        _set_held(name, False, strict=True)\n    except Exception:\n        # The tunnel was started",
+        "        _set_held(name, False)\n    except Exception:\n        # The tunnel was started",
     ),
     (
         "a deploy starts its copy before it clears the copy's stop",
@@ -252,6 +252,26 @@ MUTANTS: list[tuple[str, str, str]] = [
         "a stop whose earner did not stop leaves the tunnel running",
         "        except Exception as exc:  # noqa: BLE001 - raised below, after the tunnel\n            failure = exc\n",
         "        except Exception:  # noqa: BLE001 - raised below, after the tunnel\n            raise\n",
+    ),
+    (
+        "a moved copy gets fresh volumes",
+        '            if m.get("Type") == "volume" and m.get("Name") and m.get("Destination")\n',
+        "            if False\n",
+    ),
+    (
+        "a moved copy's volumes are deleted with the container it left",
+        "        member.remove(force=True, v=False)  # its volumes are the clone's now",
+        "        member.remove(force=True, v=True)  # its volumes are the clone's now",
+    ),
+    (
+        "running copies move into a staged tunnel that cannot run",
+        "not run and any(",
+        "False and any(",
+    ),
+    (
+        "a start whose move fails leaves the tunnel running",
+        "    except Exception:\n        # The tunnel was started for this copy",
+        "    except ProxyTunnelError:\n        # The tunnel was started for this copy",
     ),
 ]
 
