@@ -424,7 +424,8 @@ What changes:
   its CPU rises with the traffic. Measure it under load (see
   [Budgeting a small box](fleet.md#budgeting-a-small-box)).
 - **Each copy is two containers on the box that runs it**, the tunnel and the
-  earner, and each joins the tailnet as its own ephemeral node.
+  earner. The tunnel joins the tailnet as the copy's own ephemeral node; the
+  earner shares the tunnel's network and never joins it.
 - **The path to the exit node is over the internet.** With
   [LAN isolation](isolation.md#lan-isolation-by-default) on, the tunnel reaches
   the exit node over its public endpoints or a DERP relay, never a LAN path. A
