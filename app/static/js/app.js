@@ -1538,6 +1538,22 @@ const CP = (() => {
           ? ` data-a2="${escapeHtml(String(inst.worker_id))}"${inst.instance > 1 ? ` data-a3="${escapeHtml(String(inst.instance))}"` : ''}`
           : '';
         const controllable = _canWrite && !inst.unmanaged && !svc.unmanaged && inst.has_docker && !inst.is_android;
+        if (inst.held) {
+          // The worker's fence guard keeps it stopped (a fence-gated node): Start
+          // is refused for the same reason, so the card says why and offers what works.
+          items.push({
+            level: 'fail',
+            tag: 'Held stopped',
+            what: svc.name,
+            where,
+            why: `the worker keeps it stopped: ${escapeHtml(inst.held)}.`,
+            actions: _isOwner && !inst.unmanaged && inst.worker_id != null
+              ? `<button class="btn btn-ghost btn-sm" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wid}>Logs</button>
+               <button class="btn btn-primary btn-sm" data-action="redeployOnWorker" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Redeploy</button>`
+              : '',
+          });
+          continue;
+        }
         items.push({
           level: st,
           tag: st === 'fail' ? 'Down' : 'Degraded',

@@ -171,7 +171,10 @@ every other earner:
   the forward on your router is the same as on the host's network. Docker
   fails the whole start when a host program holds one of its ports, so the
   default sits below Linux's ephemeral range (32768-60999). Each port goes to the same port in
-  the node, with the customer's own source address. At most 1000 ports.
+  the node, with the customer's own source address. At most 300 ports: each
+  published port slows the node's start, about 12 s for 300 and 51 s for
+  1,000. A node already running with a wider range
+  keeps running; CashPilot refuses to redeploy it until the range is narrowed.
 - Its WebUI listens on `0.0.0.0` inside its namespace and is published only
   on the host addresses in `UI_ADDRESS`, `127.0.0.1` by default. The Tequila
   API is never published.

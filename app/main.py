@@ -286,6 +286,9 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             # When that refused run ended, to tell a refusal
                             # older than the last balance read (stale) apart.
                             "fatal_at": c.get("fatal_at"),
+                            # Why the worker's fence guard keeps this copy stopped, and
+                            # what brings it back (lan_fence.guard). Absent when it does not.
+                            "held": c.get("held"),
                             # What the container was created with, for the drift
                             # check (app/drift.py). None from a worker too old to send it.
                             "shape": c.get("shape"),
@@ -589,6 +592,10 @@ def _container_down_message(slug: str, copies: list[dict[str, Any]]) -> str:
     how = f" (exit code {', '.join(str(code) for code in codes)})" if codes else ""
     message = f"{name} has not been running since {since} UTC on {nodes}{how}, so it is not earning."
     if catalog.fence_gated(catalog.get_service(slug)):
+        # What the worker's guard says holds it; a reason only a redeploy clears
+        # must reach the operator here, not only on the Fleet page.
+        if held := sorted({str(c["held"]) for c in copies if c.get("held")}):
+            return message + f" The worker keeps it stopped: {'; '.join(held)}."
         # No restart policy on purpose: the worker starts it once the LAN fence is confirmed.
         return message + (
             " The worker starts it as soon as the LAN fence is confirmed; while it stays down, the Fleet page "
@@ -2823,6 +2830,7 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 # What a windowed health signal says is wrong with this copy.
                 "hints": _windowed_hints.get((slug, inst.get("_worker_id"), int(inst.get("instance") or 1)), []),
                 "fatal": inst.get("fatal"),
+                "held": inst.get("held"),
             }
             # Only containers CashPilot made (constants.CASHPILOT_DEPLOYED): a
             # container the user runs by hand is theirs to shape, even when it
@@ -3661,7 +3669,9 @@ def fence_gated_ports(docker_conf: dict[str, Any], env: dict[str, Any]) -> dict[
         ports[f"{int(ui['port'])}/tcp"] = bindings[0] if len(bindings) == 1 else bindings
     rng = docker_conf.get("udp_port_range")
     if isinstance(rng, dict):
-        ports.update(catalog.expand_udp_range(str(env.get(rng["env"]) or ""), int(rng.get("max_ports") or 1000)))
+        ports.update(
+            catalog.expand_udp_range(str(env.get(rng["env"]) or ""), int(rng.get("max_ports") or catalog.MAX_UDP_PORTS))
+        )
     return ports
 
 
@@ -3699,7 +3709,12 @@ async def _fence_gated_spec(
     try:
         ports = fence_gated_ports(docker_conf, env)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid value for {slug}: {exc}") from None
+        # Refused before the worker is asked: a node already running keeps
+        # running as it is, whatever range it has.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid value for {slug}: {exc}. Nothing was deployed; a running {slug} was not touched.",
+        ) from None
     merged = dict(spec)
     # The record's network mode and ports do not win here, so saying they were kept would be false.
     divergence[:] = [d for d in divergence if not d.startswith(("network_mode: keeping", "ports: keeping"))]
@@ -4230,6 +4245,10 @@ async def _proxy_worker_command(
     # for storj). Cut off sooner, a stop that went through answers 504 and is
     # never recorded, so the copy raises a container-down alert.
     timeout = 30 + _catalog_stop_timeout(slug) if command in ("stop", "restart", "remove") else 30
+    if command == "stop" and catalog.fence_gated(catalog.get_service(slug)):
+        # The worker stops a fence-gated node under the lock a redeploy holds
+        # (orchestrator.GATED_DEPLOY_LOCK), so a Stop sent during one waits for it first.
+        timeout += _deploy_timeout(slug)
     if command == "remove":
         return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout)
     return await _proxy_to_worker(
@@ -4274,6 +4293,15 @@ def _catalog_stop_timeout(slug: str) -> int:
     return timeout if timeout > 0 else 30
 
 
+def _deploy_timeout(slug: str) -> int:
+    """How long a deploy of ``slug`` may take on the worker.
+
+    It stops the old container first, and a start Docker is slow to answer is
+    waited out for up to START_SETTLE_SECONDS (orchestrator._await_start).
+    """
+    return 60 + _catalog_stop_timeout(slug) + constants.START_SETTLE_SECONDS
+
+
 async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -4283,7 +4311,6 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
     while the worker was still shutting the old node down cleanly.
     """
     docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
-    stop_timeout = _catalog_stop_timeout(slug)
     # Which build THIS worker runs is decided here, at the edge, from the
     # architecture in its heartbeat. The deployment record stays on the
     # catalog's default image: it is one row for the whole fleet, and a
@@ -4297,7 +4324,7 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
         if image:
             spec = {**spec, "image": image}
     return await _proxy_to_worker(
-        worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=60 + stop_timeout
+        worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
 
 
