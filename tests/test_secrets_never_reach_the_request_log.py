@@ -159,6 +159,19 @@ class TestAnyClientRequest:
         assert FAKE_BOT_TOKEN not in caplog.text
         assert "https://<redacted>@ui.example/bot<redacted>/x" in caplog.text
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://ui.example?next=a@b",
+            "https://ui.example#section@top",
+            "https://ui.example/people/a@b",
+        ],
+    )
+    def test_an_at_sign_after_the_host_is_not_userinfo(self, redacting, caplog, url):
+        with caplog.at_level(logging.INFO):
+            logging.getLogger("httpx").info("HTTP Request: GET %s", url)
+        assert url in caplog.text
+
     def test_a_traceback_is_redacted(self, redacting, caplog):
         with caplog.at_level(logging.DEBUG):
             try:

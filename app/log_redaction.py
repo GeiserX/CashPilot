@@ -38,7 +38,9 @@ _SECRET_PARAM_RE = re.compile(
 # a token reaches no log even when it did not come from our own variable.
 _TELEGRAM_TOKEN_RE = re.compile(r"(?<!\d)\d{6,12}:[A-Za-z0-9_-]{30,}")
 # ``scheme://user:password@host``: keep the scheme and host, drop the userinfo.
-_USERINFO_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/\s@'\"]+@", re.IGNORECASE)
+# Userinfo ends at the first ``/``, ``?`` or ``#``: an ``@`` after one of those
+# belongs to the path, query or fragment, and the host before it must stay.
+_USERINFO_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/?#\s@'\"]+@", re.IGNORECASE)
 
 # Values that are secret whatever they look like.
 _SECRET_ENV = ("CASHPILOT_TELEGRAM_BOT_TOKEN",)
