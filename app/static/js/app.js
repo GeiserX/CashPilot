@@ -1497,7 +1497,7 @@ const CP = (() => {
       </div>`;
   }
 
-  async function renderAttention(services, workers, seq) {
+  async function renderAttention(services, workers, seq, knownAlerts) {
     const list = document.getElementById('attention-list');
     if (!list) return;
     const items = [];
@@ -1609,7 +1609,8 @@ const CP = (() => {
     // check, past its grace period). Forget drops only CashPilot's record, so it
     // is the way out when the container was removed on purpose.
     try {
-      const bell = await api('/api/collector-alerts');
+      // The bell poll passes the alerts it just read, so its redraw cannot fail on a second fetch.
+      const bell = knownAlerts ? { alerts: knownAlerts } : await api('/api/collector-alerts');
       for (const a of (bell.alerts || [])) {
         // A proxied copy or its tunnel gone or down: the per-service rows
         // never list proxied copies, so without this the list says nothing is wrong.
@@ -1734,7 +1735,7 @@ const CP = (() => {
     const changed = _attentionAlertsKey !== null && key !== _attentionAlertsKey;
     _attentionAlertsKey = key;
     if (!changed || !_attentionCount.services || !document.getElementById('attention-list')) return null;
-    return renderAttention(_attentionCount.services, _attentionCount.workers, _attentionSeq);
+    return renderAttention(_attentionCount.services, _attentionCount.workers, _attentionSeq, alerts.slice());
   }
 
   // Action-button icons, extracted so the single-instance row and the per-node sub-row

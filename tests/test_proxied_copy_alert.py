@@ -352,7 +352,10 @@ class TestTheDashboardSaysSo:
         node = shutil.which("node")
         if not node:
             pytest.skip("node is not installed")
-        harness = _HARNESS.replace(": { alerts: [] };", ": { alerts: bell };\nlet bell = [];")
+        harness = _HARNESS.replace(
+            ": { alerts: [] };",
+            ": fetchFails ? Promise.reject(new Error('down')) : { alerts: bell };\nlet bell = [], fetchFails = false;",
+        )
         harness = harness.replace(
             "return renderAttention;`)", "return [renderAttention, refreshAttentionOnAlertChange];`)"
         )
@@ -367,7 +370,10 @@ const tagsNow = () => [...els['attention-list'].innerHTML.matchAll(/class="attn-
   const before = tagsNow();
   const same = refresh(bell);
   bell = [{ kind: 'proxied', platform: 'cashpilot-tunnel-p3', error: 'The tunnel is gone' }];
+  // The redraw uses the alerts the poll read: a second fetch that fails must not lose them.
+  fetchFails = true;
   await refresh(bell);
+  fetchFails = false;
   const appeared = tagsNow();
   bell = [];
   await refresh(bell);
