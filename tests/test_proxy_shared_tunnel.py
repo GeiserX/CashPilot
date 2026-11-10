@@ -1587,6 +1587,8 @@ class TestAStuckTunnelChangeIsReported:
         assert change["tunnel"] == "cashpilot-tunnel-p3-next"
         assert change["age_seconds"] >= proxy_tunnel.STAGED_STALE_SECONDS
         assert "could not start" in change["reason"] and "could not move back" in change["reason"]
+        # Stopped again, so it holds no proxy login while nothing can use it.
+        assert staged.status != "running"
         # The copy still in the current tunnel is fine and says nothing of it.
         assert "tunnel_change" not in entries["m2"]
         assert docker.named("cashpilot-tunnel-p3") is current
@@ -1634,6 +1636,44 @@ class TestAStuckTunnelChangeIsReported:
         # The next beat has no staged tunnel left to wait for.
         with patch.object(proxy_tunnel, "_wait_ready", side_effect=AssertionError("waited again")):
             _heartbeat()
+
+    def test_after_a_reboot_the_copies_go_back_into_the_working_tunnel(self, docker):
+        """Docker restarts both tunnels (unless-stopped) but no copy (restart policy no)."""
+        current, staged = self._half_done(docker, auth="u1:dead@")
+        docker.broken_auth.add("u1:dead@")
+        for c in docker.by_id.values():
+            c.status = "exited"
+        current.status = staged.status = "running"
+        _heartbeat()
+        assert docker.named("cashpilot-tunnel-p3") is current and staged.id not in docker.by_id
+        assert _member_ids(docker, current) == ["cashpilot-m1-p3", "cashpilot-m2-p3"]
+        _heartbeat()
+        assert {docker.named(n).status for n in ("cashpilot-m1-p3", "cashpilot-m2-p3")} == {"running"}
+
+    def test_a_running_staged_tunnel_still_writing_its_ready_file_is_waited_for(self, docker):
+        current, staged = self._half_done(docker)
+        staged.start()
+        reads = {"n": 0}
+        real = staged.exec_run
+
+        def slow(cmd, demux=False):
+            reads["n"] += 1
+            return (1, b"") if reads["n"] == 1 else real(cmd, demux)
+
+        staged.exec_run = slow
+        assert proxy_tunnel._finish_staged(docker, staged, current, "cashpilot-tunnel-p3") is staged
+        assert current.id not in docker.by_id
+        assert _member_ids(docker, staged) == ["cashpilot-m1-p3", "cashpilot-m2-p3"]
+
+    def test_with_the_working_tunnel_down_the_change_finishes_without_a_start(self, docker):
+        """Nothing has an exit to keep, so the staged tunnel is not started just to be judged."""
+        current, staged = self._half_done(docker, auth="u1:dead@")
+        docker.broken_auth.add("u1:dead@")
+        for c in docker.by_id.values():
+            c.status = "exited"
+        assert proxy_tunnel._finish_staged(docker, staged, current, "cashpilot-tunnel-p3") is staged
+        assert staged.status != "running" and current.id not in docker.by_id
+        assert _member_ids(docker, staged) == ["cashpilot-m1-p3", "cashpilot-m2-p3"]
 
     def test_a_half_moved_copy_is_the_reason_given(self, docker):
         _current, staged = self._half_done(docker)

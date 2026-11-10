@@ -983,8 +983,8 @@ def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) ->
     """Finish a tunnel change a worker died in: the staged tunnel had proved its
     exit before any copy moved into it, so the copies left in ``current`` move
     across and it takes the final name. Returns the tunnel under ``final``.
-    A staged tunnel that cannot prove its exit while copies run in ``current``
-    is undone instead (see _undo_staged).
+    A staged tunnel that cannot prove its exit while ``current`` runs is undone
+    instead (see _undo_staged).
 
     Refused while a copy of the proxy is still half moved: recover_moves must
     settle it first, or its container aside would be taken for a copy."""
@@ -994,21 +994,25 @@ def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) ->
             "the worker settles that within a few minutes. Try again then."
         )
     run = getattr(staged, "status", "") == "running"
-    if current is not None and any(getattr(m, "status", "") in _LIVE for m in _members(client, current)):
-        # Copies run in the current tunnel: never moved into one that has not
-        # proved its exit. Running is no proof: a start whose exit failed is.
-        if run and _read_exit(staged) is None:
-            return _undo_staged(client, staged, current, f"The new tunnel of {final} runs but has no exit")
-        if not run:
-            try:
+    if current is not None and (
+        getattr(current, "status", "") in _LIVE
+        or any(getattr(m, "status", "") in _LIVE for m in _members(client, current))
+    ):
+        # The current tunnel runs (after a reboot with every copy still down,
+        # too): its copies never move into one that has not proved its exit
+        # now. Running is no proof, and a tunnel Docker just restarted needs
+        # its probe time to write /run/ready again.
+        try:
+            if not run:
                 staged.start()
-                _wait_ready(staged)
-            except Exception:  # noqa: BLE001 - the detail may hold the proxy's secrets
-                # Stopped again, so the next try does not take it for one that runs.
-                with contextlib.suppress(Exception):
-                    staged.stop(timeout=SIDECAR_STOP_SECONDS)
-                return _undo_staged(client, staged, current, f"The new tunnel of {final} could not start")
-            run = True
+            _wait_ready(staged)
+        except Exception:  # noqa: BLE001 - the detail may hold the proxy's secrets
+            # Stopped, so it holds no proxy login while nothing can use it.
+            with contextlib.suppress(Exception):
+                staged.stop(timeout=SIDECAR_STOP_SECONDS)
+            why = "runs but has no exit" if run else "could not start"
+            return _undo_staged(client, staged, current, f"The new tunnel of {final} {why}")
+        run = True
     if current is not None:
         for member in _members(client, current):
             _clone_into(client, member, staged, start=run and getattr(member, "status", "") in _LIVE)
@@ -1020,7 +1024,7 @@ def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) ->
 
 def _undo_staged(client: Any, staged: Any, current: Any, why: str) -> Any:
     """Undo a tunnel change whose staged tunnel never proved its exit, while
-    copies still run in ``current``: the copies already in the staged tunnel go
+    ``current`` runs: the copies already in the staged tunnel go
     back into ``current`` and the staged tunnel goes. Returns ``current``.
 
     Retrying the staged tunnel on its own settings can fail for good (a login
