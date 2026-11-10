@@ -925,13 +925,12 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
         # specs were kept per box has no placement; the box still reporting
         # the service is what says it is deployed there.
         placed = {(p["slug"], p["worker_id"]) for p in await database.list_deployment_placements()}
-        placed |= {(r["slug"], r["worker_id"]) for r in placement.reported(workers)}
+        reported = {(r["slug"], r["worker_id"]) for r in placement.reported(workers)}
         for copy in await database.list_proxied_copies():
             pid, wid, slug = copy["proxy_id"], copy["worker_id"], copy["slug"]
             proxy = proxy_rows.get(pid)
             if (
                 proxy is None
-                or (slug, wid) not in placed
                 or copy.get("removing_since")
                 or copy.get("stopped_by_cap")
                 or (proxy.get("state") or {}).get("capped_at")
@@ -939,8 +938,12 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
             ):
                 continue
             entries = _proxied_reportable(by_id.get(wid))
+            # A box that cannot tell comes before the legacy placement test: its
+            # empty report does not say the service left, so a stored alert stays.
             if entries is None:
                 unjudged.add(str(wid))
+                continue
+            if (slug, wid) not in placed and (slug, wid) not in reported:
                 continue
             box = str((by_id.get(wid) or {}).get("name") or wid)
             pname = str((proxy.get("definition") or {}).get("name") or f"proxy {pid}")

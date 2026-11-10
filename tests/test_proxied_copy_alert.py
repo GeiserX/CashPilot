@@ -244,6 +244,17 @@ class TestABoxThatCannotTellIsNotEverythingMissing:
         assert alerts.rows == {"cashpilot-earnfm-p3@1": "stored before"}
         assert main._collector_alerts, "the bell keeps what it cannot re-check"
 
+    def test_a_blind_box_keeps_the_alert_of_a_service_deployed_before_per_box_records(self):
+        # No placement row, and the blind box reports no containers either: that
+        # is not the service being removed, so the stored alert must stay.
+        alerts = _Alerts([_copy("earnfm")], placements=[])
+        base = {"slug": "earnfm", "name": "cashpilot-earnfm", "status": "running"}
+        _past_grace(alerts, [_worker([], containers=[base])])
+        assert list(alerts.rows) == ["cashpilot-earnfm-p3@1"]
+        alerts.run([_worker([], docker=False)])
+        assert list(alerts.rows) == ["cashpilot-earnfm-p3@1"]
+        assert main._collector_alerts, "the bell keeps what it cannot re-check"
+
     def test_a_stored_alert_skips_the_grace_after_a_restart_and_is_not_pushed_again(self):
         alerts = _Alerts([_copy("earnfm")])
         alerts.rows["cashpilot-earnfm-p3@1"] = "stored before"
