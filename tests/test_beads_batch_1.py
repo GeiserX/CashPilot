@@ -214,7 +214,11 @@ class TestChangingTheEntrypointBuildsAnImage:
         return (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 
     def test_it_triggers_the_workflow(self):
-        assert "- 'entrypoint.sh'" in self._release()
+        # In the list the daily run compares with the last tag (once the push
+        # trigger's path filter).
+        import yaml
+
+        assert "entrypoint.sh" in yaml.safe_load(self._release())["jobs"]["pending"]["env"]["RELEASE_PATHS"].split()
 
     def test_it_builds_both_images(self):
         """It is COPY'd into both, so one regex is not enough."""

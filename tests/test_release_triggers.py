@@ -430,7 +430,90 @@ class TestTheTunnelImageShips:
         """The control: the extracted block can answer false."""
         assert self._flags("README.md") == {"ui": "false", "worker": "false"}
 
-    def test_a_push_of_tunnel_files_runs_the_workflow(self):
+    def test_tunnel_files_count_as_something_to_release(self):
         doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
-        paths = doc[True]["push"]["paths"] if True in doc else doc["on"]["push"]["paths"]
+        paths = doc["jobs"]["pending"]["env"]["RELEASE_PATHS"].split()
         assert "tunnel/**" in paths and "Dockerfile.tunnel" in paths
+
+
+class TestReleasesAreBatched:
+    """A release was cut on every merge that touched the app: eight or nine
+    version bumps on a busy day. Merges now collect on main and one scheduled
+    run a day releases them together; a hand-started run covers an urgent fix."""
+
+    def _doc(self):
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        return doc, (doc[True] if True in doc else doc["on"])
+
+    def test_a_merge_does_not_cut_a_release(self):
+        _doc, on = self._doc()
+        assert "push" not in on and "pull_request" not in on
+
+    def test_it_runs_once_a_day_and_by_hand(self):
+        _doc, on = self._doc()
+        (entry,) = on["schedule"]
+        minute, hour, day, month, weekday = entry["cron"].split()
+        assert minute.isdigit() and hour.isdigit() and (day, month, weekday) == ("*", "*", "*")
+        assert "workflow_dispatch" in on
+
+    def test_a_hand_started_run_from_another_branch_releases_nothing(self):
+        doc, _on = self._doc()
+        assert doc["jobs"]["pending"]["if"] == "github.ref == 'refs/heads/main'"
+        # Every later job hangs off pending, so a skipped pending skips them all.
+        assert doc["jobs"]["ci"]["needs"] == "pending" and doc["jobs"]["release"]["needs"] == "ci"
+
+    def test_a_day_with_nothing_to_release_stops_before_the_suite(self):
+        doc, _on = self._doc()
+        ci = doc["jobs"]["ci"]
+        assert ci["needs"] == "pending" and "needs.pending.outputs.any == 'true'" in ci["if"]
+        assert doc["jobs"]["release"]["needs"] == "ci"
+
+    def test_the_pending_check_can_say_yes_and_no(self, tmp_path):
+        doc, _on = self._doc()
+        script = next(s["run"] for s in doc["jobs"]["pending"]["steps"] if s.get("id") == "diff")
+        paths = doc["jobs"]["pending"]["env"]["RELEASE_PATHS"]
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+
+        def run(*cmd):
+            subprocess.run(cmd, cwd=tmp_path, check=True, capture_output=True)
+
+        def answer():
+            out = tmp_path / "out"
+            out.write_text("")
+            subprocess.run(
+                ["bash", "-c", script],
+                cwd=tmp_path,
+                check=True,
+                capture_output=True,
+                env={**os.environ, "GITHUB_OUTPUT": str(out), "RELEASE_PATHS": paths},
+            )
+            return out.read_text().strip()
+
+        run("git", "init", "-q")
+        (tmp_path / "README.md").write_text("a")
+        run("git", "add", "README.md")
+        run(*git, "commit", "-qm", "one")
+        assert answer() == "any=true"  # no release yet
+        run(*git, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
+        (tmp_path / "README.md").write_text("b")
+        run(*git, "commit", "-qam", "docs only")
+        assert answer() == "any=false"
+        (tmp_path / "app").mkdir()
+        (tmp_path / "app" / "x.py").write_text("")
+        run("git", "add", "app")
+        run(*git, "commit", "-qm", "app change")
+        assert answer() == "any=true"
+        # A pre-release tag is not the last release: the app change still counts.
+        run(*git, "tag", "-a", "v2.0.0-rc.1", "-m", "rc")
+        assert answer() == "any=true"
+        # A Dockerfile that is not the root one is not what the image is built from.
+        run(*git, "tag", "-a", "v1.0.1", "-m", "v1.0.1")
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "Dockerfile").write_text("")
+        run("git", "add", "docs")
+        run(*git, "commit", "-qm", "an example Dockerfile in the docs")
+        assert answer() == "any=false"
+        (tmp_path / "Dockerfile").write_text("")
+        run("git", "add", "Dockerfile")
+        run(*git, "commit", "-qm", "the image")
+        assert answer() == "any=true"
