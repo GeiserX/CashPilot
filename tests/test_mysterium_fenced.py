@@ -131,9 +131,9 @@ class TestTheUdpRange:
             catalog.expand_udp_range(value)
 
     def test_a_range_over_the_cap_is_refused(self):
-        with pytest.raises(ValueError, match="at most 1000"):
-            catalog.expand_udp_range("10000:11000")
-        assert len(catalog.expand_udp_range("10000:10999")) == 1000
+        with pytest.raises(ValueError, match="at most 300"):
+            catalog.expand_udp_range("10000:10300")
+        assert len(catalog.expand_udp_range("10000:10299")) == 300
 
     def test_the_webui_addresses_become_bindings(self):
         assert catalog.ui_bindings("localhost,172.18.0.1", 4449) == [["127.0.0.1", 4449], ["172.18.0.1", 4449]]
@@ -708,7 +708,7 @@ class TestStartRefusesAHeldNode:
     def test_a_node_a_failed_deploy_left_is_not_started(self, markers, action):
         orchestrator._mark_failed("cashpilot-mysterium", True)
         node = _node(status="exited")
-        with pytest.raises(orchestrator.ContainerNetworkError, match="last deploy failed"):
+        with pytest.raises(orchestrator.ContainerNetworkError, match="last deploy from CashPilot failed"):
             _start(node, action)
         node.start.assert_not_called()
         node.restart.assert_not_called()

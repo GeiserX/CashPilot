@@ -58,6 +58,13 @@ CASHPILOT_DEPLOYED = frozenset({"worker", "direct"})
 #: then fails the whole start.
 EPHEMERAL_PORTS = (32768, 60999)
 
+#: How long a deploy waits, counted from its create call, for Docker to finish
+#: starting a container when the call itself got no answer. The socket proxy
+#: gives up on a call after 30 s and docker-py after 60 s, while Docker carries
+#: on: a node publishing 1,000 UDP ports took about 51 s to start. The UI adds
+#: it to its own wait for the worker's deploy answer.
+START_SETTLE_SECONDS = 120
+
 
 def drift_warnings_enabled() -> bool:
     """CASHPILOT_DRIFT_WARNINGS: off stops the worker reporting container settings
