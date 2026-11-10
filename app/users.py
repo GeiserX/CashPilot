@@ -180,11 +180,17 @@ def _rotate_session_key(path: Path) -> int:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
-    dir_fd = os.open(path.parent, os.O_RDONLY)
+    # The new key is in place now. Syncing the folder only makes the rename
+    # survive a power cut; some filesystems refuse it, and that must not turn
+    # a done rotation into a reported failure without the restart step.
     try:
-        os.fsync(dir_fd)
-    finally:
-        os.close(dir_fd)
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError as exc:
+        print(f"warning: the new key is in place, but {path.parent} could not be synced: {exc}", file=sys.stderr)
     print(f"Wrote a new session key to {key_file}.")
     print(
         "Restart the UI container to sign out every browser, including cookies signed with the old key: "

@@ -127,6 +127,59 @@ class TestRotate:
         assert "disk full" in capsys.readouterr().err
         assert [p.name for p in data_dir.iterdir() if p.name.startswith(".secret_key")] == [".secret_key"]
 
+    def test_the_data_folder_is_fsynced_after_the_replace(self, data_dir, monkeypatch, capsys):
+        from app import users
+
+        _make_db(data_dir)
+        synced = []
+        real_fsync = users.os.fsync
+
+        def record(fd):
+            st = os.fstat(fd)
+            synced.append((stat.S_ISDIR(st.st_mode), st.st_ino))
+            real_fsync(fd)
+
+        monkeypatch.setattr(users.os, "fsync", record)
+        assert _run(["rotate-session-key"]) == 0
+        # The key file first, then the folder that holds the new directory entry.
+        assert synced[-1] == (True, data_dir.stat().st_ino)
+        assert any(not is_dir for is_dir, _ in synced[:-1])
+
+    def test_a_failed_folder_fsync_still_reports_the_rotation(self, data_dir, monkeypatch, capsys):
+        from app import users
+
+        _make_db(data_dir)
+        key_file = data_dir / ".secret_key"
+        key_file.write_text(OLD_KEY)
+        real_fsync = users.os.fsync
+
+        def reject_dirs(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError(22, "Invalid argument")
+            real_fsync(fd)
+
+        monkeypatch.setattr(users.os, "fsync", reject_dirs)
+        # The key is already in place once the folder fsync runs, so this is a
+        # rotation that worked: say so, and give the restart step.
+        assert _run(["rotate-session-key"]) == 0
+        assert key_file.read_text() != OLD_KEY
+        captured = capsys.readouterr()
+        assert "Restart the UI container to sign out every browser" in captured.out
+        assert "cannot write" not in captured.err
+        assert "Invalid argument" in captured.err
+
+    def test_as_root_the_key_file_is_handed_to_the_database_owner(self, data_dir, monkeypatch, capsys):
+        # As non-root the file already has the right owner, so pretend to be
+        # root and check the explicit chown names the database's owner.
+        from app import users
+
+        db = _make_db(data_dir)
+        calls = []
+        monkeypatch.setattr(users.os, "geteuid", lambda: 0)
+        monkeypatch.setattr(users.os, "fchown", lambda fd, uid, gid: calls.append((uid, gid)))
+        assert users._rotate_session_key(db) == 0
+        assert calls == [(db.stat().st_uid, db.stat().st_gid)]
+
 
 class TestRefusals:
     def test_an_env_key_in_use_refuses_and_writes_nothing(self, data_dir, monkeypatch, capsys):
@@ -225,3 +278,13 @@ class TestDocs:
         assert "docker exec -it cashpilot-ui python -m app.users rotate-session-key" in faq
         assert "a password reset alone is not enough" in faq
         assert not re.search(r"\brm\b[^\n]*\.(secret|fernet)_key", faq)
+
+    def test_the_faq_warns_that_docker_run_cannot_see_an_env_key(self):
+        # A `docker run` from the image does not carry the UI container's
+        # CASHPILOT_SECRET_KEY, so the command cannot refuse there, and the
+        # env key would still win after the restart.
+        faq = (ROOT / "docs" / "faq.md").read_text(encoding="utf-8")
+        fallback = faq[faq.index("**If the UI container does not start**") :]
+        fallback = fallback[: fallback.index("**What about security?**")]
+        assert "CASHPILOT_SECRET_KEY" in fallback
+        assert "rotate-session-key" in fallback
