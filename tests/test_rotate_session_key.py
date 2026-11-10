@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import sqlite3
 import stat
 import subprocess
@@ -216,3 +217,11 @@ class TestNoDrift:
         src = (ROOT / "app" / "auth.py").read_text(encoding="utf-8")
         assert "token_urlsafe" not in src, "app/auth.py generates its own session key"
         assert "_new_secret_key()" in src
+
+
+class TestDocs:
+    def test_the_faq_names_the_command_and_never_deletes_a_key_file(self):
+        faq = (ROOT / "docs" / "faq.md").read_text(encoding="utf-8")
+        assert "docker exec -it cashpilot-ui python -m app.users rotate-session-key" in faq
+        assert "a password reset alone is not enough" in faq
+        assert not re.search(r"\brm\b[^\n]*\.(secret|fernet)_key", faq)

@@ -77,6 +77,15 @@ docker exec -it cashpilot-ui python -m app.users rename OLD NEW
 
 The new name follows the registration rule: 3 to 32 letters, digits, `_` or `-`. Sign out and back in to see it.
 
+**After a suspected compromise**, for example a lost backup that holds `/data/.secret_key`, a password reset alone is not enough. Whoever has that key can sign a valid login cookie, and a reset does not stop it. Replace the key, then restart the UI container:
+
+```bash
+docker exec -it cashpilot-ui python -m app.users rotate-session-key
+docker restart cashpilot-ui
+```
+
+After the restart every browser is signed out, and everyone signs in again with their password. Saved credentials are not affected. If you set `CASHPILOT_SECRET_KEY` yourself, the command refuses: put a new random value in that variable and recreate the container instead.
+
 **If the UI container does not start**, run the command from the same image against the same data. First find the host folder that holds the UI's `/data`. This works for a stopped container, and for a named volume as well as a bind mount (Unraid, CasaOS, Runtipi):
 
 ```bash
