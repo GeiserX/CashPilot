@@ -10,11 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## Unreleased
+## [2.2.9] - 2026-11-10
 
 ### Documentation
 
+- Regenerate CHANGELOG.md (#716)
 - Regenerate CHANGELOG.md (#714)
+
+### Fixes
+
+- Bring a shared tunnel back on its secret volume instead of failing the update (#717)
 
 ## [2.2.8] - 2026-11-10
 
