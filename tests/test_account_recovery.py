@@ -122,3 +122,46 @@ class TestCookieRemintUsesTheStoredName:
             )
         assert resp.status_code == 200
         mint.assert_called_once_with(1, "newname", "owner")
+
+
+class TestLoginPage:
+    def _login_html(self, client):
+        with (
+            patch("app.main.auth.get_current_user", return_value=None),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=True),
+        ):
+            resp = client.get("/login")
+        assert resp.status_code == 200
+        return resp.text
+
+    def test_no_dead_sign_up_link(self, client):
+        html = self._login_html(client)
+        assert 'href="/register"' not in html
+        assert "No account?" not in html
+
+    def test_names_the_recovery_command_and_the_faq(self, client):
+        html = self._login_html(client)
+        assert "Forgot your password or username?" in html
+        assert "python -m app.users reset-password" in html
+        assert "Do not delete the data volume" in html
+        assert "https://github.com/GeiserX/CashPilot/blob/main/docs/faq.md#forgot-password" in html
+
+    def test_the_faq_anchor_exists(self):
+        faq = (ROOT / "docs" / "faq.md").read_text(encoding="utf-8")
+        assert '<a id="forgot-password"></a>' in faq
+        assert "python -m app.users reset-password" in faq
+        assert "python -m app.users rename" in faq
+
+    def test_the_faq_names_the_containers_the_install_files_use(self):
+        faq = (ROOT / "docs" / "faq.md").read_text(encoding="utf-8")
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        casaos = (ROOT / "contrib/app-stores/casaos/CashPilot/docker-compose.yml").read_text(encoding="utf-8")
+        unraid = (ROOT / "unraid/cashpilot.xml").read_text(encoding="utf-8")
+        assert "container_name: cashpilot-ui" in compose and "container_name: cashpilot-ui" in casaos
+        assert "<Name>cashpilot</Name>" in unraid
+        assert "docker exec -it cashpilot-ui python -m app.users" in faq
+        assert "docker exec -it cashpilot python -m app.users" in faq
+
+    def test_security_md_states_there_is_no_in_app_recovery(self):
+        sec = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        assert "No in-app password recovery; a reset requires access to the server, by design." in sec

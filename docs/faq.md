@@ -36,6 +36,57 @@ The file always takes precedence over the environment variable, so setting `CASH
 
 If CashPilot cannot write the key to disk at all, because `/data` is unwritable or unmounted, it refuses to start rather than encrypting your credentials under a key that disappears on the next restart. Set `CASHPILOT_ALLOW_EPHEMERAL_KEY=true` if that is genuinely what you want.
 
+<a id="forgot-password"></a>
+
+### Forgot password or username
+
+CashPilot has no e-mail reset. Whoever runs the server resets the password from the console of the CashPilot UI container. Your services, earnings and saved credentials are not affected: they are encrypted with `/data/.fernet_key`, not with your password.
+
+1. List the accounts. This also shows a username you forgot. Usernames are case-sensitive.
+
+    ```bash
+    docker exec -it cashpilot-ui python -m app.users list
+    ```
+
+2. Set a new random password. With one owner you can leave out the username.
+
+    ```bash
+    docker exec -it cashpilot-ui python -m app.users reset-password [USERNAME]
+    ```
+
+    The command prints the new password once.
+
+3. Sign in with it, then change it from the avatar menu (top right), **Change password**.
+4. Optional: restart the UI container (`docker restart cashpilot-ui`). Browsers that were still signed in as that user are signed out only after a restart.
+
+The container name depends on how you installed CashPilot:
+
+| Install | UI container |
+|---|---|
+| `docker-compose.yml`, CasaOS | `cashpilot-ui` |
+| Unraid | `cashpilot` (`docker exec -it cashpilot python -m app.users list`) |
+| Runtipi | a generated name; `docker ps` shows it |
+
+Portainer, Unraid and CasaOS also have a console button for a container. The command needs no terminal input, so it works there too.
+
+To change a username:
+
+```bash
+docker exec -it cashpilot-ui python -m app.users rename OLD NEW
+```
+
+The new name follows the registration rule: 3 to 32 letters, digits, `_` or `-`. Sign out and back in to see it.
+
+**If the UI container does not start**, run the command from the same image against the same data. `docker volume ls` shows the volume; with the stock compose file its name ends in `_cashpilot_data`. Use the image tag you run:
+
+```bash
+docker run --rm -v <volume>:/data --entrypoint python drumsergio/cashpilot:<same tag> -m app.users reset-password
+```
+
+The command never creates a database or a key file, so a wrong volume gives an error and changes nothing.
+
+**Do not** delete the data volume: that erases `/data/.fernet_key` and with it every saved credential. **Do not** delete rows from the `users` table either.
+
 **What about security?**
 
 Every service CashPilot deploys runs in its own container with every Linux capability dropped (a few services add back only the ones they declare) and `--security-opt no-new-privileges` set, so a process inside cannot gain privileges. Containers cannot see your host filesystem beyond the volumes a service declares. On a new install the worker also fences them off your LAN, the host, your tailnet and cloud metadata, so they reach the internet and nothing local ([LAN isolation](isolation.md)). On Podman the fence is not available: earners run on Podman's default network, which can reach your LAN, and the Fleet page says so ([LAN isolation](isolation.md) lists the options). An install upgraded from a release before 1.70 keeps its earners on Docker's default bridge, which can reach your LAN, until you click **Turn on isolation** on the Fleet page. Since 2.0.7 Mysterium runs behind the fence too; a node deployed through 2.0.6 stays on the host's network until you redeploy it ([Moving your Mysterium node behind the fence](mysterium-fence.md)). [Protecting Your Home Network](home-network-security.md) covers firewalling your own bridge instead. Service credentials are encrypted at rest using Fernet symmetric encryption. The UI has no Docker access. With the shipped compose files the worker is never given the raw Docker socket: it reaches Docker through `cashpilot-socket-proxy`, which refuses privileged containers and binds of `/` or the socket (unless you put one of them, or a folder above the socket, in `CASHPILOT_PROXY_BIND_MOUNTS` or `CASHPILOT_COMPOSE_DIR`: the proxy takes those as given), and limits the worker to containers, volumes and networks with its owner label ([security defaults](security-defaults.md)). The Unraid templates and the TrueNAS app still mount the raw socket in the worker, which is root on the host ([app stores](app-stores.md)).
