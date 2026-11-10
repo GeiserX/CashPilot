@@ -495,12 +495,13 @@ def is_proxied(container: Any) -> bool:
         return False
 
 
-def service_instances(slug: str) -> list[Any]:
+def service_instances(slug: str, client: Any = None) -> list[Any]:
     """Every managed container of ``slug`` on this worker, first copy first.
 
     Proxied copies and tunnels are not copies of the service; see is_proxied.
+    ``client`` lets a caller list on its own client, with its own timeout.
     """
-    client = _get_client()
+    client = client or _get_client()
     found = client.containers.list(all=True, filters={"label": [f"{LABEL_SERVICE}={slug}", f"{LABEL_MANAGED}=true"]})
     return sorted((c for c in found if not is_proxied(c)), key=_instance_of)
 

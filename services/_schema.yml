@@ -115,10 +115,30 @@
 #                                         instead of the log tail; checked every 30 minutes,
 #                                         shown as "Needs fixing" on the dashboard. ${VAR} in
 #                                         means is filled from that copy's env, ${HOST_ADDRESS}
-#                                         with the box's LAN address
+#                                         with the box's LAN address, ${WORKER_NAME} with
+#                                         the worker's name
 #     Only add a pattern you have actually seen in that service's logs. A guessed regex
 #     that never matches is dead weight; one that matches the wrong line tells the user
 #     something false.
+#   health_probe: (optional) ask the running node how it is doing, from inside its
+#     container, for failures no log line shows (app/health_probe.py). The worker runs
+#     the command every 30 minutes and sends back only which checks hold; each one is
+#     shown as "Needs fixing" for that box, ${VAR} filled as in health_signals.
+#       command: ["timeout", "12", "sh", "-c", "..."]   read-only, run inside the
+#                                        container; must start with timeout <s>, s < 15
+#       checks:
+#         - pattern: '...'             regex on the output, case-sensitive; holds when it
+#                                        matches at least min_matches times
+#           items:   '...'             (optional) regex for one item of a list: then the
+#                                        check holds when there are at least min_matches
+#                                        items and every one matches pattern
+#           min_matches: 1             (optional) positive integer
+#           answered: '...'            (optional) regex the output holds when this check's
+#                                        read worked; without it the check is unread and
+#                                        keeps its last verdict, so one failed read in a
+#                                        command that reads several costs only its checks
+#           means:   "..."             shown to the user
+#     Same rule as health_signals: only checks against answers you have seen.
 #   advertised_address_env: ADDRESS  (optional) the env var holding the address
 #     the NETWORK dials this service back at ("host:port" or "host"). The
 #     worker copies that ONE variable's value into heartbeat container entries

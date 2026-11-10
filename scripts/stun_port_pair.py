@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""Does the router in front of this machine keep UDP source ports, or rewrite some?
+
+A Mysterium node advertises the UDP ports it listens on and expects buyers'
+packets to reach it, and its answers to leave, on those same ports. Some
+routers switch a port to an address-dependent mapping once any packet from
+outside has arrived on it: from then on, a flow out of that port to another
+address leaves with a rewritten source port. Every session starts with such a
+packet (the node's own port check), so the node's answers are rewritten and
+buyers drop them, while every inbound check passes. Some of these routers also
+reserve ports in pairs (P and P XOR 1), a secondary effect.
+
+This sends a STUN binding request from pairs of neighbouring source ports and
+prints the port the internet saw for each. Every port should come back with
+its own number. On its own it finds the pairing effect. The decisive test
+needs one packet sent in to a port from another network first, then this
+script run from that port on the host's network; docs/guides/mysterium.md,
+"Routers that rewrite UDP source ports", gives the steps. Run it on a Linux
+host with Docker Engine (Docker Desktop's own NAT rewrites every port), with
+no other dependency than Python 3. From the root of a CashPilot checkout:
+
+    docker run --rm --network container:cashpilot-mysterium \\
+      -v "$PWD/scripts/stun_port_pair.py:/t.py:ro" python:3.15.2-alpine python /t.py
+
+or fetch the script to /tmp first, as the guide shows.
+
+Exit status: 0 when every pair was tested and every port kept its number,
+1 when one was rewritten, 2 when no STUN server answered, 3 when no port was
+rewritten but some pair could not be tested in full (a port that did not bind
+or got no answer), so the pairing was not checked: run it again with another
+--start, 4 when --start and --pairs do not give real ports (1 to 65535), and 5
+when the machine would not open a socket before any rewrite was seen (one
+seen first still gives 1). A
+rewritten port is reported as a pairing
+router when some ports kept their number, and as a NAT that rewrites every
+port when none did. Read-only: it sends a few UDP packets to a public STUN
+server and changes nothing.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import socket
+import struct
+import sys
+import time
+from typing import NoReturn
+
+MAGIC = 0x2112A442
+SERVERS = [("stun.l.google.com", 19302), ("stun.cloudflare.com", 3478)]
+
+
+def _mapped_port(data: bytes, txid: bytes) -> int | None:
+    """The port in a STUN binding success response, or None."""
+    if len(data) < 20:
+        return None
+    kind, length, cookie = struct.unpack("!HHI", data[:8])
+    if kind != 0x0101 or cookie != MAGIC or data[8:20] != txid:
+        return None
+    pos, end = 20, min(len(data), 20 + length)
+    plain = None
+    while pos + 4 <= end:
+        attr, size = struct.unpack("!HH", data[pos : pos + 4])
+        value = data[pos + 4 : pos + 4 + size]
+        if attr == 0x0020 and len(value) >= 4:  # XOR-MAPPED-ADDRESS
+            return struct.unpack("!H", value[2:4])[0] ^ (MAGIC >> 16)
+        if attr == 0x0001 and len(value) >= 4:  # MAPPED-ADDRESS
+            plain = struct.unpack("!H", value[2:4])[0]
+        pos += 4 + size + (-size % 4)
+    return plain
+
+
+def probe(sock: socket.socket, server: tuple[str, int], tries: int = 3, wait: float = 2) -> int | None:
+    """The source port the STUN server saw for packets from ``sock``; None for no answer.
+
+    A network error (no route, the packet refused) is no answer too, never a
+    traceback, which would exit 1 and read as a rewritten port. Each try ends
+    ``wait`` seconds after its request whatever arrives meanwhile: datagrams
+    that are not the answer cannot keep it waiting.
+    """
+    for _ in range(tries):
+        txid = os.urandom(12)
+        deadline = time.monotonic() + wait
+        try:
+            sock.sendto(struct.pack("!HHI", 0x0001, 0, MAGIC) + txid, server)
+            while (left := deadline - time.monotonic()) > 0:
+                sock.settimeout(left)
+                data, _ = sock.recvfrom(2048)
+                port = _mapped_port(data, txid)
+                if port is not None:
+                    return port
+        except TimeoutError:
+            continue
+        except OSError:
+            return None
+    return None
+
+
+def _servers() -> list[tuple[str, int]]:
+    """Every STUN server in SERVERS that resolves, in order."""
+    found = []
+    for host, port in SERVERS:
+        try:
+            found.append((socket.gethostbyname(host), port))
+        except OSError:
+            continue
+    return found
+
+
+class NoSocket(Exception):
+    """This machine would not give the test a socket (out of file descriptors, or no permission).
+
+    ``measured`` holds what run had counted before that, as run returns it.
+    """
+
+    def __init__(self, reason: str, measured: tuple[int, int, int]) -> None:
+        super().__init__(reason)
+        self.measured = measured
+
+
+def run(server: tuple[str, int], start: int, pairs: int) -> tuple[int, int, int]:
+    """Test ``pairs`` neighbouring pairs from ``start`` against one server.
+
+    Returns (ports answered, ports rewritten, pairs with both ports answered).
+    """
+    first = start & ~1
+    rewritten = answered = complete = 0
+    for n in range(pairs):
+        even = first + 2 * n
+        both = True
+        # Only one pair is open at a time, so --pairs never runs out of sockets.
+        socks = []
+        try:
+            # The odd port first, then its even partner while the first is still
+            # open: a router that reserves pairs gives the second one away.
+            for port in (even + 1, even):
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                except OSError as exc:
+                    raise NoSocket(exc.strerror or str(exc), (answered, rewritten, complete)) from exc
+                socks.append(sock)
+                try:
+                    # A client socket on a chosen source port, so the test knows
+                    # which port it sent from; it only sends to the STUN server.
+                    sock.bind(("0.0.0.0", port))
+                except OSError as exc:
+                    print(f"{port}: could not bind ({exc.strerror}), skipped")
+                    both = False
+                    continue
+                seen = probe(sock, server)
+                if seen is None:
+                    print(f"{port}: no answer")
+                    both = False
+                    continue
+                answered += 1
+                kept = seen == port
+                rewritten += not kept
+                print(f"{port} -> {seen}  {'kept' if kept else 'REWRITTEN'}")
+        finally:
+            for sock in socks:
+                sock.close()
+        complete += both
+    return answered, rewritten, complete
+
+
+class _Parser(argparse.ArgumentParser):
+    """argparse with its own exit status for bad arguments, 4: its usual 2 means no STUN answer here."""
+
+    def error(self, message: str) -> NoReturn:
+        """Print the usage and the problem, then exit 4."""
+        self.print_usage(sys.stderr)
+        self.exit(4, f"{self.prog}: error: {message}\n")
+
+
+def main() -> int:
+    """Run the test against the first STUN server that answers; the exit status is the verdict."""
+    parser = _Parser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--start", type=int, default=34100, help="first port to test (default 34100)")
+    parser.add_argument("--pairs", type=int, default=4, help="neighbouring pairs to test (default 4)")
+    args = parser.parse_args()
+    first = args.start & ~1
+    if args.pairs < 1 or first < 1 or first + 2 * args.pairs - 1 > 65535:
+        parser.error("--start and --pairs must give ports from 1 to 65535 (pairs start on an even port)")
+    servers = _servers()
+    if not servers:
+        print("No STUN server could be resolved: check this namespace's DNS.")
+        return 2
+    answered = rewritten = complete = 0
+    for server in servers:
+        try:
+            answered, rewritten, complete = run(server, args.start, args.pairs)
+        except NoSocket as exc:
+            answered, rewritten, complete = exc.measured
+            if not rewritten:
+                print(f"Could not open a UDP socket ({exc}): the test did not finish.")
+                return 5
+            # A rewrite already seen is the verdict, whatever was left untested.
+            print(f"Could not open a UDP socket ({exc}): the test stopped early.")
+            break
+        if answered:
+            break
+        print(f"No answer from {server[0]}:{server[1]}.")
+    if not answered:
+        print("No STUN server answered: outbound UDP may be blocked.")
+        return 2
+    if rewritten == answered:
+        print(
+            f"\nAll {answered} ports left with a different number. Something in the path rewrites "
+            "every UDP source port: a symmetric NAT, carrier-grade NAT, a VPN, or Docker Desktop's "
+            "own NAT (run this on a Linux host with Docker Engine, not Docker Desktop). This "
+            "only measures ports with no forward: whether a forward of UDP_PORTS reaches the "
+            "node is a separate check, and the node's own port check is the one to read."
+        )
+        return 1
+    if rewritten:
+        print(
+            f"\n{rewritten} of {answered} ports left with a different number while others kept "
+            "theirs. If a packet from outside reached those ports first, the router rewrites the "
+            "source port of later flows from a port that got inbound traffic, and a Mysterium "
+            "node behind it fails its sessions. If nothing came in first, the router reserves "
+            "ports in pairs, or this machine's own NAT clashed once: run it again, a clash does "
+            "not repeat (the guide shows how to check the host and the decisive test)."
+        )
+        return 1
+    if complete < args.pairs:
+        print(
+            f"\nEvery port that answered kept its number, but only {complete} of {args.pairs} pairs "
+            "were tested in full, so the pairing was not checked. Run it again with another --start."
+        )
+        return 3
+    print(f"\nAll {answered} ports kept their number.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

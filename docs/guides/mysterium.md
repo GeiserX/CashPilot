@@ -99,12 +99,21 @@ the router is the same as when the node shared the host's network.
 Keep the range below 32768. Ports 32768 to 60999 are Linux's ephemeral range: any program on the machine (a DNS lookup, a game client, a browser) can hold one of them for a moment. On the host's network the node just skipped a taken port, but Docker publishes the range as a whole, so one taken port fails the node's start. The worker then puts the previous node back and says which port was taken.
 
 Each session takes about two ports, so the default 30 ports carry about 15
-sessions at once, more than a home node gets. Every published port costs about
-2.5 MB of memory on the machine (Docker starts two small proxy processes per
-port; 101 ports measured about 250 MB), so a wider range only costs more. A
-range of 20 to 30 ports is enough. The default was `56000:56100` through
+sessions at once, more than a home node gets. A range of 20 to 30 ports is
+enough. A wider one costs more and fixes nothing. With Docker's default
+userland proxy every published port costs about 2.5 MB of memory (Docker
+starts two small proxy processes per port; 101 ports measured about 250 MB);
+with `"userland-proxy": false` there are no such processes. Either way the
+node's start and removal take longer with every port: 101 ports took 3.7 s to
+start and 7.1 s to remove, 300 took 11.7 s and 19.2 s, 1,000 took 51 s and
+84 s. CashPilot accepts a range of at most 300 ports. A node already running
+with a wider one keeps running, and a redeploy of it is refused until the
+range is narrowed. A node whose sessions all fail is not short of ports; see
+[Routers that rewrite UDP source ports](#routers-that-rewrite-udp-source-ports).
+The default was `56000:56100` through
 2.0.6 and `56000:56029` in 2.0.7 and 2.1.0, both inside the ephemeral range. A node keeps
-the range it has on record on a redeploy. To move it, set `UDP_PORTS` to a
+the range it has on record on a redeploy, unless that range is wider than
+300 ports. To move it, set `UDP_PORTS` to a
 free range below 32768 other than the default, such as `23100:23129`, change
 the router forward to match, and redeploy. A value equal to the default reads
 as a field left as it was, so the recorded range would stay. To take the
@@ -212,10 +221,14 @@ its brackets, so compare them with your range.
 docker logs cashpilot-mysterium 2>&1 | grep -o 'Method:[a-z]* Success:[a-z]*' | sort | uniq -c
 ```
 
-`Method:manual Success:true` means sessions reach the node through the forward.
+`Method:manual Success:true` means buyers' packets reach the node through the
+forward. It does not prove the sessions work: that also needs the node's
+answers to leave from the ports it advertised, and a router that rewrites UDP
+source ports breaks that while this line stays `true` (see
+[Routers that rewrite UDP source ports](#routers-that-rewrite-udp-source-ports)).
 Only `Method:manual Success:false` lines, each followed by
-`Method:holepunching`, mean they do not. The node's `/nat/type` keeps
-reporting `prcone` even when forwarding works, so don't go by it.
+`Method:holepunching`, mean the forward does not work. The node's `/nat/type` keeps
+reporting `prcone` whether forwarding works or not, so don't go by it.
 
 CashPilot checks this too, every 30 minutes. When a node has had at least five
 failed direct connections and not one successful one in the last 6 hours, the
@@ -223,6 +236,191 @@ dashboard lists it under **Needs fixing** with the range and address to forward.
 The item clears by itself once a session connects directly. A node with no
 sessions yet is not flagged. The dashboard reloads its list every hour, or when
 you open it.
+
+On the same 30-minute round the worker also asks the node itself, read-only,
+for Mysterium's monitoring status and the five sessions that completed last. It
+lists the node under **Needs fixing** when the monitoring status is `failed`,
+and when those five sessions each ended after about a minute having carried no data. Once a
+missing `/dev/net/tun` or `SETUID`/`SETGID` is ruled out, both point at the
+problem in the next section.
+
+### Routers that rewrite UDP source ports
+
+**Symptom.** The node is online, its port check says `All ports [...] are
+reachable` and the log shows `Method:manual Success:true`, yet it earns
+nothing. Every session ends after about 60 seconds with 0 bytes either way:
+
+```bash
+docker exec cashpilot-mysterium wget -qO- \
+  'http://127.0.0.1:4050/sessions?direction=Provided&status=Completed&page_size=10' \
+  | grep -o '"duration":[0-9]*,"bytes_received":[0-9]*,"bytes_sent":[0-9]*'
+```
+
+`/node/monitoring-status` answers `{"status":"failed"}`,
+`/node/monitoring-agent-statuses` shows `connect_fail` with no
+`tun_device_problem`, the node's STUN check logs `NATType:restricted` where a
+working line gives `full`
+(`docker logs cashpilot-mysterium 2>&1 | grep -o 'NATType:[a-z]*' | sort | uniq -c`),
+and Mysterium's discovery stops offering the node to most buyers. A missing
+`SETUID`/`SETGID` or `/dev/net/tun` looks much the same; rule those out first
+with [the section below](#running-but-not-earning-monitoring-failed-quality-0).
+
+**Cause.** The router in front of the machine uses an address-dependent
+mapping that switches on after inbound traffic. While nothing has come in on
+an external port P, outgoing flows from P keep their number. Once any packet
+from outside arrives at P, every later outgoing flow from P to a different
+address leaves with a rewritten source port. It happens whether or not the
+packet reaches anything: ports the host's firewall drops are affected too.
+
+Every Mysterium session does exactly that. Before a session the node's port
+check has an echo server send a packet in to the session port, so that port
+is now marked. The node then answers the buyer from that port, the router
+rewrites the answer's source port, and the buyer's client drops it, since it
+came from a port the node never offered. The session is set up, never carries
+a byte, and times out. Inbound works throughout, so every check that only
+tests inbound passes. A wider `UDP_PORTS` range does not help: each session
+marks its own port before it uses it.
+
+Some of these boxes (often an ISP fibre box with a built-in router) also
+reserve outgoing UDP ports in pairs: when they map port P they hold P XOR 1
+(23000 and 23001, 23002 and 23003), and a later flow from the partner port
+leaves with a random port. That is real but secondary. On its own it rewrote
+only a few percent of ports, and almost none in a wide range.
+
+**Confirm it.** The decisive test is to send one packet in to a port from
+another network, then ask a public STUN server which port it sees for a flow
+out from that same port. It needs a second machine outside your home network
+(a phone hotspot, a VPS, a friend's line) and a few minutes with the node
+stopped, because the node holds every port in `UDP_PORTS`. CashPilot ships a
+small script for the STUN half, with no dependencies beyond Python 3:
+[`scripts/stun_port_pair.py`](https://github.com/GeiserX/CashPilot/blob/main/scripts/stun_port_pair.py).
+Run it on a Linux host with Docker Engine: Docker Desktop (macOS, Windows) puts
+its own NAT in front of every container, which rewrites every port whatever
+the router does.
+
+1. On the node's machine, fetch the script and the image first, so nothing
+   has to download while the router's state is fresh:
+
+    ```bash
+    curl -fsSLo /tmp/stun_port_pair.py \
+      https://raw.githubusercontent.com/GeiserX/CashPilot/main/scripts/stun_port_pair.py
+    docker pull python:3.15.2-alpine
+    ```
+
+2. Pick two odd ports in `UDP_PORTS`, say `23011` and `23021`, and stop the
+   node with **Stop** on CashPilot's dashboard. A plain `docker stop` is not
+   recorded as a stop you meant, so the worker can start the node again in
+   the middle of the test. Odd ports, because the script tests the odd port
+   of each pair first: its even partner comes second, and the pairing effect
+   below can rewrite that one with no packet from outside.
+3. From the outside machine, send one packet to `23021` on your public address
+   (and nothing to `23011`):
+   `echo x | nc -u -w1 <your public IP> 23021`.
+   `nc` cannot tell whether the packet arrived. To be sure, watch for it on
+   the node's machine while you send it:
+   `sudo tcpdump -ni any -c 1 udp port 23021`. If nothing shows, the packet
+   went to the wrong address or the forward does not cover that port, and
+   two ports that both come back `kept` prove nothing.
+4. Within a minute, on the node's machine, run the script on both pairs on
+   the host's network:
+
+    ```bash
+    docker run --rm --network host -v /tmp/stun_port_pair.py:/t.py:ro \
+      python:3.15.2-alpine sh -c 'python /t.py --start 23010 --pairs 1; python /t.py --start 23020 --pairs 1'
+    ```
+
+5. Start the node again with **Start** on the dashboard.
+
+Read the two odd ports only. On a router with this mapping, `23021` comes back
+`REWRITTEN` and `23011` comes back `kept`. On a working router both keep their
+number. If `23011` is rewritten too, run steps 2 to 5 again with two other
+odd ports: put the new port in the `nc` and `tcpdump` commands of step 3, and
+give each `--start` in step 4 the even number just below one of your two
+ports. The same goes when your `UDP_PORTS` range does not hold these ports. If every port comes back rewritten,
+something rewrites every port; see below.
+
+Run without the inbound packet, the script finds only the secondary pairing
+effect. It still works for that, inside the node's network namespace with the
+node running:
+
+```bash
+curl -fsSLo /tmp/stun_port_pair.py \
+  https://raw.githubusercontent.com/GeiserX/CashPilot/main/scripts/stun_port_pair.py
+docker run --rm --network container:cashpilot-mysterium \
+  -v /tmp/stun_port_pair.py:/t.py:ro python:3.15.2-alpine python /t.py
+```
+
+On a router that also pairs ports, the even port of each pair comes back rewritten:
+
+```
+34101 -> 34101  kept
+34100 -> 46948  REWRITTEN
+34103 -> 34103  kept
+34102 -> 46950  REWRITTEN
+```
+
+On a working line every port comes back with its own number. When every port
+comes back rewritten, the script says so separately: that is a NAT which
+rewrites every port (a symmetric NAT, carrier-grade NAT, a VPN, or Docker
+Desktop's own NAT). The test only measures ports with no forward, so it does
+not say whether your forward of `UDP_PORTS` reaches the node: the node's own
+port check does. Behind carrier-grade NAT no forward reaches it; behind a VPN
+only one whose provider forwards UDP ports to you.
+The script exits
+0 when every pair was tested and every port kept its number, 1 when one was
+rewritten, 2 when no STUN server answered, and 3 when nothing was rewritten
+but some pair could not be tested in full (a port that would not bind or got
+no answer), so the result says nothing about pairing; run it again with
+another `--start`. It exits 4 when `--start` and `--pairs` do not give real
+ports, and 5 when the machine would not open a socket. It tries Google's STUN server first and Cloudflare's when
+Google does not answer. It only sends a few packets to a public STUN server; it does
+not touch the node. `--start` picks the first port to test (default 34100);
+keep it outside `UDP_PORTS`, whose ports the node holds.
+
+**Rule out the host's own NAT.** The container's packets also pass Docker's
+NAT on the host before they reach the router. That NAT keeps the source port
+unless two flows clash on it, which is rare, but then it picks another one and
+the script reports `REWRITTEN` with a router that is fine. The router's
+rewrite repeats, a clash does not, so run the script twice. (The decisive test
+above runs on the host's network and does not pass Docker's NAT at all.)
+To see it directly, look at the host's connection table within a minute of a
+run (as root on the host, with the `conntrack` tool installed):
+
+```bash
+conntrack -L -p udp --orig-port-src 34100
+```
+
+The second half of the line is the answer as the host expects it. When its
+`dport=` is still `34100`, the host sent the packet out on its own port and
+the rewrite happened past it, at the router. When it differs, the host's NAT
+changed it, and the test says nothing about the router.
+
+**Fix.** A wider `UDP_PORTS` range does not help on this kind of router (see
+*Cause*). What works:
+
+1. **Bridge mode with your own router.** Put the ISP box in bridge mode (some
+   ISPs call it ONT mode or "router off") and do NAT on a router of your own
+   that keeps source ports and maps independently of the endpoint (what is
+   often called endpoint-independent mapping or "full cone" NAT); most
+   Linux-based routers and OpenWrt do. Then forward `UDP_PORTS` on your router
+   instead. If the ISP box itself has a setting by one of those names, turning
+   it on may be enough. Cost: the whole house goes offline for a few minutes,
+   and it may need the ISP's help.
+
+Tried without success: skipping the node's port check. With
+`traversal = "holepunching"` in the node's `config-mainnet.toml`, the node
+skips the manual method and its port check, and falls back to hole punching.
+On an affected node it ran for 90 minutes: every config exchange logged
+`Method:holepunching Success:true`, yet no buyer ever acknowledged and no
+session started, and monitoring stayed failed. The attempts stopped after the
+node's config reply over NATS, before any packet between the peers, so part of
+the cause may be on the buyer's side; it is not fully explained yet. We do not
+recommend it.
+
+Run the decisive test again after the change. Once a port that got an inbound
+packet keeps its number,
+Mysterium's monitoring re-scores the node within a few hours, the next sessions
+carry data, and the **Needs fixing** item clears by itself.
 
 ### WebUI address
 

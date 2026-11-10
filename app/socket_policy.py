@@ -204,7 +204,8 @@ def catalog_commands(services_dir: Path = SERVICES_DIR) -> list[list[str]]:
     from app.isolation_check import CHAIN_READ
 
     found: list[list[str]] = list(FIXED_COMMANDS)
-    for path in sorted(services_dir.rglob("*.yml")):
+    # Both extensions, as app/catalog.py loads both.
+    for path in sorted([*services_dir.rglob("*.yml"), *services_dir.rglob("*.yaml")]):
         if path.name.startswith("_"):
             continue
         svc = yaml.safe_load(path.read_text()) or {}
@@ -213,6 +214,10 @@ def catalog_commands(services_dir: Path = SERVICES_DIR) -> list[list[str]]:
         for reader in (collector.get("node_read"), payout.get("address_read"), svc.get("node_read")):
             if isinstance(reader, dict) and isinstance(reader.get("command"), list):
                 found.append([str(a) for a in reader["command"]])
+        # The worker's health probe (app/health_probe.py), run in the node.
+        probe = (svc.get("docker") or {}).get("health_probe")
+        if isinstance(probe, dict) and isinstance(probe.get("command"), list):
+            found.append([str(a) for a in probe["command"]])
         firewall = (svc.get("docker") or {}).get("node_firewall")
         if isinstance(firewall, dict) and firewall.get("chain"):
             found.append(["sh", "-c", CHAIN_READ.format(chain=firewall["chain"])])

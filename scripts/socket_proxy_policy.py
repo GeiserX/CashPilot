@@ -6,8 +6,8 @@ docs/security-defaults.md). Its policy lives inline in each compose file, so
 the policy travels with the file that pins the CashPilot release. This script
 is the one place the policy is written: app/socket_policy.py builds it from its
 template plus the exec commands the catalog declares (every ``node_read`` and
-``address_read``, and the isolation check's chain read for every
-``node_firewall``), and this writes the same block into each compose file, with
+``address_read``, every ``docker.health_probe``, and the isolation check's
+chain read for every ``node_firewall``), and this writes the same block into each compose file, with
 its fingerprint in the worker's CASHPILOT_PROXY_POLICY.
 
     python scripts/socket_proxy_policy.py          # rewrite the compose files
