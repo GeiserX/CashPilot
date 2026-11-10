@@ -98,6 +98,8 @@ Then mount that folder and use the image tag you run:
 docker run --rm -v <folder>:/data --entrypoint python drumsergio/cashpilot:<same tag> -m app.users reset-password
 ```
 
+This `docker run` does not see the UI container's environment. If you set `CASHPILOT_SECRET_KEY` there, `rotate-session-key` cannot refuse, and the old key from that variable still signs logins after the restart: change the variable and recreate the container instead.
+
 The command never creates a database or a key file. A wrong path gives a "no database" error and changes no data, but Docker may leave an empty folder or volume with that name behind; remove it.
 
 **Do not** delete the data volume: that erases `/data/.fernet_key` and with it every saved credential. **Do not** delete rows from the `users` table either.
