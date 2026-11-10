@@ -316,6 +316,11 @@ the router does.
 3. From the outside machine, send one packet to `23021` on your public address
    (and nothing to `23011`):
    `echo x | nc -u -w1 <your public IP> 23021`.
+   `nc` cannot tell whether the packet arrived. To be sure, watch for it on
+   the node's machine while you send it:
+   `sudo tcpdump -ni any -c 1 udp port 23021`. If nothing shows, the packet
+   went to the wrong address or the forward does not cover that port, and
+   two ports that both come back `kept` prove nothing.
 4. Within a minute, on the node's machine, run the script on both pairs on
    the host's network:
 
@@ -329,7 +334,9 @@ the router does.
 Read the two odd ports only. On a router with this mapping, `23021` comes back
 `REWRITTEN` and `23011` comes back `kept`. On a working router both keep their
 number. If `23011` is rewritten too, run steps 2 to 5 again with two other
-odd ports. If every port comes back rewritten,
+odd ports: put the new port in the `nc` and `tcpdump` commands of step 3, and
+give each `--start` in step 4 the even number just below one of your two
+ports. The same goes when your `UDP_PORTS` range does not hold these ports. If every port comes back rewritten,
 something rewrites every port; see below.
 
 Run without the inbound packet, the script finds only the secondary pairing
