@@ -181,6 +181,21 @@ class TestAnyClientRequest:
         assert FAKE_BOT_TOKEN not in caplog.text
         assert "ConnectError" in caplog.text
 
+    def test_a_secret_inside_the_printed_stack_is_redacted(self, redacting, caplog):
+        record = logging.getLogRecordFactory()(
+            "app.notify",
+            logging.WARNING,
+            __file__,
+            1,
+            "slow send",
+            (),
+            None,
+            "f",
+            f'Stack (most recent call last):\n  url = "https://api.telegram.org/bot{FAKE_BOT_TOKEN}/sendMessage"',
+        )
+        assert FAKE_BOT_TOKEN not in record.stack_info
+        assert "bot<redacted>/sendMessage" in record.stack_info
+
     def test_an_ordinary_line_is_left_alone(self, redacting, caplog):
         with caplog.at_level(logging.INFO):
             logging.getLogger("httpx").info(

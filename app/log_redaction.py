@@ -105,6 +105,9 @@ def _redacting(factory):
         if record.exc_info and not record.exc_text:
             # Handlers reuse exc_text instead of formatting the traceback again.
             record.exc_text = redact(logging.Formatter().formatException(record.exc_info))
+        if record.stack_info:
+            # stack_info=True prints source lines, which can hold a URL or a token.
+            record.stack_info = redact(record.stack_info)
         return record
 
     make_record.cashpilot_redacting = True  # type: ignore[attr-defined]
