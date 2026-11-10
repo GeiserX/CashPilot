@@ -234,16 +234,17 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    _drop_privileges(path)
     if args.command == "rotate-session-key":
         try:
+            _drop_privileges(path)
             return _rotate_session_key(path)
         except OSError as exc:
             print(f"error: cannot write a new session key in {path.parent}: {exc}", file=sys.stderr)
             return 1
     try:
+        _drop_privileges(path)
         conn = _connect(path)
-    except sqlite3.Error as exc:
+    except (OSError, sqlite3.Error) as exc:
         print(f"error: cannot open {path}: {exc}", file=sys.stderr)
         return 1
     try:
