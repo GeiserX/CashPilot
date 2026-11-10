@@ -1544,8 +1544,10 @@ def _validate_instance(instance: int) -> None:
         raise HTTPException(status_code=400, detail=f"instance must be between 1 and {MAX_INSTANCES}")
 
 
-#: The most container ports one deploy may publish: a 1000-port UDP range
-#: (catalog.MAX_UDP_PORTS) plus a handful of TCP ones.
+#: The most container ports one deploy may publish: a 1000-port UDP range plus
+#: a handful of TCP ones. The catalog now caps a range at 300
+#: (catalog.MAX_UDP_PORTS), but a UI older than that may still send 1,000, and
+#: the worker waits out the slow start such a range brings (orchestrator._await_start).
 MAX_PUBLISHED_PORTS = 1024
 
 

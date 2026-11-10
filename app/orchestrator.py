@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import docker
+import requests
 from docker.errors import APIError, DockerException, NotFound
 
 # docker-py's run() and create() refuse stop_timeout although the Engine API and
@@ -56,6 +57,7 @@ from app.constants import (  # noqa: E402
     LABEL_SERVICE,
     LABEL_STATE_CREATED,
     LABEL_VERSION,
+    START_SETTLE_SECONDS,
     drift_warnings_enabled,
 )
 
@@ -413,6 +415,18 @@ def _fatal_entry(container: Any, slug: str) -> dict[str, Any]:
     text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw or "")
     kind = match_fatal(text, signals)
     return {"fatal": kind, "fatal_at": finished} if kind else {}
+
+
+def _held_entry(container: Any) -> dict[str, Any]:
+    """``{"held": why}`` for a container the fence guard keeps stopped (lan_fence.guard), else nothing.
+
+    The guard's last pass, so the dashboard can say on the service itself why
+    the node is down and what brings it back, not only on the Fleet page.
+    """
+    from app import lan_fence
+
+    why = (lan_fence._state.get("guard") or {}).get(getattr(container, "name", None))
+    return {"held": str(why)} if why else {}
 
 
 def _shape(container: Any) -> dict[str, Any]:
@@ -1091,17 +1105,28 @@ def deploy_raw(
         **resource_kwargs,
     )
     created = None
+    began = time.monotonic()
     try:
-        container = (
-            client.containers.create(**run_kwargs) if gated else client.containers.run(detach=True, **run_kwargs)
-        )
-        created = container
+        try:
+            container = (
+                client.containers.create(**run_kwargs) if gated else client.containers.run(detach=True, **run_kwargs)
+            )
+            created = container
+            if gated:
+                _mark_stopped(name, False)
+                # Left created, not started, when the fence is not confirmed: the guard
+                # starts it as soon as it is, and nothing runs before that.
+                _require_fence(slug)
+                container.start()
+        except ContainerNetworkError:
+            raise
+        except Exception as exc:
+            # No answer is not a refusal: Docker may still be starting it. A gated
+            # create that got none was never started, so there is nothing to wait for.
+            if not _outcome_unknown(exc) or (gated and created is None):
+                raise
+            container = created = _await_start(client, name, created, began, exc)
         if gated:
-            _mark_stopped(name, False)
-            # Left created, not started, when the fence is not confirmed: the guard
-            # starts it as soon as it is, and nothing runs before that.
-            _require_fence(slug)
-            container.start()
             from app import lan_fence
 
             if problem := lan_fence._started_unattached(container, gated_mode):
@@ -1291,6 +1316,72 @@ def _deploy_failure(exc: BaseException, restored: str, slug: str = "") -> Contai
             f"Docker refused the container: {reason}{_ephemeral_hint(reason, slug)} {restored}"
         )
     return ContainerRuntimeError(f"The container could not be created: {exc}. {restored}", 500)
+
+
+#: What the socket proxy answers when it stopped waiting for Docker (sockguard
+#: cuts a call whose answer has not begun after 30 s): Docker may still be at it.
+_GATEWAY_STATUSES = frozenset({502, 504})
+#: Seconds between two looks at a container whose start got no answer.
+_START_POLL_SECONDS = 2.0
+
+
+def _outcome_unknown(exc: BaseException) -> bool:
+    """Whether a Docker call that raised may still have done its work: no answer, rather than a refusal.
+
+    docker-py's own read timeout or a dropped connection, or the socket proxy's
+    gateway answer. A refusal (a taken port, a proxy rule, a bad spec) is an
+    answer, and is not waited on.
+    """
+    # APIError first: docker-py derives it from requests' HTTPError, and it is Docker's answer.
+    if isinstance(exc, APIError):
+        return getattr(exc, "status_code", None) in _GATEWAY_STATUSES
+    return isinstance(exc, requests.exceptions.RequestException)
+
+
+def _await_start(client: Any, name: str, created: Any | None, began: float, exc: BaseException) -> Any:
+    """The container under ``name`` once Docker has started it; raises when it did not.
+
+    For a create or start whose call ended without Docker's answer: Docker goes
+    on starting the container after the proxy or docker-py stopped waiting, and
+    each published port slows the start (a node with 1,000 UDP ports took about
+    51 s). Removing it then, as a refused start is, took down a node Docker was
+    still bringing up. Looks until it runs, Docker reports the start failed, or
+    START_SETTLE_SECONDS from the create call have passed.
+    """
+    logger.warning(
+        "Docker did not answer the start of %s (%s); waiting up to %d s for it to come up",
+        name,
+        exc,
+        START_SETTLE_SECONDS,
+    )
+    deadline = began + START_SETTLE_SECONDS
+    while True:
+        try:
+            current = created if created is not None else client.containers.get(name)
+            # Docker answers an inspect only once the start lets go of the container.
+            current.reload()
+        except NotFound:
+            raise ContainerRuntimeError(f"{name} is gone: Docker did not start it ({exc}).", 500) from exc
+        except Exception as poll_exc:  # noqa: BLE001 - not known yet; looked at again below
+            logger.debug("Could not read %s while it starts: %s", name, poll_exc)
+        else:
+            attrs = current.attrs if isinstance(getattr(current, "attrs", None), dict) else {}
+            state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
+            status = getattr(current, "status", "")
+            if status == "running":
+                logger.info("%s came up %.0f s after its create call", name, time.monotonic() - began)
+                return current
+            if status in ("exited", "dead") or (status == "created" and state.get("Error")):
+                why = state.get("Error") or f"it is {status}"
+                raise ContainerRuntimeError(f"{name} did not start: {why}.", 500) from exc
+        if time.monotonic() >= deadline:
+            # 500, not 504: the deploy is rolled back by the time this is answered,
+            # and a 504 tells a caller the worker may still be at it (main keeps a
+            # proxied copy's record on one).
+            raise ContainerRuntimeError(
+                f"{name} was not running {START_SETTLE_SECONDS} s after Docker was asked to start it ({exc}).", 500
+            ) from exc
+        time.sleep(_START_POLL_SECONDS)
 
 
 from app.constants import EPHEMERAL_PORTS  # noqa: E402 - Linux's default ephemeral range
@@ -1567,14 +1658,16 @@ def service_name(slug: str) -> str:
 
 def stop_service(slug: str, instance: int = 1) -> None:
     """Stop the container for a service."""
-    container = _find_container(slug, instance)
-    if _gated_container(slug, container):
-        # Recorded before the stop, under the guard's lock: a guard pass that
-        # read the records before this Stop would otherwise start it after.
-        with GATED_DEPLOY_LOCK:
+    # For a fence-gated service the container is looked up under the lock too: a
+    # redeploy holds it while the old node sits renamed aside and the new one
+    # starts, so a lookup made before would stop the old node, or one the
+    # redeploy then removes, and leave the new node running.
+    with GATED_DEPLOY_LOCK if fence_gated(slug) else contextlib.nullcontext():
+        container = _find_container(slug, instance)
+        if _gated_container(slug, container):
+            # Recorded before the stop, under the guard's lock: a guard pass that
+            # read the records before this Stop would otherwise start it after.
             _mark_stopped(container.name, True, strict=True)
-            container.stop(timeout=_get_stop_timeout(slug))
-    else:
         container.stop(timeout=_get_stop_timeout(slug))
     logger.info("Stopped container %s", container.name)
 
@@ -3110,6 +3203,7 @@ def get_status() -> list[dict[str, Any]]:
                 **_stop_facts(c),
                 **_state_id_entry(c, slug, client),
                 **_fatal_entry(c, slug),
+                **_held_entry(c),
             }
             # Present only when the service declares a dial-back address var;
             # the key's absence is "nothing to say", never "checked and fine".
@@ -3304,6 +3398,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 **_shape_entry(c),
                 **_stop_facts(c),
                 **_fatal_entry(c, slug),
+                **_held_entry(c),
             }
             # Same contract as get_status: key present only when declared+set.
             if advertised := _advertised_address(c, slug):

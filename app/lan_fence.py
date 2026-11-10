@@ -1268,8 +1268,15 @@ def guard() -> dict[str, str]:
     return held
 
 
-#: Why the guard holds a container a failed deploy left behind.
-FAILED_DEPLOY = "its last deploy failed and left this container behind. Redeploy it from the dashboard"
+#: Why the guard holds a container under a name whose last deploy failed. The
+#: record is by name, so it also holds the old container put back by hand, or
+#: one started with docker start: the worker cannot tell it from the failed
+#: one, and the operator has to hear that only a deploy from CashPilot lifts it.
+FAILED_DEPLOY = (
+    "its last deploy from CashPilot failed, so the worker keeps any container under this name stopped, one put "
+    "back or started by hand included, until a deploy from CashPilot succeeds. Redeploy it from the CashPilot "
+    "dashboard; starting it with Docker does not lift this"
+)
 
 
 #: A start the guard could not read back: stopped, but tried again next pass.
