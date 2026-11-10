@@ -53,6 +53,7 @@ from app import (
     fleet_key,
     ipgeo,
     lan_isolation,
+    log_redaction,
     login_rate_limit,
     machine_economics,
     metrics,
@@ -79,6 +80,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# httpx logs every request URL at INFO; secrets ride in some of them.
+log_redaction.install()
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
