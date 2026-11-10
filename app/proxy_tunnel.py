@@ -1635,9 +1635,8 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
     try:
         client = orchestrator._get_client()
         found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
-    except Exception as exc:  # noqa: BLE001 - a heartbeat must not fail on this
-        logger.debug("Could not list proxied copies: %s", exc)
-        return []
+    except Exception as exc:  # noqa: BLE001 - the heartbeat says it could not look
+        raise ProxyTunnelError(f"Could not list proxied copies: {redact(str(exc))}") from None
     # Moves a worker died in come first: a copy aside or staged is still a copy.
     if any(str(getattr(c, "name", "")).endswith((STAGED_SUFFIX, MOVING_SUFFIX)) for c in found):
         with contextlib.suppress(Exception):
@@ -1698,6 +1697,12 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         if tunnel.id not in used and not _is_shared(tunnel):
             labels = _labels(tunnel)
             pairs.setdefault((labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, "")), (None, tunnel))
+    # Which copies the owner or the cap stopped, so the UI can tell them from
+    # ones that died. Unreadable: not said, and the UI alerts on what is gone only.
+    try:
+        stopped: set[str] | None = held()
+    except OSError:
+        stopped = None
     live = {t.id: t for _, t in pairs.values() if t is not None}
     stats = orchestrator._collect_stats_bulk(list(live.values())) if collect_stats else {}
     exits = {tid: _read_exit(t) for tid, t in live.items()}
@@ -1728,6 +1733,8 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
                 "exit_country": (exit_info or {}).get("country"),
             }
         )
+        if stopped is not None and earner is not None:
+            out[-1]["held"] = str(earner.name) in stopped
     return out
 
 

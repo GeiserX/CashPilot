@@ -1497,7 +1497,7 @@ const CP = (() => {
       </div>`;
   }
 
-  async function renderAttention(services, workers, seq) {
+  async function renderAttention(services, workers, seq, knownAlerts) {
     const list = document.getElementById('attention-list');
     if (!list) return;
     const items = [];
@@ -1625,8 +1625,15 @@ const CP = (() => {
     // check, past its grace period). Forget drops only CashPilot's record, so it
     // is the way out when the container was removed on purpose.
     try {
-      const bell = await api('/api/collector-alerts');
+      // The bell poll passes the alerts it just read, so its redraw cannot fail on a second fetch.
+      const bell = knownAlerts ? { alerts: knownAlerts } : await api('/api/collector-alerts');
       for (const a of (bell.alerts || [])) {
+        // A proxied copy or its tunnel gone or down: the per-service rows
+        // never list proxied copies, so without this the list says nothing is wrong.
+        if (a.kind === 'proxied') {
+          items.push({ level: 'fail', tag: 'Proxied copy down', what: a.platform, why: escapeHtml(a.error), actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+          continue;
+        }
         if (a.kind !== 'missing') continue;
         const svc = services.find(s => s.slug === a.platform);
         let actions = '';
@@ -1730,6 +1737,21 @@ const CP = (() => {
       ? `Nothing needs you. ${online} of ${(workers || []).length} boxes reporting.`
       : 'Nothing needs you.';
     clear.hidden = false;
+  }
+
+  // The attention list and the bell read the same alerts, but the list is
+  // drawn only when the services refresh. When the alerts it shows (missing,
+  // proxied) change between two bell polls, draw it again, or it can say
+  // nothing needs you while the bell reports a failure.
+  let _attentionAlertsKey = null;
+  function refreshAttentionOnAlertChange(alerts) {
+    const key = JSON.stringify((alerts || [])
+      .filter(a => a.kind === 'missing' || a.kind === 'proxied')
+      .map(a => [a.kind, a.platform, a.error]));
+    const changed = _attentionAlertsKey !== null && key !== _attentionAlertsKey;
+    _attentionAlertsKey = key;
+    if (!changed || !_attentionCount.services || !document.getElementById('attention-list')) return null;
+    return renderAttention(_attentionCount.services, _attentionCount.workers, _attentionSeq, alerts.slice());
   }
 
   // Action-button icons, extracted so the single-instance row and the per-node sub-row
@@ -4953,6 +4975,7 @@ const CP = (() => {
         api('/api/credentials/health').catch(() => []),
       ]);
       const alerts = payload.alerts || [];
+      refreshAttentionOnAlertChange(alerts);
       for (const row of (Array.isArray(health) ? health : [])) {
         if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
         if (alerts.some(a => a.platform === row.service && a.kind === 'collector')) continue;
@@ -5026,6 +5049,8 @@ const CP = (() => {
         const isActivity = (a.kind || '').startsWith('activity_');
         // A proxy reached its traffic cap: the fix is on the fleet page, never a credential.
         const isProxyCap = a.kind === 'proxy_cap';
+        // A proxied copy or its tunnel is gone or down: start or re-add it on the fleet page.
+        const isProxied = a.kind === 'proxied';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -5042,6 +5067,7 @@ const CP = (() => {
           : isActivity ? (a.kind === 'activity_spike' ? ' — unusual hour' : ' — network activity')
           : isContainer ? ' — not running'
           : isProxyCap ? ' — traffic cap'
+          : isProxied ? ' — proxied copy down'
           : isDisabled ? ' — account disabled'
           : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
           : isQuiet ? ' — gone quiet'
@@ -5052,7 +5078,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isProxied;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">

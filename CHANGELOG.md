@@ -10,6 +10,36 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.2.5] - 2026-11-10
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#709)
+
+### Fixes
+
+- Stop the UI log printing the Telegram bot token on every alert (#706)
+
+## [2.2.4] - 2026-11-10
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#708)
+
+### Fixes
+
+- Alert when a proxied copy or its tunnel disappears from a box (#707)
+
+## [2.2.3] - 2026-11-10
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#704)
+
+### Fixes
+
+- Stop tearing down a node Docker is still starting (#705)
+
 ## [2.2.2] - 2026-11-09
 
 ### Dependencies
