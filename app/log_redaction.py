@@ -92,12 +92,27 @@ def redact(text: str) -> str:
     return _SECRET_PARAM_RE.sub(rf"\1{_REDACTED}", text)
 
 
+def _clean_arg(value):
+    """One argument of a log call whose formatting failed, safe to print."""
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return redact(value if isinstance(value, str) else repr(value))
+
+
 def _redacting(factory):
     def make_record(*args, **kwargs) -> logging.LogRecord:
         record = factory(*args, **kwargs)
         try:
             message = record.getMessage()
         except Exception:  # noqa: BLE001 - a broken log call is the logging module's to report
+            # ...and it reports it on stderr with the message and the arguments,
+            # so those are cleaned too. The call stays broken and still gets reported.
+            if isinstance(record.msg, str):
+                record.msg = redact(record.msg)
+            if isinstance(record.args, dict):
+                record.args = {key: _clean_arg(value) for key, value in record.args.items()}
+            elif isinstance(record.args, tuple):
+                record.args = tuple(_clean_arg(value) for value in record.args)
             return record
         cleaned = redact(message)
         if cleaned != message:

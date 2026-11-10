@@ -213,6 +213,24 @@ class TestAnyClientRequest:
         record = logging.getLogRecordFactory()("x", logging.INFO, __file__, 1, "%s %s", ("only one arg",), None)
         assert record.msg == "%s %s"
 
+    def test_a_broken_log_call_does_not_print_its_secret_on_stderr(self, redacting, capsys):
+        """logging reports a bad format string on stderr, with the message and the arguments."""
+        url = httpx.URL(f"https://api.telegram.org/bot{FAKE_BOT_TOKEN}/sendMessage")
+        handler = logging.StreamHandler()
+        logger = logging.getLogger("app.broken-call")
+        logger.addHandler(handler)
+        logger.propagate = False  # pytest's own handler raises on a broken call
+        try:
+            logger.warning("%s %s", f"bot{FAKE_BOT_TOKEN}")
+            logger.warning("%d", url)
+            logger.warning("%(a)s %(b)s", {"a": f"bot{FAKE_BOT_TOKEN}"})
+        finally:
+            logger.removeHandler(handler)
+            logger.propagate = True
+        err = capsys.readouterr().err
+        assert err.count("--- Logging error ---") == 3, "the broken calls are still reported"
+        assert FAKE_BOT_TOKEN not in err
+
 
 @pytest.mark.parametrize("module", ["app.main", "app.worker_api"])
 def test_both_containers_install_it(module, tmp_path):
