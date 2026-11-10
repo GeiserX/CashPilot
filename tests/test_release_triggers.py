@@ -432,9 +432,8 @@ class TestTheTunnelImageShips:
 
     def test_tunnel_files_count_as_something_to_release(self):
         doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
-        step = next(s["run"] for s in doc["jobs"]["pending"]["steps"] if s.get("id") == "diff")
-        paths = step.split("-- \\", 1)[1].split(")", 1)[0].replace("\\", " ").split()
-        assert "tunnel" in paths and "Dockerfile.tunnel" in paths
+        paths = doc["jobs"]["pending"]["env"]["RELEASE_PATHS"].split()
+        assert "tunnel/**" in paths and "Dockerfile.tunnel" in paths
 
 
 class TestReleasesAreBatched:
@@ -466,6 +465,7 @@ class TestReleasesAreBatched:
     def test_the_pending_check_can_say_yes_and_no(self, tmp_path):
         doc, _on = self._doc()
         script = next(s["run"] for s in doc["jobs"]["pending"]["steps"] if s.get("id") == "diff")
+        paths = doc["jobs"]["pending"]["env"]["RELEASE_PATHS"]
         git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
 
         def run(*cmd):
@@ -479,7 +479,7 @@ class TestReleasesAreBatched:
                 cwd=tmp_path,
                 check=True,
                 capture_output=True,
-                env={**os.environ, "GITHUB_OUTPUT": str(out)},
+                env={**os.environ, "GITHUB_OUTPUT": str(out), "RELEASE_PATHS": paths},
             )
             return out.read_text().strip()
 
@@ -496,4 +496,18 @@ class TestReleasesAreBatched:
         (tmp_path / "app" / "x.py").write_text("")
         run("git", "add", "app")
         run(*git, "commit", "-qm", "app change")
+        assert answer() == "any=true"
+        # A pre-release tag is not the last release: the app change still counts.
+        run(*git, "tag", "-a", "v2.0.0-rc.1", "-m", "rc")
+        assert answer() == "any=true"
+        # A Dockerfile that is not the root one is not what the image is built from.
+        run(*git, "tag", "-a", "v1.0.1", "-m", "v1.0.1")
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "Dockerfile").write_text("")
+        run("git", "add", "docs")
+        run(*git, "commit", "-qm", "an example Dockerfile in the docs")
+        assert answer() == "any=false"
+        (tmp_path / "Dockerfile").write_text("")
+        run("git", "add", "Dockerfile")
+        run(*git, "commit", "-qm", "the image")
         assert answer() == "any=true"

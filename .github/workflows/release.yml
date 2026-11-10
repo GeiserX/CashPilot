@@ -25,6 +25,20 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       any: ${{ steps.diff.outputs.any }}
+    env:
+      # What a release is built from, as the push trigger's path filter listed
+      # it. A file outside this list never causes a release: CHANGELOG.md, the
+      # docs and the compose files the release itself re-pins are not here.
+      RELEASE_PATHS: >-
+        Dockerfile
+        entrypoint.sh
+        Dockerfile.worker
+        Dockerfile.tunnel
+        tunnel/**
+        pyproject.toml
+        uv.lock
+        app/**
+        services/**
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -33,15 +47,19 @@ jobs:
       - name: Compare main with the last release
         id: diff
         run: |
-          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          # Release tags only: a pre-release tag such as v3.0.0-rc.1 is not the
+          # last release.
+          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
           if [ -z "$LAST_TAG" ]; then
             echo "No release yet: everything is pending."
             echo "any=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- \
-            Dockerfile entrypoint.sh Dockerfile.worker Dockerfile.tunnel tunnel \
-            pyproject.toml uv.lock app services)
+          # Each entry as a git glob, which reads it as GitHub's filter did:
+          # Dockerfile is the root file only, app/** is everything under app/.
+          SPECS=()
+          for path in $RELEASE_PATHS; do SPECS+=(":(glob)$path"); done
+          CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- "${SPECS[@]}")
           if [ -n "$CHANGED" ]; then
             echo "Changed since $LAST_TAG:"; echo "$CHANGED"
             echo "any=true" >> "$GITHUB_OUTPUT"
