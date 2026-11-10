@@ -992,16 +992,25 @@ def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) ->
             "the worker settles that within a few minutes. Try again then."
         )
     run = getattr(staged, "status", "") == "running"
-    if current is not None and not run and any(getattr(m, "status", "") in _LIVE for m in _members(client, current)):
-        # Copies run in the current tunnel: never moved into one that cannot run.
-        try:
-            staged.start()
-            _wait_ready(staged)
-        except Exception:  # noqa: BLE001 - the detail may hold the proxy's secrets
+    if current is not None and any(getattr(m, "status", "") in _LIVE for m in _members(client, current)):
+        # Copies run in the current tunnel: never moved into one that has not
+        # proved its exit. Running is no proof: a start whose exit failed is.
+        if run and _read_exit(staged) is None:
             raise ProxyTunnelError(
-                f"The new tunnel of {final} could not start, so its copies stay in the tunnel they run in"
-            ) from None
-        run = True
+                f"The new tunnel of {final} runs but has no exit, so its copies stay in the tunnel they run in"
+            )
+        if not run:
+            try:
+                staged.start()
+                _wait_ready(staged)
+            except Exception:  # noqa: BLE001 - the detail may hold the proxy's secrets
+                # Stopped again, so the next try does not take it for one that runs.
+                with contextlib.suppress(Exception):
+                    staged.stop(timeout=SIDECAR_STOP_SECONDS)
+                raise ProxyTunnelError(
+                    f"The new tunnel of {final} could not start, so its copies stay in the tunnel they run in"
+                ) from None
+            run = True
     if current is not None:
         for member in _members(client, current):
             _clone_into(client, member, staged, start=run and getattr(member, "status", "") in _LIVE)

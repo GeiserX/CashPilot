@@ -1589,6 +1589,36 @@ class TestAStuckTunnelChangeIsReported:
         assert "tunnel_change" not in entries["m2"]
         assert docker.named("cashpilot-tunnel-p3") is current
 
+    def test_running_copies_stay_in_the_working_tunnel_beat_after_beat(self, docker):
+        current, staged = self._half_done(docker, auth="u1:dead@")
+        docker.broken_auth.add("u1:dead@")
+        for _beat in range(2):
+            entries = {e["slug"]: e for e in _heartbeat()}
+            assert "could not start" in entries["m1"]["tunnel_change"]["reason"]
+            assert docker.named("cashpilot-tunnel-p3") is current and current.status == "running"
+            assert _member_ids(docker, current) == ["cashpilot-m2-p3"]
+            assert docker.named("cashpilot-m2-p3").status == "running"
+            # The failed start is undone: a staged tunnel that runs has not proved an exit.
+            assert staged.status != "running"
+        # With the proxy login fixed, the change finishes.
+        docker.broken_auth.clear()
+        entries = _heartbeat()
+        assert not [e for e in entries if "tunnel_change" in e]
+        assert docker.named("cashpilot-tunnel-p3") is staged and current.id not in docker.by_id
+        assert _member_ids(docker, staged) == ["cashpilot-m1-p3", "cashpilot-m2-p3"]
+        assert docker.named("cashpilot-m2-p3").status == "running"
+
+    def test_a_running_staged_tunnel_with_no_exit_takes_no_copy(self, docker):
+        current, staged = self._half_done(docker, auth="u1:dead@")
+        docker.broken_auth.add("u1:dead@")
+        staged.start()  # running, as an older worker left it, but with no exit
+        for _beat in range(2):
+            entries = {e["slug"]: e for e in _heartbeat()}
+            assert "has no exit" in entries["m1"]["tunnel_change"]["reason"]
+            assert docker.named("cashpilot-tunnel-p3") is current
+            assert _member_ids(docker, current) == ["cashpilot-m2-p3"]
+            assert docker.named("cashpilot-m2-p3").status == "running"
+
     def test_a_half_moved_copy_is_the_reason_given(self, docker):
         _current, staged = self._half_done(docker)
         m2 = docker.named("cashpilot-m2-p3")
