@@ -95,3 +95,30 @@ class TestSetupTokenFailsClosed:
         assert resp.status_code == 403
         assert setup_token.active() == "the-token"
         set_cfg.assert_not_called()
+
+
+class TestCookieRemintUsesTheStoredName:
+    def test_a_renamed_user_gets_the_new_name_in_the_cookie(self, client):
+        record = {
+            "id": 1,
+            "username": "newname",
+            "password": "x-mock-hash",
+            "role": "owner",
+            "password_changed_at": 123.0,
+        }
+        with (
+            patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "oldname", "r": "owner"}),
+            patch("app.main.database.get_user_by_id", new_callable=AsyncMock, return_value=record),
+            patch("app.main.auth.verify_password", return_value=True),
+            patch("app.main.auth.hash_password", return_value="hashed-new"),
+            patch("app.main.database.update_user_password", new_callable=AsyncMock),
+            patch("app.main.auth.set_user_pwd_epoch"),
+            patch("app.main.auth.create_session_token", return_value="tok") as mint,
+            patch("app.main.auth.set_session_cookie", side_effect=lambda r, t, req=None: r),
+        ):
+            resp = client.post(
+                "/api/users/me/password",
+                json={"current_password": "oldpassword1", "new_password": "newpassword123"},
+            )
+        assert resp.status_code == 200
+        mint.assert_called_once_with(1, "newname", "owner")

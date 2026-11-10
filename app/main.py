@@ -8122,7 +8122,8 @@ async def api_change_own_password(
     changed = await database.get_user_by_id(uid)
     auth.set_user_pwd_epoch(uid, changed["password_changed_at"])
     # Re-mint the session cookie so the caller stays logged in after the epoch bump.
-    token = auth.create_session_token(uid, user["u"], user["r"])
+    # The name comes from the row, not the old cookie, so a rename shows up here.
+    token = auth.create_session_token(uid, record["username"], user["r"])
     return auth.set_session_cookie(JSONResponse({"status": "password_changed"}), token, request)
 
 
