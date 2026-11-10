@@ -137,6 +137,9 @@ services:
     # Unix sockets only; it needs no network at all.
     network_mode: none
     restart: unless-stopped
+    # It peaks near 45 MB, streams included; the cap only stops a leak
+    # from taking the host's memory with it.
+    mem_limit: 256m
     # One log line per Docker call (refusals included), so the log is capped.
     logging:
       driver: json-file
