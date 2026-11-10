@@ -48,11 +48,13 @@ CashPilot has no e-mail reset. Whoever runs the server resets the password from 
     docker exec -it cashpilot-ui python -m app.users list
     ```
 
-2. Set a new random password. With one owner you can leave out the username.
+2. Set a new random password for the account. Replace `alice` with the username from step 1.
 
     ```bash
-    docker exec -it cashpilot-ui python -m app.users reset-password [USERNAME]
+    docker exec -it cashpilot-ui python -m app.users reset-password alice
     ```
+
+    With exactly one owner you can leave the username out, and the command resets that owner.
 
     The command prints the new password once.
 
@@ -86,10 +88,12 @@ docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{e
 Then mount that folder and use the image tag you run:
 
 ```bash
-docker run --rm -v <folder>:/data --entrypoint python drumsergio/cashpilot:<same tag> -m app.users reset-password
+docker run --rm -v <folder>:/data --entrypoint python drumsergio/cashpilot:<same tag> -m app.users list
 ```
 
-The command never creates a database or a key file. A wrong path gives a "no database" error and changes no data, but Docker may leave an empty folder or volume with that name behind; remove it.
+Check that the list shows your accounts, then run the same line with `reset-password alice` in place of `list`.
+
+The command never creates a database or a key file. A path with no database gives a "no database" error and changes no data, but Docker may leave an empty folder or volume with that name behind; remove it.
 
 **Do not** delete the data volume: that erases `/data/.fernet_key` and with it every saved credential. **Do not** delete rows from the `users` table either.
 

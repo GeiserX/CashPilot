@@ -163,10 +163,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    _drop_privileges(path)
     try:
+        _drop_privileges(path)
         conn = _connect(path)
-    except sqlite3.Error as exc:
+    except (OSError, sqlite3.Error) as exc:
         print(f"error: cannot open {path}: {exc}", file=sys.stderr)
         return 1
     try:

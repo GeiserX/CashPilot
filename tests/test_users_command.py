@@ -253,6 +253,21 @@ class TestPrivilegeDrop:
         assert users.main(["list"]) == 0
         assert calls == []
 
+    def test_a_refused_drop_is_a_clear_error_not_a_traceback(self, data_dir, monkeypatch, capsys):
+        from app import users
+
+        _make_db(data_dir, [("alice", "owner")])
+        monkeypatch.setattr(users.os, "geteuid", lambda: 0)
+        _fake_owner(monkeypatch, users, 1000, 1000)
+        monkeypatch.setattr(users.os, "setgroups", lambda g: None, raising=False)
+
+        def refuse(_gid):
+            raise PermissionError(1, "Operation not permitted")
+
+        monkeypatch.setattr(users.os, "setgid", refuse)
+        assert users.main(["list"]) == 1
+        assert "error: cannot open" in capsys.readouterr().err
+
     def test_non_root_does_not_try(self, data_dir, monkeypatch, capsys):
         from app import users
 
