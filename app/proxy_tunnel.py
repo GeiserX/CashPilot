@@ -1417,24 +1417,37 @@ def recover_moves(min_age: float | None = None) -> list[str]:
     return done
 
 
-def _finish_stale_staged(client: Any, staged: Any) -> None:
+def _finish_stale_staged(client: Any, staged: Any) -> str | None:
     """A staged shared tunnel copies still live in, past any change's timeout:
-    finish that change, unless one of this proxy is running now."""
+    finish that change, unless one of this proxy is running now.
+
+    Returns why the change is not finished, for the heartbeat to report (the
+    UI alerts on a change stuck this way), or None when it finished or the
+    tunnel is not a shared one."""
     pid = _labels(staged).get(LABEL_PROXY, "")
     if not pid.isdigit() or not _is_shared(staged, int(pid)):
-        return
-    if _moving(client, pid):
-        return  # recover_moves settles those first, at a later heartbeat
+        return None
+    if half := _moving(client, pid):
+        # recover_moves settles those first, at a later heartbeat
+        return (
+            f"{', '.join(sorted(half))} {'is' if len(half) == 1 else 'are'} still half moved between tunnels, "
+            "and the worker has not settled that yet."
+        )
     lock = _deploy_lock(int(pid))
     if not lock.acquire(blocking=False):
-        return
+        return "Another change to this proxy is running on this worker."
+    final = shared_tunnel_name(int(pid))
     try:
-        current = _get(client, shared_tunnel_name(int(pid)))
+        current = _get(client, final)
         if current is not None and not _is_shared(current, int(pid)):
-            return
-        _finish_staged(client, staged, current, shared_tunnel_name(int(pid)))
+            return f"A container named {final} that CashPilot did not create holds the name the new tunnel needs."
+        _finish_staged(client, staged, current, final)
+        return None
     except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
         logger.warning("Could not finish the tunnel change of proxy %s: %s", pid, exc)
+        # A ProxyTunnelError is written to be shown; anything else gets the
+        # same redaction as every other Docker error the worker passes on.
+        return (str(exc) if isinstance(exc, ProxyTunnelError) else redact(str(exc)))[:300]
     finally:
         lock.release()
 
@@ -1646,6 +1659,9 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
     # aside ones included) is a change to finish; an empty one is a leftover
     # holding the proxy login, removed here, since the startup sweep skips those
     # still young when the worker starts.
+    # A change it could not finish is reported on the copies already in the
+    # staged tunnel, which the report below cannot pair with any tunnel.
+    stuck: dict[str, dict[str, Any]] = {}
     every_earner = [c for c in found if _labels(c).get(LABEL_ROLE) != ROLE_TUNNEL]
     for container in found:
         if (
@@ -1654,7 +1670,12 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
             and _age_seconds(container) >= STAGED_STALE_SECONDS
         ):
             if any(_tunnel_id_of(e) == container.id for e in every_earner):
-                _finish_stale_staged(client, container)
+                if reason := _finish_stale_staged(client, container):
+                    stuck[container.id] = {
+                        "tunnel": str(container.name),
+                        "age_seconds": int(_age_seconds(container)),
+                        "reason": reason,
+                    }
             else:
                 _remove_quietly(container, SIDECAR_STOP_SECONDS)
     with contextlib.suppress(Exception):
@@ -1735,6 +1756,8 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         )
         if stopped is not None and earner is not None:
             out[-1]["held"] = str(earner.name) in stopped
+        if sidecar is None and earner is not None and (change := stuck.get(_tunnel_id_of(earner))):
+            out[-1]["tunnel_change"] = dict(change)
     return out
 
 

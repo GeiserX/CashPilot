@@ -910,7 +910,9 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
     deploy or a move ends well inside CONTAINER_DOWN_GRACE. A box that cannot
     tell (offline, blind, too old, or a failed read) neither raises nor clears.
     A missing or stopped tunnel is one alert naming the copies that leave
-    through it. Never raises.
+    through it. Copies in the staged tunnel of a change the worker could not
+    finish (``tunnel_change``) are one alert saying the change is stuck and
+    why, not that their tunnel is gone. Never raises.
     """
     global _collector_alerts
     try:
@@ -965,6 +967,24 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
             # An older worker does not say; then only what is gone counts.
             held = entry.get("held")
             tunnel_status = str(entry.get("tunnel_status") or "")
+            change = entry.get("tunnel_change")
+            if tunnel_status == "missing" and isinstance(change, dict):
+                # The copy lives in the staged tunnel of a change the worker
+                # could not finish: not gone, stuck. One alert per tunnel.
+                staged = f"{constants.CONTAINER_PREFIX}tunnel-p{pid}-next"
+                fault = tunnel_faults.setdefault(
+                    _proxied_subject(staged, wid),
+                    {
+                        **base,
+                        "what": "tunnel_stuck",
+                        "tunnel": staged,
+                        "age": change.get("age_seconds"),
+                        "reason": str(change.get("reason") or "")[:300],
+                        "copies": [],
+                    },
+                )
+                fault["copies"].append(earner)
+                continue
             if tunnel_status == "missing" or (held is False and tunnel_status not in _LIVE_STATES):
                 shared = entry.get("tunnel_shared") or tunnel_status == "missing"
                 tunnel = (
@@ -994,7 +1014,7 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
             start = _proxied_first_seen[subject]
             # A fresh copy gets the whole grace from its record, so a slow first pull is not news.
             created = placement._sqlite_time(fault.get("created_at"))
-            if created is not None and fault["what"] != "tunnel":
+            if created is not None and fault["what"] not in ("tunnel", "tunnel_stuck"):
                 start = max(start, created)
             if subject not in stored and now - start < CONTAINER_DOWN_GRACE:
                 continue
@@ -1022,6 +1042,23 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
 def _proxied_alert_text(fault: dict[str, Any], since: datetime) -> tuple[str, str]:
     """The push title and the message of one proxied-copy fault."""
     svc, box, proxy = fault["svc"], fault["box"], fault["proxy"]
+    if fault["what"] == "tunnel_stuck":
+        tunnel, copies = fault["tunnel"], ", ".join(sorted(fault["copies"]))
+        try:
+            minutes = max(int(fault.get("age") or 0), 0) // 60
+        except (TypeError, ValueError):
+            minutes = 0
+        age = f"{minutes // 60} h {minutes % 60} min" if minutes >= 60 else f"{minutes} min"
+        reason = fault.get("reason", "").strip() or "the worker did not say why"
+        reason = reason if reason.endswith((".", "!", "?")) else reason + "."
+        return (
+            f"CashPilot: the tunnel change of {proxy} on {box} is stuck",
+            f"The tunnel change of {proxy} on {box} started {age} ago, and the worker cannot finish it. "
+            f"Reason: {reason} The copies already in the new tunnel {tunnel} ({copies}) wait for it, and "
+            "CashPilot cannot tell whether they earn until it finishes. The worker tries again on every "
+            "heartbeat, so this clears by itself once the cause is fixed. If the proxy is down or its login "
+            "is wrong, fix it under Proxies on the Fleet page.",
+        )
     if fault["what"] == "tunnel":
         tunnel, copies = fault["tunnel"], ", ".join(sorted(fault["copies"]))
         how = "is gone" if fault["gone"] else f"has not been running since {since:%Y-%m-%d %H:%M} UTC"

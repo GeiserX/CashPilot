@@ -170,6 +170,63 @@ class TestOneAlertPerTunnel:
         assert alerts.titles == ["CashPilot: cashpilot-tunnel-p3 has stopped running"]
 
 
+def _stuck(
+    entry,
+    *,
+    age=7200,
+    reason="The new tunnel of cashpilot-tunnel-p3 could not start, so its copies stay in the tunnel they run in",
+):
+    """An entry of a copy in the staged tunnel of a change the worker could not finish."""
+    return {
+        **entry,
+        "tunnel_status": "missing",
+        "tunnel_shared": False,
+        "tunnel_change": {"tunnel": "cashpilot-tunnel-p3-next", "age_seconds": age, "reason": reason},
+    }
+
+
+class TestAStuckTunnelChangeSaysSo:
+    """The worker reports the copies of a tunnel change it could not finish
+    (proxy_tunnel._finish_stale_staged); they are not gone, the change is stuck."""
+
+    def test_one_stuck_alert_per_tunnel_with_its_age_and_reason_instead_of_is_gone(self):
+        alerts = _Alerts([_copy("earnfm"), _copy("honeygain"), _copy("repocket")])
+        entries = [_stuck(_entry("earnfm")), _stuck(_entry("honeygain")), _entry("repocket")]
+        _past_grace(alerts, [_worker(entries)])
+        assert list(alerts.rows) == ["cashpilot-tunnel-p3-next@1"]
+        assert alerts.titles == ["CashPilot: the tunnel change of home socks on alpha is stuck"]
+        message = alerts.rows["cashpilot-tunnel-p3-next@1"]
+        assert "2 h 0 min" in message and "could not start" in message
+        assert "cashpilot-earnfm-p3, cashpilot-honeygain-p3" in message and "repocket" not in message
+        assert "is gone" not in message
+
+    def test_it_waits_out_the_grace_like_any_other(self):
+        alerts = _Alerts([_copy("earnfm")])
+        alerts.run([_worker([_stuck(_entry("earnfm"))])])
+        assert not alerts.rows
+
+    def test_it_clears_once_the_change_finishes(self):
+        alerts = _Alerts([_copy("earnfm")])
+        _past_grace(alerts, [_worker([_stuck(_entry("earnfm"))])])
+        assert alerts.rows
+        alerts.run([_worker([_entry("earnfm")])])
+        assert not alerts.rows and not main._collector_alerts
+
+    def test_a_box_that_cannot_tell_keeps_it(self):
+        alerts = _Alerts([_copy("earnfm")])
+        _past_grace(alerts, [_worker([_stuck(_entry("earnfm"))])])
+        alerts.run([_worker([_stuck(_entry("earnfm"))], online=False)])
+        assert list(alerts.rows) == ["cashpilot-tunnel-p3-next@1"]
+        assert main._collector_alerts
+
+    def test_an_older_worker_that_does_not_report_it_keeps_the_is_gone_alert(self):
+        alerts = _Alerts([_copy("earnfm")])
+        old = _stuck(_entry("earnfm"))
+        del old["tunnel_change"]
+        _past_grace(alerts, [_worker([old])])
+        assert alerts.titles == ["CashPilot: cashpilot-tunnel-p3 is gone from alpha"]
+
+
 class TestNothingCashPilotDidOnPurpose:
     @pytest.mark.parametrize(
         ("copy", "proxy"),
