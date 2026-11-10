@@ -1545,3 +1545,80 @@ class TestHeartbeatForTheAlert:
             pytest.raises(proxy_tunnel.ProxyTunnelError),
         ):
             _heartbeat()
+
+
+# ---------------------------------------------------------------------------
+# A tunnel change the heartbeat cannot finish is reported, not left silent
+# ---------------------------------------------------------------------------
+
+
+class TestAStuckTunnelChangeIsReported:
+    """A change whose worker died after m1 moved into the staged tunnel, with
+    m2 still running in the current one. The heartbeat finishes such a change;
+    when it cannot, the copies in the staged tunnel say why (tunnel_change),
+    so the UI does not take them for copies whose tunnel is gone."""
+
+    def _half_done(self, docker, *, auth=None):
+        _deploy("m1")
+        _deploy("m2")
+        current = docker.named("cashpilot-tunnel-p3")
+        staged = docker.create(
+            name="cashpilot-tunnel-p3-next",
+            image=IMAGE,
+            labels={
+                LABEL_MANAGED: "true",
+                LABEL_ROLE: "tunnel",
+                LABEL_SERVICE: proxy_tunnel.SHARED_SLUG,
+                LABEL_PROXY: "3",
+            },
+        )
+        staged.files = {**current.files, **({"proxy_auth": auth} if auth else {})}
+        proxy_tunnel._clone_into(docker, docker.named("cashpilot-m1-p3"), staged, start=False)
+        return current, staged
+
+    def test_a_staged_tunnel_with_no_exit_is_reported_with_the_error(self, docker):
+        current, staged = self._half_done(docker, auth="u1:dead@")
+        docker.broken_auth.add("u1:dead@")
+        entries = {e["slug"]: e for e in _heartbeat()}
+        change = entries["m1"]["tunnel_change"]
+        assert entries["m1"]["tunnel_status"] == "missing"
+        assert change["tunnel"] == "cashpilot-tunnel-p3-next"
+        assert change["age_seconds"] >= proxy_tunnel.STAGED_STALE_SECONDS
+        assert "could not start" in change["reason"]
+        # The copy still in the current tunnel is fine and says nothing of it.
+        assert "tunnel_change" not in entries["m2"]
+        assert docker.named("cashpilot-tunnel-p3") is current
+
+    def test_a_half_moved_copy_is_the_reason_given(self, docker):
+        _current, staged = self._half_done(docker)
+        m2 = docker.named("cashpilot-m2-p3")
+        m2.rename("cashpilot-m2-p3-moving")
+        clone = docker.create(name="cashpilot-m2-p3-next", image="m2/m2:1", labels=dict(m2.labels))
+        clone.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")  # young: left alone
+        (entry,) = [e for e in _heartbeat() if e["slug"] == "m1"]
+        assert "cashpilot-m2-p3-moving" in entry["tunnel_change"]["reason"]
+        assert "half moved" in entry["tunnel_change"]["reason"]
+
+    def test_a_stranger_on_the_final_name_is_the_reason_given(self, docker):
+        current, _staged = self._half_done(docker)
+        current.labels = {}  # no longer ours: someone else's container holds the name
+        (entry,) = [e for e in _heartbeat() if e["slug"] == "m1"]
+        assert "did not create" in entry["tunnel_change"]["reason"]
+
+    def test_an_error_with_no_text_is_still_reported(self, docker):
+        self._half_done(docker)
+        with patch.object(proxy_tunnel, "_finish_staged", side_effect=RuntimeError()):
+            (entry,) = [e for e in _heartbeat() if e["slug"] == "m1"]
+        assert entry["tunnel_change"]["reason"] == "RuntimeError"
+
+    def test_a_change_it_can_finish_reports_nothing(self, docker):
+        self._half_done(docker)
+        entries = _heartbeat()
+        assert {e["tunnel_status"] for e in entries} == {"running"}
+        assert not [e for e in entries if "tunnel_change" in e]
+
+    def test_a_young_change_is_left_to_its_deploy_and_not_reported(self, docker):
+        _current, staged = self._half_done(docker, auth="u1:dead@")
+        docker.broken_auth.add("u1:dead@")
+        staged.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        assert not [e for e in _heartbeat() if "tunnel_change" in e]
