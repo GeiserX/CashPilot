@@ -436,9 +436,10 @@ class TestApiDeploy:
         assert sent["moved_mounts"] == []
         assert list(sent["volumes"]) == ["/mnt/storj"]
 
-    @pytest.mark.parametrize(("declared", "expected"), [(300, 360), (None, 90), ("junk", 90)])
+    @pytest.mark.parametrize(("declared", "expected"), [(300, 360 + 120), (None, 90 + 120), ("junk", 90 + 120)])
     def test_the_deploy_wait_covers_the_old_containers_clean_stop(self, declared, expected):
-        """The worker stops the old container with this timeout before replacing it."""
+        """The worker stops the old container with this timeout before replacing it, and may
+        then wait START_SETTLE_SECONDS (120) for a start Docker was slow to answer."""
         import asyncio
 
         from app import main
