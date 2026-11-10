@@ -1447,7 +1447,8 @@ def _finish_stale_staged(client: Any, staged: Any) -> str | None:
         logger.warning("Could not finish the tunnel change of proxy %s: %s", pid, exc)
         # A ProxyTunnelError is written to be shown; anything else gets the
         # same redaction as every other Docker error the worker passes on.
-        return (str(exc) if isinstance(exc, ProxyTunnelError) else redact(str(exc)))[:300]
+        text = str(exc) if isinstance(exc, ProxyTunnelError) else redact(str(exc))
+        return text[:300] or type(exc).__name__  # never blank: a blank reason is not reported
     finally:
         lock.release()
 
@@ -1670,7 +1671,7 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
             and _age_seconds(container) >= STAGED_STALE_SECONDS
         ):
             if any(_tunnel_id_of(e) == container.id for e in every_earner):
-                if reason := _finish_stale_staged(client, container):
+                if (reason := _finish_stale_staged(client, container)) is not None:
                     stuck[container.id] = {
                         "tunnel": str(container.name),
                         "age_seconds": int(_age_seconds(container)),

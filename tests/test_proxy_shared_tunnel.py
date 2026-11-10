@@ -1605,6 +1605,12 @@ class TestAStuckTunnelChangeIsReported:
         (entry,) = [e for e in _heartbeat() if e["slug"] == "m1"]
         assert "did not create" in entry["tunnel_change"]["reason"]
 
+    def test_an_error_with_no_text_is_still_reported(self, docker):
+        self._half_done(docker)
+        with patch.object(proxy_tunnel, "_finish_staged", side_effect=RuntimeError()):
+            (entry,) = [e for e in _heartbeat() if e["slug"] == "m1"]
+        assert entry["tunnel_change"]["reason"] == "RuntimeError"
+
     def test_a_change_it_can_finish_reports_nothing(self, docker):
         self._half_done(docker)
         entries = _heartbeat()
