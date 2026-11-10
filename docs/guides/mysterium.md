@@ -298,29 +298,38 @@ Run it on a Linux host with Docker Engine: Docker Desktop (macOS, Windows) puts
 its own NAT in front of every container, which rewrites every port whatever
 the router does.
 
-1. Pick two even ports in `UDP_PORTS`, say `23010` and `23020`, and stop the
-   node with **Stop** on CashPilot's dashboard. A plain `docker stop` is not
-   recorded as a stop you meant, so the worker can start the node again in
-   the middle of the test.
-2. From the outside machine, send one packet to `23020` on your public address
-   (and nothing to `23010`):
-   `echo x | nc -u -w1 <your public IP> 23020`.
-3. Within a minute, on the node's machine, run the script from both ports on
-   the host's network:
+1. On the node's machine, fetch the script and the image first, so nothing
+   has to download while the router's state is fresh:
 
     ```bash
     curl -fsSLo /tmp/stun_port_pair.py \
       https://raw.githubusercontent.com/GeiserX/CashPilot/main/scripts/stun_port_pair.py
+    docker pull python:3.15.2-alpine
+    ```
+
+2. Pick two odd ports in `UDP_PORTS`, say `23011` and `23021`, and stop the
+   node with **Stop** on CashPilot's dashboard. A plain `docker stop` is not
+   recorded as a stop you meant, so the worker can start the node again in
+   the middle of the test. Odd ports, because the script tests the odd port
+   of each pair first: its even partner comes second, and the pairing effect
+   below can rewrite that one with no packet from outside.
+3. From the outside machine, send one packet to `23021` on your public address
+   (and nothing to `23011`):
+   `echo x | nc -u -w1 <your public IP> 23021`.
+4. Within a minute, on the node's machine, run the script on both pairs on
+   the host's network:
+
+    ```bash
     docker run --rm --network host -v /tmp/stun_port_pair.py:/t.py:ro \
       python:3.15.2-alpine sh -c 'python /t.py --start 23010 --pairs 1; python /t.py --start 23020 --pairs 1'
     ```
 
-4. Start the node again with **Start** on the dashboard.
+5. Start the node again with **Start** on the dashboard.
 
-On a router with this mapping, `23020` comes back `REWRITTEN` and `23010`
-comes back `kept`. On a working router both keep their number. If `23010` is
-rewritten too, run steps 1 to 4 again with two other ports, since the pairing
-effect below can hit one now and then. If every port comes back rewritten,
+Read the two odd ports only. On a router with this mapping, `23021` comes back
+`REWRITTEN` and `23011` comes back `kept`. On a working router both keep their
+number. If `23011` is rewritten too, run steps 2 to 5 again with two other
+odd ports. If every port comes back rewritten,
 something rewrites every port; see below.
 
 Run without the inbound packet, the script finds only the secondary pairing
