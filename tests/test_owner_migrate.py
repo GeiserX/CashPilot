@@ -306,6 +306,18 @@ class Api:
             if src not in d.vols:
                 raise APIError(f"no such volume {src}")
             mounts.append({"Type": "volume", "Name": src, "Destination": dst, "RW": True})
+        for mount in data["HostConfig"].get("Mounts") or []:
+            src = mount.get("Source")
+            if not src:  # an anonymous volume: Docker makes a new, empty one
+                src = _id()
+                d.volume(src, {})
+            elif src not in d.vols:
+                raise APIError(f"no such volume {src}")
+            mounts.append({"Type": "volume", "Name": src, "Destination": mount["Target"], "RW": True})
+        targets = [m["Destination"] for m in mounts]
+        for dst in targets:
+            if targets.count(dst) > 1:
+                raise APIError(f"Duplicate mount point: {dst}")
         c.attrs["Mounts"] = mounts
         c.attrs["NetworkSettings"]["Networks"] = {
             n: {**ep, "NetworkID": d.nets[n].id if n in d.nets else ""}
@@ -845,6 +857,27 @@ def test_a_proxied_earner_moves_with_its_tunnel_and_waits_for_it(tmp_path):
     assert new_earner.attrs["HostConfig"]["NetworkMode"] == f"container:{new_tunnel.id}"
     # Started by the worker once the tunnel's firewall is up, never by the migration.
     assert new_earner.status == "exited"
+
+
+def test_a_tunnel_whose_secret_volume_is_a_mount_comes_back_on_that_volume(tmp_path):
+    """The worker gives a tunnel its secret volume as an anonymous Mount
+    (HostConfig.Mounts with no Source), not as a Binds entry. The recreate must
+    name the volume in that Mount: a Binds entry beside it is the same path
+    twice, which Docker refuses, with every container of the plan removed."""
+    d = FakeDocker()
+    secrets = "a" * 64
+    d.volume(secrets, {"settings": "the proxy"})
+    tunnel = d.add(Container(d, "cashpilot-tunnel-p3", WORKER_LABELS))
+    tunnel.attrs["HostConfig"]["Mounts"] = [{"Target": "/run/cashpilot-secret", "Type": "volume"}]
+    tunnel.attrs["Mounts"] = [{"Type": "volume", "Name": secrets, "Destination": "/run/cashpilot-secret", "RW": True}]
+    earner = d.add(Container(d, "cashpilot-honeygain-p3", WORKER_LABELS, networks=()))
+    earner.attrs["HostConfig"]["NetworkMode"] = f"container:{tunnel.id}"
+    assert FakeMigrator(d, om.State(tmp_path)).run([]) == 0
+    new_tunnel = d.containers.get("cashpilot-tunnel-p3")
+    assert new_tunnel.id != tunnel.id and new_tunnel.status == "running"
+    assert [(m["Name"], m["Destination"]) for m in new_tunnel.attrs["Mounts"]] == [(secrets, "/run/cashpilot-secret")]
+    assert d.data[secrets] == {"settings": "the proxy"}
+    assert d.containers.get("cashpilot-honeygain-p3").id != earner.id
 
 
 def test_a_failed_tunnel_backup_restarts_the_tunnel_and_leaves_its_earner_for_the_worker(tmp_path):
