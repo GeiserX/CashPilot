@@ -841,9 +841,21 @@ class Migrator:
         # An image VOLUME the container got an anonymous volume for: name it, or
         # the new container would get an empty one.
         binds = list(host.get("Binds") or [])
-        named = {str(b).split(":", 1)[0] for b in binds} | {
-            str(m.get("Source")) for m in host.get("Mounts") or [] if isinstance(m, dict)
+        # The same for an anonymous volume asked for as a Mount (a tunnel's secret
+        # volume): its name goes into that Mount. A Binds entry beside it would
+        # be the same path twice, which Docker refuses.
+        at = {
+            m.get("Destination"): m["Name"]
+            for m in info.get("Mounts") or []
+            if m.get("Type") == "volume" and m.get("Name")
         }
+        asked = [dict(m) if isinstance(m, dict) else m for m in host.get("Mounts") or []]
+        for m in asked:
+            if isinstance(m, dict) and m.get("Type") == "volume" and not m.get("Source") and m.get("Target") in at:
+                m["Source"] = at[m["Target"]]
+        if asked:
+            host["Mounts"] = asked
+        named = {str(b).split(":", 1)[0] for b in binds} | {str(m.get("Source")) for m in asked if isinstance(m, dict)}
         for mount in info.get("Mounts") or []:
             if mount.get("Type") == "volume" and mount.get("Name") and mount["Name"] not in named:
                 binds.append(f"{mount['Name']}:{mount['Destination']}{'' if mount.get('RW', True) else ':ro'}")
