@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.2.7] - 2026-11-10
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#711)
+
+### Fixes
+
+- Say a proxy's tunnel change is stuck, and why, instead of calling its tunnel gone (#712)
+
 ## [2.2.6] - 2026-11-10
 
 ### Documentation
