@@ -1,18 +1,15 @@
 name: Auto Release
 
+# One release a day at most. A release used to be cut on every merge that
+# touched the app, which on a busy day was eight or nine version bumps, each one
+# an update notice and a restart for everyone who follows releases. Merges now
+# collect on main and the daily run releases them together: the steps below
+# already compare against the last tag, so one run covers every commit since.
+# An urgent fix does not wait: start this workflow by hand (Actions, "Auto
+# Release", "Run workflow"), which releases main as it is.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'Dockerfile'
-      - 'entrypoint.sh'
-      - 'Dockerfile.worker'
-      - 'Dockerfile.tunnel'
-      - 'tunnel/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'app/**'
-      - 'services/**'
+  schedule:
+    - cron: '17 3 * * *'  # 03:17 UTC, every day
   workflow_dispatch:
 
 permissions:
@@ -20,7 +17,42 @@ permissions:
   packages: write
 
 jobs:
+  # Is there anything to release? The files a release is built from, compared
+  # with the last tag. On a day with no such change the run ends here, green,
+  # without running the suite.
+  pending:
+    name: Anything to release
+    runs-on: ubuntu-latest
+    outputs:
+      any: ${{ steps.diff.outputs.any }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Compare main with the last release
+        id: diff
+        run: |
+          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          if [ -z "$LAST_TAG" ]; then
+            echo "No release yet: everything is pending."
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- \
+            Dockerfile entrypoint.sh Dockerfile.worker Dockerfile.tunnel tunnel \
+            pyproject.toml uv.lock app services)
+          if [ -n "$CHANGED" ]; then
+            echo "Changed since $LAST_TAG:"; echo "$CHANGED"
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing a release is built from changed since $LAST_TAG."
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
   ci:
+    needs: pending
+    if: needs.pending.outputs.any == 'true'
     name: Verify CI passes
     runs-on: ubuntu-latest
     steps:
@@ -63,7 +95,6 @@ jobs:
     needs: ci
     name: Bump version and release
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     outputs:
       new_tag: ${{ steps.version.outputs.new_tag }}
       build_ui: ${{ steps.changes.outputs.ui }}

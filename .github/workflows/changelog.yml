@@ -8,16 +8,15 @@ name: Changelog
 # and enforce_admins is false), so a job cannot push a regenerated file to it. It
 # therefore opens a PR onto a FIXED branch — `chore/changelog` — which
 # create-pull-request UPDATES in place rather than opening a new one each time.
-# Without the fixed branch this would file a pull request per release, and this
-# project releases roughly every two commits.
+# Without the fixed branch this would file a pull request per release.
 #
 # WHY MERGING IT DOES NOT CAUSE ANOTHER RELEASE
 # --------------------------------------------
-# release.yml triggers on pushes to main filtered by path — Dockerfile,
-# entrypoint.sh, Dockerfile.worker, pyproject.toml, uv.lock, app/**, services/**,
-# Dockerfile.tunnel, tunnel/**.
+# release.yml runs once a day and releases only when one of these changed since
+# the last tag: Dockerfile, entrypoint.sh, Dockerfile.worker, pyproject.toml,
+# uv.lock, app/**, services/**, Dockerfile.tunnel, tunnel/**.
 # CHANGELOG.md, cliff.toml and docs/** are all outside that list, so merging this
-# PR cannot start a release loop. If you ever add CHANGELOG.md to that filter,
+# PR cannot start a release loop. If you ever add CHANGELOG.md to that list,
 # this workflow becomes a release loop; do not.
 #
 # WHY RELEASE.YML DISPATCHES THIS, AND WHY THIS DISPATCHES THE CHECKS
@@ -100,8 +99,8 @@ jobs:
             This PR is **updated in place** after each release rather than
             reopened, so it is normal for it to sit open and keep changing.
 
-            `CHANGELOG.md` is outside `release.yml`'s path filter, so merging
-            this does not trigger another release.
+            `CHANGELOG.md` is not one of the files `release.yml` releases for,
+            so merging this does not cause another release.
 
             What changed here is only ever a re-render of commits that are
             already on `main` — but read it before merging anyway: the grouping
