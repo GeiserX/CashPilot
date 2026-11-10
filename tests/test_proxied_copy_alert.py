@@ -27,9 +27,17 @@ def _clean_state(monkeypatch):
     monkeypatch.setattr(main, "_account_disabled", {})
 
 
-def _worker(entries, *, wid=1, name="alpha", online=True, docker=True, features=("instances", "proxy_tunnel")):
+def _worker(
+    entries, *, wid=1, name="alpha", online=True, docker=True, features=("instances", "proxy_tunnel"), containers=()
+):
     info = {"docker_available": docker, "features": list(features), "proxied": entries}
-    return {"id": wid, "name": name, "status": "online" if online else "offline", "system_info": json.dumps(info)}
+    return {
+        "id": wid,
+        "name": name,
+        "status": "online" if online else "offline",
+        "system_info": json.dumps(info),
+        "containers": json.dumps(list(containers)),
+    }
 
 
 def _entry(slug, *, pid=3, status="running", tunnel="running", held=False, shared=True):
@@ -194,6 +202,13 @@ class TestNothingCashPilotDidOnPurpose:
         _past_grace(alerts, [_worker([_entry("earnfm", pid=4)])])
         assert not alerts.rows
 
+    def test_a_service_deployed_before_per_box_records_still_alerts_while_the_box_runs_it(self):
+        # No placement row, but the box reports the base service: it is deployed there.
+        alerts = _Alerts([_copy("earnfm")], placements=[])
+        base = {"slug": "earnfm", "name": "cashpilot-earnfm", "status": "running"}
+        _past_grace(alerts, [_worker([], containers=[base])])
+        assert list(alerts.rows) == ["cashpilot-earnfm-p3@1"]
+
     def test_a_stored_alert_clears_once_the_service_is_removed_from_the_box(self):
         alerts = _Alerts([_copy("earnfm")])
         _past_grace(alerts, [_worker([])])
@@ -295,3 +310,33 @@ def test_the_health_check_runs_it_with_the_workers_it_read():
     ):
         asyncio.run(main._run_health_check())
     check.assert_awaited_once_with(workers)
+
+
+class TestTheDashboardSaysSo:
+    """The attention list, run in node against the real app.js."""
+
+    def test_a_proxied_alert_is_a_card_on_the_attention_list(self):
+        import os
+        import shutil
+        import subprocess
+
+        from tests.test_account_disabled import _HARNESS, ROOT
+
+        node = shutil.which("node")
+        if not node:
+            pytest.skip("node is not installed")
+        harness = _HARNESS.replace(": { alerts: [] };", ": JSON.parse(process.env.BELL);")
+        assert harness != _HARNESS
+        bell = {"alerts": [{"kind": "proxied", "platform": "cashpilot-tunnel-p3", "error": "The tunnel is gone"}]}
+        svc = {"slug": "earnfm", "name": "EarnFM", "instance_details": []}
+        out = subprocess.run(
+            [node, "-e", harness, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "BELL": json.dumps(bell)},
+        )
+        result = json.loads(out.stdout)
+        assert "error" not in result, result
+        assert "Proxied copy down" in result["tags"]
+        assert "cashpilot-tunnel-p3" in result["html"] and "The tunnel is gone" in result["html"]

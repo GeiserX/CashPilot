@@ -1611,6 +1611,12 @@ const CP = (() => {
     try {
       const bell = await api('/api/collector-alerts');
       for (const a of (bell.alerts || [])) {
+        // A proxied copy or its tunnel gone or down: the per-service rows
+        // never list proxied copies, so without this the list says nothing is wrong.
+        if (a.kind === 'proxied') {
+          items.push({ level: 'fail', tag: 'Proxied copy down', what: a.platform, why: escapeHtml(a.error), actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+          continue;
+        }
         if (a.kind !== 'missing') continue;
         const svc = services.find(s => s.slug === a.platform);
         let actions = '';

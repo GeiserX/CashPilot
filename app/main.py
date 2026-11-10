@@ -914,8 +914,11 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
         tunnel_faults: dict[str, dict[str, Any]] = {}
         # A copy runs with its service's settings on that box; once the service
         # is removed there, its copies went with it (worker remove_all), even
-        # when a partial failure kept their records.
+        # when a partial failure kept their records. A deployment made before
+        # specs were kept per box has no placement; the box still reporting
+        # the service is what says it is deployed there.
         placed = {(p["slug"], p["worker_id"]) for p in await database.list_deployment_placements()}
+        placed |= {(r["slug"], r["worker_id"]) for r in placement.reported(workers)}
         for copy in await database.list_proxied_copies():
             pid, wid, slug = copy["proxy_id"], copy["worker_id"], copy["slug"]
             proxy = proxy_rows.get(pid)
@@ -8692,8 +8695,14 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
     elif body.command == "remove":
         await database.remove_deployment(slug, worker_id=worker_id)
         # As in _svc_remove: the worker removed the proxied copies with the service.
-        if not (isinstance(result, dict) and result.get("proxied_error")):
-            await database.delete_proxied_copies_of(worker_id, slug)
+        # The removal already happened; a failure here must not report it as failed.
+        try:
+            if isinstance(result, dict) and result.get("proxied_error"):
+                logger.warning("Removed %s, but some proxied copies remain: %s", slug, result["proxied_error"])
+            else:
+                await database.delete_proxied_copies_of(worker_id, slug)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Removed %s, but could not drop its proxied copy records: %s", slug, exc)
         await database.record_health_event(slug, "remove", worker_id=worker_id)
         metrics.record_container_lifecycle("remove", slug)
     return result

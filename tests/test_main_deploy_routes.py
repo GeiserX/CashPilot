@@ -1119,6 +1119,21 @@ class TestWorkerCommand:
             assert resp.status_code == 200
             rm_copies.assert_not_awaited()
 
+    def test_command_remove_that_cannot_drop_the_copy_records_still_reports_success(self, client):
+        worker, mock_client = self._setup()
+        with (
+            _auth_writer(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.remove_deployment", new_callable=AsyncMock),
+            patch("app.main.database.delete_proxied_copies_of", new_callable=AsyncMock, side_effect=OSError("locked")),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock) as health_evt,
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post("/api/workers/1/command", json={"command": "remove", "slug": "honeygain"})
+            assert resp.status_code == 200
+            health_evt.assert_awaited()
+
     def test_command_restart(self, client):
         worker, mock_client = self._setup()
         with (
