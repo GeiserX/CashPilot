@@ -77,13 +77,19 @@ docker exec -it cashpilot-ui python -m app.users rename OLD NEW
 
 The new name follows the registration rule: 3 to 32 letters, digits, `_` or `-`. Sign out and back in to see it.
 
-**If the UI container does not start**, run the command from the same image against the same data. `docker volume ls` shows the volume; with the stock compose file its name ends in `_cashpilot_data`. Use the image tag you run:
+**If the UI container does not start**, run the command from the same image against the same data. First find the host folder that holds the UI's `/data`. This works for a stopped container, and for a named volume as well as a bind mount (Unraid, CasaOS, Runtipi):
 
 ```bash
-docker run --rm -v <volume>:/data --entrypoint python drumsergio/cashpilot:<same tag> -m app.users reset-password
+docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' cashpilot-ui
 ```
 
-The command never creates a database or a key file, so a wrong volume gives an error and changes nothing.
+Then mount that folder and use the image tag you run:
+
+```bash
+docker run --rm -v <folder>:/data --entrypoint python drumsergio/cashpilot:<same tag> -m app.users reset-password
+```
+
+The command never creates a database or a key file. A wrong path gives a "no database" error and changes no data, but Docker may leave an empty folder or volume with that name behind; remove it.
 
 **Do not** delete the data volume: that erases `/data/.fernet_key` and with it every saved credential. **Do not** delete rows from the `users` table either.
 
