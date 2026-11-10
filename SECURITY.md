@@ -99,6 +99,7 @@ A worker started from an older compose file, from the Unraid template or with `d
 
 - **UI users**: Session-based authentication with bcrypt-hashed passwords. Sessions are signed tokens stored in HTTP-only cookies.
 - **Worker-to-UI**: Per-worker fleet keys (since v1.0.0). `CASHPILOT_API_KEY` is only a shared enrollment/bootstrap credential -- on a worker's first heartbeat the UI issues it a unique key (stored encrypted, returned once), and every subsequent request in *either* direction (worker heartbeat, UI command) authenticates with that worker's own key. The shared key is rejected once a worker is enrolled, so a leaked worker key only affects that one worker.
+- **Password recovery**: No in-app password recovery; a reset requires access to the server, by design. The owner runs `python -m app.users reset-password` in the UI container ([FAQ](docs/faq.md#forgot-password)).
 - **Role-based access**: Three roles (viewer, writer, owner) with escalating permissions, plus an implicit `fleet` role for authenticated worker requests. `CASHPILOT_ADMIN_API_KEY` grants owner access, and `CASHPILOT_READONLY_API_KEY` a read-only role limited to reporting GETs. Container management requires writer or owner role.
 
 ### Data Storage

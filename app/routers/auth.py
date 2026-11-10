@@ -12,6 +12,7 @@ name the same module objects this module holds references to.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from fastapi import APIRouter, Form, HTTPException, Request
@@ -22,8 +23,47 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app import auth as auth_module
 from app import database, deps, login_rate_limit, metrics
 from app import setup_token as setup_token_module
+from app.users import USERNAME_PATTERN
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _rearm_setup_token() -> None:
+    """Fail closed when first-run registration has no active setup token.
+
+    Startup arms the token only when no users exist at that moment. If the users
+    table empties while the app runs, no token is active, and without this the
+    private-network check would be the only gate on creating an owner. So arm a
+    new token, write it to the log the way startup does, and refuse this request.
+    No await sits between the check and the set, so two requests cannot both
+    arm a token.
+
+    If the save fails, the token is dropped, because nobody could read it.
+    After the save, check for users again: a concurrent request may have created
+    the owner and cleared the token before this one armed it. Then drop the token
+    and refuse without a log line.
+    """
+    if setup_token_module.active() is not None:
+        return
+    tok = setup_token_module.generate()
+    setup_token_module.set_active(tok)
+    try:
+        await database.set_config("_setup_token", tok)
+        owner_exists = await database.has_any_users()
+    except Exception:
+        setup_token_module.clear()
+        raise
+    if owner_exists:
+        setup_token_module.clear()
+        await database.delete_config_keys(["_setup_token"])
+        raise HTTPException(status_code=409, detail="An account already exists on this instance. Please log in.")
+    logger.warning(
+        "FIRST-RUN SETUP: no account exists. Open /register and enter this one-time setup token to create the owner account: %s",
+        tok,
+    )
+    raise HTTPException(status_code=403, detail="A setup token was just written to the container log.")
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -133,9 +173,11 @@ async def do_register(
             raise HTTPException(status_code=403, detail="Only owners can add users")
 
     if is_first:
+        deps._require_private_network(request)
+        await _rearm_setup_token()
         deps._require_first_run_access(request, setup_token)
 
-    if not re.match(r"^[a-zA-Z0-9_-]{3,32}$", username):
+    if not re.fullmatch(USERNAME_PATTERN, username):
         return deps.templates.TemplateResponse(
             request,
             "auth.html",

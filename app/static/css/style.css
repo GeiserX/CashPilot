@@ -1871,6 +1871,8 @@ body.gate { display: flex; flex-direction: column; }
 .error-msg { display: none; }
 .error-msg.visible { display: block; }
 .gate-foot-note { margin-top: 16px; color: var(--text-muted); font-size: var(--fs-2); }
+.gate-foot-note a { overflow-wrap: anywhere; }
+.gate-foot-note > p { margin-top: 8px; }
 .gate-foot {
   display: flex; gap: 16px; justify-content: center; padding: 14px 20px 18px;
   border-top: 1px solid var(--border-color); font-size: var(--fs-2);

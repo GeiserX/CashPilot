@@ -86,7 +86,10 @@
       </form>
 
       {% if mode == "login" %}
-      <p class="gate-foot-note">No account? <a href="/register">Create one</a></p>
+      <details class="gate-foot-note">
+        <summary>Forgot your password or username?</summary>
+        <p>CashPilot has no e-mail reset. Whoever runs the server can do it from the console of the CashPilot UI container: <code>python -m app.users list</code> shows the accounts, then <code>python -m app.users reset-password USERNAME</code> sets a new password. Your services, earnings and saved credentials are not affected. Do not delete the data volume: that erases your saved credentials. Full steps: <a href="https://github.com/GeiserX/CashPilot/blob/main/docs/faq.md#forgot-password" target="_blank" rel="noopener">https://github.com/GeiserX/CashPilot/blob/main/docs/faq.md#forgot-password</a></p>
+      </details>
       {% elif mode == "register" and not is_first %}
       <p class="gate-foot-note">Already have an account? <a href="/login">Sign in</a></p>
       {% endif %}
