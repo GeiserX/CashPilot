@@ -297,6 +297,14 @@ class TestLoginRoute:
 
 
 class TestRegisterRoute:
+    @pytest.fixture(autouse=True)
+    def _armed_setup_token(self):
+        """First-run setup fails closed without a token, so arm one (issue #721)."""
+        from app import setup_token
+
+        setup_token.set_active("the-token")
+        yield
+
     def test_register_page_first_user(self, client):
         with (
             _no_auth(),
@@ -330,6 +338,7 @@ class TestRegisterRoute:
                     "username": "admin",
                     "password": "password123",
                     "password_confirm": "password123",
+                    "setup_token": "the-token",
                 },
                 follow_redirects=False,
             )
@@ -395,6 +404,7 @@ class TestRegisterRoute:
                     "username": "admin",
                     "password": "password123",
                     "password_confirm": "different",
+                    "setup_token": "the-token",
                 },
             )
             assert resp.status_code == 400
@@ -410,6 +420,7 @@ class TestRegisterRoute:
                     "username": "admin",
                     "password": "short",
                     "password_confirm": "short",
+                    "setup_token": "the-token",
                 },
             )
             assert resp.status_code == 400
@@ -425,6 +436,7 @@ class TestRegisterRoute:
                     "username": "a",
                     "password": "password123",
                     "password_confirm": "password123",
+                    "setup_token": "the-token",
                 },
             )
             assert resp.status_code == 400
@@ -441,6 +453,7 @@ class TestRegisterRoute:
                     "username": "admin",
                     "password": "password123",
                     "password_confirm": "password123",
+                    "setup_token": "the-token",
                 },
             )
             assert resp.status_code == 400

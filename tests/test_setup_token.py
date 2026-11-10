@@ -26,10 +26,11 @@ def _req(host="127.0.0.1", xff=None, query=None, headers=None):
 
 
 class TestSetupTokenModule:
-    def test_verify_no_active_allows_anything(self):
+    def test_verify_no_active_refuses_everything(self):
+        # Fails closed (issue #721): no active token means nothing can match.
         setup_token.clear()
-        assert setup_token.verify(None) is True
-        assert setup_token.verify("whatever") is True
+        assert setup_token.verify(None) is False
+        assert setup_token.verify("whatever") is False
 
     def test_verify_active_requires_exact_match(self):
         setup_token.set_active("s3cret")
@@ -102,8 +103,9 @@ class TestRequireFirstRunAccess:
             deps._require_first_run_access(_req("8.8.8.8"), "tok")
         assert ei.value.status_code == 403
 
-    def test_no_active_token_falls_back_to_network_only(self):
-        # Once the token is retired, first-run access is network-gated only.
+    def test_no_active_token_refuses_even_a_private_client(self):
+        # Fails closed (issue #721): the network check alone never creates an owner.
         setup_token.clear()
-        with patch.object(deps, "_TRUST_PROXY", False):
-            assert deps._require_first_run_access(_req("192.168.1.5")) is None
+        with patch.object(deps, "_TRUST_PROXY", False), pytest.raises(HTTPException) as ei:
+            deps._require_first_run_access(_req("192.168.1.5"))
+        assert ei.value.status_code == 403

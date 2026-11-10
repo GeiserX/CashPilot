@@ -51,12 +51,13 @@ def active() -> str | None:
 def verify(provided: str | None) -> bool:
     """Check a caller-supplied token against the active one.
 
-    Returns ``True`` when no token is active (nothing to enforce) or when the
-    supplied value matches in constant time; ``False`` otherwise.
+    Returns ``True`` only when a token is active and the supplied value matches
+    in constant time. With no active token it returns ``False``: first-run setup
+    fails closed (issue #721), and ``/register`` arms a new token instead.
     """
     current = _active
     if current is None:
-        return True
+        return False
     if not provided:
         return False
     return hmac.compare_digest(current, provided)
