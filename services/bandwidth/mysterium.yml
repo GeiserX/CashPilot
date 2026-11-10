@@ -54,9 +54,8 @@ docker:
         default 30 carry about 15 sessions at once, more than a home node gets.
         A wider range fixes nothing and costs more: every published port
         slows the node's start and removal (300 ports take about 12 s to
-        start), past about 350 a deploy runs over the socket proxy's time
-        limit and fails, and with Docker's default userland proxy each port
-        also takes about 2.5 MB of memory. Sessions that all fail are a
+        start), CashPilot accepts at most 300, and with Docker's default
+        userland proxy each port also takes about 2.5 MB of memory. Sessions that all fail are a
         router problem, not too few ports: see "Routers that rewrite UDP
         source ports" in the Mysterium guide. Keep it below 32768: ports
         32768-60999 are Linux's ephemeral range, where any program on the host

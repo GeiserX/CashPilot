@@ -106,12 +106,14 @@ starts two small proxy processes per port; 101 ports measured about 250 MB);
 with `"userland-proxy": false` there are no such processes. Either way the
 node's start and removal take longer with every port: 101 ports took 3.7 s to
 start and 7.1 s to remove, 300 took 11.7 s and 19.2 s, 1,000 took 51 s and
-84 s. Past about 350 ports a deploy runs over the socket proxy's 30-second
-limit and fails. A node whose sessions all fail is not short of ports; see
+84 s. CashPilot accepts a range of at most 300 ports. A node already running
+with a wider one keeps running, and a redeploy of it is refused until the
+range is narrowed. A node whose sessions all fail is not short of ports; see
 [Routers that rewrite UDP source ports](#routers-that-rewrite-udp-source-ports).
 The default was `56000:56100` through
 2.0.6 and `56000:56029` in 2.0.7 and 2.1.0, both inside the ephemeral range. A node keeps
-the range it has on record on a redeploy. To move it, set `UDP_PORTS` to a
+the range it has on record on a redeploy, unless that range is wider than
+300 ports. To move it, set `UDP_PORTS` to a
 free range below 32768 other than the default, such as `23100:23129`, change
 the router forward to match, and redeploy. A value equal to the default reads
 as a field left as it was, so the recorded range would stay. To take the
