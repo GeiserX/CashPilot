@@ -57,7 +57,7 @@ CashPilot has no e-mail reset. Whoever runs the server resets the password from 
     The command prints the new password once.
 
 3. Sign in with it, then change it from the avatar menu (top right), **Change password**.
-4. Optional: restart the UI container (`docker restart cashpilot-ui`). Browsers that were still signed in as that user are signed out only after a restart.
+4. If someone else may have had access to the account, restart the UI container (`docker restart cashpilot-ui`). Browsers that were still signed in as that user are signed out only after a restart. If you only forgot the password, the restart is optional.
 
 The container name depends on how you installed CashPilot:
 
