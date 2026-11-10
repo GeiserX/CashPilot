@@ -1722,6 +1722,21 @@ const CP = (() => {
     clear.hidden = false;
   }
 
+  // The attention list and the bell read the same alerts, but the list is
+  // drawn only when the services refresh. When the alerts it shows (missing,
+  // proxied) change between two bell polls, draw it again, or it can say
+  // nothing needs you while the bell reports a failure.
+  let _attentionAlertsKey = null;
+  function refreshAttentionOnAlertChange(alerts) {
+    const key = JSON.stringify((alerts || [])
+      .filter(a => a.kind === 'missing' || a.kind === 'proxied')
+      .map(a => [a.kind, a.platform, a.error]));
+    const changed = _attentionAlertsKey !== null && key !== _attentionAlertsKey;
+    _attentionAlertsKey = key;
+    if (!changed || !_attentionCount.services || !document.getElementById('attention-list')) return null;
+    return renderAttention(_attentionCount.services, _attentionCount.workers, _attentionSeq);
+  }
+
   // Action-button icons, extracted so the single-instance row and the per-node sub-row
   // share one copy each (cyc componentization). Byte-identical to the inline SVGs replaced.
   const ICON_RESTART = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>';
@@ -4943,6 +4958,7 @@ const CP = (() => {
         api('/api/credentials/health').catch(() => []),
       ]);
       const alerts = payload.alerts || [];
+      refreshAttentionOnAlertChange(alerts);
       for (const row of (Array.isArray(health) ? health : [])) {
         if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
         if (alerts.some(a => a.platform === row.service && a.kind === 'collector')) continue;

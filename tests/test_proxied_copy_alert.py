@@ -340,3 +340,57 @@ class TestTheDashboardSaysSo:
         assert "error" not in result, result
         assert "Proxied copy down" in result["tags"]
         assert "cashpilot-tunnel-p3" in result["html"] and "The tunnel is gone" in result["html"]
+
+    def test_the_list_is_drawn_again_when_the_bell_poll_sees_the_alerts_change(self):
+        """The list is drawn on the services refresh; the bell polls on its own.
+        An alert that appears between the two must reach the list too."""
+        import shutil
+        import subprocess
+
+        from tests.test_account_disabled import _HARNESS, ROOT
+
+        node = shutil.which("node")
+        if not node:
+            pytest.skip("node is not installed")
+        harness = _HARNESS.replace(": { alerts: [] };", ": { alerts: bell };\nlet bell = [];")
+        harness = harness.replace(
+            "return renderAttention;`)", "return [renderAttention, refreshAttentionOnAlertChange];`)"
+        )
+        start = harness.index("run([svc]")
+        harness = (
+            harness[:start]
+            + """const [render, refresh] = run;
+const tagsNow = () => [...els['attention-list'].innerHTML.matchAll(/class="attn-tag">([^<]*)</g)].map(m => m[1]);
+(async () => {
+  await render([svc], [{ id: 1, name: 'charlie', status: 'online' }]);
+  const first = refresh(bell);
+  const before = tagsNow();
+  const same = refresh(bell);
+  bell = [{ kind: 'proxied', platform: 'cashpilot-tunnel-p3', error: 'The tunnel is gone' }];
+  await refresh(bell);
+  const appeared = tagsNow();
+  bell = [];
+  await refresh(bell);
+  console.log(JSON.stringify({ first, same, before, appeared, cleared: tagsNow() }));
+})();
+"""
+        )
+        svc = {"slug": "earnfm", "name": "EarnFM", "instance_details": []}
+        out = subprocess.run(
+            [node, "-e", harness, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        result = json.loads(out.stdout)
+        assert result["first"] is None and result["same"] is None, "an unchanged poll must not redraw"
+        assert "Proxied copy down" not in result["before"]
+        assert "Proxied copy down" in result["appeared"]
+        assert "Proxied copy down" not in result["cleared"]
+
+    def test_the_bell_poll_hands_its_alerts_to_that_check(self):
+        from tests.test_account_disabled import ROOT
+
+        src = (ROOT / "app/static/js/app.js").read_text()
+        poll = src[src.index("  async function loadCollectorAlerts() {") :]
+        assert "refreshAttentionOnAlertChange(alerts);" in poll[: poll.index("\n  }\n")]
