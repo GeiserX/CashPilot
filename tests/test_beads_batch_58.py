@@ -135,8 +135,7 @@ class TestItDoesNotOversellWhatItKnows:
 class TestRegenerationCannotLoopOrLoseTheFile:
     def _release_paths(self) -> list[str]:
         doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
-        on = doc[True] if True in doc else doc["on"]
-        return list((on.get("push") or {}).get("paths") or [])
+        return doc["jobs"]["pending"]["env"]["RELEASE_PATHS"].split()
 
     def test_merging_the_changelog_does_not_trigger_a_release(self):
         """Otherwise: release -> regenerate -> merge -> release, forever."""

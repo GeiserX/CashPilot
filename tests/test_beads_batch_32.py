@@ -165,9 +165,7 @@ class TestDependabotUpdatesWhatShips:
     def _release_paths(self):
         """Everything release.yml treats as a reason to cut a release."""
         doc = _workflow("release.yml")
-        # PyYAML parses a bare `on:` key as the boolean True.
-        triggers = doc.get("on", doc.get(True))
-        return set(triggers["push"]["paths"])
+        return set(doc["jobs"]["pending"]["env"]["RELEASE_PATHS"].split())
 
     def _updates(self):
         config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))

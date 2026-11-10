@@ -94,7 +94,7 @@ cashpilot/
   docker-compose.fleet.yml  # Multi-server example (UI + remote workers)
   .github/workflows/
     build.yml           # QEMU + Buildx multi-arch, Docker Hub push
-    release.yml         # Auto-release on push to main
+    release.yml         # One release a day, of everything merged since the last
 ```
 
 ### Key Design Decisions
@@ -212,7 +212,7 @@ filtered on `service` silently matched nothing in production. Use
 
 ### `release.yml` — Auto Release
 
-Triggers on push to `main` (paths: `app/`, `services/`, `Dockerfile*`, `requirements*.txt`). Chooses the version bump from conventional-commit markers since the last tag — **major** on a `BREAKING CHANGE` footer or `type!:` subject, **minor** on `feat:`, else **patch** — then creates an annotated git tag + GitHub Release. Skips if commit message contains `[skip ci]`.
+Runs once a day (03:17 UTC), not on each merge, and releases everything merged since the last tag in one version. It ends early when nothing a release is built from changed (`app/`, `services/`, `tunnel/`, `Dockerfile*`, `entrypoint.sh`, `pyproject.toml`, `uv.lock`). An urgent fix does not wait for the daily run: `gh workflow run release.yml` releases `main` as it is. Chooses the version bump from conventional-commit markers since the last tag — **major** on a `BREAKING CHANGE` footer or `type!:` subject, **minor** on `feat:`, else **patch** — then creates an annotated git tag + GitHub Release.
 
 **CRITICAL: NEVER manually create tags or GitHub releases.** The workflow handles version bumping automatically. Manual tags cause `already_exists` conflicts and skip Docker builds.
 

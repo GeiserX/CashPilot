@@ -33,9 +33,10 @@ def publish_steps() -> list[dict]:
 
 
 def release_push_paths() -> list[str]:
+    """The files a release is built from. Once the push trigger's path filter;
+    since releases are batched, the list the daily run compares with the last tag."""
     doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
-    # PyYAML parses a bare `on:` key as the boolean True.
-    return list((doc.get("on", doc.get(True)))["push"]["paths"])
+    return doc["jobs"]["pending"]["env"]["RELEASE_PATHS"].split()
 
 
 def _filter_regex(pattern: str) -> re.Pattern[str]:
