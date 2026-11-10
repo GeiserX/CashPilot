@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app import auth as auth_module
 from app import database, deps, login_rate_limit, metrics
 from app import setup_token as setup_token_module
+from app.users import USERNAME_PATTERN
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ async def do_register(
         await _rearm_setup_token()
         deps._require_first_run_access(request, setup_token)
 
-    if not re.match(r"^[a-zA-Z0-9_-]{3,32}$", username):
+    if not re.fullmatch(USERNAME_PATTERN, username):
         return deps.templates.TemplateResponse(
             request,
             "auth.html",
