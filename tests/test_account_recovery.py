@@ -96,6 +96,59 @@ class TestSetupTokenFailsClosed:
         assert setup_token.active() == "the-token"
         set_cfg.assert_not_called()
 
+    def test_a_public_client_does_not_arm_a_token(self, client):
+        """The network check runs first, so the internet cannot fill the log with tokens."""
+        setup_token.clear()
+        with (
+            patch("app.main.auth.get_current_user", return_value=None),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
+            patch("app.main.database.set_config", new_callable=AsyncMock) as set_cfg,
+            patch("app.deps.client_ip", return_value="8.8.8.8"),
+        ):
+            resp = client.post("/register", data=_FORM, follow_redirects=False)
+        assert resp.status_code == 403
+        assert setup_token.active() is None
+        set_cfg.assert_not_called()
+
+    def test_a_failed_save_leaves_no_unlogged_token(self, client, caplog):
+        """A token that was never logged must not stay active, or setup stays blocked."""
+        setup_token.clear()
+        with (
+            patch("app.main.auth.get_current_user", return_value=None),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, return_value=False),
+            patch(
+                "app.main.database.set_config",
+                new_callable=AsyncMock,
+                side_effect=[Exception("database is locked"), None],
+            ),
+            caplog.at_level(logging.WARNING),
+        ):
+            first = client.post("/register", data=_FORM, follow_redirects=False)
+            assert first.status_code == 500
+            assert setup_token.active() is None
+            second = client.post("/register", data=_FORM, follow_redirects=False)
+        assert second.status_code == 403
+        tok = setup_token.active()
+        assert tok and tok in caplog.text
+
+    def test_an_owner_created_meanwhile_arms_no_token(self, client, caplog):
+        """Another request created the owner while this one was arming a token."""
+        setup_token.clear()
+        with (
+            patch("app.main.auth.get_current_user", return_value=None),
+            patch("app.main.database.has_any_users", new_callable=AsyncMock, side_effect=[False, True]),
+            patch("app.main.database.set_config", new_callable=AsyncMock),
+            patch("app.main.database.delete_config_keys", new_callable=AsyncMock) as delete_keys,
+            patch("app.main.database.create_first_owner", new_callable=AsyncMock) as create,
+            caplog.at_level(logging.WARNING),
+        ):
+            resp = client.post("/register", data=_FORM, follow_redirects=False)
+        assert resp.status_code == 409
+        create.assert_not_called()
+        assert setup_token.active() is None
+        delete_keys.assert_awaited_once_with(["_setup_token"])
+        assert "FIRST-RUN SETUP" not in caplog.text
+
 
 class TestCookieRemintUsesTheStoredName:
     def test_a_renamed_user_gets_the_new_name_in_the_cookie(self, client):

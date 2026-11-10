@@ -39,12 +39,26 @@ async def _rearm_setup_token() -> None:
     new token, write it to the log the way startup does, and refuse this request.
     No await sits between the check and the set, so two requests cannot both
     arm a token.
+
+    If the save fails, the token is dropped, because nobody could read it.
+    After the save, check for users again: a concurrent request may have created
+    the owner and cleared the token before this one armed it. Then drop the token
+    and refuse without a log line.
     """
     if setup_token_module.active() is not None:
         return
     tok = setup_token_module.generate()
     setup_token_module.set_active(tok)
-    await database.set_config("_setup_token", tok)
+    try:
+        await database.set_config("_setup_token", tok)
+        owner_exists = await database.has_any_users()
+    except Exception:
+        setup_token_module.clear()
+        raise
+    if owner_exists:
+        setup_token_module.clear()
+        await database.delete_config_keys(["_setup_token"])
+        raise HTTPException(status_code=409, detail="An account already exists on this instance. Please log in.")
     logger.warning(
         "FIRST-RUN SETUP: no account exists. Open /register and enter this one-time setup token to create the owner account: %s",
         tok,
