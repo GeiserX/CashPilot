@@ -456,6 +456,12 @@ class TestReleasesAreBatched:
         assert minute.isdigit() and hour.isdigit() and (day, month, weekday) == ("*", "*", "*")
         assert "workflow_dispatch" in on
 
+    def test_a_hand_started_run_from_another_branch_releases_nothing(self):
+        doc, _on = self._doc()
+        assert doc["jobs"]["pending"]["if"] == "github.ref == 'refs/heads/main'"
+        # Every later job hangs off pending, so a skipped pending skips them all.
+        assert doc["jobs"]["ci"]["needs"] == "pending" and doc["jobs"]["release"]["needs"] == "ci"
+
     def test_a_day_with_nothing_to_release_stops_before_the_suite(self):
         doc, _on = self._doc()
         ci = doc["jobs"]["ci"]

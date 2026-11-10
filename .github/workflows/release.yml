@@ -23,6 +23,9 @@ jobs:
   pending:
     name: Anything to release
     runs-on: ubuntu-latest
+    # main only. "Run workflow" offers every branch, and a run from another one
+    # would tag and publish code that is not merged.
+    if: github.ref == 'refs/heads/main'
     outputs:
       any: ${{ steps.diff.outputs.any }}
     env:
