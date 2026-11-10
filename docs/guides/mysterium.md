@@ -326,11 +326,6 @@ effect. It still works for that, inside the node's network namespace with the
 node running:
 
 ```bash
-docker run --rm --network container:cashpilot-mysterium \
-  -v /tmp/stun_port_pair.py:/t.py:ro python:3.15.2-alpine python /t.py
-```
-
-```bash
 curl -fsSLo /tmp/stun_port_pair.py \
   https://raw.githubusercontent.com/GeiserX/CashPilot/main/scripts/stun_port_pair.py
 docker run --rm --network container:cashpilot-mysterium \
