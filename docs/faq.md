@@ -54,12 +54,12 @@ CashPilot has no e-mail reset. Whoever runs the server resets the password from 
     docker exec -it cashpilot-ui python -m app.users reset-password alice
     ```
 
-    With exactly one owner you can leave the username out, and the command resets that owner.
+    With exactly one owner you can leave the username out, and the command resets that owner. If the username starts with `-`, put `--` before it: `reset-password -- -alice`.
 
     The command prints the new password once.
 
-3. Sign in with it, then change it from the avatar menu (top right), **Change password**.
-4. If someone else may have had access to the account, restart the UI container (`docker restart cashpilot-ui`). Browsers that were still signed in as that user are signed out only after a restart. If you only forgot the password, the restart is optional.
+3. If someone else may have had access to the account, restart the UI container now (`docker restart cashpilot-ui`). Browsers that were still signed in as that user are signed out only after a restart. If you only forgot the password, the restart is optional.
+4. Sign in with the new password, then change it from the avatar menu (top right), **Change password**.
 
 The container name depends on how you installed CashPilot:
 
@@ -88,7 +88,7 @@ docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{e
 Then mount that folder and use the image tag you run:
 
 ```bash
-docker run --rm -v <folder>:/data --entrypoint python drumsergio/cashpilot:<same tag> -m app.users list
+docker run --rm -v "<folder>:/data" --entrypoint python drumsergio/cashpilot:<same tag> -m app.users list
 ```
 
 Check that the list shows your accounts, then run the same line with `reset-password alice` in place of `list`.
