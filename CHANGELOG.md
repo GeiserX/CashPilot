@@ -10,6 +10,18 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## Unreleased
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#714)
+
+## [2.2.8] - 2026-11-10
+
+### Fixes
+
+- Never move working copies into a tunnel that has no exit (#713)
+
 ## [2.2.7] - 2026-11-10
 
 ### Documentation
