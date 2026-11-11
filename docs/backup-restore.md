@@ -67,11 +67,11 @@ database and copy the keys alongside it.
 OUT="cashpilot-backup-$(date +%Y%m%d)"
 mkdir -p "$OUT"
 
-# The database, consistently, without stopping the container.
-docker exec cashpilot-ui sh -c \
-  'python -c "import sqlite3,sys; s=sqlite3.connect(\"/data/cashpilot.db\"); d=sqlite3.connect(\"/tmp/backup.db\"); s.backup(d); d.close(); s.close()"'
-docker cp cashpilot-ui:/tmp/backup.db "$OUT/cashpilot.db"
-docker exec cashpilot-ui rm -f /tmp/backup.db
+# The database, consistently, without stopping the container. It comes out on
+# stdout: the container's /tmp is a tmpfs, and `docker cp` cannot read a tmpfs.
+docker exec cashpilot-ui python -c \
+  'import sqlite3,sys; s=sqlite3.connect("/data/cashpilot.db"); d=sqlite3.connect(":memory:"); s.backup(d); sys.stdout.buffer.write(d.serialize())' \
+  > "$OUT/cashpilot.db"
 
 # THE key. Without it the database above is half a backup.
 docker cp cashpilot-ui:/data/.fernet_key "$OUT/.fernet_key"
@@ -105,20 +105,34 @@ sqlite3 "$OUT/cashpilot.db" "SELECT count(*) FROM earnings;"
 
 ## Restore
 
-Onto a fresh install, before it has generated its own keys:
+Onto a fresh install. It does not matter if the fresh UI has already started
+and made its own keys: the restore replaces them.
+
+Compose names the volume after your project (for example
+`cashpilot_cashpilot_data`), not plain `cashpilot_data`. So the restore never
+names the volume. It writes through the UI container's own `/data` mount, with
+the CashPilot image you already have.
 
 ```bash
-docker compose down
+# On a new machine, create the containers first: the restore needs the UI
+# container to exist. Skip this if CashPilot is already installed.
+docker compose create
 
-# Recreate the volume and put all three files back TOGETHER.
-docker volume create cashpilot_data
-docker run --rm -v cashpilot_data:/data -v "$PWD/$OUT":/backup alpine sh -c '
-  cp /backup/cashpilot.db /data/cashpilot.db &&
-  cp /backup/.fernet_key  /data/.fernet_key  &&
+docker compose stop cashpilot-ui
+
+# Put all three files back TOGETHER, into the volume the UI really mounts.
+docker run --rm --volumes-from cashpilot-ui -v "$PWD/$OUT":/backup:ro \
+  --user 0 --entrypoint sh "$(docker inspect -f '{{.Config.Image}}' cashpilot-ui)" -c '
+  set -e
+  # A database log left by the install you replace would be replayed over the backup.
+  rm -f /data/cashpilot.db-wal /data/cashpilot.db-shm
+  cp /backup/cashpilot.db /data/cashpilot.db
+  cp /backup/.fernet_key  /data/.fernet_key
   # Optional: absent whenever CASHPILOT_SECRET_KEY is set.
-  { [ -f /backup/.secret_key ] && cp /backup/.secret_key /data/.secret_key || true; } &&
-  chmod 600 /data/.fernet_key &&
-  chown -R 1000:1000 /data'
+  if [ -f /backup/.secret_key ]; then cp /backup/.secret_key /data/.secret_key; fi
+  chmod 600 /data/.*_key
+  # The app runs as the owner of /data: uid 1000, or the user you set with --user.
+  chown "$(stat -c %u:%g /data)" /data/cashpilot.db /data/.*_key'
 
 docker compose up -d
 docker logs -f cashpilot-ui
