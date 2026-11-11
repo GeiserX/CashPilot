@@ -173,6 +173,20 @@ class TestRotate:
         assert users._rotate_session_key(db) == 0
         assert calls == [(db.stat().st_uid, db.stat().st_gid)]
 
+    def test_it_drops_to_the_database_owner_before_writing(self, data_dir, monkeypatch, capsys):
+        # Run as root, the command must write as the app user, the same way the
+        # other subcommands do. _drop_privileges itself is tested in
+        # test_users_command.py.
+        from app import users
+
+        db = _make_db(data_dir)
+        calls = []
+        real_rotate = users._rotate_session_key
+        monkeypatch.setattr(users, "_drop_privileges", lambda p: calls.append(("drop", p)))
+        monkeypatch.setattr(users, "_rotate_session_key", lambda p: calls.append(("rotate", p)) or real_rotate(p))
+        assert _run(["rotate-session-key"]) == 0
+        assert calls == [("drop", db), ("rotate", db)]
+
 
 class TestRefusals:
     def test_an_env_key_in_use_refuses_and_writes_nothing(self, data_dir, monkeypatch, capsys):
@@ -207,7 +221,7 @@ class TestRefusals:
 
     def test_a_missing_database_refuses_and_creates_nothing(self, data_dir, capsys):
         assert _run(["rotate-session-key"]) == 1
-        assert "cashpilot.db" in capsys.readouterr().err
+        assert "no database at" in capsys.readouterr().err
         assert list(data_dir.iterdir()) == []
 
 
