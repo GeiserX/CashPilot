@@ -77,7 +77,7 @@ What the steps do:
 
 - Step 1 saves the services' containers, volumes, host folders and images to files. After a container is gone, nothing links its volumes and images to CashPilot any more.
 - Step 3 gives each service the stop time CashPilot set for it, 5 minutes for Storj. Storage nodes need that time: a forced stop makes Storj report an unclean shutdown.
-- Step 4 stops the services' traffic rules. If a line says `No such file or directory`, that table was not there, and you can ignore it. On a host without nftables, step 4 removes only the network. A restart of the machine clears the rest ([Check that nothing is left](#check-that-nothing-is-left)).
+- Step 4 stops the services' traffic rules. If a line says `No such file or directory`, that table was not there, and you can ignore it. On a host without nftables, step 4 removes only the network. A restart of the machine clears the rest ([Check that nothing is left](#check-that-nothing-is-left)). If you pointed `CASHPILOT_CONTAINER_NETWORK` at a network of your own, an upgrade may have labelled it as the worker's, and the second line removes it. To keep that network, leave out that line.
 - Step 5 prints every volume step 6 will delete. Read it now. It includes node identities such as `mysterium-data`, and the `-pre-isolation` copies of them that an upgrade made. To keep a volume, delete its line from `cashpilot-volumes.txt`.
 
 Then remove the volumes and the images:
@@ -155,10 +155,11 @@ We have not checked whether each platform's uninstall deletes these folders. Loo
 
 Change the steps like this:
 
-- In step 1, leave out the three lines that call `docker compose`. Set the project to the stack's name, `project=<stack name>`, and read the worker image as in the app store steps above.
+- In step 1, leave out the three lines that call `docker compose`. Set the project to the stack's name, `project=<stack name>`, and read the worker image as in the app store steps above. Also note where the stack keeps its migrate folder: `migrate_state=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/state"}}{{.Source}}{{end}}{{end}}' cashpilot-migrate)`.
 - Replace step 2 with **Delete this stack** in Portainer.
 - Run steps 3 to 6 as written. Step 5 then lists the stack's volumes too.
 - Step 6 then leaves the CashPilot images. The check below lists them. Remove each with `docker image rm <name>`.
+- Run the first two lines of step 7, with `"$migrate_state"` in place of `cashpilot-migrate-state`. The warning above step 7 applies here too. Instead of the last line, run `rm -f cashpilot-*.txt`.
 
 ### Podman
 
