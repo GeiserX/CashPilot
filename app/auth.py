@@ -9,6 +9,7 @@ import asyncio
 import hmac
 import logging
 import os
+import secrets
 import time
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,6 @@ from itsdangerous import BadData, URLSafeTimedSerializer
 
 from app import fleet_key as _fleet_key_mod
 from app.users import KNOWN_DEFAULT_SECRET_KEYS as _KNOWN_DEFAULTS
-from app.users import new_secret_key as _new_secret_key
 
 _logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def _resolve_secret_key() -> str:
         pass
 
     # Generate and persist
-    new_key = _new_secret_key()
+    new_key = secrets.token_urlsafe(48)
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
         key_file.write_text(new_key)

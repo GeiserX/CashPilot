@@ -71,7 +71,7 @@ def valid_username(name: str) -> bool:
 
 
 def new_secret_key() -> str:
-    """A new session signing key. app/auth.py generates its keys with this."""
+    """A new session signing key, as strong as the one app/auth.py generates."""
     return secrets.token_urlsafe(48)
 
 
