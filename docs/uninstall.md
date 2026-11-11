@@ -95,12 +95,12 @@ The in-app updater also pulls `docker:27.5.1-cli`. Other programs use that image
 Last, the files and folders. `cashpilot-folders.txt` lists the host folders the services used, such as the Storj or Sia storage. Read it, and delete only the folders you no longer want.
 
 !!! warning "Keep the old volumes and this folder together"
-    If you kept `<project>_cashpilot_worker_data` or `<project>_cashpilot_fleet` in step 5, keep `cashpilot-migrate-state` too. Without the folder, the next install copies the old worker key and settings from those volumes into its new ones. Step 7 keeps the folder while either volume is on the machine.
+    If you kept `<project>_cashpilot_worker_data` or `<project>_cashpilot_fleet` in step 5, keep `cashpilot-migrate-state` too. Without the folder, the next install copies the old worker key and settings from those volumes into its new ones. Step 7 keeps the folder while either volume is on the machine, and when Docker does not answer.
 
 ```bash
 # 7. Remove the host folders you no longer want, then CashPilot's files.
 cat cashpilot-folders.txt
-docker volume ls -q | grep -qE '_cashpilot_(worker_data|fleet)$' || sudo rm -rf cashpilot-migrate-state
+vols=$(docker volume ls -q) && ! printf '%s\n' "$vols" | grep -qE '_cashpilot_(worker_data|fleet)$' && sudo rm -rf cashpilot-migrate-state
 ids=$(docker compose ps -aq) && [ -z "$ids" ] && rm -f "${COMPOSE_FILE:-docker-compose.yml}" .env cashpilot-containers.txt cashpilot-volumes.txt cashpilot-folders.txt cashpilot-images.txt
 ```
 
