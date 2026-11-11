@@ -35,7 +35,7 @@ Go to the folder that holds `docker-compose.yml`. If you started CashPilot with 
 
 Paste steps 1 to 5 in one go, because steps 3 to 5 use values that step 1 sets. If step 2 prints an error, CashPilot is still running: fix the error and run `docker compose down -v` again before you go on to step 6.
 
-A Storj node deployed before CashPilot 1.37.8, and not updated since, has no stop time of its own, so Docker stops it after 10 seconds. Stop that node first with `docker stop -t 300 cashpilot-storj`.
+A Storj node deployed before CashPilot 1.37.8, and not updated since, has no stop time of its own, so Docker stops it after 10 seconds. Stop that node first with `docker stop -t 300 cashpilot-storj`. A Storj image pulled before 7 October 2026 still stops the node after 10 seconds, whatever Docker's stop time, so a node you keep may report an unclean shutdown when it next starts.
 
 ```bash
 cd /path/to/cashpilot
@@ -155,11 +155,11 @@ We have not checked whether each platform's uninstall deletes these folders. Loo
 
 Change the steps like this:
 
-- In step 1, leave out the three lines that call `docker compose`. Set the project to the stack's name, `project=<stack name>`, and read the worker image as in the app store steps above. Also note where the stack keeps its migrate folder: `migrate_state=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/state"}}{{.Source}}{{end}}{{end}}' cashpilot-migrate)`.
+- In step 1, leave out the three lines that call `docker compose`. Set the project to the stack's name, `project=<stack name>`, and read the worker image as in the app store steps above. Also note where the stack keeps its migrate folder: `migrate_state=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/state"}}{{.Source}}{{end}}{{end}}' cashpilot-migrate)`. If that prints `No such object`, the container was removed earlier: find the folder with `sudo find / -type d -name cashpilot-migrate-state 2>/dev/null` and set `migrate_state` to the stack's path.
 - Replace step 2 with **Delete this stack** in Portainer.
 - Run steps 3 to 6 as written. Step 5 then lists the stack's volumes too.
 - Step 6 then leaves the CashPilot images. The check below lists them. Remove each with `docker image rm <name>`.
-- Run the first two lines of step 7, with `"$migrate_state"` in place of `cashpilot-migrate-state`. The warning above step 7 applies here too. Instead of the last line, run `rm -f cashpilot-*.txt`.
+- Run the first two lines of step 7, with `"$migrate_state"` in place of `cashpilot-migrate-state`. The warning above step 7 applies here too. Instead of the last line, run `rm -f cashpilot-containers.txt cashpilot-volumes.txt cashpilot-folders.txt cashpilot-images.txt`.
 
 ### Podman
 
@@ -196,7 +196,7 @@ sudo iptables-legacy-save | grep -E 'CP6?-'
 sudo ip6tables-legacy-save | grep -E 'CP6?-'
 ```
 
-On a clean machine each line prints nothing, or `command not found` when that tool is not installed. Any other error, such as a failed `sudo`, means the check did not run: fix it and run the check again.
+On a clean machine each line prints nothing. Any error, such as a failed `sudo`, means the check did not run: fix it and run the check again. If a line prints `command not found`, that check cannot run on this host. The worker used its own copy of the tool, so the table or chains may still be there: restart the machine to clear them.
 
 On Docker Desktop and Colima, the firewall table lives in Docker's own virtual machine. Restarting Docker Desktop or Colima clears it.
 
