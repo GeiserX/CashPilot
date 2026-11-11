@@ -10,6 +10,25 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.3.0] - 2026-11-11
+
+### CI
+
+- One release a day at most, so a busy day is not nine version bumps (#719)
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#718)
+
+### Features
+
+- Sign out a forged session by replacing the session key (#724)
+- A way back in for an owner who forgot the password (#722)
+
+### Fixes
+
+- Cap the socket proxy at 256 MB so a leak cannot starve the host (#720)
+
 ## [2.2.9] - 2026-11-10
 
 ### Documentation
