@@ -20,14 +20,9 @@ from fastapi.responses import RedirectResponse
 from itsdangerous import BadData, URLSafeTimedSerializer
 
 from app import fleet_key as _fleet_key_mod
+from app.users import KNOWN_DEFAULT_SECRET_KEYS as _KNOWN_DEFAULTS
 
 _logger = logging.getLogger(__name__)
-
-_KNOWN_DEFAULTS = {
-    "changeme-generate-a-random-secret",
-    "changeme",
-    "",
-}
 
 
 def _resolve_secret_key() -> str:

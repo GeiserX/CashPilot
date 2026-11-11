@@ -79,6 +79,21 @@ docker exec -it cashpilot-ui python -m app.users rename OLD NEW
 
 The new name follows the registration rule: 3 to 32 letters, digits, `_` or `-`. Sign out and back in to see it.
 
+**After a suspected compromise**, for example a lost backup that holds `/data/.secret_key`, a password reset alone is not enough. Whoever has that key can sign a valid login cookie, and a reset does not stop it. Replace the key, then restart the UI container. The `&&` restarts it only when the new key is in place; if the command prints an error, fix that first:
+
+```bash
+docker exec cashpilot-ui python -m app.users rotate-session-key && docker restart cashpilot-ui
+```
+
+After the restart every browser is signed out, and everyone signs in again with their password. Saved credentials are not affected. If you set `CASHPILOT_SECRET_KEY` yourself, the command refuses: put a new random value in that variable and recreate the container instead. A `docker run` from the image does not see that variable and cannot refuse, so use `docker exec` on the UI container.
+
+A new key ends forged cookies, but not what the attacker did while they were in. Two more steps:
+
+1. Run `docker exec cashpilot-ui python -m app.users list`. Delete any account you do not recognise from the dashboard.
+2. If the lost copy held all of `/data`, change the passwords of your provider accounts. `.fernet_key` and `cashpilot.db` together decrypt every saved credential.
+
+If you later restore a backup taken before the rotation, leave out its `.secret_key` ([Backup and restore](backup-restore.md#restore)), or rotate and restart again. Otherwise the old key comes back. The restored database also brings back the accounts and passwords it held, so repeat the account check and any password reset.
+
 **If the UI container does not start**, run the command from the same image against the same data. First find the host folder that holds the UI's `/data`. This works for a stopped container, and for a named volume as well as a bind mount (Unraid, CasaOS, Runtipi):
 
 ```bash
@@ -93,7 +108,7 @@ docker run --rm -v "<folder>:/data" --entrypoint python drumsergio/cashpilot:<sa
 
 Check that the list shows your accounts, then run the same line with `reset-password alice` in place of `list`.
 
-The command never creates a database or a key file. A path with no database gives a "no database" error and changes no data, but Docker may leave an empty folder or volume with that name behind; remove it.
+A path with no database gives a "no database" error, and the command creates and changes nothing there. Docker may still leave an empty folder or volume with that name behind; remove it.
 
 **Do not** delete the data volume: that erases `/data/.fernet_key` and with it every saved credential. **Do not** delete rows from the `users` table either.
 
