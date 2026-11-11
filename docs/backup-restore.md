@@ -71,7 +71,8 @@ mkdir -p "$OUT"
 # stdout: the container's /tmp is a tmpfs, and `docker cp` cannot read a tmpfs.
 docker exec cashpilot-ui python -c \
   'import sqlite3,sys; s=sqlite3.connect("/data/cashpilot.db"); d=sqlite3.connect(":memory:"); s.backup(d); sys.stdout.buffer.write(d.serialize())' \
-  > "$OUT/cashpilot.db"
+  > "$OUT/cashpilot.db.part" &&
+  mv "$OUT/cashpilot.db.part" "$OUT/cashpilot.db"   # a failed run keeps the last good copy
 
 # THE key. Without it the database above is half a backup.
 docker cp cashpilot-ui:/data/.fernet_key "$OUT/.fernet_key"
@@ -115,13 +116,20 @@ the CashPilot image you already have.
 
 If the backup may have leaked, or you rotated the session key after you took it,
 do not let its session key come back: anyone who holds that copy can sign a
-login cookie. Run the commented `rm` line in the block below, after the copy
+login cookie. Uncomment the `rm` line in the block below. It runs after the copy
 and before the UI starts. It also removes a key that the old volume still held,
 and the UI then writes a new key when it starts. A restored database also brings
 back the accounts and passwords it held, so repeat the account check and the
 password resets from the [FAQ](faq.md#forgot-password) afterwards.
 
+The restore checks that `cashpilot.db` and `.fernet_key` are both in the backup
+before it changes anything. If either is missing, or any step fails, the volume
+keeps what it had and the UI does not start.
+
 ```bash
+# The backup directory from the Backup steps. In a new shell, set it again, for example:
+# OUT=cashpilot-backup-20261111
+
 # On a new machine, create the containers first: the restore needs the UI
 # container to exist. Skip this if CashPilot is already installed.
 docker compose create
@@ -129,22 +137,26 @@ docker compose create
 docker compose stop cashpilot-ui
 
 # Put all three files back TOGETHER, into the volume the UI really mounts.
-docker run --rm --volumes-from cashpilot-ui -v "$PWD/$OUT":/backup:ro \
+docker run --rm --volumes-from cashpilot-ui \
+  -v "$PWD/${OUT:?set OUT to the backup directory}":/backup:ro \
   --user 0 --entrypoint sh "$(docker inspect -f '{{.Config.Image}}' cashpilot-ui)" -c '
   set -e
+  # Both or nothing: a database without its key is unreadable.
+  if [ ! -s /backup/cashpilot.db ] || [ ! -s /backup/.fernet_key ]; then
+    echo "cashpilot.db or .fernet_key is missing from the backup; nothing changed" >&2
+    exit 1
+  fi
   # A database log left by the install you replace would be replayed over the backup.
   rm -f /data/cashpilot.db-wal /data/cashpilot.db-shm
   cp /backup/cashpilot.db /data/cashpilot.db
   cp /backup/.fernet_key  /data/.fernet_key
   # Optional: absent whenever CASHPILOT_SECRET_KEY is set.
   if [ -f /backup/.secret_key ]; then cp /backup/.secret_key /data/.secret_key; fi
+  # Only if the backup may have leaked, or the session key was rotated after it:
+  # rm -f /data/.secret_key
   chmod 600 /data/.*_key
   # The app runs as the owner of /data: uid 1000, or the user you set with --user.
-  chown "$(stat -c %u:%g /data)" /data/cashpilot.db /data/.*_key'
-
-# Only if the backup may have leaked, or the session key was rotated after it:
-# docker run --rm -v cashpilot_data:/data alpine rm -f /data/.secret_key
-
+  chown "$(stat -c %u:%g /data)" /data/cashpilot.db /data/.*_key' &&
 docker compose up -d
 docker logs -f cashpilot-ui
 ```
