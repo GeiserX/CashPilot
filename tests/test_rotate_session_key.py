@@ -301,6 +301,8 @@ class TestDocs:
         doc = (ROOT / "docs" / "backup-restore.md").read_text(encoding="utf-8")
         restore = doc[doc.index("## Restore") :]
         restore = restore[: restore.index("### What the logs should say")]
-        assert "rotate-session-key" in restore
+        # Before the commands: a reader who runs them first has already put the
+        # leaked key back and started the UI with it.
+        assert restore.index("rotate-session-key") < restore.index("docker compose up -d")
         faq = _faq_section("**After a suspected compromise**", "**If the UI container does not start**")
         assert "restore a backup" in faq

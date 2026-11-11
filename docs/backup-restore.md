@@ -107,6 +107,13 @@ sqlite3 "$OUT/cashpilot.db" "SELECT count(*) FROM earnings;"
 
 Onto a fresh install, before it has generated its own keys:
 
+If the backup may have leaked, or you rotated the session key after you took it,
+delete `.secret_key` from the backup folder before you run these commands:
+anyone who holds that copy can sign a login cookie. The UI writes a new key
+when it starts. If you already restored it, run
+`python -m app.users rotate-session-key` and restart the UI
+([FAQ](faq.md#forgot-password)).
+
 ```bash
 docker compose down
 
@@ -123,12 +130,6 @@ docker run --rm -v cashpilot_data:/data -v "$PWD/$OUT":/backup alpine sh -c '
 docker compose up -d
 docker logs -f cashpilot-ui
 ```
-
-If the backup may have leaked, or you rotated the session key after you took it,
-leave its `.secret_key` out: anyone who holds that copy can sign a login cookie.
-The UI writes a new key when it starts. If you already restored it, run
-`python -m app.users rotate-session-key` and restart the UI
-([FAQ](faq.md#forgot-password)).
 
 ### What the logs should say
 
