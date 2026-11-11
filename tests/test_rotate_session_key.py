@@ -282,14 +282,15 @@ class TestDocs:
     def test_the_faq_names_the_command_and_never_deletes_a_key_file(self):
         faq = (ROOT / "docs" / "faq.md").read_text(encoding="utf-8")
         # No -it: the command reads no input, and -it fails without a terminal.
-        assert "docker exec cashpilot-ui python -m app.users rotate-session-key" in faq
+        # The && keeps a failed rotation from restarting the UI on the old key.
+        assert "docker exec cashpilot-ui python -m app.users rotate-session-key && docker restart cashpilot-ui" in faq
         assert not re.search(r"\brm\b[^\n]*\.(secret|fernet)_key", faq)
 
     def test_the_compromise_steps_go_past_the_key(self):
         # A new key ends forged cookies, not an account the attacker added or
         # the credentials a lost /data copy decrypts.
         steps = _faq_section("**After a suspected compromise**", "**If the UI container does not start**")
-        assert "python -m app.users list" in steps
+        assert "docker exec cashpilot-ui python -m app.users list" in steps
         assert "provider accounts" in steps
         assert "docker run" in steps  # the env-key refusal needs docker exec
 
@@ -303,6 +304,7 @@ class TestDocs:
         restore = restore[: restore.index("### What the logs should say")]
         # Before the commands: a reader who runs them first has already put the
         # leaked key back and started the UI with it.
-        assert restore.index("rotate-session-key") < restore.index("docker compose up -d")
+        assert "rotate-session-key" in restore
+        assert restore.index("rm -f /data/.secret_key") < restore.index("docker compose down")
         faq = _faq_section("**After a suspected compromise**", "**If the UI container does not start**")
         assert "restore a backup" in faq

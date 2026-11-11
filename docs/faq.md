@@ -79,21 +79,20 @@ docker exec -it cashpilot-ui python -m app.users rename OLD NEW
 
 The new name follows the registration rule: 3 to 32 letters, digits, `_` or `-`. Sign out and back in to see it.
 
-**After a suspected compromise**, for example a lost backup that holds `/data/.secret_key`, a password reset alone is not enough. Whoever has that key can sign a valid login cookie, and a reset does not stop it. Replace the key, then restart the UI container:
+**After a suspected compromise**, for example a lost backup that holds `/data/.secret_key`, a password reset alone is not enough. Whoever has that key can sign a valid login cookie, and a reset does not stop it. Replace the key, then restart the UI container. The `&&` restarts it only when the new key is in place; if the command prints an error, fix that first:
 
 ```bash
-docker exec cashpilot-ui python -m app.users rotate-session-key
-docker restart cashpilot-ui
+docker exec cashpilot-ui python -m app.users rotate-session-key && docker restart cashpilot-ui
 ```
 
 After the restart every browser is signed out, and everyone signs in again with their password. Saved credentials are not affected. If you set `CASHPILOT_SECRET_KEY` yourself, the command refuses: put a new random value in that variable and recreate the container instead. A `docker run` from the image does not see that variable and cannot refuse, so use `docker exec` on the UI container.
 
 A new key ends forged cookies, but not what the attacker did while they were in. Two more steps:
 
-1. Run `python -m app.users list`. Delete any account you do not recognise from the dashboard.
+1. Run `docker exec cashpilot-ui python -m app.users list`. Delete any account you do not recognise from the dashboard.
 2. If the lost copy held all of `/data`, change the passwords of your provider accounts. `.fernet_key` and `cashpilot.db` together decrypt every saved credential.
 
-If you later restore a backup taken before the rotation, leave out its `.secret_key`, or run `rotate-session-key` and restart again. Otherwise the old key comes back.
+If you later restore a backup taken before the rotation, leave out its `.secret_key` ([Backup and restore](backup-restore.md#restore)), or rotate and restart again. Otherwise the old key comes back.
 
 **If the UI container does not start**, run the command from the same image against the same data. First find the host folder that holds the UI's `/data`. This works for a stopped container, and for a named volume as well as a bind mount (Unraid, CasaOS, Runtipi):
 
