@@ -124,6 +124,12 @@ docker compose up -d
 docker logs -f cashpilot-ui
 ```
 
+If the backup may have leaked, or you rotated the session key after you took it,
+leave its `.secret_key` out: anyone who holds that copy can sign a login cookie.
+The UI writes a new key when it starts. If you already restored it, run
+`python -m app.users rotate-session-key` and restart the UI
+([FAQ](faq.md#forgot-password)).
+
 ### What the logs should say
 
 Two lines tell you the restore worked.

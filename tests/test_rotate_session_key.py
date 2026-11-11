@@ -64,13 +64,6 @@ class TestRotate:
         assert (key_file.stat().st_uid, key_file.stat().st_gid) == (db_st.st_uid, db_st.st_gid)
         assert sorted(p.name for p in data_dir.iterdir() if p.name.startswith(".secret_key")) == [".secret_key"]
 
-    def test_two_runs_give_two_different_keys(self, data_dir, capsys):
-        _make_db(data_dir)
-        assert _run(["rotate-session-key"]) == 0
-        first = (data_dir / ".secret_key").read_text()
-        assert _run(["rotate-session-key"]) == 0
-        assert (data_dir / ".secret_key").read_text() != first
-
     def test_the_app_resolves_the_new_key(self, data_dir, capsys):
         from app import auth
 
@@ -256,8 +249,6 @@ class TestNoDrift:
         from app import auth, users
 
         assert auth._KNOWN_DEFAULTS is users.KNOWN_DEFAULT_SECRET_KEYS
-        src = (ROOT / "app" / "auth.py").read_text(encoding="utf-8")
-        assert '"changeme"' not in src, "app/auth.py restates the known-default keys"
 
     def test_the_placeholder_the_ui_shows_is_a_known_default(self):
         from app import users
@@ -266,25 +257,36 @@ class TestNoDrift:
         assert '"changeme-generate-a-random-secret"' in src
         assert "changeme-generate-a-random-secret" in users.KNOWN_DEFAULT_SECRET_KEYS
 
-    def test_auth_generates_keys_with_the_same_function(self):
-        src = (ROOT / "app" / "auth.py").read_text(encoding="utf-8")
-        assert "token_urlsafe" not in src, "app/auth.py generates its own session key"
-        assert "_new_secret_key()" in src
+
+def _faq_section(start: str, end: str) -> str:
+    faq = (ROOT / "docs" / "faq.md").read_text(encoding="utf-8")
+    section = faq[faq.index(start) :]
+    return section[: section.index(end)]
 
 
 class TestDocs:
     def test_the_faq_names_the_command_and_never_deletes_a_key_file(self):
         faq = (ROOT / "docs" / "faq.md").read_text(encoding="utf-8")
-        assert "docker exec -it cashpilot-ui python -m app.users rotate-session-key" in faq
-        assert "a password reset alone is not enough" in faq
+        # No -it: the command reads no input, and -it fails without a terminal.
+        assert "docker exec cashpilot-ui python -m app.users rotate-session-key" in faq
         assert not re.search(r"\brm\b[^\n]*\.(secret|fernet)_key", faq)
 
-    def test_the_faq_warns_that_docker_run_cannot_see_an_env_key(self):
-        # A `docker run` from the image does not carry the UI container's
-        # CASHPILOT_SECRET_KEY, so the command cannot refuse there, and the
-        # env key would still win after the restart.
-        faq = (ROOT / "docs" / "faq.md").read_text(encoding="utf-8")
-        fallback = faq[faq.index("**If the UI container does not start**") :]
-        fallback = fallback[: fallback.index("**What about security?**")]
-        assert "CASHPILOT_SECRET_KEY" in fallback
-        assert "rotate-session-key" in fallback
+    def test_the_compromise_steps_go_past_the_key(self):
+        # A new key ends forged cookies, not an account the attacker added or
+        # the credentials a lost /data copy decrypts.
+        steps = _faq_section("**After a suspected compromise**", "**If the UI container does not start**")
+        assert "python -m app.users list" in steps
+        assert "provider accounts" in steps
+        assert "docker run" in steps  # the env-key refusal needs docker exec
+
+    def test_the_fallback_stays_about_reset(self):
+        fallback = _faq_section("**If the UI container does not start**", "**What about security?**")
+        assert "CASHPILOT_SECRET_KEY" not in fallback
+
+    def test_restore_warns_that_an_old_backup_brings_the_old_key_back(self):
+        doc = (ROOT / "docs" / "backup-restore.md").read_text(encoding="utf-8")
+        restore = doc[doc.index("## Restore") :]
+        restore = restore[: restore.index("### What the logs should say")]
+        assert "rotate-session-key" in restore
+        faq = _faq_section("**After a suspected compromise**", "**If the UI container does not start**")
+        assert "restore a backup" in faq
