@@ -68,11 +68,12 @@ OUT="cashpilot-backup-$(date +%Y%m%d)"
 mkdir -p "$OUT"
 
 # The database, consistently, without stopping the container. It comes out on
-# stdout: the container's /tmp is a tmpfs, and `docker cp` cannot read a tmpfs.
+# stdout, because /tmp in the container is a tmpfs and docker cp cannot read it.
+# It goes to a .part file first, so a failed run keeps the last good copy.
 docker exec cashpilot-ui python -c \
   'import sqlite3,sys; s=sqlite3.connect("/data/cashpilot.db"); d=sqlite3.connect(":memory:"); s.backup(d); sys.stdout.buffer.write(d.serialize())' \
   > "$OUT/cashpilot.db.part" &&
-  mv "$OUT/cashpilot.db.part" "$OUT/cashpilot.db"   # a failed run keeps the last good copy
+  mv "$OUT/cashpilot.db.part" "$OUT/cashpilot.db"
 
 # THE key. Without it the database above is half a backup.
 docker cp cashpilot-ui:/data/.fernet_key "$OUT/.fernet_key"
@@ -123,8 +124,8 @@ back the accounts and passwords it held, so repeat the account check and the
 password resets from the [FAQ](faq.md#forgot-password) afterwards.
 
 The restore checks that `cashpilot.db` and `.fernet_key` are both in the backup
-before it changes anything. If either is missing, or any step fails, the volume
-keeps what it had and the UI does not start.
+before it changes anything. If either is missing, the volume keeps what it had.
+If any step fails, the UI does not start.
 
 ```bash
 # The backup directory from the Backup steps. In a new shell, set it again, for example:
