@@ -140,6 +140,7 @@ nav = [
       { "Backing up node identities" = "backup.md" },
       { "Prometheus metrics" = "guides/prometheus-metrics.md" },
       { "Upgrade to v1.0.0" = "upgrade-v1.md" },
+      { "Removing CashPilot completely" = "uninstall.md" },
     ] },
   { Reference = [
       { "Provider ratings" = "ratings.md" },

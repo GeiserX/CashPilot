@@ -152,6 +152,7 @@ graph LR
 
 - Something broken: read the [FAQ](faq.md), then open an [issue](https://github.com/GeiserX/CashPilot/issues) with your version and the `docker compose logs cashpilot-ui` lines around the error.
 - Upgrading: [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) first, then the [release notes](https://github.com/GeiserX/CashPilot/releases).
+- Removing CashPilot, or starting over on a clean machine: [Removing CashPilot completely](uninstall.md).
 - Scraping metrics: [Prometheus metrics](guides/prometheus-metrics.md).
 - Adding a service or sending a fix: [Development](development.md).
 - The rest of the family: [Related projects](related.md).
