@@ -113,6 +113,14 @@ Compose names the volume after your project (for example
 names the volume. It writes through the UI container's own `/data` mount, with
 the CashPilot image you already have.
 
+If the backup may have leaked, or you rotated the session key after you took it,
+do not let its session key come back: anyone who holds that copy can sign a
+login cookie. Run the commented `rm` line in the block below, after the copy
+and before the UI starts. It also removes a key that the old volume still held,
+and the UI then writes a new key when it starts. A restored database also brings
+back the accounts and passwords it held, so repeat the account check and the
+password resets from the [FAQ](faq.md#forgot-password) afterwards.
+
 ```bash
 # On a new machine, create the containers first: the restore needs the UI
 # container to exist. Skip this if CashPilot is already installed.
@@ -134,8 +142,17 @@ docker run --rm --volumes-from cashpilot-ui -v "$PWD/$OUT":/backup:ro \
   # The app runs as the owner of /data: uid 1000, or the user you set with --user.
   chown "$(stat -c %u:%g /data)" /data/cashpilot.db /data/.*_key'
 
+# Only if the backup may have leaked, or the session key was rotated after it:
+# docker run --rm -v cashpilot_data:/data alpine rm -f /data/.secret_key
+
 docker compose up -d
 docker logs -f cashpilot-ui
+```
+
+If the UI already runs with the old key, replace the key and restart:
+
+```bash
+docker exec cashpilot-ui python -m app.users rotate-session-key && docker restart cashpilot-ui
 ```
 
 ### What the logs should say
