@@ -33,7 +33,9 @@ This is for an install from `docker-compose.yml` ([Getting started](getting-star
 
 Go to the folder that holds `docker-compose.yml`. If you started CashPilot with `docker compose -p <name>`, or from a folder with another name, run `export COMPOSE_PROJECT_NAME=<name>` first. `docker compose ls` shows the name. Without it, step 2 finds nothing and still reports no error.
 
-Paste steps 1 to 5 in one go, because steps 3 to 5 use values that step 1 sets.
+Paste steps 1 to 5 in one go, because steps 3 to 5 use values that step 1 sets. If step 2 prints an error, CashPilot is still running: fix the error and run `docker compose down -v` again before you go on to step 6.
+
+A Storj node deployed before CashPilot 1.37.8, and not updated since, has no stop time of its own, so Docker stops it after 10 seconds. Stop that node first with `docker stop -t 300 cashpilot-storj`.
 
 ```bash
 cd /path/to/cashpilot
@@ -90,19 +92,19 @@ Docker refuses to remove an image that another container still uses, and prints 
 
 The in-app updater also pulls `docker:27.5.1-cli`. Other programs use that image too, so remove it only if nothing else on the machine does.
 
-Last, the files and folders. `cashpilot-folders.txt` lists the host folders the services used, such as the Storj or Sia storage. Read it, and delete only the folders you no longer want:
+Last, the files and folders. `cashpilot-folders.txt` lists the host folders the services used, such as the Storj or Sia storage. Read it, and delete only the folders you no longer want.
+
+!!! warning "Keep the old volumes and this folder together"
+    If you kept `<project>_cashpilot_worker_data` or `<project>_cashpilot_fleet` in step 5, keep `cashpilot-migrate-state` too. Without the folder, the next install copies the old worker key and settings from those volumes into its new ones. Step 7 keeps the folder while either volume is on the machine.
 
 ```bash
 # 7. Remove the host folders you no longer want, then CashPilot's files.
 cat cashpilot-folders.txt
-sudo rm -rf cashpilot-migrate-state
-rm -f "${COMPOSE_FILE:-docker-compose.yml}" .env cashpilot-containers.txt cashpilot-volumes.txt cashpilot-folders.txt cashpilot-images.txt
+docker volume ls -q | grep -qE '_cashpilot_(worker_data|fleet)$' || sudo rm -rf cashpilot-migrate-state
+ids=$(docker compose ps -aq) && [ -z "$ids" ] && rm -f "${COMPOSE_FILE:-docker-compose.yml}" .env cashpilot-containers.txt cashpilot-volumes.txt cashpilot-folders.txt cashpilot-images.txt
 ```
 
-`cashpilot-migrate-state` belongs to root and holds a copy of the services' settings, credentials included. `.env` can hold your keys. If the folder holds nothing else, delete the folder itself.
-
-!!! warning "Keep the old volumes and this folder together"
-    If you kept `<project>_cashpilot_worker_data` or `<project>_cashpilot_fleet` in step 5, keep `cashpilot-migrate-state` too. Without the folder, the next install copies the old worker key and settings from those volumes into its new ones.
+`cashpilot-migrate-state` belongs to root and holds a copy of the services' settings, credentials included. `.env` can hold your keys. The last line deletes the compose file and `.env` only when CashPilot has no containers left. If they are still there, run step 2 again and read its error. If the folder holds nothing else, delete the folder itself.
 
 ### If you built from source, or run the fleet file
 
@@ -144,7 +146,7 @@ The app store installs keep their data in host folders, not in volumes. Change t
 |---|---|
 | Unraid | `/mnt/user/appdata/cashpilot` and `/mnt/user/appdata/cashpilot-worker` |
 | CasaOS | `/DATA/AppData/cashpilot` |
-| Runtipi | the `data` folder in the app's data folder (`app-data/cashpilot`) |
+| Runtipi | `app-data/<app store>/cashpilot/data` in the Runtipi folder (`app-data/cashpilot/data` before Runtipi 4) |
 | TrueNAS | the storage you chose when you installed the app |
 
 We have not checked whether each platform's uninstall deletes these folders. Look for them, and delete them if they are still there.
@@ -185,13 +187,15 @@ docker volume ls -q | grep -xE 'mysterium-data|earnapp-data|bitping-data|urnetwo
 
 If a line prints, remove that object by name: `docker rm -fv`, `docker volume rm`, `docker network rm` or `docker image rm`. Common cases are older CashPilot image tags from earlier updates and volumes from an install under another project name. Another is a service volume that an earlier removal from the dashboard kept. The last command lists the services' volumes by name, because the older ones carry no CashPilot label. Keep any you still want.
 
-On Linux, check the firewall too. This also prints nothing on a clean machine:
+On Linux, check the firewall too:
 
 ```bash
-sudo nft list tables 2>/dev/null | grep cashpilot
-sudo iptables-legacy-save 2>/dev/null | grep -E 'CP6?-'
-sudo ip6tables-legacy-save 2>/dev/null | grep -E 'CP6?-'
+sudo nft list tables | grep cashpilot
+sudo iptables-legacy-save | grep -E 'CP6?-'
+sudo ip6tables-legacy-save | grep -E 'CP6?-'
 ```
+
+On a clean machine each line prints nothing, or `command not found` when that tool is not installed. Any other error, such as a failed `sudo`, means the check did not run: fix it and run the check again.
 
 On Docker Desktop and Colima, the firewall table lives in Docker's own virtual machine. Restarting Docker Desktop or Colima clears it.
 
