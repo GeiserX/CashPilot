@@ -92,7 +92,7 @@ A new key ends forged cookies, but not what the attacker did while they were in.
 1. Run `docker exec cashpilot-ui python -m app.users list`. Delete any account you do not recognise from the dashboard.
 2. If the lost copy held all of `/data`, change the passwords of your provider accounts. `.fernet_key` and `cashpilot.db` together decrypt every saved credential.
 
-If you later restore a backup taken before the rotation, leave out its `.secret_key` ([Backup and restore](backup-restore.md#restore)), or rotate and restart again. Otherwise the old key comes back.
+If you later restore a backup taken before the rotation, leave out its `.secret_key` ([Backup and restore](backup-restore.md#restore)), or rotate and restart again. Otherwise the old key comes back. The restored database also brings back the accounts and passwords it held, so repeat the account check and any password reset.
 
 **If the UI container does not start**, run the command from the same image against the same data. First find the host folder that holds the UI's `/data`. This works for a stopped container, and for a named volume as well as a bind mount (Unraid, CasaOS, Runtipi):
 

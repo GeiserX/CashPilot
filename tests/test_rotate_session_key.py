@@ -305,6 +305,12 @@ class TestDocs:
         # Before the commands: a reader who runs them first has already put the
         # leaked key back and started the UI with it.
         assert "rotate-session-key" in restore
-        assert restore.index("rm -f /data/.secret_key") < restore.index("docker compose down")
+        # Copy, then drop the key, then start: dropped earlier, the copy brings it back.
+        copy = restore.index("cp /backup/.secret_key /data/.secret_key")
+        drop = restore.index("rm -f /data/.secret_key")
+        start = restore.index("\ndocker compose up -d\n")
+        assert copy < drop < start
+        # A restored database brings back old accounts and passwords too.
+        assert "account check" in restore
         faq = _faq_section("**After a suspected compromise**", "**If the UI container does not start**")
         assert "restore a backup" in faq
