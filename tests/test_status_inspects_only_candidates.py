@@ -1,0 +1,154 @@
+"""The external-container scan must not inspect every container on the host.
+
+docker-py's plain list inspects each container it returns. On a direct socket
+the scan for externally started earners listed every container on the host, so
+a box with 80 unrelated containers paid 80 inspects and 80 image lookups per
+status pass. The sparse list names the image each was created from; only
+those that may be a catalog image are inspected now.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from app import orchestrator
+
+IMAGE_MAP = {"honeygain/honeygain": "honeygain", "honeygain/honeygain:latest": "honeygain"}
+
+
+class _Sparse:
+    """A container as the sparse list returns it: no Config until reload()."""
+
+    def __init__(self, cid, ref, tags, image_id="sha256:" + "a" * 64):
+        self.id = cid
+        self.short_id = cid[:12]
+        self.name = f"c-{cid}"
+        self.status = "running"
+        self.labels = {}
+        self.attrs = {"Id": cid, "Image": ref, "ImageID": image_id, "Labels": {}}
+        self._tags = tags
+        self.inspected = 0
+        self.image_reads = 0
+
+    def reload(self):
+        self.inspected += 1
+        self.attrs = {"Id": self.id, "Created": "2026-11-01T00:00:00Z", "Config": {"Image": self.attrs["Image"]}}
+
+    @property
+    def image(self):
+        self.image_reads += 1
+        image = MagicMock()
+        image.tags = list(self._tags)
+        image.short_id = "sha256:abc"
+        image.attrs = {"RepoDigests": []}
+        return image
+
+
+@pytest.mark.parametrize("fn", ["get_status", "get_status_light"])
+def test_only_containers_that_may_be_a_catalog_image_are_inspected(fn):
+    nginx_ids = [f"sha256:{i:02d}" + "e" * 62 for i in range(4)]
+    unrelated = [
+        _Sparse(f"other{i:02d}" + "0" * 56, f"nginx:1.{i % 4}", [f"nginx:1.{i % 4}"], nginx_ids[i % 4])
+        for i in range(20)
+    ]
+    named = _Sparse(
+        "hg" + "1" * 62, "docker.io/honeygain/honeygain:latest", ["honeygain/honeygain:latest"], "sha256:" + "a" * 64
+    )
+    # Docker lists an image ID when the container was created from one, or its tag moved on.
+    retagged = _Sparse("hg" + "2" * 62, "sha256:" + "f" * 64, ["honeygain/honeygain:latest"], "sha256:" + "f" * 64)
+    # Created from a local alias of the catalog image: the listed name says nothing,
+    # the image's own tags do.
+    alias = _Sparse(
+        "hg" + "3" * 62, "my-alias", ["honeygain/honeygain:latest", "my-alias:latest"], "sha256:" + "c" * 64
+    )
+    built = [
+        _Sparse(f"built{i}" + "0" * 58, "sha256:" + "b" * 64, ["myapp:dev"], "sha256:" + "b" * 64) for i in range(5)
+    ]
+    unrelated += built
+    images = {
+        **{i: {"RepoTags": [f"nginx:1.{n}"], "RepoDigests": []} for n, i in enumerate(nginx_ids)},
+        "sha256:" + "a" * 64: {"RepoTags": ["honeygain/honeygain:latest"], "RepoDigests": []},
+        "sha256:" + "f" * 64: {"RepoTags": [], "RepoDigests": ["honeygain/honeygain@sha256:" + "1" * 64]},
+        "sha256:" + "c" * 64: {"RepoTags": ["honeygain/honeygain:latest", "my-alias:latest"], "RepoDigests": []},
+        "sha256:" + "b" * 64: {"RepoTags": ["myapp:dev"], "RepoDigests": []},
+    }
+    client = MagicMock()
+    client.containers.list.side_effect = [[], [*unrelated, named, retagged, alias]]
+    client.images.get.side_effect = lambda image_id: MagicMock(attrs=images[image_id])
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator, "_build_image_slug_map", return_value=IMAGE_MAP),
+        patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
+    ):
+        results = getattr(orchestrator, fn)()
+    assert sorted(r["name"] for r in results) == sorted([named.name, retagged.name, alias.name])
+    assert all(r["slug"] == "honeygain" for r in results)
+    assert sum(c.inspected for c in unrelated) == 0
+    assert sum(c.image_reads for c in unrelated) == 0
+    assert named.inspected == retagged.inspected == alias.inspected == 1
+    assert client.containers.list.call_args_list[1].kwargs == {"all": True, "sparse": True}
+    # One read per distinct image, not per container: 4 nginx, 3 honeygain, 1 built.
+    assert client.images.get.call_count == 8
+
+
+def test_a_container_whose_image_cannot_be_read_is_still_inspected():
+    lost = _Sparse("hg" + "4" * 62, "honeygain/honeygain:latest", ["honeygain/honeygain:latest"], "sha256:" + "d" * 64)
+    client = MagicMock()
+    client.containers.list.return_value = [lost]
+    client.images.get.side_effect = RuntimeError("no such image")
+    assert orchestrator._external_candidates(client, IMAGE_MAP) == [lost]
+    assert lost.inspected == 1
+
+
+def test_a_container_whose_image_lost_every_name_is_still_inspected():
+    # The tag was removed while the container still runs; the image now has no
+    # tag and no digest, but the container was created from a catalog digest.
+    ref = "honeygain/honeygain@sha256:" + "9" * 64
+    orphan = _Sparse("hg" + "5" * 62, "sha256:" + "e" * 64, [], "sha256:" + "e" * 64)
+    orphan.reload = lambda: (
+        setattr(orphan, "inspected", orphan.inspected + 1),
+        setattr(orphan, "attrs", {"Id": orphan.id, "Config": {"Image": ref}}),
+    )
+    client = MagicMock()
+    client.containers.list.return_value = [orphan]
+    client.images.get.return_value = MagicMock(attrs={"RepoTags": [], "RepoDigests": []})
+    assert orchestrator._external_candidates(client, IMAGE_MAP) == [orphan]
+    assert orphan.inspected == 1
+
+
+def test_a_container_removed_before_its_inspect_is_skipped():
+    gone = _Sparse("hg" + "6" * 62, "honeygain/honeygain:latest", ["honeygain/honeygain:latest"])
+
+    def reload():
+        raise orchestrator.NotFound("gone")
+
+    gone.reload = reload
+    client = MagicMock()
+    client.containers.list.return_value = [gone]
+    client.images.get.return_value = MagicMock(attrs={"RepoTags": ["honeygain/honeygain:latest"]})
+    assert orchestrator._external_candidates(client, IMAGE_MAP) == []
+
+
+@pytest.mark.parametrize("fn", ["get_status", "get_status_light"])
+def test_a_daemon_error_on_inspect_marks_docker_blind_instead_of_hiding_the_container(fn):
+    # A timeout or a proxy refusal on one inspect must not quietly drop an
+    # earner from the status; the caller reports Docker as unavailable.
+    broken = _Sparse("hg" + "7" * 62, "honeygain/honeygain:latest", ["honeygain/honeygain:latest"])
+
+    def reload():
+        raise orchestrator.APIError("500 Server Error")
+
+    broken.reload = reload
+    client = MagicMock()
+    client.containers.list.side_effect = [[], [broken]]
+    client.images.get.return_value = MagicMock(attrs={"RepoTags": ["honeygain/honeygain:latest"]})
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator, "_build_image_slug_map", return_value=IMAGE_MAP),
+        patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
+        patch.object(orchestrator, "_mark_docker_unavailable") as blind,
+    ):
+        assert getattr(orchestrator, fn)() == []
+    blind.assert_called_once()

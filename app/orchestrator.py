@@ -3222,7 +3222,7 @@ def get_status() -> list[dict[str, Any]]:
     image_map = _build_image_slug_map()
     if image_map:
         try:
-            all_containers = client.containers.list(all=True)
+            all_containers = _external_candidates(client, image_map)
         except Exception as exc:
             # Same rule as the labeled list: a partial result with the flag
             # still true would show EXTERNAL deployments as down instead of
@@ -3299,6 +3299,56 @@ def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:
     # Cache empty or stale — return fast light status (no CPU/memory)
     # rather than blocking for 20+ seconds on get_status()
     return get_status_light()
+
+
+def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
+    """Every container on the host that may run a catalog image, inspected.
+
+    A plain list inspects each container it returns, and on a direct socket
+    that is every container on the host, CashPilot's or not. The sparse list
+    carries each container's image ID, so a container is inspected only when
+    its image's tags or digests name a catalog repository. That is the same
+    set of names the match below reads, whatever the container was created
+    from: a tag, a local alias of the image, or a bare ID. Each image is read
+    once. A container whose image cannot be read, or has no name left, is
+    inspected as before. Raises what the list or an inspect raises, except a
+    container removed in between.
+    """
+    repos = {_image_repository(k).lower() for k in image_map} - {""}
+    names_by_image: dict[str, str | None] = {}
+
+    def image_names(image_id: str) -> str | None:
+        if image_id not in names_by_image:
+            try:
+                attrs = client.images.get(image_id).attrs or {}
+                names = [*(attrs.get("RepoTags") or []), *(attrs.get("RepoDigests") or [])]
+                names_by_image[image_id] = " ".join(str(n) for n in names).lower()
+            except Exception:  # noqa: BLE001 - unknown: the container is inspected as before
+                names_by_image[image_id] = None
+        return names_by_image[image_id]
+
+    found = []
+    for c in client.containers.list(all=True, sparse=True):
+        attrs = getattr(c, "attrs", None)
+        attrs = attrs if isinstance(attrs, dict) else {}
+        image_id = attrs.get("ImageID")
+        if image_id:
+            names = image_names(str(image_id))
+            # An image with no tag and no digest left (its reference was
+            # removed while a container still uses it) says nothing: the
+            # container's own Config.Image may still be a catalog reference.
+            if names and not any(r in names for r in repos):
+                continue
+        if "Config" not in attrs and callable(getattr(c, "reload", None)):
+            try:
+                c.reload()
+            except NotFound:
+                # Removed between the list and the inspect. Any other error is
+                # the daemon's and propagates, so the caller marks Docker blind.
+                logger.debug("Container %s is gone", getattr(c, "short_id", "?"))
+                continue
+        found.append(c)
+    return found
 
 
 def _image_ref(image: Any, created_from: str = "") -> str:
@@ -3416,7 +3466,7 @@ def get_status_light() -> list[dict[str, Any]]:
     image_map = _build_image_slug_map()
     if image_map:
         try:
-            all_containers = client.containers.list(all=True)
+            all_containers = _external_candidates(client, image_map)
         except Exception as exc:
             # Same rule as the labeled list: a partial result with the flag
             # still true would show EXTERNAL deployments as down instead of

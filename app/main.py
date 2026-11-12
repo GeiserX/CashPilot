@@ -35,6 +35,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app import (
     activity_ui,
@@ -2624,6 +2625,12 @@ async def lifespan(app: FastAPI):
         _run_health_check,
         "interval",
         minutes=5,
+        # Every other job runs on whole minutes from start, so on the hour five
+        # of them started in the same millisecond as this one, and its write
+        # found the database locked about one run in twelve: that run recorded
+        # no health events and sent no alerts. Half a minute out of step, it
+        # never starts beside another job.
+        start_date=datetime.now(UTC) + timedelta(minutes=5, seconds=30),
         id="health_check",
         max_instances=1,
         coalesce=True,
@@ -2726,7 +2733,6 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=300,
     )
     scheduler.start()
-    await exchange_rates.refresh()
     # Kick both release checks NOW rather than waiting out the first 24-hour
     # interval. APScheduler's interval trigger does not fire on start, and this
     # container is recreated on every deploy -- so on an install that ships more
@@ -2750,7 +2756,15 @@ async def lifespan(app: FastAPI):
     # a UI restarted more often than hourly would leave a capped proxy's copies
     # stopped past its reset day.
     _spawn(_run_proxy_cap_resets())
-    _spawn(_run_collection())
+
+    # Exchange rates are spawned too: an egress firewall that drops the request
+    # held startup for the client's 15 s timeout. The first collection waits
+    # for them, because it stores the fx rate of each balance it records.
+    async def _rates_then_first_collection() -> None:
+        await exchange_rates.refresh()
+        await _run_collection()
+
+    _spawn(_rates_then_first_collection())
     _spawn(_check_windowed_signals())
     logger.info("CashPilot UI started (container ops via workers)")
 
@@ -2958,8 +2972,28 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-# Static files
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+class _VersionedStaticFiles(StaticFiles):
+    """Static files; a ``?v=<release>`` URL is cached for a year without a revalidation.
+
+    base.html puts the release on every own asset (test_static_assets_are_versioned),
+    so a new release is a new URL. Only the running release's own ``?v=`` gets
+    that: a source build renders ``?v=dev`` on every rebuild, and a year-long
+    cache would keep the old app.js against the new pages. Anything else keeps
+    the default revalidation by ETag.
+    """
+
+    async def get_response(self, path: str, scope: Any) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code == 200 and version.series(version.current()):
+            asked = urllib.parse.parse_qs((scope.get("query_string") or b"").decode("latin-1")).get("v", [])
+            if version.display() in asked:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+# Static files, gzipped: app.js and style.css are about 366 KB raw, 95 KB gzipped.
+# Only here, not app-wide: pages carry a CSRF token next to reflected input.
+app.mount("/static", GZipMiddleware(_VersionedStaticFiles(directory="app/static"), minimum_size=1024), name="static")
 
 
 # ---------------------------------------------------------------------------

@@ -662,6 +662,83 @@ class TestHealthEvents:
 
         asyncio.run(run())
 
+    def test_scores_are_cached_until_a_health_event_is_written(self, db):
+        """The score query groups every row in the window; a dashboard load, a
+        /metrics scrape and the scores page must not each run it again while
+        nothing changed. Any health event write must still show at once."""
+        calls = []
+        real = database._compute_health_scores
+
+        async def counting(days):
+            calls.append(days)
+            return await real(days)
+
+        async def run():
+            with patch.object(database, "_compute_health_scores", counting):
+                await database.record_health_event("honeygain", "check_ok")
+                first = await database.get_health_scores(7)
+                first[0]["score"] = -1  # a caller editing its copy must not edit the cache
+                again = await database.get_health_scores(7)
+                assert calls == [7]
+                assert again[0]["score"] != -1
+                again[0]["score"] = -2  # nor one editing a copy served from the cache
+                assert (await database.get_health_scores(7))[0]["score"] != -2
+                assert calls == [7]
+                await database.get_health_scores(30)  # another window is its own entry
+                assert calls == [7, 30]
+
+                await database.record_health_events([("honeygain", "restart", "")])
+                assert (await database.get_health_scores(7))[0]["restarts"] == 1
+                await database.record_health_event("honeygain", "crash")
+                assert (await database.get_health_scores(7))[0]["crashes"] == 1
+                await database.purge_old_data()
+                await database.get_health_scores(7)
+                assert calls == [7, 30, 7, 7, 7]
+
+                # The window slides with the clock: an old entry is recomputed.
+                key = (str(database.DB_PATH), 7)
+                stamp, rows = database._health_scores_cache[key]
+                database._health_scores_cache[key] = (stamp - database.HEALTH_SCORES_TTL - 1, rows)
+                await database.get_health_scores(7)
+                assert calls == [7, 30, 7, 7, 7, 7]
+
+        asyncio.run(run())
+
+    def test_a_write_during_the_compute_is_not_hidden_by_the_cache(self, db):
+        """A compute that read the rows before a write must not cache them after it."""
+        real = database._compute_health_scores
+        calls = []
+
+        async def run():
+            started, go_on = asyncio.Event(), asyncio.Event()
+
+            async def slow(days):
+                calls.append(days)
+                result = await real(days)
+                if len(calls) == 1:
+                    started.set()
+                    await go_on.wait()
+                return result
+
+            with patch.object(database, "_compute_health_scores", slow):
+                await database.record_health_event("honeygain", "check_ok")
+                reader = asyncio.create_task(database.get_health_scores(7))
+                # A compute that raises never sets `started`: stop on the
+                # reader too, so the test fails with its error instead of hanging.
+                checkpoint = asyncio.create_task(started.wait())
+                await asyncio.wait({checkpoint, reader}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+                checkpoint.cancel()
+                if reader.done():
+                    await reader
+                assert started.is_set(), "the compute never reached its checkpoint"
+                await database.record_health_event("honeygain", "crash")
+                go_on.set()
+                assert (await reader)[0]["crashes"] == 0  # this caller asked before the write
+                assert (await database.get_health_scores(7))[0]["crashes"] == 1
+                assert calls == [7, 7]
+
+        asyncio.run(run())
+
 
 class TestWorkerKeys:
     def test_workers_table_has_api_key_enc_column(self, db):

@@ -8,6 +8,7 @@ looked unfixed. A `?v=<release>` on the reference is a new URL per release, so
 the old cache entry is never consulted.
 """
 
+import gzip
 import re
 from unittest.mock import patch
 
@@ -61,3 +62,50 @@ class TestTheDashboardReferencesVersionedAssets:
         for path in _OWN_ASSETS:
             bare = re.findall(r'(?:src|href)="' + re.escape(path) + r'"', html)
             assert not bare, f"{path} is referenced without ?v= in base.html"
+
+
+class TestStaticAssetsAreCheapToLoad:
+    """app.js and style.css are about 366 KB raw, and were sent uncompressed and
+    revalidated on every navigation."""
+
+    def test_a_versioned_asset_is_cached_for_good(self, client, monkeypatch):
+        monkeypatch.setenv("CASHPILOT_VERSION", "9.8.7")
+        r = client.get("/static/js/app.js?v=v9.8.7")
+        assert r.status_code == 200
+        assert r.headers.get("cache-control") == "public, max-age=31536000, immutable"
+
+    @pytest.mark.parametrize(
+        ("running", "asked"),
+        [
+            # A source build renders ?v=dev on every rebuild: the URL never changes.
+            ("", "dev"),
+            ("dev", "dev"),
+            # Another release's URL is not this build's file.
+            ("9.8.7", "v9.8.6"),
+        ],
+    )
+    def test_only_the_running_release_is_cached_for_good(self, client, monkeypatch, running, asked):
+        monkeypatch.setenv("CASHPILOT_VERSION", running)
+        r = client.get(f"/static/js/app.js?v={asked}")
+        assert r.status_code == 200
+        assert "immutable" not in (r.headers.get("cache-control") or "")
+
+    def test_an_unversioned_reference_still_revalidates(self, client):
+        # auth.html and onboarding.html reference style.css without ?v=.
+        r = client.get("/static/css/style.css")
+        assert r.status_code == 200
+        assert "immutable" not in (r.headers.get("cache-control") or "")
+
+    def test_assets_are_gzipped_for_a_client_that_accepts_it(self, client):
+        raw = client.get("/static/js/app.js", headers={"Accept-Encoding": "identity"})
+        assert raw.headers.get("content-encoding") is None
+        with client.stream("GET", "/static/js/app.js", headers={"Accept-Encoding": "gzip"}) as gz:
+            assert gz.headers.get("content-encoding") == "gzip"
+            sent = b"".join(gz.iter_raw())
+        assert len(sent) < len(raw.content) / 2
+        assert gzip.decompress(sent) == raw.content
+
+    def test_pages_are_not_gzipped(self, client):
+        # Compression stays on /static: a page holds a CSRF token beside reflected input.
+        r = client.get("/login", headers={"Accept-Encoding": "gzip"})
+        assert r.headers.get("content-encoding") is None

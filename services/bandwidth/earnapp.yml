@@ -43,6 +43,18 @@ docker:
   command: ""
   network_mode: ""
   privileged: false
+  health_signals:
+    # Seen live (Nov 2026) for four days on one box: the client exited with
+    # "Error: Handshake timeout" every 100 seconds or so, the container restarted
+    # it, and Docker's health check stayed healthy throughout.
+    - pattern: "Error: Handshake timeout"
+      window_hours: 1
+      min_matches: 10
+      means: >-
+        EarnApp keeps failing to reach its servers and restarting, so it earns
+        little or nothing. Restart this copy; if it keeps happening, check this
+        box's internet connection.
+      state: failing
 
 device_link:
   id_env: EARNAPP_UUID

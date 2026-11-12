@@ -149,6 +149,7 @@ def _reset_shared_db():
 
     from app import database
 
+    database._forget_health_scores()
     conns = list(database._shared_conns.values())
     database._shared_conns.clear()
     if not conns:

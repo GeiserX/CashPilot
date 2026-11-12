@@ -32,6 +32,30 @@ docker:
   command: ""
   network_mode: ""
   privileged: false
+  health_signals:
+    # Seen live (Nov 2026): a copy whose egress IP PacketStream classes as a
+    # datacenter logged this every few minutes for days, never "PacketStream is
+    # running", and earned nothing while its container stayed healthy.
+    - pattern: "Non-residential IPs are currently unsupported"
+      unless: "PacketStream is running"
+      window_hours: 2
+      min_matches: 10
+      means: >-
+        PacketStream refuses this copy's IP address as not residential, so it
+        earns nothing. Run it on a box whose internet connection is a home line,
+        or remove this copy.
+      state: failing
+    # Seen live (Nov 2026) a few times a day on a healthy copy, each time
+    # followed by "PacketStream is running"; only a copy that never recovers
+    # inside the window is flagged.
+    - pattern: "allows packeting from 1 client per IP address"
+      unless: "PacketStream is running"
+      window_hours: 2
+      min_matches: 10
+      means: >-
+        PacketStream already has another client on this IP address, and it pays
+        only one per IP. Remove this copy, or the other one that shares its IP.
+      state: failing
 
 requirements:
   residential_ip: true
