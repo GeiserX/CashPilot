@@ -45,11 +45,12 @@ docker:
   command: "${ID} ${NAME}"
   network_mode: ""
   health_signals:
-    # Seen live (Nov 2026) on two boxes for 13 to 24 hours: the client retried
-    # its relay every 5 seconds ("Failed to connect to <ip>:2931, retrying in 5
-    # seconds.", split over two lines), logged no balance, and earned nothing
-    # while its container stayed healthy, until the hosts rebooted. A working
-    # copy logs "Balance: $..." every 30 seconds and never this line.
+    # Seen live (Nov 2026) on two boxes for days: the client logged a failed
+    # relay connection every 15 seconds ("Failed to connect to <ip>:2931,
+    # retrying in 5 seconds.", split over two lines), so 240 an hour, logged no
+    # balance, and earned nothing while its container stayed healthy, until the
+    # hosts rebooted. A working copy logs "Balance: $..." every 30 seconds and
+    # never this line. 120 lines is half an hour of retries.
     - pattern: "retrying in 5 seconds"
       unless: "Balance: \\$"
       window_hours: 1
