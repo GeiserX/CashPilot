@@ -44,6 +44,21 @@ docker:
   # are filled from the form values at deploy time.
   command: "${ID} ${NAME}"
   network_mode: ""
+  health_signals:
+    # Seen live (Nov 2026) on two boxes for 13 to 24 hours: the client retried
+    # its relay every 5 seconds ("Failed to connect to <ip>:2931, retrying in 5
+    # seconds.", split over two lines), logged no balance, and earned nothing
+    # while its container stayed healthy, until the hosts rebooted. A working
+    # copy logs "Balance: $..." every 30 seconds and never this line.
+    - pattern: "retrying in 5 seconds"
+      unless: "Balance: \\$"
+      window_hours: 1
+      min_matches: 120
+      means: >-
+        ProxyBase has not reached its relay for at least half an hour, so it
+        earns nothing. Restart this copy; if that does not help, check that this
+        box can reach the internet.
+      state: failing
 
 requirements:
   residential_ip: false
