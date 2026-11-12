@@ -12,6 +12,15 @@ on:
     - cron: '17 3 * * *'  # 03:17 UTC, every day
   workflow_dispatch:
 
+# One release run at a time per ref, never cancelled. GitHub keeps one running
+# and one pending run per group, and a run that joins later replaces the
+# pending one. A run on another branch releases nothing, so it gets its own
+# group and cannot replace a pending main run. The queue alone does not stop a
+# version from being published twice: see "Skip a version whose images exist".
+concurrency:
+  group: auto-release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   packages: write
@@ -158,7 +167,7 @@ jobs:
           # workflow_dispatch run) detected "nothing to build", skipped the
           # version step, and silently produced no tag and no image while the
           # run still reported success.
-          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
           if [ -n "$LAST_TAG" ]; then
             CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD 2>/dev/null || echo "")
             echo "Comparing $LAST_TAG..HEAD"
@@ -253,7 +262,7 @@ jobs:
         id: version
         if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true'
         run: |
-          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
           if [ -z "$LATEST" ]; then
             LATEST="v0.0.0"
           fi
@@ -284,6 +293,28 @@ jobs:
             LEVEL="patch"
           fi
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+
+          # Skip a version whose images exist. The build pushes the version's
+          # images before the publish job pushes its git tag. On 2026-11-11 a
+          # run pushed cashpilot:2.3.0 and was cancelled before its tag; the
+          # next run read the same last tag, computed 2.3.0 again and overwrote
+          # the images from another commit. Every attempt checks, re-runs too:
+          # a re-run can reach this job for the first time (its "ci" job
+          # failed before) and the images carry no commit to compare with.
+          # "Re-run failed jobs" after a failed build keeps this job's output.
+          for _ in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://hub.docker.com/v2/repositories/drumsergio/cashpilot/tags/${NEW_TAG#v}")
+            case "$code" in
+              404) break ;;
+              200)
+                echo "::warning::drumsergio/cashpilot:${NEW_TAG#v} is already published with no git tag; skipping to the next patch"
+                PATCH=$((PATCH + 1)); NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}" ;;
+              *) echo "::error::Docker Hub answered $code for drumsergio/cashpilot:${NEW_TAG#v}; cannot tell whether it is published"; exit 1 ;;
+            esac
+          done
+          if [ "$code" != "404" ]; then
+            echo "::error::No free version found after ${NEW_TAG}"; exit 1
+          fi
           echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEW_TAG ($LEVEL)"
 

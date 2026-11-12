@@ -38,6 +38,12 @@ on:
   # (repos.md step 5 makes green checks required). The build takes seconds.
   pull_request:
   workflow_dispatch:
+  # A daily redeploy of main. Pushes by the release bot (the compose pin PR,
+  # the changelog PR) start no workflow, so without it the site kept showing
+  # the previous release's compose file until a person pushed a docs change.
+  # It also repairs a deploy that failed all three tries.
+  schedule:
+    - cron: '41 8 * * *'
 
 # One run at a time per ref, never cancelled. GitHub keeps one running and one
 # pending run per group, and a run that joins later replaces the pending one.
@@ -118,7 +124,7 @@ jobs:
           path: site
 
   deploy:
-    # Runs on push to main only, after the build job has passed.
+    # Runs on main only (push, schedule or dispatch), after the build job has passed.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
@@ -127,9 +133,34 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-2.outputs.page_url || steps.deployment-3.outputs.page_url }}
     steps:
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
+      # Pages sometimes answers "Failed to create deployment (status: 500)".
+      # The same artifact gets two more tries, 30 s apart; the third failure
+      # fails the job, and the daily schedule above deploys main again.
       - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      - name: Wait before the second try
+        if: steps.deployment.outcome == 'failure'
+        run: |
+          echo "::warning::Pages deployment failed (attempt 1 of 3)"
+          sleep 30
+
+      - id: deployment-2
+        if: steps.deployment.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      - name: Wait before the third try
+        if: steps.deployment-2.outcome == 'failure'
+        run: |
+          echo "::warning::Pages deployment failed (attempt 2 of 3)"
+          sleep 30
+
+      - id: deployment-3
+        if: steps.deployment-2.outcome == 'failure'
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

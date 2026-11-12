@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -172,3 +173,10 @@ class TestGeneratedCounts:
             text = (ROOT / name).read_text(encoding="utf-8")
             assert gen._COUNT.search(text), f"{name} has no count markers"
             assert gen.render_counts(text, values, name) == text, f"{name} is stale"
+
+    def test_the_site_description_types_no_count(self):
+        """zensical.toml cannot hold count markers, and its typed "39 active
+        services (50 catalogued)" went stale. It names no number at all."""
+        conf = tomllib.loads((ROOT / "zensical.toml").read_text(encoding="utf-8"))
+        description = conf["project"]["site_description"]
+        assert not re.search(r"\d", description), description

@@ -4,7 +4,7 @@
 [project]
 site_name = "CashPilot"
 site_url = "https://geiserx.github.io/CashPilot/"
-site_description = "Self-hosted passive income platform. Deploy, monitor and track 39 active services (50 catalogued) from one dashboard."
+site_description = "Self-hosted passive income platform. Deploy, monitor and track dozens of earning services from one dashboard."
 site_author = "Sergio Fernandez"
 copyright = "Copyright &copy; 2026 Sergio Fernandez"
 repo_url = "https://github.com/GeiserX/CashPilot"

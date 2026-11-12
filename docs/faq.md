@@ -42,6 +42,8 @@ If CashPilot cannot write the key to disk at all, because `/data` is unwritable 
 
 CashPilot has no e-mail reset. Whoever runs the server resets the password from the console of the CashPilot UI container. Your services, earnings and saved credentials are not affected: they are encrypted with `/data/.fernet_key`, not with your password.
 
+The `python -m app.users` command needs CashPilot 2.3 or newer. On 2.2 or earlier it fails with `No module named app.users`. Update first: with Docker Compose, change the `drumsergio/cashpilot` and `drumsergio/cashpilot-worker` tags to `2.3` or newer (a pin such as `2.2` or `2.2.9` stays on that release), then run `docker compose up -d` ([Updating CashPilot](getting-started.md#updating-cashpilot)). On Unraid, update the container.
+
 1. List the accounts. This also shows a username you forgot. Usernames are case-sensitive.
 
     ```bash

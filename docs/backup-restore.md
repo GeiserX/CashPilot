@@ -183,11 +183,12 @@ docker exec cashpilot-ui python -m app.users rotate-session-key && docker restar
 Two lines tell you the restore worked.
 
 The schema line reports the version and any migration that ran. Expect a
-migration if the backup came from an older release, and none if it did not:
+migration if the backup came from an older release, and none if it did not.
+`<N>` is the schema version of the release you run, and it grows with releases:
 
 ```
-Schema at version 12; no migration needed this boot.
-Schema now at version 12 (was 0). Migrations applied this boot: earnings.source
+Schema at version <N>; no migration needed this boot.
+Schema now at version <N> (was 0). Migrations applied this boot: earnings.source
 ```
 
 And there should be **no** decryption error. If the key did not come across you
