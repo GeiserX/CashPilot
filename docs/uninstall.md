@@ -25,6 +25,8 @@ Removal deletes data that nothing can bring back. Decide first what you keep.
 
 **Starting fresh but keeping your nodes.** Back up the identities, or keep their volumes. Step 5 shows the list of volumes, and you delete the lines you want to keep.
 
+**A custom service that keeps data in a volume with no name.** Step 3 deletes those volumes together with the container, and step 5 does not list them. This happens when the image declares a volume and you gave the service no volume for that path. Copy the data out first with `docker cp`.
+
 ---
 
 ## Remove a standard install
@@ -33,7 +35,7 @@ This is for an install from `docker-compose.yml` ([Getting started](getting-star
 
 Go to the folder that holds `docker-compose.yml`. If you started CashPilot with `docker compose -p <name>`, or from a folder with another name, run `export COMPOSE_PROJECT_NAME=<name>` first. `docker compose ls` shows the name. Without it, step 2 finds nothing and still reports no error.
 
-Paste steps 1 to 5 in one go, because steps 3 to 5 use values that step 1 sets. If step 2 prints an error, CashPilot is still running: fix the error and run `docker compose down -v` again before you go on to step 6.
+Paste steps 1 to 5 in one go, because steps 3 to 5 use values that step 1 sets. If step 2 prints an error, CashPilot is still running, and its worker can put the fence back after step 4 removed it. Fix the error and run `docker compose down -v` again. Then paste steps 3 to 5 again before you go on to step 6. Do not run step 1 again: the containers it lists are gone by then, so it would empty the files.
 
 A Storj node deployed before CashPilot 1.37.8, and not updated since, has no stop time of its own, so Docker stops it after 10 seconds. Stop that node first with `docker stop -t 300 cashpilot-storj`. A Storj image pulled before 7 October 2026 still stops the node after 10 seconds, whatever Docker's stop time, so a node you keep may report an unclean shutdown when it next starts.
 
@@ -61,9 +63,11 @@ done | sort -u | xargs -r docker rm -fv
 # 4. Remove the LAN fence: its network and its firewall tables.
 docker network ls -q --filter label=cashpilot.isolation=managed | xargs -r docker network rm
 docker network ls -q --filter label=cashpilot.deployed-by=worker | xargs -r docker network rm
-for family in ip ip6; do
-  docker run --rm --network host --user 0:0 --cap-add NET_ADMIN --entrypoint nft "$worker_image" delete table $family cashpilot
-done
+if [ -z "$(docker network ls -q --filter label=cashpilot.isolation=managed)" ]; then
+  for family in ip ip6; do
+    docker run --rm --network host --user 0:0 --cap-add NET_ADMIN --entrypoint nft "$worker_image" delete table $family cashpilot
+  done
+fi
 
 # 5. List the volumes that are left.
 docker volume ls -q --filter label=cashpilot.deployed-by=worker >> cashpilot-volumes.txt
@@ -77,8 +81,8 @@ What the steps do:
 
 - Step 1 saves the services' containers, volumes, host folders and images to files. After a container is gone, nothing links its volumes and images to CashPilot any more.
 - Step 3 gives each service the stop time CashPilot set for it, 5 minutes for Storj. Storage nodes need that time: a forced stop makes Storj report an unclean shutdown.
-- Step 4 stops the services' traffic rules. If a line says `No such file or directory`, that table was not there, and you can ignore it. On a host without nftables, step 4 removes only the network. A restart of the machine clears the rest ([Check that nothing is left](#check-that-nothing-is-left)). If you pointed `CASHPILOT_CONTAINER_NETWORK` at a network of your own, an upgrade may have labelled it as the worker's, and the second line removes it. To keep that network, leave out that line.
-- Step 5 prints every volume step 6 will delete. Read it now. It includes node identities such as `mysterium-data`, and the `-pre-isolation` copies of them that an upgrade made. To keep a volume, delete its line from `cashpilot-volumes.txt`.
+- Step 4 stops the services' traffic rules. If a line says `No such file or directory`, that table was not there, and you can ignore it. If Docker says the network `has active endpoints`, a container of yours still uses the fenced network. Step 4 then keeps the firewall tables, because that container needs them to stay fenced and to reach the internet. Disconnect or remove that container, then run step 4 again. On a host without nftables, step 4 removes only the network. A restart of the machine clears the rest ([Check that nothing is left](#check-that-nothing-is-left)). If you pointed `CASHPILOT_CONTAINER_NETWORK` at a network of your own, an upgrade may have labelled it as the worker's, and the second line removes it. To keep that network, leave out that line.
+- Step 5 prints every volume step 6 will delete. Read it now. It includes node identities such as `mysterium-data`, and the `-pre-isolation` copies of them that an upgrade made. The list holds every named volume a service used. That includes a volume you created yourself and gave to a custom service, or one that another program shares. To keep a volume, delete its line from `cashpilot-volumes.txt`.
 
 Then remove the volumes and the images:
 
@@ -163,7 +167,9 @@ Change the steps like this:
 
 ### Podman
 
-The fence does not exist on Podman. Leave out the `for family` lines in step 4.
+The fence does not exist on Podman. Leave out the firewall lines in step 4, from `if` to `fi`.
+
+The steps call the `docker` command. On a machine that has only `podman`, install your distribution's `podman-docker` package, which adds a `docker` command that runs Podman. On a machine that has both, `docker` talks to Docker, so the steps do not see the Podman containers. There, set `DOCKER_HOST` to the Podman socket first, for example `export DOCKER_HOST=unix:///run/podman/podman.sock`. We have not tested the steps on Podman. Read each list before you delete from it.
 
 ### Earners you started from an exported compose file
 
