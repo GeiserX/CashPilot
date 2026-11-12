@@ -100,3 +100,55 @@ def test_a_container_whose_image_cannot_be_read_is_still_inspected():
     client.images.get.side_effect = RuntimeError("no such image")
     assert orchestrator._external_candidates(client, IMAGE_MAP) == [lost]
     assert lost.inspected == 1
+
+
+def test_a_container_whose_image_lost_every_name_is_still_inspected():
+    # The tag was removed while the container still runs; the image now has no
+    # tag and no digest, but the container was created from a catalog digest.
+    ref = "honeygain/honeygain@sha256:" + "9" * 64
+    orphan = _Sparse("hg" + "5" * 62, "sha256:" + "e" * 64, [], "sha256:" + "e" * 64)
+    orphan.reload = lambda: (
+        setattr(orphan, "inspected", orphan.inspected + 1),
+        setattr(orphan, "attrs", {"Id": orphan.id, "Config": {"Image": ref}}),
+    )
+    client = MagicMock()
+    client.containers.list.return_value = [orphan]
+    client.images.get.return_value = MagicMock(attrs={"RepoTags": [], "RepoDigests": []})
+    assert orchestrator._external_candidates(client, IMAGE_MAP) == [orphan]
+    assert orphan.inspected == 1
+
+
+def test_a_container_removed_before_its_inspect_is_skipped():
+    gone = _Sparse("hg" + "6" * 62, "honeygain/honeygain:latest", ["honeygain/honeygain:latest"])
+
+    def reload():
+        raise orchestrator.NotFound("gone")
+
+    gone.reload = reload
+    client = MagicMock()
+    client.containers.list.return_value = [gone]
+    client.images.get.return_value = MagicMock(attrs={"RepoTags": ["honeygain/honeygain:latest"]})
+    assert orchestrator._external_candidates(client, IMAGE_MAP) == []
+
+
+@pytest.mark.parametrize("fn", ["get_status", "get_status_light"])
+def test_a_daemon_error_on_inspect_marks_docker_blind_instead_of_hiding_the_container(fn):
+    # A timeout or a proxy refusal on one inspect must not quietly drop an
+    # earner from the status; the caller reports Docker as unavailable.
+    broken = _Sparse("hg" + "7" * 62, "honeygain/honeygain:latest", ["honeygain/honeygain:latest"])
+
+    def reload():
+        raise orchestrator.APIError("500 Server Error")
+
+    broken.reload = reload
+    client = MagicMock()
+    client.containers.list.side_effect = [[], [broken]]
+    client.images.get.return_value = MagicMock(attrs={"RepoTags": ["honeygain/honeygain:latest"]})
+    with (
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator, "_build_image_slug_map", return_value=IMAGE_MAP),
+        patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
+        patch.object(orchestrator, "_mark_docker_unavailable") as blind,
+    ):
+        assert getattr(orchestrator, fn)() == []
+    blind.assert_called_once()

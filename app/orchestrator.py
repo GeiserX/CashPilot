@@ -3305,8 +3305,9 @@ def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
     its image's tags or digests name a catalog repository. That is the same
     set of names the match below reads, whatever the container was created
     from: a tag, a local alias of the image, or a bare ID. Each image is read
-    once. A container whose image cannot be read is inspected as before.
-    Raises what the list raises.
+    once. A container whose image cannot be read, or has no name left, is
+    inspected as before. Raises what the list or an inspect raises, except a
+    container removed in between.
     """
     repos = {_image_repository(k).lower() for k in image_map} - {""}
     names_by_image: dict[str, str | None] = {}
@@ -3328,13 +3329,18 @@ def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
         image_id = attrs.get("ImageID")
         if image_id:
             names = image_names(str(image_id))
-            if names is not None and not any(r in names for r in repos):
+            # An image with no tag and no digest left (its reference was
+            # removed while a container still uses it) says nothing: the
+            # container's own Config.Image may still be a catalog reference.
+            if names and not any(r in names for r in repos):
                 continue
         if "Config" not in attrs and callable(getattr(c, "reload", None)):
             try:
                 c.reload()
-            except Exception as exc:  # noqa: BLE001 - gone between the list and the inspect
-                logger.debug("Could not inspect container %s: %s", getattr(c, "short_id", "?"), exc)
+            except NotFound:
+                # Removed between the list and the inspect. Any other error is
+                # the daemon's and propagates, so the caller marks Docker blind.
+                logger.debug("Container %s is gone", getattr(c, "short_id", "?"))
                 continue
         found.append(c)
     return found
