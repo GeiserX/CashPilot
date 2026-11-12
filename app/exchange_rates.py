@@ -75,8 +75,8 @@ async def refresh() -> None:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             # Fetch both sources concurrently — they update independent state, so a slow
             # provider no longer serializes behind the other. This roughly halves the
-            # worst case (two 15s-timeout calls: 30s -> 15s), which matters most on the
-            # startup path where refresh() is awaited before the app serves requests.
+            # worst case (two 15s-timeout calls: 30s -> 15s), which matters most at
+            # startup, where the first collection waits for this refresh.
             # return_exceptions so one source's network failure can't discard the other's
             # success (each source still tracks its own last-fetch / non-200 internally).
             results = await asyncio.gather(_fetch_crypto(client), _fetch_fiat(client), return_exceptions=True)
@@ -121,8 +121,10 @@ async def _fetch_crypto(client: httpx.AsyncClient) -> None:
 async def _fetch_fiat(client: httpx.AsyncClient) -> None:
     """Fetch USD→fiat from Frankfurter (free, no key). Updates fiat state in place."""
     global _fiat_rates, _fiat_last_fetch
+    # The current address: api.frankfurter.app/latest answers 301 to this one,
+    # which cost a second request on every refresh.
     resp = await client.get(
-        "https://api.frankfurter.app/latest",
+        "https://api.frankfurter.dev/v1/latest",
         params={"from": "USD"},
     )
     if resp.status_code == 200:

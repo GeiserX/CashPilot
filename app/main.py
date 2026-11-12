@@ -2726,7 +2726,6 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=300,
     )
     scheduler.start()
-    await exchange_rates.refresh()
     # Kick both release checks NOW rather than waiting out the first 24-hour
     # interval. APScheduler's interval trigger does not fire on start, and this
     # container is recreated on every deploy -- so on an install that ships more
@@ -2750,7 +2749,15 @@ async def lifespan(app: FastAPI):
     # a UI restarted more often than hourly would leave a capped proxy's copies
     # stopped past its reset day.
     _spawn(_run_proxy_cap_resets())
-    _spawn(_run_collection())
+
+    # Exchange rates are spawned too: an egress firewall that drops the request
+    # held startup for the client's 15 s timeout. The first collection waits
+    # for them, because it stores the fx rate of each balance it records.
+    async def _rates_then_first_collection() -> None:
+        await exchange_rates.refresh()
+        await _run_collection()
+
+    _spawn(_rates_then_first_collection())
     _spawn(_check_windowed_signals())
     logger.info("CashPilot UI started (container ops via workers)")
 
