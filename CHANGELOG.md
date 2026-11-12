@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.3.2] - 2026-11-12
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#733)
+
+### Fixes
+
+- Count token earnings stored before rates were recorded (#734)
+
 ## [2.3.1] - 2026-11-12
 
 ### CI
