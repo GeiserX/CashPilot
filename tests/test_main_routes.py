@@ -477,7 +477,7 @@ class TestRegisterRoute:
 class TestLogout:
     def test_logout_redirects(self, client):
         with patch("app.main.auth.clear_session_cookie", side_effect=lambda r: r):
-            resp = client.get("/logout", follow_redirects=False)
+            resp = client.post("/logout", follow_redirects=False)
             assert resp.status_code == 303
 
 
@@ -2572,7 +2572,7 @@ class TestAddingAUserDoesNotStealTheOwnersSession:
 
     def test_the_owner_is_not_sent_to_the_dashboard_as_someone_else(self, tmp_path):
         resp = self._register(tmp_path, is_first=False)
-        assert resp.headers["location"] == "/users"
+        assert resp.headers["location"] == "/settings"
 
     def test_the_first_run_owner_is_still_signed_in(self, tmp_path):
         """The case this code exists for must keep working."""

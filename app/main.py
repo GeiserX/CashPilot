@@ -2786,6 +2786,56 @@ metrics.setup(app)
 _HSTS_TRUST_PROXY = os.getenv("CASHPILOT_TRUSTED_PROXY", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+# The one third-party script the pages load (app/templates/base.html).
+_CHART_JS_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"
+
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _is_same_origin(request: Request) -> bool:
+    """Did a browser send this request from a CashPilot page, or is it not a browser?
+
+    Sec-Fetch-Site comes from the browser and cannot be set by a page, so it wins
+    when present. Older browsers send only Origin; compare it with the Host the
+    request came in on. A request with neither header is not from a browser (the
+    Desktop and Android clients, curl, Home Assistant), so it passes.
+    """
+    site = request.headers.get("sec-fetch-site")
+    if site is not None:
+        return site in ("same-origin", "none")
+    origin = request.headers.get("origin")
+    if origin is None:
+        return True
+    netloc = urllib.parse.urlsplit(origin).netloc.lower()
+    hosts = {request.headers.get("host", "").lower()}
+    if _HSTS_TRUST_PROXY:
+        hosts.add(request.headers.get("x-forwarded-host", "").lower())
+    return bool(netloc) and netloc in hosts
+
+
+class _SameOriginMiddleware(BaseHTTPMiddleware):
+    """Refuse a state-changing request that carries the session cookie from another site.
+
+    SameSite=Lax still sends the cookie from a same-site page: another service on
+    the same host on another port, or a sibling subdomain. Such a page could
+    otherwise stop containers, reject payouts or add users as the owner.
+    Requests with no session cookie (Bearer API keys, worker heartbeats, the
+    Desktop and Android clients) are not affected.
+    """
+
+    async def dispatch(self, request, call_next):
+        if (
+            request.method in _UNSAFE_METHODS
+            and auth.SESSION_COOKIE in request.cookies
+            and not _is_same_origin(request)
+        ):
+            return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
+        return await call_next(request)
+
+
+app.add_middleware(_SameOriginMiddleware)
+
+
 # Security headers middleware
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -2816,11 +2866,14 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # and stop a form POSTing credentials off-origin if an XSS is ever found.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            f"script-src 'self' https://cdn.jsdelivr.net 'nonce-{nonce}'; "
+            # Only the one CDN file the pages load (chart.js, with SRI in
+            # base.html). The whole jsdelivr host would let an injected
+            # <script src> load any npm package or GitHub file.
+            f"script-src 'self' {_CHART_JS_URL} 'nonce-{nonce}'; "
             "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
-            "connect-src 'self' https://cdn.jsdelivr.net; "
+            "connect-src 'self'; "
             "frame-ancestors 'none'; "
             "base-uri 'none'; "
             "object-src 'none'; "
@@ -7774,6 +7827,10 @@ async def api_set_preferences(
     if body.theme is not None and body.theme not in THEMES:
         raise HTTPException(status_code=400, detail=f"theme must be one of: {', '.join(THEMES)}")
 
+    # API keys resolve to uid 0, which has no users row, so the save would fail
+    # the foreign key and return a 500. Refuse it plainly, as the password route does.
+    if user["uid"] == 0:
+        raise HTTPException(status_code=400, detail="API-key sessions have no preferences to save")
     # Only the fields that were sent are written (one upsert, no read first),
     # so a theme click racing the wizard's POST cannot undo either.
     await database.save_user_preferences(
