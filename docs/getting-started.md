@@ -216,3 +216,4 @@ Browse the full catalog in the [Service Guides](guides/index.md) section.
 - [Fleet Management](fleet.md) -- Deploy across multiple servers
 - [Protecting your home network](home-network-security.md) -- Keep the containers off your LAN, and when gVisor helps
 - [Service Guides](guides/index.md) -- Detailed setup instructions for each service
+- [Removing CashPilot completely](uninstall.md) -- Remove everything it created, to start over or to leave
