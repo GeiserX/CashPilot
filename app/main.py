@@ -2625,6 +2625,12 @@ async def lifespan(app: FastAPI):
         _run_health_check,
         "interval",
         minutes=5,
+        # Every other job runs on whole minutes from start, so on the hour five
+        # of them started in the same millisecond as this one, and its write
+        # found the database locked about one run in twelve: that run recorded
+        # no health events and sent no alerts. Half a minute out of step, it
+        # never starts beside another job.
+        start_date=datetime.now(UTC) + timedelta(minutes=5, seconds=30),
         id="health_check",
         max_instances=1,
         coalesce=True,
