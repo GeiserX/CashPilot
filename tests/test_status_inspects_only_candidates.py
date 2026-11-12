@@ -48,20 +48,34 @@ class _Sparse:
 
 @pytest.mark.parametrize("fn", ["get_status", "get_status_light"])
 def test_only_containers_that_may_be_a_catalog_image_are_inspected(fn):
-    unrelated = [_Sparse(f"other{i:02d}" + "0" * 56, f"nginx:1.{i}", [f"nginx:1.{i}"]) for i in range(20)]
-    named = _Sparse("hg" + "1" * 62, "docker.io/honeygain/honeygain:latest", ["honeygain/honeygain:latest"])
+    nginx_ids = [f"sha256:{i:02d}" + "e" * 62 for i in range(4)]
+    unrelated = [
+        _Sparse(f"other{i:02d}" + "0" * 56, f"nginx:1.{i % 4}", [f"nginx:1.{i % 4}"], nginx_ids[i % 4])
+        for i in range(20)
+    ]
+    named = _Sparse(
+        "hg" + "1" * 62, "docker.io/honeygain/honeygain:latest", ["honeygain/honeygain:latest"], "sha256:" + "a" * 64
+    )
     # Docker lists an image ID when the container was created from one, or its tag moved on.
     retagged = _Sparse("hg" + "2" * 62, "sha256:" + "f" * 64, ["honeygain/honeygain:latest"], "sha256:" + "f" * 64)
+    # Created from a local alias of the catalog image: the listed name says nothing,
+    # the image's own tags do.
+    alias = _Sparse(
+        "hg" + "3" * 62, "my-alias", ["honeygain/honeygain:latest", "my-alias:latest"], "sha256:" + "c" * 64
+    )
     built = [
         _Sparse(f"built{i}" + "0" * 58, "sha256:" + "b" * 64, ["myapp:dev"], "sha256:" + "b" * 64) for i in range(5)
     ]
     unrelated += built
     images = {
+        **{i: {"RepoTags": [f"nginx:1.{n}"], "RepoDigests": []} for n, i in enumerate(nginx_ids)},
+        "sha256:" + "a" * 64: {"RepoTags": ["honeygain/honeygain:latest"], "RepoDigests": []},
         "sha256:" + "f" * 64: {"RepoTags": [], "RepoDigests": ["honeygain/honeygain@sha256:" + "1" * 64]},
+        "sha256:" + "c" * 64: {"RepoTags": ["honeygain/honeygain:latest", "my-alias:latest"], "RepoDigests": []},
         "sha256:" + "b" * 64: {"RepoTags": ["myapp:dev"], "RepoDigests": []},
     }
     client = MagicMock()
-    client.containers.list.side_effect = [[], [*unrelated, named, retagged]]
+    client.containers.list.side_effect = [[], [*unrelated, named, retagged, alias]]
     client.images.get.side_effect = lambda image_id: MagicMock(attrs=images[image_id])
     with (
         patch.object(orchestrator, "_get_client", return_value=client),
@@ -69,11 +83,20 @@ def test_only_containers_that_may_be_a_catalog_image_are_inspected(fn):
         patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
     ):
         results = getattr(orchestrator, fn)()
-    assert sorted(r["name"] for r in results) == sorted([named.name, retagged.name])
+    assert sorted(r["name"] for r in results) == sorted([named.name, retagged.name, alias.name])
     assert all(r["slug"] == "honeygain" for r in results)
     assert sum(c.inspected for c in unrelated) == 0
     assert sum(c.image_reads for c in unrelated) == 0
-    assert named.inspected == retagged.inspected == 1
+    assert named.inspected == retagged.inspected == alias.inspected == 1
     assert client.containers.list.call_args_list[1].kwargs == {"all": True, "sparse": True}
-    # One read per image, not per container.
-    assert client.images.get.call_count == 2
+    # One read per distinct image, not per container: 4 nginx, 3 honeygain, 1 built.
+    assert client.images.get.call_count == 8
+
+
+def test_a_container_whose_image_cannot_be_read_is_still_inspected():
+    lost = _Sparse("hg" + "4" * 62, "honeygain/honeygain:latest", ["honeygain/honeygain:latest"], "sha256:" + "d" * 64)
+    client = MagicMock()
+    client.containers.list.return_value = [lost]
+    client.images.get.side_effect = RuntimeError("no such image")
+    assert orchestrator._external_candidates(client, IMAGE_MAP) == [lost]
+    assert lost.inspected == 1

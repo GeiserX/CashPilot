@@ -3301,12 +3301,14 @@ def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
 
     A plain list inspects each container it returns, and on a direct socket
     that is every container on the host, CashPilot's or not. The sparse list
-    already carries the reference each one was created from, so only those
-    that name a catalog repository are inspected. One listed by image ID only
-    (created from an ID, or its tag moved on) is judged by that image's tags
-    and digests, read once per image. Raises what the list raises.
+    carries each container's image ID, so a container is inspected only when
+    its image's tags or digests name a catalog repository. That is the same
+    set of names the match below reads, whatever the container was created
+    from: a tag, a local alias of the image, or a bare ID. Each image is read
+    once. A container whose image cannot be read is inspected as before.
+    Raises what the list raises.
     """
-    repos = {_image_repository(k).lower() for k in image_map}
+    repos = {_image_repository(k).lower() for k in image_map} - {""}
     names_by_image: dict[str, str | None] = {}
 
     def image_names(image_id: str) -> str | None:
@@ -3323,13 +3325,11 @@ def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
     for c in client.containers.list(all=True, sparse=True):
         attrs = getattr(c, "attrs", None)
         attrs = attrs if isinstance(attrs, dict) else {}
-        ref = str(attrs.get("Image") or (attrs.get("Config") or {}).get("Image") or "").lower()
-        if ref and _IMAGE_ID.fullmatch(ref) and attrs.get("ImageID"):
-            names = image_names(str(attrs["ImageID"]))
-            if names is not None and not any(r and r in names for r in repos):
+        image_id = attrs.get("ImageID")
+        if image_id:
+            names = image_names(str(image_id))
+            if names is not None and not any(r in names for r in repos):
                 continue
-        elif ref and not _IMAGE_ID.fullmatch(ref) and not any(r and r in ref for r in repos):
-            continue
         if "Config" not in attrs and callable(getattr(c, "reload", None)):
             try:
                 c.reload()
@@ -3338,10 +3338,6 @@ def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
                 continue
         found.append(c)
     return found
-
-
-#: A reference that is only an image ID: Docker lists one when the tag moved to another image.
-_IMAGE_ID = re.compile(r"(sha256:)?[0-9a-f]{12,64}")
 
 
 def _image_ref(image: Any, created_from: str = "") -> str:
