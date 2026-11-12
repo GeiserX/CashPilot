@@ -31,6 +31,7 @@ def _lifespan_patches(refresh, collection):
         patch("app.main.update_check.refresh_android", new_callable=AsyncMock),
         patch("app.main._run_collection", collection),
         patch("app.main._run_data_retention", new_callable=AsyncMock),
+        patch("app.main._run_rate_backfill", new_callable=AsyncMock),
         patch("app.main._run_activity_purge", new_callable=AsyncMock),
         patch("app.main._run_vacuum", new_callable=AsyncMock),
         patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),

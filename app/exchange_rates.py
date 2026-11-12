@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -137,6 +138,53 @@ async def _fetch_fiat(client: httpx.AsyncClient) -> None:
         _fiat_last_fetch = time.time()
     else:
         logger.warning("exchange rate fetch got HTTP %s from %s", resp.status_code, "Frankfurter")
+
+
+#: How far back CoinGecko's free tier answers a daily price history. A longer
+#: window answers 401 without a paid key, so the backfill asks for exactly this.
+HISTORY_DAYS = 365
+_DAY_MS = 86_400_000
+
+
+async def fetch_daily_usd_prices(currency: str) -> dict[str, float]:
+    """USD price of one unit of ``currency`` per UTC day, ``{"YYYY-MM-DD": price}``.
+
+    For filling in the rate of a reading stored before rates were recorded, so
+    each reading is priced at its own day and never at today's. Empty on any
+    failure: a day with no price stays unpriced, which is honest, while a guess
+    would quietly restate history.
+
+    The price of day D is CoinGecko's 00:00 UTC point of D, the price at the
+    start of that day. That is the figure CoinGecko itself gives as the price of
+    a date. The series ends with an extra point for "now", which is not at
+    midnight; only midnight points are used, so today's price can never stand
+    in for a past day.
+    """
+    coin = CRYPTO_IDS.get(currency)
+    if coin is None:
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            resp = await client.get(
+                f"https://api.coingecko.com/api/v3/coins/{coin}/market_chart",
+                params={"vs_currency": "usd", "days": HISTORY_DAYS, "interval": "daily"},
+            )
+        if resp.status_code != 200:
+            logger.warning("rate history for %s got HTTP %s from CoinGecko", currency, resp.status_code)
+            return {}
+        prices: dict[str, float] = {}
+        for stamp, price in resp.json()["prices"]:
+            # A zero, negative or NaN price is passed on: the writer refuses it
+            # with the same rule that reads rates back (database._usd_rate).
+            if price is None or int(stamp) % _DAY_MS:
+                continue
+            day = datetime.fromtimestamp(int(stamp) / 1000, UTC).strftime("%Y-%m-%d")
+            prices.setdefault(day, float(price))
+        return prices
+    except Exception as exc:
+        # A timeout has an empty str(); name its class so the line says what failed.
+        logger.warning("rate history for %s failed: %s", currency, str(exc) or type(exc).__name__)
+        return {}
 
 
 def rates_stale() -> bool:

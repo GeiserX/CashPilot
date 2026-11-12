@@ -15,7 +15,7 @@ import math
 import os
 import sqlite3
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -4399,6 +4399,79 @@ async def count_unpriced_confirmed_payouts(exclude: set[str] | None = None) -> i
         )
         row = await cursor.fetchone()
         return int(row[0] or 0)
+    finally:
+        await db.close()
+
+
+#: How far back a missing rate can still be filled: CoinGecko's free daily
+#: history (exchange_rates.HISTORY_DAYS). Older readings are not looked for, so
+#: a reading that can never be priced does not cost a request every day.
+_BACKFILL_WINDOW = "-365 days"
+
+
+async def currencies_missing_rates(currencies: Collection[str]) -> set[str]:
+    """Which of ``currencies`` have a reading or payout in the backfill window with no rate.
+
+    The caller passes the currencies it can price by day (the crypto ids), so
+    USD (parity by definition), points (UNPRICED_BY_DESIGN) and fiat never get
+    here. A full scan, like the one every dashboard total already does over
+    this table, and it decides whether any request goes out at all.
+    """
+    wanted = sorted({c.upper() for c in currencies})
+    if not wanted:
+        return set()
+    marks = ", ".join("?" for _ in wanted)
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            f"SELECT UPPER(currency) FROM earnings WHERE fx_rate_usd IS NULL AND UPPER(currency) IN ({marks}) "
+            "AND date >= date('now', ?) "
+            f"UNION SELECT UPPER(currency) FROM payouts WHERE fx_rate_usd IS NULL AND UPPER(currency) IN ({marks}) "
+            "AND substr(detected_at, 1, 10) >= date('now', ?)",
+            [*wanted, _BACKFILL_WINDOW, *wanted, _BACKFILL_WINDOW],
+        )
+        return {row[0] for row in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+async def fill_missing_rates(currency: str, prices: Mapping[str, float]) -> int:
+    """Give each unrated ``currency`` reading and payout the price of its own day.
+
+    ``prices`` maps a UTC date to the USD price of one unit that day. A reading
+    is keyed on its ``date``, a payout on the date part of ``detected_at``. A row
+    whose day has no price stays NULL: no guess, no nearest day, never today.
+
+    Only rows still NULL are written (the WHERE says so), so a rate a collector
+    stored, possibly between the fetch and this write, is never overwritten.
+    Returns how many rows got a rate.
+    """
+    # The rule the totals read rates back with: a zero, negative or NaN price
+    # stored here would be believed by nothing, but would stop the row ever
+    # being filled again.
+    days = [(rate, currency.upper(), day) for day, price in prices.items() if (rate := _usd_rate(currency, price))]
+    if not days:
+        return 0
+    db = await _get_db()
+    try:
+        try:
+            earnings = await db.executemany(
+                "UPDATE earnings SET fx_rate_usd = ? WHERE fx_rate_usd IS NULL AND UPPER(currency) = ? AND date = ?",
+                days,
+            )
+            payouts = await db.executemany(
+                "UPDATE payouts SET fx_rate_usd = ? "
+                "WHERE fx_rate_usd IS NULL AND UPPER(currency) = ? AND substr(detected_at, 1, 10) = ?",
+                days,
+            )
+            await db.commit()
+        except Exception:
+            # Same reason as upsert_earnings_many: an abandoned transaction on the
+            # shared connection holds the write lock against the collector.
+            with contextlib.suppress(Exception):
+                await db.rollback()
+            raise
+        return max(0, earnings.rowcount) + max(0, payouts.rowcount)
     finally:
         await db.close()
 
