@@ -75,6 +75,9 @@ class TestPerUserBuckets:
         assert _login(c, "viewer1", VIEWER_PW) == 303
         assert rl.key_for("testclient", "viewer1") not in rl._login_attempts
         assert len(rl._login_attempts[rl.key_for("testclient", "owner1")]) == 1
+        # The per-IP budget keeps every attempt, the success included: clearing it
+        # would let any valid account reset the budget and spray other usernames.
+        assert len(rl._login_attempts[rl.ip_key("testclient")]) == 3
 
 
 class TestConcurrentBurst:
