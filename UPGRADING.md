@@ -19,6 +19,30 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## After 2.3.0: the fleet key no longer reads the dashboard, and `/data` closes to other users
+
+**Affects you if** a dashboard tile, widget or script calls the CashPilot API
+with the shared fleet key (`CASHPILOT_API_KEY`), or if something other than
+CashPilot reads its `/data` folder.
+
+- The fleet key only enrolls workers. Every dashboard API route now answers it
+  with 403 "The fleet key only enrolls workers". Workers, CashPilot Desktop and
+  the Android app are not affected: they only send heartbeats and earnings
+  imports, which still take it.
+- The UI and the worker now create their files for their own user alone
+  (`umask 077`), and an image started as root sets `/data` to `700`. A sidecar,
+  backup job or file share that reads `/data` as another user loses access.
+
+**What to do.**
+
+1. For a tile, widget or script: set `CASHPILOT_READONLY_API_KEY` on the UI,
+   `docker compose up -d`, and give that key to the tile instead
+   ([Heimdall tile](contrib/heimdall/README.md#which-key-to-use)).
+2. For anything else that reads `/data`: run it as the image's user (uid 1000)
+   or as root.
+
+---
+
 ## After 2.0.6: redeploy Mysterium once to move it off the host network
 
 **Affects you if** you run Mysterium through CashPilot. Through 2.0.6 the node

@@ -135,10 +135,13 @@ a tile that simply dashed every zero.
 Use **`CASHPILOT_READONLY_API_KEY`**. It is scoped to reporting endpoints and
 cannot deploy, stop or remove anything, which is exactly what a tile needs.
 
-The admin and fleet keys also work, but the admin key grants full container
-control and the fleet key is the *enrolment* credential: anything holding it
-can enrol a worker. Handing either to a dashboard is far more than showing two
-numbers requires.
+The admin key also works, but it grants full container control, which is far
+more than showing two numbers requires.
+
+The fleet key (`CASHPILOT_API_KEY`) does not work. It is the *enrolment*
+credential: it only enrolls workers, and every dashboard route answers it with
+403 "The fleet key only enrolls workers". A tile set up with it shows nothing;
+give it the read-only key instead.
 
 ### A correction worth keeping
 

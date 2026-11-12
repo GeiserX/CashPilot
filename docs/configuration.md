@@ -26,7 +26,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_SECRET_KEY` | generated | Signs session cookies. | **Env wins**, then `/data/.secret_key`, then a generated key that is persisted. A known-placeholder value is ignored. |
 | `CASHPILOT_ENCRYPTION_KEY` | generated | Fernet key for credentials at rest. | **File wins.** An existing `/data/.fernet_key` beats this; the env key is adopted only when no file exists. |
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | `false` | Allow starting when the encryption key cannot be persisted. | - |
-| `CASHPILOT_API_KEY` | from `/fleet` | Shared **enrolment** key. Not an ongoing credential; see [Fleet](fleet.md). | Env, else `/fleet/.fleet_key`, else generated there. |
+| `CASHPILOT_API_KEY` | from `/fleet` | Shared **enrolment** key. Not an ongoing credential, and it reads nothing: every dashboard API route answers it with 403. Tiles, widgets and scripts use `CASHPILOT_READONLY_API_KEY`. See [Fleet](fleet.md). | Env, else `/fleet/.fleet_key`, else generated there. |
 | `CASHPILOT_ADMIN_API_KEY` | unset | Bearer token for API access without a session. Grants **owner**: it can deploy, stop and remove containers and read stored credentials. | - |
 | `CASHPILOT_READONLY_API_KEY` | unset | Bearer token for **reporting only**. Accepted on a small allowlist of GET endpoints (earnings summary and breakdown, fleet summary, health scores, deployed services) and refused everywhere else, including on endpoints added in the future. Use this for a dashboard tile, a Grafana panel or Home Assistant sensors rather than handing them a key that controls containers. | - |
 | `CASHPILOT_DATA_DIR` | `/data` | Where the database and keys live. | - |
