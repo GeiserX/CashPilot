@@ -60,4 +60,6 @@ def verify(provided: str | None) -> bool:
         return False
     if not provided:
         return False
-    return hmac.compare_digest(current, provided)
+    # Compare bytes: compare_digest on str raises TypeError for non-ASCII input,
+    # which turned a pasted typo into a 500 instead of a refusal.
+    return hmac.compare_digest(current.encode(), provided.encode())

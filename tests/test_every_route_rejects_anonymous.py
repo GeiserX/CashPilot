@@ -33,7 +33,7 @@ PUBLIC = {
     ("GET", "/api/health"): "the Docker healthcheck asks it; fixed state names, no data",
     ("GET", "/login"): "the login form itself",
     ("POST", "/login"): "authenticates; rejects bad credentials on its own",
-    ("GET", "/logout"): "clears the session — safe to hit anonymously",
+    ("POST", "/logout"): "clears the session — safe to hit anonymously",
     ("GET", "/register"): "the registration form; gated by setup token / invite",
     ("POST", "/register"): "creates the account; enforces its own setup-token gate",
     ("GET", "/onboarding"): "first-boot owner creation; refuses once a user exists",

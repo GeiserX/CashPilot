@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
+import time
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -28,6 +30,11 @@ from app.users import USERNAME_PATTERN
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Checked against when the username does not exist, so an unknown name costs the
+# same bcrypt run as a wrong password and the response time does not tell an
+# outsider which usernames are real.
+_DUMMY_HASH = auth_module.hash_password(secrets.token_urlsafe(16))
 
 
 async def _rearm_setup_token() -> None:
@@ -67,7 +74,7 @@ async def _rearm_setup_token() -> None:
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def page_login(request: Request, error: str = ""):
+async def page_login(request: Request):
     # If no users exist, redirect to onboarding
     if not await database.has_any_users():
         return RedirectResponse("/onboarding", status_code=303)
@@ -83,7 +90,7 @@ async def page_login(request: Request, error: str = ""):
             "mode": "login",
             "action": "/login",
             "button_text": "Sign In",
-            "error": error,
+            "error": "",
             "is_first": False,
         },
     )
@@ -96,14 +103,25 @@ async def do_login(
     password: str = Form(...),
 ):
     client_ip = deps.client_ip(request) or "unknown"
+    # One bucket per (IP, username), and the attempt is counted before the
+    # password check: a success then clears only its own bucket, a parallel
+    # burst cannot slip past the limit, and failures against one account never
+    # lock out another account on the same IP (or behind the same proxy). A
+    # looser per-IP budget on top stops one client from rotating usernames to
+    # get unlimited guesses and bcrypt runs.
+    rate_key = login_rate_limit.key_for(client_ip, username)
     try:
-        login_rate_limit.check_login_rate(client_ip)
+        login_rate_limit.reserve_attempt(rate_key, ip=client_ip)
     except HTTPException:
         metrics.record_rate_limit()
         raise
     user = await database.get_user_by_username(username)
-    if not user or not await auth_module.verify_password_async(password, user["password"]):
-        login_rate_limit.record_failed_login(client_ip)
+    if user:
+        ok = await auth_module.verify_password_async(password, user["password"])
+    else:
+        await auth_module.verify_password_async(password, _DUMMY_HASH)
+        ok = False
+    if not ok:
         metrics.record_login(success=False)
         return deps.templates.TemplateResponse(
             request,
@@ -120,7 +138,7 @@ async def do_login(
             status_code=401,
         )
 
-    login_rate_limit.clear(client_ip)
+    login_rate_limit.clear(rate_key)
     metrics.record_login(success=True)
     token = auth_module.create_session_token(user["id"], user["username"], user["role"])
     response = RedirectResponse("/", status_code=303)
@@ -128,7 +146,7 @@ async def do_login(
 
 
 @router.get("/register", response_class=HTMLResponse)
-async def page_register(request: Request, error: str = ""):
+async def page_register(request: Request):
     is_first = not await database.has_any_users()
     # Only allow registration if first user OR if requester is owner
     if not is_first:
@@ -150,7 +168,7 @@ async def page_register(request: Request, error: str = ""):
             "mode": "register",
             "action": "/register",
             "button_text": "Create Account",
-            "error": error,
+            "error": "",
             "is_first": is_first,
         },
     )
@@ -287,15 +305,30 @@ async def do_register(
         #
         # Only the first-run owner gets signed in here, which is the case this
         # code was written for.
-        return RedirectResponse("/users", status_code=303)
+        # There is no users page, so the form returns to Settings (/users was a 404).
+        return RedirectResponse("/settings", status_code=303)
 
     token = auth_module.create_session_token(user_id, username, role)
     response = RedirectResponse("/setup", status_code=303)
     return auth_module.set_session_cookie(response, token, request)
 
 
-@router.get("/logout")
-async def do_logout():
+@router.post("/logout")
+async def do_logout(request: Request):
+    """Sign out, and end the session on the server too.
+
+    Deleting the cookie alone left a copied cookie valid for its full 30 days.
+    The token carries no per-session id, so this revokes every session of the
+    user issued up to now, through the same durable per-user epoch a role change
+    uses. That signs the user out on every device.
+
+    POST, not GET: a GET let any cross-site link or redirect sign a user out.
+    """
+    user = auth_module.get_current_user(request)
+    if user and isinstance(user.get("uid"), int) and user["uid"] > 0:
+        revoked_at = time.time()
+        await database.revoke_user_sessions(user["uid"], revoked_at)
+        auth_module.set_user_pwd_epoch(user["uid"], revoked_at)
     response = RedirectResponse("/login", status_code=303)
     return auth_module.clear_session_cookie(response)
 

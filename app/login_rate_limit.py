@@ -21,18 +21,65 @@ from time import monotonic
 from fastapi import HTTPException
 
 # A plain dict, NOT a defaultdict, so a stale empty bucket never lingers. Every
-# distinct client IP that ever hits /login would otherwise leave a permanent key
-# behind once its attempts aged out, growing without bound for the life of the
-# process — a slow leak that only shows up on a host exposed long enough to see
-# a lot of addresses.
+# distinct key that ever hits /login would otherwise leave a permanent entry
+# behind once its attempts aged out. Pruning on lookup only covers keys that come
+# back, so _sweep() also drops stale keys once per window and caps the total.
+#
+# /login keys a bucket by (client IP, username), see key_for(). An IP-only bucket
+# let one account's successful login reset the counter for every other account
+# on that IP, and let anyone behind the same proxy lock the owner out.
 _login_attempts: dict[str, list[float]] = {}
 
 MAX_ATTEMPTS = 5
+# A looser budget per client IP across every username it tries. Without it one
+# client could rotate usernames and get a full bcrypt run (and a fresh guess) on
+# every request. Successful logins count too, so it also bounds the bcrypt work.
+MAX_ATTEMPTS_PER_IP = 30
 WINDOW_SECONDS = 300
+# Upper bound on tracked buckets. Past it the stale ones go first, then the
+# least recently used, so memory stays bounded under a flood of usernames. A
+# bucket that is at its limit is never evicted: dropping it would hand its owner
+# a fresh set of guesses.
+MAX_TRACKED_KEYS = 10_000
+# Usernames are 3-32 characters; anything longer is cut so a key stays small.
+_MAX_USERNAME_IN_KEY = 64
+
+_last_sweep = 0.0
 
 
-def check_login_rate(ip: str) -> None:
-    """Raise 429 when this address has failed too often, recently.
+def key_for(ip: str, username: str) -> str:
+    """The bucket key for one login attempt: client IP plus the username tried."""
+    return f"{ip}\x00{username[:_MAX_USERNAME_IN_KEY]}"
+
+
+def ip_key(ip: str) -> str:
+    """The per-IP bucket key. \x01 keeps it apart from every key_for() key."""
+    return f"{ip}\x01"
+
+
+def _is_locked(attempts: list[float], now: float) -> bool:
+    return sum(1 for t in attempts if now - t < WINDOW_SECONDS) >= MAX_ATTEMPTS
+
+
+def _sweep(now: float) -> None:
+    """Drop stale buckets once per window, and the oldest ones past the cap."""
+    global _last_sweep
+    if len(_login_attempts) < MAX_TRACKED_KEYS and now - _last_sweep < WINDOW_SECONDS:
+        return
+    _last_sweep = now
+    for key in [k for k, v in _login_attempts.items() if not v or now - v[-1] >= WINDOW_SECONDS]:
+        del _login_attempts[key]
+    excess = len(_login_attempts) - MAX_TRACKED_KEYS
+    if excess >= 0:
+        # Evict down to 90% of the cap, so a sustained flood does not sort on every call.
+        excess += MAX_TRACKED_KEYS // 10
+        evictable = [k for k, v in _login_attempts.items() if not _is_locked(v, now)]
+        for key in sorted(evictable, key=lambda k: _login_attempts[k][-1])[:excess]:
+            del _login_attempts[key]
+
+
+def check_login_rate(ip: str, limit: int = MAX_ATTEMPTS) -> None:
+    """Raise 429 when this key has reached ``limit`` attempts, recently.
 
     Also prunes the bucket as a side effect, which is what keeps the dict from
     growing: entries are dropped the next time their address is seen, and an
@@ -44,8 +91,28 @@ def check_login_rate(ip: str) -> None:
         _login_attempts[ip] = attempts
     else:
         _login_attempts.pop(ip, None)
-    if len(attempts) >= MAX_ATTEMPTS:
+    if len(attempts) >= limit:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
+
+
+def reserve_attempt(key: str, ip: str | None = None) -> None:
+    """Count one login attempt BEFORE the password is checked.
+
+    Raises 429 when the key is already at the limit, or when ``ip`` is given and
+    that client has used its per-IP budget. Both are checked before either is
+    counted, so a refused request costs nothing. The checks and the appends run
+    with no await between them, so concurrent requests cannot all pass the check
+    before any of them is counted: the 6th request in a parallel burst is
+    refused, not only the next batch. A successful login calls clear(key), which
+    leaves the per-IP budget as it is.
+    """
+    _sweep(monotonic())
+    if ip is not None:
+        check_login_rate(ip_key(ip), MAX_ATTEMPTS_PER_IP)
+    check_login_rate(key)
+    if ip is not None:
+        record_failed_login(ip_key(ip))
+    record_failed_login(key)
 
 
 def record_failed_login(ip: str) -> None:
