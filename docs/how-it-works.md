@@ -125,6 +125,7 @@ The UI runs scheduled collectors for each configured service:
 - **Automated collectors** fetch balances via service APIs (JWT auth, cookie auth, API keys) for the providers that have one
 - Results stored in SQLite with native currency (USD, MYST, GRASS, STORJ, etc.)
 - Exchange rates fetched from CoinGecko (crypto) and Frankfurter (fiat), cached 15 minutes
+- Each reading stores the USD rate of the day it was taken. A crypto reading stored without one (older than the rate column) gets the price of its own day from CoinGecko's daily history, at startup and once a day; a day with no price stays unpriced
 - Dashboard converts and displays in the user's preferred currency
 
 ## Tech Stack

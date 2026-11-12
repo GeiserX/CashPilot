@@ -85,6 +85,7 @@ def test_it_runs_at_startup():
             patch("app.main.update_check.refresh_android", new_callable=AsyncMock),
             patch("app.main._run_collection", new_callable=AsyncMock),
             patch("app.main._run_data_retention", new_callable=AsyncMock),
+            patch("app.main._run_rate_backfill", new_callable=AsyncMock),
             patch("app.main._run_activity_purge", new_callable=AsyncMock),
             patch("app.main._run_vacuum", vacuum),
             patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),

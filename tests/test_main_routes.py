@@ -2246,7 +2246,8 @@ class TestLifespanScheduler:
                 patch("app.main.catalog.register_sighup"),
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
-                patch("app.main._run_data_retention", new_callable=AsyncMock),
+                # One item, not two: a with-statement past 20 items is a SyntaxError.
+                patch.multiple("app.main", _run_data_retention=AsyncMock(), _run_rate_backfill=AsyncMock()),
                 patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),
@@ -2262,6 +2263,9 @@ class TestLifespanScheduler:
                         "health_check",
                         "stale_workers",
                         "data_retention",
+                        # Fills rates missing from old readings; daily so a
+                        # failed startup attempt is retried.
+                        "rate_backfill",
                         "db_vacuum",
                         "exchange_rates",
                         "windowed_signals",
@@ -2314,7 +2318,8 @@ class TestLifespanScheduler:
                 patch("app.main.catalog.register_sighup"),
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
-                patch("app.main._run_data_retention", new_callable=AsyncMock),
+                # One item, not two: a with-statement past 20 items is a SyntaxError.
+                patch.multiple("app.main", _run_data_retention=AsyncMock(), _run_rate_backfill=AsyncMock()),
                 patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),
@@ -2351,7 +2356,8 @@ class TestLifespanScheduler:
                 patch("app.main.catalog.register_sighup"),
                 patch("app.main.exchange_rates.refresh", new_callable=AsyncMock),
                 patch("app.main._run_collection", new_callable=AsyncMock),
-                patch("app.main._run_data_retention", new_callable=AsyncMock),
+                # One item, not two: a with-statement past 20 items is a SyntaxError.
+                patch.multiple("app.main", _run_data_retention=AsyncMock(), _run_rate_backfill=AsyncMock()),
                 patch("app.main._run_activity_purge", new_callable=AsyncMock),
                 patch("app.main._run_vacuum", new_callable=AsyncMock),
                 patch("app.main._run_proxy_cap_resets", new_callable=AsyncMock),

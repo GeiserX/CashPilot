@@ -2025,6 +2025,34 @@ async def _run_data_retention() -> None:
         logger.warning("Data retention error: %s", exc)
 
 
+async def _run_rate_backfill() -> None:
+    """Price readings stored before rates were recorded, each at its own day's rate.
+
+    Without a rate a token reading is left out of every total, and nothing else
+    ever fills an old NULL: a collection writes the rate of the day it reads.
+    Runs at startup and then daily. The daily run is what guarantees the fill
+    when the startup attempt met a firewall or a rate limit, on an install that
+    does not restart; with nothing missing it is one SELECT and no request.
+    """
+    try:
+        missing = await database.currencies_missing_rates(exchange_rates.CRYPTO_IDS)
+        filled: dict[str, int] = {}
+        for currency in sorted(missing):
+            prices = await exchange_rates.fetch_daily_usd_prices(currency)
+            if prices and (count := await database.fill_missing_rates(currency, prices)):
+                filled[currency] = count
+        # The totals are computed from the table on every request and nothing
+        # caches them, so the filled rows count from the next page load.
+        if filled:
+            logger.info(
+                "Filled the missing USD rate of %d readings from their own day's price (%s)",
+                sum(filled.values()),
+                ", ".join(filled),
+            )
+    except Exception as exc:
+        logger.warning("Rate backfill error: %s", str(exc) or type(exc).__name__)
+
+
 #: Config key holding when the last VACUUM finished (ISO 8601, UTC).
 _LAST_VACUUM_KEY = "_last_vacuum_at"
 _VACUUM_EVERY = timedelta(days=7)
@@ -2663,6 +2691,15 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         misfire_grace_time=300,
     )
+    scheduler.add_job(
+        _run_rate_backfill,
+        "interval",
+        hours=24,
+        id="rate_backfill",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
     # Activity (docs/activity.md): the raw-address purge, the spike check and
     # the network table refresh. Hourly, so no address outlives a day by more
     # than an hour even when no heartbeat arrives to purge on ingest.
@@ -2746,6 +2783,9 @@ async def lifespan(app: FastAPI):
     # process start, so an install that restarts more than once a day (every
     # release recreates this container) never purged anything at all.
     _spawn(_run_data_retention())
+    # Filling missing rates calls CoinGecko, so it is spawned: a blocked egress
+    # must not delay startup.
+    _spawn(_run_rate_backfill())
     # And VACUUM, which has the same trap on a weekly interval; it checks its
     # own last run, so this rewrites the file at most once a week.
     _spawn(_run_vacuum())
