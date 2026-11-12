@@ -123,6 +123,26 @@ def test_no_request_when_nothing_is_missing(db):
     made.assert_not_called()
 
 
+@pytest.mark.parametrize("age", [exchange_rates.HISTORY_DAYS, 400])
+def test_no_request_for_readings_older_than_the_free_history(db, age):
+    # CoinGecko's free 365-day history has no midnight point for today minus
+    # 365, so such a reading can never be filled and must not cost a request.
+    old = _day(age)
+    asyncio.run(database.upsert_earnings("mysterium", 10.0, "MYST", date=old))
+    asyncio.run(database.add_manual_payout("mysterium", 50.0, "MYST", None, "wallet", old))
+    assert asyncio.run(database.currencies_missing_rates({"MYST"})) == set()
+    client = _client(body=_history({old: 0.2}))
+    with patch("app.exchange_rates.httpx.AsyncClient", return_value=client) as made:
+        asyncio.run(main._run_rate_backfill())
+    made.assert_not_called()
+
+
+def test_the_oldest_day_the_free_history_prices_is_still_looked_for(db):
+    oldest = _day(exchange_rates.HISTORY_DAYS - 1)
+    asyncio.run(database.upsert_earnings("mysterium", 10.0, "MYST", date=oldest))
+    assert asyncio.run(database.currencies_missing_rates({"MYST"})) == {"MYST"}
+
+
 def test_a_day_without_a_price_stays_null(db):
     priced, unpriced = _day(20), _day(19)
     asyncio.run(database.upsert_earnings("mysterium", 10.0, "MYST", date=priced))

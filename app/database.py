@@ -34,7 +34,7 @@ except ImportError as exc:  # pragma: no cover - only after an aiosqlite upgrade
 from cryptography.fernet import Fernet, InvalidToken
 
 from app import themes, usage
-from app.exchange_rates import UNPRICED_BY_DESIGN
+from app.exchange_rates import HISTORY_DAYS, UNPRICED_BY_DESIGN
 
 _logger = logging.getLogger(__name__)
 
@@ -4404,9 +4404,12 @@ async def count_unpriced_confirmed_payouts(exclude: set[str] | None = None) -> i
 
 
 #: How far back a missing rate can still be filled: CoinGecko's free daily
-#: history (exchange_rates.HISTORY_DAYS). Older readings are not looked for, so
-#: a reading that can never be priced does not cost a request every day.
-_BACKFILL_WINDOW = "-365 days"
+#: history (exchange_rates.HISTORY_DAYS). A request for 365 days returns the
+#: midnight points of the last 365 days counting today, so the oldest day it
+#: prices is today minus 364; the window stops there. Older readings are not
+#: looked for, so a reading that can never be priced does not cost a request
+#: every day.
+_BACKFILL_WINDOW = f"-{HISTORY_DAYS - 1} days"
 
 
 async def currencies_missing_rates(currencies: Collection[str]) -> set[str]:
