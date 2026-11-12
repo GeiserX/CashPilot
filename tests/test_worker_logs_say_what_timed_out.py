@@ -68,3 +68,20 @@ def test_a_heartbeat_that_times_out_says_so(caplog):
 
 def test_a_message_is_kept_as_it_was():
     assert worker_api._reason(OSError("[Errno -3] Try again")) == "[Errno -3] Try again"
+
+
+def test_a_rate_fetch_that_times_out_says_so(caplog):
+    # The UI logged "Exchange rate fetch failed: " for the same reason.
+    from app import exchange_rates
+
+    async def too_slow(*_a, **_k):
+        raise httpx.ReadTimeout("")
+
+    with (
+        patch.object(exchange_rates, "_fetch_crypto", too_slow),
+        patch.object(exchange_rates, "_fetch_fiat", too_slow),
+        caplog.at_level(logging.ERROR, logger=exchange_rates.logger.name),
+    ):
+        asyncio.run(exchange_rates.refresh())
+    assert "Exchange rate fetch failed: ReadTimeout" in caplog.text
+    assert not [r for r in caplog.records if r.getMessage().endswith("failed: ")]

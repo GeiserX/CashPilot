@@ -82,7 +82,8 @@ async def refresh() -> None:
             results = await asyncio.gather(_fetch_crypto(client), _fetch_fiat(client), return_exceptions=True)
         for r in results:
             if isinstance(r, Exception):
-                logger.error("Exchange rate fetch failed: %s", r)
+                # A timeout has an empty str(); name its class so the line says what failed.
+                logger.error("Exchange rate fetch failed: %s", str(r) or type(r).__name__)
 
         _last_fetch = min(_crypto_last_fetch, _fiat_last_fetch)
         logger.info(
@@ -91,7 +92,7 @@ async def refresh() -> None:
             len(_crypto_usd),
         )
     except Exception as exc:
-        logger.error("Exchange rate fetch failed: %s", exc)
+        logger.error("Exchange rate fetch failed: %s", str(exc) or type(exc).__name__)
 
 
 async def _fetch_crypto(client: httpx.AsyncClient) -> None:
