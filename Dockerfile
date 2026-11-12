@@ -1,11 +1,16 @@
+# Every base is pinned by tag and digest, so two builds of one release use the
+# same bytes. Dependabot's docker ecosystem bumps both parts together; uv is a
+# FROM stage, not a bare COPY --from, so Dependabot can see it.
+FROM ghcr.io/astral-sh/uv:0.11.16@sha256:440fd6477af86a2f1b38080c539f1672cd22acb1b1a47e321dba5158ab08864d AS uv
+
 # -- Build stage --
-FROM python:3.15-alpine AS builder
+FROM python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd AS builder
 
 WORKDIR /build
 
 RUN apk add --no-cache gcc musl-dev libffi-dev
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /bin/uv
+COPY --from=uv /uv /bin/uv
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project \
@@ -16,7 +21,7 @@ RUN uv sync --frozen --no-dev --no-install-project \
        find .venv -type d -name "test" -exec rm -rf {} + 2>/dev/null; true
 
 # -- Runtime stage --
-FROM python:3.15-alpine
+FROM python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 
 # The release tag this image was built from, so the app can report what it is.
 # Both apps used to hardcode "0.1.0" while releases were tag-driven and past
@@ -47,8 +52,8 @@ WORKDIR /app
 
 COPY --from=builder /build/.venv ./.venv
 
-COPY --chown=cashpilot:root app/ ./app/
-COPY --chown=cashpilot:root services/ ./services/
+COPY app/ ./app/
+COPY services/ ./services/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

@@ -120,15 +120,17 @@ CASHPILOT_API_KEY=your-shared-api-key
 CASHPILOT_WORKER_NAME=server-b
 CASHPILOT_WORKER_URL=http://server-b:8081
 CASHPILOT_WORKER_BIND_ADDR=100.x.y.z
-CASHPILOT_COMPOSE_DIR=$PWD
 EOF
 docker compose -f docker-compose.worker.yml up -d
 ```
 
 `CASHPILOT_UI_URL` is the UI's published host port (`CASHPILOT_UI_PORT`).
 `CASHPILOT_WORKER_BIND_ADDR` is this server's private or VPN address, never
-`0.0.0.0` or a public IP. `CASHPILOT_COMPOSE_DIR` lets the in-app update reach
-the compose folder through the proxy.
+`0.0.0.0` or a public IP. To use the in-app update, also add
+`CASHPILOT_COMPOSE_DIR=$PWD`. It is opt-in because it lets containers bind the
+compose folder through the proxy, which weakens it
+([what that costs](security-defaults.md#docker-socket-proxy)). Without it,
+update the worker with `docker compose pull && docker compose up -d`.
 
 !!! important "CASHPILOT_WORKER_URL"
     Set this to the address the UI should use to reach this worker (e.g. its LAN IP or Tailscale MagicDNS name, port 8081). Without it, the worker auto-detects its own outbound IP, which inside a container is often the Docker bridge address -- unreachable from the UI on another host.

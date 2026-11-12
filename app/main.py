@@ -4673,16 +4673,23 @@ async def _proxy_to_worker(
     """
     worker = await database.get_worker(worker_id)
     url, headers = await _get_verified_worker_url(worker)
+    # An https worker named by hostname is reached at its pinned IP. httpx takes
+    # SNI and the certificate check from the URL's host, so without this the
+    # handshake names the IP and every call to the worker fails. The name is
+    # the one that passed validation; the IP stays pinned.
+    tls: dict[str, Any] = {}
+    if url.startswith("https://") and "Host" in headers:
+        tls["extensions"] = {"sni_hostname": urllib.parse.urlparse(worker["url"]).hostname}
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             verb = method.upper()
             if verb == "GET":
-                resp = await client.get(f"{url}{path}", params=params, headers=headers)
+                resp = await client.get(f"{url}{path}", params=params, headers=headers, **tls)
             elif verb == "DELETE":
-                resp = await client.delete(f"{url}{path}", params=params, headers=headers)
+                resp = await client.delete(f"{url}{path}", params=params, headers=headers, **tls)
             else:
-                resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers)
+                resp = await client.post(f"{url}{path}", json=json, params=params, headers=headers, **tls)
             if resp.status_code >= 400:
                 # NOT resp.text at warning level: withholding the raw body from the
                 # caller (see _safe_worker_detail) is pointless if it goes straight

@@ -37,7 +37,7 @@ You can change all of these. None of them require changing for a normal install.
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | The worker API is equivalent to root on that machine. Never publish port 8081. |
 | `CASHPILOT_METRICS_ENABLED` | off | `/metrics` exposes balances and hostnames. If you enable it, set `CASHPILOT_METRICS_TOKEN` too. |
 | `CASHPILOT_PROXY_BIND_MOUNTS` | empty | Host folders the [Docker socket proxy](#docker-socket-proxy) lets containers bind, comma-separated. Each entry also counts as a `CASHPILOT_ALLOWED_VOLUME_ROOTS` entry and must pass the same checks (a service folder such as `/mnt/user/storj`, never a whole root). Any container the worker creates may then mount it. |
-| `CASHPILOT_COMPOSE_DIR` | empty | Your compose folder, which the proxy then lets the in-app update bind. Unset, the **Update** button tells you the line to add. |
+| `CASHPILOT_COMPOSE_DIR` | empty | Your compose folder, which the proxy then lets the in-app update bind. Opt-in: it also lets containers bind that folder, which weakens the proxy (see below). Unset, update with `docker compose pull && docker compose up -d`; the **Update** button tells you the line to add if you want it. |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | empty | Opts specific host paths past the volume block. Each entry is a deliberate widening; system paths are still refused. |
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | off | Lets CashPilot start when the encryption key cannot be persisted. Every credential then dies on the next restart. |
 | `allow_delete_critical` (per request) | refuses | Permits deleting a volume that holds irreplaceable state. There is no undo. |
@@ -189,9 +189,24 @@ left, because sockguard 2.4.6 has no setting for it:
   compose file uses for them are paths under the null device, where Docker
   cannot create a folder, so nothing can be planted there.
 
+What the worker itself enforces on top, for deploys sent through its API:
+
+- It refuses any bind of the compose folder, anything under it, or a folder
+  above it (which would reach the compose file and its `.env` too). Only the
+  in-app update needs that folder, and the update does not go through a
+  deploy. The proxy still allows the folder, so this stops a deploy sent with
+  a worker key, not a compromised worker.
+- It lets a deploy bind any path under a `CASHPILOT_PROXY_BIND_MOUNTS` folder,
+  with any image and command. So with that variable set, anyone holding a
+  worker key (the UI, or whoever reads the plain-HTTP traffic between the UI
+  and the worker) can take the symlink route above with two deploys, not
+  only a compromised worker. The blocked system folders (`/mnt`, `/home` and
+  the rest) do not apply inside a folder you listed.
+
 It needs a change in sockguard (binds that are exact or symlink-free). Until
 then, an install that keeps both variables unset is the one where the proxy
-stands between the worker and root.
+stands between the worker and root. That is the default: the in-app update is
+opt-in for this reason.
 
 **What a compromised worker can still do** even once those are closed:
 

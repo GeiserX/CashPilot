@@ -40,8 +40,12 @@ _METADATA_IPS = frozenset(
         ipaddress.ip_address("fd00:ec2::254"),  # AWS IMDS over IPv6
     }
 )
-# Loopback + link-local, IPv4 and IPv6 — always blocked.
+# Loopback + link-local, IPv4 and IPv6 — always blocked. The unspecified
+# addresses are loopback in disguise: on Linux a connect to 0.0.0.0 or [::]
+# reaches the local host, so they would walk around the loopback block.
 _BLOCKED_NETWORKS = (
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("::/128"),
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("169.254.0.0/16"),
     ipaddress.ip_network("::1/128"),
@@ -85,7 +89,7 @@ def _assert_ip_not_blocked(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) 
         raise HTTPException(status_code=400, detail="Worker URL points to a cloud metadata address")
     for net in _BLOCKED_NETWORKS:
         if addr.version == net.version and addr in net:
-            raise HTTPException(status_code=400, detail="Worker URL points to loopback/link-local address")
+            raise HTTPException(status_code=400, detail="Worker URL points to loopback/link-local/unspecified address")
 
 
 def _assert_ip_strict_allowed(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:

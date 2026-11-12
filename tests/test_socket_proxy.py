@@ -1089,8 +1089,8 @@ def test_no_fix_when_the_policy_is_current_or_unproxied(monkeypatch):
 def test_the_worker_image_can_run_the_policy_filter():
     """The filter runs from the worker image, so everything it imports is copied in."""
     dockerfile = (ROOT / "Dockerfile.worker").read_text()
-    assert "COPY --chown=cashpilot:root app/socket_policy.py ./app/" in dockerfile
-    assert "COPY --chown=cashpilot:root services/ ./services/" in dockerfile
+    assert "COPY app/socket_policy.py ./app/" in dockerfile
+    assert "COPY services/ ./services/" in dockerfile
 
 
 def test_a_new_catalog_reader_changes_the_fingerprint(tmp_path):

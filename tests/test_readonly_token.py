@@ -92,7 +92,7 @@ class TestGuards:
         with patch.object(auth, "get_current_user", return_value={"uid": 0, "u": "readonly", "r": "reader"}):
             assert deps._require_reader(_request())["r"] == "reader"
 
-    @pytest.mark.parametrize("role", ["owner", "writer", "fleet"])
+    @pytest.mark.parametrize("role", ["owner", "writer"])
     def test_reader_guard_still_accepts_higher_roles(self, role):
         """Opting an endpoint in must not lock out the roles that already had it."""
         with patch.object(auth, "get_current_user", return_value={"uid": 1, "u": "x", "r": role}):

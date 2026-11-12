@@ -8,6 +8,6 @@
     <div class="input-group col">
         {!! Form::label('access_token', 'API key') !!}
         {!! Form::text('config[access_token]', isset($item)? $item->getconfig()->access_token : null) !!}
-        <small>Use <strong>CASHPILOT_READONLY_API_KEY</strong> &mdash; it is scoped to reporting endpoints and cannot deploy, stop or remove anything. Sent as a Bearer token. The admin or fleet key also works, but both grant far more than this tile needs.</small>
+        <small>Use <strong>CASHPILOT_READONLY_API_KEY</strong> &mdash; it is scoped to reporting endpoints and cannot deploy, stop or remove anything. Sent as a Bearer token. The admin key also works, but grants far more than this tile needs. The fleet key (CASHPILOT_API_KEY) does not: it only enrolls workers, and the dashboard answers it with 403.</small>
     </div>
 </div>
