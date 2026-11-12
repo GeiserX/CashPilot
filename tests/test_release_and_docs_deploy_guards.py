@@ -50,10 +50,12 @@ def _version_step() -> str:
 
 class TestAPublishedVersionIsNeverReused:
     """Run the real "Get latest version tag" step against a repo whose last
-    tag is v2.2.9 plus a feat commit, with a fake Docker Hub on which 2.3.0
-    (and optionally 2.3.1) is already published."""
+    tag is v2.2.9 plus a feat commit, with a fake Docker Hub that answers 200
+    for the published versions and ``other`` for every other one."""
 
-    def _run(self, tmp_path: Path, attempt: str, published: tuple[str, ...]) -> str:
+    def _run(
+        self, tmp_path: Path, published: tuple[str, ...], other: str = "404"
+    ) -> subprocess.CompletedProcess:
         repo = tmp_path / "repo"
         repo.mkdir()
 
@@ -70,30 +72,46 @@ class TestAPublishedVersionIsNeverReused:
         bin_dir.mkdir()
         curl = bin_dir / "curl"
         cases = " ".join(f"*/tags/{v})" + " printf 200 ;;" for v in published)
-        curl.write_text(f'#!/bin/sh\nfor a; do url="$a"; done\ncase "$url" in {cases} *) printf 404 ;; esac\n')
+        curl.write_text(
+            f'#!/bin/sh\nfor a; do url="$a"; done\ncase "$url" in {cases} *) printf {other} ;; esac\n'
+        )
         curl.chmod(0o755)
 
-        out = tmp_path / "out"
-        script = _version_step().replace("${{ github.run_attempt }}", attempt)
-        subprocess.run(
-            ["bash", "-eo", "pipefail", "-c", script],
+        self.out = tmp_path / "out"
+        return subprocess.run(
+            ["bash", "-eo", "pipefail", "-c", _version_step()],
             cwd=repo,
-            env={"PATH": f"{bin_dir}:/usr/bin:/bin", "GITHUB_OUTPUT": str(out)},
+            env={"PATH": f"{bin_dir}:/usr/bin:/bin", "GITHUB_OUTPUT": str(self.out)},
             capture_output=True,
             text=True,
-            check=True,
         )
-        lines = dict(line.split("=", 1) for line in out.read_text().splitlines() if "=" in line)
+
+    def _new_tag(self, result: subprocess.CompletedProcess) -> str:
+        assert result.returncode == 0, result.stdout + result.stderr
+        lines = dict(line.split("=", 1) for line in self.out.read_text().splitlines() if "=" in line)
         return lines["new_tag"]
 
-    def test_a_first_attempt_skips_published_versions(self, tmp_path):
-        assert self._run(tmp_path, "1", ("2.3.0", "2.3.1")) == "v2.3.2"
+    def test_published_versions_are_skipped(self, tmp_path):
+        assert self._new_tag(self._run(tmp_path, ("2.3.0", "2.3.1"))) == "v2.3.2"
 
     def test_a_free_version_is_taken_as_computed(self, tmp_path):
-        assert self._run(tmp_path, "1", ()) == "v2.3.0"
+        assert self._new_tag(self._run(tmp_path, ())) == "v2.3.0"
 
-    def test_a_rerun_of_the_same_run_keeps_its_version(self, tmp_path):
-        assert self._run(tmp_path, "2", ("2.3.0",)) == "v2.3.0"
+    def test_every_attempt_checks_docker_hub(self):
+        # A re-run can reach the release job for the first time (its "ci" job
+        # failed on attempt 1), so no attempt may skip the check.
+        assert "run_attempt" not in _version_step()
+
+    def test_an_unclear_docker_hub_answer_fails_the_step(self, tmp_path):
+        result = self._run(tmp_path, (), other="429")
+        assert result.returncode != 0
+        assert "Docker Hub answered 429" in result.stdout
+
+    def test_no_free_version_in_twenty_tries_fails_the_step(self, tmp_path):
+        published = tuple(f"2.3.{n}" for n in range(25))
+        result = self._run(tmp_path, published)
+        assert result.returncode != 0
+        assert "No free version found" in result.stdout
 
 
 class TestTheLastReleaseTagSkipsPreReleases:

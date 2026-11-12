@@ -298,23 +298,22 @@ jobs:
           # images before the publish job pushes its git tag. On 2026-11-11 a
           # run pushed cashpilot:2.3.0 and was cancelled before its tag; the
           # next run read the same last tag, computed 2.3.0 again and overwrote
-          # the images from another commit. A first attempt never reuses a
-          # published version: it moves to the next patch. A re-run of the
-          # same run (attempt 2 or later, same commit) may rebuild its own one.
-          if [ "${{ github.run_attempt }}" = "1" ]; then
-            for _ in $(seq 1 20); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' "https://hub.docker.com/v2/repositories/drumsergio/cashpilot/tags/${NEW_TAG#v}")
-              case "$code" in
-                404) break ;;
-                200)
-                  echo "::warning::drumsergio/cashpilot:${NEW_TAG#v} is already published with no git tag; skipping to the next patch"
-                  PATCH=$((PATCH + 1)); NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}" ;;
-                *) echo "::error::Docker Hub answered $code for drumsergio/cashpilot:${NEW_TAG#v}; cannot tell whether it is published"; exit 1 ;;
-              esac
-            done
-            if [ "$code" != "404" ]; then
-              echo "::error::No free version found after ${NEW_TAG}"; exit 1
-            fi
+          # the images from another commit. Every attempt checks, re-runs too:
+          # a re-run can reach this job for the first time (its "ci" job
+          # failed before) and the images carry no commit to compare with.
+          # "Re-run failed jobs" after a failed build keeps this job's output.
+          for _ in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://hub.docker.com/v2/repositories/drumsergio/cashpilot/tags/${NEW_TAG#v}")
+            case "$code" in
+              404) break ;;
+              200)
+                echo "::warning::drumsergio/cashpilot:${NEW_TAG#v} is already published with no git tag; skipping to the next patch"
+                PATCH=$((PATCH + 1)); NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}" ;;
+              *) echo "::error::Docker Hub answered $code for drumsergio/cashpilot:${NEW_TAG#v}; cannot tell whether it is published"; exit 1 ;;
+            esac
+          done
+          if [ "$code" != "404" ]; then
+            echo "::error::No free version found after ${NEW_TAG}"; exit 1
           fi
           echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
           echo "Bumping $LATEST -> $NEW_TAG ($LEVEL)"
