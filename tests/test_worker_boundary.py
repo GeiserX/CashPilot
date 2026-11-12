@@ -290,6 +290,22 @@ def test_deploy_cannot_bind_the_compose_folder(monkeypatch, source):
     assert "compose folder" in exc.value.detail
 
 
+@pytest.mark.parametrize("compose_dir", ["/volume1/docker/cashpilot/", "/volume1/docker/./cashpilot"])
+def test_compose_folder_written_untidily_still_closes_what_is_under_it(monkeypatch, compose_dir):
+    """A trailing slash or a dot in the setting must not open the folders under it."""
+    from app import orchestrator, worker_api
+
+    monkeypatch.setenv("CASHPILOT_COMPOSE_DIR", compose_dir)
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/volume1/docker")
+    monkeypatch.setattr(orchestrator, "proxied", lambda: True)
+    spec = worker_api.DeploySpec(
+        image="alpine:3.20", volumes={"/volume1/docker/cashpilot/evil": {"bind": "/x", "mode": "rw"}}
+    )
+    with pytest.raises(HTTPException) as exc:
+        worker_api._validate_deploy_spec(spec, "custom")
+    assert exc.value.status_code == 403
+
+
 def test_deploy_may_bind_a_sibling_of_the_compose_folder(monkeypatch):
     """Only the folder itself is closed: a name that merely starts the same is not under it."""
     from app import orchestrator, worker_api
