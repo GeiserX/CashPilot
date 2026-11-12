@@ -35,6 +35,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app import (
     activity_ui,
@@ -2894,8 +2895,25 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-# Static files
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+class _VersionedStaticFiles(StaticFiles):
+    """Static files; a ``?v=<release>`` URL is cached for a year without a revalidation.
+
+    base.html puts the release on every own asset (test_static_assets_are_versioned),
+    so a new release is a new URL. A reference without ``?v=`` keeps the default
+    revalidation by ETag.
+    """
+
+    async def get_response(self, path: str, scope: Any) -> Response:
+        response = await super().get_response(path, scope)
+        query = scope.get("query_string") or b""
+        if response.status_code == 200 and any(part.startswith(b"v=") for part in query.split(b"&")):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+# Static files, gzipped: app.js and style.css are about 366 KB raw, 95 KB gzipped.
+# Only here, not app-wide: pages carry a CSRF token next to reflected input.
+app.mount("/static", GZipMiddleware(_VersionedStaticFiles(directory="app/static"), minimum_size=1024), name="static")
 
 
 # ---------------------------------------------------------------------------
