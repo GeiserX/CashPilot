@@ -4455,8 +4455,13 @@ async def fill_missing_rates(currency: str, prices: Mapping[str, float]) -> int:
     days = [(rate, currency.upper(), day) for day, price in prices.items() if (rate := _usd_rate(currency, price))]
     if not days:
         return 0
-    db = await _get_db()
-    try:
+    # A connection of its own, like withdraw_probable_payout: on the shared one a
+    # rollback after a failed second UPDATE would also throw away a collector's
+    # write made between the two awaits, and the collector would then commit
+    # and report a reading that was never saved.
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        await db.execute("BEGIN IMMEDIATE")
         try:
             earnings = await db.executemany(
                 "UPDATE earnings SET fx_rate_usd = ? WHERE fx_rate_usd IS NULL AND UPPER(currency) = ? AND date = ?",
@@ -4468,15 +4473,10 @@ async def fill_missing_rates(currency: str, prices: Mapping[str, float]) -> int:
                 days,
             )
             await db.commit()
-        except Exception:
-            # Same reason as upsert_earnings_many: an abandoned transaction on the
-            # shared connection holds the write lock against the collector.
-            with contextlib.suppress(Exception):
-                await db.rollback()
+        except BaseException:
+            await db.rollback()
             raise
         return max(0, earnings.rowcount) + max(0, payouts.rowcount)
-    finally:
-        await db.close()
 
 
 async def record_node_figures(platform: str, nodes: Sequence[Mapping[str, Any]], currency: str) -> dict[str, float]:

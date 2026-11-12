@@ -260,3 +260,13 @@ def test_a_failed_write_rolls_back_and_frees_the_lock(db):
     # The earnings half of the write was undone, and the next write is not blocked.
     assert _rate("mysterium", d) is None
     asyncio.run(database.upsert_earnings("mysterium", 11.0, "MYST", date=_day(6)))
+
+
+def test_the_write_never_touches_the_shared_connection(db):
+    # Its rollback must not be able to discard another task's unsaved write on the
+    # shared connection, so the backfill writes on a connection of its own.
+    d = _day(7)
+    asyncio.run(database.upsert_earnings("mysterium", 10.0, "MYST", date=d))
+    with patch.object(database, "_get_db", AsyncMock(side_effect=AssertionError("shared connection used"))):
+        assert asyncio.run(database.fill_missing_rates("MYST", {d: 0.2})) == 1
+    assert _rate("mysterium", d) == 0.2
