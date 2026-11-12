@@ -189,9 +189,23 @@ left, because sockguard 2.4.6 has no setting for it:
   compose file uses for them are paths under the null device, where Docker
   cannot create a folder, so nothing can be planted there.
 
+What the worker itself enforces on top, for deploys sent through its API:
+
+- It refuses any bind of the compose folder or anything under it. Only the
+  in-app update needs that folder, and the update does not go through a
+  deploy. The proxy still allows the folder, so this stops a deploy sent with
+  a worker key, not a compromised worker.
+- It lets a deploy bind any path under a `CASHPILOT_PROXY_BIND_MOUNTS` folder,
+  with any image and command. So with that variable set, anyone holding a
+  worker key (the UI, or whoever reads the plain-HTTP traffic between the UI
+  and the worker) can take the symlink route above with two deploys, not
+  only a compromised worker. The blocked system folders (`/mnt`, `/home` and
+  the rest) do not apply inside a folder you listed.
+
 It needs a change in sockguard (binds that are exact or symlink-free). Until
 then, an install that keeps both variables unset is the one where the proxy
-stands between the worker and root.
+stands between the worker and root. That is the default: the in-app update is
+opt-in for this reason.
 
 **What a compromised worker can still do** even once those are closed:
 

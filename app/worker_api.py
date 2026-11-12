@@ -776,10 +776,14 @@ async def _send_heartbeat() -> None:
                 logger.warning("Activity bookkeeping failed (heartbeat itself landed)")
             try:
                 # Enrollment: the UI returns our own per-worker key exactly once.
+                # Taken only while we are still on the shared key. The real UI
+                # never sends one to an enrolled worker, so a key in the reply
+                # then can only come from whoever answered in its place, and
+                # adopting it would lock the real UI out of this worker.
                 issued = None
                 with contextlib.suppress(Exception):
                     issued = resp.json().get("worker_key")
-                if issued and issued != _worker_key:
+                if issued and _worker_key is None:
                     if _save_worker_key(issued):
                         logger.info("Enrolled: received and persisted this worker's own fleet key")
                     else:
@@ -1612,6 +1616,8 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     _validate_fence_gated(spec, slug)
     proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
+    compose_dir = os.getenv(orchestrator.COMPOSE_DIR_ENV, "").strip()
+    compose_dir = os.path.normpath(compose_dir) if compose_dir.startswith("/") else ""
     for source in spec.volumes:
         if source in orchestrator.PROXY_VOLUMES:
             # The volume holds the worker's own Docker socket; a container
@@ -1619,6 +1625,18 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             raise HTTPException(status_code=403, detail=f"Volume '{source}' is the worker's Docker socket")
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
+        if compose_dir and (
+            os.path.normpath(source) == compose_dir or os.path.normpath(source).startswith(compose_dir + "/")
+        ):
+            # The proxy opens the compose folder for the in-app update only. A
+            # deploy that binds it could rewrite the compose file, read the .env
+            # beside it, or plant a symlink there that a second bind follows to
+            # the host's root (docs/security-defaults.md).
+            raise HTTPException(
+                status_code=403,
+                detail=f"Volume '{source}' is in the compose folder ({orchestrator.COMPOSE_DIR_ENV}); "
+                "no service may bind it",
+            )
         if proxy_roots is not None and not any(
             os.path.normpath(source) == root or os.path.normpath(source).startswith(root.rstrip("/") + "/")
             for root in proxy_roots

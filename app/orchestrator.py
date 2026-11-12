@@ -2381,7 +2381,10 @@ def start_service(slug: str, instance: int = 1) -> None:
 # ---------------------------------------------------------------------------
 
 #: Pinned helper image (ships the compose plugin — verified v2.33.0). Never :latest.
-UPDATER_IMAGE = "docker:27.5.1-cli"
+#: Pinned by digest too: it runs with the host's raw Docker socket, which is
+#: root on the host, so it must be the bytes we reviewed and not whatever the
+#: tag points to on the day of the update. Bump both parts on purpose.
+UPDATER_IMAGE = "docker:27.5.1-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c"
 #: Fixed helper name: doubles as the only-one-update-at-a-time lock.
 UPDATER_NAME = "cashpilot-updater"
 

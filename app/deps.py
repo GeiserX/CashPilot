@@ -85,7 +85,21 @@ def _require_auth_api(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Not authenticated")
     if user.get("r") == "reader":
         raise HTTPException(status_code=403, detail="Read-only token")
+    _refuse_fleet_key(user)
     return user
+
+
+def _refuse_fleet_key(user: dict[str, Any]) -> None:
+    """The shared fleet key enrolls workers and reads nothing.
+
+    Every worker host holds it, in its .env and in ``docker inspect``, so a
+    dashboard read it was granted is a read by every machine in the fleet:
+    earnings, payouts, the worker list. Workers, the Desktop and the Android
+    app call only the heartbeat and the earnings import, which authenticate
+    the key themselves (app/main.py::_authenticate_worker_heartbeat).
+    """
+    if user.get("r") == "fleet":
+        raise HTTPException(status_code=403, detail="The fleet key only enrolls workers")
 
 
 def _require_reader(request: Request) -> dict[str, Any]:
@@ -99,6 +113,7 @@ def _require_reader(request: Request) -> dict[str, Any]:
     user = auth.get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    _refuse_fleet_key(user)
     return user
 
 

@@ -330,6 +330,8 @@ class TestCounterWiring:
                 200,
                 json_body={"worker_key": 12345},
                 extra_patches=(
+                    # Still on the shared key: only then is a key in the reply taken.
+                    patch.object(worker_api, "_worker_key", None),
                     patch.object(worker_api, "_save_worker_key", side_effect=TypeError("data must be str")),
                 ),
             )

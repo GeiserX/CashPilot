@@ -1,11 +1,16 @@
+# Every base is pinned by tag and digest, so two builds of one release use the
+# same bytes. Dependabot's docker ecosystem bumps both parts together; uv is a
+# FROM stage, not a bare COPY --from, so Dependabot can see it.
+FROM ghcr.io/astral-sh/uv:0.11.16@sha256:440fd6477af86a2f1b38080c539f1672cd22acb1b1a47e321dba5158ab08864d AS uv
+
 # -- Build stage --
-FROM python:3.15-alpine AS builder
+FROM python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd AS builder
 
 WORKDIR /build
 
 RUN apk add --no-cache gcc musl-dev libffi-dev
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /bin/uv
+COPY --from=uv /uv /bin/uv
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project \
@@ -16,7 +21,7 @@ RUN uv sync --frozen --no-dev --no-install-project \
        find .venv -type d -name "test" -exec rm -rf {} + 2>/dev/null; true
 
 # -- Runtime stage --
-FROM python:3.15-alpine
+FROM python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 
 # The release tag this image was built from, so the app can report what it is.
 # Both apps used to hardcode "0.1.0" while releases were tag-driven and past
@@ -51,47 +56,47 @@ WORKDIR /app
 
 COPY --from=builder /build/.venv ./.venv
 
-COPY --chown=cashpilot:root app/__init__.py ./app/
-COPY --chown=cashpilot:root app/constants.py ./app/
-COPY --chown=cashpilot:root app/fleet_key.py ./app/
+COPY app/__init__.py ./app/
+COPY app/constants.py ./app/
+COPY app/fleet_key.py ./app/
 # Keeps secrets in request URLs (httpx logs every one) out of the log.
-COPY --chown=cashpilot:root app/log_redaction.py ./app/
+COPY app/log_redaction.py ./app/
 # Egress identity: pure helpers, deliberately free of app-level imports so
 # the worker image stays minimal.
-COPY --chown=cashpilot:root app/egress.py ./app/
+COPY app/egress.py ./app/
 # Encrypted state export: encryption happens on the WORKER so the UI only
 # ever handles ciphertext.
-COPY --chown=cashpilot:root app/state_backup.py ./app/
+COPY app/state_backup.py ./app/
 # worker_api imports this to report which release it is; without it the worker
 # crashes on import. The two tests that caught the omission compare this list
 # against worker_api's actual imports.
-COPY --chown=cashpilot:root app/version.py ./app/
-COPY --chown=cashpilot:root app/worker_api.py ./app/
-COPY --chown=cashpilot:root app/orchestrator.py ./app/
-COPY --chown=cashpilot:root app/isolation_check.py ./app/
-COPY --chown=cashpilot:root app/socket_policy.py ./app/
+COPY app/version.py ./app/
+COPY app/worker_api.py ./app/
+COPY app/orchestrator.py ./app/
+COPY app/isolation_check.py ./app/
+COPY app/socket_policy.py ./app/
 # The one-shot cashpilot-migrate service of the compose files runs it.
-COPY --chown=cashpilot:root app/owner_migrate.py ./app/
+COPY app/owner_migrate.py ./app/
 # Fences the earners off the LAN by default; the helper imports it too.
-COPY --chown=cashpilot:root app/lan_fence.py ./app/
+COPY app/lan_fence.py ./app/
 # Proxied copies: the tunnel sidecar and the earner inside it (docs/proxies.md).
-COPY --chown=cashpilot:root app/proxy_tunnel.py ./app/
+COPY app/proxy_tunnel.py ./app/
 # Activity: per-container socket tables and counters, read by a short-lived
 # probe in each earner's network namespace (docs/activity.md).
-COPY --chown=cashpilot:root app/activity.py ./app/
-COPY --chown=cashpilot:root app/procnet.py ./app/
+COPY app/activity.py ./app/
+COPY app/procnet.py ./app/
 # Reads a payout address set inside a container (Mysterium, Anyone).
-COPY --chown=cashpilot:root app/payout_read.py ./app/
+COPY app/payout_read.py ./app/
 # Reads a node's own earnings figures from inside it (Mysterium, issue #488).
-COPY --chown=cashpilot:root app/node_read.py ./app/
+COPY app/node_read.py ./app/
 # Asks a running node how it is doing from inside it (docker.health_probe);
 # catalog.py also validates the declaration with it.
-COPY --chown=cashpilot:root app/health_probe.py ./app/
-COPY --chown=cashpilot:root app/arch.py ./app/
-COPY --chown=cashpilot:root app/catalog.py ./app/
+COPY app/health_probe.py ./app/
+COPY app/arch.py ./app/
+COPY app/catalog.py ./app/
 # catalog.py validates each entry's rating block with it (the rules ship in services/).
-COPY --chown=cashpilot:root app/ratings.py ./app/
-COPY --chown=cashpilot:root services/ ./services/
+COPY app/ratings.py ./app/
+COPY services/ ./services/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

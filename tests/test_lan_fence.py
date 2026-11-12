@@ -1277,7 +1277,7 @@ def test_the_same_public_ip_triggers_no_extra_check():
 
 def test_the_worker_image_ships_the_fence():
     dockerfile = (ROOT / "Dockerfile.worker").read_text()
-    assert "COPY --chown=cashpilot:root app/lan_fence.py ./app/" in dockerfile
+    assert "COPY app/lan_fence.py ./app/" in dockerfile
     apk = next(ln for ln in dockerfile.splitlines() if ln.startswith("RUN apk add") and "su-exec" in ln)
     assert "nftables" in apk.split() and "iptables-legacy" in apk.split()
 
