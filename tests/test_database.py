@@ -723,7 +723,14 @@ class TestHealthEvents:
             with patch.object(database, "_compute_health_scores", slow):
                 await database.record_health_event("honeygain", "check_ok")
                 reader = asyncio.create_task(database.get_health_scores(7))
-                await started.wait()
+                # A compute that raises never sets `started`: stop on the
+                # reader too, so the test fails with its error instead of hanging.
+                checkpoint = asyncio.create_task(started.wait())
+                await asyncio.wait({checkpoint, reader}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+                checkpoint.cancel()
+                if reader.done():
+                    await reader
+                assert started.is_set(), "the compute never reached its checkpoint"
                 await database.record_health_event("honeygain", "crash")
                 go_on.set()
                 assert (await reader)[0]["crashes"] == 0  # this caller asked before the write

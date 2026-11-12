@@ -60,6 +60,9 @@ def test_a_heartbeat_that_times_out_says_so(caplog):
     with (
         patch.object(worker_api.httpx, "AsyncClient", _TimingOutClient),
         patch.object(worker_api.orchestrator, "get_status", return_value=[]),
+        # Keep a developer's real Docker and LAN fence out of a logging test.
+        patch.object(worker_api.orchestrator, "docker_available", return_value=False),
+        patch.object(worker_api.lan_fence, "set_egress_ip", return_value=False),
         caplog.at_level(logging.WARNING, logger=worker_api.logger.name),
     ):
         asyncio.run(worker_api._send_heartbeat())
