@@ -601,6 +601,11 @@ def _migrate_proxied() -> None:
         logger.warning("Could not move proxied copies into shared tunnels: %s", proxy_tunnel.redact(str(exc)))
 
 
+def _reason(exc: BaseException) -> str:
+    """What failed, for a log line. A timeout (TimeoutError, httpx.ReadTimeout) has an empty str()."""
+    return str(exc) or type(exc).__name__
+
+
 def _redact_userinfo(text: str) -> str:
     """Strip URL credentials (user:pass@ / token@) from a URL or a message.
 
@@ -853,7 +858,7 @@ async def _send_heartbeat() -> None:
         # A network failure is not an auth rejection, so it breaks the run too.
         _consecutive_auth_failures = 0
         _consecutive_heartbeat_failures += 1
-        logger.warning("Heartbeat failed: %s", _redact_userinfo(str(exc)))
+        logger.warning("Heartbeat failed: %s", _redact_userinfo(_reason(exc)))
         _log_link_failure_hint(exc)
 
 
@@ -899,7 +904,7 @@ async def _check_fence(startup: bool = False) -> None:
     try:
         state = await asyncio.wait_for(asyncio.to_thread(lan_fence.reconcile), FENCE_STARTUP_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - a fence problem must never stop the worker
-        logger.warning("LAN fence check did not finish: %s", exc)
+        logger.warning("LAN fence check did not finish: %s", _reason(exc))
         return
     if startup:
         fence = state.get("fence") or {}
@@ -927,7 +932,7 @@ async def _guard_once() -> None:
     try:
         await asyncio.wait_for(asyncio.to_thread(lan_fence.guard), FENCE_STARTUP_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
-        logger.warning("Fence guard pass did not finish: %s", exc)
+        logger.warning("Fence guard pass did not finish: %s", _reason(exc))
 
 
 async def _guard_loop() -> None:
