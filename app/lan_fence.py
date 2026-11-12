@@ -1144,13 +1144,13 @@ def fence_problem(client: Any, service: str = "this service") -> str | None:
     return None
 
 
-def _gated(client: Any) -> list[Any]:
+def _gated(client: Any, managed: list[Any] | None = None) -> list[Any]:
     orch = _orchestrator()
     from app.constants import LABEL_SERVICE
 
     return [
         c
-        for c in _managed(client)
+        for c in (_managed(client) if managed is None else managed)
         if orch.fence_gated(str((c.labels or {}).get(LABEL_SERVICE) or ""))
         and not orch.is_proxied(c)
         # A node from 2.0.6 or earlier, on the host's network, is left exactly
@@ -1159,7 +1159,7 @@ def _gated(client: Any) -> list[Any]:
     ]
 
 
-def _unfenced(client: Any) -> list[dict[str, str]]:
+def _unfenced(client: Any, managed: list[Any] | None = None) -> list[dict[str, str]]:
     """Fence-gated services' containers still on the host's network (2.0.6 or earlier).
 
     Left running as they are; the Fleet page offers the redeploy that moves them.
@@ -1168,7 +1168,7 @@ def _unfenced(client: Any) -> list[dict[str, str]]:
     from app.constants import LABEL_SERVICE
 
     found = []
-    for c in _managed(client):
+    for c in _managed(client) if managed is None else managed:
         slug = str((c.labels or {}).get(LABEL_SERVICE) or "")
         if orch.fence_gated(slug) and orch.predates_fence(c):
             found.append({"name": c.name, "slug": slug, "service": orch.service_name(slug)})
@@ -1197,9 +1197,12 @@ def guard() -> dict[str, str]:
             _state["unfenced"] = []
             return {}
         client = orch._get_client()
-        _state["unfenced"] = _unfenced(client)
+        # One list per pass: it inspects every managed container, and both
+        # questions read the same containers.
+        managed = _managed(client)
+        _state["unfenced"] = _unfenced(client, managed)
         scanned = True
-        gated = _gated(client)
+        gated = _gated(client, managed)
         if not gated:
             _state["guard"] = {}
             return {}

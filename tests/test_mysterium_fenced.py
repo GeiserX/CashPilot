@@ -507,6 +507,20 @@ def _guard(containers, problem=None, mode=lan_fence.MODE_ON):
 
 
 class TestTheGuard:
+    def test_one_pass_lists_the_managed_containers_once(self, markers):
+        """Each list inspects every managed container; the guard runs every 30 s."""
+        client = MagicMock()
+        client.containers.list.return_value = [_node()]
+        with (
+            patch.object(orchestrator, "docker_available", return_value=True),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(lan_fence, "resolve_mode", return_value=lan_fence.MODE_ON),
+            patch.object(lan_fence, "fence_problem", return_value=None),
+            patch.object(lan_fence, "apply_fence"),
+        ):
+            lan_fence.guard()
+        assert client.containers.list.call_count == 1
+
     def test_a_missing_fence_stops_the_node_and_puts_the_fence_back(self, markers):
         node = _node()
         held, apply = _guard([node], problem="the LAN fence is not complete on this host")
