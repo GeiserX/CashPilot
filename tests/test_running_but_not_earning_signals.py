@@ -68,3 +68,18 @@ def test_the_catalog_accepts_the_new_signals():
     for slug in ("packetstream", "proxybase", "earnapp"):
         svc = catalog.get_service(slug)
         assert catalog._validate(svc, __import__("pathlib").Path(f"{slug}.yml")) == []
+
+
+def test_every_windowed_signal_declares_the_state_the_dashboard_shows():
+    """The dashboard shows every windowed hint as failing, whatever the YAML says.
+
+    A windowed signal that declares another state would read one way in the
+    catalog and another on the dashboard.
+    """
+    wrong = [
+        (svc["slug"], s["pattern"], s.get("state"))
+        for svc in catalog.get_services()
+        for s in producer_state.signals_for(svc)
+        if producer_state.is_windowed(s) and s.get("state", producer_state.FAILING) != producer_state.FAILING
+    ]
+    assert wrong == []

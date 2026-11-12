@@ -55,7 +55,7 @@ docker:
       means: >-
         PacketStream already has another client on this IP address, and it pays
         only one per IP. Remove this copy, or the other one that shares its IP.
-      state: idle
+      state: failing
 
 requirements:
   residential_ip: true
