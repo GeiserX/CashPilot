@@ -3524,7 +3524,14 @@ _health_scores_cache: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] 
 HEALTH_SCORES_TTL = 300.0
 
 
+#: Bumped by every clear. A compute stores its result only if no write
+#: cleared the cache while it ran, or it would cache the rows from before.
+_health_scores_gen = 0
+
+
 def _forget_health_scores() -> None:
+    global _health_scores_gen
+    _health_scores_gen += 1
     _health_scores_cache.clear()
 
 
@@ -3544,8 +3551,10 @@ async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
     hit = _health_scores_cache.get(key)
     if hit is not None and time.monotonic() - hit[0] < HEALTH_SCORES_TTL:
         return [dict(r) for r in hit[1]]
+    gen = _health_scores_gen
     results = await _compute_health_scores(days)
-    _health_scores_cache[key] = (time.monotonic(), results)
+    if gen == _health_scores_gen:
+        _health_scores_cache[key] = (time.monotonic(), results)
     return [dict(r) for r in results]
 
 

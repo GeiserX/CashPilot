@@ -701,6 +701,34 @@ class TestHealthEvents:
 
         asyncio.run(run())
 
+    def test_a_write_during_the_compute_is_not_hidden_by_the_cache(self, db):
+        """A compute that read the rows before a write must not cache them after it."""
+        real = database._compute_health_scores
+        calls = []
+
+        async def run():
+            started, go_on = asyncio.Event(), asyncio.Event()
+
+            async def slow(days):
+                calls.append(days)
+                result = await real(days)
+                if len(calls) == 1:
+                    started.set()
+                    await go_on.wait()
+                return result
+
+            with patch.object(database, "_compute_health_scores", slow):
+                await database.record_health_event("honeygain", "check_ok")
+                reader = asyncio.create_task(database.get_health_scores(7))
+                await started.wait()
+                await database.record_health_event("honeygain", "crash")
+                go_on.set()
+                assert (await reader)[0]["crashes"] == 0  # this caller asked before the write
+                assert (await database.get_health_scores(7))[0]["crashes"] == 1
+                assert calls == [7, 7]
+
+        asyncio.run(run())
+
 
 class TestWorkerKeys:
     def test_workers_table_has_api_key_enc_column(self, db):
