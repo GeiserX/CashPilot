@@ -19,6 +19,19 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## 2.3: change the image tags to get the account recovery command
+
+**Affects everyone on 2.2 or earlier.** The compose files pin a release series,
+so `docker compose pull` never moves a 2.2 install to 2.3. The console command
+that resets a forgotten password, `python -m app.users`
+([Forgot password or username](docs/faq.md#forgot-password)), ships in 2.3. On
+2.2 it fails with `No module named app.users`.
+
+**What to do.** Change every `drumsergio/cashpilot:2.2` and
+`drumsergio/cashpilot-worker:2.2` tag to `2.3`, then run `docker compose up -d`.
+
+---
+
 ## After 2.0.6: redeploy Mysterium once to move it off the host network
 
 **Affects you if** you run Mysterium through CashPilot. Through 2.0.6 the node

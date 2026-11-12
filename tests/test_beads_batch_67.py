@@ -15,6 +15,7 @@ restore page that has drifted from the code is worse than none: it is followed.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -126,6 +127,13 @@ class TestTheQuotedLogLinesAreReal:
         text = page()
         assert "Schema now at version" in text
         assert "no migration needed this boot" in text
+
+    def test_the_schema_lines_quote_no_stale_version(self):
+        """The page once quoted version 12 while the code was at 17, so a
+        reader checking a good restore saw a number that did not match."""
+        versions = re.findall(r"Schema (?:at|now at) version (\S+?)[;\s]", page())
+        assert versions
+        assert set(versions) == {"<N>"}, versions
 
 
 class TestTheCommandsAreShapedidempotently:
