@@ -53,9 +53,7 @@ class TestAPublishedVersionIsNeverReused:
     tag is v2.2.9 plus a feat commit, with a fake Docker Hub that answers 200
     for the published versions and ``other`` for every other one."""
 
-    def _run(
-        self, tmp_path: Path, published: tuple[str, ...], other: str = "404"
-    ) -> subprocess.CompletedProcess:
+    def _run(self, tmp_path: Path, published: tuple[str, ...], other: str = "404") -> subprocess.CompletedProcess:
         repo = tmp_path / "repo"
         repo.mkdir()
 
@@ -72,9 +70,7 @@ class TestAPublishedVersionIsNeverReused:
         bin_dir.mkdir()
         curl = bin_dir / "curl"
         cases = " ".join(f"*/tags/{v})" + " printf 200 ;;" for v in published)
-        curl.write_text(
-            f'#!/bin/sh\nfor a; do url="$a"; done\ncase "$url" in {cases} *) printf {other} ;; esac\n'
-        )
+        curl.write_text(f'#!/bin/sh\nfor a; do url="$a"; done\ncase "$url" in {cases} *) printf {other} ;; esac\n')
         curl.chmod(0o755)
 
         self.out = tmp_path / "out"
