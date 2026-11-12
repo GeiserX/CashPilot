@@ -10,6 +10,31 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.3.1] - 2026-11-12
+
+### CI
+
+- Never publish one version twice, and keep the docs site current (#729)
+
+### Documentation
+
+- How to remove CashPilot completely, so a fresh install starts clean (#725)
+- Regenerate CHANGELOG.md (#728)
+- Make the backup save the database and the restore reach the volume the UI mounts (#726)
+
+### Fixes
+
+- Stop the shared fleet key and worker deploys from reaching the owner's data and the host (#731)
+- Stop password guessing past the login limit and cross-site actions as the owner (#730)
+
+### Maintenance
+
+- Pin the examples to 2.3 (#727)
+
+### Performance
+
+- Stop rescanning health events and every host container, and flag earners that run but do not earn (#732)
+
 ## [2.3.0] - 2026-11-11
 
 ### CI
