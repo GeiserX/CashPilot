@@ -63,7 +63,7 @@ done | sort -u | xargs -r docker rm -fv
 # 4. Remove the LAN fence: its network and its firewall tables.
 docker network ls -q --filter label=cashpilot.isolation=managed | xargs -r docker network rm
 docker network ls -q --filter label=cashpilot.deployed-by=worker | xargs -r docker network rm
-if [ -z "$(docker network ls -q --filter label=cashpilot.isolation=managed)" ]; then
+if managed=$(docker network ls -q --filter label=cashpilot.isolation=managed) && [ -z "$managed" ]; then
   for family in ip ip6; do
     docker run --rm --network host --user 0:0 --cap-add NET_ADMIN --entrypoint nft "$worker_image" delete table $family cashpilot
   done
@@ -81,7 +81,7 @@ What the steps do:
 
 - Step 1 saves the services' containers, volumes, host folders and images to files. After a container is gone, nothing links its volumes and images to CashPilot any more.
 - Step 3 gives each service the stop time CashPilot set for it, 5 minutes for Storj. Storage nodes need that time: a forced stop makes Storj report an unclean shutdown.
-- Step 4 stops the services' traffic rules. If a line says `No such file or directory`, that table was not there, and you can ignore it. If Docker says the network `has active endpoints`, a container of yours still uses the fenced network. Step 4 then keeps the firewall tables, because that container needs them to stay fenced and to reach the internet. Disconnect or remove that container, then run step 4 again. On a host without nftables, step 4 removes only the network. A restart of the machine clears the rest ([Check that nothing is left](#check-that-nothing-is-left)). If you pointed `CASHPILOT_CONTAINER_NETWORK` at a network of your own, an upgrade may have labelled it as the worker's, and the second line removes it. To keep that network, leave out that line.
+- Step 4 stops the services' traffic rules. If a line says `No such file or directory`, that table was not there, and you can ignore it. If Docker says the network `has active endpoints`, a container of yours still uses the fenced network. Step 4 then keeps the firewall tables, because that container needs them to stay fenced and to reach the internet. Disconnect or remove that container, then run step 4 again. Step 4 also keeps the tables when Docker cannot list the networks. On a host without nftables, step 4 removes only the network. A restart of the machine clears the rest ([Check that nothing is left](#check-that-nothing-is-left)). If you pointed `CASHPILOT_CONTAINER_NETWORK` at a network of your own, an upgrade may have labelled it as the worker's, and the second line removes it. To keep that network, leave out that line.
 - Step 5 prints every volume step 6 will delete. Read it now. It includes node identities such as `mysterium-data`, and the `-pre-isolation` copies of them that an upgrade made. The list holds every named volume a service used. That includes a volume you created yourself and gave to a custom service, or one that another program shares. To keep a volume, delete its line from `cashpilot-volumes.txt`.
 
 Then remove the volumes and the images:
