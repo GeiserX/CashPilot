@@ -191,7 +191,8 @@ left, because sockguard 2.4.6 has no setting for it:
 
 What the worker itself enforces on top, for deploys sent through its API:
 
-- It refuses any bind of the compose folder or anything under it. Only the
+- It refuses any bind of the compose folder, anything under it, or a folder
+  above it (which would reach the compose file and its `.env` too). Only the
   in-app update needs that folder, and the update does not go through a
   deploy. The proxy still allows the folder, so this stops a deploy sent with
   a worker key, not a compromised worker.

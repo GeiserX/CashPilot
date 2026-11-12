@@ -1625,16 +1625,18 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             raise HTTPException(status_code=403, detail=f"Volume '{source}' is the worker's Docker socket")
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
+        src = os.path.normpath(source)
         if compose_dir and (
-            os.path.normpath(source) == compose_dir or os.path.normpath(source).startswith(compose_dir + "/")
+            src == compose_dir or src.startswith(compose_dir + "/") or compose_dir.startswith(src.rstrip("/") + "/")
         ):
             # The proxy opens the compose folder for the in-app update only. A
-            # deploy that binds it could rewrite the compose file, read the .env
-            # beside it, or plant a symlink there that a second bind follows to
-            # the host's root (docs/security-defaults.md).
+            # deploy that binds it, a folder under it or a folder above it could
+            # rewrite the compose file, read the .env beside it, or plant a
+            # symlink there that a second bind follows to the host's root
+            # (docs/security-defaults.md).
             raise HTTPException(
                 status_code=403,
-                detail=f"Volume '{source}' is in the compose folder ({orchestrator.COMPOSE_DIR_ENV}); "
+                detail=f"Volume '{source}' reaches the compose folder ({orchestrator.COMPOSE_DIR_ENV}); "
                 "no service may bind it",
             )
         if proxy_roots is not None and not any(

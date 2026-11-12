@@ -264,12 +264,24 @@ def test_worker_on_the_shared_key_still_enrolls(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("source", ["/volume1/docker/cashpilot", "/volume1/docker/cashpilot/evil"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        "/volume1/docker/cashpilot",
+        "/volume1/docker/cashpilot/evil",
+        "/volume1/docker/./cashpilot",
+        # A folder above the compose folder reaches the compose file and its .env too.
+        "/volume1/docker",
+        "/volume1/docker/",
+    ],
+)
 def test_deploy_cannot_bind_the_compose_folder(monkeypatch, source):
     """On a NAS path no blocked root covers, the proxy roots used to let it through."""
     from app import orchestrator, worker_api
 
     monkeypatch.setenv("CASHPILOT_COMPOSE_DIR", "/volume1/docker/cashpilot")
+    # The proxy roots alone would let every one of these through.
+    monkeypatch.setenv("CASHPILOT_PROXY_BIND_MOUNTS", "/volume1/docker")
     monkeypatch.setattr(orchestrator, "proxied", lambda: True)
     spec = worker_api.DeploySpec(image="alpine:3.20", volumes={source: {"bind": "/x", "mode": "rw"}})
     with pytest.raises(HTTPException) as exc:
