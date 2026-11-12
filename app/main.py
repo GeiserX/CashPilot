@@ -2792,13 +2792,26 @@ _CHART_JS_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
+def _without_default_port(netloc: str) -> str:
+    netloc = netloc.strip().lower()
+    for port in (":80", ":443"):
+        if netloc.endswith(port):
+            return netloc[: -len(port)]
+    return netloc
+
+
 def _is_same_origin(request: Request) -> bool:
     """Did a browser send this request from a CashPilot page, or is it not a browser?
 
     Sec-Fetch-Site comes from the browser and cannot be set by a page, so it wins
-    when present. Older browsers send only Origin; compare it with the Host the
-    request came in on. A request with neither header is not from a browser (the
-    Desktop and Android clients, curl, Home Assistant), so it passes.
+    when present. Browsers send it only to HTTPS and localhost addresses, so
+    plain-HTTP access (a LAN IP and port, a proxy without TLS) and old browsers
+    send only Origin; compare it with the Host the request came in on, or with
+    any X-Forwarded-Host entry. Trusting X-Forwarded-Host here is safe without
+    CASHPILOT_TRUSTED_PROXY: a cross-site form cannot set it, and a cross-site
+    fetch that sets it needs a CORS preflight this app never grants. A request
+    with neither header is not from a browser (the Desktop and Android clients,
+    curl, Home Assistant), so it passes.
     """
     site = request.headers.get("sec-fetch-site")
     if site is not None:
@@ -2806,10 +2819,9 @@ def _is_same_origin(request: Request) -> bool:
     origin = request.headers.get("origin")
     if origin is None:
         return True
-    netloc = urllib.parse.urlsplit(origin).netloc.lower()
-    hosts = {request.headers.get("host", "").lower()}
-    if _HSTS_TRUST_PROXY:
-        hosts.add(request.headers.get("x-forwarded-host", "").lower())
+    netloc = _without_default_port(urllib.parse.urlsplit(origin).netloc)
+    hosts = {_without_default_port(request.headers.get("host", ""))}
+    hosts.update(_without_default_port(h) for h in request.headers.get("x-forwarded-host", "").split(","))
     return bool(netloc) and netloc in hosts
 
 
@@ -2829,7 +2841,13 @@ class _SameOriginMiddleware(BaseHTTPMiddleware):
             and auth.SESSION_COOKIE in request.cookies
             and not _is_same_origin(request)
         ):
-            return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
+            return JSONResponse(
+                {
+                    "detail": "Cross-site request refused",
+                    "hint": "Behind a reverse proxy, pass the original Host header or send X-Forwarded-Host.",
+                },
+                status_code=403,
+            )
         return await call_next(request)
 
 
