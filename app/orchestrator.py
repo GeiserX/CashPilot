@@ -2825,8 +2825,10 @@ def _check_proxy_binds(working_dir: str, extra_paths: list[str]) -> None:
             f"{working_dir}, and the Docker socket proxy lets containers bind only the folders "
             "it was told about. If Compose runs inside another container for you (a webhook, "
             "Portainer or another deployer), that path is inside it, not on this host: update "
-            "the stack from your deployer instead. Otherwise add this line to the .env next to "
-            "your compose file, then run docker compose up -d once: "
+            "the stack from your deployer instead. Otherwise either update with docker compose "
+            "pull && docker compose up -d, or add this line to the .env next to your compose "
+            "file and run docker compose up -d once (it lets containers bind that folder "
+            "through the proxy, which weakens it): "
             f"{COMPOSE_DIR_ENV}={working_dir}"
         )
     roots = _proxy_bind_roots()

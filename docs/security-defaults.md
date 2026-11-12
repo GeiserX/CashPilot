@@ -37,7 +37,7 @@ You can change all of these. None of them require changing for a normal install.
 | `CASHPILOT_WORKER_BIND_ADDR` | `127.0.0.1` | The worker API is equivalent to root on that machine. Never publish port 8081. |
 | `CASHPILOT_METRICS_ENABLED` | off | `/metrics` exposes balances and hostnames. If you enable it, set `CASHPILOT_METRICS_TOKEN` too. |
 | `CASHPILOT_PROXY_BIND_MOUNTS` | empty | Host folders the [Docker socket proxy](#docker-socket-proxy) lets containers bind, comma-separated. Each entry also counts as a `CASHPILOT_ALLOWED_VOLUME_ROOTS` entry and must pass the same checks (a service folder such as `/mnt/user/storj`, never a whole root). Any container the worker creates may then mount it. |
-| `CASHPILOT_COMPOSE_DIR` | empty | Your compose folder, which the proxy then lets the in-app update bind. Unset, the **Update** button tells you the line to add. |
+| `CASHPILOT_COMPOSE_DIR` | empty | Your compose folder, which the proxy then lets the in-app update bind. Opt-in: it also lets containers bind that folder, which weakens the proxy (see below). Unset, update with `docker compose pull && docker compose up -d`; the **Update** button tells you the line to add if you want it. |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | empty | Opts specific host paths past the volume block. Each entry is a deliberate widening; system paths are still refused. |
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | off | Lets CashPilot start when the encryption key cannot be persisted. Every credential then dies on the next restart. |
 | `allow_delete_critical` (per request) | refuses | Permits deleting a volume that holds irreplaceable state. There is no undo. |

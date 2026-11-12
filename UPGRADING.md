@@ -296,8 +296,10 @@ no longer mounts the socket.
    a CashPilot service with a GPU (`devices: /dev/dri`, `gpus`, an NVIDIA
    reservation), and the **Update** button says so before it starts. On a
    GPU host, stay on your old compose file for now.
-3. In the `.env` next to it, add your compose folder, so the in-app update can
-   still run:
+3. Only if you want the in-app update: add your compose folder to the `.env`
+   next to it. This lets containers bind that folder through the proxy, which
+   weakens it ([what that costs](docs/security-defaults.md#docker-socket-proxy)).
+   Without it, update with `docker compose pull && docker compose up -d`:
 
        CASHPILOT_COMPOSE_DIR=/the/folder/with/docker-compose.yml
 
