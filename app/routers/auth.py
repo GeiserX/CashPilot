@@ -106,10 +106,12 @@ async def do_login(
     # One bucket per (IP, username), and the attempt is counted before the
     # password check: a success then clears only its own bucket, a parallel
     # burst cannot slip past the limit, and failures against one account never
-    # lock out another account on the same IP (or behind the same proxy).
+    # lock out another account on the same IP (or behind the same proxy). A
+    # looser per-IP budget on top stops one client from rotating usernames to
+    # get unlimited guesses and bcrypt runs.
     rate_key = login_rate_limit.key_for(client_ip, username)
     try:
-        login_rate_limit.reserve_attempt(rate_key)
+        login_rate_limit.reserve_attempt(rate_key, ip=client_ip)
     except HTTPException:
         metrics.record_rate_limit()
         raise
@@ -303,7 +305,7 @@ async def do_register(
         #
         # Only the first-run owner gets signed in here, which is the case this
         # code was written for.
-        # There is no /users page; user management lives under Settings.
+        # There is no users page, so the form returns to Settings (/users was a 404).
         return RedirectResponse("/settings", status_code=303)
 
     token = auth_module.create_session_token(user_id, username, role)

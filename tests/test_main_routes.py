@@ -2481,7 +2481,7 @@ class TestLoginRateLimitMetric:
     def test_login_rate_limit_records_metric(self, client):
         from fastapi import HTTPException
 
-        def _raise_429(_ip):
+        def _raise_429(_ip, *_args):
             raise HTTPException(status_code=429, detail="Too many login attempts")
 
         with (

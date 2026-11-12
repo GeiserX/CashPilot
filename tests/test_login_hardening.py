@@ -107,7 +107,8 @@ class TestBoundedMemory:
     def test_a_key_that_never_returns_is_swept(self, monkeypatch):
         """The perf audit's missed item: pruning ran only for the key being checked."""
         rl._login_attempts.clear()
-        monkeypatch.setattr(rl, "_last_sweep", 0.0)
+        # A sweep must be due whatever the host's uptime (monotonic() can be < WINDOW).
+        monkeypatch.setattr(rl, "_last_sweep", monotonic() - rl.WINDOW_SECONDS - 1)
         rl._login_attempts["gone"] = [monotonic() - (rl.WINDOW_SECONDS + 1)]
         rl.reserve_attempt("someone-else")
         assert "gone" not in rl._login_attempts
@@ -122,8 +123,47 @@ class TestBoundedMemory:
         assert "k199" in rl._login_attempts
         rl._login_attempts.clear()
 
+    def test_a_flood_of_new_keys_never_evicts_a_locked_bucket(self, monkeypatch):
+        """Evicting a full bucket gave its username a fresh set of guesses."""
+        rl._login_attempts.clear()
+        monkeypatch.setattr(rl, "MAX_TRACKED_KEYS", 50)
+        for _ in range(rl.MAX_ATTEMPTS):
+            rl.reserve_attempt("target")
+        for i in range(500):
+            rl.reserve_attempt(f"junk{i}")
+        with pytest.raises(HTTPException) as exc:
+            rl.reserve_attempt("target")
+        assert exc.value.status_code == 429
+        assert len(rl._login_attempts) <= 51
+        rl._login_attempts.clear()
+
     def test_a_huge_username_does_not_make_a_huge_key(self):
         assert len(rl.key_for("1.2.3.4", "x" * 100_000)) < 100
+
+
+class TestPerIpBudget:
+    def test_rotating_usernames_from_one_ip_hits_the_ip_budget(self, db):
+        """One client rotating usernames got a bcrypt run and a guess on every request."""
+        c = _client()
+        real = auth.verify_password
+        with patch("app.auth.verify_password", side_effect=real) as spy:
+            codes = [_login(c, f"spray{i}", "wrong") for i in range(rl.MAX_ATTEMPTS_PER_IP + 10)]
+        assert codes[: rl.MAX_ATTEMPTS_PER_IP] == [401] * rl.MAX_ATTEMPTS_PER_IP
+        assert codes[rl.MAX_ATTEMPTS_PER_IP :] == [429] * 10
+        assert spy.call_count == rl.MAX_ATTEMPTS_PER_IP
+
+    def test_a_refused_request_is_not_counted(self):
+        rl._login_attempts.clear()
+        for _ in range(rl.MAX_ATTEMPTS):
+            rl.reserve_attempt(rl.key_for("198.51.100.7", "owner"), ip="198.51.100.7")
+        for _ in range(3):
+            with pytest.raises(HTTPException):
+                rl.reserve_attempt(rl.key_for("198.51.100.7", "owner"), ip="198.51.100.7")
+        assert len(rl._login_attempts[rl.ip_key("198.51.100.7")]) == rl.MAX_ATTEMPTS
+        rl._login_attempts.clear()
+
+    def test_the_ip_key_never_collides_with_a_user_key(self):
+        assert rl.ip_key("1.2.3.4") != rl.key_for("1.2.3.4", "")
 
 
 class TestUnknownUserTiming:
@@ -167,6 +207,35 @@ class TestCrossSiteRequests:
     def test_a_cookie_request_from_the_ui_itself_passes(self, db, headers):
         resp = self._owner().post("/logout", headers=headers)
         assert resp.status_code == 303
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            # Plain HTTP by LAN IP and port: browsers send no Sec-Fetch-Site there.
+            {"Host": "192.0.2.10:8085", "Origin": "http://192.0.2.10:8085"},
+            # A proxy that rewrites Host but sends X-Forwarded-Host, trusted or not.
+            {"Host": "cashpilot:8080", "Origin": "https://cp.example.test", "X-Forwarded-Host": "cp.example.test"},
+            # Chained proxies send a list.
+            {
+                "Host": "cashpilot:8080",
+                "Origin": "https://cp.example.test",
+                "X-Forwarded-Host": "cp.example.test, inner.example.test",
+            },
+            # A proxy that forwards the default port the browser leaves out.
+            {"Host": "cp.example.test:443", "Origin": "https://cp.example.test"},
+            {"Host": "cp.example.test", "Origin": "http://cp.example.test:80"},
+        ],
+    )
+    def test_reverse_proxy_and_lan_setups_pass(self, db, headers):
+        resp = self._owner().post("/logout", headers=headers)
+        assert resp.status_code == 303
+
+    def test_a_rewritten_host_without_forwarded_host_is_refused_with_a_hint(self, db):
+        resp = self._owner().post(
+            "/api/collect", headers={"Host": "cashpilot:8080", "Origin": "https://cp.example.test"}
+        )
+        assert resp.status_code == 403
+        assert "X-Forwarded-Host" in resp.json()["hint"]
 
     def test_safe_methods_are_not_checked(self, db):
         resp = self._owner().get("/api/users", headers={"Sec-Fetch-Site": "cross-site"})
