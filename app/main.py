@@ -2905,15 +2905,18 @@ class _VersionedStaticFiles(StaticFiles):
     """Static files; a ``?v=<release>`` URL is cached for a year without a revalidation.
 
     base.html puts the release on every own asset (test_static_assets_are_versioned),
-    so a new release is a new URL. A reference without ``?v=`` keeps the default
-    revalidation by ETag.
+    so a new release is a new URL. Only the running release's own ``?v=`` gets
+    that: a source build renders ``?v=dev`` on every rebuild, and a year-long
+    cache would keep the old app.js against the new pages. Anything else keeps
+    the default revalidation by ETag.
     """
 
     async def get_response(self, path: str, scope: Any) -> Response:
         response = await super().get_response(path, scope)
-        query = scope.get("query_string") or b""
-        if response.status_code == 200 and any(part.startswith(b"v=") for part in query.split(b"&")):
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        if response.status_code == 200 and version.series(version.current()):
+            asked = urllib.parse.parse_qs((scope.get("query_string") or b"").decode("latin-1")).get("v", [])
+            if version.display() in asked:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
 
