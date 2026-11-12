@@ -681,6 +681,9 @@ class TestHealthEvents:
                 again = await database.get_health_scores(7)
                 assert calls == [7]
                 assert again[0]["score"] != -1
+                again[0]["score"] = -2  # nor one editing a copy served from the cache
+                assert (await database.get_health_scores(7))[0]["score"] != -2
+                assert calls == [7]
                 await database.get_health_scores(30)  # another window is its own entry
                 assert calls == [7, 30]
 

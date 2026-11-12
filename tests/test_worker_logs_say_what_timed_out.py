@@ -85,3 +85,17 @@ def test_a_rate_fetch_that_times_out_says_so(caplog):
         asyncio.run(exchange_rates.refresh())
     assert "Exchange rate fetch failed: ReadTimeout" in caplog.text
     assert not [r for r in caplog.records if r.getMessage().endswith("failed: ")]
+
+
+def test_a_rate_refresh_that_fails_outside_the_fetches_says_so(caplog):
+    from app import exchange_rates
+
+    def no_client(*_a, **_k):
+        raise TimeoutError
+
+    with (
+        patch.object(exchange_rates.httpx, "AsyncClient", no_client),
+        caplog.at_level(logging.ERROR, logger=exchange_rates.logger.name),
+    ):
+        asyncio.run(exchange_rates.refresh())
+    assert "Exchange rate fetch failed: TimeoutError" in caplog.text

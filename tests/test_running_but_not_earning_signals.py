@@ -1,8 +1,8 @@
 """Earners that run but do not earn must not read as healthy.
 
 Seen live in Nov 2026, each with a healthy container: a PacketStream copy
-refused as non-residential for days, ProxyBase retrying its relay for 13 to
-24 hours on two boxes, and EarnApp crashing on a handshake timeout every 100
+refused as non-residential for days, ProxyBase retrying its relay for days
+on two boxes, and EarnApp crashing on a handshake timeout every 100
 seconds for four days. The lines below are the ones those copies logged.
 """
 
@@ -43,7 +43,7 @@ EA_CRASH = [
     ("slug", "needle", "broken", "healthy"),
     [
         ("packetstream", "Non-residential", [PS_NONRES] * 24, [PS_NONRES] * 24 + [PS_RUNNING]),
-        ("packetstream", "1 client per IP", [PS_ONE_CLIENT] * 24, [PS_ONE_CLIENT] * 8 + [PS_RUNNING] * 40),
+        ("packetstream", "1 client per IP", [PS_ONE_CLIENT] * 24, [PS_ONE_CLIENT] * 24 + [PS_RUNNING]),
         ("proxybase", "retrying", PB_RETRY * 240, PB_RETRY * 240 + [PB_BALANCE]),
         ("earnapp", "Handshake", EA_CRASH * 35, EA_CRASH * 2),
     ],
