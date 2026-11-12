@@ -12,6 +12,15 @@ on:
     - cron: '17 3 * * *'  # 03:17 UTC, every day
   workflow_dispatch:
 
+# One release run at a time, never cancelled: a later run waits for the running
+# one. On 2026-11-11 a slow scheduled run and a manual dispatch overlapped; both
+# read v2.2.9 as the last tag, both computed v2.3.0, and both pushed
+# cashpilot:2.3.0 and :latest, built from different commits. Queued, the second
+# run reads the tag the first one pushed and computes the next version.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
 permissions:
   contents: write
   packages: write
@@ -158,7 +167,7 @@ jobs:
           # workflow_dispatch run) detected "nothing to build", skipped the
           # version step, and silently produced no tag and no image while the
           # run still reported success.
-          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          LAST_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
           if [ -n "$LAST_TAG" ]; then
             CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD 2>/dev/null || echo "")
             echo "Comparing $LAST_TAG..HEAD"
@@ -253,7 +262,7 @@ jobs:
         id: version
         if: steps.changes.outputs.ui == 'true' || steps.changes.outputs.worker == 'true'
         run: |
-          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1)
+          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
           if [ -z "$LATEST" ]; then
             LATEST="v0.0.0"
           fi

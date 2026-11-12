@@ -127,9 +127,36 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-2.outputs.page_url || steps.deployment-3.outputs.page_url }}
     steps:
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
+      # Pages sometimes answers "Failed to create deployment (status: 500)".
+      # Nothing re-runs a failed deploy, and later pin and changelog merges by
+      # the release bot start no Docs run, so one 500 left the site stale for
+      # days. The same artifact gets two more tries, 30 s apart; the third
+      # failure fails the job.
       - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      - name: Wait before the second try
+        if: steps.deployment.outcome == 'failure'
+        run: |
+          echo "::warning::Pages deployment failed (attempt 1 of 3)"
+          sleep 30
+
+      - id: deployment-2
+        if: steps.deployment.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      - name: Wait before the third try
+        if: steps.deployment-2.outcome == 'failure'
+        run: |
+          echo "::warning::Pages deployment failed (attempt 2 of 3)"
+          sleep 30
+
+      - id: deployment-3
+        if: steps.deployment-2.outcome == 'failure'
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
