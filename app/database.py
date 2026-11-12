@@ -3125,6 +3125,7 @@ async def record_health_event(
         )
         await db.commit()
     finally:
+        _forget_health_scores()
         await db.close()
 
 
@@ -3170,6 +3171,7 @@ async def record_health_events(events: list[tuple[str, str, str]]) -> None:
         )
         await db.commit()
     finally:
+        _forget_health_scores()
         await db.close()
 
 
@@ -3511,6 +3513,21 @@ async def clear_alerts(kind: str | None = None, subject: str | None = None) -> N
         await db.close()
 
 
+#: get_health_scores results by (database path, days), with the monotonic time
+#: they were computed. The query groups every health_events row in the window
+#: (about 570,000 rows at the 95-day retention with 20 services), so on a slow
+#: box it holds the shared connection for a second or more. The rows change
+#: only when a health event is written, and every writer here clears this.
+_health_scores_cache: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] = {}
+#: The window slides with the clock even when nothing is written: recompute
+#: at most this often. The health check writes every 5 minutes anyway.
+HEALTH_SCORES_TTL = 300.0
+
+
+def _forget_health_scores() -> None:
+    _health_scores_cache.clear()
+
+
 async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
     """Compute health score per service over the last N days.
 
@@ -3519,7 +3536,20 @@ async def get_health_scores(days: int = 7) -> list[dict[str, Any]]:
     - -5 per restart
     - -20 per crash
     - Uptime ratio bonus: (running_checks / total_checks) * weight
+
+    Cached per ``days`` until a health event is written or HEALTH_SCORES_TTL
+    passes; callers get their own copy of the list.
     """
+    key = (str(DB_PATH), days)
+    hit = _health_scores_cache.get(key)
+    if hit is not None and time.monotonic() - hit[0] < HEALTH_SCORES_TTL:
+        return [dict(r) for r in hit[1]]
+    results = await _compute_health_scores(days)
+    _health_scores_cache[key] = (time.monotonic(), results)
+    return [dict(r) for r in results]
+
+
+async def _compute_health_scores(days: int) -> list[dict[str, Any]]:
     db = await _get_db()
     try:
         cutoff = f"-{days} days"
@@ -4085,6 +4115,7 @@ async def purge_old_data() -> int:
         await db.commit()
         return sum((c.rowcount or 0) for c in (c1, c2, c3, c4, c5, c6, c7, c8))
     finally:
+        _forget_health_scores()
         await db.close()
 
 
