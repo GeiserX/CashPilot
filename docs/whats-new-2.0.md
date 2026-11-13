@@ -161,9 +161,9 @@ CONNECT.
 - **App stores.** Install from Unraid Community Applications or TrueNAS SCALE.
   CasaOS and Runtipi packages are in this repository and run the socket proxy.
   [App stores](app-stores.md)
-- **Catalog.** <!-- n:active -->40<!-- /n --> active services and
+- **Catalog.** <!-- n:active -->41<!-- /n --> active services and
   <!-- n:beta -->1<!-- /n --> in beta: <!-- n:docker -->17<!-- /n --> run in
-  Docker, <!-- n:tracked -->24<!-- /n --> are tracked, and
+  Docker, <!-- n:tracked -->25<!-- /n --> are tracked, and
   <!-- n:collectors -->15<!-- /n --> have a balance collector.
   [How CashPilot compares](comparison.md) sets this against five other stacks,
   every cell sourced.

@@ -10,7 +10,7 @@
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
 </p>
 
-CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. A dashboard and a worker on each server start the <!-- n:docker -->17<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->24<!-- /n --> that run as a browser extension, a desktop app or a GPU node, and read the balances of <!-- n:collectors -->15<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
+CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. A dashboard and a worker on each server start the <!-- n:docker -->17<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->25<!-- /n --> that run as a browser extension, a desktop app or a GPU node, and read the balances of <!-- n:collectors -->15<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention (an offline box, a stopped container, a balance it could not read, a payout to confirm), which service runs on which box, earnings per day, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
@@ -51,7 +51,7 @@ You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://
 
 ## Supported Services
 
-<!-- n:active -->40<!-- /n --> active services and <!-- n:beta -->1<!-- /n --> in beta, <!-- n:catalogued -->52<!-- /n --> catalogued. Each has a [guide](https://geiserx.github.io/CashPilot/guides/) with what it needs, whether it runs in Docker, the payout method and the minimum payout. Services that need a residential IP are marked there; the rest run on a VPS.
+<!-- n:active -->41<!-- /n --> active services and <!-- n:beta -->1<!-- /n --> in beta, <!-- n:catalogued -->52<!-- /n --> catalogued. Each has a [guide](https://geiserx.github.io/CashPilot/guides/) with what it needs, whether it runs in Docker, the payout method and the minimum payout. Services that need a residential IP are marked there; the rest run on a VPS.
 
 <sub>**Disclosure.** Most signup links below, and the Sign Up buttons in CashPilot, are referral links: the CashPilot maintainer may earn a commission from them. Using them is the simplest way to [support CashPilot](#support-cashpilot).</sub>
 
@@ -60,7 +60,7 @@ You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://
 <!-- END GENERATED: docker-services -->
 
 <!-- BEGIN GENERATED: extension-services -->
-**Browser extension or desktop app, tracked (18):** [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ), [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3), [Dawn Internet](https://dawninternet.com/?code=2QLQV97F), [Deeper Network](https://shop.deeper.network?sca_ref=12020100.q8Vxm3SliA), [Ebesucher](https://www.ebesucher.com/?ref=geiserx), [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7), [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE), [Helium](https://helium.com), [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx), [Noderr Micronodes](https://micronodes.noderr.xyz/), [Nodle](https://nodle.com), [PassiveApp](https://passiveapp.com/i/bqpC4M), [Sentinel dVPN](https://sentinel.co), [Spide](https://spide.network/register.html?f3bc51), [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef), [Theta Edge Node](https://thetatoken.org), [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495), [Uprock](https://link.uprock.com/i/33e8492e)
+**Browser extension or desktop app, tracked (19):** [Bytelixir](https://bytelixir.com/r/OYEIRE0VSZBZ), [Bytebenefit](https://bytebenefit.io/invited?ref=Brl4z3), [Dawn Internet](https://dawninternet.com/?code=2QLQV97F), [Deeper Network](https://shop.deeper.network?sca_ref=12020100.q8Vxm3SliA), [Ebesucher](https://www.ebesucher.com/?ref=geiserx), [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7), [Grass](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE), [Helium](https://helium.com), [Nodepay](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx), [Noderr Micronodes](https://micronodes.noderr.xyz/), [Nodle](https://nodle.com), [PassiveApp](https://passiveapp.com/i/bqpC4M), [Sentinel dVPN](https://sentinel.co), [Spide](https://spide.network/register.html?f3bc51), [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef), [Theta Edge Node](https://thetatoken.org), [Titan Network](https://edge.titannet.info/signup?inviteCode=2GKKJ495), [Uprock](https://link.uprock.com/i/33e8492e), [Wipter](https://wipter.com/register?via=FB1373FBDA)
 <!-- END GENERATED: extension-services -->
 
 <!-- BEGIN GENERATED: gpu-services -->
