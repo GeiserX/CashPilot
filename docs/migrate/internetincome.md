@@ -80,8 +80,8 @@ These apps are listed but not brought over:
 |---|---|
 | `urnetwork` | InternetIncome uses a session token. CashPilot signs URnetwork in with your email and password. |
 | `grass` | Grass runs as a browser extension. CashPilot only tracks it, with the access token from the Grass dashboard. |
-| `titan`, `ebesucher` | CashPilot tracks these, but there is no container to deploy. |
-| `wipter`, `peer2profit` | No longer available. |
+| `titan`, `ebesucher`, `wipter` | CashPilot tracks these, but there is no container to deploy. |
+| `peer2profit` | No longer available. |
 
 Settings for apps CashPilot does not have (antGain, Adnade and others) are
 listed by name as not read.

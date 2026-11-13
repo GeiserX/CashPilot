@@ -14,6 +14,5 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 | Network3 | Broken | No SSL, no updates in months | Mar 2026 |
 | GagaNode | Shady | Poorly made website, untrustworthy | Mar 2026 |
 | BlockMesh (Perceptron) | Dropped | Rebranded, requires browser dev mode, shady | Mar 2026 |
-| Wipter | Dead | Domain resolves to DNS sinkhole, infrastructure gone | Mar 2026 |
 | Filecoin | Not viable | Enterprise-only (10 TiB min, datacenter infrastructure required) | Mar 2026 |
 | AntGain | Dead | Telegram channel unavailable | Mar 2026 |

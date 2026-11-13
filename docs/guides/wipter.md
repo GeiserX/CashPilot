@@ -1,6 +1,6 @@
 # Wipter
 
-> **Category:** DePIN | **Status:** Dead
+> **Category:** DePIN | **Status:** Active
 >
 > **Website:** [https://wipter.com](https://wipter.com)
 
@@ -34,12 +34,22 @@ Wipter is a bandwidth sharing platform available on Windows, Mac, Linux, and And
 
 ### 1. Create an account
 
-Sign up at [Wipter](https://wipter.com/en/refer-a-friend).
+Sign up at [Wipter](https://wipter.com/register?via=FB1373FBDA).
 
-### 2. Not available in CashPilot
+<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
-CashPilot hides Wipter from the catalog and refuses to deploy it, because its catalog status is **Dead**. The catalog has no Docker image for it either.
+### 2. Install the app
+
+Download the Wipter app for Windows, macOS, Linux or Android from [wipter.com](https://wipter.com), and sign in with your account. The app shares your bandwidth while it runs.
+
+### 3. CashPilot
+
+There is no Docker image, so CashPilot cannot deploy Wipter. CashPilot has no earnings collector for it either; check your balance in the Wipter app.
 
 ## Docker Configuration
 
 None. The catalog has no Docker image for Wipter.
+
+## Cashing out
+
+Wipter has no web dashboard. Open the Wipter app, sign in, and request the payout there once your balance reaches $20.

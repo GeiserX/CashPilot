@@ -112,6 +112,7 @@ What a cited con or pro may rest on:
 | <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token.">Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token.</span> | 2026-11-04 |
 | <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="CashPilot does not run Theta Edge: you use the provider&#x27;s own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
 | <a href="#titan">Titan Network</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="Titan&#x27;s own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token.">Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token.</span> | 2026-11-04 |
+| <a href="#wipter">Wipter</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="CashPilot does not run Wipter: you use the provider&#x27;s own desktop or phone app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Wipter: you use the provider's own desktop or phone app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-13 |
 
 </div>
 
@@ -1334,6 +1335,33 @@ What a cited con or pro may rest on:
 
 - Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token. [Source](https://titannet.gitbook.io/titan-network-en/galileo-testnet/f.a.q./how-to-increase-node-rewards), checked 2026-11-04.
 - CashPilot does not run Titan: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/titan.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="wipter"></a>
+
+### Wipter
+
+**Grade F**, 1 of 20 points, 9 of 10 criteria unchecked, reviewed 2026-11-13. Setup guide: [Wipter](guides/wipter.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We have not cashed out yet and did not review user reports. |
+| Payout terms | Unknown | The $20 minimum and the methods are not checked against Wipter's own terms. |
+| Account safety | Unknown | Not checked. |
+| Fit with how CashPilot runs it | Fair | Own desktop and phone app, CashPilot cannot deploy or update it |
+| Traffic transparency | Unknown | Not checked. |
+| Privacy | Unknown | The client is closed source; we did not review its privacy policy. |
+| Identity checks | Unknown | Not checked; we have not cashed out yet. |
+| Support | Unknown | No ticket of our own and no reports checked. |
+| Earnings realism | Unknown | The up to $1/GB claim is not checked against real earnings. |
+| Longevity | Unknown | The operating company is not checked on a primary source. |
+
+**Cons**
+
+- CashPilot does not run Wipter: you use the provider's own desktop or phone app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/wipter.yml), checked 2026-11-13.
 
 **Pros**
 

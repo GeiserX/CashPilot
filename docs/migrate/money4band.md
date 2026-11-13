@@ -72,8 +72,8 @@ These apps are listed but not brought over:
 | `proxybase` | money4band runs ProxyBase's old client with a user id. CashPilot runs the current one, which needs the Access Token from proxybase.org. |
 | `urnetwork` | money4band keeps a session token. CashPilot signs URnetwork in with your email and password. |
 | `grass` | Grass runs as a browser extension. CashPilot only tracks it, with the access token from the Grass dashboard. |
-| `gradient`, `dawn`, `teneo`, `titan`, `spide` | CashPilot tracks these, but there is no container to deploy. |
-| `wipter`, `packetshare`, `peer2profit`, `speedshare` | No longer available. |
+| `gradient`, `dawn`, `teneo`, `titan`, `spide`, `wipter` | CashPilot tracks these, but there is no container to deploy. |
+| `packetshare`, `peer2profit`, `speedshare` | No longer available. |
 
 Any other app is listed as "CashPilot has no such service".
 

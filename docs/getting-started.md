@@ -199,14 +199,14 @@ are optional. CashPilot does not bundle an updater.
 
 ## Supported Services
 
-CashPilot supports **<!-- n:live -->41<!-- /n --> services** that are active or in beta, across four categories:
+CashPilot supports **<!-- n:live -->42<!-- /n --> services** that are active or in beta, across four categories:
 
 - **Bandwidth Sharing** (<!-- n:bandwidth -->18<!-- /n -->): share your internet bandwidth for passive income
-- **DePIN** (<!-- n:depin -->15<!-- /n -->): decentralized physical infrastructure networks
+- **DePIN** (<!-- n:depin -->16<!-- /n -->): decentralized physical infrastructure networks
 - **GPU Compute** (<!-- n:compute -->6<!-- /n -->): rent out your GPU for AI and compute workloads
 - **Storage** (<!-- n:storage -->2<!-- /n -->): share disk space on decentralized storage networks
 
-Of these, **<!-- n:docker -->17<!-- /n -->** can be deployed and managed automatically via Docker. The other <!-- n:tracked -->24<!-- /n --> (<!-- n:extension -->18<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes) are listed in the catalog with signup links, and their balances are read where a collector exists.
+Of these, **<!-- n:docker -->17<!-- /n -->** can be deployed and managed automatically via Docker. The other <!-- n:tracked -->25<!-- /n --> (<!-- n:extension -->19<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes) are listed in the catalog with signup links, and their balances are read where a collector exists.
 
 Browse the full catalog in the [Service Guides](guides/index.md) section.
 

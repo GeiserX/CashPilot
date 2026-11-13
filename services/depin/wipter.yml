@@ -1,9 +1,7 @@
 name: Wipter
 slug: wipter
 category: depin
-status: dead
-# Marketing page still up; programme confirmed dead March 2026.
-resurrection_checked: "2026-09-21"
+status: active
 website: https://wipter.com
 description: >
   Wipter is a bandwidth sharing platform available on Windows, Mac, Linux, and
@@ -13,11 +11,12 @@ description: >
 short_description: Bandwidth sharing - claims up to $1/GB, min payout $20
 
 referral:
-  signup_url: "https://wipter.com/en/refer-a-friend"
+  signup_url: "https://wipter.com/register?via=FB1373FBDA"
+  code: "FB1373FBDA"
 
 docker:
   image: ""
-  platforms: [windows, macos, linux, android]
+  platforms: []
   env: []
   ports: []
   volumes: []
@@ -44,18 +43,59 @@ earnings:
   notes: "Claims up to $1/GB but real-world earnings are lower. Minimum payout $20. Earnings vary heavily by location and demand."
 
 cashout:
-  method: redirect
-  dashboard_url: "https://wipter.com/dashboard"
+  method: manual
+  # Wipter has no web dashboard (wipter.com/dashboard is a 404). The site is
+  # the only page to link; the payout itself happens in the app.
+  dashboard_url: "https://wipter.com"
   min_amount: 20.0
   currency: USD
-  notes: "Cashout only visible in desktop app. No web dashboard payout."
+  notes: >-
+    Wipter has no web dashboard. Open the Wipter desktop or phone app, sign
+    in, and request the payout there once the balance reaches $20.
 
 platforms: [windows, macos, linux, android]
 
 collector:
-  type: scrape
-  notes: "Dashboard at wipter.com. Earnings visible in account panel. No public API documented."
+  type: manual
+  notes: >-
+    No web dashboard and no public API. The desktop app reads earnings from
+    ppc.api.wipter.com/api/web/v1 after an AWS Cognito SRP login
+    (auth.wipter.com). Not implemented.
 
 payout:
   model: unknown
   notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-13"
+  verdicts:
+    payout_record: unknown
+    payout_terms: unknown
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: We have not cashed out yet and did not review user reports.
+    payout_terms: The $20 minimum and the methods are not checked against Wipter's own terms.
+    account_safety: Not checked.
+    terms_fit: Own desktop and phone app, CashPilot cannot deploy or update it
+    traffic_transparency: Not checked.
+    privacy: The client is closed source; we did not review its privacy policy.
+    identity_checks: Not checked; we have not cashed out yet.
+    support: No ticket of our own and no reports checked.
+    earnings_realism: The up to $1/GB claim is not checked against real earnings.
+    longevity: The operating company is not checked on a primary source.
+  cons:
+  - text: 'CashPilot does not run Wipter: you use the provider''s own desktop or phone app, so CashPilot
+      cannot deploy or update it for you. Its terms were not checked for containers.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/wipter.yml
+    checked_on: "2026-11-13"
