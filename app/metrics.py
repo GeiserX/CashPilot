@@ -10,7 +10,7 @@ Metrics exposed:
   - Collection: run count, duration histogram, per-platform errors
   - Workers: count by status, heartbeat staleness, Docker availability
   - Health: per-service score, uptime percentage
-  - Auth: login attempts, rate-limit hits
+  - Auth: login attempts, rate-limit hits, failed sign-in CAPTCHA checks
   - System: app uptime, build info
 """
 
@@ -257,6 +257,12 @@ def _init_metrics():
     _metrics["login_rate_limited_total"] = Counter(
         "cashpilot_login_rate_limited_total",
         "Total login attempts blocked by rate limiter",
+        registry=_registry,
+    )
+    _metrics["login_captcha_failed_total"] = Counter(
+        "cashpilot_login_captcha_failed_total",
+        "Login attempts refused by the sign-in CAPTCHA check, by reason",
+        ["reason"],
         registry=_registry,
     )
 
@@ -539,6 +545,13 @@ def record_rate_limit() -> None:
     if not METRICS_ENABLED or not _metrics:
         return
     _metrics["login_rate_limited_total"].inc()
+
+
+def record_captcha_failure(reason: str) -> None:
+    """Record a login refused by the CAPTCHA: missing, rejected or unavailable."""
+    if not METRICS_ENABLED or not _metrics:
+        return
+    _metrics["login_captcha_failed_total"].labels(reason=reason).inc()
 
 
 def record_heartbeat(worker: str) -> None:

@@ -82,6 +82,14 @@
           <input class="form-input" type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
         </div>
         {% endif %}
+        {#- The sign-in CAPTCHA (app/captcha.py). Off, this renders nothing at all.
+            The widget takes the page's theme: only "light" is a light theme. -#}
+        {%- if mode == "login" and captcha %}
+        <div class="form-group">
+          <div id="cp-captcha" class="{{ captcha.provider.widget_class }}" data-sitekey="{{ captcha.site_key }}" data-theme="{{ 'light' if theme_default == 'light' else 'dark' }}"></div>
+          <script nonce="{{ csp_nonce(request) }}">(function(){var w=document.getElementById('cp-captcha');if(w){w.setAttribute('data-theme',document.documentElement.getAttribute('data-theme')==='light'?'light':'dark')}})();</script>
+        </div>
+        {%- endif %}
         <button type="submit" class="btn btn-primary btn-lg gate-submit">{{ button_text }}</button>
       </form>
 
@@ -101,5 +109,8 @@
     <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
   </footer>
   <script src="/static/js/delegate.js"></script>
+  {%- if mode == "login" and captcha %}
+  <script src="{{ captcha.provider.script_url }}" nonce="{{ csp_nonce(request) }}" async defer></script>
+  {%- endif %}
 </body>
 </html>
