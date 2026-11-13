@@ -40,6 +40,9 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_VERSION` | `dev` | Set by the image build. Shown in the sidebar. | - |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Serve `/metrics`. | - |
 | `CASHPILOT_METRICS_TOKEN` | unset | Require `Authorization: Bearer` on `/metrics`. | - |
+| `CASHPILOT_CAPTCHA_PROVIDER` | unset | A CAPTCHA on the sign-in page: `turnstile`, `hcaptcha` or `recaptcha` (v2 checkbox only). Unset or empty means off. An unknown value, or a missing key below, stops the UI from starting. See [Protect the sign-in page with a CAPTCHA](security-defaults.md#protect-the-sign-in-page-with-a-captcha). | - |
+| `CASHPILOT_CAPTCHA_SITE_KEY` | unset | The provider's site key. Required when `CASHPILOT_CAPTCHA_PROVIDER` is set. | - |
+| `CASHPILOT_CAPTCHA_SECRET_KEY` | unset | The provider's secret key. Required when `CASHPILOT_CAPTCHA_PROVIDER` is set. | - |
 | `CASHPILOT_DRIFT_WARNINGS` | `on` | Set to `off` to stop judging containers against the catalog: no "Needs fixing" row for a container that misses a catalog change. Set it on the worker too, which then stops reporting container settings. A single warning can be muted from its row instead (Ignore). Containers you made by hand are never judged. | - |
 | `CASHPILOT_UPDATE_CHECK` | `on` | Set to `off` to disable the once-a-day check for a newer release. See below. | - |
 | `CASHPILOT_NTFY_URL` | unset | ntfy endpoint for alerts. | - |

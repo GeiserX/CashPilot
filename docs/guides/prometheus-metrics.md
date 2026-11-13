@@ -100,6 +100,7 @@ scrape_configs:
 |--------|------|--------|-------------|
 | `cashpilot_login_attempts_total` | Counter | `result` | Login attempts (success/failure) |
 | `cashpilot_login_rate_limited_total` | Counter | -- | Rate-limited login attempts |
+| `cashpilot_login_captcha_failed_total` | Counter | `reason` | Login attempts refused by the [sign-in CAPTCHA](../security-defaults.md#protect-the-sign-in-page-with-a-captcha) (`missing`, `rejected`, `unavailable`). Each one also counts as a `failure` above. |
 
 ## Example Alerts
 

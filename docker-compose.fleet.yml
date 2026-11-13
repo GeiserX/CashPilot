@@ -33,6 +33,12 @@ services:
       - CASHPILOT_ENCRYPTION_KEY=${CASHPILOT_ENCRYPTION_KEY:-}
       - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
+      # Optional CAPTCHA on the sign-in page, for a UI the internet can reach:
+      # turnstile, hcaptcha or recaptcha (v2 checkbox), plus both keys. Empty = off.
+      # See docs/security-defaults.md, "Protect the sign-in page with a CAPTCHA".
+      - CASHPILOT_CAPTCHA_PROVIDER=${CASHPILOT_CAPTCHA_PROVIDER:-}
+      - CASHPILOT_CAPTCHA_SITE_KEY=${CASHPILOT_CAPTCHA_SITE_KEY:-}
+      - CASHPILOT_CAPTCHA_SECRET_KEY=${CASHPILOT_CAPTCHA_SECRET_KEY:-}
     init: true
     # The image declares its own HEALTHCHECK, so `docker ps` will show
     # "(unhealthy)" when the app stops answering. NOTHING ACTS ON THAT BY

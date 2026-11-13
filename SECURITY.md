@@ -116,6 +116,7 @@ CashPilot is designed to run on **private, trusted networks** (home lab, VPN, LA
 
 - Place it behind a reverse proxy with TLS termination (e.g., Caddy, Traefik, nginx)
 - Restrict access via firewall rules or VPN
+- Optionally, add a CAPTCHA to the sign-in page with `CASHPILOT_CAPTCHA_PROVIDER` (Cloudflare Turnstile, hCaptcha or reCAPTCHA v2). See [Protect the sign-in page with a CAPTCHA](docs/security-defaults.md#protect-the-sign-in-page-with-a-captcha)
 - Use a strong `CASHPILOT_SECRET_KEY` and `CASHPILOT_API_KEY`, and back up `/data/.fernet_key`
 - Set the reverse-proxy-aware environment variables below so cookies, client-IP logging, and session invalidation behave correctly behind TLS termination
 

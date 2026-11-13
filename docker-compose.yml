@@ -46,6 +46,12 @@ services:
       - CASHPILOT_ALLOW_EPHEMERAL_KEY=${CASHPILOT_ALLOW_EPHEMERAL_KEY:-false}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY:-}
       - CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}
+      # Optional CAPTCHA on the sign-in page, for a UI the internet can reach:
+      # turnstile, hcaptcha or recaptcha (v2 checkbox), plus both keys. Empty = off.
+      # See docs/security-defaults.md, "Protect the sign-in page with a CAPTCHA".
+      - CASHPILOT_CAPTCHA_PROVIDER=${CASHPILOT_CAPTCHA_PROVIDER:-}
+      - CASHPILOT_CAPTCHA_SITE_KEY=${CASHPILOT_CAPTCHA_SITE_KEY:-}
+      - CASHPILOT_CAPTCHA_SECRET_KEY=${CASHPILOT_CAPTCHA_SECRET_KEY:-}
       # Warn when a container misses a later catalog fix. false turns it off.
       - CASHPILOT_DRIFT_WARNINGS=${CASHPILOT_DRIFT_WARNINGS:-true}
     init: true
