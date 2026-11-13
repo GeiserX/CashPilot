@@ -628,10 +628,11 @@ class TestCheckPlatforms:
 
 
 class TestAnAcknowledgedDeadSiteIsNotReflaggedForAYear:
-    """Presearch, SpeedShare and Wipter answered on their own domains every week
-    for months after being marked dead, and the report asked every week. The
-    hand check is now recorded in the entry and the report stops asking, for a
-    year, after which it asks again.
+    """Presearch and SpeedShare answered on their own domains every week for
+    months after being marked dead, and the report asked every week. The hand
+    check is now recorded in the entry and the report stops asking, for a year,
+    after which it asks again. Wipter was in the same list, but a later check
+    showed it was alive, so it is active again.
     """
 
     def _dead(self, **extra):
