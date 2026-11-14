@@ -20,7 +20,15 @@
 #      name is resolved inside the tunnel and the private address is dropped;
 #   g. an address in 100.64.0.0/10 that is local to the namespace (a tailnet
 #      node's own address, where tailscaled's PeerAPI listens) is not reachable
-#      over loopback.
+#      over loopback;
+#   h. the earner cannot open its own session to the proxy (an IP-allowlisted
+#      proxy needs no password) to reach the proxy's own network: only the
+#      tunnel's sockets may reach the proxy;
+#   i. a proxy at a 100.64.0.0/10 address (a tailnet or carrier-grade NAT
+#      address) still works: the 100.x rule covers loopback only;
+#   j. an HTTP proxy that allows CONNECT to port 443 only (tinyproxy's
+#      default, like Squid's) still carries the earner: names fall back to the
+#      proxy when it refuses DNS over TCP.
 #
 # Every leak check first runs once against a deliberately opened namespace
 # (the sidecar's firewall table deleted and a default route put back) and must
@@ -46,12 +54,13 @@ fail() {
 
 cleanup() {
     docker ps -aq --filter "name=^${P}-" | xargs -r docker rm -fv >/dev/null 2>&1 || true
-    docker network rm "$NET" >/dev/null 2>&1 || true
+    docker network rm "$NET" "$NET-cgnat" >/dev/null 2>&1 || true
 }
 trap 'jobs -p | xargs -r kill 2>/dev/null; cleanup' EXIT
 cleanup
 
 docker network create --driver bridge "$NET" >/dev/null
+TUN_NET=$NET
 GW=$(docker network inspect "$NET" -f '{{(index .IPAM.Config 0).Gateway}}')
 
 # A capture tool for the checks, never part of what ships.
@@ -80,7 +89,7 @@ start_pair() { # kind auth port  (auth is "user:pass@", percent-encoded, or "-" 
     local kind=$1 auth=$2 port=$3 d
     [ "$auth" = - ] && auth=""
     docker rm -fv "$P-earner" "$P-tun" >/dev/null 2>&1 || true
-    docker create --name "$P-tun" --network "$NET" --init --cap-drop ALL --cap-add NET_ADMIN \
+    docker create --name "$P-tun" --network "$TUN_NET" --init --cap-drop ALL --cap-add NET_ADMIN \
         --device /dev/net/tun --security-opt no-new-privileges:true --read-only --tmpfs /run:size=1m \
         -v /run/cashpilot-secret --sysctl net.ipv6.conf.all.disable_ipv6=1 \
         --sysctl net.ipv6.conf.default.disable_ipv6=1 --sysctl net.ipv4.conf.all.route_localnet=1 \
@@ -246,6 +255,68 @@ if reaches_peer; then fail "g: the earner reached 100.101.0.1 on loopback"; else
 docker exec "$P-tun" sh -c 'nft -a list chain inet cashpilot out | sed -n "s/.*100.64.0.0\/10 drop # handle \([0-9]*\)/\1/p" | xargs -I{} nft delete rule inet cashpilot out handle {}'
 if reaches_peer; then pass "control: the loopback check reaches 100.101.0.1 once its rule is gone"; else fail "control: the loopback check could not reach 100.101.0.1 even without its rule"; fi
 docker rm -f "$P-peer" >/dev/null
+
+# h. The earner's own session to the proxy, with no password (the 1081 and
+# 8081 listeners stand in for a proxy that allowlists the box's IP), asking for
+# the proxy's own network. Only the tunnel's own sockets may reach the proxy.
+earner_reaches_lan_via_proxy() {
+    earner curl -s -m 6 -x "$1" "http://$LAN_IP/" 2>/dev/null | grep -q cpmp-lan-secret
+}
+for variant in "socks5 - 1081 socks5h" "http - 8081 http"; do
+    set -- $variant
+    start_gost
+    start_pair "$1" "$2" "$3"
+    if earner_reaches_lan_via_proxy "$4://$GOST_IP:$3"; then
+        fail "$1:$3 h: the earner reached $LAN_IP through its own session to the proxy"
+    else
+        pass "$1:$3 h: the earner cannot open its own session to the proxy"
+    fi
+    if earner curl -fsS -m 10 -o /dev/null https://api.ipify.org; then
+        pass "$1:$3 h: the earner still reaches the internet through the tunnel"
+    else
+        fail "$1:$3 h: the earner lost the tunnel"
+    fi
+done
+# Its control: the old rule, any socket in the namespace to the proxy.
+docker exec "$P-tun" nft insert rule inet cashpilot out oifname eth0 ip daddr "$GOST_IP" tcp dport 8081 accept
+if earner_reaches_lan_via_proxy "http://$GOST_IP:8081"; then pass "control: the session check reaches $LAN_IP once any socket may reach the proxy"; else fail "control: the session check could not reach $LAN_IP even with the old rule"; fi
+docker rm -f "$P-lan" >/dev/null
+
+# i. A proxy at a 100.64.0.0/10 address, on a network of that range.
+docker network create --driver bridge --subnet 100.88.0.0/24 "$NET-cgnat" >/dev/null
+docker rm -f "$P-gost" >/dev/null 2>&1 || true
+docker run -d --name "$P-gost" --network "$NET-cgnat" "$GOST" -L "socks5://:1081" >/dev/null
+sleep 1
+saved_ip=$GOST_IP
+GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET-cgnat\").IPAddress}}")
+TUN_NET=$NET-cgnat
+start_pair socks5 - 1081
+if earner curl -fsS -m 10 -o /dev/null https://api.ipify.org; then
+    pass "i: a proxy at $GOST_IP carries the earner"
+else
+    fail "i: a proxy at $GOST_IP does not carry the earner"
+    docker logs "$P-tun" 2>&1 | tail -5
+fi
+TUN_NET=$NET
+GOST_IP=$saved_ip
+
+# j. An HTTP proxy that allows CONNECT to port 443 only.
+docker rm -f "$P-gost" >/dev/null 2>&1 || true
+docker run -d --name "$P-gost" --network "$NET" "$ALPINE" sh -c \
+    'apk add -q --no-cache tinyproxy >/dev/null && printf "Port 8081\nListen 0.0.0.0\nTimeout 60\nConnectPort 443\n" >/tmp/t.conf && exec tinyproxy -d -c /tmp/t.conf' >/dev/null
+for _ in $(seq 1 30); do docker logs "$P-gost" 2>&1 | grep -qi "listening\|accepting" && break; sleep 1; done
+GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
+start_pair http - 8081
+if earner curl -fsS -m 10 -o /dev/null https://api.ipify.org; then
+    pass "j: a proxy that refuses port 53 still carries the earner"
+else
+    fail "j: a proxy that refuses port 53 does not carry the earner"
+fi
+if docker logs "$P-tun" 2>&1 | grep -q "refuses DNS over TCP"; then pass "j: the tunnel log says names went back to the proxy"; else fail "j: the tunnel log does not say names went back to the proxy"; fi
+start_gost
+GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
+start_pair http - 8081
+if docker logs "$P-tun" 2>&1 | grep -q "refuses DNS over TCP"; then fail "j: control: the tunnel left DNS over TCP on a proxy that allows it"; else pass "j: control: a proxy that allows port 53 keeps DNS over TCP"; fi
 
 # Positive controls: the same checks against a namespace opened on purpose.
 open_namespace
