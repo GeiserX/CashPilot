@@ -29,7 +29,7 @@ import os
 import threading
 from typing import Any
 
-from app.constants import LABEL_MANAGED, LABEL_ROLE, ROLE_TUNNEL
+from app.constants import LABEL_MANAGED, LABEL_ROLE, LABEL_VERSION, ROLE_TUNNEL
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,9 @@ def check(slug: str, network_mode: str | None, client: Any, *, leave_route: bool
             labels = tunnel.labels if isinstance(getattr(tunnel, "labels", None), dict) else {}
         except Exception:  # noqa: BLE001 - gone or unreadable: not a tunnel we can vouch for
             labels = {}
-        if labels.get(LABEL_MANAGED) != "true" or labels.get(LABEL_ROLE) != ROLE_TUNNEL:
+        # deploy_raw sets LABEL_VERSION on every earner it makes and no tunnel
+        # has it: a direct earner given a tunnel's labels is not a tunnel.
+        if labels.get(LABEL_MANAGED) != "true" or labels.get(LABEL_ROLE) != ROLE_TUNNEL or LABEL_VERSION in labels:
             raise RouteRefused("route_not_tunnel", f"{slug} may share a network only with one of this worker's tunnels")
         return
     if proxied_only():

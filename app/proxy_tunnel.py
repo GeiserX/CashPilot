@@ -72,6 +72,7 @@ from app.constants import (
     LABEL_PROXY,
     LABEL_ROLE,
     LABEL_SERVICE,
+    LABEL_VERSION,
     ROLE_TUNNEL,
     TUNNEL_PREFIX,
 )
@@ -657,10 +658,14 @@ def _is_ours(container: Any | None, slug: str, proxy_id: int) -> bool:
 
 
 def _is_tunnel(container: Any | None, proxy_id: int | None = None) -> bool:
+    """A proxy's tunnel. Never one deploy_raw made: it sets LABEL_VERSION on every
+    container, and a direct deploy once kept any other label it was given (see
+    orchestrator.is_tunnel_sidecar)."""
     labels = _labels(container)
     return (
         labels.get(LABEL_MANAGED) == "true"
         and labels.get(LABEL_ROLE) == ROLE_TUNNEL
+        and LABEL_VERSION not in labels
         and LABEL_PROXY in labels
         and (proxy_id is None or labels.get(LABEL_PROXY) == str(proxy_id))
     )
@@ -1680,7 +1685,12 @@ def migrate_legacy() -> list[str]:
     for c in found:
         pid = _labels(c).get(LABEL_PROXY, "")
         slug = _labels(c).get(LABEL_SERVICE, "")
-        if str(c.name).endswith(STAGED_SUFFIX) or slug in (SHARED_SLUG, TEST_SLUG) or not pid.isdigit():
+        if (
+            str(c.name).endswith(STAGED_SUFFIX)
+            or slug in (SHARED_SLUG, TEST_SLUG)
+            or not pid.isdigit()
+            or not _is_tunnel(c)
+        ):
             continue
         legacy.setdefault(int(pid), []).append(c)
     moved: list[str] = []

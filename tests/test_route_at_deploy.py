@@ -37,7 +37,7 @@ from app import (  # noqa: E402
     step_up,
     worker_api,
 )
-from app.constants import LABEL_MANAGED, LABEL_ROLE, ROLE_TUNNEL  # noqa: E402
+from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_VERSION, ROLE_TUNNEL  # noqa: E402
 
 WORKER_KEY = "per-worker-key-route"
 
@@ -98,7 +98,14 @@ class TestTheRule:
 
     @pytest.mark.parametrize(
         "labels",
-        [{}, {LABEL_MANAGED: "true"}, {LABEL_ROLE: ROLE_TUNNEL}, {LABEL_MANAGED: "false", LABEL_ROLE: ROLE_TUNNEL}],
+        [
+            {},
+            {LABEL_MANAGED: "true"},
+            {LABEL_ROLE: ROLE_TUNNEL},
+            {LABEL_MANAGED: "false", LABEL_ROLE: ROLE_TUNNEL},
+            # A direct earner deploy_raw made with a tunnel's labels: its own version label it cannot lose.
+            {LABEL_MANAGED: "true", LABEL_ROLE: ROLE_TUNNEL, LABEL_PROXY: "3", LABEL_VERSION: "1"},
+        ],
     )
     def test_another_containers_namespace_is_not_a_tunnel(self, labels):
         """Sharing a namespace with any container is how a raw spec would pick the box's own network."""
