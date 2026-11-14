@@ -751,3 +751,57 @@ class TestADeployThatFailsHalfway:
         assert error is None
         assert _active() == {("honeygain", 1, "1", "HONEYGAIN_DEVICE_NAME"): "box"}
         assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, third round: a heartbeat that predates a copy, and a copy
+# whose ledger write failed at deploy
+# ---------------------------------------------------------------------------
+
+
+class TestAHeartbeatThatPredatesACopy:
+    HG = {"HONEYGAIN_EMAIL": "me@example.com", "HONEYGAIN_PASSWORD": "pw", "HONEYGAIN_DEVICE_NAME": "box"}
+
+    def test_a_scale_down_it_cannot_see_retires_nothing(self, db):
+        """The heartbeat lists no copy yet, so no DELETE goes out and copy 2 still runs."""
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", self.HG, 1, instances=2)[0] is None
+            error, sent = _deploy("honeygain", self.HG, 1, instances=1, running=set())
+        assert error is None
+        assert not any(s["path"].endswith("/instances/2") for s in sent)
+        assert _active()[("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
+
+
+class TestACopyWhoseWriteFailed:
+    HG = {"HONEYGAIN_EMAIL": "me@example.com", "HONEYGAIN_PASSWORD": "pw", "HONEYGAIN_DEVICE_NAME": "box"}
+
+    def _deploy_losing_copy_two(self, wid):
+        real = database.record_identities
+
+        async def flaky(slug, worker_id, values, **kwargs):
+            if "2" in values:
+                raise RuntimeError("database is locked")
+            return await real(slug, worker_id, values, **kwargs)
+
+        with (
+            patch.object(main, "scaling_limit", lambda svc: (3, "")),
+            patch.object(main.database, "record_identities", flaky),
+        ):
+            assert _deploy("honeygain", self.HG, wid, instances=2)[0] is None
+        assert set(_active()) == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME")}
+
+    def test_the_backfill_retries_it(self, db):
+        wid = _worker()
+        self._deploy_losing_copy_two(wid)
+        asyncio.run(main._backfill_identities())
+        assert _active() == {
+            ("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME"): "box",
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME"): "box-2",
+        }
+
+    def test_its_removal_then_keeps_its_id(self, db):
+        wid = _worker()
+        self._deploy_losing_copy_two(wid)
+        asyncio.run(main._backfill_identities())
+        asyncio.run(database.remove_deployment("honeygain", worker_id=wid))
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()

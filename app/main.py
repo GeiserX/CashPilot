@@ -4325,8 +4325,8 @@ async def _deploy(
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
         await _record_deploy_identities(slug, worker_id, {}, [n], docker_conf, scope="given")
-    # Every copy is where it should be: any other on-box copy's row is stale.
-    await _record_deploy_identities(slug, worker_id, spec, range(1, instances + 1), docker_conf)
+    # No sweep of the other copies' rows here: running_copies comes from the last
+    # heartbeat, which may predate a copy, so only a confirmed removal retires one.
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
@@ -4412,8 +4412,8 @@ async def _record_deploy_identities(
 async def _backfill_identities() -> None:
     """Put the device ids of deployments from before the ledger in it, once.
 
-    Run at startup. A deploy record with no active ledger row gets its copies
-    recorded as a deploy would; one that has rows is left alone, so this is
+    Run at startup. Each copy of a deploy record with no active ledger row gets
+    recorded as a deploy would; a copy that has rows is left alone, so this is
     idempotent and never overrides what a deploy recorded. Proxied copies with
     no row are recorded from the same derivation their deploy used.
     """
@@ -4443,12 +4443,16 @@ async def _backfill_identities() -> None:
                 )
             except Exception:  # noqa: BLE001
                 logger.warning("Could not record copy %s of %s", copy, slug, exc_info=True)
-        elif copy == 1 and not any(not i.startswith("p") for i in have):
+        elif copy == 1:
             try:
                 count = int(spec.get("instances") or 1)
             except (TypeError, ValueError):
                 count = 1
-            await _record_deploy_identities(slug, worker_id, spec, range(1, max(1, min(count, 32)) + 1), docker_conf)
+            # Each copy on its own: one whose write failed at deploy is retried
+            # here, even when the others have their rows.
+            missing = [n for n in range(1, max(1, min(count, 32)) + 1) if str(n) not in have]
+            if missing:
+                await _record_deploy_identities(slug, worker_id, spec, missing, docker_conf, scope="given")
         for copy in proxied:
             if (copy.get("slug"), copy.get("worker_id")) != (slug, worker_id) or f"p{copy['proxy_id']}" in have:
                 continue
