@@ -66,9 +66,13 @@ website through the same exit too.
 
 Set `CASHPILOT_PROXIED_ONLY=true` in a worker's environment and it refuses to
 start any earner outside one of its tunnels. A deploy without a route, a
-redeploy of an old direct service and an extra copy all fail with a message
-naming the setting; nothing reaches the box's own IP. Proxied copies and routed
-services still run. The UI cannot change it: only whoever edits the worker's
+redeploy of an old direct service, an extra copy, and Start or Restart of a
+direct service all fail with a message naming the setting. A direct service
+that was already running when you set it is stopped when the worker starts and
+checked again every 30 seconds; Docker would otherwise start it after each
+reboot. After a reboot it can run for the few seconds before the worker is up,
+so remove direct services from the box (or redeploy them with a route) rather
+than leave them stopped. Proxied copies and routed services still run. The UI cannot change it: only whoever edits the worker's
 compose file can. The deploy form marks such a box **proxy only**.
 
 ## What a proxy can be
@@ -317,9 +321,19 @@ then judges that address like any other: a name that points at a private,
 loopback or tailnet address is dropped before it leaves the tunnel, so a
 name cannot be used to reach your LAN or the proxy's own network.
 
-The proxy must therefore let TCP connections to port 53 through. Most do. If
-the tunnel's start fails with a message about DNS over TCP, the proxy blocks
-it; use another proxy.
+Many HTTP proxies allow connections to port 443 only, and some SOCKS5
+providers block port 53. The tunnel checks this when it starts: when names do
+not resolve but the proxy carries a connection to an address, it lets the
+proxy resolve names instead, as before, and says so in its log. The earner
+keeps earning, but a name that points at the proxy's own network is then not
+filtered. Allow TCP port 53 on the proxy, or use another proxy, to close that.
+
+The earner cannot talk to the proxy itself either. It shares the tunnel's
+network, but the firewall lets out to the proxy only the tunnel's own
+connections, told apart by their cgroup. Otherwise an earner could open its
+own session to a proxy that trusts the box's IP and ask for the proxy's own
+network. A host without cgroup v2, or a kernel that cannot match on it, keeps
+the older rule and the tunnel's log says so.
 
 ## What cannot run through a proxy
 

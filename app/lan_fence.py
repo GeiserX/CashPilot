@@ -1233,6 +1233,8 @@ def guard() -> dict[str, str]:
                 running = c.status == "running" and c.name not in stopped_now
                 problem = (
                     fence
+                    # CASHPILOT_PROXIED_ONLY: a gated node runs from the box's own IP.
+                    or orch.direct_problem(c)
                     or (FAILED_DEPLOY if c.name in failed else None)
                     or orch.gated_spec_problem(c, mode)
                     or (None if deploying else orch.identity_problem(c))

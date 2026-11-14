@@ -205,6 +205,8 @@ def worker(monkeypatch):
         return "cid"
 
     monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", fake_deploy)
+    # No direct container of the service on this box, unless a test says so.
+    monkeypatch.setattr(worker_api.orchestrator, "service_instances", MagicMock(return_value=[]))
     monkeypatch.setattr(worker_api, "_validate_runtime", lambda runtime: None)
     monkeypatch.setattr(worker_api.lan_fence, "refresh_outside", lambda: None)
     client = TestClient(worker_api.app, raise_server_exceptions=False)
@@ -316,6 +318,35 @@ class TestTheWorkerProxiedRoutes:
         resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
         assert resp.status_code == 503
         assert seen == {}
+
+    @pytest.mark.parametrize("before", [None, 2])
+    def test_a_routed_deploy_beside_a_direct_container_is_refused(self, worker, monkeypatch, before):
+        """The worker, not only the UI, refuses it: one account on the box's IP and the proxy's ties them."""
+        if before is not None:
+            route_gate.mark("honeygain", before)
+        direct = MagicMock()
+        direct.name = "cashpilot-honeygain"
+        monkeypatch.setattr(worker_api.orchestrator, "service_instances", MagicMock(return_value=[direct]))
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
+        assert resp.status_code == 409, resp.text
+        assert "cashpilot-honeygain" in _detail(resp)
+        assert seen == {}
+        assert route_gate.routed() == ({} if before is None else {"honeygain": before})
+
+    def test_a_copy_beside_a_direct_container_is_still_allowed(self, worker, monkeypatch):
+        direct = MagicMock()
+        direct.name = "cashpilot-honeygain"
+        monkeypatch.setattr(worker_api.orchestrator, "service_instances", MagicMock(return_value=[direct]))
+        resp, _ = self._deploy(worker, monkeypatch, False, {"container_id": "e"})
+        assert resp.status_code == 200, resp.text
+
+    def test_a_routed_deploy_that_cannot_list_the_containers_deploys_nothing(self, worker, monkeypatch):
+        monkeypatch.setattr(
+            worker_api.orchestrator, "service_instances", MagicMock(side_effect=RuntimeError("docker is down"))
+        )
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
+        assert resp.status_code == 503
+        assert seen == {} and route_gate.routed() == {}
 
     def test_the_logs_of_a_routed_service(self, worker, monkeypatch):
         monkeypatch.setattr(worker_api.proxy_tunnel, "logs", lambda slug, pid, lines: f"{slug} {pid} {lines}")
@@ -759,3 +790,137 @@ class TestTheDashboardCountsIt:
     def test_routed_entries_reads_a_raw_database_row(self):
         assert proxies.routed_entries(_worker_row(proxied=[self.ROUTED, self.COPY])) == [self.ROUTED]
         assert proxies.routed_entries({"system_info": "{not json"}) == []
+
+
+# ---------------------------------------------------------------------------
+# A container that already exists: Start, Restart, and CASHPILOT_PROXIED_ONLY
+# set after it was made
+# ---------------------------------------------------------------------------
+
+
+def _earner(name="cashpilot-honeygain", slug="honeygain", network_mode="cashpilot-isolated", labels=None):
+    c = MagicMock()
+    c.name = name
+    c.labels = {LABEL_MANAGED: "true", "cashpilot.service": slug} if labels is None else labels
+    c.attrs = {"HostConfig": {"NetworkMode": network_mode}}
+    return c
+
+
+def _act(container, action, client=None):
+    with (
+        patch.object(orchestrator, "_find_container", return_value=container),
+        patch.object(orchestrator, "_get_client", return_value=client or _client_with()),
+        patch.object(orchestrator, "fence_gated", return_value=False),
+    ):
+        getattr(orchestrator, action)("honeygain")
+
+
+class TestStartAndRestartKeepTheRule:
+    @pytest.mark.parametrize("action", ["start_service", "restart_service"])
+    def test_proxied_only_refuses_a_direct_container_made_before_it_was_set(self, monkeypatch, action):
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        c = _earner()
+        with pytest.raises(route_gate.RouteRefused) as exc:
+            _act(c, action)
+        assert exc.value.error == "proxied_only"
+        c.start.assert_not_called()
+        c.restart.assert_not_called()
+
+    @pytest.mark.parametrize("action", ["start_service", "restart_service"])
+    def test_a_routed_service_is_not_started_from_the_boxs_own_ip(self, action):
+        route_gate.mark("honeygain", 3)
+        c = _earner()
+        with pytest.raises(route_gate.RouteRefused) as exc:
+            _act(c, action)
+        assert exc.value.error == "route_locked"
+        c.start.assert_not_called()
+        c.restart.assert_not_called()
+
+    @pytest.mark.parametrize("action", ["start_service", "restart_service"])
+    def test_control_a_direct_service_on_an_ordinary_worker_starts(self, action):
+        c = _earner()
+        _act(c, action)
+        assert c.start.called or c.restart.called
+
+    @pytest.mark.parametrize("command", ["start", "restart"])
+    def test_the_worker_route_answers_403_with_the_reason(self, worker, monkeypatch, command):
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        c = _earner()
+        with (
+            patch.object(orchestrator, "_find_container", return_value=c),
+            patch.object(orchestrator, "_get_client", return_value=_client_with()),
+        ):
+            resp = worker("POST", f"/api/containers/honeygain/{command}")
+        assert resp.status_code == 403, resp.text
+        assert _detail(resp)["error"] == "proxied_only"
+        c.start.assert_not_called()
+        c.restart.assert_not_called()
+
+
+class TestProxiedOnlyStopsWhatAlreadyRuns:
+    def _hold(self, containers, tunnel=None):
+        client = _client_with(tunnel)
+        client.containers.list.return_value = containers
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            return orchestrator.hold_direct_earners()
+
+    def test_a_direct_earner_is_stopped(self, monkeypatch):
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        direct = _earner()
+        assert self._hold([direct]) == ["cashpilot-honeygain"]
+        direct.stop.assert_called_once()
+
+    def test_tunnels_copies_and_containers_cashpilot_did_not_make_are_left_alone(self, monkeypatch):
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        tunnel = _earner("cashpilot-tunnel-x", labels={LABEL_MANAGED: "true", LABEL_ROLE: ROLE_TUNNEL})
+        copy = _earner(
+            "cashpilot-honeygain-p3",
+            network_mode="container:abc",
+            labels={LABEL_MANAGED: "true", "cashpilot.service": "honeygain", "cashpilot.proxy": "3"},
+        )
+        platform = _earner("cashpilot-worker", labels={LABEL_MANAGED: "true"})
+        assert self._hold([tunnel, copy, platform], tunnel=_tunnel()) == []
+        for c in (tunnel, copy, platform):
+            c.stop.assert_not_called()
+
+    def test_an_earner_in_a_namespace_that_is_not_a_tunnel_is_stopped(self, monkeypatch):
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        joined = _earner(network_mode="container:someone-else")
+        assert self._hold([joined], tunnel=_tunnel(labels={LABEL_MANAGED: "true"})) == ["cashpilot-honeygain"]
+
+    def test_control_nothing_is_stopped_without_the_switch(self):
+        direct = _earner()
+        assert self._hold([direct]) == []
+        direct.stop.assert_not_called()
+
+    def test_a_routed_lock_alone_does_not_stop_anything(self, monkeypatch):
+        """A direct deploy the owner confirmed runs before its route is released: left to the deploy."""
+        route_gate.mark("honeygain", 3)
+        direct = _earner()
+        assert self._hold([direct]) == []
+
+    def test_the_worker_holds_them_at_its_start_and_on_every_guard_pass(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(worker_api.orchestrator, "hold_direct_earners", lambda: calls.append(1) or [])
+        monkeypatch.setattr(worker_api.lan_fence, "guard", lambda: {})
+        asyncio.run(worker_api._guard_once())
+        assert calls == [1]
+        monkeypatch.setattr(
+            worker_api.orchestrator, "hold_direct_earners", MagicMock(side_effect=RuntimeError("docker is down"))
+        )
+        asyncio.run(worker_api._guard_once())  # never raises
+
+    def test_a_fence_gated_node_is_held_by_the_guard_too(self, monkeypatch, tmp_path):
+        """The guard would otherwise start Mysterium again after this stopped it."""
+        from tests.test_mysterium_fenced import _guard, _node
+
+        monkeypatch.setattr(orchestrator, "STOPPED_MARKER", str(tmp_path / "stopped"))
+        monkeypatch.setattr(orchestrator, "IDENTITY_DIR", str(tmp_path / "identity"))
+        monkeypatch.setattr(orchestrator, "_MISMATCH_HELD", {}, raising=False)
+        monkeypatch.setattr(orchestrator, "FAILED_MARKER", str(tmp_path / "failed"), raising=False)
+        monkeypatch.setattr(orchestrator, "_FAILED_UNWRITTEN", {}, raising=False)
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        node = _node(status="exited")
+        held, _ = _guard([node])
+        node.start.assert_not_called()
+        assert "proxy" in held["cashpilot-mysterium"]

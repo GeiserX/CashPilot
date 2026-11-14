@@ -958,11 +958,20 @@ _guard_task: asyncio.Task | None = None
 
 
 async def _guard_once() -> None:
-    """One pass of the fence guard (lan_fence.guard). Never raises."""
+    """One pass of the fence guard (lan_fence.guard), then of the proxied-only one. Never raises."""
     try:
         await asyncio.wait_for(asyncio.to_thread(lan_fence.guard), FENCE_STARTUP_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
         logger.warning("Fence guard pass did not finish: %s", _reason(exc))
+    await _hold_direct_earners()
+
+
+async def _hold_direct_earners() -> None:
+    """On a CASHPILOT_PROXIED_ONLY worker, stop any earner running from the box's own IP. Never raises."""
+    try:
+        await asyncio.to_thread(orchestrator.hold_direct_earners)
+    except Exception as exc:  # noqa: BLE001 - the next guard pass tries again
+        logger.warning("Could not check for earners outside a tunnel: %s", _reason(exc))
 
 
 async def _guard_loop() -> None:
@@ -1111,6 +1120,10 @@ async def lifespan(app: FastAPI):
     # (docs/isolation.md). The public IP is looked up first (bounded by
     # _EGRESS_TOTAL_TIMEOUT), so the first table drops it unless that lookup fails.
     if docker_mode == "direct":
+        # First of all: Docker starts a direct earner again after a reboot, and on
+        # a CASHPILOT_PROXIED_ONLY worker each second it runs is traffic from this
+        # box's own IP (app/route_gate.py).
+        await _hold_direct_earners()
         lan_fence.set_egress_ip(await _detect_egress_ip())
     await _check_fence(startup=True)
     _fence_task = asyncio.create_task(_fence_loop())
@@ -1934,6 +1947,24 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
             raise HTTPException(
                 status_code=503, detail=f"Could not record the route of {slug} on this worker ({exc}); nothing changed"
             ) from None
+        # Checked after the mark, so a direct deploy cannot slip in between: the
+        # routed copy beside a direct container of the same account would show
+        # the provider one device on both the box's IP and the proxy's.
+        try:
+            direct = [c.name for c in await asyncio.to_thread(orchestrator.service_instances, slug)]
+        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+            await asyncio.to_thread(route_gate.release, slug, before)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not list the containers of {slug} on this worker ({exc}); nothing changed",
+            ) from None
+        if direct:
+            await asyncio.to_thread(route_gate.release, slug, before)
+            raise HTTPException(
+                status_code=409,
+                detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
+                "then deploy it with a route; nothing changed",
+            )
     try:
         result = await asyncio.to_thread(
             proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip, own_tunnel=spec.routed
@@ -2131,6 +2162,10 @@ async def api_restart_container(request: Request, slug: str, instance: int = 1) 
     try:
         await asyncio.to_thread(orchestrator.restart_service, slug, instance)
         return {"status": "restarted"}
+    except route_gate.RouteRefused as exc:
+        # The deploy's rule: not from this box's own IP (app/route_gate.py).
+        logger.warning("Restart of %s refused: %s", slug, exc)
+        raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
@@ -2157,6 +2192,10 @@ async def api_start_container(request: Request, slug: str, instance: int = 1) ->
     try:
         await asyncio.to_thread(orchestrator.start_service, slug, instance)
         return {"status": "started"}
+    except route_gate.RouteRefused as exc:
+        # The deploy's rule: not from this box's own IP (app/route_gate.py).
+        logger.warning("Start of %s refused: %s", slug, exc)
+        raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:

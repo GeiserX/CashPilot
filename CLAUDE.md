@@ -160,7 +160,7 @@ Two separate Docker images:
 | `CASHPILOT_EGRESS_IP` | No | -- | State the public IP directly (validated; a LAN/tailnet address is rejected) |
 | `CASHPILOT_EGRESS_IP_URL` | No | -- | Custom IP-echo endpoint returning a bare IP |
 | `CASHPILOT_ISOLATION` | No | `auto` | `auto`/`on`/`off`. Fences bridge earners off the LAN, host, tailnet and metadata on new installs (app/lan_fence.py); upgraded installs stay on the default bridge until switched from the Fleet page |
-| `CASHPILOT_PROXIED_ONLY` | No | `false` | `true` = refuse any earner not inside one of this worker's tunnels (app/route_gate.py, checked in `orchestrator.deploy_raw`). The UI cannot change it |
+| `CASHPILOT_PROXIED_ONLY` | No | `false` | `true` = refuse any earner not inside one of this worker's tunnels (app/route_gate.py, checked in `orchestrator.deploy_raw`, `start_service` and `restart_service`; running direct earners are stopped by `orchestrator.hold_direct_earners` at worker start and on each guard pass). The UI cannot change it |
 | `CASHPILOT_CONTAINER_NETWORK` | No | -- | A bridge you created; bridge-networked containers join it instead of Docker's default, so host firewall rules can confine them (docs/home-network-security.md). Missing = deploy refused |
 | `CASHPILOT_CONTAINER_DNS` | No | `1.1.1.1,9.9.9.9` | Resolvers for containers on that bridge only, so their lookups skip a LAN/tailnet resolver the firewall rejects. Empty = the daemon's list |
 
