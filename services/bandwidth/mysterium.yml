@@ -272,7 +272,7 @@ earnings:
   monthly_high: 10
   currency: USD
   per: "device"
-  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 (loopback by default) for management. VPS accepted. Port forwarding UDP 23000-23029 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
+  notes: "Earnings in MYST tokens. Residential IPs earn significantly more. Node WebUI at port 4449 for management, published on the machine it runs on only (127.0.0.1) by default; from another machine open an SSH tunnel first (ssh -L 14449:127.0.0.1:4449 <host>, then browse http://127.0.0.1:14449; local port 14449 so it cannot clash with a node on your own machine), or add an address to UI_ADDRESS (see WebUI address in the Mysterium guide). VPS accepted. Port forwarding UDP 23000-23029 (the UDP_PORTS default) strongly recommended -- without it, nodes get Strict NAT status and many VPN sessions fail, severely reducing income. Important: after first run, set your beneficiary (settlement) wallet via the node WebUI or CLI to match your mystnodes.com account -- this links on-chain earnings to your cloud dashboard."
 
 cashout:
   method: auto
