@@ -116,11 +116,16 @@ identity sits on a named Docker volume. The rules:
   file, you type the service name, because nobody can tell from the file whose
   identity or wallet is inside. A file exported before this record existed is
   one of these: the preview names the boxes that run the service now.
-- **One identity, one box.** If the file came from a box that still runs the
-  service, the restore is refused and names that box. For a file it does not
-  know, the box named inside the file counts too. Two boxes on one identity
-  look like one node to the provider, which may merge or ban them. One restore
-  of a file runs at a time.
+- **One identity, one box.** CashPilot links every export of one node by the
+  volume it was read from, so two files of the same node count as one. The
+  restore is refused, naming the box, when any of them was restored on a box
+  that runs the service, or came from a box that still runs it on the same
+  volume. A box that was wiped and runs a new volume does not count. A restore
+  sent to a box that gave no answer (a timeout, a dropped connection) counts
+  on that box, running or not, until a retry there succeeds or you forget the
+  row in the Device ids list. For a file it does not know, the box named
+  inside the file counts too. Two boxes on one identity look like one node to
+  the provider, which may merge or ban them. One restore runs at a time.
 - **Plain HTTP needs your yes.** The passphrase goes to the worker in the
   request. To a worker reached over `http://`, it crosses your network
   unencrypted, so the restore asks you to tick a box that accepts this. Give

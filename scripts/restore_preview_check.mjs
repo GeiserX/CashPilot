@@ -79,9 +79,15 @@ html = restorePreviewHtml({...base, known: true, runs_on: ['box-b'],
 check('a known file not live anywhere has no runs-now warning', !html.includes('runs now on'), html);
 
 // --- the identity runs elsewhere ---------------------------------------------
-html = restorePreviewHtml({...base, live_on: ['box-z']});
-check('names the box it runs on', html.includes('already runs on box-z'), html);
+const elsewhere = {id: 1, name: 'box-a', ok: false, why: 'this identity already runs on box-z', plain_http: false};
+html = restorePreviewHtml({...base, live_on: ['box-z'], workers: [elsewhere]});
+check('names the box it runs on', html.includes('may be starting, on box-z'), html);
 check('the Restore button is disabled', /data-action="submitRestore"[^>]*disabled>/.test(html), html);
+// A restore sent to box-z got no answer: box-z may take it again, no other box may.
+html = restorePreviewHtml({...base, live_on: ['box-z'],
+  workers: [elsewhere, {id: 9, name: 'box-z', ok: true, why: '', plain_http: false}]});
+check('the box a restore was sent to stays selectable', /<option value="9">box-z<\/option>/.test(html), html);
+check('and Restore is enabled for it', /data-action="submitRestore"[^>]*data-a1="u1">/.test(html), html);
 
 // --- no box can take it ------------------------------------------------------
 html = restorePreviewHtml({...base, workers: [{id: 2, name: 'box-b', ok: false, why: 'offline'}]});

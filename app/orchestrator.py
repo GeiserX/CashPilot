@@ -818,14 +818,38 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
 GATED_DEPLOY_LOCK = threading.Lock()
 
 
+#: Slugs a restore (restore_state) is creating now, and how many deploy_raw
+#: calls run per slug, both under _SLUG_WORK_LOCK. A deploy replaces the
+#: container of its slug and keeps its volumes, so one that met a restore's
+#: created container would start a node on a half-written volume. Each refuses
+#: while the other runs; restore_state calls deploy_raw.__wrapped__, which
+#: skips this.
+_SLUG_WORK_LOCK = threading.Lock()
+_restoring: set[str] = set()
+_deploying: dict[str, int] = {}
+
+
 def _holds_gated_lock(fn: Any) -> Any:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        slug = kwargs.get("slug", args[0] if args else "")
-        if not fence_gated(str(slug)):
-            return fn(*args, **kwargs)
-        with GATED_DEPLOY_LOCK:
-            return fn(*args, **kwargs)
+        slug = str(kwargs.get("slug", args[0] if args else ""))
+        with _SLUG_WORK_LOCK:
+            if slug in _restoring:
+                raise ContainerRuntimeError(
+                    f"A restore of {slug} is running on this box, so nothing was deployed. Try again when it ends.",
+                    409,
+                )
+            _deploying[slug] = _deploying.get(slug, 0) + 1
+        try:
+            if not fence_gated(slug):
+                return fn(*args, **kwargs)
+            with GATED_DEPLOY_LOCK:
+                return fn(*args, **kwargs)
+        finally:
+            with _SLUG_WORK_LOCK:
+                _deploying[slug] -= 1
+                if not _deploying[slug]:
+                    del _deploying[slug]
 
     return wrapper
 
@@ -2741,8 +2765,18 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
     if not _RESTORE_LOCK.acquire(blocking=False):
         raise RestoreError("Nothing was restored: another restore is running on this box. Try again when it ends.")
     try:
-        with lock:
-            return _restore_locked(client, slug, name, gated, targets, expected, payloads, deploy)
+        with _SLUG_WORK_LOCK:
+            if _deploying.get(slug):
+                raise RestoreError(
+                    f"Nothing was restored: a deploy of {slug} is running on this box. Try again when it ends."
+                )
+            _restoring.add(slug)
+        try:
+            with lock:
+                return _restore_locked(client, slug, name, gated, targets, expected, payloads, deploy)
+        finally:
+            with _SLUG_WORK_LOCK:
+                _restoring.discard(slug)
     finally:
         _RESTORE_LOCK.release()
 

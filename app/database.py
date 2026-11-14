@@ -5189,46 +5189,103 @@ async def record_node_identity(slug: str, worker_id: int, value: str, instance: 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
-async def record_backup(slug: str, worker_id: int, sha256: str, source: str = "export") -> None:
-    """Keep the SHA-256 of a backup file this CashPilot made (``kind`` 'backup', issue #741).
+#: ``name`` of a backup row whose origin is not known.
+_BACKUP_NO_ORIGIN = "backup file"
+
+
+def backup_origin(worker_id: int, state_id: Any) -> str | None:
+    """The origin of a file exported from ``worker_id`` with this state fingerprint, or None.
+
+    Every export seals with a fresh salt and nonce, so two files of one node
+    share no hash. They share the volume they were read from, which the
+    worker's state fingerprint names (orchestrator.state_id).
+    """
+    if not isinstance(state_id, str) or not state_id or ":" in state_id:
+        return None
+    return f"state:{int(worker_id)}:{state_id}"
+
+
+async def record_backup(
+    slug: str, worker_id: int, sha256: str, source: str = "export", origin: str | None = None
+) -> int:
+    """Keep the SHA-256 of a backup file this CashPilot made (``kind`` 'backup', issue #741). Returns the row id.
 
     ``source`` is 'export' for a file downloaded from ``worker_id``, 'restore'
-    for one restored onto it. A restore looks a file up here: one this
-    CashPilot made, or already restored, needs no typed confirmation, and the
-    boxes listed for it are where its identity may already run.
+    for one restored onto it, and 'pending' for a restore sent there whose
+    outcome is not known yet (the worker may still finish it). ``origin``
+    (backup_origin) links the files of one node: an export's own, a restore's
+    the file's. It is kept in ``name``. A restore looks a file up here: one
+    this CashPilot made, or already restored, needs no typed confirmation, and
+    the boxes listed for it or its origin are where its identity may run.
     """
     sha256 = str(sha256 or "").lower()
-    if not _SHA256.fullmatch(sha256) or source not in ("export", "restore"):
+    if not _SHA256.fullmatch(sha256) or source not in ("export", "restore", "pending"):
         raise ValueError("not a backup hash")
     db = await _get_db()
     try:
-        await db.execute(
+        cursor = await db.execute(
             "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
-            "VALUES (?, ?, '1', 'backup', 'backup file', ?, ?)",
-            (slug, worker_id, encrypt_value(sha256), source),
+            "VALUES (?, ?, '1', 'backup', ?, ?, ?)",
+            (slug, worker_id, origin or _BACKUP_NO_ORIGIN, encrypt_value(sha256), source),
         )
+        await db.commit()
+        return int(cursor.lastrowid or 0)
+    finally:
+        await db.close()
+
+
+async def settle_backup(row_id: int, applied: bool) -> None:
+    """A 'pending' restore row once its outcome is known: 'restore' when it happened, gone when it did not."""
+    db = await _get_db()
+    try:
+        if applied:
+            await db.execute(
+                "UPDATE device_identities SET source = 'restore', last_seen = datetime('now') "
+                "WHERE id = ? AND kind = 'backup' AND source = 'pending'",
+                (row_id,),
+            )
+        else:
+            await db.execute(
+                "DELETE FROM device_identities WHERE id = ? AND kind = 'backup' AND source = 'pending'", (row_id,)
+            )
         await db.commit()
     finally:
         await db.close()
 
 
-async def backup_records(sha256: str) -> list[dict[str, Any]]:
-    """Every ledger row for this backup file: ``slug``, ``worker_id``, ``source``, ``first_seen``. Oldest first."""
+async def backup_records(
+    sha256: str | None, slug: str | None = None, origins: set[str] | None = None
+) -> list[dict[str, Any]]:
+    """Ledger rows for this backup file, and with ``slug`` and ``origins`` for every file of those origins.
+
+    Each row: ``id``, ``slug``, ``worker_id``, ``source``, ``origin`` (None
+    when not known), ``first_seen``, ``file`` (True for this file's own rows).
+    Oldest first.
+    """
     sha256 = str(sha256 or "").lower()
+    origins = origins or set()
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT slug, worker_id, source, first_seen, value_encrypted FROM device_identities "
+            "SELECT id, slug, worker_id, source, name, first_seen, value_encrypted FROM device_identities "
             "WHERE kind = 'backup' ORDER BY id"
         )
         rows = await cursor.fetchall()
     finally:
         await db.close()
-    return [
-        {k: row[k] for k in ("slug", "worker_id", "source", "first_seen")}
-        for row in rows
-        if decrypt_value(row["value_encrypted"] or "") == sha256
-    ]
+    out = []
+    for row in rows:
+        origin = row["name"] if str(row["name"] or "").startswith("state:") else None
+        own = bool(sha256) and decrypt_value(row["value_encrypted"] or "") == sha256
+        if own or (origin is not None and origin in origins and row["slug"] == slug):
+            out.append(
+                {
+                    **{k: row[k] for k in ("id", "slug", "worker_id", "source", "first_seen")},
+                    "origin": origin,
+                    "file": own,
+                }
+            )
+    return out
 
 
 async def identity_backfill_specs() -> list[dict[str, Any]]:

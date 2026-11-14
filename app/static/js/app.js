@@ -4484,7 +4484,8 @@ const CP = (() => {
     return rows.map(r => {
       const where = [r.worker, r.copy].filter(Boolean).join(', ');
       const backup = r.kind === 'backup';
-      const state = backup ? (r.source === 'restore' ? 'Restored here' : 'Downloaded from here')
+      const state = backup ? ({ restore: 'Restored here', pending: 'Restore sent here, no answer yet' }[r.source]
+          || 'Downloaded from here')
         : (r.status === 'active' ? 'In use' : 'Removed');
       const reported = r.source === 'node'
         ? '<div class="credential-health-hint">Reported by the node itself, not checked by CashPilot.</div>'
@@ -4625,8 +4626,9 @@ const CP = (() => {
           inside. Restore only a file you made yourself. To go on, type <strong>${escapeHtml(p.service)}</strong>:</p>
          <input type="text" class="form-input" id="restore-confirm" autocomplete="off" spellcheck="false">`;
     const live = (p.live_on || []).length
-      ? `<p class="text-fail">This identity already runs on ${escapeHtml(p.live_on.join(', '))}. Two boxes on one
-          identity look like one node to the provider, which may merge or ban them. Remove it there first.</p>` : '';
+      ? `<p class="text-fail">This identity runs, or may be starting, on ${escapeHtml(p.live_on.join(', '))}. Two
+          boxes on one identity look like one node to the provider, which may merge or ban them. Remove it there
+          first.</p>` : '';
     // A file from before CashPilot recorded its backups is unknown too: it may
     // be a backup of a node that runs now.
     const elsewhere = !p.known && !(p.live_on || []).length && (p.runs_on || []).length
@@ -4639,7 +4641,9 @@ const CP = (() => {
       `<option value="${escapeHtml(String(w.id))}"${w.ok ? '' : ' disabled'}>${escapeHtml(w.name)}${
         w.ok ? (w.plain_http ? ' (plain HTTP: the passphrase crosses your network unencrypted)' : '')
           : ` (${escapeHtml(w.why)})`}</option>`).join('');
-    const usable = (p.workers || []).some(w => w.ok) && !(p.live_on || []).length;
+    // A box the identity may already be on is disabled with its reason; the one
+    // a restore was sent to with no answer may take it again.
+    const usable = (p.workers || []).some(w => w.ok);
     return `
       <p>Restoring <strong>${escapeHtml(p.service)}</strong> creates a new container
         <code>${escapeHtml(p.container)}</code> with:</p>

@@ -37,6 +37,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
+import httpx  # noqa: E402
 import pytest  # noqa: E402
 import requests  # noqa: E402
 from docker.errors import APIError, NotFound  # noqa: E402
@@ -755,7 +756,7 @@ def ui(tmp_path):
         },
         {"id": 2, "name": "box-b", "status": "online", "client_id": "client-b", "url": "http://b", "system_info": "{}"},
     ]
-    state: dict[str, Any] = {"runs_on": {}, "user": None}
+    state: dict[str, Any] = {"runs_on": {}, "user": None, "states": {}}
 
     async def get_worker(worker_id):
         return next((w for w in workers if w["id"] == worker_id), None)
@@ -775,6 +776,7 @@ def ui(tmp_path):
                 main, "_worker_features", AsyncMock(return_value={"state_restore", "fence_gated", "instances"})
             ),
             patch.object(main.placement, "runs_on", side_effect=lambda ws: state["runs_on"]),
+            patch.object(main.payout_registry, "state_ids", side_effect=lambda ws: state["states"]),
             patch.object(main, "_confirmed_worker_key", AsyncMock(return_value=WORKER_KEY)),
             patch.object(main, "_resolve_worker_id", AsyncMock(side_effect=lambda wid, *a, **k: wid)),
             patch.object(main, "_proxy_to_worker", proxy),
@@ -1014,6 +1016,16 @@ class TestTheRestoreRouteGuards:
             main._restore_inflight.clear()
         assert resp.status_code == 409 and "already being restored" in _detail(resp) and ui.sent == []
 
+    def test_another_file_waits_too_while_one_is_being_restored(self, ui):
+        """Two exports of one node are two files: one restore at a time, whatever the file."""
+        upload = _upload(ui, mysterium_bundle()).json()
+        main._restore_inflight.add("f" * 64)
+        try:
+            resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        finally:
+            main._restore_inflight.clear()
+        assert resp.status_code == 409 and "already being restored" in _detail(resp) and ui.sent == []
+
     def test_a_restore_leaves_nothing_in_flight(self, ui):
         upload = _upload(ui, mysterium_bundle()).json()
         _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
@@ -1021,15 +1033,14 @@ class TestTheRestoreRouteGuards:
 
     def test_a_restore_whose_outcome_is_unknown_is_recorded_on_that_box(self, ui):
         """The worker may finish after the dashboard gave up: a later restore elsewhere must still see it."""
-        from fastapi import HTTPException
 
         bundle = mysterium_bundle()
         upload = _upload(ui, bundle).json()
-        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=HTTPException(504, "no answer"))):
+        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=main.WorkerNoAnswer(504, "no answer"))):
             resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
         assert resp.status_code == 504
         rows = asyncio.run(database.backup_records(hashlib.sha256(bundle).hexdigest()))
-        assert [(r["worker_id"], r["source"]) for r in rows] == [(1, "restore")]
+        assert [(r["worker_id"], r["source"]) for r in rows] == [(1, "pending")]
 
     def test_a_refused_restore_is_not_recorded(self, ui):
         from fastapi import HTTPException
@@ -1079,3 +1090,268 @@ class TestTheExportHook:
     def test_a_bad_hash_is_not_recorded(self, ui):
         with pytest.raises(ValueError):
             asyncio.run(database.record_backup("mysterium", 1, "not-a-hash", "export"))
+
+
+# ---------------------------------------------------------------------------
+# One node, many files: the review's findings on the identity check
+# ---------------------------------------------------------------------------
+
+
+def _sha(bundle: bytes) -> str:
+    return hashlib.sha256(bundle).hexdigest()
+
+
+def _export(bundle: bytes, worker_id: int, state_id: str = "sid-1") -> None:
+    origin = database.backup_origin(worker_id, state_id)
+    asyncio.run(database.record_backup("mysterium", worker_id, _sha(bundle), "export", origin))
+
+
+class TestOneNodeManyFiles:
+    def test_a_second_export_of_a_node_restored_elsewhere_is_refused(self, ui):
+        """Each export has its own nonce, so its own hash: the files are linked by the volume they came from."""
+        first, second = mysterium_bundle(), mysterium_bundle()
+        assert _sha(first) != _sha(second)
+        _export(first, 2)
+        _export(second, 2)
+        # box-b's node was removed; the first file goes onto box-a.
+        upload = _upload(ui, first).json()
+        assert _restore(ui, upload["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD).status_code == 200
+        ui.state["runs_on"] = {"mysterium": [{"worker_id": 1}]}
+        preview = _upload(ui, second).json()
+        assert preview["known"] is True and preview["live_on"] == ["box-a"]
+        assert [(w["name"], w["ok"]) for w in preview["workers"]] == [("box-a", False), ("box-b", False)]
+        resp = _restore(ui, preview["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+        assert len(ui.sent) == 1
+
+    def test_the_export_route_records_where_the_file_came_from(self, ui):
+        bundle = mysterium_bundle()
+        answer = {"bundle_b64": base64.b64encode(bundle).decode(), "state_id": "fp", "targets": [], "bytes": 1}
+        box = {"worker_id": 1, "name": "box-a", "workers": []}
+        with (
+            patch.object(main, "_backup_box", AsyncMock(return_value=box)),
+            patch.object(main, "_worker_features", AsyncMock(return_value={"state_backup"})),
+            patch.object(main, "_proxy_to_worker", AsyncMock(return_value=answer)),
+        ):
+            resp = ui.post(
+                "/api/payout-registry/mysterium/backup-export",
+                json={"worker_id": 1, "passphrase": PASSPHRASE, "passphrase_repeat": PASSPHRASE},
+            )
+        assert resp.status_code == 200, resp.text
+        (row,) = asyncio.run(database.backup_records(_sha(bundle)))
+        assert row["origin"] == "state:1:fp"
+
+    def test_a_box_wiped_and_redeployed_since_the_export_does_not_hold_the_old_identity(self, ui):
+        """box-a runs a new volume now (another state fingerprint): its new node is not this file's."""
+        bundle = mysterium_bundle()
+        _export(bundle, 1, "old-volume")
+        ui.state["runs_on"] = {"mysterium": [{"worker_id": 1}]}
+        ui.state["states"] = {(1, "mysterium"): "new-volume"}
+        upload = _upload(ui, bundle).json()
+        assert upload["live_on"] == []
+        resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 200, resp.text
+
+    def test_the_box_it_was_exported_from_still_holds_it_on_the_same_volume(self, ui):
+        bundle = mysterium_bundle()
+        _export(bundle, 1, "same-volume")
+        ui.state["runs_on"] = {"mysterium": [{"worker_id": 1}]}
+        ui.state["states"] = {(1, "mysterium"): "same-volume"}
+        upload = _upload(ui, bundle).json()
+        assert upload["live_on"] == ["box-a"]
+        resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 409 and "box-a" in _detail(resp) and ui.sent == []
+
+
+class TestARestoreWithNoAnswer:
+    def _lost(self, ui, bundle, exc):
+        upload = _upload(ui, bundle).json()
+        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=exc)):
+            return _restore(ui, upload["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+
+    def test_a_box_still_pulling_after_a_timeout_holds_the_identity(self, ui):
+        """No heartbeat lists it yet, and no deploy record: the pending row alone refuses another box."""
+        bundle = mysterium_bundle()
+        _export(bundle, 2)
+        assert self._lost(ui, bundle, main.WorkerNoAnswer(504, "no answer")).status_code == 504
+        upload = _upload(ui, bundle).json()
+        assert upload["live_on"] == ["box-a"]
+        resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+
+    def test_a_dropped_connection_holds_it_too(self, ui):
+        bundle = mysterium_bundle()
+        _export(bundle, 2)
+        assert self._lost(ui, bundle, main.WorkerNoAnswer(503, "Worker communication failed")).status_code == 503
+        upload = _upload(ui, bundle).json()
+        resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+
+    def test_the_box_it_was_sent_to_may_take_it_again_and_that_settles_it(self, ui):
+        bundle = mysterium_bundle()
+        _export(bundle, 2)
+        self._lost(ui, bundle, main.WorkerNoAnswer(504, "no answer"))
+        upload = _upload(ui, bundle).json()
+        resp = _restore(ui, upload["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 200, resp.text
+        rows = [(r["worker_id"], r["source"]) for r in asyncio.run(database.backup_records(_sha(bundle)))]
+        assert rows == [(2, "export"), (1, "restore")]
+
+    def test_a_restore_that_was_never_sent_leaves_no_row(self, ui):
+        bundle = mysterium_bundle()
+        from fastapi import HTTPException
+
+        self._lost(ui, bundle, HTTPException(503, "Worker communication failed"))
+        assert asyncio.run(database.backup_records(_sha(bundle))) == []
+
+    def test_a_failure_after_the_worker_restored_it_is_still_recorded(self, ui):
+        bundle = mysterium_bundle()
+        upload = _upload(ui, bundle).json()
+        with patch.object(main.database, "save_deployment", AsyncMock(side_effect=RuntimeError("db locked"))):
+            resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 500
+        assert [r["source"] for r in asyncio.run(database.backup_records(_sha(bundle)))] == ["restore"]
+
+
+class TestTheWorkerProxyErrors:
+    """Only a failure to connect means the worker never got the request."""
+
+    async def _call(self, exc, answer=None):
+        worker = {"id": 1, "url": "https://a"}
+        with (
+            patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
+            patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("https://a", {}))),
+            patch("httpx.AsyncClient.post", AsyncMock(side_effect=exc, return_value=answer)),
+        ):
+            await main._proxy_to_worker(1, "POST", "/api/containers/mysterium/restore", json={})
+
+    @pytest.mark.parametrize(
+        "exc", [httpx.ReadError("reset"), httpx.RemoteProtocolError("closed"), httpx.ReadTimeout("slow")]
+    )
+    def test_an_error_after_the_request_went_out_is_no_answer(self, exc):
+        with pytest.raises(main.WorkerNoAnswer):
+            asyncio.run(self._call(exc))
+
+    @pytest.mark.parametrize("status", [502, 503, 504])
+    def test_a_gateway_error_in_front_of_the_worker_is_no_answer(self, status):
+        answer = httpx.Response(status, request=httpx.Request("POST", "https://a/api/containers/mysterium/restore"))
+        with pytest.raises(main.WorkerNoAnswer):
+            asyncio.run(self._call(None, answer))
+
+    def test_the_workers_own_refusal_is_a_plain_refusal(self):
+        answer = httpx.Response(409, json={"detail": "volume exists"}, request=httpx.Request("POST", "https://a/x"))
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as caught:
+            asyncio.run(self._call(None, answer))
+        assert caught.value.status_code == 409 and not isinstance(caught.value, main.WorkerNoAnswer)
+
+    @pytest.mark.parametrize(
+        "exc", [httpx.ConnectError("refused"), httpx.ConnectTimeout("slow"), httpx.PoolTimeout("full")]
+    )
+    def test_a_connect_failure_is_a_plain_refusal(self, exc):
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as caught:
+            asyncio.run(self._call(exc))
+        assert caught.value.status_code == 503 and not isinstance(caught.value, main.WorkerNoAnswer)
+
+
+class TestTheUploadFolder:
+    def test_a_sweep_from_another_request_spares_an_upload_still_arriving(self, ui):
+        real = main._read_bundle_header
+
+        def header_after_a_sweep(path):
+            main._restore_sweep()  # another tab's request, while this body was streaming
+            return real(path)
+
+        with patch.object(main, "_read_bundle_header", side_effect=header_after_a_sweep):
+            resp = _upload(ui, mysterium_bundle())
+        assert resp.status_code == 200, resp.text
+        assert main._restore_receiving == set()
+
+    def test_a_file_changed_on_disk_after_the_upload_is_not_sent(self, ui):
+        upload = _upload(ui, mysterium_bundle()).json()
+        (name,) = _uploads_on_disk(ui)
+        with open(ui.tmp / "restore-uploads" / name, "ab") as fh:
+            fh.write(b"x")
+        resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 409 and "changed on disk" in _detail(resp) and ui.sent == []
+
+
+class TestARestoreAndADeployOfOneService:
+    """Nothing else serializes them for a service that is not fence-gated."""
+
+    def test_a_deploy_while_the_restore_writes_is_refused(self, docker):
+        seen: list[Exception] = []
+        real_put = FakeContainer.put_archive
+
+        def put(self, path, data):
+            try:
+                orchestrator._holds_gated_lock(lambda **_kw: "deployed")(slug="mysterium")
+            except orchestrator.ContainerRuntimeError as exc:
+                seen.append(exc)
+            return real_put(self, path, data)
+
+        with patch.object(FakeContainer, "put_archive", put):
+            result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert result["started"] is True
+        assert len(seen) == 1 and seen[0].status_code == 409 and "restore of mysterium" in str(seen[0])
+        assert orchestrator._restoring == set()
+
+    def test_a_restore_while_a_deploy_runs_is_refused(self, docker):
+        def deploy(**_kw):
+            return orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+
+        with pytest.raises(orchestrator.RestoreError, match="a deploy of mysterium is running"):
+            orchestrator._holds_gated_lock(deploy)(slug="mysterium")
+        assert docker.creates == [] and docker.volume_map == {}
+        assert orchestrator._deploying == {}
+
+
+class TestTheRestoreSafetyBranches:
+    def test_a_container_started_by_something_else_mid_restore_is_undone(self, docker):
+        with (
+            patch.object(FakeContainer, "reload", lambda self: setattr(self, "status", "running")),
+            pytest.raises(orchestrator.RestoreError, match="started before the restore finished"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.container_map == {} and docker.volume_map == {} and docker.started == []
+
+    def test_a_volume_the_proxy_will_not_show_counts_as_there(self, docker):
+        response = requests.Response()
+        response.status_code = 403
+        with (
+            patch.object(docker.volumes, "get", side_effect=APIError("forbidden", response=response)),
+            pytest.raises(orchestrator.RestoreError, match="could not be checked"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.creates == [] and docker.volume_map == {}
+
+    def test_a_volume_still_held_by_our_own_unremovable_container_is_named_for_removal(self, docker):
+        docker.corrupt_put = True
+        real_remove = FakeContainer.remove
+
+        def remove(self, force=False):
+            if self.name == "cashpilot-mysterium":
+                raise RuntimeError("busy")
+            return real_remove(self, force)
+
+        with patch.object(FakeContainer, "remove", remove), pytest.raises(orchestrator.RestoreError) as caught:
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "cashpilot-mysterium" in str(caught.value) and "mysterium-data" in str(caught.value)
+
+    def test_a_helper_whose_removal_failed_is_removed_by_the_cleanup(self, docker):
+        real_remove = FakeContainer.remove
+        tries: list[str] = []
+
+        def remove(self, force=False):
+            tries.append(self.name)
+            if self.name.endswith(".restore") and tries.count(self.name) == 1:
+                raise RuntimeError("busy")
+            return real_remove(self, force)
+
+        with patch.object(FakeContainer, "remove", remove), pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert tries.count("cashpilot-mysterium.restore") == 2
+        assert docker.container_map == {} and docker.volume_map == {}
