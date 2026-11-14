@@ -351,8 +351,15 @@ def _request():
     return request
 
 
-def _deploy(slug, env, worker_id, *, instances=None, allow=False, fail=None, running=frozenset(), ran=None):
-    """Deploy through the route. ``ran``: {copy: the ids it runs with}, which a DELETE answers as a digest."""
+def _deploy(
+    slug, env, worker_id, *, instances=None, allow=False, fail=None, running=frozenset(), ran=None, replaced=None
+):
+    """Deploy through the route.
+
+    ``ran``: {copy: the ids it runs with}, which a DELETE answers as a digest.
+    ``replaced``: {copy: the ids the container a deploy replaces ran}, which the
+    worker's deploy answer carries as ``replaced_identity_digest``.
+    """
     sent: list[dict] = []
 
     async def hop(wid, method, path, *, json=None, **kwargs):
@@ -362,7 +369,9 @@ def _deploy(slug, env, worker_id, *, instances=None, allow=False, fail=None, run
         if method == "DELETE":
             n = int(path.rsplit("/", 1)[1])
             return {"status": "removed", **({"identity_digest": _digest(slug, ran[n])} if (ran or {}).get(n) else {})}
-        return {"container_id": f"c{wid}"}
+        n = (json or {}).get("instance") or 1
+        old = (replaced or {}).get(n)
+        return {"container_id": f"c{wid}", **({"replaced_identity_digest": _digest(slug, old)} if old else {})}
 
     body = main.DeployRequest(env=env, instances=instances, allow_shared_identity=allow)
 
@@ -1250,3 +1259,100 @@ class TestAHeartbeatBeforeTheRecord:
         )
         _heartbeat("box-a", ids, slug="earnapp")
         assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, eighth round: a redeploy replaces a copy whose ids never
+# reached the ledger; the replaced container's ids are kept, as on a removal
+# ---------------------------------------------------------------------------
+
+
+class TestAReplacementOfAnUnrecordedCopy:
+    def test_copy_2_box_2_is_retired_and_new_2_is_active(self, db):
+        """Copy 2's write fails, no heartbeat, then a redeploy to "new" succeeds."""
+        wid = TestACopyWhoseWriteFailedUntilItsRemoval()._lose_copy_two()
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, _ = _deploy(
+                "honeygain",
+                {**TestACopyWhoseWriteFailed.HG, "HONEYGAIN_DEVICE_NAME": "new"},
+                wid,
+                instances=2,
+                replaced={1: {"HONEYGAIN_DEVICE_NAME": "box"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}},
+            )
+        assert error is None
+        assert _active() == {
+            ("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME"): "new",
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME"): "new-2",
+        }
+        assert {
+            ("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME", "box"),
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2"),
+        } <= _retired()
+
+    def test_the_first_copy_of_a_one_copy_service(self, db):
+        """EarnApp ran UUID_A, whose write failed; a redeploy to UUID_B keeps UUID_A as retired."""
+        wid = _worker()
+        real = database.record_identities
+
+        async def failing(*args, **kwargs):
+            raise RuntimeError("database is locked")
+
+        with patch.object(main.database, "record_identities", failing):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        assert _rows() == []
+        with patch.object(main.database, "record_identities", real):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid, replaced={1: {"EARNAPP_UUID": UUID_A}})[0] is None
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+    def test_a_digest_the_old_record_does_not_derive_writes_nothing(self, db):
+        wid = _worker()
+
+        async def failing(*args, **kwargs):
+            raise RuntimeError("database is locked")
+
+        with patch.object(main.database, "record_identities", failing):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid, replaced={1: {"EARNAPP_UUID": "elsewhere"}})[0] is None
+        assert {r["value"] for r in _rows()} == {UUID_B}
+
+
+class TestTheWorkerReportsTheReplacedIds:
+    """worker_api's deploy answer carries the digest of the container it replaced."""
+
+    def _post(self, old):
+        from fastapi.testclient import TestClient
+
+        from app import orchestrator, worker_api
+
+        client = MagicMock()
+        client.containers.get.return_value = old
+        created = MagicMock()
+        created.id = created.short_id = "new"
+        client.containers.run.return_value = created
+        with (
+            patch.object(orchestrator, "_CONTAINER_RUNTIME", ""),
+            patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+            patch.object(orchestrator, "available_runtimes", return_value={"runc"}),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "identity_digest_key", lambda: WORKER_KEY),
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_validate_deploy_spec"),
+        ):
+            orchestrator._identity_values.clear()
+            return TestClient(worker_api.app).post(
+                "/api/containers/honeygain/deploy",
+                json={"image": "honeygain/honeygain", "env": {"HONEYGAIN_DEVICE_NAME": "new"}},
+            )
+
+    def test_the_answer_names_the_old_containers_ids_as_a_digest(self, db):
+        from app import constants
+
+        old = MagicMock()
+        old.id = "old-container"
+        old.labels = {constants.LABEL_SERVICE: "honeygain", constants.LABEL_MANAGED: "true"}
+        old.client.api.inspect_container.return_value = {"Config": {"Env": ["HONEYGAIN_DEVICE_NAME=box"]}}
+        resp = self._post(old)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["replaced_identity_digest"] == _digest("honeygain", {"HONEYGAIN_DEVICE_NAME": "box"})
+        assert "box" not in resp.text.replace(resp.json()["replaced_identity_digest"], "")

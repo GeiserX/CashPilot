@@ -851,6 +851,7 @@ def deploy_raw(
     keep_targets: set[str] | None = None,
     instance: int = 1,
     name: str | None = None,
+    replaced_identity: dict[str, str] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -858,7 +859,9 @@ def deploy_raw(
     ``_keep_live_mounts``. ``moved_mounts`` names the targets the operator
     relocated on purpose this deploy; ``keep_targets`` limits keeping to the
     targets the caller vouches for; ``kept_mounts``, when given, is filled with
-    what was kept so the caller can report it.
+    what was kept so the caller can report it. ``replaced_identity``, when
+    given, gets the ``identity_digest`` of the container being replaced, read
+    before it goes, so the UI can keep the ids it ran (identity ledger).
 
     ``network_mode="container:<id>"`` and ``name`` are for app/proxy_tunnel.py
     only: the worker API refuses a container: network mode from any caller.
@@ -940,6 +943,8 @@ def deploy_raw(
             )
         if problem := _aside_taken(client, old, name, slug):
             raise ContainerRuntimeError(problem)
+        if replaced_identity is not None:
+            replaced_identity.update(_identity_entry(old, slug))
         volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
         if kept:
             # A kept mount is the old container's own: one made before this

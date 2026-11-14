@@ -4303,6 +4303,9 @@ async def _deploy(
         spec["instances"] = instances
     else:
         spec.pop("instances", None)
+    # Read before the save moves the record on: what each replaced copy ran.
+    old_prior = await database.prior_deployment_spec(slug, worker_id) if recorded else None
+    await _record_replaced_copy(slug, worker_id, recorded, old_prior, 1, result, docker_conf)
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
     # The identity ledger follows what each copy really runs: a copy is recorded
     # once its own deploy succeeded, and one being dropped is retired once its
@@ -4320,7 +4323,8 @@ async def _deploy(
         await database.record_health_event(
             slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
         )
-        await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
+        answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
+        await _record_replaced_copy(slug, worker_id, recorded, old_prior, n, answer, docker_conf)
         await _record_deploy_identities(slug, worker_id, spec, [n], docker_conf, scope="given")
     for n in sorted(c for c in running_copies if c > instances):
         removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
@@ -4429,6 +4433,7 @@ async def _record_unrecorded_copies(
     trusted: Iterable[int] = (),
     digests: Mapping[int, str] | None = None,
     have: Collection[str] | None = None,
+    prior: dict[str, Any] | None = None,
 ) -> bool:
     """Record each copy with no active ledger row whose ids are proven, as its deploy derived them.
 
@@ -4484,8 +4489,8 @@ async def _record_unrecorded_copies(
         # or, for a copy whose replacement failed, the one that spec replaced.
         proven: dict[int, dict[str, Any]] = {}
         keys: list[str] | None = None
-        prior: dict[str, Any] | None = None
-        prior_read = False
+        # ``prior`` from a caller that read it before the record moved on.
+        prior_read = prior is not None
         for n in sorted(c for c in candidates if str(c) not in (have or ())):
             if n in trusted:
                 proven[n] = spec
@@ -4563,6 +4568,37 @@ async def _record_removed_copies(slug: str, worker_id: int, result: Any) -> None
         if str(copy).isdigit() and isinstance(digest, str):
             digests[int(copy)] = digest
     await _record_unrecorded_copies(slug, worker_id, spec, trusted={1}, digests=digests)
+
+
+async def _record_replaced_copy(
+    slug: str,
+    worker_id: int,
+    old_spec: dict[str, Any] | None,
+    old_prior: dict[str, Any] | None,
+    n: int,
+    answer: Any,
+    docker_conf: dict[str, Any],
+) -> None:
+    """A redeploy replaced copy ``n``: keep the ids the old container ran, as a removal does.
+
+    Only for a copy with no active row (its write failed and nothing recorded it
+    since); one with a row is retired by the new copy's own write. The worker's
+    ``replaced_identity_digest`` is the proof, checked against the record the
+    old container was deployed from and the spec that record replaced. Matched,
+    the ids go in and are retired at once: that container is gone.
+    """
+    digest = answer.get("replaced_identity_digest") if isinstance(answer, dict) else None
+    if not isinstance(digest, str) or not isinstance(old_spec, dict):
+        return
+    try:
+        have = await database.active_identity_copies(slug, worker_id)
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not read the device ids of %s on worker %s", slug, worker_id, exc_info=True)
+        return
+    if str(n) in have:
+        return
+    await _record_unrecorded_copies(slug, worker_id, old_spec, digests={n: digest}, have=have, prior=old_prior)
+    await _record_deploy_identities(slug, worker_id, {}, [n], docker_conf, scope="given")
 
 
 # (slug, copy, container id, digest) per worker whose ledger row a heartbeat

@@ -1985,6 +1985,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     # Last of the checks: it spends the approval, which a refusal above must not.
     await asyncio.to_thread(_validate_critical_spec, spec, slug)
     kept_mounts: list[dict[str, str]] = []
+    replaced: dict[str, str] = {}
     try:
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
@@ -2007,11 +2008,16 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
+            replaced_identity=replaced,
         )
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
             response["kept_mounts"] = kept_mounts
+        # The ids the replaced container ran, for the UI's ledger (a replacement
+        # is a removal of the old container).
+        if digest := replaced.get("identity_digest"):
+            response["replaced_identity_digest"] = digest
         return response
     except orchestrator.ContainerNetworkError as exc:
         # The operator's own setting, and the message says how to fix it; a bare
