@@ -3418,40 +3418,47 @@ def _advertised_address(container: Any, slug: str) -> str | None:
     return None
 
 
-# Container id -> the digest of the device ids it runs with. A container's env
-# never changes, so each is inspected once; the cap only bounds a long uptime.
-_identity_digests: dict[str, str | None] = {}
+# What keys identity_digest: the worker's active API key, set by worker_api.
+# Unset (the UI process, a test) means no digest at all.
+identity_digest_key: Any = None
+
+# Container id -> the identity values it runs with. A container's env never
+# changes, so each is inspected once; the cap only bounds a long uptime. The
+# digest is made per call, so it follows the key when the worker enrols.
+_identity_values: dict[str, dict[str, str]] = {}
 
 
 def _identity_entry(container: Any, slug: str) -> dict[str, str]:
-    """``identity_digest``: a short hash of the device ids this container runs with.
+    """``identity_digest``: a keyed hash of the device ids this container runs with.
 
     The UI writes a copy's ledger row only when this matches what its deploy
     record derives (catalog.identity_digest), so a copy still running an older
     id is never given a newer one. Only for a service with identity keys, and
     never the ids themselves: they let whoever holds them claim the device.
     """
-    if get_service is None or identity_digest is None or identity_keys is None:
+    if get_service is None or identity_digest is None or identity_keys is None or identity_digest_key is None:
         return {}
     try:
         service = get_service(slug)
+        key = identity_digest_key()
     except Exception:
         return {}
     cid = str(getattr(container, "id", "") or "")
-    if not service or not cid:
+    if not service or not cid or not key:
         return {}
-    if cid not in _identity_digests:
-        if not identity_keys(service):
+    if cid not in _identity_values:
+        names = identity_keys(service)
+        if not names:
             return {}
         try:
             env_list = (container.client.api.inspect_container(cid).get("Config") or {}).get("Env") or []
         except Exception:
             return {}
         env = dict(e.split("=", 1) for e in env_list if isinstance(e, str) and "=" in e)
-        if len(_identity_digests) > 1024:
-            _identity_digests.clear()
-        _identity_digests[cid] = identity_digest(service, env)
-    digest = _identity_digests[cid]
+        if len(_identity_values) > 1024:
+            _identity_values.clear()
+        _identity_values[cid] = {name: env.get(name, "") for name in names}
+    digest = identity_digest(service, _identity_values[cid], key)
     return {"identity_digest": digest} if digest else {}
 
 

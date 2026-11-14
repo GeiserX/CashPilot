@@ -4330,6 +4330,11 @@ async def _deploy(
         if isinstance(digest, str):
             await _record_unrecorded_copies(slug, worker_id, recorded or spec, digests={n: digest})
         await _record_deploy_identities(slug, worker_id, {}, [n], docker_conf, scope="given")
+    # Every copy now runs this spec, so the one it replaced proves nothing more.
+    try:
+        await database.prior_deployment_spec(slug, worker_id, clear=True)
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not forget the prior spec of %s on worker %s", slug, worker_id, exc_info=True)
     # No sweep of the other copies' rows here: running_copies comes from the last
     # heartbeat, which may predate a copy, so only a confirmed removal retires one.
     metrics.record_container_lifecycle("deploy", slug)
@@ -4444,41 +4449,83 @@ async def _record_unrecorded_copies(
         docker_conf = svc.get("docker") or {}
         digests = digests or {}
         trusted = set(trusted)
-        own = database.spec_copy_number(spec)
-        if own > 1:
-            described = {own}
-        else:
+
+        def described(source: dict[str, Any]) -> set[int]:
+            own = database.spec_copy_number(source)
+            if own > 1:
+                return {own}
             try:
-                count = int(spec.get("instances") or 1)
+                count = int(source.get("instances") or 1)
             except (TypeError, ValueError):
                 count = 1
-            described = set(range(1, max(1, min(count, 32)) + 1))
-        candidates = (trusted | set(digests)) & described
+            return set(range(1, max(1, min(count, 32)) + 1))
+
+        def runs(source: dict[str, Any] | None, n: int, keys: list[str]) -> bool:
+            """Whether copy ``n`` of ``source`` derives the ids the worker's digest names.
+
+            Any copy number, not only those the saved count declares: a scale-down
+            saves the lower count even when a stale heartbeat kept the copy above it
+            running, and _instance_spec derives from the number alone. The digest is
+            the proof. A record of one copy describes only that copy.
+            """
+            own = database.spec_copy_number(source) if source else 0
+            if not source or not 1 <= n <= 32 or (own > 1 and n != own):
+                return False
+            try:
+                ids = (source if n == own else _instance_spec(source, n, docker_conf)).get("env")
+            except ValueError:
+                return False
+            return any(hmac.compare_digest(catalog.identity_digest(svc, ids, k) or "", digests[n]) for k in keys)
+
+        candidates = (trusted & described(spec)) | set(digests)
         if have is None and candidates:
             have = await database.active_identity_copies(slug, worker_id)
-        proven: list[int] = []
+        # Each proven copy, with the spec it is proven to run: the current one,
+        # or, for a copy whose replacement failed, the one that spec replaced.
+        proven: dict[int, dict[str, Any]] = {}
+        keys: list[str] | None = None
+        prior: dict[str, Any] | None = None
+        prior_read = False
         for n in sorted(c for c in candidates if str(c) not in (have or ())):
             if n in trusted:
-                proven.append(n)
+                proven[n] = spec
                 continue
-            try:
-                env = (spec if n == own else _instance_spec(spec, n, docker_conf)).get("env")
-            except ValueError:
+            if keys is None:
+                keys = await _identity_digest_keys(worker_id)
+            if runs(spec, n, keys):
+                proven[n] = spec
                 continue
-            if catalog.identity_digest(svc, env) == digests[n]:
-                proven.append(n)
-        if not proven:
-            return True
-        if own > 1:
-            env = spec.get("env")
-            await database.record_identities(
-                slug, worker_id, {str(own): env if isinstance(env, dict) else {}}, scope="given"
-            )
-            return True
-        return await _record_deploy_identities(slug, worker_id, spec, proven, docker_conf, scope="given")
+            if not prior_read:
+                prior, prior_read = await database.prior_deployment_spec(slug, worker_id), True
+            if prior and runs(prior, n, keys):
+                proven[n] = prior
+        for source in {id(v): v for v in proven.values()}.values():
+            copies = [n for n, v in proven.items() if v is source]
+            own = database.spec_copy_number(source)
+            if own > 1:
+                env = source.get("env")
+                await database.record_identities(
+                    slug, worker_id, {str(own): env if isinstance(env, dict) else {}}, scope="given"
+                )
+            elif not await _record_deploy_identities(slug, worker_id, source, copies, docker_conf, scope="given"):
+                return False
+        return True
     except Exception:  # noqa: BLE001
         logger.warning("Could not record the device ids of %s on worker %s", slug, worker_id, exc_info=True)
         return False
+
+
+async def _identity_digest_keys(worker_id: int) -> list[str]:
+    """The keys a worker's identity_digest may be keyed with: its own, and the fleet key.
+
+    The worker keys it with the key it authenticates with, its own once
+    enrolled and the fleet key before; a digest that matches under either is
+    the worker's.
+    """
+    worker = await database.get_worker(worker_id) or {}
+    cid = worker.get("client_id")
+    own = await database.get_worker_key(cid) if cid else None
+    return [k for k in (own, FLEET_API_KEY) if k]
 
 
 def _copy_digests(containers: Any, slug: str) -> dict[int, str]:
@@ -4551,7 +4598,8 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
         have = await database.active_identity_copies(slug, worker_id)
         if not all(str(n) in have for n in digests):
             spec = await database.get_deployment_spec(slug, worker_id=worker_id)
-            if not await _record_unrecorded_copies(slug, worker_id, spec, digests=digests, have=have):
+            # No record yet (the deploy is still saving it): look again next beat.
+            if spec is None or not await _record_unrecorded_copies(slug, worker_id, spec, digests=digests, have=have):
                 continue
         checked.update(keys)
 

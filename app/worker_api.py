@@ -314,6 +314,10 @@ def _active_key() -> str:
     return _worker_key or API_KEY
 
 
+# The heartbeat's identity_digest is keyed with the same key, which the UI holds too.
+orchestrator.identity_digest_key = _active_key
+
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------

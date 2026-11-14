@@ -438,6 +438,9 @@ CREATE TABLE IF NOT EXISTS deployment_specs (
     worker_id      INTEGER NOT NULL,
     spec_encrypted TEXT    NOT NULL,
     deployed_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    -- The spec this one replaced, until every copy runs the new one: a copy
+    -- whose replacement failed still runs it (identity ledger, issue #740).
+    prior_spec_encrypted TEXT,
     PRIMARY KEY (slug, worker_id)
 );
 
@@ -1248,6 +1251,11 @@ async def init_db() -> None:
                 "WHERE api_key_enc IS NOT NULL AND api_key_enc != '' AND key_confirmed = 0"
             )
 
+        cursor = await db.execute("PRAGMA table_info(deployment_specs)")
+        if "prior_spec_encrypted" not in {row["name"] for row in await cursor.fetchall()}:
+            applied.append("deployment_specs.prior_spec_encrypted")
+            await db.execute("ALTER TABLE deployment_specs ADD COLUMN prior_spec_encrypted TEXT")
+
         # A copy removal the worker has not confirmed yet. NULL is the truthful
         # backfill: no removal was pending before this column existed.
         cursor = await db.execute("PRAGMA table_info(proxied_copies)")
@@ -2008,12 +2016,22 @@ async def save_deployment(
         # Deployed or re-added again: a removal recorded earlier no longer holds.
         await db.execute("DELETE FROM config WHERE key = ?", (_removed_key(slug),))
         if spec is not None and spec_encrypted and worker_id is not None:
+            # One prior spec, never a history: the one this replaces, unless it
+            # is the same spec again (a retry), which keeps the prior it had.
+            cursor = await db.execute(
+                "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
+                (slug, worker_id),
+            )
+            old = await cursor.fetchone()
+            prior = old["spec_encrypted"] if old else None
+            if old and _decode_spec(old["spec_encrypted"] or "", slug) == json.loads(json.dumps(spec, sort_keys=True)):
+                prior = old["prior_spec_encrypted"]
             await db.execute(
                 """
-                INSERT OR REPLACE INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at)
-                VALUES (?, ?, ?, datetime('now'))
+                INSERT OR REPLACE INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at, prior_spec_encrypted)
+                VALUES (?, ?, ?, datetime('now'), ?)
                 """,
-                (slug, worker_id, spec_encrypted),
+                (slug, worker_id, spec_encrypted, prior),
             )
         await db.commit()
     finally:
@@ -4835,6 +4853,26 @@ async def _active_identity_rows(db: Any, slug: str, worker_id: int) -> list[dict
         (slug, worker_id),
     )
     return [dict(r) for r in await cursor.fetchall()]
+
+
+async def prior_deployment_spec(slug: str, worker_id: int, *, clear: bool = False) -> dict[str, Any] | None:
+    """The spec a worker's current one replaced (see deployment_specs); ``clear`` forgets it."""
+    db = await _get_db()
+    try:
+        if clear:
+            await db.execute(
+                "UPDATE deployment_specs SET prior_spec_encrypted = NULL WHERE slug = ? AND worker_id = ?",
+                (slug, worker_id),
+            )
+            await db.commit()
+            return None
+        cursor = await db.execute(
+            "SELECT prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id)
+        )
+        row = await cursor.fetchone()
+        return _decode_spec(row["prior_spec_encrypted"] or "", slug) if row else None
+    finally:
+        await db.close()
 
 
 async def active_identity_copies(slug: str, worker_id: int) -> set[str]:

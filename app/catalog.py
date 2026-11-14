@@ -8,6 +8,7 @@ Reload on SIGHUP.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -627,22 +628,31 @@ def identity_keys(svc: dict[str, Any] | None) -> dict[str, str]:
     return keys
 
 
-def identity_digest(svc: dict[str, Any] | None, env: Any) -> str | None:
-    """A short hash of the device ids in ``env``, never the ids: which ids a copy runs with.
+# Domain separation: the digest key is derived from the shared key, never the
+# key itself, so a digest can never be replayed as a bearer token or an approval.
+_IDENTITY_DIGEST_LABEL = b"cashpilot-identity-digest-v1"
+
+
+def identity_digest(svc: dict[str, Any] | None, env: Any, key: str | None) -> str | None:
+    """A keyed hash of the device ids in ``env``, never the ids: which ids a copy runs with.
 
     The worker reports it per container from the env the container really has,
     and the UI computes it from the env a deploy record derives for that copy;
     a ledger row is written only when the two agree. Device ids let whoever
-    holds them claim the device, so only this hash leaves the box. None when
-    the service has no identity key or ``env`` holds none of them.
+    holds them claim the device, and a device name is easy to guess, so the
+    hash is an HMAC keyed with the worker's API key (its own once enrolled,
+    else the fleet key): only the UI and that worker can make or check it, and
+    whoever reads a heartbeat cannot test a guess against it. None without a
+    key, when the service has no identity key, or when ``env`` holds none.
     """
     keys = sorted(identity_keys(svc))
-    if not keys or not isinstance(env, dict):
+    if not key or not keys or not isinstance(env, dict):
         return None
-    pairs = [[key, str(env.get(key) or "").strip()] for key in keys]
+    pairs = [[name, str(env.get(name) or "").strip()] for name in keys]
     if not any(value for _, value in pairs):
         return None
-    return hashlib.sha256(json.dumps(["cashpilot-identity", pairs]).encode()).hexdigest()[:16]
+    subkey = hmac.new(key.encode(), _IDENTITY_DIGEST_LABEL, hashlib.sha256).digest()
+    return hmac.new(subkey, json.dumps(pairs).encode(), hashlib.sha256).hexdigest()[:16]
 
 
 def device_link_step(svc: dict[str, Any], env: dict[str, Any]) -> dict[str, str] | None:
