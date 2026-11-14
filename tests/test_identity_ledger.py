@@ -15,7 +15,7 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -1965,7 +1965,18 @@ class TestABoxThatCouldNotListItsContainers:
         with patch.object(orchestrator, "_get_client", return_value=client):
             assert orchestrator.get_status() == []
         assert orchestrator.status_listed() is False
+        # A partial list: one managed container it could not read is skipped,
+        # and the list must not claim to be whole.
+        unreadable = MagicMock()
+        type(unreadable).labels = PropertyMock(side_effect=RuntimeError("corrupted"))
         client.containers.list.side_effect = None
+        client.containers.list.return_value = [unreadable]
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={}),
+        ):
+            assert orchestrator.get_status() == []
+        assert orchestrator.status_listed() is False
         client.containers.list.return_value = []
         with (
             patch.object(orchestrator, "_get_client", return_value=client),
@@ -2273,3 +2284,40 @@ class TestADeployWriteAfterItsBoxWasDeleted:
         """The positive control: the same write for a box that exists."""
         asyncio.run(database.record_identities("earnapp", 2, {"1": {"EARNAPP_UUID": UUID_A}}, scope="given"))
         assert _active() == {("earnapp", 2, "1", "EARNAPP_UUID"): UUID_A}
+
+
+class TestAReplacementWhoseDigestNeverMatches:
+    """Copy 1 runs UUID_A with a row; a redeploy keeps UUID_A, but its digest matches nothing."""
+
+    @staticmethod
+    def _losing_the_write_of(value):
+        """record_identities fails for a write that records ``value``; a retirement goes through."""
+        real = database.record_identities
+
+        async def write(slug, wid, values, **kwargs):
+            if any(value in v.values() for v in values.values()):
+                raise RuntimeError("database is locked")
+            return await real(slug, wid, values, **kwargs)
+
+        return patch.object(main.database, "record_identities", write)
+
+    def test_an_unproven_replacement_retires_nothing(self, db):
+        wid = _worker()
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        with self._losing_the_write_of(UUID_A):
+            error, _ = _deploy(
+                "earnapp", {"EARNAPP_UUID": UUID_A}, wid, replaced={1: {"EARNAPP_UUID": "0123456789abcdef"}}
+            )
+        assert error is None
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+    def test_a_proven_replacement_is_still_kept_and_retired(self, db):
+        """The positive control: the replaced container's ids are proven, so they go in retired."""
+        wid = _worker()
+        _deploy_losing_the_write("earnapp", {"EARNAPP_UUID": UUID_A}, wid)
+        assert _active() == {}
+        with self._losing_the_write_of(UUID_B):
+            error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid, replaced={1: {"EARNAPP_UUID": UUID_A}})
+        assert error is None
+        assert _active() == {}
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()

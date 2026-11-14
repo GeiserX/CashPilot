@@ -4915,7 +4915,11 @@ async def _record_replaced_copy(
     new copy's own write. The worker's
     ``replaced_identity_digest`` is the proof, checked against the record the
     old container was deployed from and the spec that record replaced. Matched,
-    the ids go in and are retired at once: that container is gone.
+    the ids go in and are retired at once: that container is gone. Unmatched,
+    nothing is written or retired, as on a heartbeat: the digest may match no
+    key because the UI and the worker mark different identity keys, and the
+    new copy may run the same ids, so retiring the row before its write could
+    leave a running id with no row if that write failed.
     """
     digest = answer.get("replaced_identity_digest") if isinstance(answer, dict) else None
     if not isinstance(digest, str) or not isinstance(old_spec, dict):
@@ -4927,8 +4931,9 @@ async def _record_replaced_copy(
         return
     if str(n) in have:
         return
-    await _record_unrecorded_copies(slug, worker_id, old_spec, digests={n: digest}, have=have, prior=old_prior)
-    await _record_deploy_identities(slug, worker_id, {}, [n], docker_conf, scope="given")
+    proven = await _record_unrecorded_copies(slug, worker_id, old_spec, digests={n: digest}, have=have, prior=old_prior)
+    if proven and n in proven:
+        await _record_deploy_identities(slug, worker_id, {}, [n], docker_conf, scope="given")
 
 
 # (slug, copy, container id, digest) per worker whose ledger row a heartbeat
