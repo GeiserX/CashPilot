@@ -197,6 +197,87 @@ Or run an auto-updater such as [Watchtower](https://containrrr.dev/watchtower/)
 or [Diun](https://crazymax.dev/diun/) against the CashPilot containers. These
 are optional. CashPilot does not bundle an updater.
 
+### Cleaning up old images
+
+CashPilot pulls images but never deletes them. Each update and each redeploy
+can leave the previous image on disk. On a three-server test fleet the old
+CashPilot and earner images came to between 0.5 and 1.2 GB per server. That is small next
+to what other programs on the same host usually leave behind, so look at the
+whole host:
+
+```bash
+docker system df
+```
+
+The `RECLAIMABLE` value on the `Images` line is what Docker could free.
+
+**Why CashPilot does not do this for you.** The worker reaches Docker through
+the socket proxy, which lets it pull an image and read one by name, and
+nothing else. It cannot list the host's images or delete one. A worker that
+could would also see and delete the images of every other program on the host.
+The full reasoning is in [Security defaults](security-defaults.md).
+
+**Step 1: remove dangling images.** A dangling image has no tag and no
+container uses it, running or stopped. An update over a moving tag such as
+`2.4`, `latest` or a digest leaves exactly these behind:
+
+```bash
+docker image prune
+```
+
+Docker asks before it deletes. In a cron entry, add `--force` to skip the
+question; it changes nothing else:
+
+```cron
+30 4 * * 0  docker image prune --force
+```
+
+!!! warning "Do not add `-a`"
+    `docker image prune -a` deletes every image that no container uses right
+    now, not only dangling ones. That includes images of stacks you stopped on
+    purpose and images you built locally and cannot pull again.
+
+**Step 2: remove old pinned tags.** An image pinned to a version keeps its tag
+after you move to a newer one, so `prune` skips it. These CashPilot images are
+pinned:
+
+| Repository | What pins it |
+|---|---|
+| `drumsergio/cashpilot` | The compose file (an old series, or an exact version you pinned) |
+| `drumsergio/cashpilot-worker` | The compose file, same as above |
+| `drumsergio/cashpilot-tunnel` | The worker, one tag per worker version |
+| `drumsergio/cashpilot-earnapp` | The EarnApp catalog entry |
+| `drumsergio/cashpilot-anyone` | The Anyone Protocol catalog entry |
+
+The same goes for the image of a service you removed: its tag stays until you
+remove it. A catalog image pinned by digest, such as MystNodes or ProxyBase,
+loses its tag when a newer one replaces it, so step 1 already covers it.
+
+First list the tags no container uses. This example is for the worker image;
+put another repository from the table in `repo`:
+
+```bash
+repo=drumsergio/cashpilot-worker
+used=$(docker ps -a --format '{{.Image}}')
+docker image ls "$repo" --format '{{.Repository}}:{{.Tag}}' | grep -vxF "$used"
+```
+
+Then remove each old tag by name, one at a time:
+
+```bash
+docker image rm drumsergio/cashpilot-worker:<old tag>
+```
+
+Do not add `-f`. Without it, Docker refuses to remove an image that a
+container still uses, running or stopped, and prints
+`conflict: unable to delete`. When you see that, keep the image. Remove only
+tags older than the one you run, so you can still go back one version.
+
+The dashboard's **Host disk** column shows free space on the filesystem that
+holds the worker's `/data`. Images usually sit on the same filesystem, under
+Docker's data root, but not always. `docker info --format '{{.DockerRootDir}}'`
+shows where your images are.
+
 ## Supported Services
 
 CashPilot supports **<!-- n:live -->42<!-- /n --> services** that are active or in beta, across four categories:
