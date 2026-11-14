@@ -26,6 +26,7 @@ from app import auth, catalog, database, main  # noqa: E402
 
 UUID_A = "sdk-node-" + "a" * 32
 UUID_B = "sdk-node-" + "b" * 28 + "1234"
+UUID_C = "sdk-node-" + "c" * 28 + "5678"
 OWNER = {"uid": 1, "u": "owner", "r": "owner"}
 
 
@@ -974,17 +975,17 @@ class TestTheHeartbeatStaysCheap:
         wid = _worker(running=[("honeygain", [1])])
         with patch.object(main, "scaling_limit", lambda svc: (3, "")):
             assert _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=2)[0] is None
-        real = database.active_identity_copies
+        real = database.active_identity_values
         reads = AsyncMock(side_effect=real)
-        with patch.object(main.database, "active_identity_copies", reads):
+        with patch.object(main.database, "active_identity_values", reads):
             for _ in range(3):
                 _heartbeat("box-a", {1: {"HONEYGAIN_DEVICE_NAME": "box"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}})
         assert reads.await_count == 1
 
     def test_an_older_worker_sends_no_proof_so_nothing_is_read_or_written(self, db):
         wid = TestACopyWhoseWriteFailedUntilItsRemoval()._lose_copy_two()
-        reads = AsyncMock(side_effect=database.active_identity_copies)
-        with patch.object(main.database, "active_identity_copies", reads):
+        reads = AsyncMock(side_effect=database.active_identity_values)
+        with patch.object(main.database, "active_identity_values", reads):
             _heartbeat("box-a", [1, 2])
         reads.assert_not_awaited()
         assert set(_active()) == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME")}
@@ -1400,3 +1401,75 @@ class TestANewRecordIsCheckedAgain:
             assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid)[0] is None
         _heartbeat("box-a", runs_b, slug="earnapp")
         assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, ninth round: a stale active row, and a rename-pending copy
+# ---------------------------------------------------------------------------
+
+
+def _deploy_losing_the_write(slug, env, wid):
+    async def failing(*args, **kwargs):
+        raise RuntimeError("database is locked")
+
+    with patch.object(main.database, "record_identities", failing):
+        assert _deploy(slug, env, wid)[0] is None
+
+
+class TestAStaleActiveRow:
+    """EarnApp copy 1 has an active row UUID_A; a replacement to UUID_B ran but its write failed."""
+
+    def _stale(self):
+        wid = _worker()
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        _deploy_losing_the_write("earnapp", {"EARNAPP_UUID": UUID_B}, wid)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+        return wid
+
+    def test_a_heartbeat_the_record_proves_repairs_it(self, db):
+        wid = self._stale()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp")
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+    def test_an_unproven_digest_leaves_it_and_is_checked_again(self, db):
+        wid = self._stale()
+        reads = AsyncMock(side_effect=database.active_identity_values)
+        with patch.object(main.database, "active_identity_values", reads):
+            for _ in range(2):
+                _heartbeat("box-a", {1: {"EARNAPP_UUID": "0123456789abcdef"}}, slug="earnapp")
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+        assert reads.await_count == 2
+
+    def test_only_the_current_record_proves_the_repair(self, db):
+        wid = self._stale()
+        # A deploy to UUID_C saved its record and stopped before its write and its
+        # prior clear: the prior record (UUID_B) would prove this digest, the current
+        # one (UUID_C) does not.
+        spec = asyncio.run(database.get_deployment_spec("earnapp", worker_id=wid))
+        newer = {**spec, "env": {"EARNAPP_UUID": UUID_C}}
+        asyncio.run(database.save_deployment(slug="earnapp", container_id="c3", spec=newer, worker_id=wid))
+        assert asyncio.run(database.prior_deployment_spec("earnapp", wid))["env"] == {"EARNAPP_UUID": UUID_B}
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp")
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+    def test_a_matching_row_is_left_alone_and_cached(self, db):
+        wid = _worker()
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        reads = AsyncMock(side_effect=database.active_identity_values)
+        with patch.object(main.database, "active_identity_values", reads):
+            for _ in range(2):
+                _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp")
+        assert reads.await_count == 1
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+
+class TestARenamePendingProxiedCopy:
+    def test_the_backfill_does_not_give_it_the_renamed_ids(self, db):
+        wid = _worker()
+        spec = {"env": {"UUID": "ab" * 32, "DEVICE_NAME": "renamed", "API_KEY": "secret-key"}}
+        asyncio.run(database.save_deployment(slug="proxyrack", container_id="c1", spec=spec, worker_id=wid))
+        asyncio.run(database.save_proxied_copy(7, wid, "proxyrack"))
+        asyncio.run(database.set_proxied_copy_rename_pending(7, wid, "proxyrack", True))
+        asyncio.run(main._backfill_identities())
+        assert {k[2] for k in _active()} == {"1"}

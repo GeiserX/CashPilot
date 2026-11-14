@@ -401,6 +401,18 @@ class TestARenameReachesProxiedCopies:
         assert written[-1].args[2]["p4"]["DEVICE_NAME"] == calls[0][3]["earner"]["env"]["DEVICE_NAME"]
         assert written[-1].kwargs["scope"] == "given"
 
+    def test_the_identity_ledger_write_is_under_the_copys_lock(self, client):
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+        held: list[bool] = []
+
+        async def record(slug, worker_id, values, **kwargs):
+            if "p4" in values:
+                held.append(main._proxy_copy_lock(4, worker_id, slug).locked())
+
+        with patch("app.main.database.record_identities", side_effect=record):
+            _rename_with_copies(client, [_copy(4)], entries)
+        assert held == [True]
+
     def test_a_copy_that_exited_without_a_stop_is_not_started_by_the_rename(self, client):
         entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "exited"}]
         resp, _, calls = _rename_with_copies(client, [_copy(4)], entries)

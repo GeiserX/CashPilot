@@ -4958,6 +4958,18 @@ async def prior_deployment_spec(slug: str, worker_id: int, *, clear: bool = Fals
         await db.close()
 
 
+async def active_identity_values(slug: str, worker_id: int) -> dict[str, dict[str, str]]:
+    """Each copy of ``slug`` on a worker with an active row: its active values, by key name."""
+    db = await _get_db()
+    try:
+        out: dict[str, dict[str, str]] = {}
+        for row in await _active_identity_rows(db, slug, worker_id):
+            out.setdefault(str(row["instance"]), {})[row["name"]] = decrypt_value(row["value_encrypted"])
+        return out
+    finally:
+        await db.close()
+
+
 async def active_identity_copies(slug: str, worker_id: int) -> set[str]:
     """The copies of ``slug`` on a worker that have an active ledger row: '1', '2', 'p7'."""
     db = await _get_db()

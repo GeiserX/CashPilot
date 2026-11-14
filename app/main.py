@@ -4648,7 +4648,8 @@ async def _record_unrecorded_copies(
     digests: Mapping[int, str] | None = None,
     have: Collection[str] | None = None,
     prior: dict[str, Any] | None = None,
-) -> bool:
+    current_only: Collection[int] = (),
+) -> set[int] | None:
     """Record each copy with no active ledger row whose ids are proven, as its deploy derived them.
 
     The one path that repairs a copy whose ledger write failed. Proof is either
@@ -4659,12 +4660,14 @@ async def _record_unrecorded_copies(
     nothing: an older copy whose replacement failed still runs older ids, and the
     record holds the count asked for, saved before the extra copies deploy. No
     proof, no row. A record of one copy (a raw deploy names ``instance``) holds
-    that copy's own env. Bookkeeping: never raises; False says the write failed.
+    that copy's own env. ``current_only`` copies are proven against the current
+    record alone, never the spec it replaced. Bookkeeping: never raises. Returns
+    the copies proven and written, or None when a write failed.
     """
     try:
         svc = catalog.get_service(slug)
         if not isinstance(spec, dict) or not svc or not catalog.identity_keys(svc):
-            return True
+            return set()
         docker_conf = svc.get("docker") or {}
         digests = digests or {}
         trusted = set(trusted)
@@ -4706,6 +4709,8 @@ async def _record_unrecorded_copies(
             if runs(spec, n, keys):
                 proven[n] = spec
                 continue
+            if n in current_only:
+                continue
             if not prior_read:
                 prior, prior_read = await database.prior_deployment_spec(slug, worker_id), True
             if prior and runs(prior, n, keys):
@@ -4719,11 +4724,11 @@ async def _record_unrecorded_copies(
                     slug, worker_id, {str(own): env if isinstance(env, dict) else {}}, scope="given"
                 )
             elif not await _record_deploy_identities(slug, worker_id, source, copies, docker_conf, scope="given"):
-                return False
-        return True
+                return None
+        return set(proven)
     except Exception:  # noqa: BLE001
         logger.warning("Could not record the device ids of %s on worker %s", slug, worker_id, exc_info=True)
-        return False
+        return None
 
 
 async def _identity_digest_keys(worker_id: int) -> list[str]:
@@ -4820,13 +4825,16 @@ def _forget_checked_copies(worker_id: int, slug: str) -> None:
 
 
 async def _reconcile_running_identities(worker_id: int, containers: Any) -> None:
-    """Record a running copy with no active ledger row, when its digest proves its ids.
+    """Make the ledger match the ids a heartbeat proves each copy runs.
 
     A copy whose ledger write failed at deploy still runs, so its box reports
-    it with the digest of the ids it runs with; this is where its row is
-    written. Only a copy with a digest counts: an older worker sends none, and
-    then nothing is recorded. One indexed read per service on a container not
-    seen before, and a write only on a proven miss.
+    it with the digest of the ids it runs with. A copy with no active row gets
+    one when the digest proves its ids. A copy whose active row is not what it
+    runs (a replacement whose write failed) has that row retired and the ids it
+    runs recorded, but only when the current record proves them; unproven, the
+    row stays and the copy is checked again on the next heartbeat. Only a copy
+    with a digest counts: an older worker sends none. One indexed read per
+    service on a container not seen before, and a write only on a proven miss.
     """
     listed: set[tuple[str, int, str, str]] = set()
     for entry in containers if isinstance(containers, list) else []:
@@ -4843,13 +4851,30 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
         fresh.setdefault(key[0], set()).add(key)
     for slug, keys in fresh.items():
         digests = {n: digest for _, n, _, digest in keys}
-        have = await database.active_identity_copies(slug, worker_id)
-        if not all(str(n) in have for n in digests):
-            spec = await database.get_deployment_spec(slug, worker_id=worker_id)
-            # No record yet (the deploy is still saving it): look again next beat.
-            if spec is None or not await _record_unrecorded_copies(slug, worker_id, spec, digests=digests, have=have):
-                continue
-        checked.update(keys)
+        active = await database.active_identity_values(slug, worker_id)
+        stale: set[int] = set()
+        if any(str(n) in active for n in digests):
+            svc = catalog.get_service(slug)
+            secrets_ = await _identity_digest_keys(worker_id)
+            for n in (n for n in digests if str(n) in active):
+                values = active[str(n)]
+                if not any(
+                    hmac.compare_digest(catalog.identity_digest(svc, values, k) or "", digests[n]) for k in secrets_
+                ):
+                    stale.add(n)
+        if all(str(n) in active for n in digests) and not stale:
+            checked.update(keys)
+            continue
+        spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+        # No record yet (the deploy is still saving it): look again next beat.
+        if spec is None:
+            continue
+        have = {i for i in active if not i.isdigit() or int(i) not in stale}
+        proven = await _record_unrecorded_copies(slug, worker_id, spec, digests=digests, have=have, current_only=stale)
+        if proven is None:
+            continue
+        # A stale row nothing proved wrong yet stays unchecked, so the next beat looks again.
+        checked.update(k for k in keys if k[1] not in stale - proven)
 
 
 async def _backfill_identities() -> None:
@@ -4888,7 +4913,13 @@ async def _backfill_identities() -> None:
             slug, worker_id, spec, trusted={database.spec_copy_number(spec)}, digests=digests, have=have
         )
         for copy in proxied:
-            if (copy.get("slug"), copy.get("worker_id")) != (slug, worker_id) or f"p{copy['proxy_id']}" in have:
+            # A rename-pending copy was not rebuilt: it still runs its old ids,
+            # which the renamed record no longer derives. A rebuild records it.
+            if (
+                (copy.get("slug"), copy.get("worker_id")) != (slug, worker_id)
+                or f"p{copy['proxy_id']}" in have
+                or copy.get("rename_pending")
+            ):
                 continue
             try:
                 env = proxies.earner_spec(spec, docker_conf, int(copy["proxy_id"]))["env"]
@@ -6032,11 +6063,12 @@ async def _refresh_proxied_copies(
                 # is still the record; a newer one means this rebuild left
                 # the copy on the old name, and it is marked.
                 await database.settle_proxied_copy_rename_pending(pid, worker_id, slug, recorded)
-            # The copy runs its new device name now: the ledger retires the old one.
-            try:
-                await database.record_identities(slug, worker_id, {f"p{int(pid)}": earner["env"]}, scope="given")
-            except Exception:  # noqa: BLE001 - bookkeeping never fails a rebuilt copy
-                logger.exception("Could not record the device ids of the %s copy through proxy %s", slug, pid)
+                # The copy runs its new device name now: the ledger retires the old
+                # one. Under the lock, so a later deploy of this copy writes after it.
+                try:
+                    await database.record_identities(slug, worker_id, {f"p{int(pid)}": earner["env"]}, scope="given")
+                except Exception:  # noqa: BLE001 - bookkeeping never fails a rebuilt copy
+                    logger.exception("Could not record the device ids of the %s copy through proxy %s", slug, pid)
         except (HTTPException, ValueError) as exc:
             detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
             notes.append(f"{label}: keeps its old device name ({detail})")
@@ -6140,6 +6172,12 @@ async def api_add_proxied_copy(
                 await database.delete_proxied_copy(proxy_id, worker_id, slug)
             raise
         await database.settle_proxied_copy_rename_pending(proxy_id, worker_id, slug, recorded)
+        # Under the lock, so a rename rebuild of this copy cannot write between
+        # this deploy and its ledger row.
+        try:
+            await database.record_identities(slug, worker_id, {f"p{int(proxy_id)}": earner["env"]}, scope="given")
+        except Exception:  # noqa: BLE001 - bookkeeping never fails a copy that runs
+            logger.exception("Could not record the device ids of the %s copy through proxy %s", slug, proxy_id)
     exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
     exit_ip = egress.public_ip(exit_info.get("ip"))
     workers = await database.list_workers()
@@ -6155,10 +6193,6 @@ async def api_add_proxied_copy(
             if limit == 1
             else "Copies on one IP share its bandwidth, and the provider may limit devices per IP."
         )
-    try:
-        await database.record_identities(slug, worker_id, {f"p{int(proxy_id)}": earner["env"]}, scope="given")
-    except Exception:  # noqa: BLE001 - bookkeeping never fails a copy that runs
-        logger.exception("Could not record the device ids of the %s copy through proxy %s", slug, proxy_id)
     # The copy is a new device: add it to the account as a deploy does, or show the step.
     if step := catalog.device_link_step(svc, earner["env"]):
         registered = await _register_device(slug, step["id"], earner["env"])
