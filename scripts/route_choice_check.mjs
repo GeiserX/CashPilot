@@ -64,7 +64,7 @@ console.log('Routed copies: counted on their box, badged with their exit, and th
 function domWith(value) {
   return { getElementById: id => (id === 'route-select-honeygain' && value !== null ? { value } : null) };
 }
-for (const [value, want] of [['3', 3], ['', undefined], [null, undefined], ['0', undefined], ['x', undefined]]) {
+for (const [value, want] of [['3', 3], ['', undefined], [null, undefined], ['0', 0], ['-1', undefined], ['x', undefined]]) {
   const { _routeChoice } = fns(['_routeChoice'], ['document'], [domWith(value)]);
   assert.equal(_routeChoice('honeygain'), want, `select value ${JSON.stringify(value)} sends ${want}`);
 }
@@ -86,3 +86,30 @@ assert.equal(sent.length, 1);
 assert.equal(sent[0].path, '/api/deploy/honeygain?worker_id=1');
 assert.equal(sent[0].body.route, 3, 'the chosen proxy goes with the deploy');
 console.log('Deploy: the chosen route is sent; the box\'s own IP sends none.');
+
+// ---- Leaving a route: Direct is its own choice where the service is routed ----
+const routedForm = routeChoiceSection({ slug: 'honeygain', routes: { 1: 3 } });
+assert.match(routedForm, /<option value="">Keep the route each box has/, 'the default keeps the route');
+assert.match(routedForm, /<option value="0">Direct: the box's own IP<\/option>/, 'Direct sends 0, which leaves it');
+assert.doesNotMatch(
+  routeChoiceSection({ slug: 'honeygain', routes: {} }), /value="0"/, 'nothing routed: Direct is the default, no 0',
+);
+console.log('Route box: where a service is routed, Direct is a choice that leaves the route.');
+
+// ---- The setup wizard offers the Route box too ---------------------------------
+assert.match(grab('renderServiceSetupForm'), /routeChoiceSection\(svc\)/, 'the wizard form has the Route box');
+assert.match(grab('loadWizardSetupForms'), /loadRouteChoices\(svc\.slug\)/, 'and fills it with the proxies');
+console.log('Setup wizard: the Route box is shown and filled.');
+
+// ---- An image update reaches the boxes where the service is routed --------------
+for (const name of ['imageChoiceSection', 'redeployWithImage']) {
+  const body = grab(name);
+  assert.match(body, /runsOn\(w, (svc\.)?slug\)/, `${name} counts a routed box`);
+  assert.doesNotMatch(body, /\(w\.containers \|\| \[\]\)\.some/, `${name} does not look at containers alone`);
+}
+const { imageChoiceSection } = fns(['runsOn', 'workerCopies', 'imageChoiceSection'], ['_isOwner'], [true]);
+const imageBox = imageChoiceSection({ slug: 'honeygain', name: 'Honeygain', docker: { image: 'h/h' } }, [
+  { ...routedBox, status: 'online' },
+]);
+assert.match(imageBox, /redeployWithImage/, 'a routed-only box gets the image update button');
+console.log('Image update: a box where the service runs through a proxy is included.');

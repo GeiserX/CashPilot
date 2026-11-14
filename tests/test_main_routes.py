@@ -663,6 +663,23 @@ class TestApiServices:
             assert len(data) == 1
             assert data[0]["deployed"] is False
 
+    def test_api_services_available_carries_the_route_box(self, client):
+        """The setup wizard's Route box needs what the detail page's gets: why not, and where it is routed."""
+        svcs = [
+            {"slug": "hg", "name": "HG", "status": "active", "docker": {"image": "test"}},
+            {"slug": "st", "name": "ST", "status": "active", "docker": {"image": "x", "ports": ["28967:28967"]}},
+        ]
+        routed = [{"slug": "hg", "_worker_id": 4, "_node": "box", "route": {"proxy_id": 3}}]
+        with (
+            _auth_owner(),
+            patch("app.main.catalog.get_services", return_value=svcs),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=routed),
+        ):
+            data = {s["slug"]: s for s in client.get("/api/services/available").json()}
+        assert data["hg"]["route_refusal"] is None and data["hg"]["routes"] == {"4": 3}
+        assert "publishes a port" in data["st"]["route_refusal"] and data["st"]["routes"] == {}
+
     def test_api_services_available_skips_broken(self, client):
         svcs = [
             {"slug": "hg", "name": "HG", "status": "active", "docker": {"image": "test"}},

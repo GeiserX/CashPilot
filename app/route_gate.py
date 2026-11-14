@@ -38,6 +38,20 @@ PROXIED_ONLY_ENV = "CASHPILOT_PROXIED_ONLY"
 #: slug -> the proxy id it was last routed through, as JSON.
 ROUTED_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".routed")
 _lock = threading.Lock()
+_deploying: dict[str, threading.RLock] = {}
+
+
+def deploying(slug: str) -> threading.RLock:
+    """The lock a deploy of ``slug`` holds while it decides how the service runs and creates it.
+
+    A direct deploy holds it from its check to its container's start
+    (orchestrator.deploy_raw), and a routed deploy from its mark to its earner
+    or the undoing of that mark (worker_api.api_proxied_deploy). Otherwise a
+    direct earner could be created after a routed deploy found none, and a
+    failed routed deploy could undo the route of one that succeeded meanwhile.
+    """
+    with _lock:
+        return _deploying.setdefault(slug, threading.RLock())
 
 
 class RouteRefused(Exception):

@@ -981,6 +981,13 @@ async def _guard_loop() -> None:
         await _guard_once()
 
 
+async def _hold_loop() -> None:
+    """Every GUARD_SECONDS: the proxied-only hold alone, for a worker that started without Docker."""
+    while True:
+        await asyncio.sleep(lan_fence.GUARD_SECONDS)
+        await _hold_direct_earners()
+
+
 def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
     """Follow the UI's activity switch, and drop a round it has stored.
 
@@ -1132,6 +1139,11 @@ async def lifespan(app: FastAPI):
         # policy, so after a reboot this is what starts it, and only now.
         await _guard_once()
         _guard_task = asyncio.create_task(_guard_loop())
+    elif route_gate.proxied_only():
+        # Docker can come up after this worker, and start the direct earners
+        # again: on a proxied-only worker they are held all the same.
+        await _hold_direct_earners()
+        _guard_task = asyncio.create_task(_hold_loop())
     if docker_mode == "direct":
         # A proxied copy this worker was moving into another tunnel when it
         # stopped: finished or put back before anything else looks at it.
@@ -1922,6 +1934,49 @@ def _proxy_http_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="The proxied copy operation failed")
 
 
+def _deploy_routed(
+    slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None
+) -> dict[str, Any]:
+    """Deploy the routed copy of ``slug``, holding route_gate.deploying from its mark to its end.
+
+    A direct deploy of the same service waits for it, and it for a direct
+    deploy, so neither can create its earner after the other checked; and
+    the route put back after a failure is the one this deploy found.
+    """
+    with route_gate.deploying(slug):
+        # Recorded before the earner exists, so no deploy path can start this
+        # service from the box's own IP while the routed one is being made.
+        try:
+            before = route_gate.mark(slug, proxy_id)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(
+                status_code=503, detail=f"Could not record the route of {slug} on this worker ({exc}); nothing changed"
+            ) from None
+        # Checked after the mark, so a direct deploy cannot slip in between: the
+        # routed copy beside a direct container of the same account would show
+        # the provider one device on both the box's IP and the proxy's.
+        try:
+            direct = [c.name for c in orchestrator.service_instances(slug)]
+        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+            route_gate.release(slug, before)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not list the containers of {slug} on this worker ({exc}); nothing changed",
+            ) from None
+        if direct:
+            route_gate.release(slug, before)
+            raise HTTPException(
+                status_code=409,
+                detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
+                "then deploy it with a route; nothing changed",
+            )
+        try:
+            return proxy_tunnel.deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=True)
+        except Exception as exc:  # noqa: BLE001 - mapped to a status below
+            route_gate.release(slug, before)
+            raise _proxy_http_error(exc) from None
+
+
 @app.post("/api/proxied/{slug}/{proxy_id}/deploy")
 async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
     """Run a copy of ``slug`` whose only way out is the given proxy (docs/proxies.md)."""
@@ -1937,42 +1992,15 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
         "labels": spec.earner.labels,
         "resources": spec.earner.resources,
     }
-    before: int | None = None
-    if spec.routed:
-        # Recorded before the earner exists, so no deploy path can start this
-        # service from the box's own IP while the routed one is being made.
+    if not spec.routed:
         try:
-            before = await asyncio.to_thread(route_gate.mark, slug, proxy_id)
-        except (OSError, ValueError) as exc:
-            raise HTTPException(
-                status_code=503, detail=f"Could not record the route of {slug} on this worker ({exc}); nothing changed"
-            ) from None
-        # Checked after the mark, so a direct deploy cannot slip in between: the
-        # routed copy beside a direct container of the same account would show
-        # the provider one device on both the box's IP and the proxy's.
-        try:
-            direct = [c.name for c in await asyncio.to_thread(orchestrator.service_instances, slug)]
-        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
-            await asyncio.to_thread(route_gate.release, slug, before)
-            raise HTTPException(
-                status_code=503,
-                detail=f"Could not list the containers of {slug} on this worker ({exc}); nothing changed",
-            ) from None
-        if direct:
-            await asyncio.to_thread(route_gate.release, slug, before)
-            raise HTTPException(
-                status_code=409,
-                detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
-                "then deploy it with a route; nothing changed",
+            result = await asyncio.to_thread(
+                proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip, own_tunnel=False
             )
-    try:
-        result = await asyncio.to_thread(
-            proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip, own_tunnel=spec.routed
-        )
-    except Exception as exc:  # noqa: BLE001 - mapped to a status below
-        if spec.routed:
-            await asyncio.to_thread(route_gate.release, slug, before)
-        raise _proxy_http_error(exc) from None
+        except Exception as exc:  # noqa: BLE001 - mapped to a status below
+            raise _proxy_http_error(exc) from None
+    else:
+        result = await asyncio.to_thread(_deploy_routed, slug, proxy_id, earner, spec.proxy.plain(), own_ip)
     return {"status": "deployed", **result}
 
 
@@ -2074,6 +2102,21 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+def _deploy_direct(**kwargs: Any) -> str:
+    """orchestrator.deploy_raw, and with an approval to leave the route, forget the route in the same lock.
+
+    Forgotten under route_gate.deploying, so it can never drop the route of a
+    routed deploy that started after this one.
+    """
+    slug = kwargs["slug"]
+    with route_gate.deploying(slug):
+        container_id = orchestrator.deploy_raw(**kwargs)
+        if kwargs.get("leave_route"):
+            # It runs from this box's own IP now, as the owner confirmed.
+            route_gate.release(slug)
+        return container_id
+
+
 @app.post("/api/containers/{slug}/deploy")
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
     """Deploy a container from spec sent by UI."""
@@ -2091,7 +2134,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     kept_mounts: list[dict[str, str]] = []
     try:
         container_id = await asyncio.to_thread(
-            orchestrator.deploy_raw,
+            _deploy_direct,
             slug=slug,
             image=spec.image,
             env=spec.env,
@@ -2113,9 +2156,6 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             instance=spec.instance,
             leave_route=leave_route,
         )
-        if leave_route:
-            # It runs from this box's own IP now, as the owner confirmed.
-            await asyncio.to_thread(route_gate.release, slug)
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:

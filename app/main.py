@@ -3719,6 +3719,13 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         svc["has_collector"] = slug in collector_map
         # The grade and its top cons, computed from the published criteria.
         svc["rating_result"] = ratings.for_service(svc)
+        # The wizard's Route box, as on the detail page (api_get_service).
+        svc["route_refusal"] = proxies.refusal(svc)
+        svc["routes"] = {
+            str(c["_worker_id"]): (c.get("route") or {}).get("proxy_id")
+            for c in worker_containers
+            if c.get("slug") == slug and c.get("route")
+        }
         available.append(svc)
     return available
 
@@ -4605,7 +4612,7 @@ async def _remove_routed_copies(worker_id: int, slug: str, proxy_ids: list[int])
                 detail=f"The copy of {slug} through proxy {proxy_id} could not be removed first ({exc.detail}), "
                 "so nothing was deployed from the worker's own IP.",
             ) from None
-        await _finish_copy_removal(proxy_id, worker_id, slug)
+        await _finish_copy_removal(proxy_id, worker_id, slug, leaving_route=True)
 
 
 async def _step_up_critical(
@@ -5875,15 +5882,23 @@ _COPY_REMOVE_PENDING = (503, 504)
 _copy_removals_running: set[tuple[int, int, str]] = set()
 
 
-async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str) -> None:
+async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str, *, leaving_route: bool = False) -> None:
     """The worker confirmed the copy is gone: drop its record and its device's pending link.
 
     A service routed through this proxy at deploy was that copy, so its
     deployment record goes too: nothing of it runs on the worker any more.
+    With ``leaving_route`` the service is about to run from the worker's own
+    IP (_deploy): its record stays, without the route, so a direct deploy
+    that fails can be tried again with the same settings.
     """
     await database.delete_proxied_copy(proxy_id, worker_id, slug)
-    if proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == proxy_id:
-        await database.remove_deployment(slug, worker_id=worker_id)
+    spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+    if spec is not None and proxies.route_of(spec) == proxy_id:
+        if leaving_route:
+            direct = {k: v for k, v in spec.items() if k != "route"}
+            await database.save_deployment(slug=slug, container_id="remote", spec=direct, worker_id=worker_id)
+        else:
+            await database.remove_deployment(slug, worker_id=worker_id)
     await _drop_copy_device_links(proxy_id, slug)
 
 
@@ -9780,6 +9795,10 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         try:
             if isinstance(result, dict) and result.get("proxied_error"):
                 logger.warning("Removed %s, but some proxied copies remain: %s", slug, result["proxied_error"])
+            elif isinstance(result, dict) and result.get("status") == "removing":
+                # A routed service whose copy the worker has not confirmed gone
+                # (_remove_routed): its record stays, so each heartbeat asks again.
+                pass
             else:
                 await database.delete_proxied_copies_of(worker_id, slug)
         except Exception as exc:  # noqa: BLE001

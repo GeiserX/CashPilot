@@ -1895,17 +1895,24 @@ const CP = (() => {
 
   // The deploy form's Route box: the box's own IP, or one of the owner's
   // proxies. Filled once the proxy list arrives (owner only). A service the
-  // catalog cannot route says why instead.
+  // catalog cannot route says why instead. Where it already runs through a
+  // proxy (svc.routes), the first choice keeps that route and Direct is its
+  // own choice, which leaves the route with the owner's password.
   function routeChoiceSection(svc) {
     const slug = escapeHtml(svc.slug);
     if (svc.route_refusal) {
       return `<div class="form-hint route-hint">Route: this box's own IP. ${escapeHtml(svc.route_refusal)}</div>`;
     }
+    const routed = Object.values(svc.routes || {}).some(Boolean);
+    const choices = routed
+      ? `<option value="">Keep the route each box has (a new box: its own IP)</option>
+          <option value="0">Direct: the box's own IP</option>`
+      : '<option value="">Direct: the box\'s own IP</option>';
     return `
       <div class="form-group route-choice">
         <label class="form-label" for="route-select-${slug}">Route</label>
         <select class="form-input" id="route-select-${slug}" data-slug="${slug}">
-          <option value="">Direct: the box's own IP</option>
+          ${choices}
         </select>
         <div class="form-hint">A route through one of your proxies applies from the first start, so the service never
           runs from the box's own IP. It hides that IP from the service's traffic, not from the provider's website or
@@ -1930,10 +1937,12 @@ const CP = (() => {
     }
   }
 
-  // The proxy id to send as "route", or undefined for the box's own IP (the
-  // server then keeps a route the box already has, and asks before leaving it).
+  // The proxy id to send as "route", 0 for Direct chosen to leave a route, or
+  // undefined: the server then keeps the route a box already has, and a new
+  // deploy runs from the box's own IP.
   function _routeChoice(slug) {
     const select = document.getElementById(`route-select-${slug}`);
+    if (select && select.value === '0') return 0;
     const id = select ? parseInt(select.value, 10) : NaN;
     return Number.isInteger(id) && id > 0 ? id : undefined;
   }
@@ -3297,6 +3306,7 @@ const CP = (() => {
       const selected = services.filter(s => wizardState.selectedServices.includes(s.slug));
       container.innerHTML = selected.map(svc => renderServiceSetupForm(svc, workers)).join('');
       loadDeployRisk();
+      for (const svc of selected) loadRouteChoices(svc.slug);
     } catch (err) {
       container.innerHTML = '<p class="empty-state-text">Could not load service details.</p>';
     }
@@ -3430,6 +3440,7 @@ const CP = (() => {
         <div class="setup-workers">
           <div class="form-label">Deploy to</div>
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
+          ${svc.custom ? '' : routeChoiceSection(svc)}
         </div>
         <div class="setup-deploy">
           <button class="btn btn-primary" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>
@@ -3863,7 +3874,7 @@ const CP = (() => {
     const catalogImage = (svc.docker && svc.docker.image) || '';
     const chosen = Object.values(svc.custom_images || {});
     const common = chosen.length && chosen.every(i => i === chosen[0]) ? chosen[0] : '';
-    const running = (workers || []).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === svc.slug));
+    const running = (workers || []).filter(w => w.status === 'online' && runsOn(w, svc.slug));
     const name = escapeHtml(svc.name);
     return `
       <details class="image-choice"${chosen.length ? ' open' : ''}>
@@ -3929,7 +3940,7 @@ const CP = (() => {
     const statusEl = document.getElementById(`image-status-${slug}`);
     if (!input) return;
     const image = input.value.trim();
-    const workers = (await api('/api/workers')).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug));
+    const workers = (await api('/api/workers')).filter(w => w.status === 'online' && runsOn(w, slug));
     if (!workers.length) { toast('No running instances to redeploy', 'warning'); return; }
     const what = image || 'the catalog image';
     if (!window.confirm(`Redeploy ${slug} on ${workers.map(w => w.name).join(', ')} with ${what}?`)) return;

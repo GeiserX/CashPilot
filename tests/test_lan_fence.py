@@ -803,6 +803,23 @@ class TestReattach:
         net.connect.assert_called_once_with(c)
         c.start.assert_called_once()
 
+    @pytest.mark.parametrize("rule", ["proxied_only", "routed"])
+    def test_one_that_must_not_run_from_the_boxs_ip_is_moved_but_left_stopped(self, rule, tmp_path, monkeypatch):
+        """The route gate holds here too, as for a deploy, a Start and a Restart (app/route_gate.py)."""
+        from app import route_gate
+
+        monkeypatch.setattr(route_gate, "ROUTED_MARKER", str(tmp_path / ".routed"))
+        if rule == "proxied_only":
+            monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        else:
+            monkeypatch.delenv(route_gate.PROXIED_ONLY_ENV, raising=False)
+            route_gate.mark("honeygain", 3)
+        net = _network()
+        c = _orphan("cashpilot-honeygain", "old-id", error=self.GONE)
+        assert lan_fence.reattach(_docker(net, earners=[c]), net) == ["cashpilot-honeygain"]
+        net.connect.assert_called_once_with(c)
+        c.start.assert_not_called()
+
     def test_a_fence_gated_one_is_moved_but_left_to_the_guard(self):
         net = _network()
         c = _orphan("cashpilot-mysterium", "old-id", error=self.GONE)

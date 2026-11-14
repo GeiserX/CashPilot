@@ -128,24 +128,30 @@ table inet cashpilot {
     }
 }
 EOF
-nft -f /run/cp-tunnel.nft || die "could not load the firewall rules; refusing to start"
+nft -f /run/cp-tunnel.nft
 }
 
 if [ -n "${CG_RULES:-}" ]; then
     EGRESS_RULE=$CG_RULES
-    load_rules
     # Proof that this kernel matches the rule: one connection attempt to the
     # proxy from here must hit it. Without the proof a kernel that cannot match
-    # would leave the tunnel no way out at all.
-    curl -s -m 2 -o /dev/null "http://$PROXY_IP:$PROXY_PORT/" 2>/dev/null || true
-    if ! nft list chain inet cashpilot out | grep -q 'socket cgroupv2 .*packets [1-9]'; then
+    # would leave the tunnel no way out at all. An nft that refuses the rule
+    # loads nothing (one transaction), and gets the older rule too.
+    cg_matches=
+    if load_rules; then
+        curl -s -m 2 -o /dev/null "http://$PROXY_IP:$PROXY_PORT/" 2>/dev/null || true
+        if nft list chain inet cashpilot out | grep -q 'socket cgroupv2 .*packets [1-9]'; then
+            cg_matches=1
+        fi
+    fi
+    if [ -z "$cg_matches" ]; then
         echo "cp-tunnel: this kernel cannot tell the tunnel's own sockets from the earner's, so the earner can reach the proxy directly too" >&2
         EGRESS_RULE="$PROXY_RULE accept"
-        load_rules
+        load_rules || die "could not load the firewall rules; refusing to start"
     fi
 else
     [ "$KIND" = tailscale ] || echo "cp-tunnel: no cgroup v2 on this host, so the earner can reach the proxy directly too" >&2
-    load_rules
+    load_rules || die "could not load the firewall rules; refusing to start"
 fi
 
 probe_until_ready() {

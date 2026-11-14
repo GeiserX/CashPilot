@@ -586,11 +586,17 @@ def start_sidecar(
 
 
 def _routed_here(slug: str, proxy_id: int) -> bool:
-    """Whether ``slug`` is routed through ``proxy_id`` on this worker (app/route_gate.py)."""
+    """Whether ``slug`` is routed through ``proxy_id`` on this worker (app/route_gate.py).
+
+    Raises when the marker cannot be read: "not routed" would put a routed
+    earner in the proxy's shared tunnel, beside the other services' earners.
+    """
     try:
         return route_gate.routed().get(slug) == int(proxy_id)
-    except (OSError, ValueError):
-        return False
+    except (OSError, ValueError) as exc:
+        raise ProxyTunnelError(
+            f"Could not read which services are routed on this worker ({exc}); {slug} was not started", 503
+        ) from None
 
 
 def _hostname(name: str) -> str:

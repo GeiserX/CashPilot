@@ -11,6 +11,7 @@ import collections
 import contextlib
 import functools
 import hashlib
+import inspect
 import ipaddress
 import logging
 import os
@@ -828,6 +829,26 @@ def _holds_gated_lock(fn: Any) -> Any:
     return wrapper
 
 
+def _holds_route_lock(fn: Any) -> Any:
+    """A direct deploy holds route_gate.deploying from its check to its container's start.
+
+    An earner joined to a tunnel does not: the routed deploy that creates it
+    already holds the lock, from another call.
+    """
+    params = inspect.signature(fn)
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        bound = params.bind_partial(*args, **kwargs).arguments
+        if str(bound.get("network_mode") or "").startswith("container:"):
+            return fn(*args, **kwargs)
+        with route_gate.deploying(str(bound.get("slug", ""))):
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+@_holds_route_lock
 @_holds_gated_lock
 def deploy_raw(
     slug: str,

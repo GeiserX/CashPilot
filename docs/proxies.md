@@ -44,7 +44,9 @@ its first and every later start is inside it.
   it from its own IP without your confirmation, even after you remove it, and
   whichever way the deploy arrives (the form, a redeploy, the API, an agent).
   The confirmation is the same password prompt as for a wallet change, and it
-  names the IP the provider would then see.
+  names the IP the provider would then see. On the deploy form of a routed
+  service, the Route box keeps the route by default; pick **Direct** to leave
+  it.
 
 The usual route is a Tailscale exit node at another site you own (a
 relative's house, a second line): set it up with the steps in
