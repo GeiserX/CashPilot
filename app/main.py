@@ -5642,13 +5642,15 @@ async def _refresh_proxied_copies(
                     },
                     timeout=180,
                 )
+                # Still under the lock, so no other deploy of this copy lands
+                # between this one and its mark. Cleared only if ``recorded``
+                # is still the record; a newer one means this rebuild left
+                # the copy on the old name, and it is marked.
+                await database.settle_proxied_copy_rename_pending(pid, worker_id, slug, recorded)
         except (HTTPException, ValueError) as exc:
             detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
             notes.append(f"{label}: keeps its old device name ({detail})")
             continue
-        # Only if ``recorded`` is still the record: a rename saved since then
-        # marked this copy again, and this rebuild left it on the old name.
-        await database.clear_proxied_copy_rename_pending(pid, worker_id, slug, recorded)
         if step := catalog.device_link_step(svc, earner["env"]):
             await _register_device(slug, step["id"], earner["env"])
     return notes
@@ -5704,26 +5706,28 @@ async def api_add_proxied_copy(
             c["worker_id"] == worker_id and c["slug"] == slug for c in await database.list_proxied_copies(proxy_id)
         )
         await database.save_proxied_copy(proxy_id, worker_id, slug)
-    try:
-        result = await _proxy_worker_call(
-            worker_id,
-            "POST",
-            f"/api/proxied/{slug}/{proxy_id}/deploy",
-            definition,
-            json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition)},
-            timeout=180,
-        )
-    except HTTPException as exc:
-        # A 504 says the worker may still be deploying: the record stays, so
-        # the copy is listed and can be removed. Any other answer is final.
-        if exc.status_code != 504 and not had_record:
-            await database.delete_proxied_copy(proxy_id, worker_id, slug)
-        raise
-    # Rebuilt from the record read above, so a copy a rename left on the old
-    # device name is on the new one now, unless a rename saved a newer record
-    # meanwhile: then this copy still has the old name and keeps the mark. A
-    # failed rebuild keeps it too.
-    await database.clear_proxied_copy_rename_pending(proxy_id, worker_id, slug, recorded)
+    # Under the copy's lock, as a rename's rebuild of it: whichever deploy
+    # reaches the worker last also sets the mark last. Built from the record
+    # read above, so a copy a rename left on the old device name is on the new
+    # one now, unless the record changed meanwhile: then this copy has an old
+    # name and is marked. A failed deploy leaves the mark as it was.
+    async with _proxy_copy_lock(proxy_id, worker_id, slug):
+        try:
+            result = await _proxy_worker_call(
+                worker_id,
+                "POST",
+                f"/api/proxied/{slug}/{proxy_id}/deploy",
+                definition,
+                json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition)},
+                timeout=180,
+            )
+        except HTTPException as exc:
+            # A 504 says the worker may still be deploying: the record stays, so
+            # the copy is listed and can be removed. Any other answer is final.
+            if exc.status_code != 504 and not had_record:
+                await database.delete_proxied_copy(proxy_id, worker_id, slug)
+            raise
+        await database.settle_proxied_copy_rename_pending(proxy_id, worker_id, slug, recorded)
     exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
     exit_ip = egress.public_ip(exit_info.get("ip"))
     workers = await database.list_workers()

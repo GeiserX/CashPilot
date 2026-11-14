@@ -2331,21 +2331,23 @@ async def set_proxied_copy_rename_pending(proxy_id: int, worker_id: int, slug: s
         await db.close()
 
 
-async def clear_proxied_copy_rename_pending(
+async def settle_proxied_copy_rename_pending(
     proxy_id: int, worker_id: int, slug: str, built_from: dict[str, Any]
 ) -> bool:
-    """Clear a copy's rename mark, but only if it was rebuilt from the spec its worker still records.
+    """Set a just-deployed copy's rename mark from the spec it was built from.
 
-    A confirmed rename can save a newer spec and mark the copy while a rebuild
-    from the older spec is still running. That rebuild leaves the copy on the
-    old device name, so the mark must stay. Own connection and BEGIN
-    IMMEDIATE: the check and the clear are one step, so a save_deployment
-    cannot land between them. Returns whether the mark was cleared.
+    Built from the spec its worker records now: the copy has the current
+    device names, so the mark is cleared. Built from any other spec: the copy
+    is on an outdated name, whoever changed the record and whether or not a
+    rename marked it, so the mark is set and a retry rebuilds it from the
+    current spec. Own connection and BEGIN IMMEDIATE: the check and the
+    update are one step, so a save_deployment cannot land between them.
+    Returns whether the mark was cleared.
     """
     try:
         expected = json.loads(json.dumps(built_from, sort_keys=True))
     except (TypeError, ValueError):
-        return False
+        expected = None
     DB_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
         await db.execute("BEGIN IMMEDIATE")
@@ -2358,15 +2360,13 @@ async def clear_proxied_copy_rename_pending(
                 (slug, worker_id, slug),
             )
             row = await cursor.fetchone()
-            if _decode_spec((row[0] if row else "") or "", slug) != expected:
-                await db.rollback()
-                return False
+            current = expected is not None and _decode_spec((row[0] if row else "") or "", slug) == expected
             cursor = await db.execute(
-                "UPDATE proxied_copies SET rename_pending = 0 WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
-                (proxy_id, worker_id, slug),
+                "UPDATE proxied_copies SET rename_pending = ? WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
+                (0 if current else 1, proxy_id, worker_id, slug),
             )
             await db.commit()
-            return (cursor.rowcount or 0) > 0
+            return current and (cursor.rowcount or 0) > 0
         except BaseException:
             await db.rollback()
             raise

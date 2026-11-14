@@ -99,12 +99,11 @@ def _post(client, path, body, workers, recorded=None, role="owner", wid=None, co
         if spec is not None:
             saved.append(json.loads(json.dumps(spec)))
 
-    async def _clear_pending(proxy_id, worker_id, slug, built_from):
-        # Cleared only if the copy was built from the record that is current.
-        if built_from != (saved[-1] if saved else recorded):
-            return False
-        await _mark_pending(proxy_id, worker_id, slug, False)
-        return True
+    async def _settle_pending(proxy_id, worker_id, slug, built_from):
+        # Cleared if the copy was built from the record that is current, set otherwise.
+        current = built_from == (saved[-1] if saved else recorded)
+        await _mark_pending(proxy_id, worker_id, slug, not current)
+        return current
 
     async def _fake_deploy(worker_id, slug, spec):
         sent.append(spec)
@@ -129,7 +128,7 @@ def _post(client, path, body, workers, recorded=None, role="owner", wid=None, co
         patch("app.main._run_collection", new_callable=AsyncMock),
         patch("app.main.database.list_proxied_copies", side_effect=_list_copies),
         patch("app.main.database.set_proxied_copy_rename_pending", side_effect=_mark_pending),
-        patch("app.main.database.clear_proxied_copy_rename_pending", side_effect=_clear_pending),
+        patch("app.main.database.settle_proxied_copy_rename_pending", side_effect=_settle_pending),
     ):
         resp = client.post(f"{path}?worker_id={wid}", json=body)
     return resp, sent
