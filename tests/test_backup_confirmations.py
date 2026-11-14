@@ -643,6 +643,63 @@ def _entry(name: str, kind: bytes = tarfile.REGTYPE, link: str = "") -> tarfile.
     return info
 
 
+def _sparse(name: str, real_size: int) -> bytes:
+    """A GNU sparse member: 512 stored bytes that unpack to ``real_size`` bytes.
+
+    Built by hand because tarfile cannot write one. The single map entry puts
+    the stored block at the end of the file, so the rest unpacks as zeros.
+    """
+    info = tarfile.TarInfo(name)
+    info.type, info.size = tarfile.GNUTYPE_SPARSE, 512
+    block = bytearray(info.tobuf(format=tarfile.GNU_FORMAT))
+    block[386:398] = b"%011o\0" % (real_size - 512)  # first map entry: offset
+    block[398:410] = b"%011o\0" % 512  # first map entry: length
+    block[483:495] = b"%011o\0" % real_size  # the size it unpacks to
+    block[148:156] = b" " * 8
+    block[148:156] = b"%06o\0 " % sum(block)
+    return bytes(block) + b"x" * 512 + b"\0" * 1024
+
+
+def _pax(name: str, records: dict[str, str], *, global_records: dict[str, str] | None = None) -> bytes:
+    """One regular file carrying the given PAX records, as Docker writes xattrs."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT, pax_headers=global_records) as tar:
+        info = tarfile.TarInfo(name)
+        info.size, info.pax_headers = 1, records
+        tar.addfile(info, io.BytesIO(b"x"))
+    return buf.getvalue()
+
+
+def _pax_sparse(name: str, real_size: int) -> bytes:
+    """The PAX form of a sparse file (GNU sparse 0.1 records), as GNU tar writes it."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tar:
+        info = tarfile.TarInfo(name)
+        info.size = 512
+        info.pax_headers = {
+            "GNU.sparse.size": str(real_size),
+            "GNU.sparse.numblocks": "1",
+            "GNU.sparse.map": f"{real_size - 512},512",
+        }
+        tar.addfile(info, io.BytesIO(b"x" * 512))
+    return buf.getvalue()
+
+
+def _pax_entries(*entries: tuple[str, bytes, dict[str, str]]) -> bytes:
+    """Entries of the given types whose PAX records override the name or link,
+    so a record may hold bytes the ustar fields cannot (a NUL, a bad time)."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tar:
+        for name, kind, records in entries:
+            info = tarfile.TarInfo(name)
+            info.type, info.pax_headers = kind, records
+            info.size = 1 if kind == tarfile.REGTYPE else 0
+            tar.addfile(info, io.BytesIO(b"x") if kind == tarfile.REGTYPE else None)
+    return buf.getvalue()
+
+
+CAPABILITY = {"SCHILY.xattr.security.capability": "\x01\x00\x00\x02\x00\x10"}
+
 UNSAFE = {
     "dot-dot": _tar(_entry("node"), _entry("node/../../etc/cron.d/x")),
     "absolute": _tar(_entry("/etc/passwd")),
@@ -653,6 +710,56 @@ UNSAFE = {
     "char device": _tar(_entry("node/null", tarfile.CHRTYPE)),
     "block device": _tar(_entry("node/sda", tarfile.BLKTYPE)),
     "fifo": _tar(_entry("node/pipe", tarfile.FIFOTYPE)),
+    "sparse": _sparse("node/big", 100 * 1024 * 1024),
+    "pax sparse": _pax_sparse("node/big", 100 * 1024 * 1024),
+    "file capability": _pax("node/run", CAPABILITY),
+    "user xattr": _pax("node/f", {"SCHILY.xattr.user.x": "y"}),
+    "acl": _pax("node/f", {"SCHILY.acl.access": "user::rwx"}),
+    "pax global header": _pax("node/f", {}, global_records={"comment": "x"}),
+    "duplicate path": _tar(_entry("node/f"), _entry("node/f")),
+    "duplicate after cleaning": _tar(_entry("node/f"), _entry("./node//f")),
+    "hardlink to a later file": _tar(_entry("node/h", tarfile.LNKTYPE, "node/f"), _entry("node/f")),
+    "hardlink to a folder": _tar(_entry("node/d", tarfile.DIRTYPE), _entry("node/h", tarfile.LNKTYPE, "node/d")),
+    # A NUL in a PAX record survives in tarfile's name but ends it once written
+    # back to the ustar field: "node/s\0" -> "..\0" would come out as node/s -> ..
+    "nul in a link name and target": _pax_entries(
+        ("node", tarfile.DIRTYPE, {}),
+        ("node/s", tarfile.SYMTYPE, {"path": "node/s\x00", "linkpath": "..\x00"}),
+        ("node/s/evil", tarfile.REGTYPE, {}),
+    ),
+    "nul in a link target": _pax_entries(("node/up", tarfile.SYMTYPE, {"linkpath": "..\x00"})),
+    "nul in a name": _pax_entries(
+        ("node/f", tarfile.REGTYPE, {}), ("node/f", tarfile.REGTYPE, {"path": "node/f\x00dup"})
+    ),
+    "newline in a name": _tar(_entry("node/a\nb")),
+    "infinite time": _pax("node/f", {"mtime": "inf"}),
+    "nan time": _pax("node/f", {"mtime": "nan"}),
+    "overflowing time": _pax("node/f", {"mtime": "1e400"}),
+}
+
+#: The words each refusal must use, so the error says which rule fired.
+RULE = {
+    "sparse": "sparse file",
+    "pax sparse": "sparse file",
+    "file capability": "SCHILY.xattr.security.capability",
+    "user xattr": "SCHILY.xattr.user.x",
+    "acl": "SCHILY.acl.access",
+    "pax global header": "global header",
+    "duplicate path": "appears twice",
+    "duplicate after cleaning": "appears twice",
+    "hardlink to a later file": "not a file earlier",
+    "hardlink to a folder": "not a file earlier",
+    "char device": "device, pipe",
+    "fifo": "device, pipe",
+    "absolute": "absolute path",
+    "dot-dot": "leaves its folder",
+    "nul in a link name and target": "control character",
+    "nul in a link target": "control character",
+    "nul in a name": "control character",
+    "newline in a name": "control character",
+    "infinite time": "invalid modification time",
+    "nan time": "invalid modification time",
+    "overflowing time": "invalid modification time",
 }
 
 
@@ -689,6 +796,84 @@ class TestUnsafeEntriesAreRefused:
         f.mode = 0o4755
         with tarfile.open(fileobj=io.BytesIO(sb.split_archives(_tar(f))["node"])) as tar:
             assert tar.getmember("node/run").mode == 0o755
+
+    @pytest.mark.parametrize("case", sorted(RULE))
+    def test_the_error_names_the_rule(self, case):
+        with pytest.raises(sb.BackupError, match="unsafe entry") as err:
+            sb.split_archives(UNSAFE[case])
+        assert RULE[case] in str(err.value)
+
+    def test_a_sparse_member_is_refused_before_it_is_unpacked(self, monkeypatch):
+        """2 KB in the file, 100 MB once read: the read itself must never happen."""
+        payload = UNSAFE["sparse"]
+        assert len(payload) == 2048
+        with tarfile.open(fileobj=io.BytesIO(payload)) as tar:
+            assert tar.getmember("node/big").size == 100 * 1024 * 1024
+        monkeypatch.setattr(tarfile.TarFile, "extractfile", lambda *a, **k: pytest.fail("sparse data was read"))
+        with pytest.raises(sb.BackupError, match="sparse"):
+            sb.split_archives(payload)
+
+    def test_the_output_keeps_only_the_listed_fields(self):
+        """Nothing but name, type, permission bits, owner ids, time, size and link
+        reaches the archive that gets extracted as root."""
+        d = _entry("node", tarfile.DIRTYPE)
+        d.mode, d.uid, d.gid, d.uname, d.gname = 0o1777, 100, 101, "root", "wheel"
+        f = _entry("node/" + "k" * 150)  # long enough to need a PAX path record
+        f.mode, f.uid, f.gid, f.mtime = 0o6755, 100, 101, 1767225600.75
+        out = sb.split_archives(_tar(d, f))["node"]
+        with tarfile.open(fileobj=io.BytesIO(out)) as tar:
+            got = {m.name: m for m in tar}
+            assert set(got) == {"node", f.name}
+            assert (got["node"].mode, got["node"].uid, got["node"].gid) == (0o777, 100, 101)
+            assert (got["node"].uname, got["node"].gname) == ("", "")
+            assert (got[f.name].mode, got[f.name].mtime) == (0o755, 1767225600)
+            assert tar.extractfile(f.name).read() == b"x"  # type: ignore[union-attr]
+            assert set(got[f.name].pax_headers) == {"path"}
+            assert got["node"].pax_headers == {}
+
+    def test_harmless_pax_records_are_accepted(self):
+        """Docker writes PAX records for long names and large ids; those restore."""
+        payload = _pax("node/f", {"uid": "3000000", "gid": "3000001", "uname": "u", "mtime": "1767225600.5"})
+        with tarfile.open(fileobj=io.BytesIO(sb.split_archives(payload)["node"])) as tar:
+            m = tar.getmember("node/f")
+            assert (m.uid, m.gid, m.uname) == (3000000, 3000001, "")
+
+    def test_a_hardlink_to_an_earlier_file_with_a_dot_prefix_restores(self):
+        payload = _tar(_entry("node/f"), _entry("node/h", tarfile.LNKTYPE, "./node/f"))
+        with tarfile.open(fileobj=io.BytesIO(sb.split_archives(payload)["node"])) as tar:
+            assert tar.getmember("node/h").linkname == "node/f"
+
+
+class TestTheCaps:
+    def test_the_size_cap_matches_the_export_cap(self):
+        """A bundle the worker exported always fits the restore."""
+        assert sb.MAX_ARCHIVE_BYTES >= orchestrator.MAX_BACKUP_BYTES
+
+    def test_the_size_cap_opens_desktop_bundles(self):
+        """CashPilot-Desktop exports up to 256 MB (MaxStateBytes) and its docs
+        send users to this tool, so every Desktop bundle must open here too."""
+        assert sb.MAX_ARCHIVE_BYTES >= 256 * 1024 * 1024
+
+    def test_too_much_file_data_is_refused_before_it_is_read(self, monkeypatch):
+        monkeypatch.setattr(sb, "MAX_ARCHIVE_BYTES", 2)
+        payload = _tar(_entry("node/a"), _entry("node/b"), _entry("node/c"))
+        with pytest.raises(sb.BackupError, match="size cap"):
+            sb.split_archives(payload)
+        monkeypatch.setattr(sb, "MAX_ARCHIVE_BYTES", 3)
+        assert sorted(sb.split_archives(payload)) == ["node"]
+
+    def test_too_many_entries_are_refused(self, monkeypatch):
+        monkeypatch.setattr(sb, "MAX_ARCHIVE_ENTRIES", 2)
+        payload = _tar(_entry("node", tarfile.DIRTYPE), _entry("node/a"), _entry("node/b"))
+        with pytest.raises(sb.BackupError, match="entry cap"):
+            sb.split_archives(payload)
+        monkeypatch.setattr(sb, "MAX_ARCHIVE_ENTRIES", 3)
+        assert sorted(sb.split_archives(payload)) == ["node"]
+
+    def test_a_truncated_archive_is_a_backup_error(self):
+        payload = _tar(_entry("node/f"))
+        with pytest.raises(sb.BackupError, match="damaged"):
+            sb.split_archives(payload[:512] + b"")
 
 
 class TestTheCliNeverOverwrites:
