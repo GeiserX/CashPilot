@@ -36,7 +36,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_SESSION_EPOCH` | `0` | A Unix timestamp: sessions issued before it are rejected. Set it to the current time to sign everyone out. | - |
 | `CASHPILOT_TRUSTED_PROXY` | off | Set to `1` (or `true`) only when the UI sits behind exactly one reverse proxy you control. CashPilot then trusts `X-Forwarded-For` for the client address and `X-Forwarded-Proto` for the `Secure` cookie flag. Whatever this is set to, the proxy must pass the original `Host` header or send `X-Forwarded-Host`: a signed-in browser's changes are refused with 403 when its page address matches neither. | - |
 | `CASHPILOT_COLLECT_INTERVAL` | `60` | Minutes between earnings collections. | - |
-| `CASHPILOT_HOSTNAME_PREFIX` | `cashpilot` | Fills `{hostname}` in a service's device name when a deploy names no host. Container names are `cashpilot-<service>`, with `-2`, `-3` and so on for extra copies on the same box. | - |
+| `CASHPILOT_HOSTNAME_PREFIX` | `cashpilot` | Starts the `{hostname}` part of a service's device name when a deploy names no host. Each worker adds its own 8-character code, so two boxes never register one name: `cashpilot-{hostname}` becomes `cashpilot-cashpilot-1a2b3c4d`. Only `a-z`, `0-9` and `-` are kept. A service deployed before this keeps its old name until you agree to the new one in the deploy form. Container names are `cashpilot-<service>`, with `-2`, `-3` and so on for extra copies on the same box. | - |
 | `CASHPILOT_VERSION` | `dev` | Set by the image build. Shown in the sidebar. | - |
 | `CASHPILOT_METRICS_ENABLED` | `false` | Serve `/metrics`. | - |
 | `CASHPILOT_METRICS_TOKEN` | unset | Require `Authorization: Bearer` on `/metrics`. | - |

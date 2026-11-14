@@ -56,7 +56,12 @@ def _no_recorded_deployment_spec():
     pre-existing behaviour these tests assert on - build the spec from the
     catalog - without each of them having to mock the database.
     """
-    with patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None):
+    # The deploy also reads the worker's row: its client_id names the device
+    # (tests/test_device_names.py). A test that needs a particular row patches it.
+    with (
+        patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
+        patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=_online_worker()),
+    ):
         yield
 
 

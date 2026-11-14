@@ -3366,6 +3366,34 @@ const CP = (() => {
     );
   }
 
+  // A box that still runs under the old shared device name ("cashpilot-cashpilot")
+  // keeps it unless the user agrees to the new one: a new name is a new device to
+  // the provider. Ask once for every node in this deploy, showing each name
+  // old -> new. Returns true to rename. A check that cannot be reached returns
+  // false, which keeps every name as it is.
+  async function _confirmDeviceRenames(slug, workerIds, env) {
+    let answers;
+    try {
+      answers = await Promise.all(workerIds.map(id =>
+        api(`/api/deploy/${slug}/device-names?worker_id=${encodeURIComponent(id)}`, { method: 'POST', body: { env } })
+      ));
+    } catch (err) {
+      console.warn('Device-name check unavailable, keeping names:', err);
+      return false;
+    }
+    const lines = [];
+    answers.forEach((a, i) => {
+      ((a && a.renames) || []).forEach(r => lines.push(`• node ${workerIds[i]}: ${r.label} ${r.old} -> ${r.new}`));
+    });
+    if (!lines.length) return false;
+    return window.confirm(
+      `${slug}: these nodes still use the device name every box got before CashPilot gave each box its own.\n\n` +
+      `${lines.join('\n')}\n\n` +
+      'OK renames them, so the provider counts each box apart. It may list them as new devices. ' +
+      'Cancel keeps the current names.'
+    );
+  }
+
   async function _deployToWorkers(slug, workerIds, { rescaleOnly = false } = {}) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
     if (workerIds.length === 0) {
@@ -3420,6 +3448,8 @@ const CP = (() => {
       return;
     }
 
+    const renameDevices = await _confirmDeviceRenames(slug, workerIds, env);
+
     if (statusEl) {
       statusEl.innerHTML = '<span class="spinner spinner-inline"></span> Deploying';
     }
@@ -3429,6 +3459,7 @@ const CP = (() => {
     for (const wid of workerIds) {
       try {
         const body = { env };
+        if (renameDevices) body.rename_devices = true;
         const image = _imageChoice(slug);
         if (image !== undefined) body.image = image;
         const instances = _instancesFor(slug, wid);

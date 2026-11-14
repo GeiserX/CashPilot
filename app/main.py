@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -3808,6 +3809,11 @@ class DeployRequest(BaseModel):
     # that never showed the box cannot drop a choice. "" goes back to the
     # catalog image; anything else must be a plain image reference.
     image: str | None = None
+    # Give a deployment that still runs under the old shared device name
+    # ("cashpilot-cashpilot") the name of its own box. Off unless asked: a new
+    # name is a new device to the provider, so the operator confirms it first
+    # (POST /api/deploy/{slug}/device-names lists what would change).
+    rename_devices: bool = False
 
 
 # repository[:tag][@sha256:digest]; see custom_services.IMAGE_REF.
@@ -3863,6 +3869,95 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
         )
         return 1, f"{name} knows each device by its {label}, which two copies would share."
     return MAX_INSTANCES, ""
+
+
+#: What a device name CashPilot builds itself may hold. The name reaches a
+#: provider's command line (IPRoyal's -device-name and -device-id, Honeygain's
+#: -device, Traffmonetizer's --device-name, ProxyBase's argument), where the
+#: worker splits a command string on whitespace.
+_DEVICE_NAME_UNSAFE = re.compile(r"[^a-z0-9-]+")
+
+
+def device_name_suffix(client_id: str) -> str:
+    """The part of a device name that tells this worker's boxes from every other's.
+
+    Eight hex characters of a hash of the worker's ``client_id``: the id the UI
+    keys the worker on, which survives a rename, a recreate of the worker
+    container and a rebuilt UI database. The worker's name is not used: the
+    shipped defaults (local, server-b, unraid) are the same on every install,
+    and the worker chooses it freely. Hashing also means nothing the worker
+    sends ever reaches a provider's command line.
+    """
+    return hashlib.sha256(f"cashpilot-device-name:{client_id}".encode()).hexdigest()[:8]
+
+
+def _device_hostname(worker: dict[str, Any] | None, worker_id: int) -> str:
+    """What ``{hostname}`` becomes on this worker when the deploy names no host.
+
+    ``CASHPILOT_HOSTNAME_PREFIX`` plus the worker's own suffix, so two boxes
+    never register one device name. Only ``[a-z0-9-]``, the prefix included.
+    """
+    prefix = _DEVICE_NAME_UNSAFE.sub("-", HOSTNAME_PREFIX.lower()).strip("-")[:32].strip("-") or "cashpilot"
+    identity = str((worker or {}).get("client_id") or f"worker-id:{worker_id}")
+    return f"{prefix}-{device_name_suffix(identity)}"
+
+
+async def _device_names(
+    slug: str,
+    docker_conf: dict[str, Any],
+    body: DeployRequest,
+    worker_id: int,
+    recorded: dict[str, Any] | None,
+) -> tuple[str, list[dict[str, str]]]:
+    """What ``{hostname}`` becomes for this deploy, and the device names it would rename.
+
+    Before this, every deploy from the dashboard filled ``{hostname}`` with the
+    bare prefix, so every box registered as "cashpilot-cashpilot" and the
+    providers that count devices by name saw one device. A new deployment now
+    gets its worker's own name (:func:`_device_hostname`). A running one keeps
+    the name it has: a new name is a new device to the provider, so it changes
+    only when the deploy says ``rename_devices``. The list is what would change,
+    one entry per variable (key, label, old, new), and only for a name CashPilot
+    filled in itself: a name the operator typed, now or before, is never offered.
+    """
+    if body.hostname:
+        return body.hostname, []
+    worker = await database.get_worker(worker_id)
+    own = _device_hostname(worker, worker_id)
+    # Never a secret: its value must not reach the list this returns.
+    templated = [
+        var
+        for var in docker_conf.get("env", [])
+        if "{hostname}" in str(var.get("default", "")) and not var.get("secret")
+    ]
+    if not templated:
+        return own, []
+    # No record, but the worker runs it: made before records were kept, or by
+    # hand. It most likely carries the old shared name, so that is its "old".
+    running_unrecorded = recorded is None and any(
+        isinstance(c, dict) and c.get("slug") == slug for c in _safe_json((worker or {}).get("containers"), [])
+    )
+    recorded_env = (recorded or {}).get("env") if recorded is not None else None
+    renames: list[dict[str, str]] = []
+    for var in templated:
+        key, template = var["key"], str(var.get("default", ""))
+        posted = str((body.env or {}).get(key, "")).strip()
+        if posted and posted != template:
+            continue
+        legacy = template.replace("{hostname}", HOSTNAME_PREFIX)
+        if isinstance(recorded_env, dict):
+            old = recorded_env.get(key)
+            # The old shared name, or the literal template an older form sent.
+            if old not in (legacy, template):
+                continue
+        elif running_unrecorded:
+            old = legacy
+        else:
+            continue
+        new = template.replace("{hostname}", own)
+        if old != new:
+            renames.append({"key": key, "label": str(var.get("label") or key), "old": str(old), "new": new})
+    return own, renames
 
 
 def _instance_spec(spec: dict[str, Any], instance: int, docker_conf: dict[str, Any]) -> dict[str, Any]:
@@ -3970,7 +4065,11 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     #
     # Applying it to overrides too is also the right reading of a value someone
     # typed by hand: nobody means the eight characters "{hostname}".
-    hn = body.hostname or HOSTNAME_PREFIX
+    #
+    # Which name {hostname} becomes is decided per worker: see _device_names.
+    # THIS worker's record: another machine's carries another machine's env.
+    recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+    hn, device_renames = await _device_names(slug, docker_conf, body, worker_id, recorded)
     env: dict[str, str] = {}
     for var in docker_conf.get("env", []):
         env[var["key"]] = str(var.get("default", ""))
@@ -3985,9 +4084,8 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     # the required-field check because a redeploy must not demand values the
     # deployment already has: rejecting here would mean the operator has to
     # retype Storj's IDENTITY_DIR/STORAGE_DIR on every redeploy, which is
-    # precisely what recording the spec exists to avoid.
-    # THIS worker's record: another machine's carries another machine's env.
-    recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+    # precisely what recording the spec exists to avoid. (`recorded` is loaded
+    # above, with the device names.)
     recorded_env = (recorded or {}).get("env") or {}
     custom_image = "" if is_custom else _custom_image(body.image, recorded)
 
@@ -4102,6 +4200,13 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     # to it always reaches the redeploy instead of losing to the record.
     if recorded and not is_custom:
         spec, divergence = _merge_recorded_spec(spec, recorded, typed_env, keys_by_target)
+    # A running deployment keeps the device name it has unless the operator
+    # chose to give it its own. Set here, after the record is merged, so it
+    # holds for a deployment with no record and for a custom service too. The
+    # extra and proxied copies follow, since they are named from this spec.
+    if device_renames:
+        pick = "new" if body.rename_devices else "old"
+        spec["env"] = {**(spec.get("env") or {}), **{r["key"]: r[pick] for r in device_renames}}
 
     # The command always comes from the catalog, filled from the MERGED env.
     #
@@ -4227,6 +4332,28 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     if divergence:
         response["kept_from_previous_deployment"] = divergence
     return response
+
+
+@app.post("/api/deploy/{slug}/device-names")
+async def api_deploy_device_names(
+    slug: str,
+    body: DeployRequest,
+    worker_id: int | None = None,
+    _auth: dict[str, Any] = Depends(_require_owner),
+) -> dict[str, Any]:
+    """The device names a deploy of ``slug`` with this body could rename on this worker.
+
+    Asked by the deploy form before it deploys, so the operator sees each name
+    (old -> new) and chooses: confirm sends ``rename_devices``, and anything
+    else keeps the names the deployment has. Changes nothing.
+    """
+    worker_id = await _resolve_worker_id(worker_id)
+    svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
+    if not svc:
+        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+    _, renames = await _device_names(slug, svc.get("docker") or {}, body, worker_id, recorded)
+    return {"renames": renames}
 
 
 _is_port_range = catalog.is_port_range
