@@ -284,7 +284,7 @@ class TestTheCatalogDrivenPathsActuallyRun:
 
         async def run():
             with (
-                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main, "_require_owner", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(fake, [])),
             ):
@@ -329,7 +329,7 @@ class TestTheCatalogDrivenPathsActuallyRun:
 
         async def run():
             with (
-                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main, "_require_owner", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(None, ["mysterium_email"])),
             ):
@@ -381,7 +381,7 @@ class TestTheCatalogDrivenPathsActuallyRun:
 
         async def run():
             with (
-                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main, "_require_owner", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(fake, [])),
             ):
@@ -402,7 +402,7 @@ class TestTheCatalogDrivenPathsActuallyRun:
 
         async def run():
             with (
-                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main, "_require_owner", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value={})),
                 patch("app.collectors.build_one", return_value=(fake, [])),
             ):

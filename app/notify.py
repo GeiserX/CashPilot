@@ -52,6 +52,26 @@ _ILLEGAL_HEADER_RE = re.compile(r"(Illegal header value\s*)b?['\"].*?['\"]", re.
 # Notifications are a summary, not a log: keep them short enough for a phone banner.
 _MAX_MESSAGE_LEN = 400
 
+# A device id a provider pays the account it is linked to (EarnApp, ProxyRack)
+# is a claim token while it is unlinked: whoever adds it first gets its
+# earnings. The notices that name one mask it at the source (mask_device_id);
+# these catch the EarnApp shapes, which are unambiguous, in any other text:
+# the claim link first, so the id inside it is not left half masked.
+_EARNAPP_CLAIM_URL_RE = re.compile(r"https?://(?:www\.)?earnapp\.com/r/[^\s\"'<>)]+", re.IGNORECASE)
+_EARNAPP_ID_RE = re.compile(r"\bsdk-node-[0-9a-f]{32}\b", re.IGNORECASE)
+
+
+def mask_device_id(device_id: str) -> str:
+    """A device id cut to a suffix the user can recognise and nobody can claim.
+
+    The last four characters only: enough to tell two devices apart on the
+    provider's page, far too few to add the device to another account. ASCII
+    dots, not an ellipsis: an ntfy title travels as an HTTP header, which only
+    takes Latin-1.
+    """
+    device_id = str(device_id or "").strip()
+    return f"...{device_id[-4:]}" if len(device_id) > 8 else "..."
+
 
 def redact(text: str) -> str:
     """Strip credential-looking values out of an alert body.
@@ -63,6 +83,8 @@ def redact(text: str) -> str:
     text = _ILLEGAL_HEADER_RE.sub(r"\1<redacted>", text)
     text = _SECRET_PARAM_RE.sub(r"\1<redacted>", text)
     text = _BEARER_RE.sub(r"\1<redacted>", text)
+    text = _EARNAPP_CLAIM_URL_RE.sub("<link in CashPilot>", text)
+    text = _EARNAPP_ID_RE.sub(lambda m: mask_device_id(m.group(0)), text)
     if len(text) > _MAX_MESSAGE_LEN:
         text = text[:_MAX_MESSAGE_LEN] + "..."
     return text

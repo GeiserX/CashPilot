@@ -1668,11 +1668,13 @@ async def _retry_device_links() -> None:
                 slug, device_id, attempts=attempts, next_at=row["next_at"], gave_up=True
             )
             svc = catalog.get_service(slug) or {}
-            step = catalog.device_link_step(svc, {(svc.get("device_link") or {}).get("id_env"): device_id}) or {}
+            # Masked, with no link: this message is stored and pushed off-box
+            # (_unlinked_devices_warning says why). The next collection puts
+            # the device in the owner's bell with its full id and link.
             message = (
-                f"{svc.get('name') or slug} never accepted the device {device_id} after a day of retries, "
-                f"so it earns for nobody. {step.get('steps', '')} {step.get('url', '')}"
-            ).strip()
+                f"{svc.get('name') or slug} never accepted the device {notify.mask_device_id(device_id)} "
+                f"after a day of retries, so it earns for nobody. {_DEVICE_ID_IN_BELL}"
+            )
             if alert_id := await database.record_alert("notice", slug, message):
                 _spawn(
                     _push_alert(
@@ -1710,28 +1712,47 @@ async def _retrying_device_ids() -> dict[str, set[str]]:
     return retrying
 
 
+def _unlinked_devices(result: Any, retrying: set[str] | frozenset[str] = frozenset()) -> list[dict[str, str]]:
+    """The deployed devices the provider says are not on the account, each with its link.
+
+    The full id and the link that adds it are for the owner's bell only
+    (api_collector_alerts): while a device is unlinked, its id claims its
+    earnings for whoever adds it first. A device in ``retrying`` is left out:
+    the app is still adding it, so asking the user to add it by hand is wrong,
+    and the notice would take the day's push from the give-up message that
+    follows if the retries fail.
+    """
+    ids = sorted(set(getattr(result, "unlinked_devices", None) or []) - set(retrying))
+    svc = catalog.get_service(result.platform) or {}
+    id_env = (svc.get("device_link") or {}).get("id_env")
+    devices = []
+    for device_id in ids:
+        step = catalog.device_link_step(svc, {id_env: device_id}) or {}
+        devices.append({"id": device_id, "masked": notify.mask_device_id(device_id), "url": step.get("url", "")})
+    return devices
+
+
+#: Said in place of the id and its link wherever a notice leaves the owner's bell.
+_DEVICE_ID_IN_BELL = "The owner sees the full ID and the link to add it in CashPilot's notification bell."
+
+
 def _unlinked_devices_warning(result: Any, retrying: set[str] | frozenset[str] = frozenset()) -> str:
     """The notice for deployed devices the provider says are not on the account.
 
-    A device in ``retrying`` is left out: the app is still adding it, so asking
-    the user to add it by hand is wrong, and the notice would take the day's
-    push from the give-up message that follows if the retries fail.
+    It names each device by a masked suffix and carries no link: this text is
+    logged, stored, shown to every role and pushed to ntfy, Telegram and
+    webhooks, and an unlinked device's id claims its earnings. The owner gets
+    the full ids and links beside it (_unlinked_devices).
     """
-    ids = sorted(set(getattr(result, "unlinked_devices", None) or []) - set(retrying))
-    if not ids:
+    devices = _unlinked_devices(result, retrying)
+    if not devices:
         return ""
     svc = catalog.get_service(result.platform) or {}
-    link = svc.get("device_link") or {}
-    steps = []
-    for device_id in ids:
-        step = catalog.device_link_step(svc, {link.get("id_env"): device_id}) or {}
-        steps.append(f"{device_id} ({step['url']})" if step.get("url") else device_id)
     name = svc.get("name") or result.platform
-    which = "A deployed device is" if len(ids) == 1 else f"{len(ids)} deployed devices are"
-    earns = "earns" if len(ids) == 1 else "earn"
-    return (
-        f"{which} not on your {name} account and {earns} for nobody: {'; '.join(steps)}. {link.get('steps', '')}"
-    ).strip()
+    which = "A deployed device is" if len(devices) == 1 else f"{len(devices)} deployed devices are"
+    earns = "earns" if len(devices) == 1 else "earn"
+    masked = ", ".join(d["masked"] for d in devices)
+    return f"{which} not on your {name} account and {earns} for nobody: {masked}. {_DEVICE_ID_IN_BELL}"
 
 
 async def _run_collection() -> None:
@@ -1851,12 +1872,22 @@ async def _run_collection() -> None:
                     # A caveat on a SUCCESSFUL reading. It is shown, because the
                     # figure is partial and the user should know, but it is not
                     # a failure: the balance below is stored exactly as any other.
-                    if unlinked := _unlinked_devices_warning(result, retrying.get(result.platform, set())):
+                    platform_retrying = retrying.get(result.platform, set())
+                    if unlinked := _unlinked_devices_warning(result, platform_retrying):
                         result.warning = f"{result.warning} {unlinked}" if result.warning else unlinked
                     if getattr(result, "warning", None):
                         safe_warning = notify.redact(result.warning)
                         logger.info("Collector notice for %s: %s", result.platform, safe_warning)
-                        alerts.append({"kind": "notice", "platform": result.platform, "error": safe_warning})
+                        notice: dict[str, Any] = {"kind": "notice", "platform": result.platform, "error": safe_warning}
+                        if devices := _unlinked_devices(result, platform_retrying):
+                            # In memory only, never record_alert: the owner's
+                            # bell is the one place the full ids are shown.
+                            notice["devices"] = devices
+                            notice["device_steps"] = str(
+                                ((catalog.get_service(result.platform) or {}).get("device_link") or {}).get("steps")
+                                or ""
+                            ).strip()
+                        alerts.append(notice)
                         # Push out-of-band with the same once-per-window dedupe
                         # errors get. A notice used to reach ONLY the bell,
                         # which is read by whoever happens to open the UI — and
@@ -7756,6 +7787,12 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
         entry = {"kind": alert.get("kind", "collector"), "platform": alert["platform"], "error": clean}
         if alert.get("category"):
             entry["category"] = alert["category"]
+        if owner and alert.get("devices"):
+            # An unlinked device's full id and the link that adds it: while it
+            # is unlinked the id claims its earnings, so only the owner gets
+            # them. Every other role, and every push, has the masked text.
+            entry["devices"] = [{"id": d["id"], "masked": d["masked"], "url": d["url"]} for d in alert["devices"]]
+            entry["device_steps"] = alert.get("device_steps", "")
         if alert.get("kind") == "missing" and "everywhere" in alert:
             # What the dashboard's Forget buttons act on. Absent on an entry
             # restored at startup until the next health check rebuilds it.
@@ -7786,8 +7823,13 @@ async def api_exchange_rates(request: Request) -> dict[str, Any]:
 
 @app.get("/api/services/{slug}/per-node-earnings")
 async def api_per_node_earnings(request: Request, slug: str) -> list[dict[str, Any]]:
-    """Return per-node earnings for services that support it (e.g. MystNodes)."""
-    _require_auth_api(request)
+    """Return per-node earnings for services that support it (e.g. MystNodes).
+
+    Owner only: each row names a node's identity and its LAN address, which are
+    not a viewer's or writer's to read. No page calls this yet; the reader key
+    must never be opted in here.
+    """
+    _require_owner(request)
     config = await database.get_config() or {}
     if not isinstance(config, dict):
         config = {}
