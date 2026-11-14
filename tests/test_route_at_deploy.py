@@ -422,11 +422,13 @@ PROXY = {"kind": "socks5", "host": "proxy.example", "port": 1080}
 
 
 class TestTheWorkerProxiedRoutes:
-    def _deploy(self, worker, monkeypatch, routed, outcome):
+    def _deploy(self, worker, monkeypatch, routed, outcome, **extra):
         seen = {}
 
-        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel=False):
+        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel=False, only_if_running=False):
             seen["own_tunnel"] = own_tunnel
+            if only_if_running:
+                seen["only_if_running"] = True
             seen["marked_first"] = route_gate.routed().get(slug)
             if isinstance(outcome, Exception):
                 raise outcome
@@ -435,7 +437,7 @@ class TestTheWorkerProxiedRoutes:
         monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
         monkeypatch.setattr(worker_api.proxy_tunnel, "deploy", deploy)
-        body = {"earner": BODY, "proxy": PROXY, "routed": routed}
+        body = {"earner": BODY, "proxy": PROXY, "routed": routed, **extra}
         return worker("POST", "/api/proxied/honeygain/3/deploy", body), seen
 
     def test_a_routed_deploy_is_recorded_before_the_earner_exists(self, worker, monkeypatch):
@@ -449,6 +451,13 @@ class TestTheWorkerProxiedRoutes:
         assert resp.status_code == 200
         assert seen == {"own_tunnel": False, "marked_first": None}
         assert route_gate.routed() == {}
+
+    def test_a_rename_rebuild_of_the_routed_copy_keeps_its_own_tunnel(self, worker, monkeypatch):
+        """A device-rename rebuild (only_if_running, not routed) never moves it beside other services."""
+        route_gate.mark("honeygain", 3)
+        resp, seen = self._deploy(worker, monkeypatch, False, {"container_id": "e"}, only_if_running=True)
+        assert resp.status_code == 200, resp.text
+        assert seen == {"own_tunnel": True, "only_if_running": True, "marked_first": 3}
 
     def test_a_failed_routed_deploy_puts_the_previous_route_back(self, worker, monkeypatch):
         route_gate.mark("honeygain", 2)

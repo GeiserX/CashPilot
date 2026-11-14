@@ -759,6 +759,9 @@ async def _send_heartbeat() -> None:
         # Deploys a service through a proxy from its first start, and keeps it
         # off this box's own IP until the owner confirms otherwise (route_gate).
         payload["system_info"]["features"].append("route_at_deploy")
+        # Takes "only_if_running" on a proxied copy deploy, so the UI can rebuild
+        # a running copy without starting one the owner stopped meanwhile.
+        payload["system_info"]["features"].append("proxied_if_running")
     # Only what the owner asked for, and only a finished round.
     sent_seq = _activity_seq
     if _activity_enabled and _pending_activity is not None:
@@ -1855,6 +1858,9 @@ class ProxiedDeploySpec(BaseModel):
     # recorded on this worker so it is never started from the box's own IP
     # without the owner's password (app/route_gate.py).
     routed: bool = False
+    # Replace the copy only while it runs and the owner has not stopped it:
+    # a rebuild the UI makes on its own (a device rename) must never start it.
+    only_if_running: bool = False
 
 
 class ProxyTestSpec(BaseModel):
@@ -2006,6 +2012,21 @@ def _deploy_routed(
             raise _proxy_http_error(exc) from None
 
 
+def _deploy_copy(
+    slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None, only_if_running: bool
+) -> dict[str, Any]:
+    """Deploy a copy of ``slug`` beside its service, or rebuild one in place.
+
+    A rebuild (a device rename) can reach the copy that IS a routed service:
+    it stays in its own tunnel, as a start keeps it (proxy_tunnel._start),
+    never moved into the proxy's shared one beside other services.
+    """
+    own_tunnel = proxy_tunnel._routed_here(slug, proxy_id)
+    return proxy_tunnel.deploy(
+        slug, proxy_id, earner, proxy, own_ip, own_tunnel=own_tunnel, only_if_running=only_if_running
+    )
+
+
 @app.post("/api/proxied/{slug}/{proxy_id}/deploy")
 async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
     """Run a copy of ``slug`` whose only way out is the given proxy (docs/proxies.md)."""
@@ -2024,7 +2045,7 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
     if not spec.routed:
         try:
             result = await asyncio.to_thread(
-                proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip, own_tunnel=False
+                _deploy_copy, slug, proxy_id, earner, spec.proxy.plain(), own_ip, spec.only_if_running
             )
         except Exception as exc:  # noqa: BLE001 - mapped to a status below
             raise _proxy_http_error(exc) from None

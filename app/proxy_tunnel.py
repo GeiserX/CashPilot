@@ -1152,6 +1152,7 @@ def deploy(
     own_ip: str | None,
     *,
     own_tunnel: bool = False,
+    only_if_running: bool = False,
 ) -> dict:
     """Deploy (or replace) the proxied copy of ``slug`` through proxy ``proxy_id``.
 
@@ -1164,9 +1165,26 @@ def deploy(
 
     ``own_tunnel`` (a routed service) puts the earner in a tunnel of its own
     instead; a tunnel it leaves goes once no copy is left in it.
+
+    ``only_if_running`` replaces only a copy that runs and that the owner or
+    the cap did not stop, and changes nothing otherwise (409). It is checked
+    under the lock a stop takes, so a stop that came first always wins.
     """
     with _deploy_lock(proxy_id):
+        if only_if_running:
+            _require_running(slug, proxy_id)
         return _deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=own_tunnel)
+
+
+def _require_running(slug: str, proxy_id: int) -> None:
+    name = earner_name(slug, proxy_id)
+    earner = _get(orchestrator._get_client(), name)
+    try:
+        stopped = name in held()
+    except OSError as exc:
+        raise ProxyTunnelError(f"Could not read which copies are stopped ({exc}); {name} was left as it was") from None
+    if not _is_ours(earner, slug, proxy_id) or stopped or getattr(earner, "status", "") not in _LIVE:
+        raise ProxyTunnelError(f"{name} is not running, so it was left as it was")
 
 
 def _deploy(

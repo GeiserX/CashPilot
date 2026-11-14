@@ -79,8 +79,10 @@ const document = {
 };
 const deploy = new Function(
   'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink', 'wizardState',
+  '_confirmDeviceRenames',
   `${grab('_routeChoice')}\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
-)(escapeHtml, document, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] });
+)(escapeHtml, document, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
+  async () => false);
 await deploy('honeygain', [1]);
 assert.equal(sent.length, 1);
 assert.equal(sent[0].path, '/api/deploy/honeygain?worker_id=1');
@@ -176,11 +178,12 @@ async function pick(routeValue, tick = []) {
   const api = async (path, opts) => { calls.push({ path, route: opts.body.route }); return {}; };
   const live = new Function(
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
-    'wizardState',
+    'wizardState', '_confirmDeviceRenames',
     ['_routeSwitchBoxes', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
       'deployServiceToWorkers'].map(grab).join('\n')
       + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
-  )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] });
+  )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
+    async () => false);
   live._routeSwitchBoxes(dom.select);
   for (const wid of tick) {
     const box = dom.boxes.find(b => b.dataset.wid === String(wid));
