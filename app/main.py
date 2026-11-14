@@ -4423,9 +4423,15 @@ async def _deploy(
     else:
         spec.pop("instances", None)
     # Read before the save moves the record on: what each replaced copy ran.
-    old_prior = await database.prior_deployment_spec(slug, worker_id) if recorded else None
+    # Bookkeeping: a failed read leaves the proof to the old record alone.
+    old_prior: dict[str, Any] | None = None
+    try:
+        old_prior = await database.prior_deployment_spec(slug, worker_id) if recorded else None
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not read the prior spec of %s on worker %s", slug, worker_id, exc_info=True)
     await _record_replaced_copy(slug, worker_id, recorded, old_prior, 1, result, docker_conf)
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
+    _forget_checked_copies(worker_id, slug)
     # The identity ledger follows what each copy really runs: a copy is recorded
     # once its own deploy succeeded, and one being dropped is retired once its
     # removal did, so a failure halfway never marks an id that is not running.
@@ -4445,17 +4451,25 @@ async def _deploy(
         answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
         await _record_replaced_copy(slug, worker_id, recorded, old_prior, n, answer, docker_conf)
         await _record_deploy_identities(slug, worker_id, spec, [n], docker_conf, scope="given")
+    deleted: set[int] = set()
     for n in sorted(c for c in running_copies if c > instances):
         removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        deleted.add(n)
         # Confirmed gone: keep the id it ran with, even if its row was never
         # written, when the worker's digest proves which one that was.
         digest = removed.get("identity_digest") if isinstance(removed, dict) else None
         if isinstance(digest, str):
             await _record_unrecorded_copies(slug, worker_id, recorded or spec, digests={n: digest})
         await _record_deploy_identities(slug, worker_id, {}, [n], docker_conf, scope="given")
-    # Every copy now runs this spec, so the one it replaced proves nothing more.
+    # Every copy now runs this spec, so the one it replaced proves nothing more,
+    # unless it describes a copy above the new count that may still run it: one
+    # no DELETE confirmed (a stale heartbeat hid it) and no row records.
     try:
-        await database.prior_deployment_spec(slug, worker_id, clear=True)
+        prior = await database.prior_deployment_spec(slug, worker_id)
+        above = {n for n in _spec_copies(prior) if n > instances} - deleted if prior else set()
+        have = await database.active_identity_copies(slug, worker_id) if above else set()
+        if all(str(n) in have for n in above):
+            await database.prior_deployment_spec(slug, worker_id, clear=True)
     except Exception:  # noqa: BLE001
         logger.warning("Could not forget the prior spec of %s on worker %s", slug, worker_id, exc_info=True)
     # No sweep of the other copies' rows here: running_copies comes from the last
@@ -4613,6 +4627,18 @@ async def _record_deploy_identities(
     return True
 
 
+def _spec_copies(spec: dict[str, Any]) -> set[int]:
+    """The copies a deploy record describes: its count, or the one copy a raw deploy named."""
+    own = database.spec_copy_number(spec)
+    if own > 1:
+        return {own}
+    try:
+        count = int(spec.get("instances") or 1)
+    except (TypeError, ValueError):
+        count = 1
+    return set(range(1, max(1, min(count, 32)) + 1))
+
+
 async def _record_unrecorded_copies(
     slug: str,
     worker_id: int,
@@ -4643,15 +4669,7 @@ async def _record_unrecorded_copies(
         digests = digests or {}
         trusted = set(trusted)
 
-        def described(source: dict[str, Any]) -> set[int]:
-            own = database.spec_copy_number(source)
-            if own > 1:
-                return {own}
-            try:
-                count = int(source.get("instances") or 1)
-            except (TypeError, ValueError):
-                count = 1
-            return set(range(1, max(1, min(count, 32)) + 1))
+        described = _spec_copies
 
         def runs(source: dict[str, Any] | None, n: int, keys: list[str]) -> bool:
             """Whether copy ``n`` of ``source`` derives the ids the worker's digest names.
@@ -4793,6 +4811,12 @@ async def _record_replaced_copy(
 # already found, wrote or could not prove, so a steady heartbeat reads nothing.
 # Pruned to what the last heartbeat listed, so it never outgrows the fleet.
 _IDENTITIES_CHECKED: dict[int, set[tuple[str, int, str, str]]] = {}
+
+
+def _forget_checked_copies(worker_id: int, slug: str) -> None:
+    """A new record for ``slug`` on this worker: its copies are checked again on the next heartbeat."""
+    if worker_id in _IDENTITIES_CHECKED:
+        _IDENTITIES_CHECKED[worker_id] = {k for k in _IDENTITIES_CHECKED[worker_id] if k[0] != slug}
 
 
 async def _reconcile_running_identities(worker_id: int, containers: Any) -> None:
@@ -10059,6 +10083,7 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
             spec=body.spec if isinstance(body.spec, dict) else None,
             worker_id=worker_id,
         )
+        _forget_checked_copies(worker_id, slug)
         # The worker deploys the one copy the spec names, so a start of copy 2 says
         # nothing about a stopped copy 1.
         copy = _copy_number(body.spec) if isinstance(body.spec, dict) else 1

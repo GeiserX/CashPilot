@@ -1226,16 +1226,41 @@ class TestACopyAboveTheSavedCount:
     BOX_2 = {2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}
 
     def test_a_scale_down_a_stale_heartbeat_hid_keeps_its_copy(self, db):
-        """Copy 2's write fails; a scale-down to one copy cannot see it, so it keeps running."""
+        """Copy 2's write fails; a scale-down to one copy named "new" cannot see it, so copy 2 keeps box-2."""
         wid = TestACopyWhoseWriteFailedUntilItsRemoval()._lose_copy_two()
         with patch.object(main, "scaling_limit", lambda svc: (3, "")):
-            error, sent = _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=1, running=set())
+            error, sent = _deploy(
+                "honeygain",
+                {**TestACopyWhoseWriteFailed.HG, "HONEYGAIN_DEVICE_NAME": "new"},
+                wid,
+                instances=1,
+                running=set(),
+            )
         assert error is None and not any("/instances/" in s["path"] for s in sent)
         assert asyncio.run(database.get_deployment_spec("honeygain", worker_id=wid)).get("instances") is None
-        _heartbeat("box-a", {1: {"HONEYGAIN_DEVICE_NAME": "box"}, **self.BOX_2})
+        # The record now derives new-2 for copy 2; only the spec it replaced proves box-2.
+        assert asyncio.run(database.prior_deployment_spec("honeygain", wid)) is not None
+        _heartbeat("box-a", {1: {"HONEYGAIN_DEVICE_NAME": "new"}, **self.BOX_2})
         assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
         _remove("honeygain", wid, ran=self.BOX_2)
         assert _active() == {}
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+    def test_a_confirmed_delete_lets_the_prior_spec_go(self, db):
+        wid = TestACopyWhoseWriteFailedUntilItsRemoval()._lose_copy_two()
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert (
+                _deploy(
+                    "honeygain",
+                    {**TestACopyWhoseWriteFailed.HG, "HONEYGAIN_DEVICE_NAME": "new"},
+                    wid,
+                    instances=1,
+                    running={1, 2},
+                    ran=self.BOX_2,
+                )[0]
+                is None
+            )
+        assert asyncio.run(database.prior_deployment_spec("honeygain", wid)) is None
         assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
 
     def test_a_removal_before_any_heartbeat(self, db):
@@ -1356,3 +1381,22 @@ class TestTheWorkerReportsTheReplacedIds:
         assert resp.status_code == 200, resp.text
         assert resp.json()["replaced_identity_digest"] == _digest("honeygain", {"HONEYGAIN_DEVICE_NAME": "box"})
         assert "box" not in resp.text.replace(resp.json()["replaced_identity_digest"], "")
+
+
+class TestANewRecordIsCheckedAgain:
+    def test_a_heartbeat_checked_against_the_old_record_is_checked_against_the_new_one(self, db):
+        """Copy 1 runs UUID_B, which the old record (UUID_A) did not derive; a new record does."""
+        wid = _worker()
+
+        async def failing(*args, **kwargs):
+            raise RuntimeError("database is locked")
+
+        with patch.object(main.database, "record_identities", failing):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        runs_b = {1: {"EARNAPP_UUID": UUID_B}}
+        _heartbeat("box-a", runs_b, slug="earnapp")
+        assert _rows() == []
+        with patch.object(main.database, "record_identities", failing):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid)[0] is None
+        _heartbeat("box-a", runs_b, slug="earnapp")
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
