@@ -2331,6 +2331,47 @@ async def set_proxied_copy_rename_pending(proxy_id: int, worker_id: int, slug: s
         await db.close()
 
 
+async def clear_proxied_copy_rename_pending(
+    proxy_id: int, worker_id: int, slug: str, built_from: dict[str, Any]
+) -> bool:
+    """Clear a copy's rename mark, but only if it was rebuilt from the spec its worker still records.
+
+    A confirmed rename can save a newer spec and mark the copy while a rebuild
+    from the older spec is still running. That rebuild leaves the copy on the
+    old device name, so the mark must stay. Own connection and BEGIN
+    IMMEDIATE: the check and the clear are one step, so a save_deployment
+    cannot land between them. Returns whether the mark was cleared.
+    """
+    try:
+        expected = json.loads(json.dumps(built_from, sort_keys=True))
+    except (TypeError, ValueError):
+        return False
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            # The per-worker record, else the fleet-wide one a deployment made
+            # before per-worker records still has (see get_deployment_spec).
+            cursor = await db.execute(
+                "SELECT COALESCE((SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?), "
+                "(SELECT spec_encrypted FROM deployments WHERE slug = ?))",
+                (slug, worker_id, slug),
+            )
+            row = await cursor.fetchone()
+            if _decode_spec((row[0] if row else "") or "", slug) != expected:
+                await db.rollback()
+                return False
+            cursor = await db.execute(
+                "UPDATE proxied_copies SET rename_pending = 0 WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
+                (proxy_id, worker_id, slug),
+            )
+            await db.commit()
+            return (cursor.rowcount or 0) > 0
+        except BaseException:
+            await db.rollback()
+            raise
+
+
 async def set_proxied_copy_removing(proxy_id: int, worker_id: int, slug: str, removing: bool) -> None:
     """Mark a copy as asked to be removed and not yet confirmed by its worker, or clear the mark."""
     db = await _get_db()

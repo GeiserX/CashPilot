@@ -915,6 +915,7 @@ class TestStorageAndRoutes:
         async def go():
             created = await main.api_create_proxy(_Req(_socks()), {})
             pid = created["id"]
+            await database.save_deployment("honeygain", "c1", spec=recorded, worker_id=7)
             await database.save_proxied_copy(pid, 7, "honeygain")
             await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
             marks = []
@@ -933,6 +934,102 @@ class TestStorageAndRoutes:
             return marks
 
         assert _run(go) == [[1], [0]], "a failed rebuild left it on the old name, so it stays offered for a retry"
+
+    def test_adding_a_copy_never_clears_the_mark_a_newer_rename_set(self, db):
+        """The add reads the record, a confirmed rename saves a newer one and marks the copy, then the add finishes.
+
+        The copy was built from the older record, so it still has the old
+        device name: the rename's mark must stay, or the copy drops off the
+        retry list on the wrong name.
+        """
+        svc = {"slug": "honeygain", "name": "Honeygain", "status": "active", "docker": {"image": "x"}}
+        old = {"image": "x", "env": {"DEVICE": "cashpilot"}}
+        new = {"image": "x", "env": {"DEVICE": "cashpilot-box"}}
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            pid = created["id"]
+            await database.save_deployment("honeygain", "c1", spec=old, worker_id=7)
+
+            async def rename_lands(*args, **kwargs):
+                await database.save_deployment("honeygain", "c1", spec=new, worker_id=7)
+                await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
+                return {"status": "deployed", "exit": {}}
+
+            with (
+                patch.object(main.catalog, "get_service", return_value=svc),
+                patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
+                patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+                patch.object(main, "_proxy_to_worker", side_effect=rename_lands),
+            ):
+                await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+            return [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
+
+        assert _run(go) == [1], "built from the older record, so it is still on the old name"
+
+    def test_retrying_a_rename_never_clears_the_mark_a_newer_rename_set(self, db):
+        """The retry of the pending copies reads the record; a second rename saves a newer one meanwhile."""
+        svc = {"slug": "honeygain", "name": "Honeygain", "status": "active", "docker": {"image": "x"}}
+        old = {"image": "x", "env": {"DEVICE": "cashpilot-a"}}
+        new = {"image": "x", "env": {"DEVICE": "cashpilot-b"}}
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            pid = created["id"]
+            await database.save_deployment("honeygain", "c1", spec=old, worker_id=7)
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
+            worker = {
+                "id": 7,
+                "status": "online",
+                "system_info": json.dumps(
+                    {
+                        "docker_available": True,
+                        "features": ["proxy_tunnel", "proxied_if_running"],
+                        "proxied": [{"proxy_id": pid, "slug": "honeygain", "held": False, "status": "running"}],
+                    }
+                ),
+            }
+
+            async def rename_lands(*args, **kwargs):
+                await database.save_deployment("honeygain", "c1", spec=new, worker_id=7)
+                await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
+                return {"status": "deployed"}
+
+            with (
+                patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value=worker),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxied_if_running"}),
+                patch.object(main, "_proxy_worker_call", side_effect=rename_lands),
+            ):
+                notes = await main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], old, pending_only=True)
+            return notes, [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
+
+        notes, marks = _run(go)
+        assert notes == [] and marks == [1], "rebuilt from the older record, so it is still on the old name"
+
+    def test_the_checked_clear_follows_the_record_the_copy_was_built_from(self, db):
+        spec = {"image": "x", "env": {"DEVICE": "cashpilot-a"}}
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            pid = created["id"]
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            results = []
+            # No record at all: nothing says the copy has the current names.
+            await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
+            results.append(await database.clear_proxied_copy_rename_pending(pid, 7, "honeygain", spec))
+            # A record made before per-worker records: the fleet-wide row counts.
+            await database.save_deployment("honeygain", "c1", spec=spec)
+            results.append(await database.clear_proxied_copy_rename_pending(pid, 7, "honeygain", spec))
+            # The worker's own record wins over the fleet-wide one.
+            await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
+            await database.save_deployment("honeygain", "c1", spec={**spec, "env": {"DEVICE": "b"}}, worker_id=7)
+            results.append(await database.clear_proxied_copy_rename_pending(pid, 7, "honeygain", spec))
+            results.append([c["rename_pending"] for c in await database.list_proxied_copies(pid)])
+            return results
+
+        assert _run(go) == [False, True, False, [1]]
 
     def test_a_copy_of_a_linked_device_runs_and_registers_its_own_id(self, db):
         original = "cd" * 32

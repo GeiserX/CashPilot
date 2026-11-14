@@ -5646,7 +5646,9 @@ async def _refresh_proxied_copies(
             detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
             notes.append(f"{label}: keeps its old device name ({detail})")
             continue
-        await database.set_proxied_copy_rename_pending(pid, worker_id, slug, False)
+        # Only if ``recorded`` is still the record: a rename saved since then
+        # marked this copy again, and this rebuild left it on the old name.
+        await database.clear_proxied_copy_rename_pending(pid, worker_id, slug, recorded)
         if step := catalog.device_link_step(svc, earner["env"]):
             await _register_device(slug, step["id"], earner["env"])
     return notes
@@ -5717,9 +5719,11 @@ async def api_add_proxied_copy(
         if exc.status_code != 504 and not had_record:
             await database.delete_proxied_copy(proxy_id, worker_id, slug)
         raise
-    # Rebuilt from the current record, so a copy a rename left on the old
-    # device name is on the new one now. A failed rebuild keeps the mark.
-    await database.set_proxied_copy_rename_pending(proxy_id, worker_id, slug, False)
+    # Rebuilt from the record read above, so a copy a rename left on the old
+    # device name is on the new one now, unless a rename saved a newer record
+    # meanwhile: then this copy still has the old name and keeps the mark. A
+    # failed rebuild keeps it too.
+    await database.clear_proxied_copy_rename_pending(proxy_id, worker_id, slug, recorded)
     exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
     exit_ip = egress.public_ip(exit_info.get("ip"))
     workers = await database.list_workers()

@@ -93,6 +93,19 @@ def _post(client, path, body, workers, recorded=None, role="owner", wid=None, co
             if (c["proxy_id"], c["worker_id"], c["slug"]) == (proxy_id, worker_id, slug):
                 c["rename_pending"] = 1 if pending else 0
 
+    saved: list[dict] = []
+
+    async def _save(*args, spec=None, **kw):
+        if spec is not None:
+            saved.append(json.loads(json.dumps(spec)))
+
+    async def _clear_pending(proxy_id, worker_id, slug, built_from):
+        # Cleared only if the copy was built from the record that is current.
+        if built_from != (saved[-1] if saved else recorded):
+            return False
+        await _mark_pending(proxy_id, worker_id, slug, False)
+        return True
+
     async def _fake_deploy(worker_id, slug, spec):
         sent.append(spec)
         return {"container_id": "c1"}
@@ -111,11 +124,12 @@ def _post(client, path, body, workers, recorded=None, role="owner", wid=None, co
         patch("app.main.catalog.get_service", return_value=SVC),
         patch("app.main._proxy_worker_deploy", side_effect=_fake_deploy),
         patch("app.main._proxy_to_worker", new_callable=AsyncMock),
-        patch("app.main.database.save_deployment", new_callable=AsyncMock),
+        patch("app.main.database.save_deployment", side_effect=_save),
         patch("app.main.database.record_health_event", new_callable=AsyncMock),
         patch("app.main._run_collection", new_callable=AsyncMock),
         patch("app.main.database.list_proxied_copies", side_effect=_list_copies),
         patch("app.main.database.set_proxied_copy_rename_pending", side_effect=_mark_pending),
+        patch("app.main.database.clear_proxied_copy_rename_pending", side_effect=_clear_pending),
     ):
         resp = client.post(f"{path}?worker_id={wid}", json=body)
     return resp, sent
