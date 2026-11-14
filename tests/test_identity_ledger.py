@@ -350,10 +350,12 @@ def _request():
     return request
 
 
-def _deploy(slug, env, worker_id, *, instances=None, allow=False):
+def _deploy(slug, env, worker_id, *, instances=None, allow=False, fail=None, running=frozenset()):
     sent: list[dict] = []
 
     async def hop(wid, method, path, *, json=None, **kwargs):
+        if fail and fail(method, path, json):
+            raise HTTPException(status_code=502, detail="worker failed")
         sent.append({"worker": wid, "path": path, "json": json})
         return {"container_id": f"c{wid}"}
 
@@ -365,7 +367,7 @@ def _deploy(slug, env, worker_id, *, instances=None, allow=False):
             patch.object(main, "_resolve_worker_id", AsyncMock(return_value=worker_id)),
             patch.object(main, "_proxy_to_worker", hop),
             patch.object(main, "_worker_features", AsyncMock(return_value={"instances"})),
-            patch.object(main, "_worker_instances", AsyncMock(return_value=set())),
+            patch.object(main, "_worker_instances", AsyncMock(return_value=set(running))),
             patch.object(main, "_register_device", AsyncMock(return_value=True)),
             patch.object(main.database, "record_health_event", AsyncMock()),
             patch.object(main, "_spawn", lambda coro: coro.close()),
@@ -607,3 +609,145 @@ class TestTheAdminKeyCannotMintAnOwner:
         client = TestClient(main.app)
         with patch.object(auth, "get_current_user", return_value=OWNER):
             assert client.patch(f"/api/users/{uid}", json={"role": "owner"}).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, second round: a key declared twice, two writes at once,
+# fleet-wide specs, the copy a raw deploy named, and a deploy that fails halfway
+# ---------------------------------------------------------------------------
+
+
+class TestASecretDeclaredTwice:
+    SVC = {
+        "slug": "dup",
+        "docker": {
+            "env": [{"key": "K", "secret": True}, {"key": "K", "identifier": True}, {"key": "N", "identifier": True}]
+        },
+    }
+
+    def test_it_is_never_an_identity_key(self):
+        assert catalog.identity_keys(self.SVC) == {"N": "N"}
+
+    def test_its_value_never_reaches_the_ledger(self, db):
+        with patch.object(catalog, "get_service", lambda slug: self.SVC):
+            asyncio.run(database.record_identities("dup", 1, {"1": {"K": "the-secret", "N": "box"}}))
+        assert _active() == {("dup", 1, "1", "N"): "box"}
+
+    def test_the_loader_refuses_it(self, tmp_path):
+        data = {"name": "X", "slug": "x", "docker": {"image": "x/x:1", "env": self.SVC["docker"]["env"]}}
+        assert any("key K is secret" in e for e in catalog._validate(data, tmp_path / "x.yml"))
+
+
+class TestTwoWritesAtOnce:
+    def test_two_records_of_one_copy_keep_one_active_row(self, db):
+        async def both():
+            await asyncio.gather(
+                *(
+                    database.record_identities("earnapp", 1, {"p5": {"EARNAPP_UUID": UUID_A}}, scope="given")
+                    for _ in range(4)
+                )
+            )
+
+        asyncio.run(both())
+        assert [r["status"] for r in _rows()] == ["active"]
+
+
+def _legacy_deployment(slug, env, container_id="abcdef0123456789"):
+    """A deployment from before per-worker specs: only the fleet-wide row, and a box running it."""
+    wid = asyncio.run(
+        database.upsert_worker(
+            "client-old", name="box-old", containers=f'[{{"slug": "{slug}", "container_id": "{container_id[:12]}"}}]'
+        )
+    )
+    asyncio.run(database.save_deployment(slug=slug, container_id=container_id, spec={"env": env}))
+    return wid
+
+
+class TestAFleetWideSpec:
+    def test_removing_it_keeps_its_ids(self, db):
+        wid = _legacy_deployment("earnapp", {"EARNAPP_UUID": UUID_A})
+        asyncio.run(database.remove_deployment("earnapp", worker_id=wid))
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+    def test_removing_it_everywhere_keeps_its_ids(self, db):
+        wid = _legacy_deployment("earnapp", {"EARNAPP_UUID": UUID_A})
+        asyncio.run(database.remove_deployment("earnapp"))
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+    def test_another_box_removing_it_does_not_claim_its_ids(self, db):
+        wid = _legacy_deployment("earnapp", {"EARNAPP_UUID": UUID_A})
+        other = _worker("box-b")
+        asyncio.run(database.remove_deployment("earnapp", worker_id=other))
+        assert {r["worker_id"] for r in _rows()} <= {wid}
+
+    def test_the_backfill_lists_it(self, db):
+        wid = _legacy_deployment("earnapp", {"EARNAPP_UUID": UUID_A})
+        asyncio.run(main._backfill_identities())
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+
+class TestTheCopyARawDeployNamed:
+    def _raw_copy(self, env, copy, worker_id=1):
+        async def run():
+            with (
+                patch.object(main, "_require_owner", lambda r: OWNER),
+                patch.object(main, "_proxy_to_worker", AsyncMock(return_value={"container_id": "c"})),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                body = main.WorkerCommand(command="deploy", slug="earnapp", spec={"env": env, "instance": copy})
+                await main.api_worker_command(_request(), worker_id, body)
+
+        asyncio.run(run())
+
+    def test_removal_keeps_it_on_that_copy(self, db):
+        self._raw_copy({"EARNAPP_UUID": UUID_A}, 2)
+        asyncio.run(database.remove_deployment("earnapp", worker_id=1))
+        assert {(r["instance"], r["status"]) for r in _rows()} == {("2", "retired")}
+
+    def test_the_backfill_lists_it_on_that_copy(self, db):
+        wid = _worker()
+        spec = {"env": {"EARNAPP_UUID": UUID_A}, "instance": 2}
+        asyncio.run(database.save_deployment(slug="earnapp", container_id="c", spec=spec, worker_id=wid))
+        asyncio.run(main._backfill_identities())
+        assert _active() == {("earnapp", wid, "2", "EARNAPP_UUID"): UUID_A}
+
+
+class TestADeployThatFailsHalfway:
+    HG = {"HONEYGAIN_EMAIL": "me@example.com", "HONEYGAIN_PASSWORD": "pw"}
+
+    def test_a_copy_that_failed_keeps_the_id_it_still_runs(self, db):
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", {**self.HG, "HONEYGAIN_DEVICE_NAME": "box"}, 1, instances=2)[0] is None
+
+            def copy_two(method, path, json):
+                return path.endswith("/deploy") and (json or {}).get("instance") == 2
+
+            error, _ = _deploy("honeygain", {**self.HG, "HONEYGAIN_DEVICE_NAME": "new"}, 1, instances=2, fail=copy_two)
+        assert error is not None
+        assert _active() == {
+            ("honeygain", 1, "1", "HONEYGAIN_DEVICE_NAME"): "new",
+            ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME"): "box-2",
+        }
+
+    def test_a_copy_whose_removal_failed_stays_active(self, db):
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", {**self.HG, "HONEYGAIN_DEVICE_NAME": "box"}, 1, instances=2)[0] is None
+
+            def delete(method, path, json):
+                return method == "DELETE"
+
+            error, _ = _deploy(
+                "honeygain", {**self.HG, "HONEYGAIN_DEVICE_NAME": "box"}, 1, instances=1, fail=delete, running={1, 2}
+            )
+        assert error is not None
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+
+    def test_a_copy_removed_is_retired(self, db):
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", {**self.HG, "HONEYGAIN_DEVICE_NAME": "box"}, 1, instances=2)[0] is None
+            error, _ = _deploy("honeygain", {**self.HG, "HONEYGAIN_DEVICE_NAME": "box"}, 1, instances=1, running={1, 2})
+        assert error is None
+        assert _active() == {("honeygain", 1, "1", "HONEYGAIN_DEVICE_NAME"): "box"}
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()

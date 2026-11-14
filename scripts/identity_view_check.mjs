@@ -117,5 +117,22 @@ check('Cancel sends nothing more and shows the reason', r.calls.length === 1 && 
 r = await runApi([inUse, inUse], true);
 check('a second refusal is shown, never asked again', r.calls.length === 2 && r.asked === 1 && r.error, JSON.stringify(r));
 
+// --- the Settings list loads even when /api/config fails ----------------------
+// loadIdentities has its own error path; behind the config call it never ran,
+// and the panel said "Loading..." forever.
+const loadSettingsFn = slice('async function loadSettings(', '// --- Device ids (issue #740)');
+const settingsCalls = [];
+const stub = name => () => { settingsCalls.push(name); };
+const loadSettings = new Function(
+  'populateCurrencyDropdown', 'loadUpdateCard', 'loadIdentities', 'loadCredentialHealth',
+  'renderEnvVars', 'renderCollectors', 'settingsPanelsFailed', 'api',
+  `${loadSettingsFn}; return loadSettings;`,
+)(stub('currency'), stub('update'), stub('identities'), stub('credentials'),
+  stub('env'), stub('collectors'), stub('failed'),
+  async path => { if (path === '/api/config') throw new Error('401'); return []; });
+await loadSettings();
+check('a failed /api/config still loads the device ids', settingsCalls.includes('identities')
+  && settingsCalls.includes('failed'), JSON.stringify(settingsCalls));
+
 console.log(bad ? `\nRESULT: FAIL (${bad})` : '\nRESULT: PASS');
 process.exit(bad ? 1 : 0);
