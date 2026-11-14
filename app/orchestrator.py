@@ -15,6 +15,7 @@ import ipaddress
 import logging
 import os
 import re
+import shlex
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -2250,6 +2251,68 @@ def catalog_image_matches(slug: str, image: str) -> bool:
         if repo == c_repo and (not c_tag or tag == c_tag) and (not c_digest or digest == c_digest):
             return True
     return False
+
+
+def _catalog_command_tokens(template: str, env: dict[str, Any]) -> list[str]:
+    """The arguments the catalog's command becomes once its ``${VAR}`` are filled from ``env``.
+
+    Split first, filled second: a value is one argument whatever it holds, so a
+    value with a space in it ("1000:2000 --tequilapi.address=0.0.0.0") cannot
+    add arguments of its own. Docker splits the string the UI sends with shlex
+    too (docker-py's split_command), so a spec that carries such a value no
+    longer splits into these arguments and is refused.
+    """
+    return [
+        re.sub(r"\$\{(\w+)\}", lambda m: str(env.get(m.group(1), m.group(0))), token) for token in shlex.split(template)
+    ]
+
+
+def critical_spec_deviations(
+    slug: str, image: str, command: str | None, env: dict[str, Any] | None, volumes: Any
+) -> list[str]:
+    """How a deploy of ``slug`` differs from what this worker's catalog runs; [] when it does not.
+
+    Only for a service with critical volumes: whatever runs in its container can
+    read or replace its wallet or identity. So the image, the command, the env
+    keys and the mount targets must be the catalog's, or the owner must have
+    confirmed the difference with their password (app/step_up.py). Each of
+    these alone is enough to take the wallet with the catalog's own image: a
+    shell as the command, ``LD_PRELOAD`` or an import variable in the env, a
+    volume of the caller's mounted over the image's binaries. Env values are
+    the operator's settings and are not compared, except where they land on the
+    command line (see _catalog_command_tokens).
+    """
+    docker_conf = ((get_service(slug) if get_service is not None else None) or {}).get("docker") or {}
+    found: list[str] = []
+    if not catalog_image_matches(slug, image):
+        pinned = str(docker_conf.get("image") or "")
+        if _split_image(pinned)[0] == _split_image(str(image or ""))[0]:
+            found.append(
+                f"the image {image} is not the {pinned} this worker's catalog pins. If the UI was updated and "
+                "this worker was not, update the worker"
+            )
+        else:
+            found.append(f"the image {image} is not the catalog's")
+    template = str(docker_conf.get("command") or "")
+    try:
+        expected = _catalog_command_tokens(template, env or {}) if template else []
+        sent = shlex.split(command) if command else []
+    except ValueError:
+        expected, sent = [], ["<unparseable>"]
+    if sent != expected:
+        found.append("the command is not the catalog's")
+    declared = {str(var.get("key")) for var in docker_conf.get("env") or [] if isinstance(var, dict)}
+    if extra := sorted(set(env or {}) - declared):
+        found.append(f"the env sets {', '.join(extra)}, which the catalog does not declare")
+    targets = {_norm_mount(str(m).split(":")[1]) for m in docker_conf.get("volumes") or [] if ":" in str(m)}
+    mounted = (
+        [str((m or {}).get("bind") or "") for m in volumes.values()]
+        if isinstance(volumes, dict)
+        else [str(entry).split(":")[1] if ":" in str(entry) else "" for entry in volumes or []]
+    )
+    if strange := sorted({_norm_mount(t) for t in mounted} - targets):
+        found.append(f"it mounts {', '.join(strange)}, which the catalog does not")
+    return found
 
 
 #: The largest state ``read_critical_state`` will hold in memory. Node identities,

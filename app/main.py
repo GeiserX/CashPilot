@@ -4189,17 +4189,15 @@ async def _deploy(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug} copy {n}: {exc}") from exc
 
-    # Another image on a service that keeps a wallet or node identity runs on
-    # that volume, so it needs the owner's password now, not just a session.
-    # The worker checks the approval this produces; see _approve_custom_image.
-    approval_target = await _step_up_custom_image(
-        request, slug, svc, custom_image, getattr(body, "step_up_password", None)
-    )
-    first_spec = {**spec, "moved_mounts": moved_mounts}
+    # A service that keeps a wallet or node identity runs as the catalog says,
+    # or with the owner's password now, not just a session: whatever runs in its
+    # container can take the wallet. The worker checks the approval this
+    # produces against the exact spec it receives; see _step_up_critical.
+    approve = await _step_up_critical(request, slug, svc, custom_image, getattr(body, "step_up_password", None))
+    # Passed only when set, so the plain call keeps its three-argument shape.
+    signed: dict[str, Any] = {"approve": True} if approve else {}
     try:
-        if approval_target:
-            first_spec = await _approve_custom_image(worker_id, first_spec, approval_target)
-        result = await _proxy_worker_deploy(worker_id, slug, first_spec)
+        result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
     except HTTPException as exc:
         await _audit_worker_refusal(request, exc, slug, worker_id)
         raise
@@ -4233,10 +4231,7 @@ async def _deploy(
         await database.record_health_event(
             slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
         )
-        copy_spec = _instance_spec(spec, n, docker_conf)
-        if approval_target:
-            copy_spec = await _approve_custom_image(worker_id, copy_spec, approval_target)
-        await _proxy_worker_deploy(worker_id, slug, copy_spec)
+        await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
     metrics.record_container_lifecycle("deploy", slug)
@@ -4256,19 +4251,27 @@ async def _deploy(
 _is_port_range = catalog.is_port_range
 
 
-async def _step_up_custom_image(
+async def _step_up_critical(
     request: Request | None, slug: str, svc: dict[str, Any], custom_image: str, password: Any
-) -> str:
-    """The approval target for a custom image on a critical service, after the password check; else "".
+) -> bool:
+    """Whether this deploy goes out with a signed approval, after the password check.
 
-    Which services count is the YAML's ``critical_volumes``, as on the worker.
-    No password in the request answers 403 ``step_up_required``, which the
-    dashboard turns into a password prompt and a retry.
+    Only for a service whose YAML declares ``critical_volumes``, as on the
+    worker. A custom image always needs the password: no password answers 403
+    ``step_up_required``, which the dashboard turns into a password prompt and
+    a retry. Anything else the worker may still find different from its own
+    catalog (an env key the catalog does not declare, or a UI and a worker on
+    different releases with different pinned images or commands); the worker
+    then answers ``step_up_required`` itself, and the retry carries the
+    password, so a password in the request is checked and the spec signed
+    whatever the reason.
     """
-    if not custom_image or svc.get("custom") or not catalog.critical_volume_targets(slug):
-        return ""
-    target = f"{slug}|{custom_image}"
-    if request is None or not isinstance(password, str) or not password:
+    if svc.get("custom") or not catalog.critical_volume_targets(slug):
+        return False
+    has_password = isinstance(password, str) and bool(password)
+    if not has_password and not custom_image:
+        return False
+    if request is None or not has_password:
         raise HTTPException(
             status_code=403,
             detail={
@@ -4277,15 +4280,17 @@ async def _step_up_custom_image(
                 "image than the catalog's needs your password.",
             },
         )
-    await require_step_up(request, password, action=step_up.ACTION_CUSTOM_IMAGE, target=target)
-    return target
+    image = custom_image or (svc.get("docker") or {}).get("image") or ""
+    await require_step_up(request, password, action=step_up.ACTION_CUSTOM_IMAGE, target=f"{slug}|{image}")
+    return True
 
 
-async def _approve_custom_image(worker_id: int, spec: dict[str, Any], target: str) -> dict[str, Any]:
+async def _approve_spec(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
     """``spec`` with the signed approval the worker checks, keyed with that worker's own key.
 
-    Minted per request, so each copy gets its own and none is ever recorded.
-    A worker still on the shared fleet key cannot check one, so it is refused here.
+    Signed over the exact spec sent (step_up.deploy_target), so it is minted
+    last, per request: each copy gets its own and none is ever recorded. A
+    worker still on the shared fleet key cannot check one, so it is refused here.
     """
     worker = await database.get_worker(worker_id) or {}
     key = await _confirmed_worker_key(worker.get("client_id") or "")
@@ -4295,6 +4300,9 @@ async def _approve_custom_image(worker_id: int, spec: dict[str, Any], target: st
             detail="This worker has not finished enrolling, so it cannot check a password confirmation. "
             "Wait for its next heartbeat and try again.",
         )
+    target = step_up.deploy_target(
+        slug, spec.get("image") or "", spec.get("command"), spec.get("env"), spec.get("volumes")
+    )
     return {**spec, "approval": step_up.sign(key, step_up.ACTION_CUSTOM_IMAGE, target)}
 
 
@@ -5000,7 +5008,9 @@ def _deploy_timeout(slug: str) -> int:
     return 60 + _catalog_stop_timeout(slug) + constants.START_SETTLE_SECONDS
 
 
-async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+async def _proxy_worker_deploy(
+    worker_id: int, slug: str, spec: dict[str, Any], *, approve: bool = False
+) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
     The worker stops the container it replaces with the catalog's stop timeout
@@ -5021,6 +5031,9 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
         image = _image_for_arch(docker_conf, arch)
         if image:
             spec = {**spec, "image": image}
+    if approve:
+        # After the image is final: the approval covers the spec as sent.
+        spec = await _approve_spec(worker_id, slug, spec)
     return await _proxy_to_worker(
         worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
