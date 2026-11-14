@@ -114,9 +114,14 @@ python3 state_backup.py decrypt <file>.cpbackup --out restored
 
 It checks the file's integrity, refuses an altered one, and writes one tar
 archive per folder, printing where each goes. It never overwrites a file: give
-it an empty `--out` folder. It also refuses an archive with an entry that could
-land outside its folder (an absolute path, `..`, a link pointing out, a device),
-because step 2 extracts as root:
+it an empty `--out` folder. Step 2 extracts as root, so it also refuses the
+whole file if any entry could land outside its folder (an absolute path, `..`,
+a link pointing out, a device or pipe), names a path twice, is a sparse file, or
+carries an extended attribute such as a file capability. The error says which
+rule fired. It writes each entry again from its name, type, permission bits,
+owner ids, time and contents only, and drops setuid, setgid and sticky bits. A
+file that unpacks to more than 64 MB or holds more than 20,000 entries is
+refused too; no export is that large. A good run prints:
 
 ```
 mysterium from box-a, checksum verified.

@@ -290,17 +290,56 @@ def looks_like_bundle(data: bytes) -> bool:
     return True
 
 
-def _unsafe_member(member: Any, links: set[str]) -> str | None:
-    """Why ``member`` could write outside its own folder on restore, or None.
+#: The most file data a restore unpacks. The worker never exports more than
+#: ``orchestrator.MAX_BACKUP_BYTES`` (64 MB, tar headers included), so every real
+#: bundle fits. This file runs on its own (copy it, or run it from the image), so
+#: it keeps its own copy of the number; a test holds the two equal.
+MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+
+#: The most entries a restore accepts. An identity, a keystore or a wallet folder
+#: holds tens of files, a Tor-style relay folder a few hundred. Past this it is a
+#: data folder, which the size cap already sends to a disk-level backup. Each entry
+#: is held in memory twice, so the count is capped as well as the bytes.
+MAX_ARCHIVE_ENTRIES = 20_000
+
+#: The only PAX records a restore accepts. tarfile turns each of these into a
+#: TarInfo field (name, link, size, owner, times), and the entry is rebuilt from
+#: those fields. Anything else is refused: ``SCHILY.xattr.*`` (file capabilities,
+#: SELinux labels), ACLs, ``GNU.sparse.*``, vendor records. Docker applies every
+#: ``SCHILY.xattr.*`` record it extracts, so passing one through would hand a
+#: bundle's author a file capability on the restored volume.
+_PAX_FIELDS = frozenset(
+    {"path", "linkpath", "size", "uid", "gid", "uname", "gname", "mtime", "atime", "ctime", "hdrcharset"}
+)
+
+
+def _clean(name: str) -> str:
+    return "/".join(p for p in name.split("/") if p not in ("", "."))
+
+
+def _unsafe_member(member: Any, links: set[str], files: set[str], seen: set[str]) -> str | None:
+    """Which rule refuses ``member``, or None when it may be restored.
 
     The restore extracts these archives as root into a volume, and in recipient
     mode anyone holding the public key can build a bundle that opens cleanly. So
-    every entry is checked on its own, by the rules of tarfile's
-    ``data_filter`` and stricter in two places: names are refused rather than rewritten, and a link
-    target may not use ``..`` at all, because a chain of links can climb out
-    even when each target looks inside on paper.
+    every entry is checked on its own, by the rules of tarfile's ``data_filter``
+    and stricter: names are refused rather than rewritten, a symlink target may
+    not use ``..`` at all (a chain of links can climb out even when each target
+    looks inside on paper), and a hard link must point at a file that came earlier
+    in the same folder. ``links``, ``files`` and ``seen`` hold the cleaned names
+    of the links, regular files and all entries read so far.
     """
     name = member.name
+    if member.issparse() or any(k.startswith("GNU.sparse.") for k in member.pax_headers):
+        return f"{name!r} is a sparse file (refused: a few bytes in the file unpack to gigabytes)"
+    extra = sorted(set(member.pax_headers) - _PAX_FIELDS)
+    if extra:
+        return (
+            f"{name!r} carries the extended record {extra[0][:80]!r} (refused: only names, sizes, owners, "
+            "modes and times are restored, never extended attributes such as file capabilities)"
+        )
+    if not (member.isfile() or member.isdir() or member.issym() or member.islnk()):
+        return f"{name!r} is a device, pipe or other special entry, not a file, folder or link"
     if name.startswith(("/", "\\")):
         return f"{name!r} is an absolute path"
     parts = [p for p in name.split("/") if p not in ("", ".")]
@@ -309,17 +348,17 @@ def _unsafe_member(member: Any, links: set[str]) -> str | None:
     for depth in range(1, len(parts)):
         if "/".join(parts[:depth]) in links:
             return f"{name!r} is written through a link"
+    if "/".join(parts) in seen:
+        return f"{name!r} appears twice (each path may appear once)"
     if member.issym() or member.islnk():
         target = member.linkname
         tparts = target.split("/")
         if not target or target.startswith(("/", "\\")) or ".." in tparts:
             return f"{name!r} links to {target!r}, outside its folder"
-        if member.islnk() and (
-            tparts[0] != parts[0] or any("/".join(tparts[:d]) in links for d in range(1, len(tparts)))
-        ):
-            return f"{name!r} links to {target!r}, outside its folder"
-    elif not (member.isfile() or member.isdir()):
-        return f"{name!r} is a device or pipe, not a file or folder"
+        if member.islnk():
+            clean = _clean(target)
+            if clean not in files or clean.split("/", 1)[0] != parts[0]:
+                return f"{name!r} hard-links to {target!r}, which is not a file earlier in the same folder"
     return None
 
 
@@ -329,32 +368,74 @@ def split_archives(payload: bytes) -> dict[str, bytes]:
     The worker stores each critical mount as Docker's own archive of it, one
     after another. Each archive's members sit under the mount's last path
     component (``/var/lib/mysterium-node`` -> ``mysterium-node/...``), so they
-    are regrouped by that name. Owners, modes and times are kept, which is what
-    ``docker cp`` needs to put the files back as the service expects them.
+    are regrouped by that name.
 
-    An entry that could land outside its folder (absolute name, ``..``, a link
-    pointing out, a path through a link, a device or pipe) fails the whole
-    restore: see ``_unsafe_member``. Setuid and setgid bits are dropped.
+    Every entry is rebuilt from a short list of fields: name, type, permission
+    bits, owner ids, modification time, size and link target. Owners, modes and
+    times are what ``docker cp`` and ``tar -x`` need to put the files back as the
+    service expects them; nothing else from the input reaches the output.
+
+    One refused entry fails the whole restore, and the error names the rule (see
+    ``_unsafe_member``): an absolute name, ``..``, a link pointing out, a path
+    through a link, a path given twice, a device or pipe, a sparse file, or any
+    extended record such as a file capability. Setuid, setgid and sticky bits are
+    dropped. More than ``MAX_ARCHIVE_BYTES`` of file data or
+    ``MAX_ARCHIVE_ENTRIES`` entries is refused before the data is read.
     """
     import io
     import tarfile
 
     groups: dict[str, list[tuple[tarfile.TarInfo, bytes | None]]] = {}
     links: set[str] = set()
-    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:", ignore_zeros=True) as src:
-        for member in src:
-            if member.name.startswith("./"):
-                member.name = member.name[2:]
-            why = _unsafe_member(member, links)
-            if why:
-                raise BackupError(f"The backup holds an unsafe entry and was not restored: {why}.")
-            member.name = "/".join(p for p in member.name.split("/") if p not in ("", "."))
-            if member.issym() or member.islnk():
-                links.add(member.name)
-            member.mode &= 0o1777
-            top = member.name.split("/", 1)[0]
-            data = src.extractfile(member).read() if member.isfile() else None  # type: ignore[union-attr]
-            groups.setdefault(top, []).append((member, data))
+    files: set[str] = set()
+    seen: set[str] = set()
+    total = 0
+    try:
+        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:", ignore_zeros=True) as src:
+            for count, member in enumerate(src, start=1):
+                if count > MAX_ARCHIVE_ENTRIES:
+                    raise BackupError(
+                        f"The backup holds more than {MAX_ARCHIVE_ENTRIES} entries and was not restored "
+                        "(entry cap). That is a data folder, not an identity: back it up at the disk level."
+                    )
+                if src.pax_headers:
+                    raise BackupError(
+                        "The backup holds an unsafe entry and was not restored: the archive carries a PAX "
+                        "global header (refused: it would apply its records to every entry after it)."
+                    )
+                if member.name.startswith("./"):
+                    member.name = member.name[2:]
+                why = _unsafe_member(member, links, files, seen)
+                if why:
+                    raise BackupError(f"The backup holds an unsafe entry and was not restored: {why}.")
+                name = _clean(member.name)
+                seen.add(name)
+                data = None
+                clean = tarfile.TarInfo(name)
+                clean.mode = member.mode & 0o777
+                clean.uid, clean.gid = member.uid, member.gid
+                clean.mtime = int(member.mtime)
+                if member.isfile():
+                    total += member.size
+                    if total > MAX_ARCHIVE_BYTES:
+                        raise BackupError(
+                            f"The backup unpacks to more than {MAX_ARCHIVE_BYTES // (1024 * 1024)} MB and was "
+                            "not restored (size cap). No export is that large."
+                        )
+                    data = src.extractfile(member).read()  # type: ignore[union-attr]
+                    clean.type, clean.size = tarfile.REGTYPE, len(data)
+                    files.add(name)
+                elif member.isdir():
+                    clean.type = tarfile.DIRTYPE
+                elif member.issym():
+                    clean.type, clean.linkname = tarfile.SYMTYPE, member.linkname
+                    links.add(name)
+                else:
+                    clean.type, clean.linkname = tarfile.LNKTYPE, _clean(member.linkname)
+                    links.add(name)
+                groups.setdefault(name.split("/", 1)[0], []).append((clean, data))
+    except tarfile.TarError as exc:
+        raise BackupError(f"The backup's archive is damaged: {exc}") from exc
 
     out: dict[str, bytes] = {}
     for top, members in groups.items():
