@@ -605,12 +605,13 @@ def copy_name(slug: str, proxy_id: int) -> str | None:
     return earner.name if _is_ours(earner, slug, proxy_id) else None
 
 
-def routed_copies(slug: str) -> list[tuple[int, str]]:
+def routed_copies(slug: str, marked: int | None) -> list[tuple[int, str]]:
     """(proxy id, name) of every routed copy of ``slug`` on this worker, through any proxy.
 
     A routed copy is an earner in a tunnel of its own. One whose tunnel is gone
-    counts too: it is not known which tunnel it comes back in. Raises when
-    Docker cannot answer.
+    counts only when ``marked`` (the proxy the route mark names) is its proxy:
+    _start brings it back in a tunnel of its own then, and in the proxy's
+    shared tunnel otherwise. Raises when Docker cannot answer.
     """
     client = orchestrator._get_client()
     found = client.containers.list(
@@ -623,7 +624,9 @@ def routed_copies(slug: str) -> list[tuple[int, str]]:
             continue
         tunnel_id = _tunnel_id_of(earner)
         tunnel = _get(client, tunnel_id) if tunnel_id else None
-        if tunnel is None or _own_key(tunnel) == slug:
+        if (tunnel is None and marked is not None and int(pid) == int(marked)) or (
+            tunnel is not None and _own_key(tunnel) == slug
+        ):
             copies.append((int(pid), str(earner.name)))
     return sorted(copies)
 

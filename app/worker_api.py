@@ -1977,9 +1977,11 @@ def _deploy_routed(
             )
         # A routed copy through another proxy stays when this one is made
         # (proxy_tunnel._deploy replaces only its own proxy's), and the mark
-        # moved here would hide it from the next switch to direct.
+        # moved here would hide it from the next switch to direct. Asked with
+        # the mark as it was: a copy whose tunnel is gone comes back routed
+        # only through that proxy.
         try:
-            elsewhere = [name for pid, name in proxy_tunnel.routed_copies(slug) if pid != int(proxy_id)]
+            elsewhere = [name for pid, name in proxy_tunnel.routed_copies(slug, before) if pid != int(proxy_id)]
         except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
             route_gate.release(slug, before)
             raise HTTPException(
@@ -2137,7 +2139,7 @@ def _refuse_beside_routed_copy(slug: str) -> None:
         copy = proxy_tunnel.copy_name(slug, proxy_id) if proxy_id is not None else None
         # Through any proxy, not only the marked one: a routed copy through an
         # earlier proxy keeps running when the mark moves to a later one.
-        found = [(proxy_id, copy)] if copy else proxy_tunnel.routed_copies(slug)[:1]
+        found = [(proxy_id, copy)] if copy else proxy_tunnel.routed_copies(slug, proxy_id)[:1]
     except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
         raise HTTPException(
             status_code=503,

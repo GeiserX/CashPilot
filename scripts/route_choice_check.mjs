@@ -208,10 +208,11 @@ assert.equal(box1(run.dom).checked, false, 'unlocked unticked: the switch needs 
 assert.deepEqual(run.calls, [], 'nothing ticked, nothing sent');
 
 run = await pick('7', [1, 4]);
+assert.equal(box1(run.dom).disabled, true, 'another proxy keeps the routed box locked: the server refuses that move');
 assert.deepEqual(
   run.calls.map(c => [c.path, c.route]),
-  [['/api/deploy/honeygain?worker_id=4', 7], ['/api/deploy/honeygain?worker_id=1', 7]],
-  'another proxy goes to the new box and the ticked routed one',
+  [['/api/deploy/honeygain?worker_id=4', 7]],
+  'another proxy goes to the new box only, never to the routed one',
 );
 
 run = await pick('', []);
@@ -223,4 +224,4 @@ run.dom.select.value = '';
 again(run.dom.select);
 assert.equal(box1(run.dom).disabled, true, 'back on the default it is locked again');
 assert.equal(box1(run.dom).checked, true, 'and ticked again');
-console.log('Route change: a routed box is selectable only once Direct or a proxy is chosen, and sends it.');
+console.log('Route change: a routed box is selectable only once Direct is chosen, and sends it.');

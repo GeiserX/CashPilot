@@ -304,6 +304,18 @@ def _copies_on(docker, *copies):
     return earners
 
 
+def _tunnel_gone(docker, tunnel_id):
+    """The tunnel container ``tunnel_id`` was removed out of band; its earner stays."""
+    get = docker.containers.get.side_effect
+
+    def gone(name):
+        if name == tunnel_id:
+            raise NotFound("gone")
+        return get(name)
+
+    docker.containers.get.side_effect = gone
+
+
 BODY = {"image": "honeygain/honeygain", "env": {"HONEYGAIN_EMAIL": "a@b.c"}}
 
 
@@ -360,6 +372,16 @@ class TestTheWorkerDeployRoute:
         """A copy beside a direct one (not routed) is the Proxies page's, and may stay."""
         route_gate.mark("honeygain", 3)
         _copies_on(worker.docker, (2, None))
+        approval = step_up.sign(WORKER_KEY, step_up.ACTION_LEAVE_ROUTE, "honeygain")
+        resp = worker("POST", "/api/containers/honeygain/deploy", {**BODY, "route_approval": approval})
+        assert resp.status_code == 200, resp.text
+        assert len(worker.deployed) == 1 and route_gate.routed() == {}
+
+    def test_leaving_the_route_beside_a_shared_copy_whose_tunnel_is_gone_deploys(self, worker):
+        """That copy comes back in the shared tunnel of proxy 2 (proxy_tunnel._start), never routed."""
+        route_gate.mark("honeygain", 3)
+        _copies_on(worker.docker, (2, None))
+        _tunnel_gone(worker.docker, "t2")
         approval = step_up.sign(WORKER_KEY, step_up.ACTION_LEAVE_ROUTE, "honeygain")
         resp = worker("POST", "/api/containers/honeygain/deploy", {**BODY, "route_approval": approval})
         assert resp.status_code == 200, resp.text
@@ -486,18 +508,25 @@ class TestTheWorkerProxiedRoutes:
         assert seen == {"own_tunnel": True, "marked_first": 3}
 
     def test_a_routed_copy_whose_tunnel_is_gone_still_counts(self, worker, monkeypatch):
+        """The mark names its proxy, so its next start brings it back in a tunnel of its own."""
+        route_gate.mark("honeygain", 2)
         (copy,) = _copies_on(worker.docker, (2, "honeygain"))
-        get = worker.docker.containers.get.side_effect
-
-        def tunnel_gone(name):
-            if name == "t2":
-                raise NotFound("gone")
-            return get(name)
-
-        worker.docker.containers.get.side_effect = tunnel_gone
+        _tunnel_gone(worker.docker, "t2")
         resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
         assert resp.status_code == 409, resp.text
         assert copy.name in _detail(resp) and seen == {}
+        assert route_gate.routed() == {"honeygain": 2}
+
+    @pytest.mark.parametrize("before", [None, 3])
+    def test_a_shared_copy_whose_tunnel_is_gone_does_not_count(self, worker, monkeypatch, before):
+        """No mark names its proxy, so its next start brings it back in the shared tunnel, never routed."""
+        if before is not None:
+            route_gate.mark("honeygain", before)
+        _copies_on(worker.docker, (2, None))
+        _tunnel_gone(worker.docker, "t2")
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
+        assert resp.status_code == 200, resp.text
+        assert seen == {"own_tunnel": True, "marked_first": 3}
 
     def test_a_routed_deploy_that_cannot_list_the_copies_deploys_nothing(self, worker, monkeypatch):
         worker.docker.containers.list.side_effect = RuntimeError("docker is down")
@@ -585,7 +614,7 @@ class TestOneDeployOfAServiceAtATime:
             return {"container_id": "e"}
 
         monkeypatch.setattr(orchestrator, "service_instances", lambda slug: [])
-        monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug: [])
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
         monkeypatch.setattr(proxy_tunnel, "deploy", deploy)
         first, a = self._in_thread(lambda: worker_api._deploy_routed("honeygain", 2, BODY, PROXY, None))
         assert inside.wait(5)

@@ -1940,12 +1940,13 @@ const CP = (() => {
   }
 
   // A box where the service already runs routed is ticked and locked, as any
-  // deployed box: a plain redeploy keeps its route. Choosing Direct or a proxy
-  // in the Route box unlocks it, unticked, so its route can be changed by
-  // ticking it; back on the default it is locked again.
+  // deployed box: a plain redeploy keeps its route. Choosing Direct unlocks it,
+  // unticked, so it can leave the route by ticking it; anything else locks it
+  // again. Another proxy keeps it locked: the server refuses moving a route to
+  // another proxy (main._check_route), so the owner removes it first.
   function _routeSwitchBoxes(select) {
     const scope = (select.closest && select.closest('.route-choice') || {}).parentElement || document;
-    const switching = select.value !== '';
+    const switching = select.value === '0';
     for (const cb of scope.querySelectorAll(`input[data-routed="1"][data-slug="${select.dataset.slug}"]`)) {
       cb.disabled = !switching;
       cb.checked = !switching;
@@ -1972,7 +1973,7 @@ const CP = (() => {
       const copies = workerCopies(w, svc.slug).length;
       const deployed = copies > 0;
       const proxiedOnly = (w.system_info || {}).proxied_only === true;
-      // Its route can still change here (_routeSwitchBoxes), so the form stays.
+      // It can still leave its route here (_routeSwitchBoxes), so the form stays.
       const routed = deployed && Boolean((svc.routes || {})[w.id]);
       if (!deployed || routed) allDeployed = false;
       let instancesBox = '';
@@ -4395,7 +4396,7 @@ const CP = (() => {
   async function deployServiceToWorkers(slug) {
     const picked = `.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`;
     const fresh = _selectedWorkerIds(`${picked}:not([data-routed])`);
-    // A routed box ticked to change its route (_routeSwitchBoxes) already runs the service.
+    // A routed box ticked to leave its route (_routeSwitchBoxes) already runs the service.
     const switching = _selectedWorkerIds(`${picked}[data-routed]`);
     const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id) && !switching.includes(id));
     const again = [...switching, ...rescaled];

@@ -51,7 +51,8 @@ its first and every later start is inside it.
   runs it is ticked and locked like any deployed box. Pick **Direct** to leave
   the route: the boxes where it runs routed unlock, and you tick the ones to
   switch. Back on the default they lock again, so a plain redeploy never asks
-  for the password. The worker also refuses to leave the route while a routed
+  for the password. Another proxy keeps them locked: to move a box to another
+  proxy, remove the service there first, then deploy it through the new one. The worker also refuses to leave the route while a routed
   copy of the service still runs through any proxy on it.
 
 The usual route is a Tailscale exit node at another site you own (a
