@@ -2181,6 +2181,9 @@ async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[s
         raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
 
     try:
+        # The restore's own checks, run now while the user can still act: a bundle
+        # that split_archives would refuse must not be handed over as a backup.
+        await asyncio.to_thread(state_backup.split_archives, payload)
         bundle = await asyncio.to_thread(
             lambda: state_backup.seal(
                 payload,

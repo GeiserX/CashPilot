@@ -122,7 +122,8 @@ character in a name or link target, or has an invalid time. The error says
 which rule fired. It writes each entry again from its name, type, permission
 bits, owner ids, time and contents only, and drops setuid, setgid and sticky
 bits. A file that unpacks to more than 256 MB or holds more than 20,000 entries
-is refused too; no export from this app or CashPilot-Desktop is that large. A good run prints:
+is refused too. An export runs the same checks before it hands you the file,
+so a backup that this command would refuse is never exported. A good run prints:
 
 ```
 mysterium from box-a, checksum verified.

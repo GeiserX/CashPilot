@@ -64,6 +64,26 @@ PASSPHRASE = "a-long-enough-passphrase"
 PAYLOAD = b"node-identity-keystore-bytes"
 
 
+def _state_tar(dirs: int = 0) -> bytes:
+    """A state archive as Docker hands it over: PAYLOAD as a file, plus ``dirs`` folders."""
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
+        info = tarfile.TarInfo("data/key")
+        info.size = len(PAYLOAD)
+        tar.addfile(info, io.BytesIO(PAYLOAD))
+        for i in range(dirs):
+            folder = tarfile.TarInfo(f"data/{i}")
+            folder.type = tarfile.DIRTYPE
+            tar.addfile(folder)
+    return buf.getvalue()
+
+
+STATE_TAR = _state_tar()
+
+
 class TestTheInstallationCannotDecryptItsOwnExports:
     """The single property the whole design exists to provide."""
 
@@ -369,13 +389,13 @@ class TestTheWorkerEndpoints:
         body = worker_api.BackupRequest(passphrase=PASSPHRASE)
         with (
             patch.object(worker_api, "_verify_api_key", lambda r: None),
-            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(PAYLOAD, ["/data"])),
+            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(STATE_TAR, ["/data"])),
         ):
             out = self._call(worker_api.api_backup("mysterium", body, self._request()))
 
         bundle = base64.b64decode(out["bundle_b64"])
         assert PAYLOAD not in bundle, "the plaintext state appears in the response"
-        assert sb.open_bundle(bundle, passphrase=PASSPHRASE) == PAYLOAD
+        assert sb.open_bundle(bundle, passphrase=PASSPHRASE) == STATE_TAR
         assert sb.read_header(bundle)["metadata"]["slug"] == "mysterium"
 
     def test_export_rejects_a_short_passphrase_without_reading_state(self):
@@ -388,11 +408,34 @@ class TestTheWorkerEndpoints:
         body = worker_api.BackupRequest(passphrase="short")
         with (
             patch.object(worker_api, "_verify_api_key", lambda r: None),
-            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(PAYLOAD, ["/data"])),
+            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(STATE_TAR, ["/data"])),
             pytest.raises(HTTPException) as exc,
         ):
             self._call(worker_api.api_backup("mysterium", body, self._request()))
         assert exc.value.status_code == 400
+
+    def test_export_refuses_what_restore_refuses(self):
+        # Past the entry cap the restore refuses the bundle, so the export must
+        # refuse it too, before it hands the user a file that cannot be restored.
+        from unittest.mock import patch
+
+        from fastapi import HTTPException
+
+        from app import worker_api
+
+        body = worker_api.BackupRequest(passphrase=PASSPHRASE)
+        with (
+            patch.object(worker_api, "_verify_api_key", lambda r: None),
+            patch.object(
+                worker_api.orchestrator,
+                "read_critical_state",
+                return_value=(_state_tar(sb.MAX_ARCHIVE_ENTRIES), ["/data"]),
+            ),
+            pytest.raises(HTTPException) as exc,
+        ):
+            self._call(worker_api.api_backup("mysterium", body, self._request()))
+        assert exc.value.status_code == 400
+        assert "entry cap" in str(exc.value.detail)
 
     @pytest.mark.parametrize("name", ["api_backup", "api_backup_verify"])
     def test_both_routes_check_the_fleet_key_first(self, name):
