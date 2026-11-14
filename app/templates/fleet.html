@@ -97,11 +97,11 @@
         </select></div>
       <div class="proxy-net"><label class="form-label" for="proxy-host">Host</label><input class="form-input" id="proxy-host"></div>
       <div class="proxy-net"><label class="form-label" for="proxy-port">Port</label><input class="form-input form-input-code" id="proxy-port" type="number" min="1" max="65535"></div>
-      <div class="proxy-net"><label class="form-label" for="proxy-username">User</label><input class="form-input" id="proxy-username" placeholder="unchanged if empty">
+      <div class="proxy-net"><label class="form-label" for="proxy-username">User</label><input class="form-input" id="proxy-username" placeholder="kept if empty, unless the host or port changes">
         <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-username"> Remove the stored user</label></div>
-      <div class="proxy-net"><label class="form-label" for="proxy-password">Password</label><input class="form-input" id="proxy-password" type="password" placeholder="unchanged if empty">
+      <div class="proxy-net"><label class="form-label" for="proxy-password">Password</label><input class="form-input" id="proxy-password" type="password" placeholder="kept if empty, unless the host or port changes">
         <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-password"> Remove the stored password</label></div>
-      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-authkey">Auth key (reusable, ephemeral, tagged)</label><input class="form-input" id="proxy-authkey" type="password" placeholder="unchanged if empty"></div>
+      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-authkey">Auth key (reusable, ephemeral, tagged)</label><input class="form-input" id="proxy-authkey" type="password" placeholder="kept if empty, unless the login server changes"></div>
       <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-exitnode">Exit node</label><input class="form-input" id="proxy-exitnode" placeholder="name or 100.x address"></div>
       <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-login">Login server</label><input class="form-input" id="proxy-login" placeholder="empty for Tailscale's own"></div>
       <div><label class="form-label" for="proxy-cap">Traffic cap (GB)</label><input class="form-input form-input-code" id="proxy-cap" type="number" min="0" step="0.1" placeholder="none"></div>

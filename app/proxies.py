@@ -54,7 +54,10 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
 
     On an edit (``existing`` given) a secret field left blank keeps the stored
     value, because the form never shows secrets back. Sending ``clear_<field>``
-    removes it.
+    removes it. A stored secret is kept only while the proxy still points at the
+    same place (host and port, or the Tailscale login server): when that
+    changes, the owner must type the secret again or clear it, so an edit can
+    never send a stored credential to a server it was not entered for.
     """
     base = dict(existing or {})
     out: dict[str, Any] = {}
@@ -66,6 +69,7 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
         raise ProxyInputError("The type must be socks5, http or tailscale")
     out["kind"] = kind
 
+    kept: list[str] = []
     for field in SECRET_FIELDS:
         sent = body.get(field)
         if body.get(f"clear_{field}"):
@@ -74,6 +78,8 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
             out[field] = str(sent)
         else:
             out[field] = str(base.get(field) or "")
+            if out[field]:
+                kept.append(field)
 
     if kind == "tailscale":
         out["exit_node"] = _text(body.get("exit_node", base.get("exit_node")))
@@ -100,6 +106,9 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
             raise ProxyInputError("The port must be between 1 and 65535")
         out["exit_node"] = out["login_server"] = ""
         out["auth_key"] = ""
+
+    if existing is not None:
+        _refuse_retargeted_secret(existing, out, kept)
 
     out["rotating"] = bool(body.get("rotating", base.get("rotating", False)))
 
@@ -133,6 +142,39 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
         if not 1 <= out["reset_day"] <= 28:
             raise ProxyInputError("The reset day must be between 1 and 28, so every month has it")
     return out
+
+
+def _target(definition: dict[str, Any]) -> tuple[str, str, int, str]:
+    """Where a proxy's secrets are sent: the SOCKS/HTTP server, or the Tailscale
+    control server. The exit node is not part of it: the auth key goes to the
+    control server whatever exit node is picked."""
+    kind = str(definition.get("kind") or "")
+    if kind == "tailscale":
+        return (kind, "", 0, str(definition.get("login_server") or ""))
+    try:
+        port = int(definition.get("port") or 0)
+    except (TypeError, ValueError):
+        port = 0
+    # socks5 and http on the same host and port are the same server.
+    return ("net", str(definition.get("host") or "").lower(), port, "")
+
+
+_SECRET_LABELS = {"username": "user", "password": "password", "auth_key": "auth key"}
+
+
+def _refuse_retargeted_secret(existing: dict[str, Any], out: dict[str, Any], kept: list[str]) -> None:
+    """Refuse an edit that would carry a stored secret to a new server."""
+    # Only the fields the new kind uses: a kind change already wiped the rest.
+    carried = [f for f in kept if out.get(f)]
+    if not carried or _target(existing) == _target(out):
+        return
+    what = " and ".join(_SECRET_LABELS[f] for f in carried)
+    where = "login server" if out["kind"] == "tailscale" else "host or port"
+    clear = "" if out["kind"] == "tailscale" else ", or tick Remove to save without it"
+    raise ProxyInputError(
+        f"The {where} changed, so type the {what} again{clear}. "
+        "CashPilot never sends a stored secret to a server it was not entered for."
+    )
 
 
 def public_view(proxy: dict[str, Any], copies: list[dict[str, Any]] | None = None) -> dict[str, Any]:

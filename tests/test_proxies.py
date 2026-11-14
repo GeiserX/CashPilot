@@ -72,6 +72,71 @@ class TestDefinition:
         cleared = proxies.clean_definition({"clear_password": True}, stored)
         assert cleared["password"] == ""
 
+    # A stored secret goes only to the server it was entered for (#738).
+    @pytest.mark.parametrize("over", [{"host": "evil.example.org"}, {"port": 1080}])
+    def test_moving_a_proxy_without_its_secret_is_refused(self, over):
+        stored = proxies.clean_definition(_socks(username=USERNAME, password=PASSWORD))
+        with pytest.raises(proxies.ProxyInputError, match="type the user and password again"):
+            proxies.clean_definition(_socks(username="", password="", **over), stored)
+
+    def test_moving_a_proxy_with_its_secret_typed_again_is_saved(self):
+        stored = proxies.clean_definition(_socks(username=USERNAME, password=PASSWORD))
+        moved = proxies.clean_definition(
+            _socks(host="pr2.example.net", username=USERNAME, password=NEW_PASSWORD), stored
+        )
+        assert (moved["host"], moved["username"], moved["password"]) == ("pr2.example.net", USERNAME, NEW_PASSWORD)
+
+    def test_moving_a_proxy_with_its_secret_removed_is_saved(self):
+        stored = proxies.clean_definition(_socks(username=USERNAME, password=PASSWORD))
+        moved = proxies.clean_definition(
+            _socks(host="pr2.example.net", clear_username=True, clear_password=True), stored
+        )
+        assert moved["username"] == moved["password"] == ""
+
+    def test_a_partly_typed_secret_still_names_the_missing_part(self):
+        stored = proxies.clean_definition(_socks(username=USERNAME, password=PASSWORD))
+        with pytest.raises(proxies.ProxyInputError, match="type the password again") as err:
+            proxies.clean_definition(_socks(host="pr2.example.net", username=USERNAME), stored)
+        assert "user and" not in str(err.value)
+
+    @pytest.mark.parametrize(
+        "over",
+        [
+            {"name": "Renamed"},
+            {"host": "PR.Example.NET"},
+            {"kind": "http"},
+            {"cap_gb": "5", "rotating": True},
+        ],
+    )
+    def test_an_edit_that_keeps_the_server_keeps_the_secret(self, over):
+        stored = proxies.clean_definition(_socks(username=USERNAME, password=PASSWORD))
+        kept = proxies.clean_definition(_socks(username="", password="", **over), stored)
+        assert (kept["username"], kept["password"]) == (USERNAME, PASSWORD)
+
+    def test_a_proxy_with_no_stored_secret_moves_freely(self):
+        stored = proxies.clean_definition(_socks())
+        assert proxies.clean_definition(_socks(host="pr2.example.net"), stored)["host"] == "pr2.example.net"
+
+    def test_a_new_tailscale_login_server_needs_the_auth_key_again(self):
+        ts = {"name": "Exit node A", "kind": "tailscale", "exit_node": "exit-node-a"}
+        stored = proxies.clean_definition({**ts, "auth_key": AUTH_KEY})
+        with pytest.raises(proxies.ProxyInputError, match="login server changed, so type the auth key again"):
+            proxies.clean_definition({**ts, "login_server": "https://headscale.example.org"}, stored)
+        moved = proxies.clean_definition(
+            {**ts, "login_server": "https://headscale.example.org", "auth_key": "tskey-auth-kNEW"}, stored
+        )
+        assert moved["auth_key"] == "tskey-auth-kNEW"
+        # The key goes to the control server whatever the exit node is.
+        renamed = proxies.clean_definition({**ts, "exit_node": "exit-node-b", "name": "Exit node B"}, stored)
+        assert renamed["auth_key"] == AUTH_KEY
+
+    def test_a_kind_change_never_carries_the_other_kinds_secret(self):
+        ts = proxies.clean_definition(
+            {"name": "Exit node A", "kind": "tailscale", "exit_node": "exit-node-a", "auth_key": AUTH_KEY}
+        )
+        socks = proxies.clean_definition(_socks(), ts)
+        assert socks["auth_key"] == "" and socks["password"] == ""
+
     def test_the_public_view_never_carries_a_secret(self):
         d = proxies.clean_definition(_socks(username=USERNAME, password=PASSWORD))
         view = proxies.public_view({"id": 1, "definition": d, "state": {}})
@@ -1261,6 +1326,20 @@ class TestReviewFollowUps:
         proxy = _run(go)
         assert proxy["state"]["period_start"]
         assert not proxies.reset_due(proxy["definition"], proxy["state"], date.today())
+
+    def test_the_edit_route_refuses_to_move_a_stored_password(self, db):
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(username=USERNAME, password=PASSWORD)), {})
+            pid = created["id"]
+            with pytest.raises(HTTPException) as err:
+                await main.api_update_proxy(_Req(_socks(host="evil.example.org", password="")), pid, {})
+            renamed = await main.api_update_proxy(_Req({"name": "Renamed"}), pid, {})
+            return err.value, renamed, (await database.get_proxy(pid))["definition"]
+
+        err, renamed, stored = _run(go)
+        assert err.status_code == 400 and "type the user and password again" in err.detail
+        assert renamed["name"] == "Renamed" and renamed["secrets"]["password"] is True
+        assert (stored["host"], stored["password"]) == ("pr.example.net", PASSWORD)
 
     def test_a_start_by_hand_sends_the_proxy_as_stored_now(self, db):
         call = AsyncMock(return_value={"status": "started"})
