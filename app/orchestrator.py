@@ -1071,6 +1071,12 @@ def deploy_raw(
         # never the caller's to change.
         all_labels[LABEL_SERVICE] = slug
         all_labels[LABEL_MANAGED] = "true"
+        if not joined:
+            # What is_proxied skips a copy or a tunnel by: a direct earner
+            # carrying them would hide from the routed deploy's own-IP check
+            # and from the proxied-only hold.
+            all_labels.pop(LABEL_PROXY, None)
+            all_labels.pop(LABEL_ROLE, None)
     if instance > 1:
         all_labels[LABEL_INSTANCE] = str(instance)
 

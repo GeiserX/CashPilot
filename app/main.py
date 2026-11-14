@@ -4164,7 +4164,7 @@ async def _deploy(
     instances = body.instances if body.instances is not None else int((recorded or {}).get("instances") or 1)
     _instance_param(instances)
     if route is not None:
-        await _check_route(slug, svc, worker_id, route, recorded, recorded_route, instances)
+        await _check_route(slug, svc, worker_id, route, recorded_route, instances)
     # Read only when copies are involved, so a plain deploy asks the worker
     # record nothing it did not ask before.
     running_copies = (
@@ -4423,7 +4423,6 @@ async def _check_route(
     svc: dict[str, Any],
     worker_id: int,
     route: int,
-    recorded: dict[str, Any] | None,
     recorded_route: int | None,
     instances: int,
 ) -> None:
@@ -4442,7 +4441,11 @@ async def _check_route(
             detail=f"{name} runs through another proxy on this worker. Remove it, then deploy it again "
             "through this one.",
         )
-    if (recorded and recorded_route is None) or await _worker_instances(worker_id, slug):
+    # What the box reports, not the record: a direct deploy that failed after
+    # its routed copy went leaves a record without a route and nothing running,
+    # and the owner must be able to go back through the proxy. The worker checks
+    # its live containers again before it makes the copy.
+    if await _worker_instances(worker_id, slug):
         raise HTTPException(
             status_code=409,
             detail=f"{name} already runs from this worker's own IP. Remove it there first and deploy it again "

@@ -183,6 +183,47 @@ class TestEveryContainerGoesThroughIt:
             self._deploy(client, slug="traffmonetizer", image="traffmonetizer/cli_v2")
         client.containers.run.assert_not_called()
 
+    def test_a_direct_earner_cannot_pass_for_a_proxied_one(self):
+        """The proxy and role labels are what every check skips a copy or a tunnel by.
+
+        A direct container carrying them would hide from the routed deploy's
+        own-IP check and from the proxied-only hold, and keep running from the
+        box's own IP beside the route.
+        """
+        client = _client_with()
+        client.containers.get.side_effect = NotFound("no such container")
+        self._deploy(
+            client,
+            slug="honeygain",
+            image="honeygain/honeygain",
+            labels={"cashpilot.proxy": "1", LABEL_ROLE: ROLE_TUNNEL, "app": "kept"},
+        )
+        labels = client.containers.run.call_args.kwargs["labels"]
+        assert "cashpilot.proxy" not in labels and LABEL_ROLE not in labels
+        assert labels["app"] == "kept"
+        made = MagicMock(labels=labels)
+        assert not orchestrator.is_proxied(made)
+
+    def test_a_copy_inside_its_tunnel_keeps_its_proxy_label(self):
+        tunnel = _tunnel()
+
+        def get(ref):
+            if ref == "tid":
+                return tunnel
+            raise NotFound("no such container")
+
+        client = _client_with()
+        client.containers.get.side_effect = get
+        self._deploy(
+            client,
+            slug="honeygain",
+            image="honeygain/honeygain",
+            network_mode="container:tid",
+            name="cashpilot-honeygain-p1",
+            labels={"cashpilot.proxy": "1"},
+        )
+        assert client.containers.run.call_args.kwargs["labels"]["cashpilot.proxy"] == "1"
+
 
 # ---------------------------------------------------------------------------
 # The worker routes
@@ -824,6 +865,33 @@ class TestTheUiLeavesARouteOnlyWithThePassword:
         record = _run(go)
         assert record is not None and proxies.route_of(record) is None
         assert record["env"]["HONEYGAIN_EMAIL"] == "a@b.c"
+
+    def test_after_a_failed_direct_deploy_the_route_can_be_taken_again(self, db):
+        """The record says direct, but nothing runs on the box: going back through the proxy is not refused."""
+
+        def fails(method, path, body):
+            if path == "/api/containers/honeygain/deploy":
+                return HTTPException(status_code=502, detail="image pull failed")
+            return {"container_id": "c", "status": "deployed"}
+
+        ui = _Ui(worker_reply=self._locked)
+
+        async def go():
+            uid = await database.create_user("owner", auth.hash_password("right one!"), "owner")
+            pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            ui.worker_reply = fails
+            with pytest.raises(HTTPException):
+                await ui.deploy(main.DeployRequest(env=ENV, route=0, step_up_password="right one!"), owner_uid=uid)
+            ui.calls.clear()
+            ui.worker_reply = ui._no_container
+            result = await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            return pid, result, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, result, record = _run(go)
+        assert ui.paths() == [("POST", f"/api/proxied/honeygain/{pid}/deploy")]
+        assert result["route"]["proxy_id"] == pid
+        assert proxies.route_of(record) == pid
 
 
 class TestTheUiManagesARoutedService:
