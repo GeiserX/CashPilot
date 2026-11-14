@@ -373,6 +373,11 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
             errors.append(f"{path.name}: device_link.url must be an https:// link")
         elif not set(re.findall(r"\$\{(\w+)\}", url)) <= public:
             errors.append(f"{path.name}: device_link.url may only fill in non-secret docker.env keys")
+        elif not _valid_id_shape(link.get("id_shape")):
+            # Without it nothing masks the id, or a copy's, outside the owner's view.
+            errors.append(f"{path.name}: device_link.id_shape must be a regular expression that matches an id")
+        elif not isinstance(link.get("id_shape_unique", False), bool):
+            errors.append(f"{path.name}: device_link.id_shape_unique must be a boolean")
 
     support = data.get("support_url")
     if support is not None and (not isinstance(support, str) or not support.startswith("https://")):
@@ -511,6 +516,44 @@ def critical_volume_targets(slug: str) -> dict[str, str] | None:
         if target:
             targets[str(target)] = str(entry.get("holds") or "Irreplaceable service state.")
     return targets
+
+
+def _valid_id_shape(shape: object) -> bool:
+    """A non-empty regex that compiles and cannot match an empty string."""
+    if not isinstance(shape, str) or not shape.strip():
+        return False
+    try:
+        return re.fullmatch(shape, "") is None
+    except re.error:
+        return False
+
+
+# The characters a link runs on to: up to whitespace, a quote, a bracket or a ")".
+_LINK_TAIL = r"[^\s\"'<>)]+"
+
+
+def device_id_masks(slug: str | None = None) -> tuple[list[re.Pattern[str]], list[re.Pattern[str]]]:
+    """The regexes that find claimable device ids, from the catalog's ``device_link`` blocks.
+
+    Returns (claim links, ids). A claim link is the ``url`` up to where the id
+    goes, for every service, as is every ``id_shape_unique`` shape; the
+    ``id_shape`` of ``slug`` is added for that service's own text only.
+    """
+    links: list[re.Pattern[str]] = []
+    ids: list[re.Pattern[str]] = []
+    for svc in get_services():
+        link = svc.get("device_link")
+        if not isinstance(link, dict):
+            continue
+        url = str(link.get("url") or "")
+        placeholder = "${" + str(link.get("id_env")) + "}"
+        if placeholder in url:
+            base = re.sub(r"^https?://(?:www\.)?", "", url.split(placeholder, 1)[0])
+            links.append(re.compile(r"https?://(?:www\.)?" + re.escape(base) + _LINK_TAIL, re.IGNORECASE))
+        shape = link.get("id_shape")
+        if _valid_id_shape(shape) and (link.get("id_shape_unique") is True or svc.get("slug") == slug):
+            ids.append(re.compile(rf"(?<![0-9A-Za-z])(?:{shape})(?![0-9A-Za-z])", re.IGNORECASE))
+    return links, ids
 
 
 def device_link_step(svc: dict[str, Any], env: dict[str, Any]) -> dict[str, str] | None:

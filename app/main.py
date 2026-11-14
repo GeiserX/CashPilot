@@ -1721,8 +1721,8 @@ async def _mask_service_device_ids(slug: str, text: str) -> str:
     """``text`` with the claimable device ids of ``slug`` masked, for anyone but the owner.
 
     The deployed ids of a service with a ``device_link``, its copies' derived
-    ids by their shape, and EarnApp's id and link anywhere. A failed read of the
-    deployed ids still masks by shape.
+    ids by their catalog id_shape, and every catalog claim link and unique shape
+    anywhere. A failed read of the deployed ids still masks by shape.
     """
     link = (catalog.get_service(slug) or {}).get("device_link")
     known: set[str] = set()
@@ -1731,7 +1731,7 @@ async def _mask_service_device_ids(slug: str, text: str) -> str:
             known = await database.get_deployed_env_values(slug, link["id_env"])
         except Exception as exc:
             logger.warning("Could not read the deployed %s device ids to mask: %s", slug, exc)
-    return notify.mask_device_ids(text, known, hex64=isinstance(link, dict))
+    return notify.mask_device_ids(text, known, slug=slug)
 
 
 async def _gave_up_device_ids(slug: str) -> set[str]:
@@ -1740,11 +1740,15 @@ async def _gave_up_device_ids(slug: str) -> set[str]:
     A proxied copy's derived id is in no deployment record, so without these
     the collection never checks it and the owner's bell never shows it, while
     the give-up notice says the bell does. Once the device is on the account the
-    check stops listing it.
+    check stops listing it. A row past the retry window counts even before the
+    retry job marks it given up: _retrying_device_ids no longer lists it, so it
+    must be checked here or it is in neither set.
     """
     ids: set[str] = set()
+    window_start = _db_time(datetime.now(UTC) - DEVICE_LINK_GIVE_UP)
     for row in await database.list_pending_device_links():
-        if row["slug"] == slug and row["gave_up"] and await _device_still_deployed(slug, row["device_id"]):
+        expired = row["gave_up"] or str(row.get("first_at") or "") <= window_start
+        if row["slug"] == slug and expired and await _device_still_deployed(slug, row["device_id"]):
             ids.add(row["device_id"])
     return ids
 

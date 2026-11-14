@@ -369,6 +369,30 @@ def test_a_failed_read_of_the_deployed_ids_still_masks_by_shape(client):
     assert EARNAPP_ID not in resp.json()["logs"]
 
 
+def test_the_shapes_come_from_the_catalog_not_the_code():
+    # A new service declares its id shape and claim link in its YAML; nothing
+    # in app/ names it. Unique shapes and claim links apply to any text, a bare
+    # shape only to its own service's.
+    fake = {
+        "slug": "newnode",
+        "device_link": {
+            "id_env": "NODE",
+            "url": "https://new.example/claim/${NODE}",
+            "id_shape": "nn-[0-9]{12}",
+            "id_shape_unique": True,
+        },
+    }
+    other = {"slug": "bare", "device_link": {"id_env": "ID", "id_shape": "[0-9a-f]{40}"}}
+    node, bare = "nn-123456789012", "c" * 40
+    with patch("app.catalog.get_services", return_value=[fake, other]):
+        text = notify.redact(f"{node} at https://new.example/claim/{node} and {bare}")
+        assert node not in text and "new.example/claim" not in text and "<link in CashPilot>" in text
+        assert bare in text
+        assert bare not in notify.mask_device_ids(bare, slug="bare")
+        # The real EarnApp shape is no longer known to the code: off the catalog, not masked.
+        assert EARNAPP_ID in notify.redact(EARNAPP_ID)
+
+
 def test_a_known_id_is_masked_whatever_its_shape_and_hex_elsewhere_is_left_alone():
     odd = "custom-device-0123456789"
     digest = "sha256:" + "a" * 64
@@ -463,10 +487,14 @@ def test_the_collection_checks_a_gave_up_copy_id_so_the_owner_bell_shows_it(capl
 
 
 def test_a_gave_up_device_that_no_longer_runs_is_not_checked():
+    now = main._db_time(main.datetime.now(main.UTC))
     rows = [
         {"slug": "earnapp", "device_id": "running", "gave_up": 1},
         {"slug": "earnapp", "device_id": "gone", "gave_up": 1},
-        {"slug": "earnapp", "device_id": "still-retrying", "gave_up": 0},
+        {"slug": "earnapp", "device_id": "still-retrying", "gave_up": 0, "first_at": now},
+        # Past the retry window but not yet marked: _retrying_device_ids no
+        # longer lists it, so the check must, or it is in neither set.
+        {"slug": "earnapp", "device_id": "expired-unmarked", "gave_up": 0, "first_at": "2000-01-01 00:00:00"},
         {"slug": "proxyrack", "device_id": "other-service", "gave_up": 1},
     ]
 
@@ -477,4 +505,4 @@ def test_a_gave_up_device_that_no_longer_runs_is_not_checked():
         patch("app.main.database.list_pending_device_links", new_callable=AsyncMock, return_value=rows),
         patch("app.main._device_still_deployed", side_effect=still),
     ):
-        assert asyncio.run(main._gave_up_device_ids("earnapp")) == {"running"}
+        assert asyncio.run(main._gave_up_device_ids("earnapp")) == {"running", "expired-unmarked"}

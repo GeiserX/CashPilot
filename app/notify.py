@@ -25,6 +25,8 @@ from typing import Any
 
 import httpx
 
+from app import catalog
+
 logger = logging.getLogger(__name__)
 
 # Deliberately short: this runs inside the collection cycle, and a hanging notifier
@@ -56,13 +58,8 @@ _MAX_MESSAGE_LEN = 400
 # A device id a provider pays the account it is linked to (EarnApp, ProxyRack)
 # is a claim token while it is unlinked: whoever adds it first gets its
 # earnings. The notices that name one mask it at the source (mask_device_id);
-# these catch the EarnApp shapes, which are unambiguous, in any other text:
-# the claim link first, so the id inside it is not left half masked.
-_EARNAPP_CLAIM_URL_RE = re.compile(r"https?://(?:www\.)?earnapp\.com/r/[^\s\"'<>)]+", re.IGNORECASE)
-_EARNAPP_ID_RE = re.compile(r"\bsdk-node-[0-9a-f]{32}\b", re.IGNORECASE)
-# ProxyRack's id: 64 hex characters, with no prefix to tell it from a digest.
-# Only masked where the text is known to belong to such a service.
-_HEX64_ID_RE = re.compile(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])", re.IGNORECASE)
+# mask_device_ids catches the rest by the shapes the catalog's device_link
+# blocks declare (catalog.device_id_masks).
 # A known id shorter than this is too likely to match ordinary text.
 _MIN_KNOWN_ID_LEN = 16
 
@@ -79,22 +76,25 @@ def mask_device_id(device_id: str) -> str:
     return f"...{device_id[-4:]}" if len(device_id) > 8 else "..."
 
 
-def mask_device_ids(text: str, device_ids: Any = (), *, hex64: bool = False) -> str:
+def mask_device_ids(text: str, device_ids: Any = (), *, slug: str | None = None) -> str:
     """``text`` with every claimable device id in it cut to its masked suffix.
 
-    The EarnApp claim link and id shapes always; each id in ``device_ids``
-    (the deployed values the caller knows); and with ``hex64`` any 64-hex run,
-    for a service such as ProxyRack whose ids, and its copies' derived ids,
-    have that shape. No length cut: this is for whole texts such as a log.
+    Every catalog claim link and ``id_shape_unique`` shape always; each id in
+    ``device_ids`` (the deployed values the caller knows); and the ``id_shape``
+    of ``slug``, for that service's own text, which also finds its copies'
+    derived ids. No length cut: this is for whole texts such as a log.
     """
-    text = _EARNAPP_CLAIM_URL_RE.sub("<link in CashPilot>", str(text or ""))
+    links, shapes = catalog.device_id_masks(slug)
+    text = str(text or "")
+    # The claim link first, so the id inside it is not left half masked.
+    for link in links:
+        text = link.sub("<link in CashPilot>", text)
     known = {str(d).strip() for d in device_ids or () if len(str(d).strip()) >= _MIN_KNOWN_ID_LEN}
     # Longest first, so an id that contains another is not left half masked.
     for device_id in sorted(known, key=len, reverse=True):
         text = text.replace(device_id, mask_device_id(device_id))
-    text = _EARNAPP_ID_RE.sub(lambda m: mask_device_id(m.group(0)), text)
-    if hex64:
-        text = _HEX64_ID_RE.sub(lambda m: mask_device_id(m.group(0)), text)
+    for shape in shapes:
+        text = shape.sub(lambda m: mask_device_id(m.group(0)), text)
     return text
 
 
