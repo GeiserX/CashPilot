@@ -3367,17 +3367,27 @@ const CP = (() => {
   }
 
   // The device names a deploy of `slug` with `env` would rename, one line per
-  // name ("box: label old -> new"), named by box. Throws when the check fails.
+  // name ("box: label old -> new"), named by box, and the ids of those boxes.
+  // A box whose deploy with `env` would lack a required value cannot be renamed
+  // this way: it goes to `skipped`, with what it lacks. Throws when the check fails.
   async function _deviceRenameLines(slug, workerIds, env) {
     const answers = await Promise.all(workerIds.map(id =>
       api(`/api/deploy/${encodeURIComponent(slug)}/device-names?worker_id=${encodeURIComponent(id)}`, { method: 'POST', body: { env } })
     ));
-    const lines = [];
+    const lines = [], skipped = [], ids = [];
     answers.forEach((a, i) => {
       const box = (a && a.worker) || `node ${workerIds[i]}`;
-      ((a && a.renames) || []).forEach(r => lines.push(`• ${box}: ${r.label} ${r.old} -> ${r.new}`));
+      const renames = (a && a.renames) || [];
+      if (!renames.length) return;
+      const missing = (a && a.missing) || [];
+      if (missing.length) {
+        skipped.push(`• ${box}: needs ${missing.join(', ')}, which it has no record of. Deploy it again with them filled in to rename it.`);
+        return;
+      }
+      ids.push(workerIds[i]);
+      renames.forEach(r => lines.push(`• ${box}: ${r.label} ${r.old} -> ${r.new}`));
     });
-    return lines;
+    return { lines, skipped, ids };
   }
 
   // A box that still runs under the old shared device name ("cashpilot-cashpilot")
@@ -3386,9 +3396,9 @@ const CP = (() => {
   // old -> new. Returns true to rename. A check that cannot be reached returns
   // false, which keeps every name as it is.
   async function _confirmDeviceRenames(slug, workerIds, env) {
-    let lines;
+    let lines, skipped;
     try {
-      lines = await _deviceRenameLines(slug, workerIds, env);
+      ({ lines, skipped } = await _deviceRenameLines(slug, workerIds, env));
     } catch (err) {
       console.warn('Device-name check unavailable, keeping names:', err);
       return false;
@@ -3397,6 +3407,7 @@ const CP = (() => {
     return window.confirm(
       `${slug}: these nodes still use the device name every box got before CashPilot gave each box its own.\n\n` +
       `${lines.join('\n')}\n\n` +
+      (skipped.length ? `Not renamed:\n${skipped.join('\n')}\n\n` : '') +
       'OK renames them, so the provider counts each box apart. It may list them as new devices. ' +
       'Cancel keeps the current names.'
     );
@@ -3832,28 +3843,40 @@ const CP = (() => {
     if (!el) return;
     const ids = _runningWorkerIds(slug);
     if (!ids.length) return;
-    let lines;
+    let check;
     try {
-      lines = await _deviceRenameLines(slug, ids, {});
+      check = await _deviceRenameLines(slug, ids, {});
     } catch (err) {
       console.warn('Could not check device names:', err);
       return;
     }
-    if (!lines.length) return;
-    el.innerHTML = `${lines.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
+    const { lines, skipped } = check;
+    if (!lines.length && !skipped.length) return;
+    // A box the one-click redeploy cannot rename gets a note, not the button.
+    el.innerHTML = `${lines.length + skipped.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
       before CashPilot gave each box its own, so ${escapeHtml(slug)} may count them as one device.
-      <button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Give each box its own device name</button>`;
+      ${lines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Give each box its own device name</button>` : ''}
+      ${skipped.map(line => `<br>${escapeHtml(line)}`).join('')}`;
     el.style.display = '';
   }
 
   async function renameDevices(slug) {
-    const ids = _runningWorkerIds(slug);
+    let ids;
+    try {
+      ({ ids } = await _deviceRenameLines(slug, _runningWorkerIds(slug), {}));
+    } catch (err) {
+      toast(`Could not check device names: ${err.message}`, 'error');
+      return;
+    }
     if (!ids.length || !(await _confirmDeviceRenames(slug, ids, {}))) return;
     let ok = 0;
     for (const id of ids) {
       try {
         // No env: the redeploy keeps every setting this box was deployed with.
-        await api(`/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true } });
+        const res = await api(`/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true } });
+        // A proxied copy that kept its old name says so here.
+        const kept = res && res.kept_from_previous_deployment;
+        if (Array.isArray(kept) && kept.length) toast(`${slug}: redeploy notes: ${kept.join('; ')}`, 'warning');
         ok++;
       } catch (err) {
         const box = ((_detailWorkers || []).find(w => w.id === id) || {}).name || `node ${id}`;

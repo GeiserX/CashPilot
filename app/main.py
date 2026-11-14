@@ -3960,6 +3960,25 @@ async def _device_names(
     return own, renames
 
 
+def _missing_required(
+    docker_conf: dict[str, Any], posted_env: dict[str, Any] | None, recorded_env: dict[str, Any]
+) -> list[str]:
+    """The labels of required values a deploy with ``posted_env`` would still lack.
+
+    A value counts when it is posted, the catalog default, or recorded for the
+    deployment on this worker. A blank posted box is not a value.
+    """
+    env = {var["key"]: str(var.get("default", "")) for var in docker_conf.get("env", [])}
+    env.update({key: str(value).strip() for key, value in (posted_env or {}).items() if str(value).strip()})
+    return [
+        var.get("label", var["key"])
+        for var in docker_conf.get("env", [])
+        if var.get("required")
+        and not env.get(var["key"], "").strip()
+        and not str(recorded_env.get(var["key"], "")).strip()
+    ]
+
+
 def _instance_spec(spec: dict[str, Any], instance: int, docker_conf: dict[str, Any]) -> dict[str, Any]:
     """The spec of copy ``instance``: the first copy's, under its own names.
 
@@ -4105,14 +4124,7 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     }
 
     # Validate required env vars are not blank.
-    missing = [
-        var.get("label", var["key"])
-        for var in docker_conf.get("env", [])
-        if var.get("required")
-        and not env.get(var["key"], "").strip()
-        and not str(recorded_env.get(var["key"], "")).strip()
-    ]
-    if missing:
+    if missing := _missing_required(docker_conf, body.env, recorded_env):
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
     # How many copies this worker runs, decided before anything is deployed.
@@ -4203,7 +4215,9 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
     # A running deployment keeps the device name it has unless the operator
     # chose to give it its own. Set here, after the record is merged, so it
     # holds for a deployment with no record and for a custom service too. The
-    # extra and proxied copies follow, since they are named from this spec.
+    # extra copies follow, since they are named from this spec. The proxied
+    # copies are separate containers this deploy does not replace: after a
+    # confirmed rename they are redeployed below (_refresh_proxied_copies).
     if device_renames:
         pick = "new" if body.rename_devices else "old"
         spec["env"] = {**(spec.get("env") or {}), **{r["key"]: r[pick] for r in device_renames}}
@@ -4320,6 +4334,8 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
         await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf))
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+    if device_renames and body.rename_devices:
+        divergence.extend(await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, spec))
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
@@ -4354,10 +4370,15 @@ async def api_deploy_device_names(
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
-    _, renames = await _device_names(slug, svc.get("docker") or {}, body, worker_id, recorded)
+    docker_conf = svc.get("docker") or {}
+    _, renames = await _device_names(slug, docker_conf, body, worker_id, recorded)
+    # A deploy with this body that would stop at "Missing required fields":
+    # the rename cannot be applied from here, so the page says what is missing
+    # instead of offering a button that fails.
+    missing = _missing_required(docker_conf, body.env, (recorded or {}).get("env") or {}) if renames else []
     # The box's name, so the confirm says which box each line is about.
     worker = await database.get_worker(worker_id)
-    return {"worker": str((worker or {}).get("name") or f"node {worker_id}"), "renames": renames}
+    return {"worker": str((worker or {}).get("name") or f"node {worker_id}"), "renames": renames, "missing": missing}
 
 
 _is_port_range = catalog.is_port_range
@@ -5280,6 +5301,80 @@ async def _copy_marked_by_cap(proxy_id: int, worker_id: int, slug: str) -> bool:
     )
 
 
+async def _proxied_earner(
+    recorded: dict[str, Any], docker_conf: dict[str, Any], worker_id: int, proxy_id: int
+) -> dict[str, Any]:
+    """The earner spec of a proxied copy on ``worker_id``, in the image for its arch.
+
+    Raises ValueError when the copy cannot get device ids of its own.
+    """
+    earner = proxies.earner_spec(recorded, docker_conf, proxy_id)
+    if not recorded.get("custom_image") and isinstance(docker_conf.get("image_by_arch"), dict):
+        worker = await database.get_worker(worker_id) or {}
+        arch_image = _image_for_arch(docker_conf, _safe_json(worker.get("system_info", "{}"), {}).get("arch"))
+        if arch_image:
+            earner["image"] = arch_image
+    return earner
+
+
+async def _refresh_proxied_copies(
+    slug: str, worker_id: int, svc: dict[str, Any], docker_conf: dict[str, Any], recorded: dict[str, Any]
+) -> list[str]:
+    """Redeploy this worker's proxied copies of ``slug`` after a confirmed device rename.
+
+    Each copy is named from its original (``<name>-p<proxy id>``), so a renamed
+    original leaves its copies on the old shared name until they are rebuilt
+    from the new record. Each goes through the worker's copy deploy, under the
+    copy's lock, the way the owner's start does. A redeploy starts the copy, so
+    a copy the owner stopped, the cap stopped, one being removed, or one whose
+    box cannot say whether it runs keeps its old name, and the note says so.
+    Never raises: the original is already renamed. Returns the notes.
+    """
+    copies = [c for c in await database.list_proxied_copies() if c["worker_id"] == worker_id and c["slug"] == slug]
+    if not copies:
+        return []
+    entries = _proxied_reportable(await database.get_worker(worker_id))
+    notes: list[str] = []
+    for copy in copies:
+        pid = copy["proxy_id"]
+        label = f"proxied copy p{pid}"
+        entry = next(
+            (e for e in entries or [] if e.get("proxy_id") == pid and egress.container_slug(e) == slug),
+            None,
+        )
+        if copy.get("removing_since") or copy.get("stopped_by_cap") or (entry or {}).get("held") is True:
+            notes.append(f"{label}: stopped, so it keeps its old device name; add it again to rename it")
+            continue
+        if entry is None or entry.get("held") is not False:
+            notes.append(f"{label}: its box did not report it, so it keeps its old device name; add it again")
+            continue
+        try:
+            if why := proxies.refusal(svc):
+                raise ValueError(why)
+            await _require_proxy_feature(worker_id)
+            earner = await _proxied_earner(recorded, docker_conf, worker_id, pid)
+            async with _proxy_copy_lock(pid, worker_id, slug):
+                # Under the lock, as a start: the cap may have stopped it meanwhile.
+                proxy = await _proxy_or_404(pid)
+                if proxy["state"].get("capped_at") or await _copy_marked_by_cap(pid, worker_id, slug):
+                    raise ValueError("its proxy reached its traffic cap")
+                await _proxy_worker_call(
+                    worker_id,
+                    "POST",
+                    f"/api/proxied/{slug}/{pid}/deploy",
+                    proxy["definition"],
+                    json={"earner": earner, "proxy": proxies.worker_proxy_spec(proxy["definition"])},
+                    timeout=180,
+                )
+        except (HTTPException, ValueError) as exc:
+            detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+            notes.append(f"{label}: keeps its old device name ({detail})")
+            continue
+        if step := catalog.device_link_step(svc, earner["env"]):
+            await _register_device(slug, step["id"], earner["env"])
+    return notes
+
+
 @app.post("/api/proxies/{proxy_id}/copies")
 async def api_add_proxied_copy(
     proxy_id: int, body: ProxyCopyRequest, _auth: dict[str, Any] = Depends(_require_owner)
@@ -5311,14 +5406,9 @@ async def api_add_proxied_copy(
         )
     docker_conf = svc.get("docker") or {}
     try:
-        earner = proxies.earner_spec(recorded, docker_conf, proxy_id)
+        earner = await _proxied_earner(recorded, docker_conf, worker_id, proxy_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug}: {exc}") from exc
-    if not recorded.get("custom_image") and isinstance(docker_conf.get("image_by_arch"), dict):
-        worker = await database.get_worker(worker_id) or {}
-        arch_image = _image_for_arch(docker_conf, _safe_json(worker.get("system_info", "{}"), {}).get("arch"))
-        if arch_image:
-            earner["image"] = arch_image
     # The record goes in before the worker is asked, under the proxy's lock: a
     # deploy that times out may still finish on the worker, and a copy with no
     # record would be outside the cap and the delete guard.
