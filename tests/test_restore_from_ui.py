@@ -2114,3 +2114,148 @@ class TestStartAndRemoveAroundARestore:
                 "/api/containers/mysterium/start", headers={"Authorization": f"Bearer {WORKER_KEY}"}
             )
         assert resp.status_code == 409 and "did not finish" in resp.text
+
+
+class TestABoxWithOnlyAPartialRestore:
+    """An undo or a Remove whose volume delete failed leaves the helper and the volume, and no container.
+
+    The box lists no container of the service, so the heartbeat names the slug
+    and the dashboard draws that box's Remove from this box from it.
+    """
+
+    def _leftover(self, docker):
+        docker.corrupt_put = True
+        with (
+            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
+            pytest.raises(orchestrator.RestoreError),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "cashpilot-mysterium" not in docker.container_map and "mysterium-data" in docker.volume_map
+        docker.corrupt_put = False
+
+    def test_the_worker_names_the_service(self, docker):
+        self._leftover(docker)
+        assert orchestrator.unfinished_restores() == ["mysterium"]
+
+    def test_nothing_is_named_without_a_leftover(self, docker):
+        TestStartAndRemoveAroundARestore()._service(docker)
+        assert orchestrator.unfinished_restores() == []
+
+    def test_a_restore_that_runs_now_is_not_named(self, docker):
+        seen: list[list[str]] = []
+        real_put = FakeContainer.put_archive
+
+        def put(self, path, data):
+            seen.append(orchestrator.unfinished_restores())
+            return real_put(self, path, data)
+
+        with patch.object(FakeContainer, "put_archive", put):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert seen == [[]]
+
+    def test_the_heartbeat_carries_it(self, docker):
+        self._leftover(docker)
+        sent: dict = {}
+
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"status": "ok"}
+
+        class Client:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, json=None, headers=None):
+                sent.update(json)
+                return Resp()
+
+        with (
+            patch.object(worker_api.orchestrator, "get_status", return_value=[]),
+            patch.object(worker_api.orchestrator, "docker_available", return_value=True),
+            patch.object(worker_api, "_detect_egress_ip", new_callable=AsyncMock, return_value=None),
+            patch.object(worker_api, "_check_fence", new_callable=AsyncMock),
+            patch.object(worker_api, "_disk_usage", return_value=None),
+            patch.object(worker_api, "_gpu_info", return_value={}),
+            patch.object(worker_api.proxy_tunnel, "status", return_value=[]),
+            patch.object(worker_api.httpx, "AsyncClient", Client),
+            patch.object(worker_api, "UI_URL", "http://ui:8080"),
+        ):
+            asyncio.run(worker_api._send_heartbeat())
+        assert sent["containers"] == [] and sent["system_info"]["restore_unfinished"] == ["mysterium"]
+
+    def test_its_remove_from_this_box_clears_it(self, docker, worker):
+        """What the row's Remove sends: the plain remove is refused with the code, the owner's delete goes."""
+        # The state _leftover makes (the worker fixture stands in for restore_state).
+        TestStartAndRemoveAroundARestore()._service(docker, helper=True)
+        del docker.container_map["cashpilot-mysterium"]
+        headers = {"Authorization": f"Bearer {WORKER_KEY}"}
+        resp = worker.client.delete("/api/containers/mysterium", headers=headers)
+        assert resp.status_code == 409 and resp.json()["detail"]["error"] == "restore_unfinished"
+        resp = worker.client.delete(
+            "/api/containers/mysterium?delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true",
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert docker.container_map == {} and docker.volume_map == {}
+        assert orchestrator.unfinished_restores() == []
+
+
+class TestTheDeleteOfAPartialRestoreIsTiedToIt:
+    """The owner agreed to delete a partial restore. A restore that succeeded since is not that, and stays."""
+
+    def test_a_restore_that_succeeded_meanwhile_is_not_deleted(self, docker):
+        TestStartAndRemoveAroundARestore()._service(docker)  # the box runs a verified node now, no helper
+        with pytest.raises(orchestrator.RestoreClearedError) as caught:
+            orchestrator.remove_service(
+                "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
+            )
+        assert caught.value.status_code == 409
+        assert "cashpilot-mysterium" in docker.container_map and "mysterium-data" in docker.volume_map
+        assert docker.removed == []
+
+    def test_the_partial_restore_itself_is_deleted(self, docker):
+        TestStartAndRemoveAroundARestore()._service(docker, helper=True)
+        result = orchestrator.remove_service(
+            "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
+        )
+        assert result["deleted_volumes"] == ["mysterium-data"]
+        assert docker.container_map == {} and docker.volume_map == {}
+
+    def test_the_worker_answers_it_with_a_code(self, docker, worker):
+        TestStartAndRemoveAroundARestore()._service(docker)
+        resp = worker.client.delete(
+            "/api/containers/mysterium?delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true",
+            headers={"Authorization": f"Bearer {WORKER_KEY}"},
+        )
+        detail = resp.json()["detail"]
+        assert resp.status_code == 409 and detail["error"] == "restore_cleared"
+        assert "nothing was removed" in detail["message"]
+        assert "mysterium-data" in docker.volume_map
+
+    def test_the_ui_sends_the_condition_and_forwards_the_refusal(self, ui):
+        cleared = {
+            "detail": {"error": "restore_cleared", "message": "No restore of mysterium ... nothing was removed."}
+        }
+        resp, sent = TestRemoveAfterARestoreThatDidNotFinish()._remove(
+            ui, "&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true", 409, cleared
+        )
+        assert sent.call_args.kwargs["params"] == {
+            "delete_volumes": "true",
+            "allow_delete_critical": "true",
+            "only_if_restore_unfinished": "true",
+        }
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["error"] == "restore_cleared"
+        assert "nothing was removed" in resp.json()["detail"]["message"]
+        assert ("delete_critical_volumes", "deleted") not in _audit()

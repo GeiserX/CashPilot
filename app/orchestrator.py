@@ -744,6 +744,14 @@ class RestoreUnfinishedError(ContainerRuntimeError):
     """
 
 
+class RestoreClearedError(ContainerRuntimeError):
+    """The delete of a half-written restore was refused: no restore that did not finish is on this box now.
+
+    The worker API answers it as ``restore_cleared``. The owner agreed to delete
+    a partial restore; data restored or deployed since then is not that.
+    """
+
+
 def _runtime_overrides() -> dict[str, str]:
     overrides: dict[str, str] = {}
     for entry in _CONTAINER_RUNTIME_OVERRIDES.split(","):
@@ -2681,6 +2689,27 @@ def _restore_helper(slug: str) -> Any | None:
     return found if labels.get(LABEL_RESTORE) == "helper" else None
 
 
+def unfinished_restores() -> list[str]:
+    """The slugs on this box that a restore that did not finish left a helper for, sorted.
+
+    The heartbeat sends them, because such a box may hold only the half-written
+    volume and its helper: no container of the service is listed, so without
+    this the dashboard would draw no row, and no Remove, for that box. A
+    restore that runs now is left out: its helper goes when it ends.
+    """
+    found = _get_client().containers.list(all=True, filters={"label": f"{LABEL_RESTORE}=helper"})
+    with _SLUG_WORK_LOCK:
+        running = set(_restoring)
+    slugs = set()
+    for container in found:
+        name = str(getattr(container, "name", "") or "")
+        if name.startswith(CONTAINER_PREFIX) and name.endswith(RESTORE_HELPER_SUFFIX):
+            slug = name[len(CONTAINER_PREFIX) : -len(RESTORE_HELPER_SUFFIX)]
+            if slug and slug not in running:
+                slugs.add(slug)
+    return sorted(slugs)
+
+
 def _refuse_mid_restore(slug: str, what: str) -> None:
     """Raise unless ``slug`` may start: no restore of it runs, and none left a half-written volume.
 
@@ -3043,7 +3072,12 @@ def remove_extra_instances(slug: str) -> list[str]:
     return removed
 
 
-def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critical: bool = False) -> dict[str, Any]:
+def remove_service(
+    slug: str,
+    delete_volumes: bool = False,
+    allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
+) -> dict[str, Any]:
     """Stop and remove the container for a service.
 
     When delete_volumes is True, also remove named volumes that were
@@ -3054,6 +3088,10 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
     codebase: the data behind these mounts — node identities, keystores,
     generated wallets — has no server-side copy and no backup, so a mistake here
     cannot be undone by redeploying.
+
+    ``only_if_restore_unfinished`` is the dashboard's delete of a half-written
+    restore: it removes nothing unless that restore's helper is still here, so a
+    restore that succeeded meanwhile is never deleted on the owner's earlier yes.
     """
     with _SLUG_WORK_LOCK:
         if slug in _restoring:
@@ -3061,6 +3099,12 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
                 f"A restore of {slug} is running on this box, so nothing was removed. Try again when it ends.", 409
             )
     helper = _restore_helper(slug)
+    if only_if_restore_unfinished and helper is None:
+        raise RestoreClearedError(
+            f"No restore of {slug} that did not finish is on this box now, so nothing was removed. "
+            "Open the service again to see what runs there.",
+            409,
+        )
     if not delete_volumes and helper is not None:
         # The helper is the only mark of a half-written volume: removing it
         # while the volume stays would let the next deploy start on half the data.

@@ -128,7 +128,7 @@ function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worke
   return removeService('mysterium', ...args).then(() => ({sent, asked, toasts, reopened}));
 }
 
-const CRITICAL = '&delete_volumes=true&allow_delete_critical=true';
+const CRITICAL = '&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true';
 let run = await runRemove({owner: true, answers: [true, true]});
 check('a refused Remove asks the owner about the half-written data',
   run.asked.length === 2 && /partial restore/.test(run.asked[1]) && /deletes that volume/.test(run.asked[1]), run.asked);
@@ -165,6 +165,26 @@ const rowLine = src.split('\n').find((l) => l.includes('>Remove from this box</b
 check('every box row of a service panel offers Remove from this box',
   !!rowLine && /svc\.custom \? 'removeCustomFromBox' : 'removeService'/.test(rowLine)
   && !/\$\{svc\.custom &&/.test(rowLine), rowLine);
+
+// A box that holds only the half-written volume and its helper lists no
+// container of the service, so its row comes from the worker's heartbeat list.
+const leftoverSrc = slice('function restoreLeftoverRows(', '// -----------------------------------------------------------');
+function leftover(workers, instances = [], canWrite = true) {
+  const {restoreLeftoverRows} = new Function('_canWrite', `${escape}\n${leftoverSrc}\nreturn {restoreLeftoverRows};`)(canWrite);
+  return restoreLeftoverRows({slug: 'mysterium'}, workers, instances);
+}
+const boxA = {id: 1, name: 'box-a', system_info: {restore_unfinished: ['proxybase-xyz']}};
+const boxB = {id: 2, name: 'box-b<i>', system_info: {restore_unfinished: ['mysterium']}};
+let rows = leftover([boxA, boxB]);
+check('a box with only a partial restore gets Remove from this box',
+  /data-action="removeService" data-a1="mysterium" data-a2="2" data-a3="box-b&lt;i&gt;">Remove from this box</.test(rows), rows);
+check('and no other box does', !/data-a2="1"/.test(rows), rows);
+check('and its name stays text', !/<i>/.test(rows), rows);
+check('a box already listed with a container gets no second row',
+  leftover([boxB], [{worker: boxB, container: {slug: 'mysterium'}}]) === '');
+check('a list that is not an array is ignored',
+  leftover([{id: 3, name: 'c', system_info: {restore_unfinished: 'xmysteriumx'}}]) === '');
+check('a viewer gets the row but no button', !/<button/.test(leftover([boxB], [], false)));
 
 if (bad) {
   console.error(`\n${bad} check(s) failed`);

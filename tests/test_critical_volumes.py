@@ -213,7 +213,9 @@ class TestWorkerEndpoint:
             )
 
         assert resp.status_code == 200
-        mock.assert_called_once_with("storj", delete_volumes=True, allow_delete_critical=True)
+        mock.assert_called_once_with(
+            "storj", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=False
+        )
 
 
 class TestSafeWorkerDetail:

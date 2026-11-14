@@ -754,6 +754,13 @@ async def _send_heartbeat() -> None:
         payload["system_info"]["features"].append("fence_gated")
         # Restores a passphrase backup into a new container (POST /api/containers/{slug}/restore).
         payload["system_info"]["features"].append("state_restore")
+        # The services a restore that did not finish left half-written here. The
+        # box may hold no container of one, so the dashboard draws its Remove
+        # from this list. Left out when it cannot be read.
+        try:
+            payload["system_info"]["restore_unfinished"] = await asyncio.to_thread(orchestrator.unfinished_restores)
+        except Exception as exc:  # noqa: BLE001 - one missed reading, not a missed heartbeat
+            logger.warning("Failed to list unfinished restores for heartbeat: %s", exc)
     # Only what the owner asked for, and only a finished round.
     sent_seq = _activity_seq
     if _activity_enabled and _pending_activity is not None:
@@ -2094,6 +2101,7 @@ async def api_remove_container(
     slug: str,
     delete_volumes: bool = False,
     allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
 ) -> dict[str, Any]:
     _verify_api_key(request)
     try:
@@ -2102,6 +2110,7 @@ async def api_remove_container(
             slug,
             delete_volumes=delete_volumes,
             allow_delete_critical=allow_delete_critical,
+            only_if_restore_unfinished=only_if_restore_unfinished,
         )
         extras = await asyncio.to_thread(orchestrator.remove_extra_instances, slug)
         if extras:
@@ -2140,6 +2149,9 @@ async def api_remove_container(
     except orchestrator.RestoreUnfinishedError as exc:
         # A code, so the dashboard's Remove can offer to delete the half-written data.
         raise HTTPException(status_code=409, detail={"error": "restore_unfinished", "message": str(exc)})
+    except orchestrator.RestoreClearedError as exc:
+        # The owner's yes was to delete a partial restore, which is gone now.
+        raise HTTPException(status_code=409, detail={"error": "restore_cleared", "message": str(exc)})
     except orchestrator.ContainerRuntimeError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:

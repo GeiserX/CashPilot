@@ -4835,6 +4835,7 @@ async def _svc_remove(
     worker_id: int | None,
     delete_volumes: bool,
     allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
 ) -> dict[str, Any]:
     _require_writer(request)
     if allow_delete_critical:
@@ -4848,6 +4849,10 @@ async def _svc_remove(
         params = {"delete_volumes": "true"}
         if allow_delete_critical:
             params["allow_delete_critical"] = "true"
+    if only_if_restore_unfinished:
+        # The delete the owner agreed to is of a partial restore: the worker
+        # refuses it once that restore is gone (a later one may have succeeded).
+        params = {**(params or {}), "only_if_restore_unfinished": "true"}
     try:
         result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
     except HTTPException as exc:
@@ -4896,8 +4901,11 @@ async def api_remove(
     worker_id: int | None = None,
     delete_volumes: bool = False,
     allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
 ) -> dict[str, Any]:
-    return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
+    return await _svc_remove(
+        request, slug, worker_id, delete_volumes, allow_delete_critical, only_if_restore_unfinished
+    )
 
 
 @app.delete("/api/deployments/{slug}")
@@ -5036,6 +5044,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "step_up_rejected",
         # Remove refused: a restore that did not finish left half-written data.
         "restore_unfinished",
+        # The delete of that data refused: no such restore is on the box now.
+        "restore_cleared",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -6220,8 +6230,11 @@ async def api_service_remove(
     worker_id: int | None = None,
     delete_volumes: bool = False,
     allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
 ) -> dict[str, Any]:
-    return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
+    return await _svc_remove(
+        request, slug, worker_id, delete_volumes, allow_delete_critical, only_if_restore_unfinished
+    )
 
 
 # ---------------------------------------------------------------------------

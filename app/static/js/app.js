@@ -2885,7 +2885,9 @@ const CP = (() => {
         if (refused == null) throw err;
         const name = err.refusal.worker_name || boxName || `worker #${refused}`;
         if (!confirm(`A restore of ${slug} on ${name} did not finish, so its data volume there holds a partial restore. Remove now deletes that volume on ${name}, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
-        await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true`, { method: 'DELETE' });
+        // Only while that partial restore is still there: one restored since,
+        // in another tab, is not what the owner agreed to delete.
+        await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true`, { method: 'DELETE' });
       }
       toast(`${slug} removed${where}`, 'success');
       loadServicesTable();
@@ -4078,6 +4080,7 @@ const CP = (() => {
       }
       html += `</div>`;
     }
+    html += restoreLeftoverRows(svc, onlineWorkers, instances);
 
     const instancesHtml = html;
     if (isDeployed && instancesHtml) {
@@ -4085,6 +4088,31 @@ const CP = (() => {
         + (deployHtml ? `<details class="sd-more"><summary>${svc.custom ? 'Deploy to more boxes' : 'Deploy to more boxes, or change the image'}</summary>${deployHtml}</details>` : '');
     }
     return infoHtml + deployHtml + instancesHtml;
+  }
+
+  // A restore that did not finish can leave only its half-written volume on a
+  // box, with no container of the service to list. The worker names those
+  // services in its heartbeat, so each such box still gets its Remove from this
+  // box, which offers the owner the delete of that data.
+  function restoreLeftoverRows(svc, onlineWorkers, instances) {
+    const listed = new Set(instances.map(i => i.worker.id));
+    const boxes = onlineWorkers.filter((w) => {
+      const left = (w.system_info || {}).restore_unfinished;
+      return !listed.has(w.id) && Array.isArray(left) && left.includes(svc.slug);
+    });
+    if (!boxes.length) return '';
+    return `
+      <div class="sd-block sd-instances">
+        <h4 class="sd-h">A restore did not finish</h4>${boxes.map(w => `
+        <div class="sd-inst">
+          <span class="cell cell-warn"></span>
+          <strong class="sd-inst-box">${escapeHtml(w.name)}</strong>
+          <span class="state state-warn">partial restore, no container</span>
+          ${_canWrite ? `<div class="sd-inst-actions">
+            <button class="btn btn-danger btn-sm" data-action="removeService" data-a1="${escapeHtml(svc.slug)}" data-a2="${w.id}" data-a3="${escapeHtml(w.name)}">Remove from this box</button>
+          </div>` : ''}
+        </div>`).join('')}
+      </div>`;
   }
 
   // -----------------------------------------------------------
