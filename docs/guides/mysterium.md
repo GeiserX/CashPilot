@@ -447,13 +447,16 @@ Never `0.0.0.0`: that publishes the WebUI on every address of the machine.
 The Tequila API (4050) is never published; the WebUI reaches it from inside
 the node.
 
-A WebUI page that loads forever from another machine means 4449 is not
-published on the address you opened. Then something on the path drops the
-request silently: NAT, a hypervisor without a port forward, or a firewall. The
-browser waits until it times out. On a plain LAN the browser shows
-"connection refused" at once instead. Use the SSH tunnel
-(`ssh -L 4449:127.0.0.1:4449 <host>`, then browse `http://127.0.0.1:4449`), or
-add that address to `UI_ADDRESS`.
+A WebUI page that loads forever from another machine means something on the
+path drops the request silently: NAT, a hypervisor without a port forward, or
+a firewall. The browser waits until it times out. Check two things. First, is
+4449 published on the address you opened (`docker ps` shows the bindings)? If
+it is not, a plain LAN shows "connection refused" at once, but a NAT or
+firewall in between turns that into the endless wait. Second, if 4449 is
+published there, a firewall on the path still drops it: allow it in the
+`DOCKER-USER` chain, or forward it on the hypervisor. The SSH tunnel
+(`ssh -L 4449:127.0.0.1:4449 <host>`, then browse `http://127.0.0.1:4449`)
+avoids both.
 
 The **Node settings** button on my.mystnodes.com links to the local IP the node
 reports. For a node on CashPilot's bridge, that is normally the container's
