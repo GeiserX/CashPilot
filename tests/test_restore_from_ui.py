@@ -56,6 +56,8 @@ from app import (  # noqa: E402
 )
 
 PASSPHRASE = "correct horse battery staple"
+#: The real proxy, before the ui fixture swaps it out.
+REAL_PROXY = main._proxy_to_worker
 WORKER_KEY = "per-worker-key-restore"
 CLIENT_ID = "worker-client-1"
 KEY_FILE = b'{"address":"0xabc","crypto":{"cipher":"aes-128-ctr"}}'
@@ -69,7 +71,8 @@ KEY_FILE = b'{"address":"0xabc","crypto":{"cipher":"aes-128-ctr"}}'
 def docker_archive(folder: str, entries: list[tuple[str, str, int, int, int, bytes | str]]) -> bytes:
     """A tar shaped like Docker's GET archive of ``/.../folder``.
 
-    ``entries``: (path below the folder, type 'dir'/'file'/'symlink', mode, uid, gid, data or link target).
+    ``entries``: (path below the folder, type 'dir'/'file'/'symlink'/'hardlink', mode, uid, gid, data or link
+    target; a hard link's target is a path below the folder).
     """
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tar:
@@ -85,6 +88,10 @@ def docker_archive(folder: str, entries: list[tuple[str, str, int, int, int, byt
             elif kind == "symlink":
                 info.type, info.linkname = tarfile.SYMTYPE, str(data)
                 tar.addfile(info)
+            elif kind == "hardlink":
+                # Docker names a hard link's target by its full path in the archive.
+                info.type, info.linkname = tarfile.LNKTYPE, f"{folder}/{data}"
+                tar.addfile(info)
             else:
                 assert isinstance(data, bytes)
                 info.size = len(data)
@@ -97,6 +104,16 @@ MYSTERIUM_TREE = [
     ("keystore/UTC--2024-01-01--abc", "file", 0o600, 1000, 1000, KEY_FILE),
     ("keystore/current", "symlink", 0o777, 1000, 1000, "UTC--2024-01-01--abc"),
     ("myst.db", "file", 0o644, 1000, 1000, b"sqlite-ish bytes"),
+]
+
+
+#: A keystore file as Mysterium names it: UTC--<ISO time with nanoseconds>--<40 hex address>.
+KEYSTORE_NAME = "UTC--2024-05-17T09-31-27.123456789Z--" + "3f" * 20
+LONG_NAME_TREE = [
+    ("keystore", "dir", 0o700, 1000, 1000, b""),
+    (f"keystore/{KEYSTORE_NAME}", "file", 0o600, 1000, 1000, KEY_FILE),
+    ("keystore/clé-ñ", "file", 0o600, 1000, 1000, b"accented"),
+    ("keystore/linked", "hardlink", 0o600, 1000, 1000, f"keystore/{KEYSTORE_NAME}"),
 ]
 
 
@@ -149,6 +166,26 @@ class TestTheComparison:
         with tarfile.open(fileobj=io.BytesIO(state_backup.relative_archive(archive))) as tar:
             names = tar.getnames()
         assert names == ["keystore", "keystore/UTC--2024-01-01--abc", "keystore/current", "myst.db"]
+
+    def test_long_and_non_ascii_names_are_renamed_in_full(self):
+        """split_archives writes these names as PAX records, which tarfile writes back in preference to the name."""
+        archive = state_backup.split_archives(docker_archive("mysterium-node", LONG_NAME_TREE))["mysterium-node"]
+        with tarfile.open(fileobj=io.BytesIO(state_backup.relative_archive(archive))) as tar:
+            members = {m.name: m for m in tar}
+        assert sorted(members) == ["keystore", f"keystore/{KEYSTORE_NAME}", "keystore/clé-ñ", "keystore/linked"]
+        assert members["keystore/linked"].linkname == f"keystore/{KEYSTORE_NAME}"
+
+    def test_a_real_mysterium_keystore_name_restores(self, docker):
+        """'mysterium-node/keystore/UTC--<time>--<address>' is 101 bytes: one past a plain tar name."""
+        assert len(f"mysterium-node/keystore/{KEYSTORE_NAME}".encode()) > 100
+        result = orchestrator.restore_state("mysterium", _archives(LONG_NAME_TREE), MYSTERIUM_DEPLOY)
+        assert result["started"] is True
+        assert set(docker.volume_map["mysterium-data"].files) == {
+            "keystore",
+            f"keystore/{KEYSTORE_NAME}",
+            "keystore/clé-ñ",
+            "keystore/linked",
+        }
 
     def test_the_same_tree_has_no_differences(self):
         assert state_backup.manifest_differences(self._manifest(MYSTERIUM_TREE), self._manifest(MYSTERIUM_TREE)) == []
@@ -253,7 +290,9 @@ class FakeContainer:
             for name, (member, body) in sorted(volume.files.items()):
                 copy = tarfile.TarInfo(f"{folder}/{name}")
                 copy.type, copy.mode, copy.uid, copy.gid = member.type, member.mode, member.uid, member.gid
-                copy.linkname, copy.size = member.linkname, member.size
+                copy.size = member.size
+                # Docker names a hard link's target by its path in the archive, under the folder.
+                copy.linkname = f"{folder}/{member.linkname}" if member.islnk() else member.linkname
                 tar.addfile(copy, io.BytesIO(body) if body is not None else None)
         return [buf.getvalue()], {}
 
@@ -352,6 +391,8 @@ class TestTheRestoreSequence:
         result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert result["started"] is True and result["files"] == 2
         assert result["targets"] == ["/var/lib/mysterium-node"]
+        # The new volume's fingerprint, which links a later export of it to this backup's node.
+        assert isinstance(result["state_id"], str) and result["state_id"]
         assert docker.started == ["cashpilot-mysterium"]
         volume = docker.volume_map["mysterium-data"]
         member, body = volume.files["keystore/UTC--2024-01-01--abc"]
@@ -643,6 +684,7 @@ def worker(monkeypatch):
         return client.post(f"/api/containers/{slug}/restore", json=body, headers=headers)
 
     post.calls = calls
+    post.client = client
     return post
 
 
@@ -743,7 +785,10 @@ def ui(tmp_path):
 
     async def proxy(worker_id, method, path, *, json=None, **kwargs):
         sent.append({"worker_id": worker_id, "path": path, "json": dict(json or {})})
-        return {"container_id": "cid", "files": 2, "targets": ["/var/lib/mysterium-node"], "started": True}
+        answer = {"container_id": "cid", "files": 2, "targets": ["/var/lib/mysterium-node"], "started": True}
+        if path.endswith("/restore") and state.get("landed"):
+            answer["state_id"] = state["landed"]  # the fingerprint of the volume the restore made
+        return answer
 
     workers = [
         {
@@ -1163,6 +1208,98 @@ class TestOneNodeManyFiles:
         assert resp.status_code == 409 and "box-a" in _detail(resp) and ui.sent == []
 
 
+def _export_route(ui, bundle: bytes, worker_id: int, state_id: str) -> None:
+    """An export through the dashboard's own route, which decides the file's origin."""
+    answer = {"bundle_b64": base64.b64encode(bundle).decode(), "state_id": state_id, "targets": [], "bytes": 1}
+    box = {"worker_id": worker_id, "name": f"box-{worker_id}", "workers": []}
+    with (
+        patch.object(main, "_backup_box", AsyncMock(return_value=box)),
+        patch.object(main, "_worker_features", AsyncMock(return_value={"state_backup"})),
+        patch.object(main, "_proxy_to_worker", AsyncMock(return_value=answer)),
+    ):
+        resp = ui.post(
+            "/api/payout-registry/mysterium/backup-export",
+            json={"worker_id": worker_id, "passphrase": PASSPHRASE, "passphrase_repeat": PASSPHRASE},
+        )
+    assert resp.status_code == 200, resp.text
+
+
+def _runs(ui, worker_id: int | None, state_id: str | None = None) -> None:
+    """The fleet as the next heartbeat shows it: Mysterium on one box with this volume, or nowhere."""
+    if worker_id is None:
+        # Removed from the dashboard: the deploy records go with it.
+        asyncio.run(database.remove_deployment("mysterium"))
+    ui.state["runs_on"] = {"mysterium": [{"worker_id": worker_id}]} if worker_id else {}
+    ui.state["states"] = {(worker_id, "mysterium"): state_id} if worker_id and state_id else {}
+
+
+def _restore_ok(ui, bundle: bytes, worker_id: int, landed: str, **extra) -> None:
+    ui.state["landed"] = landed
+    upload = _upload(ui, bundle).json()
+    plain = {"allow_plain_http": True} if worker_id == 2 else {}
+    resp = _restore(ui, upload["upload_id"], worker_id=worker_id, step_up_password=OWNER_PASSWORD, **plain, **extra)
+    assert resp.status_code == 200, resp.text
+    _runs(ui, worker_id, landed)
+
+
+class TestOneNodeMovedTwice:
+    """An export taken after a restore is a file of the restored node, not of a new one."""
+
+    def test_the_first_file_of_a_node_moved_twice_is_refused_where_it_does_not_run(self, ui):
+        f1, f2 = mysterium_bundle(), mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")  # 1. F1 from box-b
+        _runs(ui, None)
+        _restore_ok(ui, f1, 1, "SA")  # 2. removed on box-b, F1 restored on box-a
+        _export_route(ui, f2, 1, "SA")  # 3. F2 from box-a
+        _runs(ui, None)
+        _restore_ok(ui, f2, 2, "SB")  # 4. removed on box-a, F2 restored on box-b
+        preview = _upload(ui, f1).json()  # 5. F1 again
+        assert preview["live_on"] == ["box-b"]
+        resp = _restore(ui, preview["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 409 and "box-b" in _detail(resp)
+        assert len(ui.sent) == 2
+
+    def test_a_file_this_cashpilot_did_not_make_gets_a_lineage_where_it_lands(self, ui):
+        f0, f2 = mysterium_bundle(), mysterium_bundle()
+        _restore_ok(ui, f0, 1, "SA", confirm_name="Mysterium")
+        _export_route(ui, f2, 1, "SA")
+        _runs(ui, None)
+        _restore_ok(ui, f2, 2, "SB")
+        preview = _upload(ui, f0).json()
+        assert preview["known"] is True and preview["live_on"] == ["box-b"]
+
+    def test_a_restore_the_worker_gave_no_volume_for_still_links_the_next_export(self, ui):
+        f1, f2 = mysterium_bundle(), mysterium_bundle()
+        _export(f1, 2, "S1")
+        _restore_ok(ui, f1, 1, "")  # an answer with no state_id
+        _export_route(ui, f2, 1, "SA")
+        _runs(ui, None)
+        _restore_ok(ui, f2, 2, "SB")
+        assert _upload(ui, f1).json()["live_on"] == ["box-b"]
+
+
+class TestARestoredBoxRedeployedSince:
+    """A restore row holds the identity only while its box still runs the volume the restore made."""
+
+    def test_a_fresh_node_on_that_box_does_not_hold_the_old_identity(self, ui):
+        bundle = mysterium_bundle()
+        _export(bundle, 2, "S1")
+        _restore_ok(ui, bundle, 1, "SA")
+        _runs(ui, 1, "a-fresh-volume")
+        preview = _upload(ui, bundle).json()
+        assert preview["live_on"] == []
+
+    def test_the_same_volume_still_holds_it_and_the_refusal_names_the_way_out(self, ui):
+        bundle = mysterium_bundle()
+        _export(bundle, 2, "S1")
+        _restore_ok(ui, bundle, 1, "SA")
+        upload = _upload(ui, bundle).json()
+        assert upload["live_on"] == ["box-a"]
+        resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 409 and "box-a" in _detail(resp) and "Device ids" in _detail(resp)
+
+
 class TestARestoreWithNoAnswer:
     def _lost(self, ui, bundle, exc):
         upload = _upload(ui, bundle).json()
@@ -1255,6 +1392,45 @@ class TestTheWorkerProxyErrors:
         with pytest.raises(HTTPException) as caught:
             asyncio.run(self._call(exc))
         assert caught.value.status_code == 503 and not isinstance(caught.value, main.WorkerNoAnswer)
+
+
+class TestARestoreTheWorkerUndid:
+    """The worker's own 503 says the restore was undone: no gateway sends that, so nothing holds the identity."""
+
+    UNDONE = {"detail": "Docker is not reachable. The restore was undone.", "restored": False}
+
+    def test_the_worker_says_so_in_its_answer(self, worker, monkeypatch):
+        def fails(*_a):
+            raise orchestrator.RestoreError("Docker is not reachable. The restore was undone.", 503)
+
+        monkeypatch.setattr(worker_api.orchestrator, "restore_state", fails)
+        resp = worker("proxybase-xyz", proxybase_bundle())
+        assert resp.status_code == 503 and resp.json() == self.UNDONE
+
+    def _answer(self, ui, bundle, status, body):
+        request = httpx.Request("POST", "https://a/api/containers/mysterium/restore")
+        answer = httpx.Response(status, request=request, **({"json": body} if body is not None else {}))
+        upload = _upload(ui, bundle).json()
+        with (
+            patch.object(main, "_proxy_to_worker", REAL_PROXY),
+            patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("https://a", {}))),
+            patch("httpx.AsyncClient.post", AsyncMock(return_value=answer)),
+        ):
+            return _restore(ui, upload["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+
+    def test_an_undone_restore_leaves_no_pending_row(self, ui):
+        bundle = mysterium_bundle()
+        _export(bundle, 2)
+        resp = self._answer(ui, bundle, 503, self.UNDONE)
+        assert resp.status_code == 503 and "undone" in _detail(resp)
+        assert [r["source"] for r in asyncio.run(database.backup_records(_sha(bundle)))] == ["export"]
+        assert _upload(ui, bundle).json()["live_on"] == []
+
+    def test_a_gateways_503_still_holds_it(self, ui):
+        bundle = mysterium_bundle()
+        _export(bundle, 2)
+        assert self._answer(ui, bundle, 503, None).status_code == 503
+        assert _upload(ui, bundle).json()["live_on"] == ["box-a"]
 
 
 class TestTheUploadFolder:
@@ -1355,3 +1531,91 @@ class TestTheRestoreSafetyBranches:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert tries.count("cashpilot-mysterium.restore") == 2
         assert docker.container_map == {} and docker.volume_map == {}
+
+
+class TestStartAndRemoveAroundARestore:
+    """Start, Restart and Remove go around deploy_raw, so its guard alone left them open."""
+
+    def _service(self, docker, *, helper=False):
+        mounts = {"/var/lib/mysterium-node": "mysterium-data"}
+        docker.volumes.create("mysterium-data")
+        container = FakeContainer(
+            docker,
+            "cashpilot-mysterium",
+            mounts,
+            {orchestrator.LABEL_MANAGED: "true", orchestrator.LABEL_SERVICE: "mysterium"},
+        )
+        container.attrs["Mounts"] = [
+            {"Type": "volume", "Name": "mysterium-data", "Destination": "/var/lib/mysterium-node"}
+        ]
+        docker.container_map[container.name] = container
+        if helper:
+            left = FakeContainer(
+                docker,
+                "cashpilot-mysterium.restore",
+                {"/restore": "mysterium-data"},
+                {orchestrator.LABEL_RESTORE: "helper"},
+            )
+            docker.container_map[left.name] = left
+        return container
+
+    @pytest.mark.parametrize("command", ["start_service", "restart_service"])
+    def test_no_start_while_the_restore_writes(self, docker, command):
+        seen: list[Exception] = []
+        real_put = FakeContainer.put_archive
+
+        def put(self, path, data):
+            try:
+                getattr(orchestrator, command)("mysterium")
+            except orchestrator.ContainerRuntimeError as exc:
+                seen.append(exc)
+            return real_put(self, path, data)
+
+        with patch.object(FakeContainer, "put_archive", put):
+            result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert result["started"] is True and docker.started == ["cashpilot-mysterium"]
+        assert len(seen) == 1 and seen[0].status_code == 409 and "restore of mysterium is running" in str(seen[0])
+
+    @pytest.mark.parametrize("command", ["start_service", "restart_service"])
+    def test_a_half_written_restore_is_never_started(self, docker, command):
+        """The worker died mid-write: its helper is still there, and the volume may hold half the backup."""
+        self._service(docker, helper=True)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish") as caught:
+            getattr(orchestrator, command)("mysterium")
+        assert caught.value.status_code == 409 and docker.started == []
+
+    def test_a_service_with_no_leftover_starts(self, docker):
+        self._service(docker)
+        orchestrator.start_service("mysterium")
+        assert docker.started == ["cashpilot-mysterium"]
+
+    def test_remove_clears_the_leftover_helper_so_the_volume_goes(self, docker):
+        self._service(docker, helper=True)
+        result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
+        assert docker.container_map == {} and docker.volume_map == {}
+
+    def test_no_remove_while_the_restore_writes(self, docker):
+        seen: list[Exception] = []
+        real_put = FakeContainer.put_archive
+
+        def put(self, path, data):
+            try:
+                orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            except orchestrator.ContainerRuntimeError as exc:
+                seen.append(exc)
+            return real_put(self, path, data)
+
+        with patch.object(FakeContainer, "put_archive", put):
+            result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert result["started"] is True and "mysterium-data" in docker.volume_map
+        assert len(seen) == 1 and seen[0].status_code == 409
+
+    def test_the_worker_answers_a_refusal_as_409(self, worker):
+        with patch.object(
+            orchestrator, "start_service", side_effect=orchestrator.ContainerRuntimeError("did not finish", 409)
+        ):
+            resp = worker.client.post(
+                "/api/containers/mysterium/start", headers={"Authorization": f"Bearer {WORKER_KEY}"}
+            )
+        assert resp.status_code == 409 and "did not finish" in resp.text

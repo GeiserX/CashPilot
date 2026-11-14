@@ -2052,6 +2052,9 @@ async def api_restart_container(request: Request, slug: str, instance: int = 1) 
         return {"status": "restarted"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.ContainerRuntimeError as exc:
+        # A refusal (a restore of it runs or did not finish), not an unreachable Docker.
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -2078,6 +2081,9 @@ async def api_start_container(request: Request, slug: str, instance: int = 1) ->
         return {"status": "started"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.ContainerRuntimeError as exc:
+        # A refusal (a restore of it runs or did not finish), not an unreachable Docker.
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -2131,6 +2137,8 @@ async def api_remove_container(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -2423,7 +2431,9 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
         result = await asyncio.to_thread(orchestrator.restore_state, slug, archives, deploy)
     except orchestrator.RestoreError as exc:
         logger.warning("Restore of %s refused or undone: %s", slug, exc)
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+        # "restored": false tells the UI this is the worker's own answer, so a
+        # 503 here is not a gateway's: nothing of this restore is on the box.
+        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc), "restored": False})
     await asyncio.to_thread(lan_fence.refresh_outside)
     return {"status": "restored", "bundle_sha256": digest, **result}
 

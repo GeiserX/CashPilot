@@ -116,16 +116,19 @@ identity sits on a named Docker volume. The rules:
   file, you type the service name, because nobody can tell from the file whose
   identity or wallet is inside. A file exported before this record existed is
   one of these: the preview names the boxes that run the service now.
-- **One identity, one box.** CashPilot links every export of one node by the
-  volume it was read from, so two files of the same node count as one. The
-  restore is refused, naming the box, when any of them was restored on a box
-  that runs the service, or came from a box that still runs it on the same
+- **One identity, one box.** CashPilot links every file of one node, so two
+  files of the same node count as one: exports by the volume they were read
+  from, and an export of a node that came from a restore to the file it was
+  restored from, however many times the node moved. The restore is refused,
+  naming the box, when any of them was restored on a box that still runs the
+  volume the restore made, or came from a box that still runs it on the same
   volume. A box that was wiped and runs a new volume does not count. A restore
-  sent to a box that gave no answer (a timeout, a dropped connection) counts
-  on that box, running or not, until a retry there succeeds or you forget the
-  row in the Device ids list. For a file it does not know, the box named
-  inside the file counts too. Two boxes on one identity look like one node to
-  the provider, which may merge or ban them. One restore runs at a time.
+  sent to a box that gave no answer (a timeout, a dropped connection, a gateway
+  error) counts on that box, running or not, until a retry there succeeds or
+  you forget the row in the Device ids list; one the worker answered it undid
+  does not. For a file it does not know, the box named inside the file counts
+  too. Two boxes on one identity look like one node to the provider, which may
+  merge or ban them. One restore runs at a time.
 - **Plain HTTP needs your yes.** The passphrase goes to the worker in the
   request. To a worker reached over `http://`, it crosses your network
   unencrypted, so the restore asks you to tick a box that accepts this. Give
@@ -136,7 +139,9 @@ identity sits on a named Docker volume. The rules:
   then does the container start (Mysterium only behind a confirmed LAN fence).
   On any failure, the container and the volumes the restore made are removed.
   A Mysterium the restore made and could not remove is held stopped, so the
-  LAN fence guard never starts data that did not check out.
+  LAN fence guard never starts data that did not check out. While a restore
+  runs, and after a worker that died mid-write, Start and Restart refuse the
+  service; Remove with its data clears what that restore left.
 - **Nothing kept.** The file waits in a private folder under the data folder
   for at most 15 minutes and is deleted once the restore runs. The passphrase
   goes to the worker in that one request and is never stored or logged.

@@ -5107,6 +5107,15 @@ async def _confirmed_worker_key(cid: str) -> str | None:
     return stored_key if (stored_key and key_confirmed) else None
 
 
+def _worker_restored_nothing(resp: Any) -> bool:
+    """Whether this error is the worker's own answer to a restore it refused or undid (``"restored": false``)."""
+    try:
+        body = resp.json()
+    except (ValueError, AttributeError):
+        return False
+    return isinstance(body, dict) and body.get("restored") is False
+
+
 class WorkerNoAnswer(HTTPException):
     """The request may have reached the worker, which gave no answer: it may still act on it.
 
@@ -5160,8 +5169,10 @@ async def _proxy_to_worker(
                 logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
                 logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 # 502-504 come from a proxy in front of the worker as often as
-                # from the worker: whether it got the request is not known.
-                raise (WorkerNoAnswer if resp.status_code in (502, 503, 504) else HTTPException)(
+                # from the worker: whether it got the request is not known,
+                # unless the worker itself says nothing was restored.
+                unknown = resp.status_code in (502, 503, 504) and not _worker_restored_nothing(resp)
+                raise (WorkerNoAnswer if unknown else HTTPException)(
                     status_code=resp.status_code,
                     detail=safe or _worker_failure_text(resp.status_code),
                 )
@@ -5329,6 +5340,7 @@ async def _proxy_worker_restore(
     )
     # The worker restored it: whatever fails after this, the restore happened.
     restore["answered"] = True
+    restore["state_id"] = result.get("state_id") if isinstance(result, dict) else None
     return result
 
 
@@ -7933,7 +7945,10 @@ async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
     try:
         # A restore of this file needs no typed confirmation: this CashPilot made it.
         digest = hashlib.sha256(base64.b64decode(bundle, validate=True)).hexdigest()
-        await database.record_backup(slug, worker_id, digest, "export", database.backup_origin(worker_id, fingerprint))
+        here = database.backup_origin(worker_id, fingerprint)
+        # A node this box got from a restore keeps the origin it had: one node, one origin.
+        origin = await database.backup_lineage(slug, worker_id, here) or here
+        await database.record_backup(slug, worker_id, digest, "export", origin, here)
     except Exception:  # noqa: BLE001 - the file is good; only the ledger row is missing
         logger.warning("Could not record the backup of %s from worker %s in the ledger", slug, worker_id, exc_info=True)
     box_name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(box["name"])).strip("-") or str(worker_id)
@@ -9947,6 +9962,11 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
     file the ledger does not know (made before it) names its box there, and
     when that box runs the service now, the file may hold the very identity it
     runs. Sets ``entry["origin"]``, which a restore of it records.
+
+    One node keeps one origin however often it moved: an export from a box
+    whose node came from a restore takes that restore's origin
+    (database.backup_lineage). An export or a restore row holds the identity
+    on its box only while the box still runs the volume it named.
     """
     slug = entry["slug"]
     svc, targets = _restore_service(slug)
@@ -9980,8 +10000,8 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
             live_ids.add(w)
         elif w in running:
             now = states.get((w, slug))
-            if r["source"] == "export" and r["origin"] and now and r["origin"] != database.backup_origin(w, now):
-                continue  # that box runs another volume now: a node made since
+            if r["here"] and now and r["here"] != database.backup_origin(w, now):
+                continue  # that box runs another volume now: a node made since, not this one
             live_ids.add(w)
     if not any(r["source"] != "pending" for r in own):
         live_ids |= {w for w in running if names[w] == entry.get("made_on")}
@@ -10161,7 +10181,8 @@ async def _restore_upload(
                 status_code=409,
                 detail=f"This backup's identity already runs on {', '.join(elsewhere)}. Two boxes on one "
                 "identity look to the provider like one node, which it may merge or ban. Remove the service "
-                "there first; if that box is gone for good, delete it on the Fleet page.",
+                "there first; if that box is gone for good, delete it on the Fleet page. If you know it runs "
+                "another node now, Forget this backup's rows for it under Settings, Device ids.",
             )
         if not box["ok"]:
             raise HTTPException(status_code=409, detail=f"Cannot restore on {box['name']}: {box['why']}.")
@@ -10223,13 +10244,16 @@ async def _restore_upload(
             refused = isinstance(exc, HTTPException) and not isinstance(exc, WorkerNoAnswer) and not answered
             if answered or refused:
                 with contextlib.suppress(Exception):
-                    await database.settle_backup(pending, applied=answered)
+                    landed = database.backup_origin(worker_id, restore.get("state_id"))
+                    await database.settle_backup(pending, applied=answered, here=landed)
             raise
         finally:
+            # The volume the restore created, which an export from it later inherits the origin by.
+            landed = database.backup_origin(worker_id, restore.get("state_id"))
             restore.clear()
         del restore
         try:
-            await database.settle_backup(pending, applied=True)
+            await database.settle_backup(pending, applied=True, here=landed)
             # An earlier try of this file on this box that got no answer is settled by this one.
             for row in await database.backup_records(sha):
                 if row["source"] == "pending" and row["worker_id"] == worker_id and row["id"] != pending:

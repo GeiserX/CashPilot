@@ -21,6 +21,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from docker.errors import NotFound
 from fastapi import HTTPException
 
 from app import main, orchestrator
@@ -354,7 +355,15 @@ class TestCopyCommands:
         first, second = _container("cashpilot-demo"), _container("cashpilot-demo-2", instance=2)
         second.logs.return_value = b"copy two"
         client = MagicMock()
-        client.containers.get.side_effect = lambda name: {"cashpilot-demo": first, "cashpilot-demo-2": second}[name]
+        found = {"cashpilot-demo": first, "cashpilot-demo-2": second}
+
+        def get(name):
+            # Docker's answer for a name it does not have (Start looks for a restore's leftover helper).
+            if name not in found:
+                raise NotFound(name)
+            return found[name]
+
+        client.containers.get.side_effect = get
         client.containers.list.return_value = [first, second]
         return client, first, second
 

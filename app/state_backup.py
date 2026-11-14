@@ -506,6 +506,12 @@ def relative_archive(archive: bytes) -> bytes:
     so the first component goes, and with it the folder's own entry: Docker does
     not apply it to a folder that exists, and the folder is the volume's root.
     Hard links are renamed the same way. Only names change.
+
+    Each entry is a new TarInfo with the fields split_archives keeps. Renaming
+    the one read in is not enough: a name over 100 bytes or not ASCII arrives
+    as a PAX ``path`` record, which tarfile writes back in preference to the
+    new name, so the entry would land one folder too deep. A real Mysterium
+    keystore file is one.
     """
     import io
     import tarfile
@@ -520,10 +526,11 @@ def relative_archive(archive: bytes) -> bytes:
             if not name:
                 continue
             data = src.extractfile(member).read() if member.isfile() else None  # type: ignore[union-attr]
-            member.name = name
-            if member.islnk():
-                member.linkname = _below_top(member.linkname)
-            dst.addfile(member, io.BytesIO(data) if data is not None else None)
+            clean = tarfile.TarInfo(name)
+            clean.type, clean.mode, clean.uid, clean.gid = member.type, member.mode, member.uid, member.gid
+            clean.mtime, clean.size = member.mtime, member.size
+            clean.linkname = _below_top(member.linkname) if member.islnk() else member.linkname
+            dst.addfile(clean, io.BytesIO(data) if data is not None else None)
     return out.getvalue()
 
 

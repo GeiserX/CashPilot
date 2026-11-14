@@ -1723,6 +1723,7 @@ def stop_service(slug: str, instance: int = 1) -> None:
 
 def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
+    _refuse_mid_restore(slug, "started")
     container = _find_container(slug, instance)
     if _gated_container(slug, container):
         _require_startable(container, slug)
@@ -2630,6 +2631,40 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
     return None
 
 
+def _restore_helper(slug: str) -> Any | None:
+    """The helper container a restore of ``slug`` left behind, or None.
+
+    It exists only while a restore writes, so outside one it means the worker
+    died mid-write: the volume may be half-written.
+    """
+    try:
+        found = _get_client().containers.get(_container_name(slug) + RESTORE_HELPER_SUFFIX)
+    except NotFound:
+        return None
+    labels = found.labels if isinstance(getattr(found, "labels", None), dict) else {}
+    return found if labels.get(LABEL_RESTORE) == "helper" else None
+
+
+def _refuse_mid_restore(slug: str, what: str) -> None:
+    """Raise unless ``slug`` may start: no restore of it runs, and none left a half-written volume.
+
+    A fence-gated service is also held by its failed mark on disk; this covers
+    the others (ProxyBase, Anyone), which nothing else marks.
+    """
+    with _SLUG_WORK_LOCK:
+        running = slug in _restoring
+    if running:
+        raise ContainerRuntimeError(
+            f"A restore of {slug} is running on this box, so it was not {what}. Try again when it ends.", 409
+        )
+    if _restore_helper(slug) is not None:
+        raise ContainerRuntimeError(
+            f"A restore of {slug} did not finish, so its data may be half-written and it was not {what}. "
+            "Remove the service with its data, then restore the backup again.",
+            409,
+        )
+
+
 def _create_restore_volume(client: Any, volume: str) -> None:
     """Create ``volume`` new, or raise RestoreError when Docker handed back one that was there."""
     nonce = secrets.token_hex(16)
@@ -2852,7 +2887,14 @@ def _restore_locked(
             raise RestoreError(f"The restore failed and was undone.{note}", 500) from None
         raise
     logger.info("Restored %s from a backup: %d files in %s", slug, files, ", ".join(sorted(targets)))
-    return {"container_id": container.id, "targets": sorted(targets), "files": files, "started": started}
+    return {
+        "container_id": container.id,
+        "targets": sorted(targets),
+        "files": files,
+        "started": started,
+        # The new volume's fingerprint: the UI links an export from it later to this backup's node.
+        "state_id": state_id(container, targets, client),
+    }
 
 
 def _name_taken(client: Any, name: str) -> bool:
@@ -2947,6 +2989,11 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
     generated wallets — has no server-side copy and no backup, so a mistake here
     cannot be undone by redeploying.
     """
+    with _SLUG_WORK_LOCK:
+        if slug in _restoring:
+            raise ContainerRuntimeError(
+                f"A restore of {slug} is running on this box, so nothing was removed. Try again when it ends.", 409
+            )
     container = _find_container(slug)
     name = container.name
 
@@ -2993,6 +3040,15 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
 
     container.remove(force=True)
     logger.info("Removed container %s", name)
+    # A restore that died midway left its helper, which mounts the volume, so
+    # the volume could not go and the next restore would refuse it.
+    try:
+        helper = _restore_helper(slug)
+        if helper is not None:
+            helper.remove(force=True)
+            logger.info("Removed %s, left by a restore that did not finish", helper.name)
+    except Exception as exc:  # noqa: BLE001 - its volume then shows as not deleted
+        logger.warning("Could not remove the helper a restore of %s left: %s", slug, exc)
 
     deleted_volumes: list[str] = []
     failed_volumes: list[str] = []
@@ -3018,6 +3074,7 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
 
 def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
+    _refuse_mid_restore(slug, "started")
     container = _find_container(slug, instance)
     if _gated_container(slug, container):
         _require_startable(container, slug)
