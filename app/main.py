@@ -4449,8 +4449,18 @@ async def _backfill_identities() -> None:
             except (TypeError, ValueError):
                 count = 1
             # Each copy on its own: one whose write failed at deploy is retried
-            # here, even when the others have their rows.
+            # here, even when the others have their rows. The record holds the
+            # count asked for, saved before the extra copies deploy, so an extra
+            # copy counts only once the box's heartbeat lists it: one whose own
+            # deploy failed never ran and gets no row.
             missing = [n for n in range(1, max(1, min(count, 32)) + 1) if str(n) not in have]
+            if any(n > 1 for n in missing):
+                try:
+                    listed = await _worker_instances(worker_id, slug)
+                except Exception:  # noqa: BLE001
+                    logger.warning("Could not read which copies of %s run", slug, exc_info=True)
+                    listed = set()
+                missing = [n for n in missing if n == 1 or n in listed]
             if missing:
                 await _record_deploy_identities(slug, worker_id, spec, missing, docker_conf, scope="given")
         for copy in proxied:

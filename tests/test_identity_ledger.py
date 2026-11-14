@@ -11,6 +11,7 @@ offer, and the refusal to put one device id on two boxes without asking.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sqlite3
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -508,8 +509,10 @@ class TestADeletedBox:
         assert ("earnapp", 1, "1", "EARNAPP_UUID", UUID_A) in _retired()
 
 
-def _worker(name="box-a"):
-    return asyncio.run(database.upsert_worker(f"client-{name}", name=name))
+def _worker(name="box-a", running=()):
+    """A box whose last heartbeat lists ``running``: (slug, copy) pairs."""
+    containers = [{"slug": slug, "instance": n, "container_id": f"{slug}-{n}" * 3} for slug, n in running]
+    return asyncio.run(database.upsert_worker(f"client-{name}", name=name, containers=json.dumps(containers)))
 
 
 class TestOldDeployments:
@@ -528,7 +531,7 @@ class TestOldDeployments:
         assert len(_rows()) == 1
 
     def test_its_copies_and_proxied_copies_are_listed(self, db):
-        wid = _worker()
+        wid = _worker(running=[("proxyrack", 1), ("proxyrack", 2)])
         hex_uuid = "ab" * 32
         spec = {"env": {"UUID": hex_uuid, "DEVICE_NAME": "box", "API_KEY": "secret-key"}, "instances": 2}
         asyncio.run(database.save_deployment(slug="proxyrack", container_id="c1", spec=spec, worker_id=wid))
@@ -791,7 +794,7 @@ class TestACopyWhoseWriteFailed:
         assert set(_active()) == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME")}
 
     def test_the_backfill_retries_it(self, db):
-        wid = _worker()
+        wid = _worker(running=[("honeygain", 1), ("honeygain", 2)])
         self._deploy_losing_copy_two(wid)
         asyncio.run(main._backfill_identities())
         assert _active() == {
@@ -800,8 +803,21 @@ class TestACopyWhoseWriteFailed:
         }
 
     def test_its_removal_then_keeps_its_id(self, db):
-        wid = _worker()
+        wid = _worker(running=[("honeygain", 1), ("honeygain", 2)])
         self._deploy_losing_copy_two(wid)
         asyncio.run(main._backfill_identities())
         asyncio.run(database.remove_deployment("honeygain", worker_id=wid))
         assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+    def test_a_copy_whose_deploy_failed_gets_no_row(self, db):
+        """The record says two copies, but copy 2 never ran: the heartbeat lists only copy 1."""
+        wid = _worker(running=[("honeygain", 1)])
+
+        def copy_two(method, path, json):
+            return path.endswith("/deploy") and (json or {}).get("instance") == 2
+
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, _ = _deploy("honeygain", self.HG, wid, instances=2, fail=copy_two)
+        assert error is not None
+        asyncio.run(main._backfill_identities())
+        assert _active() == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME"): "box"}
