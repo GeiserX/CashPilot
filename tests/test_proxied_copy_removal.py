@@ -291,7 +291,7 @@ class TestASlowWorker:
 
         assert _run(go) == [(7, "proxyrack", False)]
 
-    def test_a_copy_left_on_the_old_device_name_stays_marked_until_renamed_or_added_again(self, db):
+    def test_a_copy_left_on_the_old_device_name_stays_marked_until_renamed(self, db):
         async def go():
             pid = await _proxy_with_copy()
             marks = []
@@ -305,7 +305,9 @@ class TestASlowWorker:
                 marks.append([c["rename_pending"] for c in await database.list_proxied_copies()])
             return marks
 
-        assert _run(go) == [[1], [0], [1], [0]]
+        # Saving the record again runs before the worker rebuilds the copy, so
+        # it keeps the mark; the add route clears it once the rebuild worked.
+        assert _run(go) == [[1], [0], [1], [1]]
 
 
 class TestPendingDeviceLinks:

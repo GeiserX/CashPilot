@@ -2273,12 +2273,17 @@ async def delete_proxy(proxy_id: int) -> bool:
 
 
 async def save_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> None:
+    """Record a proxied copy, or clear a re-added one's stop and removal marks.
+
+    ``rename_pending`` is kept: this runs before the worker is asked, so the
+    caller clears it only once the rebuild is confirmed.
+    """
     db = await _get_db()
     try:
         await db.execute(
             """
             INSERT INTO proxied_copies (proxy_id, worker_id, slug) VALUES (?, ?, ?)
-            ON CONFLICT(proxy_id, worker_id, slug) DO UPDATE SET stopped_by_cap = 0, removing_since = NULL, rename_pending = 0
+            ON CONFLICT(proxy_id, worker_id, slug) DO UPDATE SET stopped_by_cap = 0, removing_since = NULL
             """,
             (proxy_id, worker_id, slug),
         )

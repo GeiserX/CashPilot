@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 from datetime import date
@@ -903,6 +904,35 @@ class TestStorageAndRoutes:
                 "created_at": copies[0]["created_at"],
             }
         ]
+
+    @pytest.mark.parametrize("status", [409, 503, 504])
+    def test_adding_a_renamed_copy_again_keeps_it_marked_until_the_worker_rebuilds_it(self, db, status):
+        svc = {"slug": "honeygain", "name": "Honeygain", "status": "active", "docker": {"image": "x"}}
+        recorded = {"image": "x", "env": {"EMAIL": "a@b"}}
+        failing = AsyncMock(side_effect=HTTPException(status_code=status, detail="busy"))
+        working = AsyncMock(return_value={"status": "deployed", "exit": {}})
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            pid = created["id"]
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
+            marks = []
+            for call in (failing, working):
+                with (
+                    patch.object(main.catalog, "get_service", return_value=svc),
+                    patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                    patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
+                    patch.object(main.database, "get_deployment_spec", new_callable=AsyncMock, return_value=recorded),
+                    patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+                    patch.object(main, "_proxy_to_worker", call),
+                    pytest.raises(HTTPException) if call is failing else contextlib.nullcontext(),
+                ):
+                    await main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                marks.append([c["rename_pending"] for c in await database.list_proxied_copies(pid)])
+            return marks
+
+        assert _run(go) == [[1], [0]], "a failed rebuild left it on the old name, so it stays offered for a retry"
 
     def test_a_copy_of_a_linked_device_runs_and_registers_its_own_id(self, db):
         original = "cd" * 32

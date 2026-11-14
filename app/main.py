@@ -5717,6 +5717,9 @@ async def api_add_proxied_copy(
         if exc.status_code != 504 and not had_record:
             await database.delete_proxied_copy(proxy_id, worker_id, slug)
         raise
+    # Rebuilt from the current record, so a copy a rename left on the old
+    # device name is on the new one now. A failed rebuild keeps the mark.
+    await database.set_proxied_copy_rename_pending(proxy_id, worker_id, slug, False)
     exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
     exit_ip = egress.public_ip(exit_info.get("ip"))
     workers = await database.list_workers()
