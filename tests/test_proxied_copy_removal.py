@@ -291,6 +291,22 @@ class TestASlowWorker:
 
         assert _run(go) == [(7, "proxyrack", False)]
 
+    def test_a_copy_left_on_the_old_device_name_stays_marked_until_renamed_or_added_again(self, db):
+        async def go():
+            pid = await _proxy_with_copy()
+            marks = []
+            for step in (
+                lambda: database.set_proxied_copy_rename_pending(pid, 7, "proxyrack", True),
+                lambda: database.set_proxied_copy_rename_pending(pid, 7, "proxyrack", False),
+                lambda: database.set_proxied_copy_rename_pending(pid, 7, "proxyrack", True),
+                lambda: database.save_proxied_copy(pid, 7, "proxyrack"),
+            ):
+                await step()
+                marks.append([c["rename_pending"] for c in await database.list_proxied_copies()])
+            return marks
+
+        assert _run(go) == [[1], [0], [1], [0]]
+
 
 class TestPendingDeviceLinks:
     async def _links(self):
@@ -400,3 +416,4 @@ def test_an_upgraded_database_gets_the_removal_column(db):
 
     (row,) = asyncio.run(go())
     assert row["removing_since"] is None and row["slug"] == "honeygain"
+    assert row["rename_pending"] == 0

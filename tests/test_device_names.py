@@ -76,9 +76,22 @@ def client():
         yield c
 
 
-def _post(client, path, body, workers, recorded=None, role="owner", wid=None):
-    """POST to a deploy route with the app's edges mocked. Returns (response, specs sent to the worker)."""
+def _post(client, path, body, workers, recorded=None, role="owner", wid=None, copies=None):
+    """POST to a deploy route with the app's edges mocked. Returns (response, specs sent to the worker).
+
+    ``copies`` stands for the proxied_copies table: the route reads these dicts
+    and its marks are written back into them.
+    """
     sent: list[dict] = []
+    copies = [] if copies is None else copies
+
+    async def _list_copies(proxy_id=None):
+        return [dict(c) for c in copies if proxy_id is None or c["proxy_id"] == proxy_id]
+
+    async def _mark_pending(proxy_id, worker_id, slug, pending):
+        for c in copies:
+            if (c["proxy_id"], c["worker_id"], c["slug"]) == (proxy_id, worker_id, slug):
+                c["rename_pending"] = 1 if pending else 0
 
     async def _fake_deploy(worker_id, slug, spec):
         sent.append(spec)
@@ -101,6 +114,8 @@ def _post(client, path, body, workers, recorded=None, role="owner", wid=None):
         patch("app.main.database.save_deployment", new_callable=AsyncMock),
         patch("app.main.database.record_health_event", new_callable=AsyncMock),
         patch("app.main._run_collection", new_callable=AsyncMock),
+        patch("app.main.database.list_proxied_copies", side_effect=_list_copies),
+        patch("app.main.database.set_proxied_copy_rename_pending", side_effect=_mark_pending),
     ):
         resp = client.post(f"{path}?worker_id={wid}", json=body)
     return resp, sent
@@ -288,11 +303,35 @@ def _proxied_worker(entries: list[dict]) -> dict:
 
 
 def _copy(pid: int, **kw) -> dict:
-    return {"proxy_id": pid, "worker_id": 1, "slug": "iproyal", "stopped_by_cap": 0, "removing_since": None, **kw}
+    return {
+        "proxy_id": pid,
+        "worker_id": 1,
+        "slug": "iproyal",
+        "stopped_by_cap": 0,
+        "removing_since": None,
+        "rename_pending": 0,
+        **kw,
+    }
 
 
-def _rename_with_copies(client, copies, entries, *, rename=True, capped=(), worker=None, answer=None):
-    """A rename deploy on a box with proxied copies. Returns (response, copy deploys sent to the worker)."""
+def _rename_with_copies(
+    client,
+    copies,
+    entries,
+    *,
+    rename=True,
+    capped=(),
+    worker=None,
+    answer=None,
+    meanwhile=None,
+    path="/api/deploy/iproyal",
+    recorded=None,
+):
+    """A rename deploy on a box with proxied copies. Returns (response, copy deploys sent to the worker).
+
+    ``meanwhile(copies, pid)`` runs once the copy's lock is taken, before the
+    record is read again: what a removal or a cap stop that held the lock did.
+    """
     calls: list[tuple] = []
 
     async def _call(worker_id, method, path, definition, *, json=None, timeout=30):
@@ -302,17 +341,25 @@ def _rename_with_copies(client, copies, entries, *, rename=True, capped=(), work
         return {"status": "deployed"}
 
     async def _proxy(pid):
+        if meanwhile:
+            meanwhile(copies, pid)
         return {"id": pid, "definition": {"name": f"p{pid}"}, "state": {"capped_at": "x"} if pid in capped else {}}
 
     with (
-        patch("app.main.database.list_proxied_copies", new_callable=AsyncMock, return_value=copies),
         patch("app.main._proxy_worker_call", side_effect=_call),
         patch("app.main._proxy_or_404", side_effect=_proxy),
         patch("app.main.proxies.worker_proxy_spec", return_value={}),
         patch("app.main._register_device", new_callable=AsyncMock),
     ):
         body = {"env": {}, "rename_devices": rename}
-        resp, sent = _deploy(client, body, [worker or _proxied_worker(entries)], recorded=_recorded(LEGACY))
+        resp, sent = _post(
+            client,
+            path,
+            body,
+            [worker or _proxied_worker(entries)],
+            recorded=recorded or _recorded(LEGACY),
+            copies=copies,
+        )
     assert resp.status_code == 200, resp.text
     return resp, sent, calls
 
@@ -375,6 +422,92 @@ class TestARenameReachesProxiedCopies:
         assert [n.split(":")[0] for n in notes] == [f"proxied copy p{p}" for p in (4, 5, 6, 7)]
         assert all("old device name" in n for n in notes)
 
+    def test_a_copy_removed_after_the_list_was_read_is_not_recreated(self, client):
+        """The removal took the copy's lock first and dropped its record: the rebuild finds nothing to rebuild."""
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+        copies = [_copy(4)]
+        resp, _, calls = _rename_with_copies(client, copies, entries, meanwhile=lambda cs, pid: cs.clear())
+        assert calls == [], "a removed copy is never sent to the worker again"
+        (note,) = resp.json()["kept_from_previous_deployment"]
+        assert "removed meanwhile" in note
+
+    def test_a_removal_the_worker_has_not_confirmed_is_not_rebuilt(self, client):
+        """The worker timed out on the removal, so the copy may still run: rebuilding it would revive it."""
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+
+        def _removing(cs, pid):
+            cs[0]["removing_since"] = "2026-11-14 12:00:00"
+
+        resp, _, calls = _rename_with_copies(client, [_copy(4)], entries, meanwhile=_removing)
+        assert calls == []
+        assert "removed meanwhile" in resp.json()["kept_from_previous_deployment"][0]
+
+    def test_a_cap_stop_after_the_list_was_read_wins(self, client):
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+
+        def _capped(cs, pid):
+            cs[0]["stopped_by_cap"] = 1
+
+        resp, _, calls = _rename_with_copies(client, [_copy(4)], entries, meanwhile=_capped)
+        assert calls == []
+        assert "traffic cap" in resp.json()["kept_from_previous_deployment"][0]
+
+
+class TestACopyThatKeptItsOldNameCanBeRenamedLater:
+    """The original is renamed and its new name saved, so the next check finds no rename for it.
+
+    A copy whose rebuild failed or was skipped must still be offered, and only
+    that copy rebuilt: the original is not redeployed again.
+    """
+
+    RUNNING = [{"proxy_id": p, "slug": "iproyal", "held": False, "status": "running"} for p in (4, 9)]
+
+    def _renamed(self):
+        return _recorded("cashpilot-" + main._device_hostname(_proxied_worker([]), 1))
+
+    def test_a_copy_whose_rebuild_failed_stays_pending_and_one_that_worked_does_not(self, client):
+        from fastapi import HTTPException
+
+        copies = [_copy(4), _copy(9)]
+        _rename_with_copies(client, copies, self.RUNNING, answer=HTTPException(502, "worker unreachable"))
+        assert [c["rename_pending"] for c in copies] == [1, 1]
+        copies = [_copy(4), _copy(9)]
+        _rename_with_copies(client, copies, self.RUNNING)
+        assert [c["rename_pending"] for c in copies] == [0, 0]
+
+    def test_the_check_still_reports_a_pending_copy_after_the_original_was_renamed(self, client):
+        copies = [_copy(4, rename_pending=1), _copy(9), _copy(5, rename_pending=1, removing_since="x")]
+        resp = _renames(client, {"env": {}}, [_proxied_worker(self.RUNNING)], recorded=self._renamed(), copies=copies)
+        assert resp.json()["renames"] == []
+        assert resp.json()["copies"] == ["proxied copy p4"]
+
+    def test_the_retry_rebuilds_only_the_pending_copies_and_not_the_original(self, client):
+        copies = [_copy(4, rename_pending=1), _copy(9)]
+        resp, sent, calls = _rename_with_copies(
+            client, copies, self.RUNNING, path="/api/deploy/iproyal/device-names/copies", recorded=self._renamed()
+        )
+        assert sent == [], "the original is already renamed"
+        assert [c[2] for c in calls] == ["/api/proxied/iproyal/4/deploy"]
+        new = self._renamed()["env"]["DEVICE_NAME"]
+        assert calls[0][3]["earner"]["env"]["DEVICE_NAME"] == f"{new}-p4"
+        assert calls[0][3]["only_if_running"] is True
+        assert copies[0]["rename_pending"] == 0
+        assert resp.json()["kept_from_previous_deployment"] == []
+
+    def test_the_retry_still_never_starts_a_stopped_copy(self, client):
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": True, "status": "exited"}]
+        copies = [_copy(4, rename_pending=1)]
+        resp, _, calls = _rename_with_copies(
+            client, copies, entries, path="/api/deploy/iproyal/device-names/copies", recorded=self._renamed()
+        )
+        assert calls == []
+        assert copies[0]["rename_pending"] == 1, "it is still on the old name, so it is still offered"
+        assert resp.json()["kept_from_previous_deployment"][0].startswith("proxied copy p4: stopped")
+
+    def test_the_retry_is_for_the_owner_only(self, client):
+        resp, _ = _post(client, "/api/deploy/iproyal/device-names/copies", {}, [_worker(1, "cid-a")], role="writer")
+        assert resp.status_code == 403
+
 
 # ---------------------------------------------------------------------------
 # The deploy form: the real functions from app.js, run in node.
@@ -395,23 +528,28 @@ function grab(name) {
   return src.slice(at, i + 1);
 }
 const scenario = JSON.parse(process.argv[2]);
-const calls = [], confirms = [];
+const calls = [], confirms = [], toasts = [];
 const env = {
   api: async (url, opts) => {
     calls.push({ url, body: opts && opts.body });
+    if (url === '/api/workers') return scenario.apiWorkers || [];
+    if (url.includes('/device-names/copies')) return { kept_from_previous_deployment: scenario.copyNotes || [] };
     if (url.includes('/device-names')) {
       if (scenario.checkFails) throw new Error('down');
       const wid = new URL(url, 'http://x').searchParams.get('worker_id');
       // A value typed in the form is no longer missing.
       const typed = Object.values((opts && opts.body && opts.body.env) || {}).some(v => v);
-      return { worker: (scenario.names || {})[wid], renames: scenario.renames[wid] || [], missing: typed ? [] : (scenario.missing || {})[wid] || [] };
+      return {
+        worker: (scenario.names || {})[wid], renames: scenario.renames[wid] || [],
+        missing: typed ? [] : (scenario.missing || {})[wid] || [], copies: (scenario.copies || {})[wid] || [],
+      };
     }
-    return {};
+    return scenario.deployAnswer || {};
   },
   window: { confirm: (text) => { confirms.push(text); return scenario.answer; } },
   document: { getElementById: () => null, querySelectorAll: () => [] },
   console: { warn() {} },
-  toast() {}, _showDeviceLink() {}, _imageChoice: () => undefined, _instancesFor: () => undefined,
+  toast(text, kind) { toasts.push({ text, kind }); }, _showDeviceLink() {}, _imageChoice: () => undefined, _instancesFor: () => undefined,
   _confirmPreflight: async () => true, wizardState: { deployed: [] },
   escapeHtml: (t) => String(t), loadServicesTable() {}, openServiceDetail() {}, _showDeviceLink() {},
   _detailWorkers: scenario.detailWorkers || [],
@@ -423,14 +561,16 @@ const details = { open: false };
 const inputs = Object.entries(scenario.typed || {}).map(([key, value]) => (
   { dataset: { key }, value, required: true, style: {}, pattern: '' }
 ));
+const imageInput = { value: scenario.image || '', dataset: {} };
 env.document = {
-  getElementById: (id) => (id === 'device-rename-iproyal' && scenario.page ? note : null),
+  getElementById: (id) => (id === 'device-rename-iproyal' && scenario.page ? note
+    : id === 'image-input-iproyal' && scenario.run === 'image' ? imageInput : null),
   querySelectorAll: (sel) => (sel === 'details.sd-more' ? [details] : sel.includes('[data-key]') ? inputs : []),
 };
 env.openServiceDetail = () => { note.reopened = true; };
 note.details = details;
 const names = ['_deviceRenameLines', '_confirmDeviceRenames', '_deployToWorkers', 'loadDeviceRenames',
-  'renameDevices', 'redeployOnWorker', 'redeployWithValues'];
+  'renameDevices', 'redeployOnWorker', 'redeployWithValues', 'redeployWithImage'];
 const body = `${names.map(grab).join('\n')}\nfunction _runningWorkerIds(slug) {
   return (_detailWorkers || []).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug)).map(w => w.id);
 }\nreturn { ${names.join(', ')} };`;
@@ -440,14 +580,16 @@ const run = {
   page: async () => { await fns.loadDeviceRenames('iproyal'); if (scenario.click) await fns.renameDevices('iproyal'); },
   redeploy: () => fns.redeployOnWorker('iproyal', String(scenario.workers[0])),
   withValues: () => fns.redeployWithValues('iproyal', String(scenario.workers[0])),
+  image: () => fns.redeployWithImage('iproyal'),
 }[scenario.run || 'deploy'];
 run().then(() => {
-  console.log(JSON.stringify({ calls, confirms, note }));
+  console.log(JSON.stringify({ calls, confirms, note, toasts }));
 });
 """
 
 
-def _form(**scenario):
+def _run_form(**scenario) -> dict:
+    """Run the scenario and return everything the harness saw: calls, confirms, note, toasts."""
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
@@ -458,7 +600,11 @@ def _form(**scenario):
         check=True,
         timeout=30,
     )
-    result = json.loads(out.stdout)
+    return json.loads(out.stdout)
+
+
+def _form(**scenario):
+    result = _run_form(**scenario)
     deploys = [c for c in result["calls"] if c["url"].startswith("/api/deploy/iproyal?")]
     if scenario.get("run") in ("page", "withValues"):
         return deploys, result["confirms"], result["note"]
@@ -625,3 +771,69 @@ class TestRunningBoxesCanBeRenamed:
         assert "loadDeviceRenames(slug);" in js
         assert "\n    renameDevices,\n" in js
         assert "\n    redeployWithValues,\n" in js
+
+
+class TestCopiesThatKeptTheOldNameAreOfferedAgain:
+    """The original is renamed; a proxied copy whose rebuild failed is still offered, and only it is rebuilt."""
+
+    COPY = {"3": ["proxied copy p4"]}
+
+    def test_the_page_offers_the_button_for_a_box_with_only_a_pending_copy(self):
+        deploys, confirms, note = _form(
+            run="page", page=True, detailWorkers=_RUNNING, workers=[], renames={}, copies=self.COPY, answer=True
+        )
+        assert note["style"]["display"] == ""
+        assert 'data-action="renameDevices"' in note["innerHTML"]
+        assert confirms == [] and deploys == []
+
+    def test_the_button_rebuilds_only_the_copies_never_the_original(self):
+        result = _run_form(
+            run="page",
+            page=True,
+            click=True,
+            detailWorkers=_RUNNING,
+            workers=[],
+            renames={},
+            copies=self.COPY,
+            names={"3": "local"},
+            answer=True,
+            copyNotes=["proxied copy p4: stopped, so it keeps its old device name; add it again to rename it"],
+        )
+        urls = [c["url"] for c in result["calls"] if "/device-names?" not in c["url"]]
+        assert urls == ["/api/deploy/iproyal/device-names/copies?worker_id=3"]
+        assert (
+            len(result["confirms"]) == 1
+            and "• local: proxied copy p4 still has the old device name" in result["confirms"][0]
+        )
+        assert any(t["kind"] == "warning" and "proxied copy p4: stopped" in t["text"] for t in result["toasts"])
+
+    def test_cancel_rebuilds_nothing(self):
+        result = _run_form(
+            run="page", page=True, click=True, detailWorkers=_RUNNING, workers=[], renames={}, copies=self.COPY
+        )
+        assert [c for c in result["calls"] if "/device-names?" not in c["url"]] == []
+
+    def test_the_deploy_form_does_not_ask_about_copies(self):
+        """A redeploy with rename_devices would not reach them: only the service page button rebuilds them."""
+        deploys, confirms = _form(workers=[3], renames={}, copies=self.COPY, answer=True)
+        assert confirms == [] and "rename_devices" not in deploys[0]["body"]
+
+
+class TestAnImageRedeployShowsItsNotes:
+    def test_a_copy_that_kept_its_old_name_is_reported(self):
+        result = _run_form(
+            run="image",
+            image="iproyal/pawns-cli:2",
+            apiWorkers=[{"id": 3, "name": "local", "status": "online", "containers": [{"slug": "iproyal"}]}],
+            renames={"3": [RENAME]},
+            answer=True,
+            deployAnswer={"kept_from_previous_deployment": ["proxied copy p4: keeps its old device name (x)"]},
+        )
+        deploys = [c for c in result["calls"] if c["url"].startswith("/api/deploy/iproyal?")]
+        assert deploys[0]["body"] == {"env": {}, "image": "iproyal/pawns-cli:2", "rename_devices": True}
+        assert any(
+            t["kind"] == "warning"
+            and "local" in t["text"]
+            and "proxied copy p4: keeps its old device name" in t["text"]
+            for t in result["toasts"]
+        )

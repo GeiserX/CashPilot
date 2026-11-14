@@ -4378,7 +4378,43 @@ async def api_deploy_device_names(
     missing = _missing_required(docker_conf, body.env, (recorded or {}).get("env") or {}) if renames else []
     # The box's name, so the confirm says which box each line is about.
     worker = await database.get_worker(worker_id)
-    return {"worker": str((worker or {}).get("name") or f"node {worker_id}"), "renames": renames, "missing": missing}
+    return {
+        "worker": str((worker or {}).get("name") or f"node {worker_id}"),
+        "renames": renames,
+        "missing": missing,
+        "copies": await _copies_to_rename(slug, worker_id),
+    }
+
+
+async def _copies_to_rename(slug: str, worker_id: int) -> list[str]:
+    """The proxied copies of ``slug`` on this worker still on the old device name after a confirmed rename."""
+    return [
+        f"proxied copy p{c['proxy_id']}"
+        for c in await database.list_proxied_copies()
+        if c["worker_id"] == worker_id and c["slug"] == slug and c.get("rename_pending") and not c.get("removing_since")
+    ]
+
+
+@app.post("/api/deploy/{slug}/device-names/copies")
+async def api_rename_proxied_copies(
+    slug: str, worker_id: int | None = None, _auth: dict[str, Any] = Depends(_require_owner)
+) -> dict[str, Any]:
+    """Rebuild only the proxied copies a confirmed rename left on the old device name.
+
+    The original is already renamed, so it is not redeployed: each pending copy
+    goes through the same rebuild as the rename (_refresh_proxied_copies), so a
+    stopped, capped or removed copy is still never started. Returns the notes
+    of the copies that kept their old name again.
+    """
+    worker_id = await _resolve_worker_id(worker_id)
+    svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
+    if not svc:
+        raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+    if not recorded:
+        raise HTTPException(status_code=409, detail=f"{svc.get('name') or slug} is not deployed on this worker")
+    notes = await _refresh_proxied_copies(slug, worker_id, svc, svc.get("docker") or {}, recorded, pending_only=True)
+    return {"status": "renamed", "kept_from_previous_deployment": notes}
 
 
 _is_port_range = catalog.is_port_range
@@ -5318,7 +5354,13 @@ async def _proxied_earner(
 
 
 async def _refresh_proxied_copies(
-    slug: str, worker_id: int, svc: dict[str, Any], docker_conf: dict[str, Any], recorded: dict[str, Any]
+    slug: str,
+    worker_id: int,
+    svc: dict[str, Any],
+    docker_conf: dict[str, Any],
+    recorded: dict[str, Any],
+    *,
+    pending_only: bool = False,
 ) -> list[str]:
     """Redeploy this worker's proxied copies of ``slug`` after a confirmed device rename.
 
@@ -5333,8 +5375,17 @@ async def _refresh_proxied_copies(
     cannot say whether it runs or is too old to check keeps its old name, and
     the note says so. Never raises: the original is already renamed. Returns
     the notes.
+
+    Each copy is marked ``rename_pending`` first and cleared once it is
+    rebuilt, so one that kept its old name stays on the service page and a
+    later retry (``pending_only``) rebuilds only those.
     """
     copies = [c for c in await database.list_proxied_copies() if c["worker_id"] == worker_id and c["slug"] == slug]
+    if pending_only:
+        copies = [c for c in copies if c.get("rename_pending")]
+    else:
+        for copy in copies:
+            await database.set_proxied_copy_rename_pending(copy["proxy_id"], worker_id, slug, True)
     if not copies:
         return []
     entries = _proxied_reportable(await database.get_worker(worker_id))
@@ -5365,9 +5416,21 @@ async def _refresh_proxied_copies(
                 raise ValueError("its worker is too old to rebuild it without starting a stopped copy; update it")
             earner = await _proxied_earner(recorded, docker_conf, worker_id, pid)
             async with _proxy_copy_lock(pid, worker_id, slug):
-                # Under the lock, as a start: the cap may have stopped it meanwhile.
+                # Under the lock, as a start: the record read above is older
+                # than a removal or a cap stop that took this lock since. A
+                # removal the worker has not confirmed keeps the record, marked.
                 proxy = await _proxy_or_404(pid)
-                if proxy["state"].get("capped_at") or await _copy_marked_by_cap(pid, worker_id, slug):
+                current = next(
+                    (
+                        c
+                        for c in await database.list_proxied_copies(pid)
+                        if c["proxy_id"] == pid and c["worker_id"] == worker_id and c["slug"] == slug
+                    ),
+                    None,
+                )
+                if current is None or current.get("removing_since"):
+                    raise ValueError("it was removed meanwhile")
+                if proxy["state"].get("capped_at") or current.get("stopped_by_cap"):
                     raise ValueError("its proxy reached its traffic cap")
                 await _proxy_worker_call(
                     worker_id,
@@ -5385,6 +5448,7 @@ async def _refresh_proxied_copies(
             detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
             notes.append(f"{label}: keeps its old device name ({detail})")
             continue
+        await database.set_proxied_copy_rename_pending(pid, worker_id, slug, False)
         if step := catalog.device_link_step(svc, earner["env"]):
             await _register_device(slug, step["id"], earner["env"])
     return notes

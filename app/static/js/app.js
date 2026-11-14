@@ -3369,15 +3369,24 @@ const CP = (() => {
   // The device names a deploy of `slug` with `env` would rename, one line per
   // name ("box: label old -> new"), named by box, and the ids of those boxes.
   // A box whose deploy with `env` would lack a required value cannot be renamed
-  // this way: it goes to `skipped`, with what it lacks. Throws when the check fails.
+  // this way: it goes to `skipped`, with what it lacks. A box whose original is
+  // renamed but whose proxied copies kept the old name (their rebuild failed or
+  // was skipped) goes to `copyLines`/`copyIds`: only those copies are rebuilt.
+  // Throws when the check fails.
   async function _deviceRenameLines(slug, workerIds, env) {
     const answers = await Promise.all(workerIds.map(id =>
       api(`/api/deploy/${encodeURIComponent(slug)}/device-names?worker_id=${encodeURIComponent(id)}`, { method: 'POST', body: { env } })
     ));
-    const lines = [], skipped = [], skippedIds = [], ids = [];
+    const lines = [], skipped = [], skippedIds = [], ids = [], copyLines = [], copyIds = [];
     answers.forEach((a, i) => {
       const box = (a && a.worker) || `node ${workerIds[i]}`;
       const renames = (a && a.renames) || [];
+      const copies = (a && a.copies) || [];
+      if (!renames.length && copies.length) {
+        copyIds.push(workerIds[i]);
+        copies.forEach(c => copyLines.push(`• ${box}: ${c} still has the old device name`));
+        return;
+      }
       if (!renames.length) return;
       const missing = (a && a.missing) || [];
       if (missing.length) {
@@ -3388,7 +3397,7 @@ const CP = (() => {
       ids.push(workerIds[i]);
       renames.forEach(r => lines.push(`• ${box}: ${r.label} ${r.old} -> ${r.new}`));
     });
-    return { lines, skipped, skippedIds, ids };
+    return { lines, skipped, skippedIds, ids, copyLines, copyIds };
   }
 
   // A box that still runs under the old shared device name ("cashpilot-cashpilot")
@@ -3852,33 +3861,43 @@ const CP = (() => {
       console.warn('Could not check device names:', err);
       return;
     }
-    const { lines, skipped, skippedIds } = check;
-    if (!lines.length && !skipped.length) return;
+    const { lines, skipped, skippedIds, copyLines } = check;
+    if (!lines.length && !skipped.length && !copyLines.length) return;
     // A box the one-click redeploy cannot rename gets a note, not the button,
     // and its own redeploy that sends the values typed in the deploy form: the
     // form cannot tick a box that already runs the service.
-    el.innerHTML = `${lines.length + skipped.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
+    el.innerHTML = `${lines.length + skipped.length + copyLines.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
       before CashPilot gave each box its own, so ${escapeHtml(slug)} may count them as one device.
-      ${lines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Give each box its own device name</button>` : ''}
+      ${lines.length || copyLines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Give each box its own device name</button>` : ''}
       ${skipped.map((line, i) => `<br>${escapeHtml(line)}
         <button class="btn btn-secondary btn-sm" data-action="redeployWithValues" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(String(skippedIds[i]))}">Redeploy it with the values in the deploy form</button>`).join('')}`;
     el.style.display = '';
   }
 
   async function renameDevices(slug) {
-    let ids;
+    let ids, copyIds, copyLines;
     try {
-      ({ ids } = await _deviceRenameLines(slug, _runningWorkerIds(slug), {}));
+      ({ ids, copyIds, copyLines } = await _deviceRenameLines(slug, _runningWorkerIds(slug), {}));
     } catch (err) {
       toast(`Could not check device names: ${err.message}`, 'error');
       return;
     }
-    if (!ids.length || !(await _confirmDeviceRenames(slug, ids, {}))) return;
+    const base = ids.length && await _confirmDeviceRenames(slug, ids, {});
+    const copies = copyIds.length && window.confirm(
+      `${slug}: these proxied copies kept the old device name when their box was renamed.\n\n${copyLines.join('\n')}\n\n` +
+      'OK rebuilds each running copy under its own name; a stopped copy stays as it is. Cancel keeps them.'
+    );
+    if (!base && !copies) return;
     let ok = 0;
-    for (const id of ids) {
+    // A box with only copies left: rebuild those, never its renamed original.
+    const jobs = [
+      ...(base ? ids : []).map(id => [id, `/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true } }]),
+      ...(copies ? copyIds : []).map(id => [id, `/api/deploy/${slug}/device-names/copies?worker_id=${id}`, { method: 'POST' }]),
+    ];
+    for (const [id, url, opts] of jobs) {
       try {
         // No env: the redeploy keeps every setting this box was deployed with.
-        const res = await api(`/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true } });
+        const res = await api(url, opts);
         // A proxied copy that kept its old name says so here.
         const kept = res && res.kept_from_previous_deployment;
         if (Array.isArray(kept) && kept.length) toast(`${slug}: redeploy notes: ${kept.join('; ')}`, 'warning');
@@ -3936,7 +3955,10 @@ const CP = (() => {
         // No env: a blank redeploy keeps the credentials this worker was deployed with.
         const body = { env: {}, image };
         if (renameDevices) body.rename_devices = true;
-        await api(`/api/deploy/${slug}?worker_id=${w.id}`, { method: 'POST', body });
+        const res = await api(`/api/deploy/${slug}?worker_id=${w.id}`, { method: 'POST', body });
+        // A proxied copy that kept its old name says so here.
+        const kept = res && res.kept_from_previous_deployment;
+        if (Array.isArray(kept) && kept.length) toast(`${slug} on ${w.name}: redeploy notes: ${kept.join('; ')}`, 'warning');
         ok++;
       } catch (err) {
         fail++;

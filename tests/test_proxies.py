@@ -834,6 +834,7 @@ class TestStorageAndRoutes:
                 "slug": "honeygain",
                 "stopped_by_cap": 0,
                 "removing_since": None,
+                "rename_pending": 0,
                 "created_at": copies[0]["created_at"],
             }
         ]
