@@ -2127,8 +2127,8 @@ def _catalog_critical_named_volumes(critical: dict[str, set[str]]) -> dict[str, 
     return owners
 
 
-def critical_sources(client: Any = None) -> tuple[dict[str, str], dict[str, str]]:
-    """Where critical state lives on this host: (named volume -> slug, host folder -> slug).
+def critical_sources(client: Any = None) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """Where critical state lives on this host: (named volume -> slugs, host folder -> slugs).
 
     The catalog's named volumes, plus what each critical service's containers
     have mounted at a critical path right now: a bind-mounted Storj identity, a
@@ -2136,12 +2136,17 @@ def critical_sources(client: Any = None) -> tuple[dict[str, str], dict[str, str]
     only while a container of its service exists; one left behind by a removed
     container is no longer known to be critical.
 
+    Every owner of a key is kept: host_path_key folds case, so on a
+    case-sensitive host ``/mnt/user/Wallet`` and ``/mnt/user/wallet`` can be two
+    services' folders under one key, and keeping only the first would let the
+    first service mount the second's.
+
     Raises DockerException when the containers cannot be listed: the caller
     refuses rather than guess.
     """
     critical = critical_slugs()
-    named = _catalog_critical_named_volumes(critical)
-    binds: dict[str, str] = {}
+    named: dict[str, set[str]] = {name: {slug} for name, slug in _catalog_critical_named_volumes(critical).items()}
+    binds: dict[str, set[str]] = {}
     if not critical:
         return named, binds
     client = client or _get_client()
@@ -2156,9 +2161,9 @@ def critical_sources(client: Any = None) -> tuple[dict[str, str], dict[str, str]
             if not isinstance(mount, dict) or _norm_mount(str(mount.get("Destination") or "")) not in critical[slug]:
                 continue
             if mount.get("Type") == "volume" and mount.get("Name"):
-                named.setdefault(str(mount["Name"]), slug)
+                named.setdefault(str(mount["Name"]), set()).add(slug)
             elif mount.get("Type") == "bind" and str(mount.get("Source") or "").startswith("/"):
-                binds.setdefault(host_path_key(str(mount["Source"])), slug)
+                binds.setdefault(host_path_key(str(mount["Source"])), set()).add(slug)
     return named, binds
 
 
@@ -2200,16 +2205,17 @@ def critical_mount_conflicts(slug: str, volumes: Any, client: Any = None) -> lis
     found: list[tuple[str, str]] = []
     for source in sources:
         if not source.startswith("/"):
-            owner = named.get(source)
-            if owner and owner != slug:
-                found.append((source, owner))
+            others = sorted(named.get(source, set()) - {slug})
+            if others:
+                found.append((source, others[0]))
             continue
         path = host_path_key(source)
-        for folder, owner in binds.items():
-            if owner == slug:
+        for folder, owners in binds.items():
+            others = sorted(owners - {slug})
+            if not others:
                 continue
             if path == folder or path.startswith(folder.rstrip("/") + "/") or folder.startswith(path.rstrip("/") + "/"):
-                found.append((source, owner))
+                found.append((source, others[0]))
                 break
     return found
 

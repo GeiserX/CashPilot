@@ -219,6 +219,20 @@ class TestConflicts:
                 "honeygain", {"/mnt/user/storj/identity": {"bind": "/id"}}, _docker(owner)
             )
 
+    @pytest.mark.parametrize("storj_first", [True, False])
+    def test_two_owners_of_one_folded_key_both_count(self, storj_first):
+        """Case folding puts /mnt/user/Wallet and /mnt/user/wallet under one key; on a
+        case-sensitive host they can be two services' folders, and neither may take the other's."""
+        storj = _container("storj", [{"Type": "bind", "Source": "/mnt/user/Wallet", "Destination": "/app/identity"}])
+        myst = _container(
+            "mysterium", [{"Type": "bind", "Source": "/mnt/user/wallet", "Destination": "/var/lib/mysterium-node"}]
+        )
+        client = _docker(*((storj, myst) if storj_first else (myst, storj)))
+        with pytest.raises(orchestrator.CriticalMountError, match="mysterium"):
+            orchestrator.refuse_critical_mounts("storj", {"/mnt/user/wallet": {"bind": "/id"}}, client)
+        with pytest.raises(orchestrator.CriticalMountError, match="storj"):
+            orchestrator.refuse_critical_mounts("mysterium", {"/mnt/user/Wallet": {"bind": "/x"}}, client)
+
     def test_its_own_service_can(self):
         orchestrator.refuse_critical_mounts("proxybase-xyz", {"proxybase-data": {"bind": "/x"}}, _docker())
         orchestrator.refuse_critical_mounts("storj", {"/mnt/user/storj/identity": {"bind": "/id"}}, _docker(STORJ))
