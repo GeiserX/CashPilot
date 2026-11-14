@@ -295,6 +295,19 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                     # The identity ledger keeps these after a removal and shows
                     # them to the owner; a secret must never be one of them.
                     errors.append(f"{path.name}: docker.env[{i}] is secret, so it cannot be an identifier")
+            # A key declared twice, once secret and once an identifier, is still secret.
+            declared_env = [v for v in env if isinstance(v, dict)]
+            secret_keys = {v.get("key") for v in declared_env if v.get("secret")}
+            for key in sorted(
+                {
+                    str(v.get("key"))
+                    for v in declared_env
+                    if v.get("key") in secret_keys
+                    and not v.get("secret")
+                    and (v.get("identifier") or v.get("per_device"))
+                }
+            ):
+                errors.append(f"{path.name}: docker.env key {key} is secret, so it cannot be an identifier")
         signals = docker.get("health_signals")
         if isinstance(signals, list):
             for i, item in enumerate(signals):
@@ -598,9 +611,12 @@ def identity_keys(svc: dict[str, Any] | None) -> dict[str, str]:
     loader refuses a secret identifier; the check here is the second line.
     """
     docker_conf = (svc or {}).get("docker") or {}
+    env = [var for var in docker_conf.get("env") or [] if isinstance(var, dict)]
+    # A key declared secret anywhere is secret, even if declared twice.
+    secret = {var.get("key") for var in env if var.get("secret")}
     keys: dict[str, str] = {}
-    for var in docker_conf.get("env") or []:
-        if not isinstance(var, dict) or var.get("secret"):
+    for var in env:
+        if var.get("key") in secret:
             continue
         if var.get("per_device") is True or var.get("identifier") is True:
             key = str(var.get("key") or "")

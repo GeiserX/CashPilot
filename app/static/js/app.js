@@ -4446,6 +4446,9 @@ const CP = (() => {
     // Independent of /api/config on purpose: a failed config load must not
     // leave the update card stuck on "Loading..." — it has its own error path.
     loadUpdateCard();
+    // Same for the device ids: they do not need the config, and loadIdentities
+    // writes its own error into its panel.
+    loadIdentities();
     try {
       const [config, envInfo, collectorsMeta] = await Promise.all([
         api('/api/config'),
@@ -4455,7 +4458,6 @@ const CP = (() => {
       renderEnvVars(envInfo, config);
       renderCollectors(collectorsMeta, config);
       loadCredentialHealth();
-      loadIdentities();
     } catch (err) {
       // Say what happened. /api/env-info and /api/collectors/meta each carry
       // their own .catch, so the only call that can reject is /api/config —

@@ -2065,16 +2065,45 @@ async def _worker_deployment_spec(slug: str, worker_id: int) -> dict[str, Any] |
     if not recorded_id:
         return None
     worker = await get_worker(worker_id)
+    if _runs_recorded_container((worker or {}).get("containers"), slug, recorded_id):
+        return _decode_spec(legacy.get("spec_encrypted") or "", slug)
+    return None
+
+
+def _runs_recorded_container(containers_json: Any, slug: str, recorded_id: str) -> bool:
+    """Whether a worker's last heartbeat lists ``slug`` as the container ``recorded_id``."""
+    if not recorded_id:
+        return False
     try:
-        containers = json.loads((worker or {}).get("containers") or "[]")
+        containers = json.loads(containers_json or "[]")
     except (TypeError, ValueError):
-        return None
+        return False
     for entry in containers if isinstance(containers, list) else []:
         if not isinstance(entry, dict) or entry.get("slug") != slug:
             continue
         short_id = str(entry.get("container_id") or "")
         if len(short_id) >= 12 and recorded_id.startswith(short_id):
-            return _decode_spec(legacy.get("spec_encrypted") or "", slug)
+            return True
+    return False
+
+
+async def _legacy_deployment_spec(db: Any, slug: str) -> tuple[int, dict[str, Any]] | None:
+    """The fleet-wide row's spec and the worker that runs its container, or None.
+
+    A deployment from before specs were kept per worker has its spec only in
+    ``deployments``; it belongs to the worker whose heartbeat lists the container
+    it recorded, as in _worker_deployment_spec.
+    """
+    cursor = await db.execute("SELECT container_id, spec_encrypted FROM deployments WHERE slug = ?", (slug,))
+    row = await cursor.fetchone()
+    recorded_id = str((row["container_id"] if row else "") or "")
+    if not recorded_id:
+        return None
+    cursor = await db.execute("SELECT id, containers FROM workers")
+    for worker in await cursor.fetchall():
+        if _runs_recorded_container(worker["containers"], slug, recorded_id):
+            spec = _decode_spec(row["spec_encrypted"] or "", slug)
+            return (int(worker["id"]), spec) if spec else None
     return None
 
 
@@ -4833,47 +4862,67 @@ async def record_identities(
             value = _identity_value((env or {}).get(key))
             if value:
                 wanted[(str(instance), key)] = value
-    db = await _get_db()
-    try:
-        active = await _active_identity_rows(db, slug, worker_id)
-        current: dict[tuple[str, str], tuple[int, str]] = {}
-        for row in active:
-            current[(row["instance"], row["name"])] = (row["id"], decrypt_value(row["value_encrypted"]))
-        retire: list[int] = []
-        for (instance, key), (row_id, value) in current.items():
-            if key not in keys:
-                continue
-            in_scope = (instance in values) or (scope == "copies" and not instance.startswith("p"))
-            if in_scope and wanted.get((instance, key)) != value:
-                retire.append(row_id)
-        for row_id in retire:
+    # Own connection and BEGIN IMMEDIATE: the read and the writes below are one
+    # step. On the shared connection two deploys at once (two proxied copies
+    # added together) both read "no row" and both inserted an active one.
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            await _record_identities_locked(db, slug, worker_id, keys, values, wanted, scope)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+
+async def _record_identities_locked(
+    db: Any,
+    slug: str,
+    worker_id: int,
+    keys: Mapping[str, str],
+    values: Mapping[str, Mapping[str, Any]],
+    wanted: Mapping[tuple[str, str], str],
+    scope: str,
+) -> None:
+    """record_identities inside its write lock."""
+    active = await _active_identity_rows(db, slug, worker_id)
+    current: dict[tuple[str, str], tuple[int, str]] = {}
+    for row in active:
+        current[(row["instance"], row["name"])] = (row["id"], decrypt_value(row["value_encrypted"]))
+    retire: list[int] = []
+    for (instance, key), (row_id, value) in current.items():
+        if key not in keys:
+            continue
+        in_scope = (instance in values) or (scope == "copies" and not instance.startswith("p"))
+        if in_scope and wanted.get((instance, key)) != value:
+            retire.append(row_id)
+    for row_id in retire:
+        await db.execute(
+            "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE id = ?",
+            (row_id,),
+        )
+    for (instance, key), value in wanted.items():
+        kept = current.get((instance, key))
+        if kept and kept[1] == value:
+            await db.execute("UPDATE device_identities SET last_seen = datetime('now') WHERE id = ?", (kept[0],))
+            continue
+        # The same value on the same copy before (a reuse): bring that row
+        # back instead of keeping two, so its first_seen stays the real one.
+        revived = await _find_identity_row(db, slug, worker_id, instance, key, value, status="retired")
+        if revived is not None:
             await db.execute(
-                "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE id = ?",
-                (row_id,),
+                "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now') "
+                "WHERE id = ?",
+                (revived,),
             )
-        for (instance, key), value in wanted.items():
-            kept = current.get((instance, key))
-            if kept and kept[1] == value:
-                await db.execute("UPDATE device_identities SET last_seen = datetime('now') WHERE id = ?", (kept[0],))
-                continue
-            # The same value on the same copy before (a reuse): bring that row
-            # back instead of keeping two, so its first_seen stays the real one.
-            revived = await _find_identity_row(db, slug, worker_id, instance, key, value, status="retired")
-            if revived is not None:
-                await db.execute(
-                    "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now') "
-                    "WHERE id = ?",
-                    (revived,),
-                )
-                continue
-            await db.execute(
-                "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
-                "VALUES (?, ?, ?, 'env', ?, ?, 'deploy')",
-                (slug, worker_id, instance, key, encrypt_value(value)),
-            )
-        await db.commit()
-    finally:
-        await db.close()
+            continue
+        await db.execute(
+            "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
+            "VALUES (?, ?, ?, 'env', ?, ?, 'deploy')",
+            (slug, worker_id, instance, key, encrypt_value(value)),
+        )
 
 
 async def _find_identity_row(
@@ -4941,26 +4990,48 @@ async def _retire_identities(db: Any, slug: str, worker_id: int | None) -> None:
             sql += " AND worker_id = ?"
             args = (slug, worker_id)
         cursor = await db.execute(sql, args)
-        for row in await cursor.fetchall():
-            env = (_decode_spec(row["spec_encrypted"] or "", slug) or {}).get("env") or {}
+        specs = [
+            (int(row["worker_id"]), _decode_spec(row["spec_encrypted"] or "", slug) or {})
+            for row in await cursor.fetchall()
+        ]
+        # Older still: a spec kept only in the fleet-wide row, for the box that
+        # runs the container it recorded.
+        legacy = await _legacy_deployment_spec(db, slug)
+        if legacy and legacy[0] not in {wid for wid, _ in specs} and worker_id in (None, legacy[0]):
+            specs.append(legacy)
+        for wid, spec in specs:
+            env = spec.get("env") or {}
             if not isinstance(env, dict):
                 continue
+            # A raw deploy of one copy records that copy's spec: keep it on that copy.
+            instance = str(spec_copy_number(spec))
             for key in keys:
                 value = _identity_value(env.get(key))
                 if not value:
                     continue
-                wid = int(row["worker_id"])
-                if await _find_identity_row(db, slug, wid, "1", key, value, status="active") is not None:
+                if await _find_identity_row(db, slug, wid, instance, key, value, status="active") is not None:
                     continue
-                if await _find_identity_row(db, slug, wid, "1", key, value, status="retired") is not None:
+                if await _find_identity_row(db, slug, wid, instance, key, value, status="retired") is not None:
                     continue
                 await db.execute(
                     "INSERT INTO device_identities "
                     "(slug, worker_id, instance, kind, name, value_encrypted, source, status, retired_at) "
-                    "VALUES (?, ?, '1', 'env', ?, ?, 'deploy', 'retired', datetime('now'))",
-                    (slug, wid, key, encrypt_value(value)),
+                    "VALUES (?, ?, ?, 'env', ?, ?, 'deploy', 'retired', datetime('now'))",
+                    (slug, wid, instance, key, encrypt_value(value)),
                 )
     await _retire_identity_rows(db, slug, worker_id)
+
+
+def spec_copy_number(spec: Mapping[str, Any]) -> int:
+    """The copy a deploy spec names (``instance``): 1 when it names none or none readable."""
+    raw = spec.get("instance") or 1
+    if isinstance(raw, float) and not raw.is_integer():
+        return 1
+    try:
+        copy = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return 1
+    return copy if copy > 0 else 1
 
 
 async def list_identities() -> list[dict[str, Any]]:
@@ -5172,7 +5243,18 @@ async def identity_backfill_specs() -> list[dict[str, Any]]:
         cursor = await db.execute(
             "SELECT slug, worker_id, spec_encrypted FROM deployment_specs WHERE worker_id IN (SELECT id FROM workers)"
         )
-        specs = await cursor.fetchall()
+        specs: dict[tuple[str, int], dict[str, Any]] = {}
+        for row in await cursor.fetchall():
+            spec = _decode_spec(row["spec_encrypted"] or "", row["slug"])
+            if spec:
+                specs[(row["slug"], int(row["worker_id"]))] = spec
+        # A deployment from before per-worker specs: its fleet-wide row, for the
+        # box that runs the container it recorded.
+        cursor = await db.execute("SELECT slug FROM deployments")
+        for (slug,) in await cursor.fetchall():
+            legacy = await _legacy_deployment_spec(db, slug)
+            if legacy:
+                specs.setdefault((slug, legacy[0]), legacy[1])
         cursor = await db.execute(
             "SELECT slug, worker_id, instance FROM device_identities WHERE kind = 'env' AND status = 'active'"
         )
@@ -5181,10 +5263,7 @@ async def identity_backfill_specs() -> list[dict[str, Any]]:
             active.setdefault((row["slug"], int(row["worker_id"])), set()).add(str(row["instance"]))
     finally:
         await db.close()
-    out: list[dict[str, Any]] = []
-    for row in specs:
-        spec = _decode_spec(row["spec_encrypted"] or "", row["slug"])
-        if spec:
-            key = (row["slug"], int(row["worker_id"]))
-            out.append({"slug": key[0], "worker_id": key[1], "spec": spec, "instances": active.get(key, set())})
-    return out
+    return [
+        {"slug": key[0], "worker_id": key[1], "spec": spec, "instances": active.get(key, set())}
+        for key, spec in specs.items()
+    ]

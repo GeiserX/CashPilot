@@ -23,6 +23,7 @@ import socket
 import time
 import urllib.parse
 import weakref
+from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -4320,7 +4321,10 @@ async def _deploy(
     else:
         spec.pop("instances", None)
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
-    await _record_deploy_identities(slug, worker_id, spec, instances, docker_conf)
+    # The identity ledger follows what each copy really runs: a copy is recorded
+    # once its own deploy succeeded, and one being dropped is retired once its
+    # removal did, so a failure halfway never marks an id that is not running.
+    await _record_deploy_identities(slug, worker_id, spec, [1], docker_conf, scope="given")
     # Each copy's start is recorded as its deploy is attempted: one that fails
     # must not leave an older stop as its latest action, which would hide its
     # crash, and a copy the deploy never reaches keeps the stop it had.
@@ -4334,8 +4338,12 @@ async def _deploy(
             slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
         )
         await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
+        await _record_deploy_identities(slug, worker_id, spec, [n], docker_conf, scope="given")
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        await _record_deploy_identities(slug, worker_id, {}, [n], docker_conf, scope="given")
+    # No sweep of the other copies' rows here: running_copies comes from the last
+    # heartbeat, which may predate a copy, so only a confirmed removal retires one.
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
@@ -4395,19 +4403,27 @@ async def _worker_names(worker_ids: list[int]) -> list[str]:
 
 
 async def _record_deploy_identities(
-    slug: str, worker_id: int, spec: dict[str, Any], instances: int, docker_conf: dict[str, Any]
+    slug: str,
+    worker_id: int,
+    spec: dict[str, Any],
+    copies: Iterable[int],
+    docker_conf: dict[str, Any],
+    *,
+    scope: str = "copies",
 ) -> None:
-    """Put the device names and ids this deploy runs with in the identity ledger.
+    """Put the device names and ids these copies run with in the identity ledger.
 
     Each copy's own values, from the same _instance_spec the copies are deployed
-    with, so the ledger shows what the provider sees. Bookkeeping: a failure is
+    with, so the ledger shows what the provider sees; an empty ``spec`` retires
+    the copies named. ``scope`` is record_identities'. Bookkeeping: a failure is
     logged and never fails a deploy that already happened.
     """
     try:
-        values: dict[str, dict[str, Any]] = {"1": dict(spec.get("env") or {})}
-        for n in range(2, instances + 1):
-            values[str(n)] = dict(_instance_spec(spec, n, docker_conf).get("env") or {})
-        await database.record_identities(slug, worker_id, values)
+        values: dict[str, dict[str, Any]] = {}
+        for n in copies:
+            copy_spec = spec if n == 1 or not spec else _instance_spec(spec, n, docker_conf)
+            values[str(n)] = dict(copy_spec.get("env") or {})
+        await database.record_identities(slug, worker_id, values, scope=scope)
     except Exception:  # noqa: BLE001
         logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
 
@@ -4415,8 +4431,8 @@ async def _record_deploy_identities(
 async def _backfill_identities() -> None:
     """Put the device ids of deployments from before the ledger in it, once.
 
-    Run at startup. A deploy record with no active ledger row gets its copies
-    recorded as a deploy would; one that has rows is left alone, so this is
+    Run at startup. Each copy of a deploy record with no active ledger row gets
+    recorded as a deploy would; a copy that has rows is left alone, so this is
     idempotent and never overrides what a deploy recorded. Proxied copies with
     no row are recorded from the same derivation their deploy used.
     """
@@ -4436,12 +4452,26 @@ async def _backfill_identities() -> None:
         if not svc or not catalog.identity_keys(svc):
             continue
         docker_conf = svc.get("docker") or {}
-        if not any(not i.startswith("p") for i in have):
+        copy = database.spec_copy_number(spec)
+        if copy > 1 and str(copy) not in have:
+            # A raw deploy of one copy recorded that copy's own spec, env and all.
+            try:
+                env = spec.get("env")
+                await database.record_identities(
+                    slug, worker_id, {str(copy): env if isinstance(env, dict) else {}}, scope="given"
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning("Could not record copy %s of %s", copy, slug, exc_info=True)
+        elif copy == 1:
             try:
                 count = int(spec.get("instances") or 1)
             except (TypeError, ValueError):
                 count = 1
-            await _record_deploy_identities(slug, worker_id, spec, max(1, min(count, 32)), docker_conf)
+            # Each copy on its own: one whose write failed at deploy is retried
+            # here, even when the others have their rows.
+            missing = [n for n in range(1, max(1, min(count, 32)) + 1) if str(n) not in have]
+            if missing:
+                await _record_deploy_identities(slug, worker_id, spec, missing, docker_conf, scope="given")
         for copy in proxied:
             if (copy.get("slug"), copy.get("worker_id")) != (slug, worker_id) or f"p{copy['proxy_id']}" in have:
                 continue
