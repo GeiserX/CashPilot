@@ -445,7 +445,8 @@ class TestLoginRoute:
         resp = _login(_client())
         assert resp.status_code == 400
         assert f'data-sitekey="{TURNSTILE_SITE}"' in resp.text
-        assert "https://challenges.cloudflare.com" in _directive(resp.headers["content-security-policy"], "frame-src")
+        frame_src = _directive(resp.headers["content-security-policy"], "frame-src").split()
+        assert {"https://challenges.cloudflare.com"} <= set(frame_src)
 
     def test_a_failure_is_counted_in_metrics(self, db, monkeypatch):
         _turn_on(monkeypatch)
@@ -504,8 +505,8 @@ class TestLoginPage:
         form = html[html.index("<form") : html.index("</form>")]
         assert form.index('id="cp-captcha"') < form.index('type="submit"')
         # No inline event handlers, and every inline script carries the nonce.
-        assert not re.search(r"\son[a-z]+=", html)
-        for tag in re.findall(r"<script(?![^>]*\bsrc=)[^>]*>", html):
+        assert not re.search(r"\son[a-z]+=", html, re.IGNORECASE)
+        for tag in re.findall(r"<script(?![^>]*\bsrc=)[^>]*>", html, re.IGNORECASE):
             assert f'nonce="{nonce}"' in tag
 
     def test_the_register_page_has_no_widget(self, monkeypatch):
