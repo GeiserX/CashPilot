@@ -9966,7 +9966,7 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
     One node keeps one origin however often it moved: an export from a box
     whose node came from a restore takes that restore's origin
     (database.backup_lineage). An export or a restore row holds the identity
-    on its box only while the box still runs the volume it named.
+    on its box until a heartbeat sent after it shows that box on another volume.
     """
     slug = entry["slug"]
     svc, targets = _restore_service(slug)
@@ -9989,6 +9989,7 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
         for r in linked
     ]
     states = payout_registry.state_ids(workers)
+    beats = {w["id"]: placement._sqlite_time(w.get("last_heartbeat")) for w in workers}
     live_ids: set[int] = set()
     for r in linked:
         w = r["worker_id"]
@@ -10001,7 +10002,11 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
         elif w in running:
             now = states.get((w, slug))
             if r["here"] and now and r["here"] != database.backup_origin(w, now):
-                continue  # that box runs another volume now: a node made since, not this one
+                # Only a heartbeat sent after this row says what the box runs
+                # now: an older one still shows the node it ran before.
+                seen = placement._sqlite_time(r["last_seen"])
+                if beats.get(w) and seen and beats[w] > seen:
+                    continue  # that box runs another volume now: a node made since, not this one
             live_ids.add(w)
     if not any(r["source"] != "pending" for r in own):
         live_ids |= {w for w in running if names[w] == entry.get("made_on")}

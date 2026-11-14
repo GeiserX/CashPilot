@@ -5264,15 +5264,16 @@ async def backup_lineage(slug: str, worker_id: int, here: str | None) -> str | N
 
     An export from a box whose node came from a restore is a file of that
     restored node: it takes the restore's origin, not a new one, so every file
-    of a node stays linked however many times it moved. A restore whose new
-    volume the worker did not report counts for any export from its box (the
-    newest one). None when the ledger knows nothing of that volume.
+    of a node stays linked however many times it moved. When the volume is not
+    known on one side, the newest restore sent to that box counts: a restore
+    whose new volume the worker did not report, one still 'pending' (it got no
+    answer, and may have happened), or any of them for an export whose own
+    volume is not known. None when the ledger knows nothing of that volume.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT worker_id, source, name FROM device_identities "
-            "WHERE kind = 'backup' AND slug = ? AND source != 'pending' ORDER BY id",
+            "SELECT worker_id, source, name FROM device_identities WHERE kind = 'backup' AND slug = ? ORDER BY id",
             (slug,),
         )
         rows = await cursor.fetchall()
@@ -5281,9 +5282,12 @@ async def backup_lineage(slug: str, worker_id: int, here: str | None) -> str | N
     unplaced = None
     for row in rows:
         origin, at = _backup_parse(row["name"], row["source"])
-        if origin and here and at == here:
+        if not origin:
+            continue
+        if here and at == here:
             return origin
-        if origin and at is None and row["source"] == "restore" and int(row["worker_id"]) == int(worker_id):
+        restored_here = row["source"] in ("restore", "pending") and int(row["worker_id"]) == int(worker_id)
+        if restored_here and (at is None or here is None):
             unplaced = origin
     return unplaced
 
@@ -5324,7 +5328,8 @@ async def backup_records(
 
     Each row: ``id``, ``slug``, ``worker_id``, ``source``, ``origin`` (None
     when not known), ``here`` (the volume it names on its box, None when not
-    known), ``first_seen``, ``file`` (True for this file's own rows).
+    known), ``first_seen``, ``last_seen`` (when the row was last written, the
+    restore's outcome for a settled one), ``file`` (True for this file's own rows).
     Oldest first.
     """
     sha256 = str(sha256 or "").lower()
@@ -5332,7 +5337,7 @@ async def backup_records(
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT id, slug, worker_id, source, name, first_seen, value_encrypted FROM device_identities "
+            "SELECT id, slug, worker_id, source, name, first_seen, last_seen, value_encrypted FROM device_identities "
             "WHERE kind = 'backup' ORDER BY id"
         )
         rows = await cursor.fetchall()
@@ -5345,7 +5350,7 @@ async def backup_records(
         if own or (origin is not None and origin in origins and row["slug"] == slug):
             out.append(
                 {
-                    **{k: row[k] for k in ("id", "slug", "worker_id", "source", "first_seen")},
+                    **{k: row[k] for k in ("id", "slug", "worker_id", "source", "first_seen", "last_seen")},
                     "origin": origin,
                     "here": here,
                     "file": own,

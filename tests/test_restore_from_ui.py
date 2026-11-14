@@ -32,6 +32,7 @@ import logging
 import os
 import tarfile
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -837,6 +838,7 @@ def ui(tmp_path):
             client.sent = sent  # type: ignore[attr-defined]
             client.state = state  # type: ignore[attr-defined]
             client.tmp = tmp_path  # type: ignore[attr-defined]
+            client.workers = workers  # type: ignore[attr-defined]
             yield client
             main._restore_uploads.clear()
             login_rate_limit._login_attempts.clear()
@@ -1192,6 +1194,7 @@ class TestOneNodeManyFiles:
         _export(bundle, 1, "old-volume")
         ui.state["runs_on"] = {"mysterium": [{"worker_id": 1}]}
         ui.state["states"] = {(1, "mysterium"): "new-volume"}
+        _heartbeat(ui, 1)
         upload = _upload(ui, bundle).json()
         assert upload["live_on"] == []
         resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
@@ -1206,6 +1209,12 @@ class TestOneNodeManyFiles:
         assert upload["live_on"] == ["box-a"]
         resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
         assert resp.status_code == 409 and "box-a" in _detail(resp) and ui.sent == []
+
+
+def _heartbeat(ui, worker_id: int, at: str | None = None) -> None:
+    """A heartbeat from ``worker_id`` at ``at`` (SQLite UTC text), by default just now: after every ledger row."""
+    at = at or (datetime.now(UTC) + timedelta(seconds=2)).strftime("%Y-%m-%d %H:%M:%S")
+    next(w for w in ui.workers if w["id"] == worker_id)["last_heartbeat"] = at
 
 
 def _export_route(ui, bundle: bytes, worker_id: int, state_id: str) -> None:
@@ -1231,6 +1240,8 @@ def _runs(ui, worker_id: int | None, state_id: str | None = None) -> None:
         asyncio.run(database.remove_deployment("mysterium"))
     ui.state["runs_on"] = {"mysterium": [{"worker_id": worker_id}]} if worker_id else {}
     ui.state["states"] = {(worker_id, "mysterium"): state_id} if worker_id and state_id else {}
+    if worker_id:
+        _heartbeat(ui, worker_id)
 
 
 def _restore_ok(ui, bundle: bytes, worker_id: int, landed: str, **extra) -> None:
@@ -1279,6 +1290,44 @@ class TestOneNodeMovedTwice:
         assert _upload(ui, f1).json()["live_on"] == ["box-b"]
 
 
+class TestALineageThroughAnUnknown:
+    """An export still joins the node it came from when the restore or the export named no volume."""
+
+    def test_an_export_after_a_restore_that_got_no_answer_keeps_the_node(self, ui):
+        f1, f2 = mysterium_bundle(), mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")
+        _runs(ui, None)
+        upload = _upload(ui, f1).json()
+        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=main.WorkerNoAnswer(504, "no answer"))):
+            assert _restore(ui, upload["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD).status_code == 504
+        _runs(ui, 1, "SA")  # the worker finished it after all
+        _export_route(ui, f2, 1, "SA")
+        (row,) = asyncio.run(database.backup_records(_sha(f2)))
+        assert row["origin"] == "state:2:S1"
+        _runs(ui, None)
+        # The restore box-a never answered still holds the node, for every file of it.
+        preview = _upload(ui, f2).json()
+        assert preview["live_on"] == ["box-a"]
+        resp = _restore(ui, preview["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+
+    def test_an_export_with_no_volume_after_a_restore_keeps_the_node(self, ui):
+        f1, f2 = mysterium_bundle(), mysterium_bundle()
+        _export(f1, 2, "S1")
+        _restore_ok(ui, f1, 1, "SA")
+        _runs(ui, 1)  # box-a runs it, and reports no volume
+        _export_route(ui, f2, 1, "")
+        (row,) = asyncio.run(database.backup_records(_sha(f2)))
+        assert row["origin"] == "state:2:S1"
+        _runs(ui, None)
+        _restore_ok(ui, f2, 2, "SB")
+        preview = _upload(ui, f1).json()
+        assert preview["live_on"] == ["box-b"]
+        resp = _restore(ui, preview["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 409 and "box-b" in _detail(resp)
+
+
 class TestARestoredBoxRedeployedSince:
     """A restore row holds the identity only while its box still runs the volume the restore made."""
 
@@ -1298,6 +1347,29 @@ class TestARestoredBoxRedeployedSince:
         assert upload["live_on"] == ["box-a"]
         resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
         assert resp.status_code == 409 and "box-a" in _detail(resp) and "Device ids" in _detail(resp)
+
+    def test_a_heartbeat_from_before_the_restore_does_not_free_the_identity(self, ui):
+        """box-a's last heartbeat still shows the node it ran before: it says nothing about the restored one."""
+        bundle = mysterium_bundle()
+        _export(bundle, 2, "S1")
+        ui.state["states"] = {(1, "mysterium"): "OLD"}
+        _heartbeat(ui, 1, "2000-01-01 00:00:00")
+        ui.state["landed"] = "SA"
+        upload = _upload(ui, bundle).json()
+        assert _restore(ui, upload["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD).status_code == 200
+        preview = _upload(ui, bundle).json()
+        assert preview["live_on"] == ["box-a"]
+        resp = _restore(ui, preview["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+        assert len(ui.sent) == 1
+
+    def test_a_newer_heartbeat_with_another_volume_frees_it(self, ui):
+        bundle = mysterium_bundle()
+        _export(bundle, 2, "S1")
+        _restore_ok(ui, bundle, 1, "SA")
+        ui.state["states"] = {(1, "mysterium"): "a-fresh-volume"}
+        _heartbeat(ui, 1)
+        assert _upload(ui, bundle).json()["live_on"] == []
 
 
 class TestARestoreWithNoAnswer:

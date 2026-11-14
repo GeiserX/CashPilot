@@ -122,7 +122,8 @@ identity sits on a named Docker volume. The rules:
   restored from, however many times the node moved. The restore is refused,
   naming the box, when any of them was restored on a box that still runs the
   volume the restore made, or came from a box that still runs it on the same
-  volume. A box that was wiped and runs a new volume does not count. A restore
+  volume. A box that was wiped and runs a new volume does not count, once a
+  heartbeat sent after the export or restore shows the new volume. A restore
   sent to a box that gave no answer (a timeout, a dropped connection, a gateway
   error) counts on that box, running or not, until a retry there succeeds or
   you forget the row in the Device ids list; one the worker answered it undid
