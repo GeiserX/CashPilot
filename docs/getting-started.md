@@ -215,7 +215,7 @@ The `RECLAIMABLE` value on the `Images` line is what Docker could free.
 the socket proxy. For images, the proxy lets it pull one and read one by name,
 and nothing else. It cannot list the host's images or delete one. A worker that
 could would also see and delete the images of every other program on the host.
-The full reasoning is in [Security defaults](security-defaults.md).
+See [what the proxy refuses](security-defaults.md#docker-socket-proxy).
 
 **Step 1: remove dangling images.** A dangling image has no tag and no
 container uses it, running or stopped. An update over a moving tag such as
