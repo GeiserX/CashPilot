@@ -224,3 +224,21 @@ def test_the_image_cleanup_section_links_to_where_the_refusal_is_explained():
     assert "image delete" in proxy
     assert "no list of the host's images" in proxy
     assert "getting-started.md#cleaning-up-old-images" in proxy
+
+
+def test_the_image_cleanup_section_keeps_the_rollback_image():
+    """CodeRabbit on #746: "remove tags older than the one you run" also removes
+    the previous version, the only local image to go back to."""
+    section = GETTING_STARTED.read_text(encoding="utf-8").split("### Cleaning up old images", 1)[1]
+    section = " ".join(section.split("\n## ", 1)[0].split())
+    assert "Remove only tags older than the one you run" not in section
+    assert "the tag you ran before it" in section
+
+
+def test_the_image_cleanup_section_names_the_containerd_image_store():
+    """CodeRabbit on #746: with the containerd image store, images live under
+    containerd's root, not DockerRootDir, so the disk check must say so."""
+    section = GETTING_STARTED.read_text(encoding="utf-8").split("### Cleaning up old images", 1)[1]
+    section = " ".join(section.split("\n## ", 1)[0].split())
+    assert "/var/lib/containerd" in section
+    assert "containerd image store" in section

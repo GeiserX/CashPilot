@@ -270,13 +270,18 @@ docker image rm drumsergio/cashpilot-worker:<old tag>
 
 Do not add `-f`. Without it, Docker refuses to remove an image that a
 container still uses, running or stopped, and prints
-`conflict: unable to delete`. When you see that, keep the image. Remove only
-tags older than the one you run, so you can still go back one version.
+`conflict: unable to delete`. When you see that, keep the image. Keep the tag
+you run and the tag you ran before it, so you can still go back one version.
+Remove only tags older than those two.
 
 The dashboard's **Host disk** column shows free space on the filesystem that
 holds the worker's `/data`. Images usually sit on the same filesystem, under
 Docker's data root, but not always. `docker info --format '{{.DockerRootDir}}'`
-shows where your images are.
+shows Docker's data root. With the containerd image store, the default on a
+new Docker Engine 29 install, images sit under containerd's root instead,
+normally `/var/lib/containerd`. `docker info --format '{{.Driver}}'` prints
+`overlayfs` for the containerd image store and `overlay2` for the classic one.
+Check free space on the filesystem that holds the directory that applies.
 
 ## Supported Services
 
