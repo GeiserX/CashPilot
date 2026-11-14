@@ -291,10 +291,13 @@ def looks_like_bundle(data: bytes) -> bool:
 
 
 #: The most file data a restore unpacks. The worker never exports more than
-#: ``orchestrator.MAX_BACKUP_BYTES`` (64 MB, tar headers included), so every real
-#: bundle fits. This file runs on its own (copy it, or run it from the image), so
-#: it keeps its own copy of the number; a test holds the two equal.
-MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+#: ``orchestrator.MAX_BACKUP_BYTES`` (64 MB) and CashPilot-Desktop never more than
+#: its ``MaxStateBytes`` (256 MB), tar headers included, so every bundle either app
+#: made fits. Sparse entries are refused, so file data can never exceed the
+#: decrypted payload already in memory. This file runs on its own (copy it, or run
+#: it from the image), so it keeps its own copy of the number; a test holds it at
+#: or above the worker's.
+MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 
 #: The most entries a restore accepts. An identity, a keystore or a wallet folder
 #: holds tens of files, a Tor-style relay folder a few hundred. Past this it is a
@@ -311,6 +314,11 @@ MAX_ARCHIVE_ENTRIES = 20_000
 _PAX_FIELDS = frozenset(
     {"path", "linkpath", "size", "uid", "gid", "uname", "gname", "mtime", "atime", "ctime", "hdrcharset"}
 )
+
+
+#: A modification time further than this from 1970 (about 317 years) is refused,
+#: and so is ``inf`` or ``nan``, which a PAX ``mtime`` record can carry.
+_MAX_MTIME = 10**10
 
 
 def _clean(name: str) -> str:
@@ -330,6 +338,13 @@ def _unsafe_member(member: Any, links: set[str], files: set[str], seen: set[str]
     of the links, regular files and all entries read so far.
     """
     name = member.name
+    bad = next((c for c in name + member.linkname if ord(c) < 0x20 or ord(c) == 0x7F), None)
+    if bad is not None:
+        # A NUL survives in tarfile's name but ends the name in the ustar field
+        # it is written back to, so the checks below would judge another name.
+        return f"{name!r} has the control character {bad!r} in its name or link target"
+    if member.mtime != member.mtime or abs(member.mtime) >= _MAX_MTIME:  # nan, inf, out of range
+        return f"{name!r} has an invalid modification time"
     if member.issparse() or any(k.startswith("GNU.sparse.") for k in member.pax_headers):
         return f"{name!r} is a sparse file (refused: a few bytes in the file unpack to gigabytes)"
     extra = sorted(set(member.pax_headers) - _PAX_FIELDS)

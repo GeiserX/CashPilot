@@ -685,6 +685,19 @@ def _pax_sparse(name: str, real_size: int) -> bytes:
     return buf.getvalue()
 
 
+def _pax_entries(*entries: tuple[str, bytes, dict[str, str]]) -> bytes:
+    """Entries of the given types whose PAX records override the name or link,
+    so a record may hold bytes the ustar fields cannot (a NUL, a bad time)."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tar:
+        for name, kind, records in entries:
+            info = tarfile.TarInfo(name)
+            info.type, info.pax_headers = kind, records
+            info.size = 1 if kind == tarfile.REGTYPE else 0
+            tar.addfile(info, io.BytesIO(b"x") if kind == tarfile.REGTYPE else None)
+    return buf.getvalue()
+
+
 CAPABILITY = {"SCHILY.xattr.security.capability": "\x01\x00\x00\x02\x00\x10"}
 
 UNSAFE = {
@@ -707,6 +720,21 @@ UNSAFE = {
     "duplicate after cleaning": _tar(_entry("node/f"), _entry("./node//f")),
     "hardlink to a later file": _tar(_entry("node/h", tarfile.LNKTYPE, "node/f"), _entry("node/f")),
     "hardlink to a folder": _tar(_entry("node/d", tarfile.DIRTYPE), _entry("node/h", tarfile.LNKTYPE, "node/d")),
+    # A NUL in a PAX record survives in tarfile's name but ends it once written
+    # back to the ustar field: "node/s\0" -> "..\0" would come out as node/s -> ..
+    "nul in a link name and target": _pax_entries(
+        ("node", tarfile.DIRTYPE, {}),
+        ("node/s", tarfile.SYMTYPE, {"path": "node/s\x00", "linkpath": "..\x00"}),
+        ("node/s/evil", tarfile.REGTYPE, {}),
+    ),
+    "nul in a link target": _pax_entries(("node/up", tarfile.SYMTYPE, {"linkpath": "..\x00"})),
+    "nul in a name": _pax_entries(
+        ("node/f", tarfile.REGTYPE, {}), ("node/f", tarfile.REGTYPE, {"path": "node/f\x00dup"})
+    ),
+    "newline in a name": _tar(_entry("node/a\nb")),
+    "infinite time": _pax("node/f", {"mtime": "inf"}),
+    "nan time": _pax("node/f", {"mtime": "nan"}),
+    "overflowing time": _pax("node/f", {"mtime": "1e400"}),
 }
 
 #: The words each refusal must use, so the error says which rule fired.
@@ -725,6 +753,13 @@ RULE = {
     "fifo": "device, pipe",
     "absolute": "absolute path",
     "dot-dot": "leaves its folder",
+    "nul in a link name and target": "control character",
+    "nul in a link target": "control character",
+    "nul in a name": "control character",
+    "newline in a name": "control character",
+    "infinite time": "invalid modification time",
+    "nan time": "invalid modification time",
+    "overflowing time": "invalid modification time",
 }
 
 
@@ -812,7 +847,12 @@ class TestUnsafeEntriesAreRefused:
 class TestTheCaps:
     def test_the_size_cap_matches_the_export_cap(self):
         """A bundle the worker exported always fits the restore."""
-        assert sb.MAX_ARCHIVE_BYTES == orchestrator.MAX_BACKUP_BYTES
+        assert sb.MAX_ARCHIVE_BYTES >= orchestrator.MAX_BACKUP_BYTES
+
+    def test_the_size_cap_opens_desktop_bundles(self):
+        """CashPilot-Desktop exports up to 256 MB (MaxStateBytes) and its docs
+        send users to this tool, so every Desktop bundle must open here too."""
+        assert sb.MAX_ARCHIVE_BYTES >= 256 * 1024 * 1024
 
     def test_too_much_file_data_is_refused_before_it_is_read(self, monkeypatch):
         monkeypatch.setattr(sb, "MAX_ARCHIVE_BYTES", 2)
