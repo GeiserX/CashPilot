@@ -266,6 +266,9 @@ If a worker goes offline (no heartbeat for 180 seconds; 45 minutes for an Androi
 | `CASHPILOT_ENCRYPTION_KEY` | *(auto-generated)* | Fernet key encrypting stored credentials at rest. Persisted at `/data/.fernet_key`; adopted only when that file is absent |
 | `CASHPILOT_ADMIN_API_KEY` | -- | Optional separate key granting full owner access (for integrations) |
 | `CASHPILOT_READONLY_API_KEY` | -- | Optional read-only key for dashboards. Reporting GETs only; refused everywhere else |
+| `CASHPILOT_CAPTCHA_PROVIDER` | -- | Optional CAPTCHA on the sign-in page: `turnstile`, `hcaptcha` or `recaptcha` (v2 checkbox). Empty means off. See [Protect the sign-in page with a CAPTCHA](security-defaults.md#protect-the-sign-in-page-with-a-captcha) |
+| `CASHPILOT_CAPTCHA_SITE_KEY` | -- | The provider's site key. Required when `CASHPILOT_CAPTCHA_PROVIDER` is set |
+| `CASHPILOT_CAPTCHA_SECRET_KEY` | -- | The provider's secret key. Required when `CASHPILOT_CAPTCHA_PROVIDER` is set |
 | `CASHPILOT_WORKER_URL_POLICY` | `permissive` | Worker URL validation policy: `permissive` (LAN + Tailscale work out of the box) or `strict` (allowlist only) |
 | `CASHPILOT_WORKER_ALLOWED_HOSTS` | -- | Comma-separated CIDRs and `*.suffix` hostnames allowed in `strict` mode, e.g. `192.168.1.0/24,100.64.0.0/10,*.ts.net` |
 | `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Escape hatch to permit cloud-metadata IPs as worker targets (leave `false`) |
