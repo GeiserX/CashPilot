@@ -2093,6 +2093,13 @@ async def api_remove_container(
             delete_volumes=delete_volumes,
             allow_delete_critical=allow_delete_critical,
         )
+        # Read before they go: the UI keeps the ids the copies ran with.
+        try:
+            digests = await asyncio.to_thread(orchestrator.copy_identity_digests, slug)
+        except Exception:  # noqa: BLE001 - bookkeeping never blocks a removal
+            digests = {}
+        if digests:
+            result["identity_digests"] = digests
         extras = await asyncio.to_thread(orchestrator.remove_extra_instances, slug)
         if extras:
             result["extra_instances"] = extras

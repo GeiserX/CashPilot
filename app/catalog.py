@@ -7,7 +7,9 @@ Reload on SIGHUP.
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
+import json
 import logging
 import re
 import signal
@@ -623,6 +625,24 @@ def identity_keys(svc: dict[str, Any] | None) -> dict[str, str]:
             if key:
                 keys[key] = str(var.get("label") or key)
     return keys
+
+
+def identity_digest(svc: dict[str, Any] | None, env: Any) -> str | None:
+    """A short hash of the device ids in ``env``, never the ids: which ids a copy runs with.
+
+    The worker reports it per container from the env the container really has,
+    and the UI computes it from the env a deploy record derives for that copy;
+    a ledger row is written only when the two agree. Device ids let whoever
+    holds them claim the device, so only this hash leaves the box. None when
+    the service has no identity key or ``env`` holds none of them.
+    """
+    keys = sorted(identity_keys(svc))
+    if not keys or not isinstance(env, dict):
+        return None
+    pairs = [[key, str(env.get(key) or "").strip()] for key in keys]
+    if not any(value for _, value in pairs):
+        return None
+    return hashlib.sha256(json.dumps(["cashpilot-identity", pairs]).encode()).hexdigest()[:16]
 
 
 def device_link_step(svc: dict[str, Any], env: dict[str, Any]) -> dict[str, str] | None:

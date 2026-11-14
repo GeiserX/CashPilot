@@ -21,7 +21,7 @@ import socket
 import time
 import urllib.parse
 import weakref
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -4323,7 +4323,12 @@ async def _deploy(
         await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
         await _record_deploy_identities(slug, worker_id, spec, [n], docker_conf, scope="given")
     for n in sorted(c for c in running_copies if c > instances):
-        await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        # Confirmed gone: keep the id it ran with, even if its row was never
+        # written, when the worker's digest proves which one that was.
+        digest = removed.get("identity_digest") if isinstance(removed, dict) else None
+        if isinstance(digest, str):
+            await _record_unrecorded_copies(slug, worker_id, recorded or spec, digests={n: digest})
         await _record_deploy_identities(slug, worker_id, {}, [n], docker_conf, scope="given")
     # No sweep of the other copies' rows here: running_copies comes from the last
     # heartbeat, which may predate a copy, so only a confirmed removal retires one.
@@ -4397,7 +4402,7 @@ async def _record_deploy_identities(
     Each copy's own values, from the same _instance_spec the copies are deployed
     with, so the ledger shows what the provider sees; an empty ``spec`` retires
     the copies named. ``scope`` is record_identities'. Bookkeeping: a failure is
-    logged and never fails a deploy that already happened.
+    logged and never fails a deploy that already happened; False says it failed.
     """
     try:
         values: dict[str, dict[str, Any]] = {}
@@ -4407,6 +4412,148 @@ async def _record_deploy_identities(
         await database.record_identities(slug, worker_id, values, scope=scope)
     except Exception:  # noqa: BLE001
         logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
+        return False
+    return True
+
+
+async def _record_unrecorded_copies(
+    slug: str,
+    worker_id: int,
+    spec: dict[str, Any] | None,
+    *,
+    trusted: Iterable[int] = (),
+    digests: Mapping[int, str] | None = None,
+    have: Collection[str] | None = None,
+) -> bool:
+    """Record each copy with no active ledger row whose ids are proven, as its deploy derived them.
+
+    The one path that repairs a copy whose ledger write failed. Proof is either
+    ``trusted`` (the record's own copy: a record is saved only after that copy's
+    deploy succeeded) or a match in ``digests``: the worker's hash of the ids a
+    container really runs with (orchestrator._identity_entry) against the hash of
+    the ids this record derives for that copy. A copy number alone proves
+    nothing: an older copy whose replacement failed still runs older ids, and the
+    record holds the count asked for, saved before the extra copies deploy. No
+    proof, no row. A record of one copy (a raw deploy names ``instance``) holds
+    that copy's own env. Bookkeeping: never raises; False says the write failed.
+    """
+    try:
+        svc = catalog.get_service(slug)
+        if not isinstance(spec, dict) or not svc or not catalog.identity_keys(svc):
+            return True
+        docker_conf = svc.get("docker") or {}
+        digests = digests or {}
+        trusted = set(trusted)
+        own = database.spec_copy_number(spec)
+        if own > 1:
+            described = {own}
+        else:
+            try:
+                count = int(spec.get("instances") or 1)
+            except (TypeError, ValueError):
+                count = 1
+            described = set(range(1, max(1, min(count, 32)) + 1))
+        candidates = (trusted | set(digests)) & described
+        if have is None and candidates:
+            have = await database.active_identity_copies(slug, worker_id)
+        proven: list[int] = []
+        for n in sorted(c for c in candidates if str(c) not in (have or ())):
+            if n in trusted:
+                proven.append(n)
+                continue
+            try:
+                env = (spec if n == own else _instance_spec(spec, n, docker_conf)).get("env")
+            except ValueError:
+                continue
+            if catalog.identity_digest(svc, env) == digests[n]:
+                proven.append(n)
+        if not proven:
+            return True
+        if own > 1:
+            env = spec.get("env")
+            await database.record_identities(
+                slug, worker_id, {str(own): env if isinstance(env, dict) else {}}, scope="given"
+            )
+            return True
+        return await _record_deploy_identities(slug, worker_id, spec, proven, docker_conf, scope="given")
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not record the device ids of %s on worker %s", slug, worker_id, exc_info=True)
+        return False
+
+
+def _copy_digests(containers: Any, slug: str) -> dict[int, str]:
+    """The ``identity_digest`` a heartbeat reported for each copy of ``slug``, by copy number."""
+    digests: dict[int, str] = {}
+    for entry in containers if isinstance(containers, list) else []:
+        if isinstance(entry, dict) and entry.get("slug") == slug and isinstance(entry.get("identity_digest"), str):
+            n = _copy_number(entry)
+            if n is not None and n >= 1:
+                digests[n] = entry["identity_digest"]
+    return digests
+
+
+async def _stored_copy_digests(worker_id: int, slug: str) -> dict[int, str]:
+    """The digests of ``slug``'s copies in the worker's last stored heartbeat."""
+    worker = await database.get_worker(worker_id) or {}
+    return _copy_digests(_safe_json(worker.get("containers", "[]"), []), slug)
+
+
+async def _record_removed_copies(slug: str, worker_id: int, result: Any) -> None:
+    """Before a removal retires a service's rows: record each removed copy that has none.
+
+    The first copy goes with the service and its record is its proof. An extra
+    copy needs its digest: from the worker's answer (``identity_digests``, read
+    before it removed them), else from its last heartbeat.
+    """
+    try:
+        spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+        digests = await _stored_copy_digests(worker_id, slug)
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not read the deploy record of %s on worker %s", slug, worker_id, exc_info=True)
+        return
+    answered = result.get("identity_digests") if isinstance(result, dict) else None
+    for copy, digest in (answered if isinstance(answered, dict) else {}).items():
+        if str(copy).isdigit() and isinstance(digest, str):
+            digests[int(copy)] = digest
+    await _record_unrecorded_copies(slug, worker_id, spec, trusted={1}, digests=digests)
+
+
+# (slug, copy, container id, digest) per worker whose ledger row a heartbeat
+# already found, wrote or could not prove, so a steady heartbeat reads nothing.
+# Pruned to what the last heartbeat listed, so it never outgrows the fleet.
+_IDENTITIES_CHECKED: dict[int, set[tuple[str, int, str, str]]] = {}
+
+
+async def _reconcile_running_identities(worker_id: int, containers: Any) -> None:
+    """Record a running copy with no active ledger row, when its digest proves its ids.
+
+    A copy whose ledger write failed at deploy still runs, so its box reports
+    it with the digest of the ids it runs with; this is where its row is
+    written. Only a copy with a digest counts: an older worker sends none, and
+    then nothing is recorded. One indexed read per service on a container not
+    seen before, and a write only on a proven miss.
+    """
+    listed: set[tuple[str, int, str, str]] = set()
+    for entry in containers if isinstance(containers, list) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("slug"), str):
+            continue
+        n = _copy_number(entry)
+        digest = entry.get("identity_digest")
+        if n is not None and n >= 1 and isinstance(digest, str) and digest:
+            listed.add((entry["slug"], n, str(entry.get("container_id") or ""), digest))
+    checked = _IDENTITIES_CHECKED.get(worker_id, set()) & listed
+    _IDENTITIES_CHECKED[worker_id] = checked
+    fresh: dict[str, set[tuple[str, int, str, str]]] = {}
+    for key in listed - checked:
+        fresh.setdefault(key[0], set()).add(key)
+    for slug, keys in fresh.items():
+        digests = {n: digest for _, n, _, digest in keys}
+        have = await database.active_identity_copies(slug, worker_id)
+        if not all(str(n) in have for n in digests):
+            spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+            if not await _record_unrecorded_copies(slug, worker_id, spec, digests=digests, have=have):
+                continue
+        checked.update(keys)
 
 
 async def _backfill_identities() -> None:
@@ -4433,36 +4580,17 @@ async def _backfill_identities() -> None:
         if not svc or not catalog.identity_keys(svc):
             continue
         docker_conf = svc.get("docker") or {}
-        copy = database.spec_copy_number(spec)
-        if copy > 1 and str(copy) not in have:
-            # A raw deploy of one copy recorded that copy's own spec, env and all.
-            try:
-                env = spec.get("env")
-                await database.record_identities(
-                    slug, worker_id, {str(copy): env if isinstance(env, dict) else {}}, scope="given"
-                )
-            except Exception:  # noqa: BLE001
-                logger.warning("Could not record copy %s of %s", copy, slug, exc_info=True)
-        elif copy == 1:
-            try:
-                count = int(spec.get("instances") or 1)
-            except (TypeError, ValueError):
-                count = 1
-            # Each copy on its own: one whose write failed at deploy is retried
-            # here, even when the others have their rows. The record holds the
-            # count asked for, saved before the extra copies deploy, so an extra
-            # copy counts only once the box's heartbeat lists it: one whose own
-            # deploy failed never ran and gets no row.
-            missing = [n for n in range(1, max(1, min(count, 32)) + 1) if str(n) not in have]
-            if any(n > 1 for n in missing):
-                try:
-                    listed = await _worker_instances(worker_id, slug)
-                except Exception:  # noqa: BLE001
-                    logger.warning("Could not read which copies of %s run", slug, exc_info=True)
-                    listed = set()
-                missing = [n for n in missing if n == 1 or n in listed]
-            if missing:
-                await _record_deploy_identities(slug, worker_id, spec, missing, docker_conf, scope="given")
+        # The record's own copy ran: its record is saved after its deploy. An
+        # extra copy needs the proof the heartbeat gives (_record_unrecorded_copies);
+        # one with none yet is written by a later heartbeat.
+        try:
+            digests = await _stored_copy_digests(worker_id, slug)
+        except Exception:  # noqa: BLE001
+            logger.warning("Could not read the copies of %s that run", slug, exc_info=True)
+            digests = {}
+        await _record_unrecorded_copies(
+            slug, worker_id, spec, trusted={database.spec_copy_number(spec)}, digests=digests, have=have
+        )
         for copy in proxied:
             if (copy.get("slug"), copy.get("worker_id")) != (slug, worker_id) or f"p{copy['proxy_id']}" in have:
                 continue
@@ -4844,6 +4972,7 @@ async def _svc_remove(
         await _audit(
             "delete_critical_volumes", slug, "deleted", actor=auth.get_current_user(request), worker_id=worker_id
         )
+    await _record_removed_copies(slug, worker_id, result)
     await database.remove_deployment(slug, worker_id=worker_id)
     # The worker removed the service's proxied copies with it (worker_api
     # remove_all), so their records go too. The removal itself already
@@ -9117,6 +9246,12 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         await _queue_copy_removals(worker_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not resume copy removals for worker %s: %s", worker_id, exc)
+    # The identity ledger: a running copy with no row (its write failed at
+    # deploy) gets one now. Never allowed to reject a heartbeat.
+    try:
+        await _reconcile_running_identities(worker_id, body.containers)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not check the device ids of worker %s: %s", worker_id, type(exc).__name__)
     # Activity: the switch is read on every heartbeat, because the reply is
     # how the worker learns it. Never allowed to reject a heartbeat, and the
     # log line never carries the exception text, which could quote an address.
@@ -9535,6 +9670,7 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         await database.record_health_event(slug, "start", worker_id=worker_id, instance=1)
         metrics.record_container_lifecycle("start", slug)
     elif body.command == "remove":
+        await _record_removed_copies(slug, worker_id, result)
         await database.remove_deployment(slug, worker_id=worker_id)
         # As in _svc_remove: the worker removed the proxied copies with the service.
         # The removal already happened; a failure here must not report it as failed.

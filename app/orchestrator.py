@@ -35,13 +35,15 @@ if "stop_timeout" not in docker.models.containers.RUN_CREATE_KWARGS:
     docker.models.containers.RUN_CREATE_KWARGS.append("stop_timeout")
 
 try:
-    from app.catalog import critical_volume_targets, get_service, get_services
+    from app.catalog import critical_volume_targets, get_service, get_services, identity_digest, identity_keys
 except ImportError:
     # Defensive fallback if the catalog module isn't importable in some context.
     # (The worker image does ship catalog.py + services/, so this normally no-ops.)
     get_service = None  # type: ignore[assignment]
     get_services = None  # type: ignore[assignment]
     critical_volume_targets = None  # type: ignore[assignment]
+    identity_digest = None  # type: ignore[assignment]
+    identity_keys = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -2509,13 +2511,15 @@ def remove_instance(slug: str, instance: int) -> dict[str, Any]:
     if instance <= 1:
         raise ValueError("The first instance is removed with the service, not on its own")
     container = _find_container(slug, instance)
+    # Read before it goes: the UI keeps the ids this copy ran with (identity ledger).
+    identity = _identity_entry(container, slug)
     try:
         container.stop(timeout=_get_stop_timeout(slug))
     except APIError as exc:
         logger.warning("Could not stop %s cleanly before removing it: %s", container.name, exc)
     _remove_container(container, slug)
     logger.info("Removed container %s", container.name)
-    return {"container": container.name}
+    return {"container": container.name, **identity}
 
 
 def remove_extra_instances(slug: str) -> list[str]:
@@ -3414,6 +3418,52 @@ def _advertised_address(container: Any, slug: str) -> str | None:
     return None
 
 
+# Container id -> the digest of the device ids it runs with. A container's env
+# never changes, so each is inspected once; the cap only bounds a long uptime.
+_identity_digests: dict[str, str | None] = {}
+
+
+def _identity_entry(container: Any, slug: str) -> dict[str, str]:
+    """``identity_digest``: a short hash of the device ids this container runs with.
+
+    The UI writes a copy's ledger row only when this matches what its deploy
+    record derives (catalog.identity_digest), so a copy still running an older
+    id is never given a newer one. Only for a service with identity keys, and
+    never the ids themselves: they let whoever holds them claim the device.
+    """
+    if get_service is None or identity_digest is None or identity_keys is None:
+        return {}
+    try:
+        service = get_service(slug)
+    except Exception:
+        return {}
+    cid = str(getattr(container, "id", "") or "")
+    if not service or not cid:
+        return {}
+    if cid not in _identity_digests:
+        if not identity_keys(service):
+            return {}
+        try:
+            env_list = (container.client.api.inspect_container(cid).get("Config") or {}).get("Env") or []
+        except Exception:
+            return {}
+        env = dict(e.split("=", 1) for e in env_list if isinstance(e, str) and "=" in e)
+        if len(_identity_digests) > 1024:
+            _identity_digests.clear()
+        _identity_digests[cid] = identity_digest(service, env)
+    digest = _identity_digests[cid]
+    return {"identity_digest": digest} if digest else {}
+
+
+def copy_identity_digests(slug: str) -> dict[str, str]:
+    """The digest of every copy of ``slug`` on this worker, by copy number, before a removal."""
+    digests: dict[str, str] = {}
+    for container in service_instances(slug):
+        if digest := _identity_entry(container, slug).get("identity_digest"):
+            digests[str(_instance_of(container))] = digest
+    return digests
+
+
 def get_status() -> list[dict[str, Any]]:
     """Return live status of all known containers (labeled + image-matched).
 
@@ -3476,6 +3526,7 @@ def get_status() -> list[dict[str, Any]]:
                 "instance": _instance_of(c),
                 **_shape_entry(c),
                 **_stop_facts(c),
+                **_identity_entry(c, slug),
                 **_state_id_entry(c, slug, client),
                 **_fatal_entry(c, slug),
                 **_held_entry(c),

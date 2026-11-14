@@ -4837,6 +4837,20 @@ async def _active_identity_rows(db: Any, slug: str, worker_id: int) -> list[dict
     return [dict(r) for r in await cursor.fetchall()]
 
 
+async def active_identity_copies(slug: str, worker_id: int) -> set[str]:
+    """The copies of ``slug`` on a worker that have an active ledger row: '1', '2', 'p7'."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT DISTINCT instance FROM device_identities "
+            "WHERE slug = ? AND worker_id = ? AND kind = 'env' AND status = 'active'",
+            (slug, worker_id),
+        )
+        return {str(row["instance"]) for row in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
 async def record_identities(
     slug: str,
     worker_id: int,

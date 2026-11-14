@@ -351,13 +351,17 @@ def _request():
     return request
 
 
-def _deploy(slug, env, worker_id, *, instances=None, allow=False, fail=None, running=frozenset()):
+def _deploy(slug, env, worker_id, *, instances=None, allow=False, fail=None, running=frozenset(), ran=None):
+    """Deploy through the route. ``ran``: {copy: the ids it runs with}, which a DELETE answers as a digest."""
     sent: list[dict] = []
 
     async def hop(wid, method, path, *, json=None, **kwargs):
         if fail and fail(method, path, json):
             raise HTTPException(status_code=502, detail="worker failed")
         sent.append({"worker": wid, "path": path, "json": json})
+        if method == "DELETE":
+            n = int(path.rsplit("/", 1)[1])
+            return {"status": "removed", **({"identity_digest": _digest(slug, ran[n])} if (ran or {}).get(n) else {})}
         return {"container_id": f"c{wid}"}
 
     body = main.DeployRequest(env=env, instances=instances, allow_shared_identity=allow)
@@ -509,9 +513,26 @@ class TestADeletedBox:
         assert ("earnapp", 1, "1", "EARNAPP_UUID", UUID_A) in _retired()
 
 
+def _digest(slug, ids):
+    """What a worker reports for a container running with ``ids`` (orchestrator._identity_entry)."""
+    return catalog.identity_digest(catalog.get_service(slug), ids)
+
+
+def _entries(slug, copies):
+    """Heartbeat entries for ``copies``: copy numbers, or {copy: the ids it runs with}."""
+    ids = copies if isinstance(copies, dict) else dict.fromkeys(copies)
+    out = []
+    for n, env in ids.items():
+        entry = {"slug": slug, "instance": n, "container_id": f"{slug}{n}" * 4}
+        if env:
+            entry["identity_digest"] = _digest(slug, env)
+        out.append(entry)
+    return out
+
+
 def _worker(name="box-a", running=()):
-    """A box whose last heartbeat lists ``running``: (slug, copy) pairs."""
-    containers = [{"slug": slug, "instance": n, "container_id": f"{slug}-{n}" * 3} for slug, n in running]
+    """A box whose last heartbeat lists ``running``: (slug, copies) as _entries takes them."""
+    containers = [e for slug, copies in running for e in _entries(slug, copies)]
     return asyncio.run(database.upsert_worker(f"client-{name}", name=name, containers=json.dumps(containers)))
 
 
@@ -531,9 +552,10 @@ class TestOldDeployments:
         assert len(_rows()) == 1
 
     def test_its_copies_and_proxied_copies_are_listed(self, db):
-        wid = _worker(running=[("proxyrack", 1), ("proxyrack", 2)])
         hex_uuid = "ab" * 32
         spec = {"env": {"UUID": hex_uuid, "DEVICE_NAME": "box", "API_KEY": "secret-key"}, "instances": 2}
+        copy_two = main._instance_spec(spec, 2, catalog.get_service("proxyrack")["docker"])["env"]
+        wid = _worker(running=[("proxyrack", {1: None, 2: copy_two})])
         asyncio.run(database.save_deployment(slug="proxyrack", container_id="c1", spec=spec, worker_id=wid))
         asyncio.run(database.save_proxied_copy(7, wid, "proxyrack"))
         asyncio.run(main._backfill_identities())
@@ -794,7 +816,7 @@ class TestACopyWhoseWriteFailed:
         assert set(_active()) == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME")}
 
     def test_the_backfill_retries_it(self, db):
-        wid = _worker(running=[("honeygain", 1), ("honeygain", 2)])
+        wid = _worker(running=[("honeygain", {1: None, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}})])
         self._deploy_losing_copy_two(wid)
         asyncio.run(main._backfill_identities())
         assert _active() == {
@@ -803,7 +825,7 @@ class TestACopyWhoseWriteFailed:
         }
 
     def test_its_removal_then_keeps_its_id(self, db):
-        wid = _worker(running=[("honeygain", 1), ("honeygain", 2)])
+        wid = _worker(running=[("honeygain", {1: None, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}})])
         self._deploy_losing_copy_two(wid)
         asyncio.run(main._backfill_identities())
         asyncio.run(database.remove_deployment("honeygain", worker_id=wid))
@@ -811,7 +833,7 @@ class TestACopyWhoseWriteFailed:
 
     def test_a_copy_whose_deploy_failed_gets_no_row(self, db):
         """The record says two copies, but copy 2 never ran: the heartbeat lists only copy 1."""
-        wid = _worker(running=[("honeygain", 1)])
+        wid = _worker(running=[("honeygain", [1])])
 
         def copy_two(method, path, json):
             return path.endswith("/deploy") and (json or {}).get("instance") == 2
@@ -821,3 +843,251 @@ class TestACopyWhoseWriteFailed:
         assert error is not None
         asyncio.run(main._backfill_identities())
         assert _active() == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME"): "box"}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, fourth round: a copy whose write failed keeps its id through
+# to its removal, whether or not a heartbeat or a restart came between
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_checked_copies():
+    """Each test starts with no copy marked as checked by an earlier heartbeat."""
+    getattr(main, "_IDENTITIES_CHECKED", {}).clear()
+    yield
+    getattr(main, "_IDENTITIES_CHECKED", {}).clear()
+
+
+def _heartbeat(name, copies, *, slug="honeygain"):
+    """Send box ``name``'s heartbeat through the real route, listing ``copies`` of ``slug`` (see _entries)."""
+    containers = _entries(slug, copies)
+    body = main.WorkerHeartbeat(name=name, client_id=f"client-{name}", containers=containers)
+    with (
+        patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+        patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+    ):
+        return asyncio.run(main.api_worker_heartbeat(MagicMock(), body))
+
+
+def _remove(slug, wid, ran=None):
+    """Remove ``slug`` from box ``wid`` through the route.
+
+    ``ran``: {copy: the ids it ran with} for the extra copies the worker removed,
+    which it answers with as digests, as worker_api does.
+    """
+    answer = {"status": "removed", "container": f"cashpilot-{slug}"}
+    if ran:
+        answer["extra_instances"] = [f"cashpilot-{slug}-{n}" for n in ran]
+        answer["identity_digests"] = {str(n): _digest(slug, ids) for n, ids in ran.items()}
+
+    async def run():
+        with (
+            patch.object(main, "_require_writer", lambda r: OWNER),
+            patch.object(main, "_resolve_worker_id", AsyncMock(return_value=wid)),
+            patch.object(main, "_proxy_worker_command", AsyncMock(return_value=answer)),
+            patch.object(main.database, "record_health_event", AsyncMock()),
+            patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+        ):
+            await main._svc_remove(_request(), slug, wid, False)
+
+    asyncio.run(run())
+
+
+class TestACopyWhoseWriteFailedUntilItsRemoval:
+    COPY_2 = ("honeygain", "2", "HONEYGAIN_DEVICE_NAME")
+
+    def _lose_copy_two(self):
+        wid = _worker(running=[("honeygain", [1])])
+        TestACopyWhoseWriteFailed()._deploy_losing_copy_two(wid)
+        return wid
+
+    def test_the_review_sequence(self, db):
+        """Copy 2's write fails, a restart comes before any heartbeat lists it, then a heartbeat, then removal."""
+        wid = self._lose_copy_two()
+        asyncio.run(main._backfill_identities())
+        assert (self.COPY_2[0], wid, *self.COPY_2[1:]) not in _active()
+        assert (
+            _heartbeat("box-a", {1: {"HONEYGAIN_DEVICE_NAME": "box"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}})["status"]
+            == "ok"
+        )
+        assert _active()[(self.COPY_2[0], wid, *self.COPY_2[1:])] == "box-2"
+        _remove("honeygain", wid, ran={2: {"HONEYGAIN_DEVICE_NAME": "box-2"}})
+        assert _active() == {}
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+    def test_a_removal_before_any_heartbeat_or_restart(self, db):
+        wid = self._lose_copy_two()
+        _remove("honeygain", wid, ran={2: {"HONEYGAIN_DEVICE_NAME": "box-2"}})
+        assert _active() == {}
+        assert _retired() == {
+            ("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME", "box"),
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2"),
+        }
+
+    def test_a_scale_down_of_it(self, db):
+        """The confirmed DELETE of copy 2 keeps the id it ran with, though it never had a row."""
+        wid = self._lose_copy_two()
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, _ = _deploy(
+                "honeygain",
+                TestACopyWhoseWriteFailed.HG,
+                wid,
+                instances=1,
+                running={1, 2},
+                ran={2: {"HONEYGAIN_DEVICE_NAME": "box-2"}},
+            )
+        assert error is None
+        assert _active() == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME"): "box"}
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+    def test_a_removal_the_worker_did_not_confirm_for_a_copy_records_nothing_for_it(self, db):
+        """Copy 2 never deployed: the worker removed no copy 2, so it gets no row, active or retired."""
+        wid = _worker(running=[("honeygain", [1])])
+
+        def copy_two(method, path, json):
+            return path.endswith("/deploy") and (json or {}).get("instance") == 2
+
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=2, fail=copy_two)[0] is not None
+        _remove("honeygain", wid)
+        assert {r["instance"] for r in _rows()} == {"1"}
+
+
+class TestTheHeartbeatStaysCheap:
+    def test_a_steady_heartbeat_reads_the_ledger_once(self, db):
+        wid = _worker(running=[("honeygain", [1])])
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=2)[0] is None
+        real = database.active_identity_copies
+        reads = AsyncMock(side_effect=real)
+        with patch.object(main.database, "active_identity_copies", reads):
+            for _ in range(3):
+                _heartbeat("box-a", {1: {"HONEYGAIN_DEVICE_NAME": "box"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}})
+        assert reads.await_count == 1
+
+    def test_an_older_worker_sends_no_proof_so_nothing_is_read_or_written(self, db):
+        wid = TestACopyWhoseWriteFailedUntilItsRemoval()._lose_copy_two()
+        reads = AsyncMock(side_effect=database.active_identity_copies)
+        with patch.object(main.database, "active_identity_copies", reads):
+            _heartbeat("box-a", [1, 2])
+        reads.assert_not_awaited()
+        assert set(_active()) == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME")}
+
+    def test_it_never_writes_a_copy_the_record_does_not_describe(self, db):
+        """A copy 3 the record of two copies says nothing about gets no derived id."""
+        wid = _worker(running=[("honeygain", [1])])
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=2)[0] is None
+        _heartbeat(
+            "box-a",
+            {
+                1: {"HONEYGAIN_DEVICE_NAME": "box"},
+                2: {"HONEYGAIN_DEVICE_NAME": "box-2"},
+                3: {"HONEYGAIN_DEVICE_NAME": "box-3"},
+            },
+        )
+        assert {k[2] for k in _active()} == {"1", "2"}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, fifth round: a copy number is no proof of the ids a copy runs
+# with; the worker's digest of its real env is
+# ---------------------------------------------------------------------------
+
+
+class TestAReplacementThatFailed:
+    """Copy 2 runs box-2 with no row; a redeploy saves "new" but fails to replace copy 2."""
+
+    HG = TestACopyWhoseWriteFailed.HG
+    RUNS = {1: {"HONEYGAIN_DEVICE_NAME": "new"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}
+
+    def _replace_and_fail(self):
+        wid = TestACopyWhoseWriteFailedUntilItsRemoval()._lose_copy_two()
+
+        def copy_two(method, path, json):
+            return path.endswith("/deploy") and (json or {}).get("instance") == 2
+
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, _ = _deploy(
+                "honeygain", {**self.HG, "HONEYGAIN_DEVICE_NAME": "new"}, wid, instances=2, fail=copy_two
+            )
+        assert error is not None
+        return wid
+
+    def _never_new_2(self):
+        assert all(r["value"] != "new-2" for r in _rows())
+
+    def test_the_heartbeat_records_no_id_copy_2_never_ran(self, db):
+        wid = self._replace_and_fail()
+        _heartbeat("box-a", self.RUNS)
+        self._never_new_2()
+        assert set(_active()) == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME")}
+
+    def test_the_backfill_records_no_id_copy_2_never_ran(self, db):
+        wid = self._replace_and_fail()
+        asyncio.run(
+            database.upsert_worker(
+                "client-box-a", name="box-a", containers=json.dumps(_entries("honeygain", self.RUNS))
+            )
+        )
+        asyncio.run(main._backfill_identities())
+        self._never_new_2()
+        assert set(_active()) == {("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME")}
+
+    def test_its_removal_records_no_id_copy_2_never_ran(self, db):
+        wid = self._replace_and_fail()
+        _remove("honeygain", wid, ran={2: self.RUNS[2]})
+        self._never_new_2()
+
+    def test_a_matching_digest_is_still_recorded(self, db):
+        """The positive control: the same heartbeat, with copy 2 really running new-2, writes it."""
+        wid = self._replace_and_fail()
+        _heartbeat("box-a", {**self.RUNS, 2: {"HONEYGAIN_DEVICE_NAME": "new-2"}})
+        assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "new-2"
+
+
+class TestTheWorkersDigest:
+    """orchestrator._identity_entry: what the heartbeat carries about a copy's ids."""
+
+    def _container(self, env, cid="abc123"):
+        container = MagicMock()
+        container.id = cid
+        container.client.api.inspect_container.return_value = {"Config": {"Env": env}}
+        return container
+
+    def test_it_matches_the_digest_the_ui_derives(self, db):
+        from app import orchestrator
+
+        orchestrator._identity_digests.clear()
+        container = self._container(
+            ["HONEYGAIN_EMAIL=me@example.com", "HONEYGAIN_PASSWORD=pw", "HONEYGAIN_DEVICE_NAME=box-2"]
+        )
+        entry = orchestrator._identity_entry(container, "honeygain")
+        assert entry == {"identity_digest": _digest("honeygain", {"HONEYGAIN_DEVICE_NAME": "box-2"})}
+
+    def test_it_never_carries_an_id_or_a_secret(self, db):
+        from app import orchestrator
+
+        orchestrator._identity_digests.clear()
+        container = self._container([f"EARNAPP_UUID={UUID_A}"])
+        entry = orchestrator._identity_entry(container, "earnapp")
+        assert UUID_A not in json.dumps(entry) and len(entry["identity_digest"]) == 16
+        container = self._container(["HONEYGAIN_PASSWORD=hunter2", "HONEYGAIN_DEVICE_NAME=box"], cid="def456")
+        assert "hunter2" not in json.dumps(orchestrator._identity_entry(container, "honeygain"))
+
+    def test_a_container_is_inspected_once(self, db):
+        from app import orchestrator
+
+        orchestrator._identity_digests.clear()
+        container = self._container([f"EARNAPP_UUID={UUID_A}"])
+        for _ in range(3):
+            orchestrator._identity_entry(container, "earnapp")
+        assert container.client.api.inspect_container.call_count == 1
+
+    def test_a_service_with_no_device_ids_is_never_inspected(self, db):
+        from app import orchestrator
+
+        container = self._container(["X=1"], cid="ghi789")
+        assert orchestrator._identity_entry(container, "not-a-service") == {}
+        container.client.api.inspect_container.assert_not_called()
