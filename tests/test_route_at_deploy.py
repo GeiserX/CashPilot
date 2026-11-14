@@ -1121,7 +1121,28 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
         monkeypatch.setitem(worker_api._copy_deploys, ("honeygain", 3), 1)
         resp = worker("DELETE", "/api/containers/honeygain")
         assert resp.status_code == 200, resp.text
-        assert "through proxy 3 is still running" in resp.json()["proxied_error"]
+        assert "through proxy 3 ran during this removal" in resp.json()["proxied_error"]
+
+    def test_a_copy_deploy_that_ends_during_the_removal_still_keeps_the_records(self, worker, monkeypatch):
+        """A deploy that finishes inside remove_all made its earner after remove_all listed the copies."""
+        monkeypatch.setattr(worker_api.orchestrator, "remove_service", lambda slug, **k: {"container_id": "d"})
+        monkeypatch.setattr(worker_api.orchestrator, "remove_extra_instances", lambda slug: [])
+        monkeypatch.setitem(worker_api._copy_deploys, ("honeygain", 3), 1)
+
+        def remove_all(slug):
+            # The deploy through proxy 3 answers while remove_all stops the other copies.
+            del worker_api._copy_deploys[("honeygain", 3)]
+            return ["p4"]
+
+        monkeypatch.setattr(worker_api.proxy_tunnel, "remove_all", remove_all)
+        resp = worker("DELETE", "/api/containers/honeygain")
+        assert resp.status_code == 200, resp.text
+        assert "through proxy 3 ran during this removal" in resp.json()["proxied_error"]
+        # Control: with no deploy running at any point, nothing is held.
+        monkeypatch.setattr(worker_api.proxy_tunnel, "remove_all", lambda slug: ["p4"])
+        resp = worker("DELETE", "/api/containers/honeygain")
+        assert resp.status_code == 200, resp.text
+        assert "proxied_error" not in resp.json()
 
     def test_the_ui_keeps_the_records_of_that_removal(self, db):
         ui = _Ui()

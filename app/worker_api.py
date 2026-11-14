@@ -2361,6 +2361,10 @@ async def api_remove_container(
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    # Copy deploys running when the removal starts. One may finish inside
+    # remove_all, after it listed the copies, so the set read afterwards alone
+    # would miss the earner it made.
+    deploying = {pid for s, pid in list(_copy_deploys) if s == slug}
     try:
         result = await asyncio.to_thread(
             orchestrator.remove_service,
@@ -2381,13 +2385,14 @@ async def api_remove_container(
             # The UI keeps the copies' records when this is set, so a copy that
             # survived stays listed and can be removed again.
             result["proxied_error"] = proxy_tunnel.redact(str(exc))[:300]
-        # remove_all sees only copies that exist. One whose deploy is still
-        # running (the UI gave up on it after 180 s) is made after this, so the
-        # UI must keep the copies' records, as api_proxied_remove holds them.
-        if held := sorted(pid for s, pid in list(_copy_deploys) if s == slug):
+        # remove_all sees only copies that exist. One whose deploy ran during
+        # the removal (the UI gave up on it after 180 s) may be made after it
+        # listed them, so the UI must keep the copies' records, as
+        # api_proxied_remove holds them.
+        if held := sorted(deploying | {pid for s, pid in list(_copy_deploys) if s == slug}):
             result.setdefault(
                 "proxied_error",
-                f"A deploy of {slug} through proxy {', '.join(map(str, held))} is still running on this worker",
+                f"A deploy of {slug} through proxy {', '.join(map(str, held))} ran during this removal on this worker",
             )
         if proxied:
             result["proxied"] = proxied
