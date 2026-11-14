@@ -56,7 +56,7 @@ from app import (
     step_up,
     version,
 )
-from app.constants import MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
+from app.constants import DEPLOY_DEADLINE_SECONDS, MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -1995,6 +1995,9 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
+    # Counted from now, not from when a thread is free: the UI's hold on the ids
+    # of a deploy it got no answer for must outlast it (constants.DEPLOY_DEADLINE_SECONDS).
+    deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     # Threaded like every other Docker touch in this file: _validate_runtime
     # inside does a live daemon round-trip (available_runtimes has no cache and
     # no timeout), and unthreaded it blocked the WHOLE event loop on a wedged
@@ -2029,6 +2032,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
             replaced_identity=replaced,
+            deadline=deadline,
         )
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}

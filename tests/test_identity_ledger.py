@@ -896,11 +896,9 @@ def _no_checked_copies():
     """Each test starts with no copy marked as checked by an earlier heartbeat."""
     getattr(main, "_IDENTITIES_CHECKED", {}).clear()
     getattr(main, "_IDENTITIES_LISTED", {}).clear()
-    getattr(main, "_IDENTITIES_PENDING", {}).clear()
     yield
     getattr(main, "_IDENTITIES_CHECKED", {}).clear()
     getattr(main, "_IDENTITIES_LISTED", {}).clear()
-    getattr(main, "_IDENTITIES_PENDING", {}).clear()
 
 
 def _heartbeat(name, copies, *, slug="honeygain", containers=None, listed=None):
@@ -2505,7 +2503,11 @@ class TestARetirementWhoseRecordMovedOn:
             return have
 
         with patch.object(main.database, "active_identity_copies", read_then_redeployed):
-            assert asyncio.run(main._retire_dropped_copies("honeygain", wid, {2})) is True
+            # Refused, and said so: the heartbeat keeps the copy to try again
+            # against the new record, which describes copy 2 and so keeps it.
+            assert asyncio.run(main._retire_dropped_copies("honeygain", wid, {2})) is False
+        assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
+        assert asyncio.run(main._retire_dropped_copies("honeygain", wid, {2})) is True
         assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
 
     def test_with_the_record_in_place_it_retires(self, db):
@@ -2581,3 +2583,210 @@ class TestTheFleetRowAfterABoxRemovedIt:
         with patch.object(main.database, "get_deployment_spec", read_then_removed):
             asyncio.run(main._reconcile_running_identities(one, _entries("earnapp", {1: {"EARNAPP_UUID": UUID_A}})))
         assert not any(wid == one for _, wid, _, _ in _active())
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, fifteenth round: an unconfirmed id is settled whatever a
+# heartbeat raced with, and a second unanswered deploy to the same copy keeps
+# the first one's id held
+# ---------------------------------------------------------------------------
+
+
+class TestUnconfirmedIdsAcrossRacesAndRetries:
+    _timed_out = staticmethod(TestADeployTheWorkerDidNotAnswer._timed_out)
+    _age_pending = staticmethod(TestADeployTheWorkerDidNotAnswer._age_pending)
+
+    def test_a_deploy_that_times_out_during_a_heartbeats_read_is_still_settled(self, db):
+        """The heartbeat reads no unconfirmed ids, then a 504's write lands before the read returns."""
+        wid = _worker()
+        real = database.pending_identities
+        raced = []
+
+        async def read_then_timed_out(worker_id):
+            found = await real(worker_id)
+            if not raced:
+                raced.append(True)
+                await main._record_pending_identities("earnapp", wid, {1: {"EARNAPP_UUID": UUID_A}})
+            return found
+
+        with patch.object(main.database, "pending_identities", read_then_timed_out):
+            _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        assert raced and asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        self._age_pending()
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        row = next(r for r in _rows() if r["value"] == UUID_A)
+        assert asyncio.run(database.delete_identity(row["id"]))
+
+    def test_a_second_unanswered_deploy_keeps_the_first_ones_id_held(self, db):
+        """Box runs B; deploys of A and then C both time out; the worker lands A."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        for uuid in (UUID_A, UUID_C):
+            error, _ = _deploy("earnapp", {"EARNAPP_UUID": uuid}, wid, fail=self._timed_out, fail_status=504)
+            assert error.status_code == 504
+        for uuid in (UUID_A, UUID_B, UUID_C):
+            assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", uuid)) == [wid]
+        held = [r for r in _rows() if r["status"] == "active" and r["value"] in (UUID_A, UUID_C)]
+        assert [main._identity_view(r, {}, {})["copy"] for r in held] == ["deploy not confirmed"] * 2
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active()[("earnapp", wid, "1", "EARNAPP_UUID")] == UUID_A
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+        # C may still land behind A until its own time is up; then it is free.
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_C)) == [wid]
+        self._age_pending()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_C)) == []
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+    def test_the_same_deploy_retried_holds_one_row(self, db):
+        """The positive control for the per-attempt rows: the same ids twice are one unconfirmed row."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        for _ in range(2):
+            _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        held = [r for r in _rows() if r["status"] == "active" and r["value"] == UUID_A]
+        assert len(held) == 1
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, sixteenth round: the raw route asks for the password a device
+# id on a chosen image needs, the hold outlasts the worker's deploy deadline,
+# and a retirement the record refused is tried again
+# ---------------------------------------------------------------------------
+
+
+def _raw_spec_deploy(spec, worker_id, *, password=None):
+    """Deploy earnapp's raw ``spec`` through POST /api/workers/{id}/command as the signed-in owner."""
+    hop = AsyncMock(return_value={"container_id": "c"})
+
+    async def run():
+        if await database.get_user_by_id(OWNER["uid"]) is None:
+            await database.create_user("owner", auth.hash_password("right-password"), "owner")
+        with (
+            patch.object(auth, "get_current_user", return_value=OWNER),
+            patch.object(main, "_proxy_to_worker", hop),
+            patch.object(main.database, "record_health_event", AsyncMock()),
+            patch.object(main, "_spawn", lambda coro: coro.close()),
+            patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+        ):
+            body = main.WorkerCommand(command="deploy", slug="earnapp", spec=spec, step_up_password=password)
+            try:
+                await main.api_worker_command(_request(), worker_id, body)
+            except HTTPException as exc:
+                return exc
+            return None
+
+    return asyncio.run(run()), hop
+
+
+class TestTheRawDeployAsksForThePassword:
+    """A per_device id on an image the caller chose needs the owner's password on the raw route too."""
+
+    SPEC = {"image": "attacker/exfil:1", "env": {"EARNAPP_UUID": UUID_A}}
+
+    def test_no_password_is_refused_before_the_worker(self, db):
+        error, hop = _raw_spec_deploy(self.SPEC, 1)
+        assert isinstance(error, HTTPException) and error.status_code == 403
+        assert error.detail["error"] == "step_up_required"
+        hop.assert_not_awaited()
+
+    def test_a_wrong_password_is_refused_before_the_worker(self, db):
+        error, hop = _raw_spec_deploy(self.SPEC, 1, password="wrong")
+        assert isinstance(error, HTTPException) and error.status_code == 403
+        assert error.detail["error"] == "step_up_failed"
+        hop.assert_not_awaited()
+
+    def test_the_right_password_deploys(self, db):
+        error, hop = _raw_spec_deploy(self.SPEC, 1, password="right-password")
+        assert error is None
+        hop.assert_awaited_once()
+
+    def test_the_catalogs_image_is_not_asked(self, db):
+        """The positive control: the catalog's own image carries the id as /api/deploy's does."""
+        image = catalog.get_service("earnapp")["docker"]["image"]
+        error, hop = _raw_spec_deploy({"image": image, "env": {"EARNAPP_UUID": UUID_A}}, 1)
+        assert error is None
+        hop.assert_awaited_once()
+
+    def test_the_image_the_box_already_runs_is_not_asked_again(self, db):
+        assert _raw_spec_deploy(self.SPEC, 1, password="right-password")[0] is None
+        error, hop = _raw_spec_deploy(self.SPEC, 1)
+        assert error is None
+        hop.assert_awaited_once()
+
+
+class TestTheHoldOutlastsTheWorkersDeadline:
+    def test_the_hold_runs_out_well_after_a_worker_abandons_the_deploy(self):
+        from app import constants
+
+        assert main.PENDING_IDENTITY_SECONDS >= 2 * constants.DEPLOY_DEADLINE_SECONDS
+
+    def test_an_old_id_heartbeat_past_the_workers_deadline_but_inside_the_hold_keeps_it(self, db):
+        """The attempted id stays held: only the hold, which comes later, frees it."""
+        from app import constants
+
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        error, _ = _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
+        )
+        assert error.status_code == 504
+        with sqlite3.connect(database.DB_PATH) as conn:
+            conn.execute(
+                "UPDATE device_identities SET last_seen = datetime('now', ?) WHERE status = 'active'",
+                (f"-{constants.DEPLOY_DEADLINE_SECONDS + 600} seconds",),
+            )
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+
+
+class TestARetirementTheRecordRefused:
+    """A one-copy redeploy saves a new record between the retirement's read and its write."""
+
+    def test_the_dropped_copy_is_retired_on_a_later_heartbeat(self, db):
+        wid = _worker(running=[("honeygain", [1])])
+        hg = TestACopyWhoseWriteFailed.HG
+        runs = {n: {"HONEYGAIN_DEVICE_NAME": "box" if n == 1 else f"box-{n}"} for n in (1, 2)}
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", hg, wid, instances=2)[0] is None
+            # A scale-down a stale heartbeat hid: copy 2 keeps running above the count.
+            assert _deploy("honeygain", hg, wid, instances=1, running=set())[0] is None
+        _heartbeat("box-a", runs)
+        copy_two = ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")
+        assert copy_two in _active()
+        real = database.get_deployment_spec
+        moved = []
+
+        async def read_then_redeployed(slug, worker_id=None):
+            spec = await real(slug, worker_id=worker_id)
+            if not moved and spec is not None:
+                moved.append(True)
+                await database.save_deployment(
+                    slug=slug, container_id="c2", spec={**spec, "redeployed": True}, worker_id=worker_id
+                )
+            return spec
+
+        with patch.object(main.database, "get_deployment_spec", read_then_redeployed):
+            _heartbeat("box-a", {1: runs[1]})
+        assert moved and copy_two in _active()
+        _heartbeat("box-a", {1: runs[1]})
+        assert copy_two not in _active()
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+    def test_a_refused_write_says_so(self, db):
+        asyncio.run(database.save_deployment(slug="earnapp", container_id="c", spec={"env": {}}, worker_id=1))
+        applied = asyncio.run(
+            database.record_identities(
+                "earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}, scope="given", if_record={"env": {"x": 1}}
+            )
+        )
+        assert applied is False and _active() == {}
+        assert asyncio.run(
+            database.record_identities(
+                "earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}, scope="given", if_record={"env": {}}
+            )
+        )

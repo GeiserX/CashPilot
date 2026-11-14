@@ -4683,18 +4683,21 @@ async def _record_deploy_identities(
     with, so the ledger shows what the provider sees; an empty ``spec`` retires
     the copies named. ``scope`` and ``if_record`` are record_identities'.
     Bookkeeping: a failure is logged and never fails a deploy that already
-    happened; False says it failed.
+    happened; False says it failed, or that ``if_record`` was no longer the
+    record and nothing was written, so a caller that retries tries again.
     """
     try:
         values: dict[str, dict[str, Any]] = {}
         for n in copies:
             copy_spec = spec if n == 1 or not spec else _instance_spec(spec, n, docker_conf)
             values[str(n)] = dict(copy_spec.get("env") or {})
-        await database.record_identities(slug, worker_id, values, scope=scope, if_record=if_record)
+        if await database.record_identities(slug, worker_id, values, scope=scope, if_record=if_record):
+            return True
+        logger.info("The deploy record of %s on worker %s moved on; its device ids are checked again", slug, worker_id)
+        return False
     except Exception:  # noqa: BLE001
         logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
         return False
-    return True
 
 
 def _spec_copies(spec: dict[str, Any]) -> set[int]:
@@ -4734,7 +4737,7 @@ async def _record_unrecorded_copies(
     that copy's own env. ``current_only`` copies are proven against the current
     record alone, never the spec it replaced. ``if_record`` is record_identities'.
     Bookkeeping: never raises. Returns the copies proven and written, or None
-    when a write failed.
+    when a write failed or found ``if_record`` no longer the record.
     """
     try:
         svc = catalog.get_service(slug)
@@ -4792,13 +4795,14 @@ async def _record_unrecorded_copies(
             own = database.spec_copy_number(source)
             if own > 1:
                 env = source.get("env")
-                await database.record_identities(
+                if not await database.record_identities(
                     slug,
                     worker_id,
                     {str(own): env if isinstance(env, dict) else {}},
                     scope="given",
                     if_record=if_record,
-                )
+                ):
+                    return None
             elif not await _record_deploy_identities(
                 slug, worker_id, source, copies, docker_conf, scope="given", if_record=if_record
             ):
@@ -4962,12 +4966,12 @@ def _forget_checked_copies(worker_id: int, slug: str) -> None:
 
 #: How long the ids of a deploy the worker never answered stay claimed while no
 #: heartbeat shows them running. The worker pulls the image before it touches
-#: the running container, and a pull has no deadline, so no wait proves the
-#: deploy is over: this is far past any the worker could still be running.
+#: the running container, so a heartbeat during the pull still shows the old
+#: ids. A worker creates nothing past constants.DEPLOY_DEADLINE_SECONDS (1 h)
+#: from the request, and Docker's timeouts end what follows within minutes, so
+#: by the time this runs out the deploy is over: what a heartbeat shows then is
+#: what runs. (A worker from before that deadline has none.)
 PENDING_IDENTITY_SECONDS = 6 * 3600
-# Per worker: whether it has unconfirmed ids (False: none, so a heartbeat reads
-# nothing). Unknown after a restart, until its first heartbeat reads them.
-_IDENTITIES_PENDING: dict[int, bool] = {}
 
 
 async def _record_pending_identities(slug: str, worker_id: int, envs: Mapping[int, Any]) -> None:
@@ -4975,17 +4979,18 @@ async def _record_pending_identities(slug: str, worker_id: int, envs: Mapping[in
 
     Beside the copy's own row (``u<copy>``, database.PENDING_COPY_PREFIX), not
     in it: until a heartbeat shows the new ids, the old container may be what
-    still runs, so both ids count as in use there. _settle_pending_identities
+    still runs, so both ids count as in use there. A second unanswered deploy
+    with other ids is held beside the first, not over it. _settle_pending_identities
     makes them the copy's row once a heartbeat proves them, or retires them
     once PENDING_IDENTITY_SECONDS pass with no proof. Bookkeeping: never raises.
     """
-    values = {f"{database.PENDING_COPY_PREFIX}{n}": dict(env) for n, env in envs.items() if isinstance(env, Mapping)}
-    try:
-        await database.record_identities(slug, worker_id, values, scope="given")
-    except Exception:  # noqa: BLE001
-        logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
-        return
-    _IDENTITIES_PENDING[worker_id] = True
+    for n, env in envs.items():
+        if not isinstance(env, Mapping):
+            continue
+        try:
+            await database.hold_pending_identities(slug, worker_id, n, env)
+        except Exception:  # noqa: BLE001
+            logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
 
 
 async def _settle_pending_identities(worker_id: int, containers: Any, *, complete: bool) -> None:
@@ -4994,13 +4999,12 @@ async def _settle_pending_identities(worker_id: int, containers: Any, *, complet
     A copy this heartbeat lists with their digest runs them: they become its
     row. Past PENDING_IDENTITY_SECONDS, a full list that does not show them
     retires them. A copy still showing its old ids proves nothing before that:
-    the worker may still be pulling. Bookkeeping: never raises.
+    the worker may still be pulling. Read on every heartbeat (one indexed
+    SELECT), never cached: a deploy that times out during the read must still
+    be settled by the next one. Bookkeeping: never raises.
     """
-    if _IDENTITIES_PENDING.get(worker_id) is False:
-        return
     try:
         pending = await database.pending_identities(worker_id)
-        _IDENTITIES_PENDING[worker_id] = bool(pending)
         keys = await _identity_digest_keys(worker_id) if pending else []
         for entry in pending:
             slug, copy, env = entry["slug"], entry["copy"], entry["env"]
@@ -5010,7 +5014,7 @@ async def _settle_pending_identities(worker_id: int, containers: Any, *, complet
                 hmac.compare_digest(catalog.identity_digest(svc, env, k) or "", digest or "") for k in keys
             )
             if runs or (complete and entry["age"] >= PENDING_IDENTITY_SECONDS):
-                await database.settle_pending_identities(slug, worker_id, copy, env, runs=runs)
+                await database.settle_pending_identities(slug, worker_id, entry["instance"], env, runs=runs)
                 _forget_checked_copies(worker_id, slug)
     except Exception:  # noqa: BLE001
         logger.warning("Could not settle the unconfirmed device ids on worker %s", worker_id, exc_info=True)
@@ -10374,6 +10378,8 @@ class WorkerCommand(BaseModel):
     spec: dict[str, Any] = {}
     # As DeployRequest's: the owner's yes to a device id that runs on another box.
     allow_shared_identity: bool = False
+    # As DeployRequest's: a device id on an image the caller chose needs it.
+    step_up_password: str | None = None
 
 
 @app.post("/api/workers/{worker_id}/command")
@@ -10415,6 +10421,16 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         raw_env = body.spec.get("env")
         if raw_svc and isinstance(raw_env, dict) and not body.allow_shared_identity:
             await _refuse_shared_device_ids(body.slug, raw_svc, raw_env, worker_id)
+        # As /api/deploy's: a per_device id sent to an image the caller chose,
+        # other than the catalog's and this box's record's, needs the owner's
+        # password. The worker has no rule for it to check.
+        if raw_svc and isinstance(raw_env, dict):
+            image = body.spec.get("image")
+            image = image if isinstance(image, str) and image != (raw_svc.get("docker") or {}).get("image") else ""
+            if image and any(str(raw_env.get(k) or "").strip() for k in _per_device_keys(raw_svc)):
+                recorded = await database.get_deployment_spec(body.slug, worker_id=worker_id)
+                if image != (recorded or {}).get("image"):
+                    await _step_up_critical(request, body.slug, raw_svc, image, body.step_up_password, device_id=True)
         try:
             result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
         except HTTPException as exc:
@@ -10618,9 +10634,8 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
     instance = str(row.get("instance") or "1")
     if instance.startswith("p"):
         copy = f"through proxy {instance[1:]}"
-    elif instance.startswith(database.PENDING_COPY_PREFIX):
-        n = instance[len(database.PENDING_COPY_PREFIX) :]
-        copy = "deploy not confirmed" if n == "1" else f"copy {n}, deploy not confirmed"
+    elif (pending := database.pending_copy_number(instance)) is not None:
+        copy = "deploy not confirmed" if pending == 1 else f"copy {pending}, deploy not confirmed"
     elif instance != "1":
         copy = f"copy {instance}"
     else:

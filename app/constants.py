@@ -65,6 +65,15 @@ EPHEMERAL_PORTS = (32768, 60999)
 #: it to its own wait for the worker's deploy answer.
 START_SETTLE_SECONDS = 120
 
+#: The latest a worker still creates a deploy's container, counted from when
+#: the deploy request reached it. A pull still running then is abandoned, and
+#: the running container is not touched. Docker's own timeouts bound what comes
+#: after the pull (a stop, a create, START_SETTLE_SECONDS), so a deploy is over
+#: a few minutes past this. The UI holds the ids of a deploy the worker never
+#: answered for far longer (main.PENDING_IDENTITY_SECONDS), so a hold that runs
+#: out runs out after the deploy ended.
+DEPLOY_DEADLINE_SECONDS = 3600
+
 
 def drift_warnings_enabled() -> bool:
     """CASHPILOT_DRIFT_WARNINGS: off stops the worker reporting container settings

@@ -51,6 +51,7 @@ from app import socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
+    DEPLOY_DEADLINE_SECONDS,
     LABEL_CATEGORY,
     LABEL_DEPLOYED_BY,
     LABEL_INSTANCE,
@@ -820,6 +821,46 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
 GATED_DEPLOY_LOCK = threading.Lock()
 
 
+def _past_deadline(image: str) -> ContainerRuntimeError:
+    return ContainerRuntimeError(
+        f"The deploy of {image} ran past its {DEPLOY_DEADLINE_SECONDS // 60}-minute limit, so it was abandoned: "
+        "nothing was created and the running container was not touched. Try again."
+    )
+
+
+def _refuse_past(deadline: float, image: str) -> None:
+    """Abandon a deploy at its deadline, before anything is created or replaced."""
+    if time.monotonic() >= deadline:
+        raise _past_deadline(image)
+
+
+def _pull_until(client: Any, image: str, deadline: float) -> APIError | None:
+    """Pull ``image``, waiting no later than ``deadline``; the registry's refusal, if it refused.
+
+    docker-py's pull has no overall deadline, only one per read, so a slow pull
+    could run for hours. It runs in its own thread: past the deadline the deploy
+    is abandoned (_refuse_past) and the pull may finish on its own, which only
+    leaves an image behind.
+    """
+    outcome: dict[str, BaseException] = {}
+
+    def pull() -> None:
+        try:
+            client.images.pull(image)
+        except BaseException as exc:  # noqa: BLE001 - handed to the deploy below
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=pull, name=f"pull {image}", daemon=True)
+    worker.start()
+    worker.join(max(0.0, deadline - time.monotonic()))
+    if worker.is_alive():
+        raise _past_deadline(image)
+    error = outcome.get("error")
+    if error is None or isinstance(error, APIError):
+        return error
+    raise error
+
+
 def _holds_gated_lock(fn: Any) -> Any:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -854,6 +895,7 @@ def deploy_raw(
     instance: int = 1,
     name: str | None = None,
     replaced_identity: dict[str, str] | None = None,
+    deadline: float | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -864,6 +906,8 @@ def deploy_raw(
     what was kept so the caller can report it. ``replaced_identity``, when
     given, gets the ``identity_digest`` of the container being replaced, read
     before it goes, so the UI can keep the ids it ran (identity ledger).
+    ``deadline`` (time.monotonic(); by default DEPLOY_DEADLINE_SECONDS from
+    now): past it, nothing is created and the running container is not touched.
 
     ``network_mode="container:<id>"`` and ``name`` are for app/proxy_tunnel.py
     only: the worker API refuses a container: network mode from any caller.
@@ -875,6 +919,8 @@ def deploy_raw(
     makes the container's cgroup limits durable across recreates. Returns the
     container ID.
     """
+    if deadline is None:
+        deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     client = _get_client()
     name = name or _container_name(slug, instance)
     joined = (network_mode or "").startswith("container:")
@@ -903,12 +949,9 @@ def deploy_raw(
     # is here, what it would run as PID 1 is known, so an image that cannot run
     # under this worker's hardening is refused now, not left to loop.
     logger.info("Pulling image %s", image)
-    pull_error: APIError | None = None
-    try:
-        client.images.pull(image)
-    except APIError as exc:
-        pull_error = exc
-        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+    pull_error = _pull_until(client, image, deadline)
+    if pull_error is not None:
+        logger.warning("Failed to pull image %s: %s (trying local)", image, pull_error)
     try:
         image_config = client.images.get(image).attrs.get("Config") or {}
     except DockerException as exc:
@@ -920,6 +963,7 @@ def deploy_raw(
         ) from None
     entrypoint = _get_entrypoint(slug)
     _refuse_init_image(image, image_config, entrypoint, command)
+    _refuse_past(deadline, image)
 
     # Replace any existing container with the same name. It is stopped and
     # moved aside, not removed, until its replacement runs: Docker can still

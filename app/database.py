@@ -5019,7 +5019,7 @@ async def record_identities(
     *,
     scope: str = "copies",
     if_record: Mapping[str, Any] | None = None,
-) -> None:
+) -> bool:
     """Record the identifier values one worker now runs ``slug`` with.
 
     ``values`` maps a copy (``instance``: "1", "2", .., "p<proxy id>", or "u<n>"
@@ -5030,11 +5030,12 @@ async def record_identities(
     absent from ``values`` is retired too; ``scope="given"`` touches only the
     copies named (a proxied copy). ``if_record``: write only while that spec is
     still the worker's deploy record of ``slug``, so a proof read before a
-    removal cannot bring the removed copy's ids back after it.
+    removal cannot bring the removed copy's ids back after it. False: that spec
+    was no longer the record, so nothing was written and the caller may retry.
     """
     keys = _identity_keys(slug)
     if not keys:
-        return
+        return True
     wanted = _wanted_identities(keys, values)
     # Own connection and BEGIN IMMEDIATE: the read and the writes below are one
     # step. On the shared connection two deploys at once (two proxied copies
@@ -5044,22 +5045,28 @@ async def record_identities(
         db.row_factory = aiosqlite.Row
         await db.execute("BEGIN IMMEDIATE")
         try:
-            if if_record is None or await _deploy_records(db, slug, worker_id) == [(worker_id, dict(if_record))]:
+            applied = if_record is None or await _deploy_records(db, slug, worker_id) == [(worker_id, dict(if_record))]
+            if applied:
                 await _record_identities_locked(db, slug, worker_id, keys, values, wanted, scope)
-                # A deploy that finished after its box was deleted: its ids are
-                # retired as delete_worker retires them, so the replacement box
-                # is offered them and the owner may forget them (issue #740).
-                cursor = await db.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,))
-                if await cursor.fetchone() is None:
-                    await db.execute(
-                        "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
-                        "WHERE slug = ? AND worker_id = ? AND status = 'active'",
-                        (slug, worker_id),
-                    )
+                await _retire_if_worker_gone(db, slug, worker_id)
             await db.commit()
         except BaseException:
             await db.rollback()
             raise
+    return applied
+
+
+async def _retire_if_worker_gone(db: Any, slug: str, worker_id: int) -> None:
+    """A write that finished after its box was deleted: its ids are retired as
+    delete_worker retires them, so the replacement box is offered them and the
+    owner may forget them (issue #740)."""
+    cursor = await db.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,))
+    if await cursor.fetchone() is None:
+        await db.execute(
+            "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+            "WHERE slug = ? AND worker_id = ? AND status = 'active'",
+            (slug, worker_id),
+        )
 
 
 def _wanted_identities(keys: Mapping[str, str], values: Mapping[str, Mapping[str, Any]]) -> dict[tuple[str, str], str]:
@@ -5074,12 +5081,58 @@ def _wanted_identities(keys: Mapping[str, str], values: Mapping[str, Mapping[str
 
 
 #: The ledger copy that holds the ids a deploy of copy ``n`` sent and the
-#: worker never answered: ``u<n>``. Beside the copy's own row, not in it.
+#: worker never answered: ``u<n>``, and ``u<n>.<k>`` for a second attempt with
+#: other ids while the first is unconfirmed. Beside the copy's own row, not in it.
 PENDING_COPY_PREFIX = "u"
 
 
+def pending_copy_number(instance: str) -> int | None:
+    """The copy an unconfirmed-ids ledger copy (``u<n>`` or ``u<n>.<k>``) is for; None for any other."""
+    if not instance.startswith(PENDING_COPY_PREFIX):
+        return None
+    n = instance[len(PENDING_COPY_PREFIX) :].split(".", 1)[0]
+    return int(n) if n.isdigit() else None
+
+
+async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Mapping[str, Any]) -> None:
+    """Hold the ids a deploy of copy ``copy`` sent and the worker did not answer, unconfirmed.
+
+    Each attempt with other ids gets its own ledger copy, so a second
+    unanswered deploy never drops the first one's ids: the worker may still
+    land either. The same ids again refresh their row.
+    """
+    keys = _identity_keys(slug)
+    ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
+    if not ids:
+        return
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            held: dict[str, dict[str, str]] = {}
+            for row in await _active_identity_rows(db, slug, worker_id):
+                if pending_copy_number(str(row["instance"])) == int(copy):
+                    held.setdefault(str(row["instance"]), {})[row["name"]] = decrypt_value(row["value_encrypted"])
+            instance = next((i for i, have in held.items() if have == ids), None)
+            if instance is None:
+                instance, attempt = f"{PENDING_COPY_PREFIX}{int(copy)}", 1
+                while instance in held:
+                    attempt += 1
+                    instance = f"{PENDING_COPY_PREFIX}{int(copy)}.{attempt}"
+            values = {instance: env}
+            await _record_identities_locked(
+                db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
+            )
+            await _retire_if_worker_gone(db, slug, worker_id)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+
 async def pending_identities(worker_id: int) -> list[dict[str, Any]]:
-    """Each copy on a worker with unconfirmed ids (``u<n>``): its slug, copy number, ids and age in seconds."""
+    """Each attempt on a worker with unconfirmed ids: its slug, ledger copy, copy number, ids and age in seconds."""
     db = await _get_db()
     try:
         cursor = await db.execute(
@@ -5090,11 +5143,13 @@ async def pending_identities(worker_id: int) -> list[dict[str, Any]]:
         )
         found: dict[tuple[str, str], dict[str, Any]] = {}
         for row in await cursor.fetchall():
-            copy = str(row["instance"])[len(PENDING_COPY_PREFIX) :]
-            if not copy.isdigit():
+            instance = str(row["instance"])
+            copy = pending_copy_number(instance)
+            if copy is None:
                 continue
             entry = found.setdefault(
-                (row["slug"], copy), {"slug": row["slug"], "copy": int(copy), "env": {}, "age": 0.0}
+                (row["slug"], instance),
+                {"slug": row["slug"], "instance": instance, "copy": copy, "env": {}, "age": 0.0},
             )
             entry["env"][row["name"]] = decrypt_value(row["value_encrypted"])
             entry["age"] = max(entry["age"], float(row["age"] or 0))
@@ -5104,20 +5159,23 @@ async def pending_identities(worker_id: int) -> list[dict[str, Any]]:
 
 
 async def settle_pending_identities(
-    slug: str, worker_id: int, copy: int, env: Mapping[str, str], *, runs: bool
+    slug: str, worker_id: int, instance: str, env: Mapping[str, str], *, runs: bool
 ) -> None:
-    """End copy ``copy``'s unconfirmed ids, while they are still ``env``.
+    """End one attempt's unconfirmed ids (ledger copy ``instance``), while they are still ``env``.
 
     ``runs`` (a heartbeat proved the copy runs them): they become the copy's own
     row, which retires what it ran before. Otherwise they are retired and the
-    copy's row stays as it is. A deploy or a removal that settled them first
+    copy's row stays as it is. Another attempt on the same copy stays held: the
+    worker may still land it. A deploy or a removal that settled them first
     leaves nothing to do.
     """
     keys = _identity_keys(slug)
-    pending = f"{PENDING_COPY_PREFIX}{int(copy)}"
-    values: dict[str, Mapping[str, Any]] = {pending: {}}
+    copy = pending_copy_number(instance)
+    if copy is None:
+        return
+    values: dict[str, Mapping[str, Any]] = {instance: {}}
     if runs:
-        values[str(int(copy))] = env
+        values[str(copy)] = env
     DB_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
         db.row_factory = aiosqlite.Row
@@ -5126,7 +5184,7 @@ async def settle_pending_identities(
             held = {
                 row["name"]: decrypt_value(row["value_encrypted"])
                 for row in await _active_identity_rows(db, slug, worker_id)
-                if row["instance"] == pending
+                if row["instance"] == instance
             }
             if keys and held and held == dict(env):
                 await _record_identities_locked(
