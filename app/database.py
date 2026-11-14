@@ -2041,17 +2041,26 @@ async def _worker_deployment_spec(slug: str, worker_id: int) -> dict[str, Any] |
     if not recorded_id:
         return None
     worker = await get_worker(worker_id)
+    if _runs_container((worker or {}).get("containers"), slug, recorded_id):
+        return _decode_spec(legacy.get("spec_encrypted") or "", slug)
+    return None
+
+
+def _runs_container(containers_json: str | None, slug: str, recorded_id: str) -> bool:
+    """Whether a worker's last heartbeat (its ``containers`` column) shows it running ``recorded_id`` as ``slug``."""
+    if not recorded_id:
+        return False
     try:
-        containers = json.loads((worker or {}).get("containers") or "[]")
+        containers = json.loads(containers_json or "[]")
     except (TypeError, ValueError):
-        return None
+        return False
     for entry in containers if isinstance(containers, list) else []:
         if not isinstance(entry, dict) or entry.get("slug") != slug:
             continue
         short_id = str(entry.get("container_id") or "")
         if len(short_id) >= 12 and recorded_id.startswith(short_id):
-            return _decode_spec(legacy.get("spec_encrypted") or "", slug)
-    return None
+            return True
+    return False
 
 
 async def get_custom_images(slug: str) -> dict[int, str]:
@@ -2340,9 +2349,11 @@ async def settle_proxied_copy_rename_pending(
     device names, so the mark is cleared. Built from any other spec: the copy
     is on an outdated name, whoever changed the record and whether or not a
     rename marked it, so the mark is set and a retry rebuilds it from the
-    current spec. Own connection and BEGIN IMMEDIATE: the check and the
-    update are one step, so a save_deployment cannot land between them.
-    Returns whether the mark was cleared.
+    current spec. No record for this worker (get_deployment_spec would say
+    None): nothing can rebuild the copy, so the mark is left as it was rather
+    than set where no retry could clear it. Own connection and BEGIN
+    IMMEDIATE: the check and the update are one step, so a save_deployment
+    cannot land between them. Returns whether the mark was cleared.
     """
     try:
         expected = json.loads(json.dumps(built_from, sort_keys=True))
@@ -2353,14 +2364,27 @@ async def settle_proxied_copy_rename_pending(
         await db.execute("BEGIN IMMEDIATE")
         try:
             # The per-worker record, else the fleet-wide one a deployment made
-            # before per-worker records still has (see get_deployment_spec).
+            # before per-worker records still has, read as get_deployment_spec
+            # reads it: only while this worker still runs the container it names.
             cursor = await db.execute(
-                "SELECT COALESCE((SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?), "
-                "(SELECT spec_encrypted FROM deployments WHERE slug = ?))",
-                (slug, worker_id, slug),
+                "SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id)
             )
             row = await cursor.fetchone()
-            current = expected is not None and _decode_spec((row[0] if row else "") or "", slug) == expected
+            stored = row[0] if row else ""
+            if not row:
+                cursor = await db.execute(
+                    "SELECT container_id, spec_encrypted FROM deployments WHERE slug = ?", (slug,)
+                )
+                legacy = await cursor.fetchone()
+                cursor = await db.execute("SELECT containers FROM workers WHERE id = ?", (worker_id,))
+                worker = await cursor.fetchone()
+                if legacy and _runs_container(worker[0] if worker else None, slug, str(legacy[0] or "")):
+                    stored = legacy[1]
+            recorded = _decode_spec(stored or "", slug)
+            if recorded is None:
+                await db.commit()
+                return False
+            current = expected is not None and recorded == expected
             cursor = await db.execute(
                 "UPDATE proxied_copies SET rename_pending = ? WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
                 (0 if current else 1, proxy_id, worker_id, slug),

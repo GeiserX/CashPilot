@@ -5712,6 +5712,23 @@ async def api_add_proxied_copy(
     # one now, unless the record changed meanwhile: then this copy has an old
     # name and is marked. A failed deploy leaves the mark as it was.
     async with _proxy_copy_lock(proxy_id, worker_id, slug):
+        # Again under the lock, as a start: a removal or a cap stop that held
+        # it while this waited wins, so no copy runs without its record.
+        fresh = await database.get_proxy(proxy_id)
+        current = next(
+            (
+                c
+                for c in await database.list_proxied_copies(proxy_id)
+                if c["worker_id"] == worker_id and c["slug"] == slug
+            ),
+            None,
+        )
+        if not fresh or current is None or current.get("removing_since"):
+            raise HTTPException(status_code=409, detail="This copy was removed meanwhile; add it again")
+        if fresh["state"].get("capped_at") or current.get("stopped_by_cap"):
+            raise HTTPException(
+                status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
+            )
         try:
             result = await _proxy_worker_call(
                 worker_id,
