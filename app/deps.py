@@ -18,7 +18,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import auth, setup_token, themes, version
+from app import auth, database, login_rate_limit, setup_token, themes, version
 
 __all__ = [
     "templates",
@@ -179,3 +179,46 @@ def _require_first_run_access(request: Request, setup_token_value: str | None = 
             status_code=403,
             detail="First-run setup requires the setup token printed in the server logs",
         )
+
+
+async def require_step_up(request: Any, password: str | None, *, action: str, target: str) -> dict[str, Any]:
+    """Password step-up: check the signed-in owner's password for ``action`` on ``target``.
+
+    See app/step_up.py for what it is for and how the worker side checks it.
+
+    Returns the user. Raises HTTPException: 403 for an API-key caller or a wrong
+    password, 429 when the login rate limit is spent. Every outcome but the rate
+    limit writes an audit row.
+    """
+    user = _require_owner(request)
+    uid = user.get("uid")
+    if not isinstance(uid, int) or uid == 0:
+        # The admin API key resolves to uid 0 and has no password, so it can
+        # never pass a step-up. Refusing it is the point: that key may sit in a
+        # dashboard or a script, and alone it must not move a wallet.
+        await database.add_audit_event(
+            action, target, "refused", actor=user, detail="an API key cannot confirm with a password"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_api_key",
+                "message": "This needs the owner's password, so it cannot be done with an API key. "
+                "Sign in to the dashboard and do it there.",
+            },
+        )
+    ip = client_ip(request) or "unknown"
+    # Its own bucket per user, inside the login's per-IP budget: a stolen
+    # session must not get more guesses at the password here than at /login.
+    rate_key = login_rate_limit.key_for(ip, f"step-up:{user.get('u') or uid}")
+    login_rate_limit.reserve_attempt(rate_key, ip=ip)
+    record = await database.get_user_by_id(uid)
+    if not password or not record or not await auth.verify_password_async(password, record["password"]):
+        await database.add_audit_event(action, target, "failed", actor=user, detail="wrong password")
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "step_up_failed", "message": "The password is not correct."},
+        )
+    login_rate_limit.clear(rate_key)
+    await database.add_audit_event(action, target, "confirmed", actor=user)
+    return user

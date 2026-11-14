@@ -23,6 +23,17 @@ const CP = (() => {
       const res = await fetch(path, config);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
+        // An action that can take a wallet or node identity asks for the
+        // owner's password again (app/step_up.py). Asked once, then the same
+        // request is sent again with it; a refusal after that is shown as is.
+        const asked = data && data.detail;
+        if (asked && asked.error === 'step_up_required' && !opts.steppedUp
+            && opts.body && typeof opts.body === 'object') {
+          const password = await askStepUp(asked.message);
+          if (password) {
+            return api(path, { ...opts, steppedUp: true, body: { ...opts.body, step_up_password: password } });
+          }
+        }
         // detail can be a structured refusal ({error, message, ...}); surface
         // its message instead of the useless "[object Object]".
         let detail = data && data.detail;
@@ -36,6 +47,51 @@ const CP = (() => {
       }
       throw err;
     }
+  }
+
+  // One prompt at a time: the modal is shared, so a second prompt opened over a
+  // first would take its buttons and its close would cancel the first.
+  let stepUpQueue = Promise.resolve();
+
+  // The password prompt of a step-up. Resolves to the typed password, or null
+  // when the owner cancels or closes it (Escape and the overlay close every modal).
+  // A prompt asked while another is open waits for that one to finish.
+  function askStepUp(message) {
+    const turn = stepUpQueue.then(() => showStepUp(message));
+    stepUpQueue = turn.catch(() => null);
+    return turn;
+  }
+
+  function showStepUp(message) {
+    const overlay = document.getElementById('stepup-modal');
+    const input = document.getElementById('stepup-password');
+    if (!overlay || !input) return Promise.resolve(null);
+    const text = document.getElementById('stepup-message');
+    if (text) text.textContent = message || 'Enter your password to continue.';
+    input.value = '';
+    // Focus goes back where it was when the prompt closes, however it closes,
+    // so a keyboard or screen-reader user keeps their place in the page.
+    const before = document.activeElement;
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        watcher.disconnect();
+        input.value = '';
+        overlay.classList.remove('open');
+        if (before && before.isConnected && typeof before.focus === 'function') before.focus();
+        resolve(value);
+      };
+      const watcher = new MutationObserver(() => { if (!overlay.classList.contains('open')) finish(null); });
+      watcher.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+      document.getElementById('stepup-submit').onclick = () => finish(input.value || null);
+      document.getElementById('stepup-cancel').onclick = () => finish(null);
+      document.getElementById('stepup-close').onclick = () => finish(null);
+      input.onkeydown = (e) => { if (e.key === 'Enter') finish(input.value || null); };
+      overlay.classList.add('open');
+      setTimeout(() => input.focus(), 50);
+    });
   }
 
   // -----------------------------------------------------------

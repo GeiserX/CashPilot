@@ -72,6 +72,7 @@ from app import (
     proxies,
     ratings,
     setup_token,
+    step_up,
     update_check,
     usage,
     version,
@@ -3157,6 +3158,7 @@ from app.deps import (  # noqa: E402
     _require_reader,
     _require_writer,
     client_ip,  # noqa: F401  (re-exported for app.main.* router surface)
+    require_step_up,
     templates,  # noqa: F401  (re-exported for app.main.* router/test surface)
 )
 
@@ -3884,6 +3886,10 @@ class DeployRequest(BaseModel):
     # that never showed the box cannot drop a choice. "" goes back to the
     # catalog image; anything else must be a plain image reference.
     image: str | None = None
+    # The owner's password, re-entered for this one deploy. Asked for only when
+    # the image is not the catalog's on a service that keeps a wallet or node
+    # identity (app/step_up.py); never stored, never sent to a worker.
+    step_up_password: str | None = None
 
 
 # repository[:tag][@sha256:digest]; see custom_services.IMAGE_REF.
@@ -3979,7 +3985,7 @@ async def api_deploy(
 ) -> dict[str, Any]:
     """Validate the effective service configuration and deploy it to the selected worker."""
     if not custom_services.is_custom_slug(slug):
-        return await _deploy(slug, body, worker_id)
+        return await _deploy(slug, body, worker_id, request=request)
     # A custom deploy holds its slug until it is recorded, so a delete cannot
     # remove the definition while the worker is still pulling and starting it,
     # which would leave a container running that no definition describes.
@@ -3988,7 +3994,7 @@ async def api_deploy(
         raise HTTPException(status_code=409, detail=f"{slug} is being deleted")
     _custom_deploying[slug] += 1
     try:
-        return await _deploy(slug, body, worker_id)
+        return await _deploy(slug, body, worker_id, request=request)
     finally:
         _custom_deploying[slug] -= 1
         if not _custom_deploying[slug]:
@@ -4001,7 +4007,9 @@ _custom_deploying: collections.Counter[str] = collections.Counter()
 _custom_deleting: collections.Counter[str] = collections.Counter()
 
 
-async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict[str, Any]:
+async def _deploy(
+    slug: str, body: DeployRequest, worker_id: int | None, request: Request | None = None
+) -> dict[str, Any]:
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
     # the deploy has run and persisted — a stricter type turns the successful
@@ -4257,7 +4265,18 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug} copy {n}: {exc}") from exc
 
-    result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts})
+    # A service that keeps a wallet or node identity runs as the catalog says,
+    # or with the owner's password now, not just a session: whatever runs in its
+    # container can take the wallet. The worker checks the approval this
+    # produces against the exact spec it receives; see _step_up_critical.
+    approve = await _step_up_critical(request, slug, svc, custom_image, getattr(body, "step_up_password", None))
+    # Passed only when set, so the plain call keeps its three-argument shape.
+    signed: dict[str, Any] = {"approve": True} if approve else {}
+    try:
+        result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
+    except HTTPException as exc:
+        await _audit_worker_refusal(request, exc, slug, worker_id)
+        raise
     container_id = result.get("container_id", "remote")
     # Reported, deliberately NOT recorded. The worker reads the running container
     # on every deploy, so the record does not need the kept source - and writing
@@ -4288,7 +4307,7 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
         await database.record_health_event(
             slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
         )
-        await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf))
+        await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
     metrics.record_container_lifecycle("deploy", slug)
@@ -4306,6 +4325,87 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
 
 
 _is_port_range = catalog.is_port_range
+
+
+async def _step_up_critical(
+    request: Request | None, slug: str, svc: dict[str, Any], custom_image: str, password: Any
+) -> bool:
+    """Whether this deploy goes out with a signed approval, after the password check.
+
+    Only for a service whose YAML declares ``critical_volumes``, as on the
+    worker. A custom image always needs the password: no password answers 403
+    ``step_up_required``, which the dashboard turns into a password prompt and
+    a retry. Anything else the worker may still find different from its own
+    catalog (an env key the catalog does not declare, or a UI and a worker on
+    different releases with different pinned images or commands); the worker
+    then answers ``step_up_required`` itself, and the retry carries the
+    password, so a password in the request is checked and the spec signed
+    whatever the reason.
+    """
+    if svc.get("custom") or not catalog.critical_volume_targets(slug):
+        return False
+    has_password = isinstance(password, str) and bool(password)
+    if not has_password and not custom_image:
+        return False
+    if request is None or not has_password:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": f"{svc.get('name') or slug} keeps a wallet or node identity, so running another "
+                "image than the catalog's needs your password.",
+            },
+        )
+    image = custom_image or (svc.get("docker") or {}).get("image") or ""
+    await require_step_up(request, password, action=step_up.ACTION_CUSTOM_IMAGE, target=f"{slug}|{image}")
+    return True
+
+
+async def _approve_spec(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """``spec`` with the signed approval the worker checks, keyed with that worker's own key.
+
+    Signed over the exact spec sent (step_up.deploy_target), so it is minted
+    last, per request: each copy gets its own and none is ever recorded. A
+    worker still on the shared fleet key cannot check one, so it is refused here.
+    """
+    worker = await database.get_worker(worker_id) or {}
+    key = await _confirmed_worker_key(worker.get("client_id") or "")
+    if not key:
+        raise HTTPException(
+            status_code=409,
+            detail="This worker has not finished enrolling, so it cannot check a password confirmation. "
+            "Wait for its next heartbeat and try again.",
+        )
+    target = step_up.deploy_target(
+        slug, spec.get("image") or "", spec.get("command"), spec.get("env"), spec.get("volumes")
+    )
+    return {**spec, "approval": step_up.sign(key, step_up.ACTION_CUSTOM_IMAGE, target)}
+
+
+async def _audit_worker_refusal(request: Request | None, exc: HTTPException, slug: str, worker_id: int) -> None:
+    """Write a worker's critical-volume or step-up refusal to the audit table."""
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    error = detail.get("error")
+    if error not in ("critical_volume_mount", "step_up_required", "step_up_rejected"):
+        return
+    actor = auth.get_current_user(request) if request is not None else None
+    await _audit(
+        "deploy", slug, f"refused: {error}", actor=actor, worker_id=worker_id, detail=str(detail.get("message"))
+    )
+
+
+async def _audit(action: str, target: str, outcome: str, **kwargs: Any) -> None:
+    """One audit row for something that already happened, or a log line when it cannot be written.
+
+    Best effort on purpose: the action (a refusal, a removal, a reveal) has
+    happened, and a database hiccup must not turn it into an error. The step-up
+    itself (deps.require_step_up) writes its rows without this, so a failed
+    write there stops the action instead.
+    """
+    try:
+        await database.add_audit_event(action, target, outcome, **kwargs)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not write the audit row %s %s %s", action, target, outcome)
 
 
 def fence_gated_ports(docker_conf: dict[str, Any], env: dict[str, Any]) -> dict[str, Any]:
@@ -4592,6 +4692,10 @@ async def _svc_remove(
         if allow_delete_critical:
             params["allow_delete_critical"] = "true"
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
+    if delete_volumes and allow_delete_critical:
+        await _audit(
+            "delete_critical_volumes", slug, "deleted", actor=auth.get_current_user(request), worker_id=worker_id
+        )
     await database.remove_deployment(slug, worker_id=worker_id)
     # The worker removed the service's proxied copies with it (worker_api
     # remove_all), so their records go too. The removal itself already
@@ -4717,9 +4821,7 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     # The worker then read as online from its heartbeats while every deploy,
     # start, stop, restart and logs call failed 401, with nothing connecting
     # the two symptoms.
-    key_state = await database.get_worker_key_state(cid) if cid else (None, False)
-    stored_key, key_confirmed = key_state if isinstance(key_state, tuple) else (key_state, False)
-    auth_key = stored_key if (stored_key and key_confirmed) else FLEET_API_KEY
+    auth_key = await _confirmed_worker_key(cid) or FLEET_API_KEY
     headers: dict[str, str] = {}
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
@@ -4758,7 +4860,15 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     # The isolation check's "already running" and "no Docker socket" answers
     # are fixed worker-authored strings too; without them the card read
     # "Worker request failed" and busy looked the same as broken.
-    if error in ("self_update_unavailable", "isolation_check_busy", "isolation_check_unavailable"):
+    if error in (
+        "self_update_unavailable",
+        "isolation_check_busy",
+        "isolation_check_unavailable",
+        # A deploy refused for a wallet or identity volume (app/step_up.py).
+        "critical_volume_mount",
+        "step_up_required",
+        "step_up_rejected",
+    ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
         return None
@@ -4831,6 +4941,13 @@ def _worker_failure_text(status: int) -> str:
     if status == 404:
         return "The worker does not know this request (HTTP 404); it may be older than the UI, so update it"
     return f"Worker request failed (HTTP {status}); the worker's log has the reason"
+
+
+async def _confirmed_worker_key(cid: str) -> str | None:
+    """The worker's own key once it has confirmed it, else None."""
+    key_state = await database.get_worker_key_state(cid) if cid else (None, False)
+    stored_key, key_confirmed = key_state if isinstance(key_state, tuple) else (key_state, False)
+    return stored_key if (stored_key and key_confirmed) else None
 
 
 async def _proxy_to_worker(
@@ -4967,7 +5084,9 @@ def _deploy_timeout(slug: str) -> int:
     return 60 + _catalog_stop_timeout(slug) + constants.START_SETTLE_SECONDS
 
 
-async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+async def _proxy_worker_deploy(
+    worker_id: int, slug: str, spec: dict[str, Any], *, approve: bool = False
+) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
     The worker stops the container it replaces with the catalog's stop timeout
@@ -4988,6 +5107,9 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
         image = _image_for_arch(docker_conf, arch)
         if image:
             spec = {**spec, "image": image}
+    if approve:
+        # After the image is final: the approval covers the spec as sent.
+        spec = await _approve_spec(worker_id, slug, spec)
     return await _proxy_to_worker(
         worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
@@ -9173,7 +9295,15 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
                 status_code=409 if deploy_status == "broken" else 410,
                 detail=f"Service '{body.slug}' is no longer available for deployment ({deploy_status})",
             )
-        result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
+        # An approval comes only from the password step-up of /api/deploy; one
+        # pasted into a raw spec is dropped, so this route can never run another
+        # image than the catalog's on a service with critical volumes.
+        body.spec.pop("approval", None)
+        try:
+            result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
+        except HTTPException as exc:
+            await _audit_worker_refusal(request, exc, body.slug, worker_id)
+            raise
     elif body.command in ("stop", "restart", "start"):
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
     elif body.command == "remove":
@@ -9286,8 +9416,18 @@ async def api_fleet_api_key(request: Request) -> dict[str, Any]:
 async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
     """Reveal the configured fleet API key (owner only, audit-logged)."""
     user = _require_owner(request)
+    # Fail closed, unlike _audit: the key has not left yet, so no audit row
+    # means no key (a write that fails answers 500 and reveals nothing).
+    await database.add_audit_event("fleet_key_reveal", "", "revealed", actor=user)
     logger.warning("Fleet key revealed by uid=%s", user.get("uid"))
     return {"api_key": FLEET_API_KEY or ""}
+
+
+@app.get("/api/audit")
+async def api_audit(request: Request, limit: int = 100) -> list[dict[str, Any]]:
+    """The newest owner-action audit rows (app/step_up.py), owner only."""
+    _require_owner(request)
+    return await database.get_audit_events(limit)
 
 
 # ---------------------------------------------------------------------------

@@ -780,6 +780,28 @@ CREATE TABLE IF NOT EXISTS activity_hourly (
 
 CREATE INDEX IF NOT EXISTS idx_activity_hourly_hour
     ON activity_hourly (hour);
+
+-- Owner actions that guard something irreplaceable, and refusals of them
+-- (app/step_up.py): a password step-up and its outcome, a worker refusing a
+-- deploy onto another service's critical volume, the fleet key being revealed,
+-- a critical volume deleted on purpose. Append-only: nothing updates a row.
+-- `actor` is the username (or "api" for the admin key), `actor_uid` its id (0
+-- for an API key, NULL when no user was involved). `detail` is a short reason,
+-- never a secret or an env value.
+CREATE TABLE IF NOT EXISTS audit_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    action      TEXT    NOT NULL,
+    target      TEXT    NOT NULL DEFAULT '',
+    outcome     TEXT    NOT NULL,
+    actor       TEXT,
+    actor_uid   INTEGER,
+    worker_id   INTEGER,
+    detail      TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_created
+    ON audit_events (created_at);
 """
 
 
@@ -1093,7 +1115,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 async def init_db() -> None:
@@ -4121,8 +4143,9 @@ async def purge_old_data() -> int:
         activity_cutoff = int(time.time()) - ACTIVITY_RETENTION_DAYS * 86400
         c7 = await db.execute("DELETE FROM activity_samples WHERE window_end < ?", (activity_cutoff,))
         c8 = await db.execute("DELETE FROM activity_hourly WHERE hour < ?", (activity_cutoff,))
+        c9 = await db.execute("DELETE FROM audit_events WHERE created_at < datetime('now', ?)", (cutoff,))
         await db.commit()
-        return sum((c.rowcount or 0) for c in (c1, c2, c3, c4, c5, c6, c7, c8))
+        return sum((c.rowcount or 0) for c in (c1, c2, c3, c4, c5, c6, c7, c8, c9))
     finally:
         _forget_health_scores()
         await db.close()
@@ -4646,5 +4669,60 @@ async def clear_state_backup(slug: str, worker_id: int) -> None:
     try:
         await db.execute("DELETE FROM state_backups WHERE slug = ? AND worker_id = ?", (slug, int(worker_id)))
         await db.commit()
+    finally:
+        await db.close()
+
+
+#: Longest text an audit row keeps in one field; a row is a note, not a log.
+_AUDIT_FIELD_MAX = 300
+
+
+async def add_audit_event(
+    action: str,
+    target: str,
+    outcome: str,
+    *,
+    actor: dict[str, Any] | None = None,
+    worker_id: int | None = None,
+    detail: str = "",
+) -> None:
+    """Append one row to the owner-action audit table (see ``audit_events`` above).
+
+    ``actor`` is the user dict the auth guards return. Never pass a secret in
+    ``target`` or ``detail``: the owner reads them back through /api/audit.
+    """
+    uid = actor.get("uid") if isinstance(actor, dict) else None
+    name = actor.get("u") if isinstance(actor, dict) else None
+    db = await _get_db()
+    try:
+        await db.execute(
+            "INSERT INTO audit_events (action, target, outcome, actor, actor_uid, worker_id, detail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(action)[:_AUDIT_FIELD_MAX],
+                str(target or "")[:_AUDIT_FIELD_MAX],
+                str(outcome)[:_AUDIT_FIELD_MAX],
+                str(name)[:_AUDIT_FIELD_MAX] if name is not None else None,
+                uid if isinstance(uid, int) else None,
+                int(worker_id) if worker_id is not None else None,
+                str(detail or "")[:_AUDIT_FIELD_MAX],
+            ),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_audit_events(limit: int = 100) -> list[dict[str, Any]]:
+    """The newest audit rows first, at most ``limit`` (1 to 1000)."""
+    limit = max(1, min(int(limit), 1000))
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, created_at, action, target, outcome, actor, actor_uid, worker_id, detail "
+            "FROM audit_events ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
     finally:
         await db.close()

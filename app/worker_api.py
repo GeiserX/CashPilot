@@ -53,6 +53,7 @@ from app import (
     payout_read,
     proxy_tunnel,
     state_backup,
+    step_up,
     version,
 )
 from app.constants import MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
@@ -1292,6 +1293,10 @@ class DeploySpec(BaseModel):
     runtime: str | None = None
     # Which copy of the service this is; see constants.LABEL_INSTANCE.
     instance: int = 1
+    # The UI's signed note that the owner re-entered their password for this
+    # exact spec on this service (app/step_up.py). Needed only to run a service
+    # with critical volumes other than as the catalog says.
+    approval: str | None = None
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -1589,6 +1594,42 @@ def _validate_fence_gated(spec: DeploySpec, slug: str | None) -> None:
         raise HTTPException(status_code=403, detail=f"'{slug}' runs only on the fenced bridge")
 
 
+def _validate_critical_spec(spec: DeploySpec, slug: str) -> None:
+    """A service that keeps a wallet or identity runs as the catalog says, or as the owner confirmed.
+
+    Decided from this worker's catalog: the service's YAML marks the volumes
+    (``critical_volumes``), and the image, the command, the env keys and the
+    mount targets must be the ones its YAML names
+    (orchestrator.critical_spec_deviations). Anything else needs the UI's signed
+    approval, which the UI gives only after the owner re-entered their password
+    and which is bound to this exact spec (step_up.deploy_target); a stolen
+    session or the admin API key cannot get one. Without this, an image or a
+    command of anyone's choosing would start on the wallet volume and could copy
+    or replace the wallet.
+    """
+    if slug not in orchestrator.critical_slugs():
+        return
+    found = orchestrator.critical_spec_deviations(slug, spec.image, spec.command, spec.env, spec.volumes)
+    if not found:
+        return
+    if not spec.approval:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": f"{slug} keeps a wallet or node identity, and this deploy differs from the catalog: "
+                f"{'; '.join(found)}. That needs the owner's password. Nothing was deployed.",
+            },
+        )
+    target = step_up.deploy_target(slug, spec.image, spec.command, spec.env, spec.volumes)
+    try:
+        step_up.check(_worker_key, spec.approval, step_up.ACTION_CUSTOM_IMAGE, target)
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was deployed."}
+        ) from None
+
+
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
     _validate_instance(spec.instance)
@@ -1622,7 +1663,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_fence_gated(spec, slug)
     proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
     compose_dir = os.getenv(orchestrator.COMPOSE_DIR_ENV, "").strip()
-    compose_dir = os.path.normpath(compose_dir) if compose_dir.startswith("/") else ""
+    compose_dir = orchestrator.host_path_key(compose_dir) if compose_dir.startswith("/") else ""
     for source in spec.volumes:
         if source in orchestrator.PROXY_VOLUMES:
             # The volume holds the worker's own Docker socket; a container
@@ -1630,7 +1671,9 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             raise HTTPException(status_code=403, detail=f"Volume '{source}' is the worker's Docker socket")
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
-        src = os.path.normpath(source)
+        # host_path_key, not normpath: normpath keeps "//" and would let
+        # "//compose/dir" past a comparison with "/compose/dir".
+        src = orchestrator.host_path_key(source)
         if compose_dir and (
             src == compose_dir or src.startswith(compose_dir + "/") or compose_dir.startswith(src.rstrip("/") + "/")
         ):
@@ -1935,6 +1978,8 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     # because an unrelated route was stuck. HTTPException propagates through
     # to_thread unchanged, so the 400/403 behaviour is identical.
     await asyncio.to_thread(_validate_deploy_spec, spec, slug)
+    # Last of the checks: it spends the approval, which a refusal above must not.
+    await asyncio.to_thread(_validate_critical_spec, spec, slug)
     kept_mounts: list[dict[str, str]] = []
     try:
         container_id = await asyncio.to_thread(
@@ -1968,6 +2013,10 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # The operator's own setting, and the message says how to fix it; a bare
         # 500 would hide both. Raised before the old container was touched.
         raise HTTPException(status_code=409, detail=str(exc)) from None
+    except orchestrator.CriticalMountError as exc:
+        # Structured, so the UI can show it and write it to its audit table.
+        logger.warning("Deploy of %s refused: %s", slug, exc)
+        raise HTTPException(status_code=403, detail={"error": "critical_volume_mount", "message": str(exc)}) from None
     except orchestrator.ContainerRuntimeError as exc:
         # Same shape as the network setting, also raised before the old container
         # was touched; 503 when the daemon could not be asked at all.
