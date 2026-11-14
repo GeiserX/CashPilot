@@ -113,3 +113,114 @@ const imageBox = imageChoiceSection({ slug: 'honeygain', name: 'Honeygain', dock
 ]);
 assert.match(imageBox, /redeployWithImage/, 'a routed-only box gets the image update button');
 console.log('Image update: a box where the service runs through a proxy is included.');
+
+// ---- Changing the route of a box that already runs it routed --------------------
+// The real form: the worker rows and the Route box, the Route box's change
+// handler, and the Deploy action, against a small DOM of the rendered checkboxes.
+function formDom(rowsHtml, routeValue) {
+  const boxes = [...rowsHtml.matchAll(/<input type="checkbox" ([^>]*)>/g)].map(([, attrText]) => {
+    const attrs = {};
+    for (const [, k, v] of attrText.matchAll(/([\w-]+)(?:="([^"]*)")?/g)) attrs[k] = v ?? '';
+    const dataset = {};
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k.startsWith('data-')) dataset[k.slice(5).replace(/-(\w)/g, (_, c) => c.toUpperCase())] = v;
+    }
+    return { attrs, dataset, classes: new Set((attrs.class || '').split(/\s+/)), disabled: 'disabled' in attrs, checked: 'checked' in attrs };
+  });
+  const matches = (el, selector) => {
+    let rest = selector;
+    const take = re => { const m = rest.match(re); if (m) rest = rest.slice(m[0].length); return m; };
+    while (rest) {
+      let m;
+      if (take(/^input/)) continue;
+      if ((m = take(/^\.([\w-]+)/))) { if (!el.classes.has(m[1])) return false; continue; }
+      if ((m = take(/^\[([\w-]+)(?:="([^"]*)")?\]/))) {
+        if (!(m[1] in el.attrs) || (m[2] !== undefined && el.attrs[m[1]] !== m[2])) return false;
+        continue;
+      }
+      if (take(/^:checked/)) { if (!el.checked) return false; continue; }
+      if (take(/^:not\(:disabled\)/)) { if (el.disabled) return false; continue; }
+      if ((m = take(/^:not\(\[([\w-]+)\]\)/))) { if (m[1] in el.attrs) return false; continue; }
+      throw new Error(`the form check cannot read the selector ${selector}`);
+    }
+    return true;
+  };
+  const select = { value: routeValue, dataset: { slug: 'honeygain' }, closest: () => null };
+  const sent = [];
+  const doc = {
+    boxes,
+    select,
+    sent,
+    querySelectorAll: sel => (sel.startsWith('.instances-input') ? [] : boxes.filter(el => matches(el, sel))),
+    getElementById: id => (id === 'route-select-honeygain' ? select : null),
+  };
+  return doc;
+}
+
+const routedSvc = { slug: 'honeygain', name: 'Honeygain', routes: { 1: 3 }, max_instances: 1 };
+const directBox = { id: 2, name: 'box2', containers: [{ slug: 'honeygain' }], system_info: {} };
+const newBox = { id: 4, name: 'box4', containers: [], system_info: {} };
+const { workerCheckboxList } = fns(['workerCopies', 'workerCheckboxList']);
+
+// Routed on its only box: the form stays, so the Route box is there to change it.
+assert.equal(workerCheckboxList(routedSvc, [routedBox]).allDeployed, false, 'a routed box keeps the form on screen');
+assert.equal(
+  workerCheckboxList({ ...routedSvc, routes: {} }, [directBox]).allDeployed, true,
+  'a box running it direct, with nothing to switch, still hides it',
+);
+
+const { rows } = workerCheckboxList(routedSvc, [routedBox, directBox, newBox], 'deploy-worker-cb');
+async function pick(routeValue, tick = []) {
+  const dom = formDom(rows, routeValue);
+  const calls = [];
+  const api = async (path, opts) => { calls.push({ path, route: opts.body.route }); return {}; };
+  const live = new Function(
+    'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
+    'wizardState',
+    ['_routeSwitchBoxes', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
+      'deployServiceToWorkers'].map(grab).join('\n')
+      + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
+  )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] });
+  live._routeSwitchBoxes(dom.select);
+  for (const wid of tick) {
+    const box = dom.boxes.find(b => b.dataset.wid === String(wid));
+    if (!box.disabled) box.checked = true;
+  }
+  await live.deployServiceToWorkers('honeygain');
+  return { dom, calls };
+}
+const box1 = dom => dom.boxes.find(b => b.dataset.wid === '1');
+
+let run = await pick('', [1]);
+assert.equal(box1(run.dom).disabled, true, 'on the default the routed box stays locked');
+assert.equal(box1(run.dom).checked, true, 'and ticked, as any deployed box');
+assert.deepEqual(run.calls, [], 'so a plain Deploy never touches it, and never asks to leave its route');
+
+run = await pick('0', [1]);
+assert.equal(box1(run.dom).disabled, false, 'Direct unlocks the routed box');
+assert.deepEqual(run.calls, [{ path: '/api/deploy/honeygain?worker_id=1', route: 0 }], 'ticked, it gets route 0');
+assert.equal(
+  run.dom.boxes.find(b => b.dataset.wid === '2').disabled, true, 'a box running it direct stays locked',
+);
+
+run = await pick('0');
+assert.equal(box1(run.dom).checked, false, 'unlocked unticked: the switch needs a tick of its own');
+assert.deepEqual(run.calls, [], 'nothing ticked, nothing sent');
+
+run = await pick('7', [1, 4]);
+assert.deepEqual(
+  run.calls.map(c => [c.path, c.route]),
+  [['/api/deploy/honeygain?worker_id=4', 7], ['/api/deploy/honeygain?worker_id=1', 7]],
+  'another proxy goes to the new box and the ticked routed one',
+);
+
+run = await pick('', []);
+run.dom.select.value = '0';
+const again = new Function('document', `${grab('_routeSwitchBoxes')}\nreturn _routeSwitchBoxes;`)(run.dom);
+again(run.dom.select);
+assert.equal(box1(run.dom).disabled, false);
+run.dom.select.value = '';
+again(run.dom.select);
+assert.equal(box1(run.dom).disabled, true, 'back on the default it is locked again');
+assert.equal(box1(run.dom).checked, true, 'and ticked again');
+console.log('Route change: a routed box is selectable only once Direct or a proxy is chosen, and sends it.');

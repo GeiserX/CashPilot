@@ -31,7 +31,9 @@ its first and every later start is inside it.
 - **One route per box, one copy.** A routed service runs one instance. To
   route a service that already runs from the box's own IP, remove it first,
   then deploy it with the route; the box's IP was already seen once. To move it
-  to another proxy, remove it and deploy it again through the new one.
+  to another proxy, remove it and deploy it again through the new one: the
+  worker refuses a route through a second proxy while a routed copy through
+  the first still exists.
 - **Its own tunnel.** A routed service gets a tunnel of its own
   (`cashpilot-tunnel-p<id>-<service>`), so it never shares a namespace with
   another provider's software. Proxied copies keep sharing one tunnel per
@@ -45,8 +47,12 @@ its first and every later start is inside it.
   whichever way the deploy arrives (the form, a redeploy, the API, an agent).
   The confirmation is the same password prompt as for a wallet change, and it
   names the IP the provider would then see. On the deploy form of a routed
-  service, the Route box keeps the route by default; pick **Direct** to leave
-  it.
+  service, the Route box keeps the route by default, and a box that already
+  runs it is ticked and locked like any deployed box. Pick **Direct** to leave
+  the route: the boxes where it runs routed unlock, and you tick the ones to
+  switch. Back on the default they lock again, so a plain redeploy never asks
+  for the password. The worker also refuses to leave the route while a routed
+  copy of the service still runs through any proxy on it.
 
 The usual route is a Tailscale exit node at another site you own (a
 relative's house, a second line): set it up with the steps in
@@ -74,7 +80,9 @@ that was already running when you set it is stopped when the worker starts and
 checked again every 30 seconds; Docker would otherwise start it after each
 reboot. After a reboot it can run for the few seconds before the worker is up,
 so remove direct services from the box (or redeploy them with a route) rather
-than leave them stopped. Proxied copies and routed services still run. The UI cannot change it: only whoever edits the worker's
+than leave them stopped. Proxied copies and routed services still run. Picking
+**Direct** for a routed service on such a box is refused before anything
+changes: its routed copy and its route stay. The UI cannot change it: only whoever edits the worker's
 compose file can. The deploy form marks such a box **proxy only**.
 
 ## What a proxy can be

@@ -1924,6 +1924,7 @@ const CP = (() => {
   async function loadRouteChoices(slug) {
     const select = document.getElementById(`route-select-${slug}`);
     if (!select || !_isOwner) return;
+    select.addEventListener('change', () => _routeSwitchBoxes(select));
     try {
       const data = await api('/api/proxies');
       for (const p of (data && data.proxies) || []) {
@@ -1935,6 +1936,19 @@ const CP = (() => {
       }
     } catch (err) {
       select.title = `Could not load your proxies: ${err.message}`;
+    }
+  }
+
+  // A box where the service already runs routed is ticked and locked, as any
+  // deployed box: a plain redeploy keeps its route. Choosing Direct or a proxy
+  // in the Route box unlocks it, unticked, so its route can be changed by
+  // ticking it; back on the default it is locked again.
+  function _routeSwitchBoxes(select) {
+    const scope = (select.closest && select.closest('.route-choice') || {}).parentElement || document;
+    const switching = select.value !== '';
+    for (const cb of scope.querySelectorAll(`input[data-routed="1"][data-slug="${select.dataset.slug}"]`)) {
+      cb.disabled = !switching;
+      cb.checked = !switching;
     }
   }
 
@@ -1958,7 +1972,9 @@ const CP = (() => {
       const copies = workerCopies(w, svc.slug).length;
       const deployed = copies > 0;
       const proxiedOnly = (w.system_info || {}).proxied_only === true;
-      if (!deployed) allDeployed = false;
+      // Its route can still change here (_routeSwitchBoxes), so the form stays.
+      const routed = deployed && Boolean((svc.routes || {})[w.id]);
+      if (!deployed || routed) allDeployed = false;
       let instancesBox = '';
       if (maxInstances) {
         const capable = ((w.system_info || {}).features || []).includes('instances');
@@ -1972,7 +1988,7 @@ const CP = (() => {
       }
       rows += `
       <label class="worker-pick">
-        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
+        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : ''}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
         ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
         ${deployed
@@ -3661,7 +3677,11 @@ const CP = (() => {
     // the final screen having deployed nothing — and an empty `deployed` list
     // then looks identical to every deploy having failed.
     wizardState.deployAttempted = true;
-    await _deployToWorkers(slug, _selectedWorkerIds(`.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`));
+    const picked = `.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`;
+    const fresh = _selectedWorkerIds(`${picked}:not([data-routed])`);
+    // A routed box ticked to change its route reuses its recorded credentials.
+    const switching = _selectedWorkerIds(`${picked}[data-routed]`);
+    await _deployToWorkers(slug, [...fresh, ...switching], { rescaleOnly: fresh.length === 0 && switching.length > 0 });
   }
 
   // -----------------------------------------------------------
@@ -4373,11 +4393,15 @@ const CP = (() => {
   }
 
   async function deployServiceToWorkers(slug) {
-    const fresh = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`);
-    const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id));
-    // Only rescaling nodes that already run the service: their recorded
-    // credentials are reused, so the empty credential boxes are not missing.
-    await _deployToWorkers(slug, [...fresh, ...rescaled], { rescaleOnly: fresh.length === 0 && rescaled.length > 0 });
+    const picked = `.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`;
+    const fresh = _selectedWorkerIds(`${picked}:not([data-routed])`);
+    // A routed box ticked to change its route (_routeSwitchBoxes) already runs the service.
+    const switching = _selectedWorkerIds(`${picked}[data-routed]`);
+    const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id) && !switching.includes(id));
+    const again = [...switching, ...rescaled];
+    // Only nodes that already run the service: their recorded credentials are
+    // reused, so the empty credential boxes are not missing.
+    await _deployToWorkers(slug, [...fresh, ...again], { rescaleOnly: fresh.length === 0 && again.length > 0 });
   }
 
   // `?instance=` only for copies 2+: the first copy is addressed the way it always was.

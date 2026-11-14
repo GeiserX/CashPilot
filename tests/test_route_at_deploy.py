@@ -272,6 +272,38 @@ def _detail(resp):
     return resp.json().get("detail")
 
 
+def _copies_on(docker, *copies):
+    """Docker on the worker holds these proxied copies: (proxy id, tunnel-for slug or None for a shared tunnel)."""
+    by_name: dict[str, MagicMock] = {}
+    earners = []
+    for proxy_id, own in copies:
+        tunnel = MagicMock()
+        tunnel.id = f"t{proxy_id}"
+        tunnel.labels = {
+            LABEL_MANAGED: "true",
+            LABEL_ROLE: ROLE_TUNNEL,
+            proxy_tunnel.LABEL_PROXY: str(proxy_id),
+            proxy_tunnel.LABEL_SERVICE: proxy_tunnel.SHARED_SLUG,
+            **({proxy_tunnel.LABEL_TUNNEL_FOR: own} if own else {}),
+        }
+        earner = MagicMock()
+        earner.name = proxy_tunnel.earner_name("honeygain", proxy_id)
+        earner.labels = {LABEL_MANAGED: "true", "cashpilot.service": "honeygain", "cashpilot.proxy": str(proxy_id)}
+        earner.attrs = {"HostConfig": {"NetworkMode": f"container:{tunnel.id}"}}
+        by_name[tunnel.id] = tunnel
+        by_name[earner.name] = earner
+        earners.append(earner)
+
+    def get(name):
+        if name in by_name:
+            return by_name[name]
+        raise NotFound("no such container")
+
+    docker.containers.get.side_effect = get
+    docker.containers.list.return_value = earners
+    return earners
+
+
 BODY = {"image": "honeygain/honeygain", "env": {"HONEYGAIN_EMAIL": "a@b.c"}}
 
 
@@ -313,6 +345,25 @@ class TestTheWorkerDeployRoute:
         assert copy.name in _detail(resp)
         assert worker.deployed == [] and route_gate.routed() == {"honeygain": 3}
         worker.docker.containers.get.assert_called_with(copy.name)
+
+    def test_leaving_the_route_is_refused_while_a_routed_copy_through_another_proxy_runs(self, worker):
+        """The mark names proxy 3 and nothing runs there, but the routed copy through proxy 2 still does."""
+        route_gate.mark("honeygain", 3)
+        (copy,) = _copies_on(worker.docker, (2, "honeygain"))
+        approval = step_up.sign(WORKER_KEY, step_up.ACTION_LEAVE_ROUTE, "honeygain")
+        resp = worker("POST", "/api/containers/honeygain/deploy", {**BODY, "route_approval": approval})
+        assert resp.status_code == 409, resp.text
+        assert copy.name in _detail(resp) and "proxy 2" in _detail(resp)
+        assert worker.deployed == [] and route_gate.routed() == {"honeygain": 3}
+
+    def test_leaving_the_route_beside_a_copy_in_a_shared_tunnel_deploys(self, worker):
+        """A copy beside a direct one (not routed) is the Proxies page's, and may stay."""
+        route_gate.mark("honeygain", 3)
+        _copies_on(worker.docker, (2, None))
+        approval = step_up.sign(WORKER_KEY, step_up.ACTION_LEAVE_ROUTE, "honeygain")
+        resp = worker("POST", "/api/containers/honeygain/deploy", {**BODY, "route_approval": approval})
+        assert resp.status_code == 200, resp.text
+        assert len(worker.deployed) == 1 and route_gate.routed() == {}
 
     def test_leaving_the_route_when_the_copy_cannot_be_looked_up_deploys_nothing(self, worker):
         route_gate.mark("honeygain", 3)
@@ -415,6 +466,45 @@ class TestTheWorkerProxiedRoutes:
         resp, _ = self._deploy(worker, monkeypatch, False, {"container_id": "e"})
         assert resp.status_code == 200, resp.text
 
+    def test_a_routed_deploy_through_another_proxy_is_refused_while_a_routed_copy_runs(self, worker, monkeypatch):
+        """Made through proxy 3, it would leave the copy through 2 running and move the mark off it."""
+        route_gate.mark("honeygain", 2)
+        (copy,) = _copies_on(worker.docker, (2, "honeygain"))
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
+        assert resp.status_code == 409, resp.text
+        assert copy.name in _detail(resp)
+        assert seen == {}
+        assert route_gate.routed() == {"honeygain": 2}
+
+    @pytest.mark.parametrize("copies", [[(3, "honeygain")], [(2, None)]])
+    def test_a_routed_redeploy_through_its_own_proxy_or_beside_a_shared_copy_goes_ahead(
+        self, worker, monkeypatch, copies
+    ):
+        _copies_on(worker.docker, *copies)
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
+        assert resp.status_code == 200, resp.text
+        assert seen == {"own_tunnel": True, "marked_first": 3}
+
+    def test_a_routed_copy_whose_tunnel_is_gone_still_counts(self, worker, monkeypatch):
+        (copy,) = _copies_on(worker.docker, (2, "honeygain"))
+        get = worker.docker.containers.get.side_effect
+
+        def tunnel_gone(name):
+            if name == "t2":
+                raise NotFound("gone")
+            return get(name)
+
+        worker.docker.containers.get.side_effect = tunnel_gone
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
+        assert resp.status_code == 409, resp.text
+        assert copy.name in _detail(resp) and seen == {}
+
+    def test_a_routed_deploy_that_cannot_list_the_copies_deploys_nothing(self, worker, monkeypatch):
+        worker.docker.containers.list.side_effect = RuntimeError("docker is down")
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
+        assert resp.status_code == 503
+        assert seen == {} and route_gate.routed() == {}
+
     def test_a_routed_deploy_that_cannot_list_the_containers_deploys_nothing(self, worker, monkeypatch):
         monkeypatch.setattr(
             worker_api.orchestrator, "service_instances", MagicMock(side_effect=RuntimeError("docker is down"))
@@ -495,6 +585,7 @@ class TestOneDeployOfAServiceAtATime:
             return {"container_id": "e"}
 
         monkeypatch.setattr(orchestrator, "service_instances", lambda slug: [])
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug: [])
         monkeypatch.setattr(proxy_tunnel, "deploy", deploy)
         first, a = self._in_thread(lambda: worker_api._deploy_routed("honeygain", 2, BODY, PROXY, None))
         assert inside.wait(5)
@@ -526,19 +617,22 @@ class TestAnUnreadableMarker:
 class TestAWorkerThatStartsWithoutDocker:
     """Docker can come up after the worker; a proxied-only worker holds direct earners all the same."""
 
-    def _start(self, monkeypatch, proxied_only):
+    def _start(self, monkeypatch, proxied_only, *, docker_comes_up=True):
         if proxied_only:
             monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
         monkeypatch.setattr(worker_api.lan_fence, "GUARD_SECONDS", 0.01)
         hold = MagicMock(return_value=[])
         monkeypatch.setattr(worker_api.orchestrator, "hold_direct_earners", hold)
+        up = {"docker": False}
 
         async def run():
             async with worker_api.lifespan(worker_api.app):
                 await asyncio.sleep(0.1)
+                up["docker"] = docker_comes_up
+                await asyncio.sleep(0.1)
 
         with (
-            patch.object(worker_api.orchestrator, "docker_available", return_value=False),
+            patch.object(worker_api.orchestrator, "docker_available", side_effect=lambda: up["docker"]),
             patch.object(worker_api, "_check_fence", AsyncMock()),
             patch.object(worker_api, "_fence_loop", AsyncMock()),
             patch.object(worker_api, "UI_URL", ""),
@@ -546,8 +640,12 @@ class TestAWorkerThatStartsWithoutDocker:
             asyncio.run(run())
         return hold.call_count
 
-    def test_a_proxied_only_worker_holds_them_at_start_and_on_every_pass(self, monkeypatch):
+    def test_a_proxied_only_worker_holds_them_at_start_and_on_every_pass_once_docker_answers(self, monkeypatch):
         assert self._start(monkeypatch, True) >= 3
+
+    def test_without_docker_the_passes_do_not_try_and_log_forever(self, monkeypatch):
+        """Monitor-only for good: one hold at the start, none from the loop."""
+        assert self._start(monkeypatch, True, docker_comes_up=False) == 1
 
     def test_any_other_worker_starts_no_hold(self, monkeypatch):
         assert self._start(monkeypatch, False) == 0
@@ -910,6 +1008,26 @@ class TestTheUiLeavesARouteOnlyWithThePassword:
         assert ui.paths() == [("DELETE", f"/api/proxied/honeygain/{pid}"), ("POST", "/api/containers/honeygain/deploy")]
         assert proxies.route_of(record) is None
 
+    def test_a_proxied_only_box_refuses_leaving_the_route_before_anything_is_removed(self, db):
+        """Its worker refuses the direct deploy anyway: the copy and the route stay."""
+        row = _worker_row()
+        row["system_info"] = json.dumps({**json.loads(row["system_info"]), "proxied_only": True})
+        ui = _Ui(row, worker_reply=self._locked)
+
+        async def go():
+            uid = await database.create_user("owner", auth.hash_password("right one!"), "owner")
+            pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            ui.calls.clear()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=ENV, route=0, step_up_password="right one!"), owner_uid=uid)
+            return pid, exc.value, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, error, record = _run(go)
+        assert error.status_code == 403 and error.detail["error"] == "proxied_only"
+        assert ui.calls == []
+        assert proxies.route_of(record) == pid
+
     def test_a_direct_deploy_that_fails_after_the_copy_went_keeps_the_settings(self, db):
         """The routed copy is gone, the direct one did not come up: a retry still has the recorded env."""
 
@@ -1056,6 +1174,36 @@ class TestTheUiManagesARoutedService:
         assert result["status"] == "removing"
         assert [(c["slug"], c["worker_id"]) for c in copies] == [("honeygain", 1)]
         assert copies[0].get("removing_since")
+
+    @pytest.mark.parametrize("path", ["raw", "service"])
+    def test_an_unconfirmed_removal_keeps_the_deployment_until_the_worker_confirms(self, db, path):
+        """Its saved route and settings stay while the copy may still run; the confirmation drops them."""
+        ui, setup = self._routed(db)
+
+        async def go():
+            pid = await setup()
+
+            def slow(method, path_, body):
+                if method == "DELETE" and path_.startswith("/api/proxied/"):
+                    return HTTPException(status_code=504, detail="the worker did not answer in time")
+                return _Ui._no_container(method, path_, body)
+
+            ui.worker_reply = slow
+            with ui.active(patch.object(main, "_require_writer", lambda r: None)):
+                if path == "raw":
+                    result = await main.api_worker_command(
+                        _request(), 1, main.WorkerCommand(command="remove", slug="honeygain")
+                    )
+                else:
+                    result = await main._svc_remove(_request(), "honeygain", 1, False)
+            pending = await database.get_deployment_spec("honeygain", worker_id=1)
+            await main._finish_copy_removal(pid, 1, "honeygain")
+            return pid, result, pending, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, result, pending, confirmed = _run(go)
+        assert result["status"] == "removing"
+        assert pending is not None and proxies.route_of(pending) == pid
+        assert confirmed is None
 
     def test_a_copy_through_the_same_proxy_is_refused(self, db):
         ui, setup = self._routed(db)

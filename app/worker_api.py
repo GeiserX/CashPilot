@@ -982,10 +982,15 @@ async def _guard_loop() -> None:
 
 
 async def _hold_loop() -> None:
-    """Every GUARD_SECONDS: the proxied-only hold alone, for a worker that started without Docker."""
+    """Every GUARD_SECONDS: the proxied-only hold alone, for a worker that started without Docker.
+
+    A pass runs only once Docker answers: without it there is no earner to
+    hold, and each pass would log the same failure forever.
+    """
     while True:
         await asyncio.sleep(lan_fence.GUARD_SECONDS)
-        await _hold_direct_earners()
+        if await asyncio.to_thread(orchestrator.docker_available):
+            await _hold_direct_earners()
 
 
 def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
@@ -1970,6 +1975,24 @@ def _deploy_routed(
                 detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
                 "then deploy it with a route; nothing changed",
             )
+        # A routed copy through another proxy stays when this one is made
+        # (proxy_tunnel._deploy replaces only its own proxy's), and the mark
+        # moved here would hide it from the next switch to direct.
+        try:
+            elsewhere = [name for pid, name in proxy_tunnel.routed_copies(slug) if pid != int(proxy_id)]
+        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+            route_gate.release(slug, before)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not list the proxied copies of {slug} on this worker ({exc}); nothing changed",
+            ) from None
+        if elsewhere:
+            route_gate.release(slug, before)
+            raise HTTPException(
+                status_code=409,
+                detail=f"{slug} already runs through another proxy on this worker ({', '.join(elsewhere)}). "
+                "Remove it first, then deploy it through this one; nothing changed",
+            )
         try:
             return proxy_tunnel.deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=True)
         except Exception as exc:  # noqa: BLE001 - mapped to a status below
@@ -2112,15 +2135,19 @@ def _refuse_beside_routed_copy(slug: str) -> None:
     try:
         proxy_id = route_gate.routed().get(slug)
         copy = proxy_tunnel.copy_name(slug, proxy_id) if proxy_id is not None else None
+        # Through any proxy, not only the marked one: a routed copy through an
+        # earlier proxy keeps running when the mark moves to a later one.
+        found = [(proxy_id, copy)] if copy else proxy_tunnel.routed_copies(slug)[:1]
     except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
         raise HTTPException(
             status_code=503,
             detail=f"Could not check whether {slug} still runs through a proxy on this worker ({exc}); nothing changed",
         ) from None
-    if copy:
+    if found:
+        pid, name = found[0]
         raise HTTPException(
             status_code=409,
-            detail=f"{slug} still runs through proxy {proxy_id} on this worker ({copy}). Remove that copy first, "
+            detail=f"{slug} still runs through proxy {pid} on this worker ({name}). Remove that copy first, "
             "then deploy it direct; nothing changed",
         )
 

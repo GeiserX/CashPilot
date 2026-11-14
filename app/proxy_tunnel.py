@@ -605,6 +605,29 @@ def copy_name(slug: str, proxy_id: int) -> str | None:
     return earner.name if _is_ours(earner, slug, proxy_id) else None
 
 
+def routed_copies(slug: str) -> list[tuple[int, str]]:
+    """(proxy id, name) of every routed copy of ``slug`` on this worker, through any proxy.
+
+    A routed copy is an earner in a tunnel of its own. One whose tunnel is gone
+    counts too: it is not known which tunnel it comes back in. Raises when
+    Docker cannot answer.
+    """
+    client = orchestrator._get_client()
+    found = client.containers.list(
+        all=True, filters={"label": [f"{LABEL_SERVICE}={slug}", f"{LABEL_MANAGED}=true", LABEL_PROXY]}
+    )
+    copies: list[tuple[int, str]] = []
+    for earner in found:
+        pid = _labels(earner).get(LABEL_PROXY, "")
+        if not (_is_earner(earner) and _labels(earner).get(LABEL_SERVICE) == slug and pid.isdigit()):
+            continue
+        tunnel_id = _tunnel_id_of(earner)
+        tunnel = _get(client, tunnel_id) if tunnel_id else None
+        if tunnel is None or _own_key(tunnel) == slug:
+            copies.append((int(pid), str(earner.name)))
+    return sorted(copies)
+
+
 def _hostname(name: str) -> str:
     return name.removeprefix(CONTAINER_PREFIX)[:63]
 

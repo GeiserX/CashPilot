@@ -4346,6 +4346,7 @@ async def _deploy(
     # the owner's password, and its routed copy goes first: both run the same
     # device. The worker refuses the direct deploy without that confirmation.
     if recorded_route is not None:
+        await _refuse_direct_on_proxied_only(svc, slug, worker_id)
         await _confirm_leave_route(request, svc, slug, worker_id, password)
         await _remove_routed_copies(worker_id, slug, [recorded_route])
         signed["leave_route"] = True
@@ -4359,6 +4360,7 @@ async def _deploy(
             await _audit_worker_refusal(request, exc, slug, worker_id)
             raise
     if result is None:
+        await _refuse_direct_on_proxied_only(svc, slug, worker_id)
         await _confirm_leave_route(request, svc, slug, worker_id, password)
         # A routed copy the box still reports goes first, as above.
         if leaving := await _routes_on(worker_id, slug):
@@ -4573,6 +4575,27 @@ async def _routes_on(worker_id: int, slug: str) -> list[int]:
             if isinstance(entry.get("proxy_id"), int):
                 found.add(entry["proxy_id"])
     return sorted(found)
+
+
+async def _refuse_direct_on_proxied_only(svc: dict[str, Any], slug: str, worker_id: int) -> None:
+    """Refuse leaving a route on a worker set to run services only through a proxy.
+
+    Its worker refuses the direct deploy anyway (app/route_gate.py), so asked
+    here, before the routed copy is removed: otherwise the service would stop
+    and lose its route for a deploy that never comes.
+    """
+    worker = await database.get_worker(worker_id) or {}
+    info = _safe_json(worker.get("system_info", "{}"), {})
+    if isinstance(info, dict) and info.get("proxied_only") is True:
+        box = worker.get("name") or f"worker {worker_id}"
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "proxied_only",
+                "message": f"{box} runs services only through a proxy, so {svc.get('name') or slug} cannot run "
+                "from its own IP. It keeps its route; nothing changed.",
+            },
+        )
 
 
 async def _confirm_leave_route(
@@ -5076,7 +5099,10 @@ async def _svc_remove(
             raise
         # A routed service: no container of its own and no volumes, its copy is the service.
         result = await _remove_routed(worker_id, slug)
-        await database.remove_deployment(slug, worker_id=worker_id)
+        if result.get("status") != "removing":
+            # Not yet while the worker has not confirmed: its saved route and
+            # settings stay, and _finish_copy_removal drops them once it does.
+            await database.remove_deployment(slug, worker_id=worker_id)
         await database.record_health_event(slug, "remove", worker_id=worker_id)
         metrics.record_container_lifecycle("remove", slug)
         return result
@@ -9798,7 +9824,10 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         await database.record_health_event(slug, "start", worker_id=worker_id, instance=1)
         metrics.record_container_lifecycle("start", slug)
     elif body.command == "remove":
-        await database.remove_deployment(slug, worker_id=worker_id)
+        if not (isinstance(result, dict) and result.get("status") == "removing"):
+            # As in _svc_remove: a routed removal the worker has not confirmed
+            # keeps the record until _finish_copy_removal drops it.
+            await database.remove_deployment(slug, worker_id=worker_id)
         # As in _svc_remove: the worker removed the proxied copies with the service.
         # The removal already happened; a failure here must not report it as failed.
         try:
