@@ -2246,6 +2246,13 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
             await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
             if await _deployed_on_another_worker(db, slug, worker_id):
                 gone = False
+                # The fleet row stays for the other boxes, but the container it
+                # names may be this box's: it no longer runs there, so the row
+                # must stop counting as this box's record (_legacy_deployment_spec),
+                # or the ids just retired read as still running and come back.
+                legacy = await _legacy_deployment_spec(db, slug)
+                if legacy and legacy[0] == worker_id:
+                    await db.execute("UPDATE deployments SET container_id = '' WHERE slug = ?", (slug,))
             else:
                 await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
         if gone:

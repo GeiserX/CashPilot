@@ -365,6 +365,7 @@ def _deploy(
     instances=None,
     allow=False,
     fail=None,
+    fail_status=502,
     running=frozenset(),
     ran=None,
     replaced=None,
@@ -382,7 +383,7 @@ def _deploy(
 
     async def hop(wid, method, path, *, json=None, **kwargs):
         if fail and fail(method, path, json):
-            raise HTTPException(status_code=502, detail="worker failed")
+            raise HTTPException(status_code=fail_status, detail="worker failed")
         sent.append({"worker": wid, "path": path, "json": json})
         if method == "DELETE":
             n = int(path.rsplit("/", 1)[1])
@@ -2321,3 +2322,150 @@ class TestAReplacementWhoseDigestNeverMatches:
         assert error is None
         assert _active() == {}
         assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, fourteenth round: a deploy whose outcome is unknown keeps its
+# id claimed, a retirement holds only while its record does, a copy a partial
+# list proves is compared on the next full one, and the fleet-wide row stops
+# naming a box once that box removed the service
+# ---------------------------------------------------------------------------
+
+
+class TestADeployTheWorkerDidNotAnswer:
+    """A 504: the worker may still finish the deploy, so its id counts as running."""
+
+    @staticmethod
+    def _timed_out(method, path, json):
+        return path.endswith("/deploy")
+
+    def test_a_second_box_is_asked_first(self, db):
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=self._timed_out, fail_status=504)
+        assert error.status_code == 504
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and error.detail["error"] == "identity_in_use"
+        assert sent == []
+
+    def test_a_refusal_claims_nothing(self, db):
+        """The positive control: a worker that answered no did not deploy it."""
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=self._timed_out)
+        assert error.status_code == 502
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)[0] is None
+
+    def test_a_heartbeat_showing_it_never_ran_gives_the_old_id_back(self, db):
+        wid = _worker(running=[("earnapp", {1: {"EARNAPP_UUID": UUID_B}})])
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid)[0] is None
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp")
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp")
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+
+    def test_the_raw_route_too(self, db):
+        async def run():
+            with (
+                patch.object(main, "_require_owner", lambda r: OWNER),
+                patch.object(
+                    main, "_proxy_to_worker", AsyncMock(side_effect=HTTPException(status_code=504, detail="slow"))
+                ),
+            ):
+                body = main.WorkerCommand(command="deploy", slug="earnapp", spec={"env": {"EARNAPP_UUID": UUID_A}})
+                with pytest.raises(HTTPException):
+                    await main.api_worker_command(_request(), 1, body)
+
+        asyncio.run(run())
+        error, hop = _raw_deploy({"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409
+        hop.assert_not_awaited()
+
+
+class TestARetirementWhoseRecordMovedOn:
+    def test_a_deploy_between_its_read_and_its_write_keeps_its_copy(self, db):
+        """The retirement read a one-copy record; a deploy then saved two copies and recorded copy 2."""
+        wid, _ = TestABoxThatCouldNotListItsContainers()._copy_two_above_the_count()
+        real = database.active_identity_copies
+
+        async def read_then_redeployed(slug, worker_id):
+            have = await real(slug, worker_id)
+            spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+            await database.save_deployment(slug=slug, container_id="c", spec={**spec, "instances": 2}, worker_id=wid)
+            await database.record_identities(slug, wid, {"2": {"HONEYGAIN_DEVICE_NAME": "box-2"}}, scope="given")
+            return have
+
+        with patch.object(main.database, "active_identity_copies", read_then_redeployed):
+            assert asyncio.run(main._retire_dropped_copies("honeygain", wid, {2})) is True
+        assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
+
+    def test_with_the_record_in_place_it_retires(self, db):
+        """The positive control: the same retirement, no deploy in between."""
+        wid, _ = TestABoxThatCouldNotListItsContainers()._copy_two_above_the_count()
+        assert asyncio.run(main._retire_dropped_copies("honeygain", wid, {2})) is True
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") not in _active()
+
+
+class TestAPartialListAfterAScaleDown:
+    def test_the_copy_it_proves_is_retired_by_the_next_full_list(self, db):
+        """Copies 1-2 listed in full, then a late partial list proves removed copy 3, then full lists of 1-2."""
+        wid = _worker(running=[("honeygain", [1])])
+        hg = TestACopyWhoseWriteFailed.HG
+        runs = {n: {"HONEYGAIN_DEVICE_NAME": "box" if n == 1 else f"box-{n}"} for n in (1, 2, 3)}
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", hg, wid, instances=3)[0] is None
+            _heartbeat("box-a", runs)
+            assert _deploy("honeygain", hg, wid, instances=2, running={1, 2, 3}, ran={3: runs[3]})[0] is None
+        two = {1: runs[1], 2: runs[2]}
+        _heartbeat("box-a", two, listed=True)
+        _heartbeat("box-a", runs, listed=False)  # the late one
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME") in _active()
+        _heartbeat("box-a", two, listed=True)
+        _heartbeat("box-a", two, listed=True)
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME") not in _active()
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME", "box-3") in _retired()
+
+
+class TestTheFleetRowAfterABoxRemovedIt:
+    """Box 2 runs earnapp on UUID_B, box 1 on UUID_A and was deployed last, so the fleet row names box 1's container."""
+
+    BOX_1_CONTAINER = "earnapp1" * 4
+
+    def _both(self):
+        one = _worker("box-a", running=[("earnapp", {1: {"EARNAPP_UUID": UUID_A}})])
+        two = _worker("box-b")
+        for wid, uuid, cid in ((two, UUID_B, "c2" * 8), (one, UUID_A, self.BOX_1_CONTAINER)):
+            asyncio.run(
+                database.save_deployment(
+                    slug="earnapp", container_id=cid, spec={"env": {"EARNAPP_UUID": uuid}}, worker_id=wid
+                )
+            )
+            asyncio.run(database.record_identities("earnapp", wid, {"1": {"EARNAPP_UUID": uuid}}))
+        return one, two
+
+    def test_the_removed_id_is_not_in_use(self, db):
+        one, _ = self._both()
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [one]
+        asyncio.run(database.remove_deployment("earnapp", worker_id=one))
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        assert asyncio.run(database.get_deployment("earnapp")) is not None  # box 2 still runs it
+
+    def test_a_forgotten_id_stays_forgotten(self, db):
+        one, _ = self._both()
+        asyncio.run(database.remove_deployment("earnapp", worker_id=one))
+        row = next(r for r in _rows() if r["value"] == UUID_A)
+        assert asyncio.run(database.delete_identity(row["id"]))
+        asyncio.run(database.remove_deployment("earnapp"))
+        assert UUID_A not in {r["value"] for r in _rows()}
+
+    def test_a_repair_read_before_the_removal_writes_nothing_after_it(self, db):
+        """Box 1's deploy write was lost; a heartbeat reads its record, then the service is removed from box 1."""
+        one, _ = self._both()
+        asyncio.run(database.record_identities("earnapp", one, {"1": {}}, scope="given"))  # the lost write
+        real = database.get_deployment_spec
+
+        async def read_then_removed(slug, worker_id=None):
+            spec = await real(slug, worker_id=worker_id)
+            await database.remove_deployment(slug, worker_id=worker_id)
+            return spec
+
+        with patch.object(main.database, "get_deployment_spec", read_then_removed):
+            asyncio.run(main._reconcile_running_identities(one, _entries("earnapp", {1: {"EARNAPP_UUID": UUID_A}})))
+        assert not any(wid == one for _, wid, _, _ in _active())

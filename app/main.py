@@ -4415,6 +4415,13 @@ async def _deploy(
             result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, slug, worker_id)
+            if exc.status_code == 504:
+                # The worker may still finish it: the ids count as running here
+                # before the claim goes, so a deploy waiting on it is asked first.
+                # Should it not have, the next heartbeat proves the ids the old
+                # record runs, which replace these (_reconcile_running_identities).
+                await _record_deploy_identities(slug, worker_id, spec, [1], docker_conf, scope="given")
+                _forget_checked_copies(worker_id, slug)
             raise
         container_id = result.get("container_id", "remote")
         # Reported, deliberately NOT recorded. The worker reads the running container
@@ -4983,7 +4990,11 @@ async def _reconcile_running_identities(worker_id: int, containers: Any, *, comp
     copies = {(slug, n) for slug, n, _, _ in listed}
     previous = _IDENTITIES_LISTED.get(worker_id)
     if not complete:
-        # Nothing is gone, and the last full list stays what the next one compares against.
+        # Nothing is gone, and the last full list stays what the next one
+        # compares against, with what this one lists: a copy it proves again
+        # (a late list from before a scale-down) is gone once a full one leaves it out.
+        if previous is not None:
+            _IDENTITIES_LISTED[worker_id] = previous | copies
         previous = set()
     elif previous is None:
         # The first heartbeat since the UI started: what the last one listed is
@@ -5049,7 +5060,9 @@ async def _retire_dropped_copies(slug: str, worker_id: int, gone: set[int]) -> b
         drop = sorted(n for n in gone if n > 1 and n not in _spec_copies(spec))
         have = await database.active_identity_copies(slug, worker_id) if drop else set()
         drop = [n for n in drop if str(n) in have]
-        return not drop or await _record_deploy_identities(slug, worker_id, {}, drop, {}, scope="given")
+        # Only while ``spec`` is still the record: a deploy in between may have
+        # raised the count and recorded these copies again.
+        return not drop or await _record_deploy_identities(slug, worker_id, {}, drop, {}, scope="given", if_record=spec)
     except Exception:  # noqa: BLE001
         logger.warning("Could not retire the removed copies of %s on worker %s", slug, worker_id, exc_info=True)
         return False
@@ -10327,6 +10340,16 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, body.slug, worker_id)
+            if exc.status_code == 504 and isinstance(raw_env, dict):
+                # As /api/deploy's: the worker may still finish it.
+                copy = _copy_number(body.spec)
+                try:
+                    await database.record_identities(
+                        body.slug, worker_id, {str(copy if copy and copy > 0 else 1): raw_env}, scope="given"
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception("Could not record the device ids of %s on worker %s", body.slug, worker_id)
+                _forget_checked_copies(worker_id, body.slug)
             raise
     elif body.command in ("stop", "restart", "start"):
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
