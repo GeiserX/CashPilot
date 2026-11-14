@@ -379,6 +379,20 @@ img { max-width: 100%; }
   text-overflow: ellipsis;
   font-size: var(--fs-2);
 }
+/* An unlinked device's full id (owner only): wrapped, so it can be read and copied whole. */
+.notify-item-devices {
+  margin-top: 4px;
+  font-size: var(--fs-2);
+  color: var(--text-muted);
+}
+.notify-item-devices ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.notify-item-devices code {
+  word-break: break-all;
+  user-select: all;
+}
 
 /* Collector section highlight flash */
 .collector-section.highlight-flash {

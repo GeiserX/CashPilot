@@ -21,8 +21,11 @@ from __future__ import annotations
 import logging
 import os
 import re
+from typing import Any
 
 import httpx
+
+from app import catalog
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,48 @@ _ILLEGAL_HEADER_RE = re.compile(r"(Illegal header value\s*)b?['\"].*?['\"]", re.
 # Notifications are a summary, not a log: keep them short enough for a phone banner.
 _MAX_MESSAGE_LEN = 400
 
+# A device id a provider pays the account it is linked to (EarnApp, ProxyRack)
+# is a claim token while it is unlinked: whoever adds it first gets its
+# earnings. The notices that name one mask it at the source (mask_device_id);
+# mask_device_ids catches the rest by the shapes the catalog's device_link
+# blocks declare (catalog.device_id_masks).
+# A known id shorter than this is too likely to match ordinary text.
+_MIN_KNOWN_ID_LEN = 16
+
+
+def mask_device_id(device_id: str) -> str:
+    """A device id cut to a suffix the user can recognise and nobody can claim.
+
+    The last four characters only: enough to tell two devices apart on the
+    provider's page, far too few to add the device to another account. ASCII
+    dots, not an ellipsis: an ntfy title travels as an HTTP header, which only
+    takes Latin-1.
+    """
+    device_id = str(device_id or "").strip()
+    return f"...{device_id[-4:]}" if len(device_id) > 8 else "..."
+
+
+def mask_device_ids(text: str, device_ids: Any = (), *, slug: str | None = None) -> str:
+    """``text`` with every claimable device id in it cut to its masked suffix.
+
+    Every catalog claim link and ``id_shape_unique`` shape always; each id in
+    ``device_ids`` (the deployed values the caller knows); and the ``id_shape``
+    of ``slug``, for that service's own text, which also finds its copies'
+    derived ids. No length cut: this is for whole texts such as a log.
+    """
+    links, shapes = catalog.device_id_masks(slug)
+    text = str(text or "")
+    # The claim link first, so the id inside it is not left half masked.
+    for link in links:
+        text = link.sub("<link in CashPilot>", text)
+    known = {str(d).strip() for d in device_ids or () if len(str(d).strip()) >= _MIN_KNOWN_ID_LEN}
+    # Longest first, so an id that contains another is not left half masked.
+    for device_id in sorted(known, key=len, reverse=True):
+        text = text.replace(device_id, mask_device_id(device_id))
+    for shape in shapes:
+        text = shape.sub(lambda m: mask_device_id(m.group(0)), text)
+    return text
+
 
 def redact(text: str) -> str:
     """Strip credential-looking values out of an alert body.
@@ -63,6 +108,7 @@ def redact(text: str) -> str:
     text = _ILLEGAL_HEADER_RE.sub(r"\1<redacted>", text)
     text = _SECRET_PARAM_RE.sub(r"\1<redacted>", text)
     text = _BEARER_RE.sub(r"\1<redacted>", text)
+    text = mask_device_ids(text)
     if len(text) > _MAX_MESSAGE_LEN:
         text = text[:_MAX_MESSAGE_LEN] + "..."
     return text

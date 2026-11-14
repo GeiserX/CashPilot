@@ -242,7 +242,11 @@ a volume it did not create, and cannot join the namespace of a container it
 does not own. The UI, the proxy itself, a dashboard or auto-updater that holds
 the Docker socket, and every container you started by hand are out of its
 reach. The worker also lists only its own containers, so it no longer sees
-those. Images are not scoped: a custom service can still pull any image.
+those. Images carry no owner label, so they are not scoped: a custom service can
+still pull any image, and the worker can read one by name. The proxy refuses
+the worker an image delete and gives it no list of the host's images, so
+CashPilot cannot remove old images for you
+([cleaning up old images](getting-started.md#cleaning-up-old-images)).
 
 **Not yet a root boundary.** The proxy closes the one-call ways to root: a
 privileged container, a bind of `/` or of the socket, an added capability.

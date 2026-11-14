@@ -212,3 +212,42 @@ class TestTheseChecksCanActuallyFail:
 
     def test_the_latest_pattern_accepts_a_pinned_image(self):
         assert not _LATEST_IMAGE.search("    image: drumsergio/cashpilot-worker:1.19\n")
+
+
+def test_the_image_cleanup_section_links_to_where_the_refusal_is_explained():
+    """#739: the cleanup section sends the reader to the page that says why the
+    worker cannot delete or list images, and that page must actually say so."""
+    section = GETTING_STARTED.read_text(encoding="utf-8").split("### Cleaning up old images", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    assert "security-defaults.md#docker-socket-proxy" in section
+    proxy = SECURITY.read_text(encoding="utf-8").split("## Docker socket proxy", 1)[1].split("\n## ", 1)[0]
+    assert "image delete" in proxy
+    assert "no list of the host's images" in proxy
+    assert "getting-started.md#cleaning-up-old-images" in proxy
+
+
+def test_the_image_cleanup_section_keeps_the_rollback_image():
+    """CodeRabbit on #746: "remove tags older than the one you run" also removes
+    the previous version, the only local image to go back to."""
+    section = GETTING_STARTED.read_text(encoding="utf-8").split("### Cleaning up old images", 1)[1]
+    section = " ".join(section.split("\n## ", 1)[0].split())
+    assert "Remove only tags older than the one you run" not in section
+    assert "the tag you ran before it" in section
+
+
+def test_the_image_cleanup_section_names_the_containerd_image_store():
+    """CodeRabbit on #746: with the containerd image store, images live under
+    containerd's root, not DockerRootDir, so the disk check must say so."""
+    section = GETTING_STARTED.read_text(encoding="utf-8").split("### Cleaning up old images", 1)[1]
+    section = " ".join(section.split("\n## ", 1)[0].split())
+    assert "/var/lib/containerd" in section
+    assert "containerd image store" in section
+
+
+def test_the_prune_step_warns_it_takes_the_previous_moving_tag_image():
+    """CodeRabbit on #746: after an update over a moving tag the old image has no
+    tag, so step 1's prune deletes it; the doc must say how to keep a way back."""
+    section = GETTING_STARTED.read_text(encoding="utf-8").split("### Cleaning up old images", 1)[1]
+    step1 = " ".join(section.split("**Step 2", 1)[0].split())
+    assert "write down the exact version before you update" in step1
+    assert "X.Y.Z" in step1
