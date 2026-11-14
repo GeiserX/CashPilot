@@ -29,6 +29,9 @@
 #   j. an HTTP proxy that allows CONNECT to port 443 only (tinyproxy's
 #      default, like Squid's) still carries the earner: names fall back to the
 #      proxy when it refuses DNS over TCP.
+#   k. an HTTP proxy that also refuses CONNECT to a literal IP address (only
+#      host names on 443) still carries the earner the same way, and a proxy
+#      that is down never switches the tunnel to names resolved by the proxy.
 #
 # Every leak check first runs once against a deliberately opened namespace
 # (the sidecar's firewall table deleted and a default route put back) and must
@@ -313,6 +316,25 @@ else
     fail "j: a proxy that refuses port 53 does not carry the earner"
 fi
 if docker logs "$P-tun" 2>&1 | grep -q "refuses DNS over TCP"; then pass "j: the tunnel log says names went back to the proxy"; else fail "j: the tunnel log does not say names went back to the proxy"; fi
+
+# k. An HTTP proxy that allows CONNECT to host names on port 443 only.
+docker rm -f "$P-gost" >/dev/null 2>&1 || true
+docker run -d --name "$P-gost" --network "$NET" "$ALPINE" sh -c \
+    'apk add -q --no-cache squid >/dev/null && printf "http_port 8081\nacl SSL_ports port 443\nacl CONNECT method CONNECT\nacl literal dstdom_regex ^[0-9.]+\$\nhttp_access deny CONNECT !SSL_ports\nhttp_access deny CONNECT literal\nhttp_access allow all\naccess_log none\ncache_log /dev/stderr\npid_filename none\n" >/tmp/s.conf && exec squid -N -f /tmp/s.conf' >/dev/null
+for _ in $(seq 1 60); do docker logs "$P-gost" 2>&1 | grep -qi "Accepting HTTP" && break; sleep 1; done
+GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
+start_pair http - 8081
+if earner curl -fsS -m 10 -o /dev/null https://api.ipify.org; then
+    pass "k: a proxy that refuses literal IPs and port 53 still carries the earner"
+else
+    fail "k: a proxy that refuses literal IPs and port 53 does not carry the earner"
+    docker logs "$P-tun" 2>&1 | tail -5
+fi
+if docker logs "$P-tun" 2>&1 | grep -q "refuses DNS over TCP"; then pass "k: the tunnel log says names went back to the proxy"; else fail "k: the tunnel log does not say names went back to the proxy"; fi
+docker stop "$P-gost" >/dev/null
+start_pair http - 8081
+if docker logs "$P-tun" 2>&1 | grep -q "refuses DNS over TCP"; then fail "k: a proxy that is down switched the tunnel to names resolved by the proxy"; else pass "k: a proxy that is down never switches how names are resolved"; fi
+
 start_gost
 GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
 start_pair http - 8081

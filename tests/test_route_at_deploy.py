@@ -410,6 +410,19 @@ class TestTheWorkerDeployRoute:
         assert resp.status_code == 403 and _detail(resp)["error"] == "step_up_rejected"
         assert worker.deployed == [] and route_gate.routed() == {"honeygain": 3}
 
+    @pytest.mark.parametrize("value", ["true", None])
+    def test_status_says_whether_it_is_proxied_only_now(self, worker, monkeypatch, value):
+        """What the UI asks before it removes a routed copy (main._refuse_direct_on_proxied_only)."""
+        if value is None:
+            monkeypatch.delenv(route_gate.PROXIED_ONLY_ENV, raising=False)
+        else:
+            monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, value)
+        monkeypatch.setattr(worker_api.orchestrator, "get_status_cached", lambda: [])
+        monkeypatch.setattr(worker_api.orchestrator, "docker_available", lambda: True)
+        resp = worker("GET", "/api/status")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["proxied_only"] is (value is not None)
+
     def test_proxied_only_refuses_even_with_an_approval(self, worker, monkeypatch):
         monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
         approval = step_up.sign(WORKER_KEY, step_up.ACTION_LEAVE_ROUTE, "honeygain")
@@ -822,6 +835,12 @@ class _Ui:
         self.worker_row = worker_row or _worker_row()
         self.calls: list[tuple[str, str, dict | None]] = []
         self.worker_reply = worker_reply or self._no_container
+        # What the worker itself says on GET /api/status (asked before a route
+        # is left); by default what its heartbeat said. Kept out of ``calls``.
+        self.status: dict | HTTPException = {
+            "proxied_only": json.loads(self.worker_row["system_info"]).get("proxied_only") is True
+        }
+        self.status_asked = 0
 
     @staticmethod
     def _no_container(method, path, body):
@@ -831,6 +850,11 @@ class _Ui:
         return {"container_id": "c", "status": "ok"}
 
     async def hop(self, worker_id, method, path, *, json=None, **kwargs):
+        if (method, path) == ("GET", "/api/status"):
+            self.status_asked += 1
+            if isinstance(self.status, HTTPException):
+                raise self.status
+            return self.status
         self.calls.append((method, path, json))
         reply = self.worker_reply(method, path, json)
         if isinstance(reply, HTTPException):
@@ -967,6 +991,67 @@ class TestTheUiDeploysARoute:
         assert ui.calls == []
 
 
+class TestARemovalDuringARoutedDeploy:
+    """_deploy_routed holds the copy's lock through the worker call, as api_add_proxied_copy does."""
+
+    def test_a_removal_waits_for_the_deploy_so_no_earner_runs_without_its_record(self, db):
+        ui = _Ui()
+        real_lock = main._proxy_copy_lock
+
+        async def go():
+            pid = await ui.proxy()
+            entered, release, blocked = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+            class Probe:
+                """The real lock; says so when the removal finds it taken."""
+
+                def __init__(self, lock):
+                    self.lock = lock
+
+                async def __aenter__(self):
+                    if self.lock.locked():
+                        blocked.set()
+                    await self.lock.acquire()
+
+                async def __aexit__(self, *exc):
+                    self.lock.release()
+
+            async def hop(worker_id, method, path, *, json=None, **kwargs):
+                ui.calls.append((method, path, json))
+                if path.endswith("/deploy"):
+                    entered.set()
+                    await release.wait()
+                    return {"container_id": "c", "status": "deployed"}
+                return {"status": "removed", "containers": ["cashpilot-honeygain-p1"]}
+
+            with ui.active(
+                patch.object(main, "_proxy_to_worker", hop),
+                patch.object(main, "_proxy_copy_lock", lambda *key: Probe(real_lock(*key))),
+            ):
+                deploying = asyncio.create_task(
+                    main.api_deploy(_request(), "honeygain", main.DeployRequest(env=ENV, route=pid))
+                )
+                await entered.wait()
+                removing = asyncio.create_task(main._remove_copy(pid, 1, "honeygain"))
+                waiter = asyncio.create_task(blocked.wait())
+                await asyncio.wait({removing, waiter}, return_when=asyncio.FIRST_COMPLETED)
+                waiter.cancel()
+                release.set()
+                await asyncio.gather(deploying, removing)
+            copies = [c for c in await database.list_proxied_copies(pid) if c["worker_id"] == 1]
+            return pid, copies, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, copies, record = _run(go)
+        assert ui.paths() == [
+            ("POST", f"/api/proxied/honeygain/{pid}/deploy"),
+            ("DELETE", f"/api/proxied/honeygain/{pid}"),
+        ]
+        # The removal came last, so nothing of the service is left: never a
+        # routed deployment whose copy record (the cap's bookkeeping) is gone.
+        assert copies == []
+        assert record is None
+
+
 class TestTheRouteBoxFollowsTheRecord:
     """svc.routes tells the Route box what a deploy with no route does: api_deploy keeps the recorded route."""
 
@@ -1086,6 +1171,34 @@ class TestTheUiLeavesARouteOnlyWithThePassword:
         pid, error, record = _run(go)
         assert error.status_code == 403 and error.detail["error"] == "proxied_only"
         assert ui.calls == []
+        assert proxies.route_of(record) == pid
+
+    @pytest.mark.parametrize(
+        ("status", "code"),
+        [
+            ({"proxied_only": True}, 403),
+            (HTTPException(status_code=502, detail="worker unreachable"), 503),
+            ({"name": "box"}, 503),
+        ],
+    )
+    def test_the_worker_itself_is_asked_before_the_routed_copy_goes(self, db, status, code):
+        """Its heartbeat still says it may run direct; restarted proxied-only since, or silent, it keeps its route."""
+        ui = _Ui(worker_reply=self._locked)
+
+        async def go():
+            uid = await database.create_user("owner", auth.hash_password("right one!"), "owner")
+            pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            ui.calls.clear()
+            ui.status = status
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=ENV, route=0, step_up_password="right one!"), owner_uid=uid)
+            return pid, exc.value, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, error, record = _run(go)
+        assert error.status_code == code, error.detail
+        assert ui.status_asked >= 1
+        assert ui.calls == [], "nothing is removed or deployed"
         assert proxies.route_of(record) == pid
 
     def test_a_direct_deploy_that_fails_after_the_copy_went_keeps_the_settings(self, db):
@@ -1265,6 +1378,36 @@ class TestTheUiManagesARoutedService:
         assert pending is not None and proxies.route_of(pending) == pid
         assert confirmed is None
 
+    def test_the_record_stays_until_the_last_copy_of_it_on_the_worker_is_gone(self, db):
+        """The routed copy confirms, another copy of it does not: the record waits for the heartbeat's retry."""
+        ui, setup = self._routed(db)
+
+        async def go():
+            pid = await setup()
+            other = await ui.proxy()
+            await database.save_proxied_copy(other, 1, "honeygain")
+            answer = {"other": HTTPException(status_code=504, detail="the worker did not answer in time")}
+
+            def reply(method, path_, body):
+                if method == "DELETE" and path_ == f"/api/proxied/honeygain/{other}" and "other" in answer:
+                    return answer["other"]
+                return _Ui._no_container(method, path_, body)
+
+            ui.worker_reply = reply
+            with ui.active(patch.object(main, "_require_writer", lambda r: None)):
+                result = await main._svc_remove(_request(), "honeygain", 1, False)
+                pending = await database.get_deployment_spec("honeygain", worker_id=1)
+                del answer["other"]
+                await main._resume_copy_removals([(other, 1, "honeygain")])
+            left = [c for c in await database.list_proxied_copies() if c["worker_id"] == 1]
+            return pid, result, pending, left, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, result, pending, left, confirmed = _run(go)
+        assert result["status"] == "removing"
+        assert pending is not None and proxies.route_of(pending) == pid
+        assert left == []
+        assert confirmed is None
+
     def test_a_copy_through_the_same_proxy_is_refused(self, db):
         ui, setup = self._routed(db)
 
@@ -1398,6 +1541,33 @@ class TestProxiedOnlyStopsWhatAlreadyRuns:
         assert self._hold([tunnel, copy, platform], tunnel=_tunnel()) == []
         for c in (tunnel, copy, platform):
             c.stop.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "extra",
+        [{"cashpilot.proxy": "3"}, {LABEL_ROLE: ROLE_TUNNEL}, {"cashpilot.proxy": "3", LABEL_ROLE: ROLE_TUNNEL}],
+    )
+    def test_a_direct_earner_carrying_copy_or_tunnel_labels_is_stopped(self, monkeypatch, extra):
+        """Labels a direct deploy once kept (DeploySpec.labels): its own network decides, not them."""
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        direct = _earner(labels={LABEL_MANAGED: "true", "cashpilot.service": "honeygain", **extra})
+        direct.attrs["Config"] = {"Image": "honeygain/honeygain:1.0"}
+        assert self._hold([direct], tunnel=_tunnel()) == ["cashpilot-honeygain"]
+        direct.stop.assert_called_once()
+
+    def test_a_real_tunnel_with_its_service_label_is_left_alone(self, monkeypatch):
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        tunnel = _earner(
+            "cashpilot-tunnel-p3",
+            labels={
+                LABEL_MANAGED: "true",
+                LABEL_ROLE: ROLE_TUNNEL,
+                "cashpilot.service": "proxy-tunnel",
+                "cashpilot.proxy": "3",
+            },
+        )
+        tunnel.attrs["Config"] = {"Image": "drumsergio/cashpilot-tunnel:1.2.3"}
+        assert self._hold([tunnel]) == []
+        tunnel.stop.assert_not_called()
 
     def test_an_earner_in_a_namespace_that_is_not_a_tunnel_is_stopped(self, monkeypatch):
         monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")

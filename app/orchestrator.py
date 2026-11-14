@@ -59,6 +59,7 @@ from app.constants import (  # noqa: E402
     LABEL_SERVICE,
     LABEL_STATE_CREATED,
     LABEL_VERSION,
+    ROLE_TUNNEL,
     START_SETTLE_SECONDS,
     drift_warnings_enabled,
 )
@@ -2680,18 +2681,48 @@ def start_service(slug: str, instance: int = 1) -> None:
     logger.info("Started container %s", container.name)
 
 
+def _image_repository(image: str) -> str:
+    """``drumsergio/cashpilot-tunnel`` from ``drumsergio/cashpilot-tunnel:1.2.3`` or ``...@sha256:...``."""
+    image = image.split("@", 1)[0]
+    head, _, last = image.rpartition("/")
+    return (f"{head}/" if head else "") + last.split(":", 1)[0]
+
+
+def is_tunnel_sidecar(container: Any) -> bool:
+    """A proxy tunnel (app/proxy_tunnel.py): labelled one AND running a tunnel image.
+
+    A tunnel reaches its proxy from the box's own IP; that is its job. The
+    label alone is not enough: a direct deploy once kept any label it was
+    given (DeploySpec.labels), so an earner made then can carry it.
+    """
+    labels = getattr(container, "labels", None)
+    if not isinstance(labels, dict) or labels.get(LABEL_ROLE) != ROLE_TUNNEL:
+        return False
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    config = attrs.get("Config") if isinstance(attrs.get("Config"), dict) else {}
+    image = _image_repository(str(config.get("Image") or ""))
+    override = (os.getenv("CASHPILOT_TUNNEL_IMAGE") or "").strip()
+    from app.proxy_tunnel import TUNNEL_REPOSITORY  # noqa: PLC0415 - proxy_tunnel imports this module
+
+    return bool(image) and image in {TUNNEL_REPOSITORY, _image_repository(override) if override else ""}
+
+
 def direct_problem(container: Any) -> str | None:
     """Why a running earner must stop on a worker set to CASHPILOT_PROXIED_ONLY, or None.
 
     Only the operator's switch: a service routed here and then deployed direct
     with the owner's password runs direct for a moment before its route is
     released, so the route lock is left to the deploy, Start and Restart.
+
+    Decided by the container's network, never by a proxied copy's labels: a
+    copy runs only inside a tunnel's namespace (route_gate.check), and a
+    direct earner made before deploy_raw stripped those labels may carry them.
     """
     if not route_gate.proxied_only():
         return None
     labels = getattr(container, "labels", None)
     labels = labels if isinstance(labels, dict) else {}
-    if labels.get(LABEL_MANAGED) != "true" or not labels.get(LABEL_SERVICE) or is_proxied(container):
+    if labels.get(LABEL_MANAGED) != "true" or not labels.get(LABEL_SERVICE) or is_tunnel_sidecar(container):
         return None
     try:
         route_gate.check(str(labels[LABEL_SERVICE]), _network_mode(container), _get_client(), leave_route=True)

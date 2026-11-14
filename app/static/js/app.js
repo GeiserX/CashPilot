@@ -1921,8 +1921,16 @@ const CP = (() => {
       </div>`;
   }
 
-  async function loadRouteChoices(slug) {
-    const select = document.getElementById(`route-select-${slug}`);
+  // The Route box of ``slug`` inside ``root``, the form that owns it. The setup
+  // wizard and the service page both render one for the same service, and the
+  // wizard's stays in the DOM when it is hidden, so a document-wide lookup by
+  // id can return the other form's box.
+  function _routeSelect(root, slug) {
+    return (root && root.querySelector(`select[id="route-select-${slug}"]`)) || null;
+  }
+
+  async function loadRouteChoices(slug, root) {
+    const select = _routeSelect(root, slug);
     if (!select || !_isOwner) return;
     select.addEventListener('change', () => _routeSwitchBoxes(select));
     try {
@@ -1956,8 +1964,8 @@ const CP = (() => {
   // The proxy id to send as "route", 0 for Direct chosen to leave a route, or
   // undefined: the server then keeps the route a box already has, and a new
   // deploy runs from the box's own IP.
-  function _routeChoice(slug) {
-    const select = document.getElementById(`route-select-${slug}`);
+  function _routeChoice(root, slug) {
+    const select = _routeSelect(root, slug);
     if (select && select.value === '0') return 0;
     const id = select ? parseInt(select.value, 10) : NaN;
     return Number.isInteger(id) && id > 0 ? id : undefined;
@@ -3324,7 +3332,7 @@ const CP = (() => {
       const selected = services.filter(s => wizardState.selectedServices.includes(s.slug));
       container.innerHTML = selected.map(svc => renderServiceSetupForm(svc, workers)).join('');
       loadDeployRisk();
-      for (const svc of selected) loadRouteChoices(svc.slug);
+      for (const svc of selected) loadRouteChoices(svc.slug, container);
     } catch (err) {
       container.innerHTML = '<p class="empty-state-text">Could not load service details.</p>';
     }
@@ -3580,8 +3588,11 @@ const CP = (() => {
     );
   }
 
-  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false } = {}) {
+  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false, routeRoot = null } = {}) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
+    // Read once, before anything waits: a Route box changed while the first
+    // box deploys must not send another route (or none) to the next one.
+    const route = _routeChoice(routeRoot, slug);
     if (workerIds.length === 0) {
       toast('Select at least one worker node', 'warning');
       if (statusEl) statusEl.textContent = 'Select at least one node.';
@@ -3650,7 +3661,6 @@ const CP = (() => {
         if (image !== undefined) body.image = image;
         const instances = _instancesFor(slug, wid);
         if (instances !== undefined) body.instances = instances;
-        const route = _routeChoice(slug);
         if (route !== undefined) body.route = route;
         const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
         ok++;
@@ -3743,7 +3753,10 @@ const CP = (() => {
     const fresh = _selectedWorkerIds(`${picked}:not([data-routed])`);
     // A routed box ticked to change its route reuses its recorded credentials.
     const switching = _selectedWorkerIds(`${picked}[data-routed]`);
-    await _deployToWorkers(slug, [...fresh, ...switching], { rescaleOnly: fresh.length === 0 && switching.length > 0 });
+    await _deployToWorkers(slug, [...fresh, ...switching], {
+      rescaleOnly: fresh.length === 0 && switching.length > 0,
+      routeRoot: document.getElementById('wizard-setup-forms'),
+    });
   }
 
   // -----------------------------------------------------------
@@ -3942,7 +3955,7 @@ const CP = (() => {
       // holds up the rest of the modal.
       loadPayoutProgress();
       loadDeployRisk();
-      loadRouteChoices(svc.slug);
+      loadRouteChoices(svc.slug, body);
       loadDeviceRenames(slug);
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
@@ -4080,7 +4093,8 @@ const CP = (() => {
   async function redeployWithValues(slug, workerId) {
     // The form is folded away under the boxes list; open it so a missing value shows.
     document.querySelectorAll('details.sd-more').forEach(d => { d.open = true; });
-    if (await _deployToWorkers(slug, [parseInt(workerId)])) openServiceDetail(slug);
+    const routeRoot = document.getElementById('service-detail-body');
+    if (await _deployToWorkers(slug, [parseInt(workerId)], { routeRoot })) openServiceDetail(slug);
   }
 
   async function redeployOnWorker(slug, workerId) {
@@ -4555,7 +4569,10 @@ const CP = (() => {
     const again = [...switching, ...rescaled];
     // Only nodes that already run the service: their recorded credentials are
     // reused, so the empty credential boxes are not missing.
-    await _deployToWorkers(slug, [...fresh, ...again], { rescaleOnly: fresh.length === 0 && again.length > 0 });
+    await _deployToWorkers(slug, [...fresh, ...again], {
+      rescaleOnly: fresh.length === 0 && again.length > 0,
+      routeRoot: document.getElementById('service-detail-body'),
+    });
   }
 
   // `?instance=` only for copies 2+: the first copy is addressed the way it always was.

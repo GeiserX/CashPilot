@@ -2137,6 +2137,9 @@ async def api_worker_status(request: Request) -> dict[str, Any]:
         "client_id": CLIENT_ID,
         "docker_available": await asyncio.to_thread(orchestrator.docker_available),
         "ui_connected": _ui_connected,
+        # Read now, not from the last heartbeat: the UI asks before it removes
+        # a routed copy to run the service from this box's own IP.
+        "proxied_only": route_gate.proxied_only(),
         "container_count": len(containers),
         "running_count": sum(1 for c in containers if c.get("status") == "running"),
     }

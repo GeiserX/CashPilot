@@ -4689,41 +4689,45 @@ async def _deploy_routed(
             earner["image"] = arch_image
     # As api_add_proxied_copy: the copy's record goes in first, under the
     # proxy's lock, so a deploy that times out is still under the cap and listed.
-    async with _proxy_state_lock(proxy_id):
-        fresh = await _proxy_or_404(proxy_id)
-        if fresh["state"].get("capped_at"):
-            raise HTTPException(
-                status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
+    # All under the copy's lock, which a removal takes too (_remove_copy): one
+    # that starts meanwhile waits, so it can never finish first and leave the
+    # earner this deploy makes running without its record.
+    async with _proxy_copy_lock(proxy_id, worker_id, slug):
+        async with _proxy_state_lock(proxy_id):
+            fresh = await _proxy_or_404(proxy_id)
+            if fresh["state"].get("capped_at"):
+                raise HTTPException(
+                    status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
+                )
+            definition = fresh["definition"]
+            had_record = any(
+                c["worker_id"] == worker_id and c["slug"] == slug for c in await database.list_proxied_copies(proxy_id)
             )
-        definition = fresh["definition"]
-        had_record = any(
-            c["worker_id"] == worker_id and c["slug"] == slug for c in await database.list_proxied_copies(proxy_id)
-        )
-        await database.save_proxied_copy(proxy_id, worker_id, slug)
-    record = {**spec, "route": {"proxy_id": proxy_id}}
-    record.pop("instances", None)
-    try:
-        result = await _proxy_worker_call(
-            worker_id,
-            "POST",
-            f"/api/proxied/{slug}/{proxy_id}/deploy",
-            definition,
-            json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition), "routed": True},
-            timeout=180,
-        )
-    except HTTPException as exc:
-        if exc.status_code == 504:
-            # The worker may still finish it: both records stay, so the service
-            # is listed, its route is kept, and it can be stopped or removed.
-            await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
-        elif not had_record:
-            await database.delete_proxied_copy(proxy_id, worker_id, slug)
-        raise
-    container_id = str(result.get("container_id") or "remote")
-    await database.save_deployment(slug=slug, container_id=container_id, spec=record, worker_id=worker_id)
-    # Built from this deploy's own names, so a rename mark left from when it
-    # was a copy (a direct rename while it was being removed) no longer holds.
-    await database.set_proxied_copy_rename_pending(proxy_id, worker_id, slug, False)
+            await database.save_proxied_copy(proxy_id, worker_id, slug)
+        record = {**spec, "route": {"proxy_id": proxy_id}}
+        record.pop("instances", None)
+        try:
+            result = await _proxy_worker_call(
+                worker_id,
+                "POST",
+                f"/api/proxied/{slug}/{proxy_id}/deploy",
+                definition,
+                json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition), "routed": True},
+                timeout=180,
+            )
+        except HTTPException as exc:
+            if exc.status_code == 504:
+                # The worker may still finish it: both records stay, so the service
+                # is listed, its route is kept, and it can be stopped or removed.
+                await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
+            elif not had_record:
+                await database.delete_proxied_copy(proxy_id, worker_id, slug)
+            raise
+        container_id = str(result.get("container_id") or "remote")
+        await database.save_deployment(slug=slug, container_id=container_id, spec=record, worker_id=worker_id)
+        # Built from this deploy's own names, so a rename mark left from when it
+        # was a copy (a direct rename while it was being removed) no longer holds.
+        await database.set_proxied_copy_rename_pending(proxy_id, worker_id, slug, False)
     await database.record_health_event(
         slug, "start", f"deployed to worker {worker_id} through proxy {proxy_id}", worker_id=worker_id, instance=1
     )
@@ -4778,17 +4782,34 @@ async def _refuse_direct_on_proxied_only(svc: dict[str, Any], slug: str, worker_
 
     Its worker refuses the direct deploy anyway (app/route_gate.py), so asked
     here, before the routed copy is removed: otherwise the service would stop
-    and lose its route for a deploy that never comes.
+    and lose its route for a deploy that never comes. Asked of the worker
+    itself, not read from its last heartbeat: one restarted proxied-only since
+    would still lose its copy. A worker that cannot say refuses too.
     """
     worker = await database.get_worker(worker_id) or {}
-    info = _safe_json(worker.get("system_info", "{}"), {})
-    if isinstance(info, dict) and info.get("proxied_only") is True:
-        box = worker.get("name") or f"worker {worker_id}"
+    box = worker.get("name") or f"worker {worker_id}"
+    name = svc.get("name") or slug
+    try:
+        status = await _proxy_to_worker(worker_id, "GET", "/api/status")
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not ask {box} whether it runs services only through a proxy ({exc.detail}). "
+            f"{name} keeps its route; nothing changed.",
+        ) from None
+    proxied_only = status.get("proxied_only") if isinstance(status, dict) else None
+    if not isinstance(proxied_only, bool):
+        raise HTTPException(
+            status_code=503,
+            detail=f"{box} did not say whether it runs services only through a proxy; update it. "
+            f"{name} keeps its route; nothing changed.",
+        )
+    if proxied_only:
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "proxied_only",
-                "message": f"{box} runs services only through a proxy, so {svc.get('name') or slug} cannot run "
+                "message": f"{box} runs services only through a proxy, so {name} cannot run "
                 "from its own IP. It keeps its route; nothing changed.",
             },
         )
@@ -6269,20 +6290,25 @@ _copy_removals_running: set[tuple[int, int, str]] = set()
 async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str, *, leaving_route: bool = False) -> None:
     """The worker confirmed the copy is gone: drop its record and its device's pending link.
 
-    A service routed through this proxy at deploy was that copy, so its
-    deployment record goes too: nothing of it runs on the worker any more.
-    With ``leaving_route`` the service is about to run from the worker's own
-    IP (_deploy): its record stays, without the route, so a direct deploy
-    that fails can be tried again with the same settings.
+    A service routed at deploy runs only as its copies, so its deployment
+    record goes too once the last copy of it on the worker is gone: a removal
+    still waiting for another copy keeps it, and the heartbeat's retry that
+    confirms that copy (_resume_copy_removals) drops it. With
+    ``leaving_route`` the service is about to run from the worker's own IP
+    (_deploy): its record stays, without the route, so a direct deploy that
+    fails can be tried again with the same settings.
     """
     await database.delete_proxied_copy(proxy_id, worker_id, slug)
     spec = await database.get_deployment_spec(slug, worker_id=worker_id)
-    if spec is not None and proxies.route_of(spec) == proxy_id:
-        if leaving_route:
+    route = proxies.route_of(spec)
+    if leaving_route:
+        if spec is not None and route == proxy_id:
             direct = {k: v for k, v in spec.items() if k != "route"}
             await database.save_deployment(slug=slug, container_id="remote", spec=direct, worker_id=worker_id)
-        else:
-            await database.remove_deployment(slug, worker_id=worker_id)
+    elif route is not None and not any(
+        c["worker_id"] == worker_id and c["slug"] == slug for c in await database.list_proxied_copies()
+    ):
+        await database.remove_deployment(slug, worker_id=worker_id)
     await _drop_copy_device_links(proxy_id, slug)
 
 

@@ -840,9 +840,26 @@ class TestReattach:
         tunnel.labels.update(
             {"cashpilot.service": service, LABEL_MANAGED: "true", LABEL_ROLE: ROLE_TUNNEL, LABEL_PROXY: "3"}
         )
+        tunnel.attrs["Config"] = {"Image": "drumsergio/cashpilot-tunnel:1.2.3"}
         assert lan_fence.reattach(_docker(net, earners=[tunnel]), net) == ["cashpilot-tunnel-p3"]
         net.connect.assert_called_once_with(tunnel)
         tunnel.start.assert_called_once()
+
+    def test_a_direct_earner_carrying_copy_or_tunnel_labels_is_left_stopped(self, tmp_path, monkeypatch):
+        """Its network decides, not labels a direct deploy once kept (DeploySpec.labels)."""
+        from app import route_gate
+        from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, ROLE_TUNNEL
+
+        monkeypatch.setattr(route_gate, "ROUTED_MARKER", str(tmp_path / ".routed"))
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        net = _network()
+        c = _orphan("cashpilot-honeygain", "old-id", error=self.GONE)
+        c.labels.update(
+            {"cashpilot.service": "honeygain", LABEL_MANAGED: "true", LABEL_ROLE: ROLE_TUNNEL, LABEL_PROXY: "3"}
+        )
+        c.attrs["Config"] = {"Image": "honeygain/honeygain:1.0"}
+        assert lan_fence.reattach(_docker(net, earners=[c]), net) == ["cashpilot-honeygain"]
+        c.start.assert_not_called()
 
     def test_a_fence_gated_one_is_moved_but_left_to_the_guard(self):
         net = _network()

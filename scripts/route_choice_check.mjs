@@ -61,29 +61,37 @@ assert.match(refused, /publishes a port &lt;on the host>/, 'and says why, escape
 console.log('Routed copies: counted on their box, badged with their exit, and the Route box only where allowed.');
 
 // ---- What a deploy sends -------------------------------------------------------
-function domWith(value) {
-  return { getElementById: id => (id === 'route-select-honeygain' && value !== null ? { value } : null) };
-}
+// A form root: its Route box is found inside it, never by a document-wide id.
+const formRoot = select => ({
+  querySelector: sel => (sel === 'select[id="route-select-honeygain"]' ? select : null),
+});
+// Another form's box, which a document-wide lookup by id would find instead.
+const elsewhere = { getElementById: () => ({ value: '9' }) };
 for (const [value, want] of [['3', 3], ['', undefined], [null, undefined], ['0', 0], ['-1', undefined], ['x', undefined]]) {
-  const { _routeChoice } = fns(['_routeChoice'], ['document'], [domWith(value)]);
-  assert.equal(_routeChoice('honeygain'), want, `select value ${JSON.stringify(value)} sends ${want}`);
+  const { _routeChoice } = fns(['_routeSelect', '_routeChoice'], ['document'], [elsewhere]);
+  const root = formRoot(value === null ? null : { value });
+  assert.equal(_routeChoice(root, 'honeygain'), want, `select value ${JSON.stringify(value)} sends ${want}`);
 }
+assert.equal(
+  fns(['_routeSelect', '_routeChoice'], ['document'], [elsewhere])._routeChoice(null, 'honeygain'), undefined,
+  'no form: no route',
+);
 
 // The deploy loop puts the choice in the body. Lifted whole and run with a stub api.
 const sent = [];
 const api = async (path, opts) => { sent.push({ path, body: opts.body }); return {}; };
 const statusEl = { textContent: '', style: {}, innerHTML: '' };
 const document = {
-  getElementById: id => (id === 'route-select-honeygain' ? { value: '3' } : id.startsWith('deploy-status') ? statusEl : null),
+  getElementById: id => (id.startsWith('deploy-status') ? statusEl : null),
   querySelectorAll: () => [],
 };
 const deploy = new Function(
   'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink', 'wizardState',
   '_confirmDeviceRenames',
-  `${grab('_routeChoice')}\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
+  `${grab('_routeSelect')}\n${grab('_routeChoice')}\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
 )(escapeHtml, document, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
   async () => false);
-await deploy('honeygain', [1]);
+await deploy('honeygain', [1], { routeRoot: formRoot({ value: '3' }) });
 assert.equal(sent.length, 1);
 assert.equal(sent[0].path, '/api/deploy/honeygain?worker_id=1');
 assert.equal(sent[0].body.route, 3, 'the chosen proxy goes with the deploy');
@@ -100,7 +108,8 @@ console.log('Route box: where a service is routed, Direct is a choice that leave
 
 // ---- The setup wizard offers the Route box too ---------------------------------
 assert.match(grab('renderServiceSetupForm'), /routeChoiceSection\(svc\)/, 'the wizard form has the Route box');
-assert.match(grab('loadWizardSetupForms'), /loadRouteChoices\(svc\.slug\)/, 'and fills it with the proxies');
+assert.match(grab('loadWizardSetupForms'), /loadRouteChoices\(svc\.slug, container\)/, 'and fills its own form\'s box with the proxies');
+assert.match(grab('openServiceDetail'), /loadRouteChoices\(svc\.slug, body\)/, 'the service page fills its own box');
 console.log('Setup wizard: the Route box is shown and filled.');
 
 // ---- An image update reaches the boxes where the service is routed --------------
@@ -148,13 +157,19 @@ function formDom(rowsHtml, routeValue) {
     return true;
   };
   const select = { value: routeValue, dataset: { slug: 'honeygain' }, closest: () => null };
+  // The setup wizard's own Route box, hidden but still in the DOM and first in
+  // it: a document-wide lookup by id finds this one, on the box's own IP.
+  const wizardSelect = { value: '', dataset: { slug: 'honeygain' }, closest: () => null };
   const sent = [];
   const doc = {
     boxes,
     select,
+    wizardSelect,
     sent,
     querySelectorAll: sel => (sel.startsWith('.instances-input') ? [] : boxes.filter(el => matches(el, sel))),
-    getElementById: id => (id === 'route-select-honeygain' ? select : null),
+    getElementById: id => (id === 'route-select-honeygain' ? wizardSelect
+      : id === 'service-detail-body' ? formRoot(select)
+        : id === 'wizard-setup-forms' ? formRoot(wizardSelect) : null),
   };
   return doc;
 }
@@ -179,7 +194,7 @@ async function pick(routeValue, tick = []) {
   const live = new Function(
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames',
-    ['_routeSwitchBoxes', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
+    ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
       'deployServiceToWorkers'].map(grab).join('\n')
       + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
   )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
@@ -228,3 +243,64 @@ again(run.dom.select);
 assert.equal(box1(run.dom).disabled, true, 'back on the default it is locked again');
 assert.equal(box1(run.dom).checked, true, 'and ticked again');
 console.log('Route change: a routed box is selectable only once Direct is chosen, and sends it.');
+
+// ---- Two forms in the DOM: each deploy reads its own Route box ------------------
+// The wizard's form stays in the DOM, hidden, while the service page is open.
+{
+  const dom = formDom(rows, '7');
+  const calls = [];
+  const api = async (path, opts) => { calls.push({ path, route: opts.body.route }); return {}; };
+  const live = new Function(
+    'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
+    'wizardState', '_confirmDeviceRenames',
+    ['_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
+      'deployServiceToWorkers', 'deployService'].map(grab).join('\n')
+      + '\nreturn { deployServiceToWorkers, deployService };',
+  )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
+    async () => false);
+  dom.boxes.find(b => b.dataset.wid === '4').checked = true;
+  await live.deployServiceToWorkers('honeygain');
+  assert.deepEqual(calls, [{ path: '/api/deploy/honeygain?worker_id=4', route: 7 }],
+    'the service page sends its own Route box, not the hidden wizard one');
+}
+
+// ---- The route is read once for every box of one deploy -------------------------
+{
+  const select = { value: '7' };
+  const calls = [];
+  // The owner switches the Route box back while the first box deploys.
+  const api = async (path, opts) => { calls.push({ path, route: opts.body.route }); select.value = ''; return {}; };
+  const deploy = new Function(
+    'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
+    'wizardState', '_confirmDeviceRenames',
+    `${grab('_routeSelect')}\n${grab('_routeChoice')}\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
+  )(escapeHtml, { getElementById: () => null, querySelectorAll: () => [] }, api, () => {},
+    async () => { select.value = '7'; return true; }, () => undefined, () => undefined, () => {}, { deployed: [] },
+    async () => false);
+  // A change before the first wait is still this deploy's choice; after it, never.
+  select.value = '7';
+  await deploy('honeygain', [1, 4], { routeRoot: formRoot(select) });
+  assert.deepEqual(calls.map(c => c.route), [7, 7], 'every box of one deploy gets the route it started with');
+}
+
+// ---- Each form's Route box is filled with the proxies ---------------------------
+{
+  const made = [];
+  const mk = () => ({ value: '', children: [], listeners: 0, addEventListener() { this.listeners++; },
+    appendChild(o) { this.children.push(o); } });
+  const wizard = mk();
+  const detail = mk();
+  const document = {
+    getElementById: id => (id === 'route-select-honeygain' ? wizard : null),
+    createElement: () => { const o = {}; made.push(o); return o; },
+  };
+  const { loadRouteChoices } = fns(
+    ['_routeSelect', 'loadRouteChoices'], ['document', 'api', '_isOwner', '_routeSwitchBoxes'],
+    [document, async () => ({ proxies: [{ id: 7, name: 'Home' }] }), true, () => {}],
+  );
+  await loadRouteChoices('honeygain', formRoot(detail));
+  assert.equal(detail.children.length, 1, 'the service page Route box gets the proxies');
+  assert.equal(detail.listeners, 1, 'and its change handler');
+  assert.equal(wizard.children.length + wizard.listeners, 0, 'the hidden wizard box is not touched');
+}
+console.log('Two forms: each deploy and each fill uses the Route box of its own form, read once per deploy.');

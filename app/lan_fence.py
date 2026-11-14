@@ -794,9 +794,10 @@ def _route_allows(client: Any, container: Any) -> bool:
     from app.constants import LABEL_SERVICE
 
     orchestrator = _orchestrator()
-    if orchestrator.is_proxied(container):
-        # A tunnel is what keeps a routed earner off this IP; deploy_raw strips
-        # these labels from anything that does not join one (direct_problem).
+    if orchestrator.is_tunnel_sidecar(container):
+        # A tunnel is what keeps a routed earner off this IP. Anything else is
+        # judged by its network (route_gate.check), never by a copy's labels,
+        # which a direct earner made before deploy_raw stripped them may carry.
         return True
     slug = str((getattr(container, "labels", None) or {}).get(LABEL_SERVICE) or "")
     try:

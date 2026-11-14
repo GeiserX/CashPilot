@@ -234,18 +234,38 @@ else
             --dns "$1" --exit-on-fatal-error --verbosity warn &
         TPID=$!
     }
+    # Whether the proxy itself works but refuses a TCP connection to the
+    # resolver's port 53. Asked straight at the proxy, not through tun0, so it
+    # needs no name resolved here, no tunnel ready yet, and no CONNECT to a
+    # literal IP on 443 (a proxy may allow host names only). A proxy that is
+    # down fails the first request; one that allows port 53 fails the second.
+    proxy_refuses_dns() {
+        scheme=$(read_key proxy_scheme)
+        at="$(read_key proxy_auth)$PROXY_IP:$PROXY_PORT"
+        if [ "$scheme" = socks5 ]; then
+            curl -ks -m 6 -o /dev/null -x "socks5h://$at" https://api.ipify.org/ 2>/dev/null || return 1
+            # 97: the proxy answered the connection to port 53 with a refusal.
+            rc=0
+            curl -s -m 6 -o /dev/null -x "socks5://$at" "http://$DNS_TARGET:53/" 2>/dev/null || rc=$?
+            [ "$rc" -eq 97 ]
+        else
+            curl -ks -m 6 -o /dev/null -x "http://$at" https://api.ipify.org/ 2>/dev/null || return 1
+            code=$(curl -s -m 6 -p -o /dev/null -w '%{http_connect}' -x "http://$at" "http://$DNS_TARGET:53/" 2>/dev/null) || true
+            case "$code" in [3-5]??) return 0 ;; *) return 1 ;; esac
+        fi
+    }
     start_tun2proxy over-tcp
     # Many HTTP proxies allow CONNECT to port 443 only, so DNS over TCP to port
     # 53 is refused while the proxy itself works. Then names go back to the
     # proxy (--dns virtual), as before over-tcp, so the copies keep earning;
     # the log says that names pointing at the proxy's own network are not
-    # filtered then. A proxy that is down does not count: the address check
-    # must pass first.
+    # filtered then. Only on that refusal: a proxy that is down, or one that
+    # allows port 53, keeps over-tcp, and the exit probe below decides.
     i=0
     while [ "$i" -lt 15 ] && kill -0 "$TPID" 2>/dev/null; do
         i=$((i + 1))
         timeout 6 getent hosts api.ipify.org >/dev/null 2>&1 && break
-        if curl -ks -m 6 -o /dev/null https://1.1.1.1/ 2>/dev/null; then
+        if proxy_refuses_dns; then
             echo "cp-tunnel: the proxy refuses DNS over TCP (port 53), so names are resolved by the proxy instead. A name that points at the proxy's own network then reaches it; allow TCP 53 on the proxy to close that" >&2
             kill "$TPID" 2>/dev/null
             wait "$TPID" 2>/dev/null || true
