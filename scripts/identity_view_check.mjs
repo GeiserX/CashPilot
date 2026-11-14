@@ -52,13 +52,13 @@ check('anyone else gets no button', viewer.identityPickButton(svc, {key: 'U', pe
 
 // --- the list --------------------------------------------------------------
 const rows = [
-  {id: 1, service: 'EarnApp', label: 'Node UUID', masked: '…1234', worker: 'box-a', copy: '', status: 'active', source: 'deploy', readable: true},
-  {id: 2, service: 'EarnApp', label: 'Node UUID', masked: '…9999', worker: 'box-b', copy: 'copy 2', status: 'retired', source: 'deploy', readable: true},
-  {id: 3, service: 'Mysterium', label: 'Node identity', masked: '…beef', worker: 'box-c', copy: '', status: 'active', source: 'node', readable: true},
-  {id: 4, service: 'X', label: '<img src=x onerror=alert(1)>', masked: '…', worker: '<b>w</b>', copy: '', status: 'retired', source: 'deploy', readable: false},
+  {id: 1, service: 'EarnApp', label: 'Node UUID', masked: '...1234', worker: 'box-a', copy: '', status: 'active', source: 'deploy', readable: true},
+  {id: 2, service: 'EarnApp', label: 'Node UUID', masked: '...9999', worker: 'box-b', copy: 'copy 2', status: 'retired', source: 'deploy', readable: true},
+  {id: 3, service: 'Mysterium', label: 'Node identity', masked: '...beef', worker: 'box-c', copy: '', status: 'active', source: 'node', readable: true},
+  {id: 4, service: 'X', label: '<img src=x onerror=alert(1)>', masked: '...', worker: '<b>w</b>', copy: '', status: 'retired', source: 'deploy', readable: false},
 ];
 const html = owner.identityRowsHtml(rows);
-check('masked values are shown', html.includes('…1234') && html.includes('…9999'), html);
+check('masked values are shown', html.includes('...1234') && html.includes('...9999'), html);
 check('each readable row has Show and Copy', (html.match(/data-action="revealIdentity"/g) || []).length === 3, html);
 check('only removed ids can be forgotten', (html.match(/data-action="forgetIdentity"/g) || []).length === 2
   && !html.includes('data-action="forgetIdentity" data-a1="1"'), html);
@@ -70,8 +70,8 @@ check('an empty list says what fills it', owner.identityRowsHtml([]).includes('N
 
 // --- the reuse offer -------------------------------------------------------
 const offers = owner.identityOffersHtml('earnapp', 'EARNAPP_UUID', [
-  {id: 7, masked: '…aaaa', worker: 'box-a', copy: '', in_use_on: []},
-  {id: 8, masked: '…bbbb', worker: 'box-b', copy: '', in_use_on: ['box-c', 'box-d']},
+  {id: 7, masked: '...aaaa', worker: 'box-a', copy: '', in_use_on: []},
+  {id: 8, masked: '...bbbb', worker: 'box-b', copy: '', in_use_on: ['box-c', 'box-d']},
 ]);
 check('each offer has a Use button', (offers.match(/data-action="useIdentity"/g) || []).length === 2, offers);
 check('an id in use says where', offers.includes('In use on box-c, box-d'), offers);

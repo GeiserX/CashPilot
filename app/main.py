@@ -9533,11 +9533,6 @@ def _require_owner_session(request: Request) -> dict[str, Any]:
     return user
 
 
-def _mask_identity(value: str) -> str:
-    """The last four characters, or nothing for a value too short to hide anything."""
-    return f"…{value[-4:]}" if len(value) > 6 else "…"
-
-
 def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str, dict[str, str]]) -> dict[str, Any]:
     slug = row["slug"]
     svc = catalog.get_service(slug) or {}
@@ -9559,7 +9554,7 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
         "kind": row.get("kind") or "env",
         "key": row["name"],
         "label": label,
-        "masked": _mask_identity(row.get("value") or ""),
+        "masked": notify.mask_device_id(row.get("value") or ""),
         "readable": bool(row.get("value")),
         "source": row.get("source") or "deploy",
         "status": row.get("status") or "active",

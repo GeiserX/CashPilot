@@ -271,7 +271,7 @@ class TestTheList:
         assert response.status_code == 200
         assert UUID_A not in response.text
         [row] = response.json()
-        assert row["masked"] == "…" + UUID_A[-4:]
+        assert row["masked"] == "..." + UUID_A[-4:]
         assert (row["service"], row["label"], row["status"]) == ("EarnApp", "Node UUID", "active")
 
     def test_a_reveal_is_audited_and_returns_the_value(self, db):
