@@ -11,6 +11,7 @@ import collections
 import contextlib
 import functools
 import hashlib
+import inspect
 import ipaddress
 import logging
 import os
@@ -45,7 +46,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from app import socket_policy, version  # noqa: E402
+from app import route_gate, socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
@@ -828,6 +829,26 @@ def _holds_gated_lock(fn: Any) -> Any:
     return wrapper
 
 
+def _holds_route_lock(fn: Any) -> Any:
+    """A direct deploy holds route_gate.deploying from its check to its container's start.
+
+    An earner joined to a tunnel does not: the routed deploy that creates it
+    already holds the lock, from another call.
+    """
+    params = inspect.signature(fn)
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        bound = params.bind_partial(*args, **kwargs).arguments
+        if str(bound.get("network_mode") or "").startswith("container:"):
+            return fn(*args, **kwargs)
+        with route_gate.deploying(str(bound.get("slug", ""))):
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+@_holds_route_lock
 @_holds_gated_lock
 def deploy_raw(
     slug: str,
@@ -849,6 +870,7 @@ def deploy_raw(
     keep_targets: set[str] | None = None,
     instance: int = 1,
     name: str | None = None,
+    leave_route: bool = False,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -867,10 +889,18 @@ def deploy_raw(
     ``resources`` (mem_limit / mem_reservation / oom_score_adj / cpu_shares)
     makes the container's cgroup limits durable across recreates. Returns the
     container ID.
+
+    Every earner this worker creates passes here, so this is where a service
+    routed through a proxy, or a proxied-only worker, refuses to run from the
+    box's own IP (route_gate.check). ``leave_route`` is set only by the worker
+    API, after it checked the owner's password approval for that switch.
     """
     client = _get_client()
     name = name or _container_name(slug, instance)
     joined = (network_mode or "").startswith("container:")
+    # First, before anything is pulled or replaced: a refused earner costs the
+    # running one nothing.
+    route_gate.check(slug, network_mode, client, leave_route=leave_route)
     gated = fence_gated(slug)
 
     # Decided before the old container is touched: a network or runtime that
@@ -1041,6 +1071,12 @@ def deploy_raw(
         # never the caller's to change.
         all_labels[LABEL_SERVICE] = slug
         all_labels[LABEL_MANAGED] = "true"
+        if not joined:
+            # What is_proxied skips a copy or a tunnel by: a direct earner
+            # carrying them would hide from the routed deploy's own-IP check
+            # and from the proxied-only hold.
+            all_labels.pop(LABEL_PROXY, None)
+            all_labels.pop(LABEL_ROLE, None)
     if instance > 1:
         all_labels[LABEL_INSTANCE] = str(instance)
 
@@ -1680,9 +1716,26 @@ def stop_service(slug: str, instance: int = 1) -> None:
     logger.info("Stopped container %s", container.name)
 
 
+def _network_mode(container: Any) -> str:
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    return str(host.get("NetworkMode") or "")
+
+
+def _require_route(container: Any, slug: str) -> None:
+    """Refuse Start or Restart of a container that would run from this box's own IP when it must not.
+
+    The same rule as a deploy (route_gate.check): a worker set to
+    CASHPILOT_PROXIED_ONLY, or a service routed through a proxy here. A
+    container created before either was set is held to it all the same.
+    """
+    route_gate.check(slug, _network_mode(container), _get_client())
+
+
 def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
     container = _find_container(slug, instance)
+    _require_route(container, slug)
     if _gated_container(slug, container):
         _require_startable(container, slug)
         _mark_stopped(container.name, False)
@@ -2619,11 +2672,60 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
 def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
     container = _find_container(slug, instance)
+    _require_route(container, slug)
     if _gated_container(slug, container):
         _require_startable(container, slug)
         _mark_stopped(container.name, False)
     container.start()
     logger.info("Started container %s", container.name)
+
+
+def direct_problem(container: Any) -> str | None:
+    """Why a running earner must stop on a worker set to CASHPILOT_PROXIED_ONLY, or None.
+
+    Only the operator's switch: a service routed here and then deployed direct
+    with the owner's password runs direct for a moment before its route is
+    released, so the route lock is left to the deploy, Start and Restart.
+    """
+    if not route_gate.proxied_only():
+        return None
+    labels = getattr(container, "labels", None)
+    labels = labels if isinstance(labels, dict) else {}
+    if labels.get(LABEL_MANAGED) != "true" or not labels.get(LABEL_SERVICE) or is_proxied(container):
+        return None
+    try:
+        route_gate.check(str(labels[LABEL_SERVICE]), _network_mode(container), _get_client(), leave_route=True)
+    except route_gate.RouteRefused as exc:
+        return str(exc)
+    return None
+
+
+def hold_direct_earners() -> list[str]:
+    """Stop every earner running from this box's own IP on a CASHPILOT_PROXIED_ONLY worker.
+
+    A deploy, a Start and a Restart refuse one already (route_gate.check), but
+    an earner made before the switch was set keeps running, and Docker starts
+    it again after a reboot (its restart policy is unless-stopped). The worker
+    runs this at its start and on every guard pass. A stop by the worker counts
+    as a manual stop for Docker, so the restart policy does not bring it back.
+    Returns the names it stopped.
+    """
+    if not route_gate.proxied_only():
+        return []
+    client = _get_client()
+    stopped: list[str] = []
+    for container in client.containers.list(filters={"label": f"{LABEL_MANAGED}=true"}):
+        problem = direct_problem(container)
+        if not problem:
+            continue
+        slug = str((container.labels or {}).get(LABEL_SERVICE) or "")
+        logger.warning("Stopping %s: %s", container.name, problem)
+        try:
+            container.stop(timeout=_get_stop_timeout(slug))
+            stopped.append(container.name)
+        except Exception as exc:  # noqa: BLE001 - the next pass tries again
+            logger.warning("Could not stop %s: %s", container.name, exc)
+    return stopped
 
 
 # ---------------------------------------------------------------------------

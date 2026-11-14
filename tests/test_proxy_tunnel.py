@@ -117,7 +117,15 @@ class TestCopiesAreNotProxied:
 class TestDeployRawJoined:
     def test_joined_container_gets_no_ports_hostname_dns_or_network(self):
         client = MagicMock()
-        client.containers.get.side_effect = NotFound("none")
+        tunnel = MagicMock(labels={"cashpilot.managed": "true", "cashpilot.role": "tunnel"})
+
+        def get(key):
+            # The tunnel it joins exists; no container holds the earner's name yet.
+            if key == "sidecar-id":
+                return tunnel
+            raise NotFound("none")
+
+        client.containers.get.side_effect = get
         client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/app/run"], "Cmd": []}}
         client.containers.run.return_value = MagicMock(id="earner-id", short_id="earner")
         with (
@@ -1044,3 +1052,78 @@ class TestATunnelLogsOutOfTheTailnetWhenStopped:
         with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
             proxy_tunnel.remove("x", 1)
         assert self._stop_timeout(tunnel) > _logout_seconds()
+
+
+# ---------------------------------------------------------------------------
+# cp-tunnel's firewall: the older rule when nft refuses the cgroup one
+# ---------------------------------------------------------------------------
+
+
+def _run_firewall_step(tmp_path: Path, nft_mode: str) -> tuple[int, str, str]:
+    """Run cp-tunnel up to its rules being loaded, with stub ip, stat, nft and curl.
+
+    ``nft_mode``: ``match`` (the cgroup rule loads and counts the probe),
+    ``no-cgroup`` (nft refuses any rule set naming cgroupv2), ``refuse`` (it
+    refuses every rule set).
+    """
+    import subprocess
+
+    run = tmp_path / "run"
+    secret = run / "cashpilot-secret"
+    secret.mkdir(parents=True)
+    for key, value in {"kind": "socks5", "proxy_ip": "203.0.113.5", "proxy_port": "1080"}.items():
+        (secret / key).write_text(value)
+    (tmp_path / "cgroup").write_text("0::/docker/abc\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stubs = {
+        "ip": 'echo "default via 172.17.0.1 dev eth0"',
+        "stat": "echo cgroup2fs",
+        "curl": "exit 0",
+        "nft": f"""
+loaded={run}/loaded.nft
+if [ "$1" = -f ]; then
+    case {nft_mode} in
+    refuse) echo "nft: refused" >&2; exit 1 ;;
+    no-cgroup) if grep -q cgroupv2 "$2"; then echo "nft: no cgroupv2" >&2; exit 1; fi ;;
+    esac
+    cp "$2" "$loaded"
+    exit 0
+fi
+if [ {nft_mode} = match ]; then sed 's/counter/counter packets 1 bytes 60/' "$loaded"; else cat "$loaded"; fi
+""",
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    head = _CP_TUNNEL.split("probe_until_ready() {")[0]
+    assert "load_rules" in head
+    script = (
+        head.replace("/run/", f"{run}/")
+        .replace("/run\n", f"{run}\n")
+        .replace("/proc/self/cgroup", str(tmp_path / "cgroup"))
+    )
+    script += f'\necho RULES_LOADED\ncat "{run}/loaded.nft"\n'
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+class TestTheTunnelFirewallFallsBack:
+    def test_a_kernel_that_matches_gets_the_cgroup_rule(self, tmp_path):
+        code, out, _err = _run_firewall_step(tmp_path, "match")
+        assert code == 0 and "RULES_LOADED" in out
+        assert "socket cgroupv2" in out
+
+    def test_an_nft_that_refuses_the_cgroup_rule_gets_the_older_rule(self, tmp_path):
+        code, out, err = _run_firewall_step(tmp_path, "no-cgroup")
+        assert code == 0, err
+        assert "socket cgroupv2" not in out
+        assert 'oifname "eth0" ip daddr 203.0.113.5 tcp dport 1080 accept' in out
+        assert "policy drop" in out
+        assert "can reach the proxy directly too" in err
+
+    def test_an_nft_that_refuses_every_rule_keeps_the_tunnel_down(self, tmp_path):
+        code, out, err = _run_firewall_step(tmp_path, "refuse")
+        assert code != 0 and "RULES_LOADED" not in out
+        assert "refusing to start" in err

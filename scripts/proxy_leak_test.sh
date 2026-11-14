@@ -14,7 +14,21 @@
 #   d. with tun2proxy killed, the sidecar exits and the earner is left with
 #      loopback only;
 #   e. a DNS canary name, looked up through Docker's resolver and straight at
-#      8.8.8.8, never shows up on the box's own uplink.
+#      8.8.8.8, never shows up as a plain UDP lookup on the box's own stack;
+#   f. a public name that resolves to a private address (a nip.io name for a
+#      server on the proxy's own network) does not reach that server: the
+#      name is resolved inside the tunnel and the private address is dropped;
+#   g. an address in 100.64.0.0/10 that is local to the namespace (a tailnet
+#      node's own address, where tailscaled's PeerAPI listens) is not reachable
+#      over loopback;
+#   h. the earner cannot open its own session to the proxy (an IP-allowlisted
+#      proxy needs no password) to reach the proxy's own network: only the
+#      tunnel's sockets may reach the proxy;
+#   i. a proxy at a 100.64.0.0/10 address (a tailnet or carrier-grade NAT
+#      address) still works: the 100.x rule covers loopback only;
+#   j. an HTTP proxy that allows CONNECT to port 443 only (tinyproxy's
+#      default, like Squid's) still carries the earner: names fall back to the
+#      proxy when it refuses DNS over TCP.
 #
 # Every leak check first runs once against a deliberately opened namespace
 # (the sidecar's firewall table deleted and a default route put back) and must
@@ -40,12 +54,13 @@ fail() {
 
 cleanup() {
     docker ps -aq --filter "name=^${P}-" | xargs -r docker rm -fv >/dev/null 2>&1 || true
-    docker network rm "$NET" >/dev/null 2>&1 || true
+    docker network rm "$NET" "$NET-cgnat" >/dev/null 2>&1 || true
 }
 trap 'jobs -p | xargs -r kill 2>/dev/null; cleanup' EXIT
 cleanup
 
 docker network create --driver bridge "$NET" >/dev/null
+TUN_NET=$NET
 GW=$(docker network inspect "$NET" -f '{{(index .IPAM.Config 0).Gateway}}')
 
 # A capture tool for the checks, never part of what ships.
@@ -61,20 +76,20 @@ start_gost() {
     sleep 1
 }
 
-# host_dns_mentions <seconds> <name> -> how many DNS packets on the box's own
-# network stack (every interface of the Docker host) carry <name>. Other DNS
-# traffic on the box is ignored, so only the canary counts.
+# host_dns_mentions <seconds> <name> -> how many plain UDP DNS packets on the
+# box's own network stack (every interface of the Docker host) carry <name>.
+# Other DNS traffic on the box is ignored, so only the canary counts.
 host_dns_mentions() {
     local secs=$1 name=$2
     docker run --rm --network=host --cap-drop ALL --cap-add NET_RAW --cap-add NET_ADMIN "$P-tcpdump-img" \
-        timeout "$secs" tcpdump -n -i any -l -A "udp port 53 or tcp port 53" 2>/dev/null | grep -c "${name%%.*}" || true
+        timeout "$secs" tcpdump -n -i any -l -A "udp port 53" 2>/dev/null | grep -c "${name%%.*}" || true
 }
 
 start_pair() { # kind auth port  (auth is "user:pass@", percent-encoded, or "-" for none)
     local kind=$1 auth=$2 port=$3 d
     [ "$auth" = - ] && auth=""
     docker rm -fv "$P-earner" "$P-tun" >/dev/null 2>&1 || true
-    docker create --name "$P-tun" --network "$NET" --init --cap-drop ALL --cap-add NET_ADMIN \
+    docker create --name "$P-tun" --network "$TUN_NET" --init --cap-drop ALL --cap-add NET_ADMIN \
         --device /dev/net/tun --security-opt no-new-privileges:true --read-only --tmpfs /run:size=1m \
         -v /run/cashpilot-secret --sysctl net.ipv6.conf.all.disable_ipv6=1 \
         --sysctl net.ipv6.conf.default.disable_ipv6=1 --sysctl net.ipv4.conf.all.route_localnet=1 \
@@ -181,11 +196,12 @@ for variant in "socks5 u1:p%40ss@ 1080" \
 done
 
 # e. DNS canary, on the last variant's settings (plain HTTP CONNECT, the case
-# with no UDP at all). The canary must not appear anywhere on the box's own
-# network stack. Only lookups are made: tun2proxy answers them inside the
-# tunnel (virtual DNS) and hands the name to the proxy when a connection is
-# opened, so the proxy resolving a name is the intended path. Here the proxy
-# runs on this same box, so a connection would put its lookup on the capture.
+# with no UDP at all). tun2proxy sends every lookup through the proxy as DNS
+# over TCP (--dns over-tcp), so the canary must never appear as a plain UDP
+# lookup on the box's own network stack, which is the way a lookup that left
+# from the box itself would go. The proxy runs on this same box, so its own
+# TCP lookup on the earner's behalf is on the box too; that one is the
+# intended path, and the capture leaves TCP out.
 start_gost
 start_pair http - 8081
 canary="leak-$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n').example.com"
@@ -198,6 +214,109 @@ wait $cap
 n=$(cat /tmp/cpmp-host-dns.$$)
 rm -f /tmp/cpmp-host-dns.$$
 [ "$n" = 0 ] && pass "e: the canary name appears in 0 DNS packets on the box's own stack" || fail "e: the canary name appears in $n DNS packets on the box's own stack"
+
+# f. A name the proxy could resolve to its own LAN. The target is a plain HTTP
+# server on the proxy's network, named through nip.io (a public name that
+# resolves to the address written in it). Resolved by the proxy, as tun2proxy's
+# virtual DNS did, the name reaches the server; resolved inside the tunnel, the
+# earner gets the private address and the tunnel drops it.
+docker run -d --name "$P-lan" --network "$NET" "$ALPINE" \
+    sh -c 'while true; do printf "HTTP/1.0 200 OK\r\n\r\ncpmp-lan-secret" | nc -l -p 80; done' >/dev/null
+LAN_IP=$(docker inspect "$P-lan" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
+LAN_NAME="$(printf %s "$LAN_IP" | tr . -).nip.io"
+reaches_lan_name() { earner curl -s -m 6 "http://$LAN_NAME/" 2>/dev/null | grep -q cpmp-lan-secret; }
+for variant in "socks5 - 1081" "http - 8081"; do
+    set -- $variant
+    start_gost
+    start_pair "$1" "$2" "$3"
+    if reaches_lan_name; then
+        fail "$1:$3 f: $LAN_NAME reached the proxy's own network"
+    else
+        pass "$1:$3 f: $LAN_NAME (a name for $LAN_IP) does not reach the proxy's own network"
+    fi
+done
+# Its control: the same earner, with the tunnel's address rules gone but its
+# route still into the tunnel, reaches the server through the proxy.
+docker exec "$P-tun" sh -c 'nft flush chain inet cashpilot out && nft add rule inet cashpilot out accept'
+if reaches_lan_name; then pass "control: the name check sees $LAN_NAME through the proxy once the tunnel allows it"; else fail "control: the name check could not reach $LAN_NAME even with the tunnel open"; fi
+
+# g. A tailnet address local to the namespace. On a Tailscale tunnel the node's
+# own 100.x address is local, so the earner's connection to it goes over
+# loopback, past the rules on tailscale0. Simulated here on a SOCKS tunnel:
+# an address in 100.64.0.0/10 on lo, a listener on it in the namespace.
+start_gost
+start_pair socks5 - 1081
+docker exec "$P-tun" ip addr add 100.101.0.1/32 dev lo
+docker run -d --name "$P-peer" --network "container:$P-tun" --cap-drop ALL "$ALPINE" \
+    sh -c 'while true; do printf "HTTP/1.0 200 OK\r\n\r\ncpmp-peerapi" | nc -l -s 100.101.0.1 -p 9999; done' >/dev/null
+sleep 1
+reaches_peer() { earner curl -s -m 4 http://100.101.0.1:9999/ 2>/dev/null | grep -q cpmp-peerapi; }
+if reaches_peer; then fail "g: the earner reached 100.101.0.1 on loopback"; else pass "g: the earner cannot reach a 100.64.0.0/10 address on loopback"; fi
+docker exec "$P-tun" sh -c 'nft -a list chain inet cashpilot out | sed -n "s/.*100.64.0.0\/10 drop # handle \([0-9]*\)/\1/p" | xargs -I{} nft delete rule inet cashpilot out handle {}'
+if reaches_peer; then pass "control: the loopback check reaches 100.101.0.1 once its rule is gone"; else fail "control: the loopback check could not reach 100.101.0.1 even without its rule"; fi
+docker rm -f "$P-peer" >/dev/null
+
+# h. The earner's own session to the proxy, with no password (the 1081 and
+# 8081 listeners stand in for a proxy that allowlists the box's IP), asking for
+# the proxy's own network. Only the tunnel's own sockets may reach the proxy.
+earner_reaches_lan_via_proxy() {
+    earner curl -s -m 6 -x "$1" "http://$LAN_IP/" 2>/dev/null | grep -q cpmp-lan-secret
+}
+for variant in "socks5 - 1081 socks5h" "http - 8081 http"; do
+    set -- $variant
+    start_gost
+    start_pair "$1" "$2" "$3"
+    if earner_reaches_lan_via_proxy "$4://$GOST_IP:$3"; then
+        fail "$1:$3 h: the earner reached $LAN_IP through its own session to the proxy"
+    else
+        pass "$1:$3 h: the earner cannot open its own session to the proxy"
+    fi
+    if earner curl -fsS -m 10 -o /dev/null https://api.ipify.org; then
+        pass "$1:$3 h: the earner still reaches the internet through the tunnel"
+    else
+        fail "$1:$3 h: the earner lost the tunnel"
+    fi
+done
+# Its control: the old rule, any socket in the namespace to the proxy.
+docker exec "$P-tun" nft insert rule inet cashpilot out oifname eth0 ip daddr "$GOST_IP" tcp dport 8081 accept
+if earner_reaches_lan_via_proxy "http://$GOST_IP:8081"; then pass "control: the session check reaches $LAN_IP once any socket may reach the proxy"; else fail "control: the session check could not reach $LAN_IP even with the old rule"; fi
+docker rm -f "$P-lan" >/dev/null
+
+# i. A proxy at a 100.64.0.0/10 address, on a network of that range.
+docker network create --driver bridge --subnet 100.88.0.0/24 "$NET-cgnat" >/dev/null
+docker rm -f "$P-gost" >/dev/null 2>&1 || true
+docker run -d --name "$P-gost" --network "$NET-cgnat" "$GOST" -L "socks5://:1081" >/dev/null
+sleep 1
+saved_ip=$GOST_IP
+GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET-cgnat\").IPAddress}}")
+TUN_NET=$NET-cgnat
+start_pair socks5 - 1081
+if earner curl -fsS -m 10 -o /dev/null https://api.ipify.org; then
+    pass "i: a proxy at $GOST_IP carries the earner"
+else
+    fail "i: a proxy at $GOST_IP does not carry the earner"
+    docker logs "$P-tun" 2>&1 | tail -5
+fi
+TUN_NET=$NET
+GOST_IP=$saved_ip
+
+# j. An HTTP proxy that allows CONNECT to port 443 only.
+docker rm -f "$P-gost" >/dev/null 2>&1 || true
+docker run -d --name "$P-gost" --network "$NET" "$ALPINE" sh -c \
+    'apk add -q --no-cache tinyproxy >/dev/null && printf "Port 8081\nListen 0.0.0.0\nTimeout 60\nConnectPort 443\n" >/tmp/t.conf && exec tinyproxy -d -c /tmp/t.conf' >/dev/null
+for _ in $(seq 1 30); do docker logs "$P-gost" 2>&1 | grep -qi "listening\|accepting" && break; sleep 1; done
+GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
+start_pair http - 8081
+if earner curl -fsS -m 10 -o /dev/null https://api.ipify.org; then
+    pass "j: a proxy that refuses port 53 still carries the earner"
+else
+    fail "j: a proxy that refuses port 53 does not carry the earner"
+fi
+if docker logs "$P-tun" 2>&1 | grep -q "refuses DNS over TCP"; then pass "j: the tunnel log says names went back to the proxy"; else fail "j: the tunnel log does not say names went back to the proxy"; fi
+start_gost
+GOST_IP=$(docker inspect "$P-gost" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
+start_pair http - 8081
+if docker logs "$P-tun" 2>&1 | grep -q "refuses DNS over TCP"; then fail "j: control: the tunnel left DNS over TCP on a proxy that allows it"; else pass "j: control: a proxy that allows port 53 keeps DNS over TCP"; fi
 
 # Positive controls: the same checks against a namespace opened on purpose.
 open_namespace

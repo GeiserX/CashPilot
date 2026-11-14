@@ -47,10 +47,28 @@ socks5 | http)
     case "$PROXY_IP" in *[!0-9.]* | "") die "proxy_ip is not an IPv4 address" ;; esac
     case "$PROXY_PORT" in *[!0-9]* | "") die "proxy_port is not a number" ;; esac
     TUN=tun0
-    EGRESS_RULE="oifname \"$DEV\" ip daddr $PROXY_IP tcp dport $PROXY_PORT accept"
-    # A literal private or tailnet address sent into the tunnel would ask the
-    # proxy to connect there, which reaches the proxy's own LAN. Host names are
-    # mapped into 198.18.0.0/15 by tun2proxy's virtual DNS and stay allowed.
+    # Only this container's own sockets (tun2proxy) may reach the proxy on the
+    # real interface. The earner shares the namespace but runs in its own
+    # cgroup: without this it could open its own session to the proxy and ask
+    # for the proxy host's loopback or LAN, past tun0 and TUN_DENY. That works
+    # with no password on a proxy that allowlists the box's IP. The rule names
+    # this container's cgroup at every depth: the kernel counts the depth from
+    # the root of the container's cgroup namespace on some versions and from
+    # the host's root on others, and only the real depth can match.
+    PROXY_RULE="oifname \"$DEV\" ip daddr $PROXY_IP tcp dport $PROXY_PORT"
+    EGRESS_RULE="$PROXY_RULE accept"
+    if [ "$(stat -f -c %T /sys/fs/cgroup 2>/dev/null)" = cgroup2fs ]; then
+        CG=$(sed -n 's/^0:://p' /proc/self/cgroup | head -n 1)
+        CG_RULES=""
+        for level in 0 1 2 3 4 5 6 7 8 9 10 11 12; do
+            CG_RULES="$CG_RULES
+        $PROXY_RULE socket cgroupv2 level $level \"${CG#/}\" counter accept"
+        done
+    fi
+    # A private or tailnet address sent into the tunnel would ask the proxy to
+    # connect there, which reaches the proxy's own LAN. Names are resolved
+    # inside the tunnel (tun2proxy --dns over-tcp, below), so a name that
+    # resolves to such an address is dropped here too, by its real address.
     TUN_DENY="oifname \"$TUN\" ip daddr { 100.64.0.0/10, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } drop"
     ;;
 tailscale)
@@ -71,6 +89,7 @@ tailscale)
 esac
 
 # 1 and 2: close everything, then open the tunnel's own way out.
+load_rules() {
 cat >/run/cp-tunnel.nft <<EOF
 table inet cashpilot
 delete table inet cashpilot
@@ -90,6 +109,13 @@ table inet cashpilot {
     chain out {
         type filter hook output priority 0; policy drop;
         ip daddr 127.0.0.11 drop
+        # Before loopback: on a tailnet the node's own 100.x address is local, so
+        # a connection to it goes over lo and would reach tailscaled's PeerAPI
+        # as the node itself. Nothing in the tunnel needs it. Only on lo: a
+        # SOCKS5 or HTTP proxy may itself sit at a 100.x address, reached on
+        # the real interface by the egress rule below.
+        oifname "lo" ip daddr 100.64.0.0/10 drop
+        oifname "lo" ip6 daddr fd7a:115c:a1e0::/48 drop
         oifname "lo" accept
         ${TUN_DENY:-}
         oifname "$TUN" accept
@@ -102,7 +128,31 @@ table inet cashpilot {
     }
 }
 EOF
-nft -f /run/cp-tunnel.nft || die "could not load the firewall rules; refusing to start"
+nft -f /run/cp-tunnel.nft
+}
+
+if [ -n "${CG_RULES:-}" ]; then
+    EGRESS_RULE=$CG_RULES
+    # Proof that this kernel matches the rule: one connection attempt to the
+    # proxy from here must hit it. Without the proof a kernel that cannot match
+    # would leave the tunnel no way out at all. An nft that refuses the rule
+    # loads nothing (one transaction), and gets the older rule too.
+    cg_matches=
+    if load_rules; then
+        curl -s -m 2 -o /dev/null "http://$PROXY_IP:$PROXY_PORT/" 2>/dev/null || true
+        if nft list chain inet cashpilot out | grep -q 'socket cgroupv2 .*packets [1-9]'; then
+            cg_matches=1
+        fi
+    fi
+    if [ -z "$cg_matches" ]; then
+        echo "cp-tunnel: this kernel cannot tell the tunnel's own sockets from the earner's, so the earner can reach the proxy directly too" >&2
+        EGRESS_RULE="$PROXY_RULE accept"
+        load_rules || die "could not load the firewall rules; refusing to start"
+    fi
+else
+    [ "$KIND" = tailscale ] || echo "cp-tunnel: no cgroup v2 on this host, so the earner can reach the proxy directly too" >&2
+    load_rules || die "could not load the firewall rules; refusing to start"
+fi
 
 probe_until_ready() {
     i=0
@@ -174,10 +224,37 @@ else
     # takes the URL on the command line; that is visible inside this
     # container's own PID namespace, which the earner does not share.
     # At warn, so the log never names the sites the earner's sessions reach.
+    # --dns over-tcp: a lookup goes through the proxy as DNS over TCP to the
+    # resolver it was sent to, and the earner gets the real address back. With
+    # --dns virtual the proxy resolved the name itself, so a name that points
+    # at the proxy host's own LAN or loopback reached it past TUN_DENY.
     case "$(read_key proxy_scheme)" in socks5 | http) ;; *) die "proxy_scheme is not socks5 or http" ;; esac
-    tun2proxy-bin --tun tun0 --proxy "$(read_key proxy_scheme)://$(read_key proxy_auth)$PROXY_IP:$PROXY_PORT" \
-        --dns virtual --exit-on-fatal-error --verbosity warn &
-    TPID=$!
+    start_tun2proxy() {
+        tun2proxy-bin --tun tun0 --proxy "$(read_key proxy_scheme)://$(read_key proxy_auth)$PROXY_IP:$PROXY_PORT" \
+            --dns "$1" --exit-on-fatal-error --verbosity warn &
+        TPID=$!
+    }
+    start_tun2proxy over-tcp
+    # Many HTTP proxies allow CONNECT to port 443 only, so DNS over TCP to port
+    # 53 is refused while the proxy itself works. Then names go back to the
+    # proxy (--dns virtual), as before over-tcp, so the copies keep earning;
+    # the log says that names pointing at the proxy's own network are not
+    # filtered then. A proxy that is down does not count: the address check
+    # must pass first.
+    i=0
+    while [ "$i" -lt 15 ] && kill -0 "$TPID" 2>/dev/null; do
+        i=$((i + 1))
+        timeout 6 getent hosts api.ipify.org >/dev/null 2>&1 && break
+        if curl -ks -m 6 -o /dev/null https://1.1.1.1/ 2>/dev/null; then
+            echo "cp-tunnel: the proxy refuses DNS over TCP (port 53), so names are resolved by the proxy instead. A name that points at the proxy's own network then reaches it; allow TCP 53 on the proxy to close that" >&2
+            kill "$TPID" 2>/dev/null
+            wait "$TPID" 2>/dev/null || true
+            ip link set tun0 up 2>/dev/null || true
+            start_tun2proxy virtual
+            break
+        fi
+        sleep 1
+    done
 fi
 
 # 4: ready only when traffic really leaves through the tunnel.

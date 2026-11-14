@@ -776,8 +776,9 @@ def reattach(client: Any, net: Any) -> list[str]:
         try:
             net.disconnect(c, force=True)
             net.connect(c)
-            # A fence-gated one is started by the guard alone, after all its checks.
-            if "network" in error and "not found" in error and not _is_gated(c):
+            # A fence-gated one is started by the guard alone, after all its checks;
+            # one that must not run from this box's own IP is left stopped.
+            if "network" in error and "not found" in error and not _is_gated(c) and _route_allows(client, c):
                 c.start()
             moved.append(c.name)
         except Exception as exc:  # noqa: BLE001 - logged; the next check tries again
@@ -785,6 +786,25 @@ def reattach(client: Any, net: Any) -> list[str]:
     if moved:
         logger.info("Reattached %s to the recreated %s network", ", ".join(moved), NETWORK_NAME)
     return moved
+
+
+def _route_allows(client: Any, container: Any) -> bool:
+    """Whether route_gate lets this earner start from the box's own IP, as a Start would (orchestrator)."""
+    from app import route_gate
+    from app.constants import LABEL_SERVICE
+
+    orchestrator = _orchestrator()
+    if orchestrator.is_proxied(container):
+        # A tunnel is what keeps a routed earner off this IP; deploy_raw strips
+        # these labels from anything that does not join one (direct_problem).
+        return True
+    slug = str((getattr(container, "labels", None) or {}).get(LABEL_SERVICE) or "")
+    try:
+        route_gate.check(slug, orchestrator._network_mode(container), client)
+    except route_gate.RouteRefused as exc:
+        logger.warning("Left %s stopped on the recreated %s network: %s", container.name, NETWORK_NAME, exc)
+        return False
+    return True
 
 
 def _is_gated(container: Any) -> bool:
@@ -1233,6 +1253,8 @@ def guard() -> dict[str, str]:
                 running = c.status == "running" and c.name not in stopped_now
                 problem = (
                     fence
+                    # CASHPILOT_PROXIED_ONLY: a gated node runs from the box's own IP.
+                    or orch.direct_problem(c)
                     or (FAILED_DEPLOY if c.name in failed else None)
                     or orch.gated_spec_problem(c, mode)
                     or (None if deploying else orch.identity_problem(c))

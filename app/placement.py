@@ -18,6 +18,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app import proxies
+
 
 def _json(raw: Any, fallback: Any) -> Any:
     if isinstance(raw, list | dict):
@@ -105,6 +107,20 @@ def reported(workers: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "status": str(c.get("status") or "unknown"),
                     }
                 )
+        # A service routed through a proxy from its deploy runs as a proxied
+        # copy only (app/route_gate.py); it runs on this worker all the same.
+        for e in proxies.routed_entries(w):
+            out.append(
+                {
+                    "slug": str(e.get("slug")),
+                    "worker_id": w.get("id"),
+                    "worker": w.get("name") or str(w.get("id")),
+                    "online": online,
+                    "android": False,
+                    "status": str(e.get("status") or "unknown"),
+                    "routed": True,
+                }
+            )
     return out
 
 

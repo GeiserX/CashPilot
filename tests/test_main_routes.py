@@ -607,6 +607,7 @@ class TestApiServices:
             _auth_owner(),
             patch("app.main.catalog.get_service", return_value=svc),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         ):
             resp = client.get("/api/services/hg")
@@ -620,6 +621,7 @@ class TestApiServices:
             _auth_owner(),
             patch("app.main.catalog.get_service", return_value=hg),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         ):
             assert client.get("/api/services/honeygain").json()["has_collector"] is True
@@ -628,6 +630,7 @@ class TestApiServices:
             _auth_owner(),
             patch("app.main.catalog.get_service", return_value=nocol),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         ):
             assert client.get("/api/services/nodle").json()["has_collector"] is False
@@ -655,6 +658,7 @@ class TestApiServices:
             _auth_owner(),
             patch("app.main.catalog.get_services", return_value=svcs),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         ):
             resp = client.get("/api/services/available")
@@ -662,6 +666,28 @@ class TestApiServices:
             data = resp.json()
             assert len(data) == 1
             assert data[0]["deployed"] is False
+
+    def test_api_services_available_carries_the_route_box(self, client):
+        """The setup wizard's Route box needs what the detail page's gets: why not, and where it is routed."""
+        svcs = [
+            {"slug": "hg", "name": "HG", "status": "active", "docker": {"image": "test"}},
+            {"slug": "st", "name": "ST", "status": "active", "docker": {"image": "x", "ports": ["28967:28967"]}},
+        ]
+        records = [
+            {"slug": "hg", "worker_id": 4, "spec": {"route": {"proxy_id": 3}}},
+            {"slug": "hg", "worker_id": 5, "spec": {}},
+            {"slug": "hg", "worker_id": 6, "spec": None},
+        ]
+        with (
+            _auth_owner(),
+            patch("app.main.catalog.get_services", return_value=svcs),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=records),
+            patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[]),
+        ):
+            data = {s["slug"]: s for s in client.get("/api/services/available").json()}
+        assert data["hg"]["route_refusal"] is None and data["hg"]["routes"] == {"4": 3}
+        assert "publishes a port" in data["st"]["route_refusal"] and data["st"]["routes"] == {}
 
     def test_api_services_available_skips_broken(self, client):
         svcs = [
@@ -672,6 +698,7 @@ class TestApiServices:
             _auth_owner(),
             patch("app.main.catalog.get_services", return_value=svcs),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         ):
             resp = client.get("/api/services/available")
