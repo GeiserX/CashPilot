@@ -120,6 +120,11 @@ jobs:
       - name: Step-up prompt queue
         run: node scripts/step_up_prompt_check.mjs
 
+      # Device ids reach the page masked, a node-reported one says so, and a
+      # deploy that would put one id on a second box asks once and never loops.
+      - name: Device ids
+        run: node scripts/identity_view_check.mjs
+
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the
       # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`

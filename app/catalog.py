@@ -289,6 +289,12 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
                 if isinstance(item, dict) and "per_device" in item and not isinstance(item["per_device"], bool):
                     errors.append(f"{path.name}: docker.env[{i}].per_device must be a boolean")
+                if isinstance(item, dict) and "identifier" in item and not isinstance(item["identifier"], bool):
+                    errors.append(f"{path.name}: docker.env[{i}].identifier must be a boolean")
+                if isinstance(item, dict) and item.get("secret") and (item.get("identifier") or item.get("per_device")):
+                    # The identity ledger keeps these after a removal and shows
+                    # them to the owner; a secret must never be one of them.
+                    errors.append(f"{path.name}: docker.env[{i}] is secret, so it cannot be an identifier")
         signals = docker.get("health_signals")
         if isinstance(signals, list):
             for i, item in enumerate(signals):
@@ -581,6 +587,26 @@ def device_id_masks(slug: str | None = None) -> tuple[list[re.Pattern[str]], lis
                 )
                 ids.append(_FALLBACK_ID_MASK)
     return links, ids
+
+
+def identity_keys(svc: dict[str, Any] | None) -> dict[str, str]:
+    """The env keys whose values name this device to the provider, with their labels.
+
+    A key marked ``per_device`` (the id the provider knows the device by) or
+    ``identifier`` (a device name or id the user may want back later), and never
+    a secret one: the identity ledger keeps these values after a removal. The
+    loader refuses a secret identifier; the check here is the second line.
+    """
+    docker_conf = (svc or {}).get("docker") or {}
+    keys: dict[str, str] = {}
+    for var in docker_conf.get("env") or []:
+        if not isinstance(var, dict) or var.get("secret"):
+            continue
+        if var.get("per_device") is True or var.get("identifier") is True:
+            key = str(var.get("key") or "")
+            if key:
+                keys[key] = str(var.get("label") or key)
+    return keys
 
 
 def device_link_step(svc: dict[str, Any], env: dict[str, Any]) -> dict[str, str] | None:

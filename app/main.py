@@ -3890,6 +3890,9 @@ class DeployRequest(BaseModel):
     # the image is not the catalog's on a service that keeps a wallet or node
     # identity (app/step_up.py); never stored, never sent to a worker.
     step_up_password: str | None = None
+    # The owner saw that a device id in this deploy already runs on another
+    # box and deploys anyway (see _refuse_shared_device_ids).
+    allow_shared_identity: bool = False
 
 
 # repository[:tag][@sha256:digest]; see custom_services.IMAGE_REF.
@@ -4265,6 +4268,9 @@ async def _deploy(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug} copy {n}: {exc}") from exc
 
+    if not body.allow_shared_identity:
+        await _refuse_shared_device_ids(slug, svc, merged_env, worker_id)
+
     # A service that keeps a wallet or node identity runs as the catalog says,
     # or with the owner's password now, not just a session: whatever runs in its
     # container can take the wallet. The worker checks the approval this
@@ -4295,6 +4301,7 @@ async def _deploy(
     else:
         spec.pop("instances", None)
     await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
+    await _record_deploy_identities(slug, worker_id, spec, instances, docker_conf)
     # Each copy's start is recorded as its deploy is attempted: one that fails
     # must not leave an older stop as its latest action, which would hide its
     # crash, and a copy the deploy never reaches keeps the stop it had.
@@ -4325,6 +4332,63 @@ async def _deploy(
 
 
 _is_port_range = catalog.is_port_range
+
+
+async def _refuse_shared_device_ids(slug: str, svc: dict[str, Any], env: dict[str, Any], worker_id: int) -> None:
+    """Refuse, until the owner confirms, a device id that already runs on another box.
+
+    Only the ``per_device`` keys: the id the provider knows one device by. Two
+    boxes on one id look to the provider like one device on two connections,
+    which it merges or bans. Answers 409 ``identity_in_use``; the dashboard
+    asks once and sends the deploy again with ``allow_shared_identity``. The
+    message names the boxes and the field, never the id.
+    """
+    keys = [
+        var["key"]
+        for var in (svc.get("docker") or {}).get("env") or []
+        if isinstance(var, dict) and var.get("per_device") is True and not var.get("secret")
+    ]
+    for key in keys:
+        value = str(env.get(key) or "").strip()
+        if not value:
+            continue
+        others = await database.identity_in_use(slug, key, value, except_worker=worker_id)
+        if not others:
+            continue
+        names = await _worker_names(others)
+        label = catalog.identity_keys(svc).get(key, key)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "identity_in_use",
+                "message": f"The {label} for {svc.get('name') or slug} already runs on {', '.join(names)}. "
+                "Two boxes on one device id look to the provider like one device, which it may merge or ban.",
+            },
+        )
+
+
+async def _worker_names(worker_ids: list[int]) -> list[str]:
+    """Display names of these workers; one that was deleted reads "a removed worker (#id)"."""
+    known = {w["id"]: str(w.get("name") or f"worker {w['id']}") for w in await database.list_workers()}
+    return [known.get(wid, f"a removed worker (#{wid})") for wid in worker_ids]
+
+
+async def _record_deploy_identities(
+    slug: str, worker_id: int, spec: dict[str, Any], instances: int, docker_conf: dict[str, Any]
+) -> None:
+    """Put the device names and ids this deploy runs with in the identity ledger.
+
+    Each copy's own values, from the same _instance_spec the copies are deployed
+    with, so the ledger shows what the provider sees. Bookkeeping: a failure is
+    logged and never fails a deploy that already happened.
+    """
+    try:
+        values: dict[str, dict[str, Any]] = {"1": dict(spec.get("env") or {})}
+        for n in range(2, instances + 1):
+            values[str(n)] = dict(_instance_spec(spec, n, docker_conf).get("env") or {})
+        await database.record_identities(slug, worker_id, values)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
 
 
 async def _step_up_critical(
@@ -5432,6 +5496,10 @@ async def api_add_proxied_copy(
             if limit == 1
             else "Copies on one IP share its bandwidth, and the provider may limit devices per IP."
         )
+    try:
+        await database.record_identities(slug, worker_id, {f"p{int(proxy_id)}": earner["env"]}, scope="given")
+    except Exception:  # noqa: BLE001 - bookkeeping never fails a copy that runs
+        logger.exception("Could not record the device ids of the %s copy through proxy %s", slug, proxy_id)
     # The copy is a new device: add it to the account as a deploy does, or show the step.
     if step := catalog.device_link_step(svc, earner["env"]):
         registered = await _register_device(slug, step["id"], earner["env"])
@@ -7760,6 +7828,7 @@ async def _read_node_figures(slug: str, unreached: list[str] | None = None) -> l
         for r in found:
             if r.get("node"):
                 _node_reader[str(r["node"]).lower()] = names[worker_id]
+        await _record_node_identities(slug, worker_id, [r.get("node") for r in found])
         return found
 
     readings: list[dict[str, Any]] = []
@@ -7782,6 +7851,21 @@ async def _read_node_figures(slug: str, unreached: list[str] | None = None) -> l
                 reading.update(settled_net=net, settled_fees=fees)
             readings.append(reading)
     return [r for r in readings if r["node"]]
+
+
+async def _record_node_identities(slug: str, worker_id: int, nodes: list[Any]) -> None:
+    """Keep the node identities a worker reported in the identity ledger, marked as reported.
+
+    The value comes from inside the node (a hostile image says what it likes),
+    so only a plain token is kept, it is labelled as reported by the node in
+    the Identities list, and nothing ever offers it for reuse. Bookkeeping: a
+    failure is logged, never raised into the earnings read.
+    """
+    try:
+        for node in nodes:
+            await database.record_node_identity(slug, int(worker_id), str(node or ""))
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not record the %s node identities of worker %s", slug, worker_id, exc_info=True)
 
 
 async def _node_totals() -> dict[str, dict[str, Any]]:
@@ -9428,6 +9512,150 @@ async def api_audit(request: Request, limit: int = 100) -> list[dict[str, Any]]:
     """The newest owner-action audit rows (app/step_up.py), owner only."""
     _require_owner(request)
     return await database.get_audit_events(limit)
+
+
+# ---------------------------------------------------------------------------
+# Identity ledger (issue #740): the device names and ids CashPilot deployed with
+# ---------------------------------------------------------------------------
+
+
+def _require_owner_session(request: Request) -> dict[str, Any]:
+    """A signed-in owner, never an API key.
+
+    Device ids such as EarnApp's let whoever holds them claim the device, so
+    they are read only in the dashboard: the admin API key (uid 0) may sit in a
+    script or a dashboard tile, and the read-only key never gets here at all.
+    """
+    user = _require_owner(request)
+    uid = user.get("uid")
+    if not isinstance(uid, int) or uid == 0:
+        raise HTTPException(status_code=403, detail="Sign in to the dashboard as the owner to see device ids")
+    return user
+
+
+def _mask_identity(value: str) -> str:
+    """The last four characters, or nothing for a value too short to hide anything."""
+    return f"…{value[-4:]}" if len(value) > 6 else "…"
+
+
+def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str, dict[str, str]]) -> dict[str, Any]:
+    slug = row["slug"]
+    svc = catalog.get_service(slug) or {}
+    instance = str(row.get("instance") or "1")
+    if instance.startswith("p"):
+        copy = f"through proxy {instance[1:]}"
+    elif instance != "1":
+        copy = f"copy {instance}"
+    else:
+        copy = ""
+    label = "Node identity" if row.get("kind") == "node" else labels.get(slug, {}).get(row["name"], row["name"])
+    return {
+        "id": row["id"],
+        "slug": slug,
+        "service": svc.get("name") or slug,
+        "worker_id": row["worker_id"],
+        "worker": names.get(row["worker_id"], f"a removed worker (#{row['worker_id']})"),
+        "copy": copy,
+        "kind": row.get("kind") or "env",
+        "key": row["name"],
+        "label": label,
+        "masked": _mask_identity(row.get("value") or ""),
+        "readable": bool(row.get("value")),
+        "source": row.get("source") or "deploy",
+        "status": row.get("status") or "active",
+        "first_seen": row.get("first_seen"),
+        "last_seen": row.get("last_seen"),
+        "retired_at": row.get("retired_at"),
+    }
+
+
+async def _identity_context() -> tuple[dict[int, str], dict[str, dict[str, str]]]:
+    names = {w["id"]: str(w.get("name") or f"worker {w['id']}") for w in await database.list_workers()}
+    labels = {svc["slug"]: catalog.identity_keys(svc) for svc in catalog.get_services() if svc.get("slug")}
+    return names, labels
+
+
+@app.get("/api/identities")
+async def api_identities(request: Request) -> list[dict[str, Any]]:
+    """Every device name and id in the ledger, masked. Owner, signed in, only."""
+    _require_owner_session(request)
+    names, labels = await _identity_context()
+    return [_identity_view(r, names, labels) for r in await database.list_identities()]
+
+
+@app.post("/api/identities/{identity_id}/reveal")
+async def api_identity_reveal(request: Request, identity_id: int) -> dict[str, str]:
+    """One full value, for the owner's Show or Copy. Every reveal is an audit row first."""
+    user = _require_owner_session(request)
+    row = await database.get_identity(identity_id)
+    if not row or not row.get("value"):
+        raise HTTPException(status_code=404, detail="No such device id")
+    # Fail closed, like the fleet-key reveal: no audit row, no value.
+    await database.add_audit_event(
+        "identity_reveal",
+        f"{row['slug']}|{row['name']}|copy {row['instance']}",
+        "revealed",
+        actor=user,
+        worker_id=row["worker_id"],
+    )
+    return {"value": row["value"]}
+
+
+@app.delete("/api/identities/{identity_id}")
+async def api_identity_forget(request: Request, identity_id: int) -> dict[str, str]:
+    """Forget one retired device id. One a box still runs with cannot be forgotten."""
+    user = _require_owner_session(request)
+    row = await database.get_identity(identity_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="No such device id")
+    if row.get("status") != "retired" or not await database.delete_identity(identity_id):
+        raise HTTPException(status_code=409, detail="A box still runs with this id; remove the service there first")
+    await _audit(
+        "identity_forget",
+        f"{row['slug']}|{row['name']}|copy {row['instance']}",
+        "deleted",
+        actor=user,
+        worker_id=row["worker_id"],
+    )
+    return {"status": "deleted"}
+
+
+@app.get("/api/identities/reuse/{slug}")
+async def api_identity_reuse(
+    request: Request, slug: str, key: str = "", worker_id: int | None = None
+) -> list[dict[str, Any]]:
+    """The retired values of one field of ``slug`` the deploy form may offer again, masked.
+
+    Only values CashPilot itself deployed with (never a node-reported one), and
+    for each the boxes that run with it now (``in_use_on``), ``worker_id`` (the
+    box being deployed to) left out, so the form can warn before two boxes
+    share one device.
+    """
+    _require_owner_session(request)
+    svc = catalog.get_service(slug)
+    if not svc or key not in catalog.identity_keys(svc):
+        raise HTTPException(status_code=404, detail="This field keeps no device ids")
+    names, labels = await _identity_context()
+    seen: set[str] = set()
+    offers: list[dict[str, Any]] = []
+    for row in await database.list_identities():
+        if (row["slug"], row["name"], row["kind"], row["source"], row["status"]) != (
+            slug,
+            key,
+            "env",
+            "deploy",
+            "retired",
+        ):
+            continue
+        value = row.get("value") or ""
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        view = _identity_view(row, names, labels)
+        in_use = await database.identity_in_use(slug, key, value, except_worker=worker_id)
+        view["in_use_on"] = await _worker_names(in_use)
+        offers.append(view)
+    return offers
 
 
 # ---------------------------------------------------------------------------

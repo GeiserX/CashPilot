@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import re
 import sqlite3
 import time
 from collections.abc import Collection, Mapping, Sequence
@@ -33,7 +34,7 @@ except ImportError as exc:  # pragma: no cover - only after an aiosqlite upgrade
     ) from exc
 from cryptography.fernet import Fernet, InvalidToken
 
-from app import themes, usage
+from app import catalog, themes, usage
 from app.exchange_rates import HISTORY_DAYS, UNPRICED_BY_DESIGN
 
 _logger = logging.getLogger(__name__)
@@ -802,6 +803,38 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_audit_events_created
     ON audit_events (created_at);
+
+-- The identity ledger (issue #740): the device names and ids CashPilot deployed
+-- a service with, per box and per copy, kept after the service is removed so
+-- the owner can see them and reuse one. A row is `active` while that copy runs
+-- with it and `retired` once it is removed or redeployed with another value;
+-- nothing deletes a row except the owner. Only values the catalog marks
+-- `per_device` or `identifier` (never a secret) ever land here, and only from
+-- the spec CashPilot itself sent: never from a container's logs or files.
+-- `value_encrypted` is Fernet like every credential, which guards a leaked
+-- database file but not a compromised UI (the key sits in the same /data); the
+-- real control is that no secret is kept here and only the owner reads it.
+-- `instance` is the copy: '1' the service, '2'.. its extra copies, 'p<id>' the
+-- copy through proxy <id>. `kind` is 'env' (`name` is the env key); a later
+-- kind keeps the hashes of exported state backups here too (#741), so one
+-- ledger answers "which identities did this box ever have".
+CREATE TABLE IF NOT EXISTS device_identities (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug            TEXT    NOT NULL,
+    worker_id       INTEGER NOT NULL,
+    instance        TEXT    NOT NULL DEFAULT '1',
+    kind            TEXT    NOT NULL DEFAULT 'env',
+    name            TEXT    NOT NULL,
+    value_encrypted TEXT    NOT NULL,
+    source          TEXT    NOT NULL DEFAULT 'deploy',
+    status          TEXT    NOT NULL DEFAULT 'active',
+    first_seen      TEXT    NOT NULL DEFAULT (datetime('now')),
+    last_seen       TEXT    NOT NULL DEFAULT (datetime('now')),
+    retired_at      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_identities_slug
+    ON device_identities (slug, worker_id);
 """
 
 
@@ -1115,7 +1148,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 async def init_db() -> None:
@@ -2144,6 +2177,9 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
     """
     db = await _get_db()
     try:
+        # The device ids it ran with stay in the identity ledger as retired, so
+        # removing a service no longer forgets them (issue #740).
+        await _retire_identities(db, slug, worker_id)
         gone = True
         if worker_id is None:
             # Gone everywhere: each box's record goes with it, or those records
@@ -2323,6 +2359,7 @@ async def delete_proxied_copies_of(worker_id: int, slug: str) -> None:
     db = await _get_db()
     try:
         await db.execute("DELETE FROM proxied_copies WHERE worker_id = ? AND slug = ?", (worker_id, slug))
+        await _retire_identity_rows(db, slug, worker_id, proxied=True)
         await db.commit()
     finally:
         await db.close()
@@ -2335,6 +2372,7 @@ async def delete_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> bool:
             "DELETE FROM proxied_copies WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
             (proxy_id, worker_id, slug),
         )
+        await _retire_identity_rows(db, slug, worker_id, instances=[f"p{int(proxy_id)}"])
         await db.commit()
         return (cursor.rowcount or 0) > 0
     finally:
@@ -4724,5 +4762,303 @@ async def get_audit_events(limit: int = 100) -> list[dict[str, Any]]:
             (limit,),
         )
         return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+# --- Identity ledger (issue #740; table device_identities above) ---
+
+#: Longest identifier the ledger keeps. Device names and ids are short; a longer
+#: value is not one, and is left out rather than cut.
+IDENTITY_VALUE_MAX = 256
+
+
+def _identity_keys(slug: str) -> dict[str, str]:
+    """The env keys of ``slug`` the catalog marks as identifiers (``catalog.identity_keys``)."""
+    try:
+        return catalog.identity_keys(catalog.get_service(slug))
+    except Exception:  # noqa: BLE001 - a catalog problem must not break a removal
+        _logger.warning("Could not read the identifier keys of %s", slug, exc_info=True)
+        return {}
+
+
+def _identity_value(value: Any) -> str:
+    text = str(value if value is not None else "").strip()
+    return text if 0 < len(text) <= IDENTITY_VALUE_MAX else ""
+
+
+async def _active_identity_rows(db: Any, slug: str, worker_id: int) -> list[dict[str, Any]]:
+    cursor = await db.execute(
+        "SELECT id, instance, name, value_encrypted FROM device_identities "
+        "WHERE slug = ? AND worker_id = ? AND kind = 'env' AND status = 'active'",
+        (slug, worker_id),
+    )
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+async def record_identities(
+    slug: str,
+    worker_id: int,
+    values: Mapping[str, Mapping[str, Any]],
+    *,
+    scope: str = "copies",
+) -> None:
+    """Record the identifier values one worker now runs ``slug`` with.
+
+    ``values`` maps a copy (``instance``: "1", "2", .., "p<proxy id>") to its env;
+    only the keys the catalog marks as identifiers are kept. A copy whose value
+    changed gets a new active row and its old value is retired, not lost. With
+    ``scope="copies"`` (a deploy, which decides every on-box copy) an on-box copy
+    absent from ``values`` is retired too; ``scope="given"`` touches only the
+    copies named (a proxied copy).
+    """
+    keys = _identity_keys(slug)
+    if not keys:
+        return
+    wanted: dict[tuple[str, str], str] = {}
+    for instance, env in values.items():
+        for key in keys:
+            value = _identity_value((env or {}).get(key))
+            if value:
+                wanted[(str(instance), key)] = value
+    db = await _get_db()
+    try:
+        active = await _active_identity_rows(db, slug, worker_id)
+        current: dict[tuple[str, str], tuple[int, str]] = {}
+        for row in active:
+            current[(row["instance"], row["name"])] = (row["id"], decrypt_value(row["value_encrypted"]))
+        retire: list[int] = []
+        for (instance, key), (row_id, value) in current.items():
+            if key not in keys:
+                continue
+            in_scope = (instance in values) or (scope == "copies" and not instance.startswith("p"))
+            if in_scope and wanted.get((instance, key)) != value:
+                retire.append(row_id)
+        for row_id in retire:
+            await db.execute(
+                "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE id = ?",
+                (row_id,),
+            )
+        for (instance, key), value in wanted.items():
+            kept = current.get((instance, key))
+            if kept and kept[1] == value:
+                await db.execute("UPDATE device_identities SET last_seen = datetime('now') WHERE id = ?", (kept[0],))
+                continue
+            # The same value on the same copy before (a reuse): bring that row
+            # back instead of keeping two, so its first_seen stays the real one.
+            revived = await _find_identity_row(db, slug, worker_id, instance, key, value, status="retired")
+            if revived is not None:
+                await db.execute(
+                    "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now') "
+                    "WHERE id = ?",
+                    (revived,),
+                )
+                continue
+            await db.execute(
+                "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
+                "VALUES (?, ?, ?, 'env', ?, ?, 'deploy')",
+                (slug, worker_id, instance, key, encrypt_value(value)),
+            )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def _find_identity_row(
+    db: Any, slug: str, worker_id: int, instance: str, name: str, value: str, *, status: str
+) -> int | None:
+    cursor = await db.execute(
+        "SELECT id, value_encrypted FROM device_identities "
+        "WHERE slug = ? AND worker_id = ? AND instance = ? AND kind = 'env' AND name = ? AND status = ? "
+        "ORDER BY id DESC",
+        (slug, worker_id, instance, name, status),
+    )
+    for row in await cursor.fetchall():
+        if decrypt_value(row["value_encrypted"]) == value:
+            return int(row["id"])
+    return None
+
+
+async def _retire_identity_rows(
+    db: Any,
+    slug: str,
+    worker_id: int | None,
+    *,
+    proxied: bool = False,
+    instances: Collection[str] | None = None,
+) -> None:
+    """Retire the active rows of ``slug`` (on ``worker_id``, or everywhere when None).
+
+    The on-box copies by default, the proxied copies with ``proxied``, or just
+    the copies named in ``instances``.
+    """
+    sql = "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE slug = ? AND status = 'active'"
+    args: list[Any] = [slug]
+    if worker_id is not None:
+        sql += " AND worker_id = ?"
+        args.append(worker_id)
+    if instances is not None:
+        names = [str(i) for i in instances]
+        if not names:
+            return
+        sql += f" AND instance IN ({', '.join('?' for _ in names)})"
+        args.extend(names)
+    elif proxied:
+        sql += " AND instance LIKE 'p%'"
+    else:
+        sql += " AND instance NOT LIKE 'p%'"
+    await db.execute(sql, args)
+
+
+async def _retire_identities(db: Any, slug: str, worker_id: int | None) -> None:
+    """On removal: retire the on-box copies' rows, keeping what the deploy records hold.
+
+    A deployment recorded before the ledger existed has no row, only its spec.
+    Its identifier values go in as retired before that spec is deleted, so the
+    first removal after an upgrade does not forget them either.
+    """
+    keys = _identity_keys(slug)
+    if keys:
+        sql = "SELECT worker_id, spec_encrypted FROM deployment_specs WHERE slug = ?"
+        args: tuple[Any, ...] = (slug,)
+        if worker_id is not None:
+            sql += " AND worker_id = ?"
+            args = (slug, worker_id)
+        cursor = await db.execute(sql, args)
+        for row in await cursor.fetchall():
+            env = (_decode_spec(row["spec_encrypted"] or "", slug) or {}).get("env") or {}
+            if not isinstance(env, dict):
+                continue
+            for key in keys:
+                value = _identity_value(env.get(key))
+                if not value:
+                    continue
+                wid = int(row["worker_id"])
+                if await _find_identity_row(db, slug, wid, "1", key, value, status="active") is not None:
+                    continue
+                if await _find_identity_row(db, slug, wid, "1", key, value, status="retired") is not None:
+                    continue
+                await db.execute(
+                    "INSERT INTO device_identities "
+                    "(slug, worker_id, instance, kind, name, value_encrypted, source, status, retired_at) "
+                    "VALUES (?, ?, '1', 'env', ?, ?, 'deploy', 'retired', datetime('now'))",
+                    (slug, wid, key, encrypt_value(value)),
+                )
+    await _retire_identity_rows(db, slug, worker_id)
+
+
+async def list_identities() -> list[dict[str, Any]]:
+    """Every ledger row, newest first, with its value decrypted (``value``).
+
+    Owner-only data: the caller masks it. A row whose value cannot be decrypted
+    (the encryption key changed) comes back with ``value`` "".
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, slug, worker_id, instance, kind, name, value_encrypted, source, status, "
+            "first_seen, last_seen, retired_at FROM device_identities ORDER BY status, slug, worker_id, instance, id DESC"
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+    for row in rows:
+        row["value"] = decrypt_value(row.pop("value_encrypted") or "")
+    return rows
+
+
+async def get_identity(identity_id: int) -> dict[str, Any] | None:
+    for row in await list_identities():
+        if row["id"] == identity_id:
+            return row
+    return None
+
+
+async def delete_identity(identity_id: int) -> bool:
+    """Delete one retired row (the owner's "forget"). An active row is never deleted."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "DELETE FROM device_identities WHERE id = ? AND status = 'retired'",
+            (identity_id,),
+        )
+        await db.commit()
+        return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
+
+
+async def identity_in_use(slug: str, name: str, value: str, *, except_worker: int | None = None) -> list[int]:
+    """The workers that run ``slug`` with ``name`` = ``value`` now, other than ``except_worker``.
+
+    From the ledger's active rows (every copy, proxied ones too) and from the
+    deploy records (deployments from before the ledger). Workers that were
+    deleted still count from the ledger: CashPilot no longer hears from that
+    box, which does not mean it stopped.
+    """
+    value = _identity_value(value)
+    if not value:
+        return []
+    found: set[int] = set()
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT worker_id, value_encrypted FROM device_identities "
+            "WHERE slug = ? AND name = ? AND kind = 'env' AND status = 'active'",
+            (slug, name),
+        )
+        for row in await cursor.fetchall():
+            if decrypt_value(row["value_encrypted"]) == value:
+                found.add(int(row["worker_id"]))
+        cursor = await db.execute(
+            "SELECT worker_id, spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id IN (SELECT id FROM workers)",
+            (slug,),
+        )
+        for row in await cursor.fetchall():
+            env = (_decode_spec(row["spec_encrypted"] or "", slug) or {}).get("env") or {}
+            if isinstance(env, dict) and _identity_value(env.get(name)) == value:
+                found.add(int(row["worker_id"]))
+    finally:
+        await db.close()
+    found.discard(except_worker if except_worker is not None else -1)
+    return sorted(found)
+
+
+#: What a node identity a worker reports may look like to be kept: a plain
+#: token (Mysterium's 0x address is one). Anything else is left out.
+_NODE_IDENTITY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
+
+
+async def record_node_identity(slug: str, worker_id: int, value: str) -> bool:
+    """Keep one node identity a worker read from its node (``kind`` 'node', ``source`` 'node').
+
+    Returns False, keeping nothing, for a value that is not a plain token.
+    """
+    value = str(value or "").strip()
+    if not _NODE_IDENTITY.fullmatch(value):
+        return False
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, value_encrypted FROM device_identities "
+            "WHERE slug = ? AND worker_id = ? AND kind = 'node' ORDER BY id DESC",
+            (slug, worker_id),
+        )
+        for row in await cursor.fetchall():
+            if decrypt_value(row["value_encrypted"]).lower() == value.lower():
+                await db.execute(
+                    "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now') "
+                    "WHERE id = ?",
+                    (row["id"],),
+                )
+                break
+        else:
+            await db.execute(
+                "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
+                "VALUES (?, ?, '1', 'node', 'node identity', ?, 'node')",
+                (slug, worker_id, encrypt_value(value)),
+            )
+        await db.commit()
+        return True
     finally:
         await db.close()
