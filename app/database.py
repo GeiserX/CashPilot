@@ -3039,6 +3039,18 @@ async def mark_worker_offline_if_unchanged(worker_id: int, expected_heartbeat: s
 async def delete_worker(worker_id: int) -> None:
     db = await _get_db()
     try:
+        # The device ids it ran with become retired, not stuck as "in use" on a
+        # box that is gone: they stay in the list and the deploy form offers
+        # them for the replacement box (issue #740). A deploy record from before
+        # the ledger is kept as retired first, as a removal does.
+        cursor = await db.execute("SELECT DISTINCT slug FROM deployment_specs WHERE worker_id = ?", (worker_id,))
+        for (slug,) in await cursor.fetchall():
+            await _retire_identities(db, slug, worker_id)
+        await db.execute(
+            "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+            "WHERE worker_id = ? AND status = 'active'",
+            (worker_id,),
+        )
         await db.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
         # Its proxied copies go with it; a row left behind could never be removed
         # through a worker that no longer exists, and would block deleting its proxy.
@@ -4975,11 +4987,16 @@ async def get_identity(identity_id: int) -> dict[str, Any] | None:
 
 
 async def delete_identity(identity_id: int) -> bool:
-    """Delete one retired row (the owner's "forget"). An active row is never deleted."""
+    """Delete one row (the owner's "forget"): a retired one, or one a node reported.
+
+    An active row CashPilot deployed with is never deleted: the shared-id check
+    reads it. A node-reported row is only shown, so the owner may drop it while
+    its node runs; the next read brings it back if the node still says so.
+    """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "DELETE FROM device_identities WHERE id = ? AND status = 'retired'",
+            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node')",
             (identity_id,),
         )
         await db.commit()
@@ -4992,9 +5009,9 @@ async def identity_in_use(slug: str, name: str, value: str, *, except_worker: in
     """The workers that run ``slug`` with ``name`` = ``value`` now, other than ``except_worker``.
 
     From the ledger's active rows (every copy, proxied ones too) and from the
-    deploy records (deployments from before the ledger). Workers that were
-    deleted still count from the ledger: CashPilot no longer hears from that
-    box, which does not mean it stopped.
+    deploy records (deployments from before the ledger). Deleting a worker
+    retires its rows, so a deleted box no longer counts: the owner said it is
+    gone, and its ids are what the replacement box should reuse.
     """
     value = _identity_value(value)
     if not value:
@@ -5028,37 +5045,97 @@ async def identity_in_use(slug: str, name: str, value: str, *, except_worker: in
 #: token (Mysterium's 0x address is one). Anything else is left out.
 _NODE_IDENTITY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 
+#: Highest copy number a node row may carry. The value and the copy come from
+#: the worker, and through it from inside the node container, so both are capped.
+NODE_IDENTITY_MAX_COPY = 32
 
-async def record_node_identity(slug: str, worker_id: int, value: str) -> bool:
-    """Keep one node identity a worker read from its node (``kind`` 'node', ``source`` 'node').
+#: Most retired node rows kept per service and box. A node whose identity keeps
+#: changing (a hostile image can report a new one every read) pushes out the
+#: oldest retired ones instead of growing the table: these rows are only shown,
+#: never offered for reuse.
+NODE_IDENTITY_KEEP_RETIRED = 4
 
-    Returns False, keeping nothing, for a value that is not a plain token.
+
+async def record_node_identity(slug: str, worker_id: int, value: str, instance: Any = 1) -> bool:
+    """Keep the node identity one copy reported (``kind`` 'node', ``source`` 'node').
+
+    One active row per (service, box, copy): a new value retires the copy's
+    previous one, and at most ``NODE_IDENTITY_KEEP_RETIRED`` retired rows stay
+    per service and box. Returns False, keeping nothing, for a value that is not
+    a plain token or a copy number out of range.
     """
     value = str(value or "").strip()
     if not _NODE_IDENTITY.fullmatch(value):
         return False
+    try:
+        copy = int(instance)
+    except (TypeError, ValueError):
+        return False
+    if not 1 <= copy <= NODE_IDENTITY_MAX_COPY:
+        return False
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT id, value_encrypted FROM device_identities "
-            "WHERE slug = ? AND worker_id = ? AND kind = 'node' ORDER BY id DESC",
-            (slug, worker_id),
+            "SELECT id, value_encrypted, status FROM device_identities "
+            "WHERE slug = ? AND worker_id = ? AND instance = ? AND kind = 'node' ORDER BY id DESC",
+            (slug, worker_id, str(copy)),
         )
-        for row in await cursor.fetchall():
-            if decrypt_value(row["value_encrypted"]).lower() == value.lower():
-                await db.execute(
-                    "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now') "
-                    "WHERE id = ?",
-                    (row["id"],),
-                )
-                break
+        rows = await cursor.fetchall()
+        match = next((r for r in rows if decrypt_value(r["value_encrypted"]).lower() == value.lower()), None)
+        await db.execute(
+            "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+            "WHERE slug = ? AND worker_id = ? AND instance = ? AND kind = 'node' AND status = 'active' AND id != ?",
+            (slug, worker_id, str(copy), match["id"] if match else -1),
+        )
+        if match is not None:
+            await db.execute(
+                "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now') "
+                "WHERE id = ?",
+                (match["id"],),
+            )
         else:
             await db.execute(
                 "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
-                "VALUES (?, ?, '1', 'node', 'node identity', ?, 'node')",
-                (slug, worker_id, encrypt_value(value)),
+                "VALUES (?, ?, ?, 'node', 'node identity', ?, 'node')",
+                (slug, worker_id, str(copy), encrypt_value(value)),
             )
+        await db.execute(
+            "DELETE FROM device_identities WHERE id IN ("
+            "SELECT id FROM device_identities WHERE slug = ? AND worker_id = ? AND kind = 'node' "
+            "AND status = 'retired' ORDER BY retired_at DESC, id DESC LIMIT -1 OFFSET ?)",
+            (slug, worker_id, NODE_IDENTITY_KEEP_RETIRED),
+        )
         await db.commit()
         return True
     finally:
         await db.close()
+
+
+async def identity_backfill_specs() -> list[dict[str, Any]]:
+    """The deploy records the identity ledger has no active row for, decoded.
+
+    One dict per (slug, worker) with ``slug``, ``worker_id``, ``spec`` and
+    ``instances``: the active row instances the ledger already holds for that
+    pair (empty for a deployment from before the ledger). Only existing workers.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT slug, worker_id, spec_encrypted FROM deployment_specs WHERE worker_id IN (SELECT id FROM workers)"
+        )
+        specs = await cursor.fetchall()
+        cursor = await db.execute(
+            "SELECT slug, worker_id, instance FROM device_identities WHERE kind = 'env' AND status = 'active'"
+        )
+        active: dict[tuple[str, int], set[str]] = {}
+        for row in await cursor.fetchall():
+            active.setdefault((row["slug"], int(row["worker_id"])), set()).add(str(row["instance"]))
+    finally:
+        await db.close()
+    out: list[dict[str, Any]] = []
+    for row in specs:
+        spec = _decode_spec(row["spec_encrypted"] or "", row["slug"])
+        if spec:
+            key = (row["slug"], int(row["worker_id"]))
+            out.append({"slug": key[0], "worker_id": key[1], "spec": spec, "instances": active.get(key, set())})
+    return out

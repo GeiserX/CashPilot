@@ -2707,6 +2707,8 @@ async def lifespan(app: FastAPI):
 
     catalog.load_services()
     catalog.register_sighup()
+    # Deployments from before the identity ledger (issue #740) show in it too.
+    await _backfill_identities()
 
     def _on_job_event(event):
         logger.error("Scheduler job %s failed or missed", event.job_id, exc_info=getattr(event, "exception", None))
@@ -4389,6 +4391,48 @@ async def _record_deploy_identities(
         await database.record_identities(slug, worker_id, values)
     except Exception:  # noqa: BLE001
         logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
+
+
+async def _backfill_identities() -> None:
+    """Put the device ids of deployments from before the ledger in it, once.
+
+    Run at startup. A deploy record with no active ledger row gets its copies
+    recorded as a deploy would; one that has rows is left alone, so this is
+    idempotent and never overrides what a deploy recorded. Proxied copies with
+    no row are recorded from the same derivation their deploy used.
+    """
+    try:
+        targets = await database.identity_backfill_specs()
+    except Exception:  # noqa: BLE001 - bookkeeping never stops a start
+        logger.exception("Could not read the deploy records for the identity ledger")
+        return
+    proxied: list[dict[str, Any]] = []
+    try:
+        proxied = await database.list_proxied_copies()
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not read the proxied copies for the identity ledger")
+    for target in targets:
+        slug, worker_id, spec, have = target["slug"], target["worker_id"], target["spec"], target["instances"]
+        svc = catalog.get_service(slug)
+        if not svc or not catalog.identity_keys(svc):
+            continue
+        docker_conf = svc.get("docker") or {}
+        if not any(not i.startswith("p") for i in have):
+            try:
+                count = int(spec.get("instances") or 1)
+            except (TypeError, ValueError):
+                count = 1
+            await _record_deploy_identities(slug, worker_id, spec, max(1, min(count, 32)), docker_conf)
+        for copy in proxied:
+            if (copy.get("slug"), copy.get("worker_id")) != (slug, worker_id) or f"p{copy['proxy_id']}" in have:
+                continue
+            try:
+                env = proxies.earner_spec(spec, docker_conf, int(copy["proxy_id"]))["env"]
+                await database.record_identities(slug, worker_id, {f"p{int(copy['proxy_id'])}": env}, scope="given")
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Could not record the %s copy through proxy %s", slug, copy.get("proxy_id"), exc_info=True
+                )
 
 
 async def _step_up_critical(
@@ -7828,7 +7872,7 @@ async def _read_node_figures(slug: str, unreached: list[str] | None = None) -> l
         for r in found:
             if r.get("node"):
                 _node_reader[str(r["node"]).lower()] = names[worker_id]
-        await _record_node_identities(slug, worker_id, [r.get("node") for r in found])
+        await _record_node_identities(slug, worker_id, [(r.get("node"), r.get("instance")) for r in found])
         return found
 
     readings: list[dict[str, Any]] = []
@@ -7853,17 +7897,18 @@ async def _read_node_figures(slug: str, unreached: list[str] | None = None) -> l
     return [r for r in readings if r["node"]]
 
 
-async def _record_node_identities(slug: str, worker_id: int, nodes: list[Any]) -> None:
+async def _record_node_identities(slug: str, worker_id: int, nodes: list[tuple[Any, Any]]) -> None:
     """Keep the node identities a worker reported in the identity ledger, marked as reported.
 
-    The value comes from inside the node (a hostile image says what it likes),
-    so only a plain token is kept, it is labelled as reported by the node in
-    the Identities list, and nothing ever offers it for reuse. Bookkeeping: a
-    failure is logged, never raised into the earnings read.
+    Each is a (node identity, copy) pair. The value comes from inside the node
+    (a hostile image says what it likes), so only a plain token is kept, one
+    per copy (a new one retires the old), it is labelled as reported by the
+    node in the Identities list, and nothing ever offers it for reuse.
+    Bookkeeping: a failure is logged, never raised into the earnings read.
     """
     try:
-        for node in nodes:
-            await database.record_node_identity(slug, int(worker_id), str(node or ""))
+        for node, instance in nodes:
+            await database.record_node_identity(slug, int(worker_id), str(node or ""), instance or 1)
     except Exception:  # noqa: BLE001
         logger.warning("Could not record the %s node identities of worker %s", slug, worker_id, exc_info=True)
 
@@ -8618,6 +8663,12 @@ async def api_admin_set_password(
     target = await database.get_user_by_id(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
+    uid = _auth.get("uid")
+    if target.get("role") == "owner" and (not isinstance(uid, int) or uid <= 0):
+        # With an owner's new password the admin API key would become an owner
+        # session, which reads the claimable device ids and passes the password
+        # step-ups the key alone is refused (issue #740).
+        raise HTTPException(status_code=403, detail="Sign in to the dashboard to set an owner's password")
     if len(body.new_password) < 10:
         raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
     hashed = await auth.hash_password_async(body.new_password)
@@ -9414,6 +9465,18 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         # The worker deploys the one copy the spec names, so a start of copy 2 says
         # nothing about a stopped copy 1.
         copy = _copy_number(body.spec) if isinstance(body.spec, dict) else 1
+        # The device ids it now runs with go in the identity ledger as a deploy's
+        # do, so a raw redeploy with a new id retires the old one (issue #740).
+        try:
+            env = body.spec.get("env") if isinstance(body.spec, dict) else None
+            await database.record_identities(
+                slug,
+                worker_id,
+                {str(copy if copy and copy > 0 else 1): env if isinstance(env, dict) else {}},
+                scope="given",
+            )
+        except Exception:  # noqa: BLE001 - bookkeeping never fails a deploy that happened
+            logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
         await database.record_health_event(
             slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=copy or 1
         )
@@ -9598,12 +9661,12 @@ async def api_identity_reveal(request: Request, identity_id: int) -> dict[str, s
 
 @app.delete("/api/identities/{identity_id}")
 async def api_identity_forget(request: Request, identity_id: int) -> dict[str, str]:
-    """Forget one retired device id. One a box still runs with cannot be forgotten."""
+    """Forget one retired device id, or one a node reported. One a box still runs with cannot be forgotten."""
     user = _require_owner_session(request)
     row = await database.get_identity(identity_id)
     if not row:
         raise HTTPException(status_code=404, detail="No such device id")
-    if row.get("status") != "retired" or not await database.delete_identity(identity_id):
+    if not await database.delete_identity(identity_id):
         raise HTTPException(status_code=409, detail="A box still runs with this id; remove the service there first")
     await _audit(
         "identity_forget",

@@ -432,3 +432,178 @@ class TestTheDeploy:
         asyncio.run(remove())
         assert asyncio.run(database.get_deployment_spec("earnapp", worker_id=1)) is None
         assert ("earnapp", 1, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+
+# ---------------------------------------------------------------------------
+# Review of #753: bounded node rows, deleted boxes, old deployments, raw route,
+# and the admin key that must not mint an owner
+# ---------------------------------------------------------------------------
+
+
+NODE_A = "0x" + "ab" * 20
+NODE_B = "0x" + "cd" * 20
+
+
+class TestNodeRows:
+    def test_a_new_node_identity_retires_the_old_one_of_that_copy(self, db):
+        asyncio.run(database.record_node_identity("mysterium", 1, NODE_A))
+        asyncio.run(database.record_node_identity("mysterium", 1, NODE_B))
+        rows = _rows()
+        assert {(r["instance"], r["value"]) for r in rows if r["status"] == "active"} == {("1", NODE_B)}
+        assert {r["value"] for r in rows if r["status"] == "retired"} == {NODE_A}
+
+    def test_each_copy_keeps_its_own_node_identity(self, db):
+        asyncio.run(database.record_node_identity("mysterium", 1, NODE_A, 1))
+        asyncio.run(database.record_node_identity("mysterium", 1, NODE_B, 2))
+        assert {(r["instance"], r["value"]) for r in _rows() if r["status"] == "active"} == {
+            ("1", NODE_A),
+            ("2", NODE_B),
+        }
+
+    def test_a_node_rotating_its_identity_cannot_grow_the_table(self, db):
+        for n in range(300):
+            assert asyncio.run(database.record_node_identity("mysterium", 1, f"0x{n:040x}")) is True
+        rows = _rows()
+        assert sum(r["status"] == "active" for r in rows) == 1
+        assert len(rows) <= 1 + database.NODE_IDENTITY_KEEP_RETIRED
+
+    @pytest.mark.parametrize("copy", [0, -1, 33, 10**9, "x", None])
+    def test_a_copy_number_out_of_range_is_left_out(self, db, copy):
+        assert asyncio.run(database.record_node_identity("mysterium", 1, NODE_A, copy)) is False
+        assert _rows() == []
+
+    def test_the_owner_may_forget_an_active_node_row(self, db):
+        asyncio.run(database.record_node_identity("mysterium", 1, NODE_A))
+        row = _rows()[0]
+        assert _call(OWNER, "DELETE", f"/api/identities/{row['id']}").status_code == 200
+        assert _rows() == []
+
+    def test_the_earnings_read_passes_each_copy(self, db):
+        asyncio.run(main._record_node_identities("mysterium", 1, [(NODE_A, 1), (NODE_B, 2)]))
+        assert {(r["instance"], r["value"]) for r in _rows()} == {("1", NODE_A), ("2", NODE_B)}
+
+
+class TestADeletedBox:
+    def test_its_ids_are_retired_and_offered_for_the_replacement(self, db):
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        asyncio.run(database.record_identities("proxyrack", 1, {"p5": {"UUID": UUID_B}}, scope="given"))
+        asyncio.run(database.delete_worker(1))
+        assert _active() == {}
+        assert ("earnapp", 1, "1", "EARNAPP_UUID", UUID_A) in _retired()
+        assert ("proxyrack", 1, "p5", "UUID", UUID_B) in _retired()
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        offers = _call(OWNER, "GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID&worker_id=2").json()
+        assert len(offers) == 1 and offers[0]["in_use_on"] == []
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)[0] is None
+
+    def test_a_deploy_record_from_before_the_ledger_is_kept(self, db):
+        asyncio.run(
+            database.save_deployment(
+                slug="earnapp", container_id="c1", spec={"env": {"EARNAPP_UUID": UUID_A}}, worker_id=1
+            )
+        )
+        asyncio.run(database.delete_worker(1))
+        assert ("earnapp", 1, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+
+def _worker(name="box-a"):
+    return asyncio.run(database.upsert_worker(f"client-{name}", name=name))
+
+
+class TestOldDeployments:
+    def test_a_deployment_from_before_the_ledger_is_listed(self, db):
+        wid = _worker()
+        asyncio.run(
+            database.save_deployment(
+                slug="earnapp", container_id="c1", spec={"env": {"EARNAPP_UUID": UUID_A}}, worker_id=wid
+            )
+        )
+        assert _rows() == []
+        asyncio.run(main._backfill_identities())
+        listed = _call(OWNER, "GET", "/api/identities").json()
+        assert [(r["slug"], r["worker_id"], r["status"]) for r in listed] == [("earnapp", wid, "active")]
+        asyncio.run(main._backfill_identities())
+        assert len(_rows()) == 1
+
+    def test_its_copies_and_proxied_copies_are_listed(self, db):
+        wid = _worker()
+        hex_uuid = "ab" * 32
+        spec = {"env": {"UUID": hex_uuid, "DEVICE_NAME": "box", "API_KEY": "secret-key"}, "instances": 2}
+        asyncio.run(database.save_deployment(slug="proxyrack", container_id="c1", spec=spec, worker_id=wid))
+        asyncio.run(database.save_proxied_copy(7, wid, "proxyrack"))
+        asyncio.run(main._backfill_identities())
+        active = _active()
+        assert {k[2] for k in active} == {"1", "2", "p7"}
+        assert "secret-key" not in active.values()
+        assert active[("proxyrack", wid, "1", "UUID")] == hex_uuid
+        assert active[("proxyrack", wid, "p7", "UUID")] not in ("", hex_uuid)
+
+    def test_it_never_overrides_what_a_deploy_recorded(self, db):
+        wid = _worker()
+        asyncio.run(
+            database.save_deployment(
+                slug="earnapp", container_id="c1", spec={"env": {"EARNAPP_UUID": UUID_A}}, worker_id=wid
+            )
+        )
+        asyncio.run(database.record_identities("earnapp", wid, {"1": {"EARNAPP_UUID": UUID_B}}))
+        asyncio.run(main._backfill_identities())
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+
+
+class TestTheRawCommandRoute:
+    def _raw(self, env, worker_id=1):
+        async def run():
+            with (
+                patch.object(main, "_require_owner", lambda r: OWNER),
+                patch.object(main, "_proxy_to_worker", AsyncMock(return_value={"container_id": "c"})),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                body = main.WorkerCommand(command="deploy", slug="earnapp", spec={"env": env})
+                await main.api_worker_command(_request(), worker_id, body)
+
+        asyncio.run(run())
+
+    def test_a_raw_redeploy_with_a_new_id_retires_the_old_one(self, db):
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        self._raw({"EARNAPP_UUID": UUID_B})
+        assert _active() == {("earnapp", 1, "1", "EARNAPP_UUID"): UUID_B}
+        assert ("earnapp", 1, "1", "EARNAPP_UUID", UUID_A) in _retired()
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+
+
+ADMIN_KEY = {"uid": 0, "u": "api", "r": "owner"}
+
+
+class TestTheAdminKeyCannotMintAnOwner:
+    def _user(self, role):
+        return asyncio.run(database.create_user(f"u-{role}", "x" * 60, role))
+
+    def test_it_cannot_promote_an_account_to_owner(self, db):
+        uid = self._user("viewer")
+        client = TestClient(main.app)
+        with patch.object(auth, "get_current_user", return_value=ADMIN_KEY):
+            response = client.patch(f"/api/users/{uid}", json={"role": "owner"})
+        assert response.status_code == 403
+        assert asyncio.run(database.get_user_by_id(uid))["role"] == "viewer"
+
+    def test_it_may_still_set_a_lower_role(self, db):
+        uid = self._user("viewer")
+        client = TestClient(main.app)
+        with patch.object(auth, "get_current_user", return_value=ADMIN_KEY):
+            assert client.patch(f"/api/users/{uid}", json={"role": "writer"}).status_code == 200
+
+    def test_it_cannot_set_an_owners_password(self, db):
+        uid = self._user("owner")
+        client = TestClient(main.app)
+        with patch.object(auth, "get_current_user", return_value=ADMIN_KEY):
+            response = client.post(f"/api/users/{uid}/password", json={"new_password": "n" * 12})
+        assert response.status_code == 403
+
+    def test_a_signed_in_owner_still_can(self, db):
+        self._user("owner")
+        uid = self._user("viewer")
+        client = TestClient(main.app)
+        with patch.object(auth, "get_current_user", return_value=OWNER):
+            assert client.patch(f"/api/users/{uid}", json={"role": "owner"}).status_code == 200

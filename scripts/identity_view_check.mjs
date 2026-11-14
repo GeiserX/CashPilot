@@ -54,14 +54,15 @@ check('anyone else gets no button', viewer.identityPickButton(svc, {key: 'U', pe
 const rows = [
   {id: 1, service: 'EarnApp', label: 'Node UUID', masked: '...1234', worker: 'box-a', copy: '', status: 'active', source: 'deploy', readable: true},
   {id: 2, service: 'EarnApp', label: 'Node UUID', masked: '...9999', worker: 'box-b', copy: 'copy 2', status: 'retired', source: 'deploy', readable: true},
-  {id: 3, service: 'Mysterium', label: 'Node identity', masked: '...beef', worker: 'box-c', copy: '', status: 'active', source: 'node', readable: true},
+  {id: 3, service: 'Mysterium', label: 'Node identity', masked: '...beef', worker: 'box-c', copy: '', status: 'active', source: 'node', kind: 'node', readable: true},
   {id: 4, service: 'X', label: '<img src=x onerror=alert(1)>', masked: '...', worker: '<b>w</b>', copy: '', status: 'retired', source: 'deploy', readable: false},
 ];
 const html = owner.identityRowsHtml(rows);
 check('masked values are shown', html.includes('...1234') && html.includes('...9999'), html);
 check('each readable row has Show and Copy', (html.match(/data-action="revealIdentity"/g) || []).length === 3, html);
-check('only removed ids can be forgotten', (html.match(/data-action="forgetIdentity"/g) || []).length === 2
-  && !html.includes('data-action="forgetIdentity" data-a1="1"'), html);
+check('only removed or node-reported ids can be forgotten', (html.match(/data-action="forgetIdentity"/g) || []).length === 3
+  && !html.includes('data-action="forgetIdentity" data-a1="1"')
+  && html.includes('data-action="forgetIdentity" data-a1="3"'), html);
 check('a node-reported id says so', html.includes('Reported by the node itself'), html);
 check('markup in a label stays text', !html.includes('<img') && html.includes('&lt;img'), html);
 check('markup in a worker name stays text', !html.includes('<b>w</b>'), html);
