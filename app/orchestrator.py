@@ -2628,7 +2628,7 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
     if labelled:
         return (
             f"{slug} already has a container on this box ({labelled[0].name}). A restore only creates a new one: "
-            "back the running one up, remove it with its data from the dashboard, then restore"
+            "back the running one up, remove it from the dashboard, delete its data volume on the box (docker volume rm), then restore"
         )
     for candidate in (name, name + REPLACED_SUFFIX, name + RESTORE_HELPER_SUFFIX):
         try:

@@ -107,7 +107,7 @@ check('no tag from the data reaches the page',
 // only then is the remove sent again as the audited critical delete.
 const apiSrc = slice('async function api(', '// One prompt at a time');
 const removeSrc = slice('async function removeService(', '// Log viewer');
-function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worker_id: 1, worker_name: 'box-a'}, args = []}) {
+function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worker_id: 1, worker_name: 'box-a'}, args = [], failed = []}) {
   const sent = [];
   const asked = [];
   const toasts = [];
@@ -115,7 +115,7 @@ function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worke
   const fetch = async (path, config) => {
     sent.push(`${config.method} ${path}`);
     const ok = sent.length > 1 || !refusal;
-    const body = ok ? {status: 'removed'}
+    const body = ok ? {status: 'removed', failed_volumes: failed}
       : {detail: {error: refusal, message: 'A restore of mysterium did not finish.', ...box}};
     return {ok, status: ok ? 200 : 409, json: async () => body};
   };
@@ -137,6 +137,9 @@ check('and sends the audited critical delete to that box only', run.sent.length 
   && run.sent[0] === 'DELETE /api/services/mysterium'
   && run.sent[1] === `DELETE /api/services/mysterium?worker_id=1${CRITICAL}`, run.sent);
 check('and says it was removed', run.toasts.join() === 'success: mysterium removed', run.toasts);
+run = await runRemove({owner: true, answers: [true, true], failed: ['mysterium-data']});
+check('a volume the box could not delete is not reported as removed', run.toasts.length === 1
+  && /^error: /.test(run.toasts[0]) && /mysterium-data could not be deleted/.test(run.toasts[0]), run.toasts);
 run = await runRemove({owner: true, answers: [true, true], box: {}});
 check('a refusal that names no box deletes nothing', run.sent.length === 1 && run.asked.length === 1
   && /^error: /.test(run.toasts.join()), run);

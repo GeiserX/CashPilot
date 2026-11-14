@@ -1674,6 +1674,18 @@ class TestRemoveAfterARestoreThatDidNotFinish:
         assert sent.call_args.kwargs["params"] == {"delete_volumes": "true", "allow_delete_critical": "true"}
         assert ("delete_critical_volumes", "deleted") in _audit()
 
+    def test_a_volume_the_box_kept_is_audited_as_partial(self, ui):
+        resp, _sent = self._remove(
+            ui,
+            "&delete_volumes=true&allow_delete_critical=true",
+            200,
+            {"status": "removed", "deleted_volumes": [], "failed_volumes": ["mysterium-data"]},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["failed_volumes"] == ["mysterium-data"]
+        assert ("delete_critical_volumes", "partial") in _audit()
+        assert ("delete_critical_volumes", "deleted") not in _audit()
+
     def test_a_writer_cannot_delete_it(self, ui):
         ui.state["user"] = {**ui.state["user"], "r": "writer"}
         resp, sent = self._remove(ui, "&delete_volumes=true&allow_delete_critical=true", 200, {"status": "removed"})

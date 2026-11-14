@@ -4864,8 +4864,13 @@ async def _svc_remove(
             exc.detail = {**exc.detail, "worker_id": worker_id, "worker_name": (worker or {}).get("name") or ""}
         raise
     if delete_volumes and allow_delete_critical:
+        kept = isinstance(result, dict) and bool(result.get("failed_volumes"))
         await _audit(
-            "delete_critical_volumes", slug, "deleted", actor=auth.get_current_user(request), worker_id=worker_id
+            "delete_critical_volumes",
+            slug,
+            "partial" if kept else "deleted",
+            actor=auth.get_current_user(request),
+            worker_id=worker_id,
         )
     await database.remove_deployment(slug, worker_id=worker_id)
     # The worker removed the service's proxied copies with it (worker_api

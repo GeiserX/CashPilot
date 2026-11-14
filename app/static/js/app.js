@@ -2871,8 +2871,9 @@ const CP = (() => {
     if (!confirm(`Remove ${slug}${where}? This will stop and delete the container.`)) return;
     const box = (id) => `?worker_id=${encodeURIComponent(id)}`;
     try {
+      let result;
       try {
-        await api(`/api/services/${slug}${pinned ? box(workerId) : ''}`, { method: 'DELETE' });
+        result = await api(`/api/services/${slug}${pinned ? box(workerId) : ''}`, { method: 'DELETE' });
       } catch (err) {
         // A restore that did not finish left a half-written data volume, and
         // the worker keeps it marked until it goes. The way out is the same
@@ -2887,9 +2888,12 @@ const CP = (() => {
         if (!confirm(`A restore of ${slug} on ${name} did not finish, so its data volume there holds a partial restore. Remove now deletes that volume on ${name}, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
         // Only while that partial restore is still there: one restored since,
         // in another tab, is not what the owner agreed to delete.
-        await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true`, { method: 'DELETE' });
+        result = await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true`, { method: 'DELETE' });
       }
-      toast(`${slug} removed${where}`, 'success');
+      // A volume the box could not delete stays, and stays marked half-written.
+      const kept = Array.isArray(result?.failed_volumes) ? result.failed_volumes : [];
+      if (kept.length) toast(`${slug} removed${where}, but its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`, 'error');
+      else toast(`${slug} removed${where}`, 'success');
       loadServicesTable();
       if (pinned) openServiceDetail(slug);
     } catch (err) {
