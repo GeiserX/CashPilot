@@ -2642,7 +2642,7 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
                     pass
                 return (
                     f"a restore of {slug} did not finish, so the volume {held} may be half-written. "
-                    "Remove the service with its data (the dashboard's Remove offers it), then restore"
+                    "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore"
                 )
             try:
                 found.remove(force=True)
@@ -2696,7 +2696,7 @@ def _refuse_mid_restore(slug: str, what: str) -> None:
     if _restore_helper(slug) is not None:
         raise ContainerRuntimeError(
             f"A restore of {slug} did not finish, so its data may be half-written and it was not {what}. "
-            "Remove the service with its data (the dashboard's Remove offers it), then restore the backup again.",
+            "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore the backup again.",
             409,
         )
 

@@ -143,10 +143,11 @@ identity sits on a named Docker volume. The rules:
   LAN fence guard never starts data that did not check out. While a restore
   runs, and after a restore that stopped mid-write (a worker restart, or an
   undo that could not remove all it made), Start, Restart, Deploy and Restore
-  refuse the service. Press Remove on the service's page: the dashboard says
-  its data volume holds a partial restore and asks you, the owner, to delete
-  it with the container. That delete is recorded in the audit log. Then
-  restore again.
+  refuse the service. Open the service on the dashboard and press **Remove
+  from this box** next to that box. The dashboard says its data volume there
+  holds a partial restore and asks you, the owner, to delete it with the
+  container. The delete goes to that box only, and the audit log records it.
+  Then restore again.
 - **Nothing kept.** The file waits in a private folder under the data folder
   for at most 15 minutes and is deleted once the restore runs. The passphrase
   goes to the worker in that one request and is never stored or logged.

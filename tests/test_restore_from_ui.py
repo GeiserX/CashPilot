@@ -60,6 +60,7 @@ from app import (  # noqa: E402
 PASSPHRASE = "correct horse battery staple"
 #: The real proxy, before the ui fixture swaps it out.
 REAL_PROXY = main._proxy_to_worker
+REAL_RESOLVE = main._resolve_worker_id
 #: The real deploy_raw with its guard, before the docker fixture swaps it out.
 REAL_DEPLOY_RAW = orchestrator.deploy_raw
 #: The real fingerprint readers, before the ui fixture swaps them out.
@@ -1641,7 +1642,7 @@ class TestRemoveAfterARestoreThatDidNotFinish:
         }
     }
 
-    def _remove(self, ui, query, status, body):
+    def _remove(self, ui, query, status, body, box="?worker_id=1"):
         request = httpx.Request("DELETE", "https://a/api/containers/mysterium")
         answer = httpx.Response(status, request=request, json=body)
         sent = AsyncMock(return_value=answer)
@@ -1650,11 +1651,20 @@ class TestRemoveAfterARestoreThatDidNotFinish:
             patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("https://a", {}))),
             patch("httpx.AsyncClient.delete", sent),
         ):
-            return ui.delete(f"/api/services/mysterium?worker_id=1{query}"), sent
+            return ui.delete(f"/api/services/mysterium{box}{query}"), sent
 
     def test_the_refusal_reaches_the_dashboard_with_its_code(self, ui):
-        resp, _sent = self._remove(ui, "", 409, self.UNFINISHED)
-        assert resp.status_code == 409 and resp.json()["detail"] == self.UNFINISHED["detail"]
+        resp, _sent = self._remove(ui, "", 409, self.UNFINISHED, box="?worker_id=2")
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == {**self.UNFINISHED["detail"], "worker_id": 2, "worker_name": "box-b"}
+
+    def test_the_refusal_names_the_box_it_picked(self, ui, monkeypatch):
+        """With one box online the Remove names none; the refusal says which, so the delete goes there only."""
+        monkeypatch.setattr(main, "_resolve_worker_id", REAL_RESOLVE)
+        ui.workers[1]["status"] = "offline"
+        resp, _sent = self._remove(ui, "", 409, self.UNFINISHED, box="")
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == {**self.UNFINISHED["detail"], "worker_id": 1, "worker_name": "box-a"}
 
     def test_the_owner_deletes_the_data_and_it_is_audited(self, ui):
         resp, sent = self._remove(

@@ -4848,7 +4848,16 @@ async def _svc_remove(
         params = {"delete_volumes": "true"}
         if allow_delete_critical:
             params["allow_delete_critical"] = "true"
-    result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
+    try:
+        result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
+    except HTTPException as exc:
+        if isinstance(exc.detail, dict) and exc.detail.get("error") == "restore_unfinished":
+            # The data delete the dashboard then offers must reach this box and
+            # no other, even when the box was picked because it was the only
+            # one online, so the refusal names it.
+            worker = await database.get_worker(worker_id)
+            exc.detail = {**exc.detail, "worker_id": worker_id, "worker_name": (worker or {}).get("name") or ""}
+        raise
     if delete_volumes and allow_delete_critical:
         await _audit(
             "delete_critical_volumes", slug, "deleted", actor=auth.get_current_user(request), worker_id=worker_id

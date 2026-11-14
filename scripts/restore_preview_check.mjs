@@ -107,32 +107,46 @@ check('no tag from the data reaches the page',
 // only then is the remove sent again as the audited critical delete.
 const apiSrc = slice('async function api(', '// One prompt at a time');
 const removeSrc = slice('async function removeService(', '// Log viewer');
-function runRemove({owner, answers, refusal = 'restore_unfinished'}) {
+function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worker_id: 1, worker_name: 'box-a'}, args = []}) {
   const sent = [];
   const asked = [];
   const toasts = [];
+  const reopened = [];
   const fetch = async (path, config) => {
     sent.push(`${config.method} ${path}`);
     const ok = sent.length > 1 || !refusal;
     const body = ok ? {status: 'removed'}
-      : {detail: {error: refusal, message: 'A restore of mysterium did not finish.'}};
+      : {detail: {error: refusal, message: 'A restore of mysterium did not finish.', ...box}};
     return {ok, status: ok ? 200 : 409, json: async () => body};
   };
   const confirm = (text) => { asked.push(text); return answers.shift(); };
   const toast = (text, kind) => toasts.push(`${kind}: ${text}`);
   const {removeService} = new Function(
-    'fetch', 'confirm', 'toast', 'loadServicesTable', '_isOwner', 'window', 'askStepUp',
+    'fetch', 'confirm', 'toast', 'loadServicesTable', 'openServiceDetail', '_isOwner', 'window', 'askStepUp',
     `${apiSrc}\n${removeSrc}\nreturn {removeService};`,
-  )(fetch, confirm, toast, () => {}, owner, {confirm}, async () => null);
-  return removeService('mysterium').then(() => ({sent, asked, toasts}));
+  )(fetch, confirm, toast, () => {}, (slug) => reopened.push(slug), owner, {confirm}, async () => null);
+  return removeService('mysterium', ...args).then(() => ({sent, asked, toasts, reopened}));
 }
 
+const CRITICAL = '&delete_volumes=true&allow_delete_critical=true';
 let run = await runRemove({owner: true, answers: [true, true]});
 check('a refused Remove asks the owner about the half-written data',
   run.asked.length === 2 && /partial restore/.test(run.asked[1]) && /deletes that volume/.test(run.asked[1]), run.asked);
-check('and sends it again as the audited critical delete', run.sent.length === 2
-  && run.sent[1] === 'DELETE /api/services/mysterium?delete_volumes=true&allow_delete_critical=true', run.sent);
+check('and names the box that refused', /on box-a did not finish/.test(run.asked[1]), run.asked);
+check('and sends the audited critical delete to that box only', run.sent.length === 2
+  && run.sent[0] === 'DELETE /api/services/mysterium'
+  && run.sent[1] === `DELETE /api/services/mysterium?worker_id=1${CRITICAL}`, run.sent);
 check('and says it was removed', run.toasts.join() === 'success: mysterium removed', run.toasts);
+run = await runRemove({owner: true, answers: [true, true], box: {}});
+check('a refusal that names no box deletes nothing', run.sent.length === 1 && run.asked.length === 1
+  && /^error: /.test(run.toasts.join()), run);
+run = await runRemove({owner: true, answers: [true, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}});
+check('Remove from this box asks about that box', /from box-b\?/.test(run.asked[0]) && /on box-b did not finish/.test(run.asked[1]), run.asked);
+check('and both requests go to that box', run.sent.join(' | ')
+  === `DELETE /api/services/mysterium?worker_id=2 | DELETE /api/services/mysterium?worker_id=2${CRITICAL}`, run.sent);
+check('and the service panel is shown again', run.reopened.join() === 'mysterium', run.reopened);
+run = await runRemove({owner: true, answers: [true, true], args: ['2', 'box-b'], box: {worker_id: 1, worker_name: 'box-a'}});
+check('a box-row Remove never deletes on another box', run.sent.every((r) => r.includes('worker_id=2')), run.sent);
 run = await runRemove({owner: true, answers: [true, false]});
 check('an owner who says no deletes nothing', run.sent.length === 1 && run.toasts.length === 0, run);
 run = await runRemove({owner: false, answers: [true]});
@@ -144,6 +158,13 @@ check('any other refusal is shown and not retried', run.sent.length === 1 && run
 run = await runRemove({owner: true, answers: [true], refusal: null});
 check('a Remove the worker takes asks nothing more', run.sent.length === 1
   && run.sent[0] === 'DELETE /api/services/mysterium' && run.asked.length === 1, run);
+
+// A catalog service has a Remove on each box's row of its panel, as a custom
+// one does, so a fleet with several boxes online can reach it.
+const rowLine = src.split('\n').find((l) => l.includes('>Remove from this box</button>'));
+check('every box row of a service panel offers Remove from this box',
+  !!rowLine && /svc\.custom \? 'removeCustomFromBox' : 'removeService'/.test(rowLine)
+  && !/\$\{svc\.custom &&/.test(rowLine), rowLine);
 
 if (bad) {
   console.error(`\n${bad} check(s) failed`);

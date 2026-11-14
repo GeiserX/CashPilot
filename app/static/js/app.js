@@ -45,10 +45,10 @@ const CP = (() => {
         // detail can be a structured refusal ({error, message, ...}); surface
         // its message instead of the useless "[object Object]".
         let detail = data && data.detail;
-        const code = detail && typeof detail === 'object' ? detail.error : undefined;
+        const refusal = detail && typeof detail === 'object' ? detail : {};
         if (detail && typeof detail === 'object') detail = detail.message || JSON.stringify(detail);
-        // The refusal's code goes with it, for a caller that offers a way out.
-        throw Object.assign(new Error(detail || `Error ${res.status}`), { code });
+        // The refusal's code and fields go with it, for a caller that offers a way out.
+        throw Object.assign(new Error(detail || `Error ${res.status}`), { code: refusal.error, refusal });
       }
       return data;
     } catch (err) {
@@ -2863,22 +2863,33 @@ const CP = (() => {
     }
   }
 
-  async function removeService(slug) {
-    if (!confirm(`Remove ${slug}? This will stop and delete the container.`)) return;
+  // Remove a service. From a box's row (workerId, boxName) it goes to that box
+  // only; from the service page it goes to the one online box.
+  async function removeService(slug, workerId, boxName) {
+    const pinned = workerId != null && workerId !== '';
+    const where = pinned ? ` from ${boxName || `worker #${workerId}`}` : '';
+    if (!confirm(`Remove ${slug}${where}? This will stop and delete the container.`)) return;
+    const box = (id) => `?worker_id=${encodeURIComponent(id)}`;
     try {
       try {
-        await api(`/api/services/${slug}`, { method: 'DELETE' });
+        await api(`/api/services/${slug}${pinned ? box(workerId) : ''}`, { method: 'DELETE' });
       } catch (err) {
         // A restore that did not finish left a half-written data volume, and
         // the worker keeps it marked until it goes. The way out is the same
         // owner-only, audited critical delete a custom service's Remove uses.
         if (err.code !== 'restore_unfinished') throw err;
         if (!_isOwner) throw new Error(`${err.message} Only the owner can delete that data.`);
-        if (!confirm(`A restore of ${slug} did not finish, so its data volume holds a partial restore. Remove now deletes that volume, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
-        await api(`/api/services/${slug}?delete_volumes=true&allow_delete_critical=true`, { method: 'DELETE' });
+        // The delete goes to the box that refused and to no other, even if
+        // the online boxes changed while the owner read the question.
+        const refused = pinned ? workerId : err.refusal.worker_id;
+        if (refused == null) throw err;
+        const name = err.refusal.worker_name || boxName || `worker #${refused}`;
+        if (!confirm(`A restore of ${slug} on ${name} did not finish, so its data volume there holds a partial restore. Remove now deletes that volume on ${name}, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
+        await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true`, { method: 'DELETE' });
       }
-      toast(`${slug} removed`, 'success');
+      toast(`${slug} removed${where}`, 'success');
       loadServicesTable();
+      if (pinned) openServiceDetail(slug);
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -4060,7 +4071,7 @@ const CP = (() => {
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Stop</button>
             <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">Logs</button>
-            ${svc.custom && (inst.container.instance || 1) === 1 ? `<button class="btn btn-danger btn-sm" data-action="removeCustomFromBox" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Remove from this box</button>` : ''}
+            ${(inst.container.instance || 1) === 1 ? `<button class="btn btn-danger btn-sm" data-action="${svc.custom ? 'removeCustomFromBox' : 'removeService'}" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Remove from this box</button>` : ''}
           </div>` : ''}
         </div>
         <div class="log-viewer log-viewer-inline" id="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" style="display:none;"></div>`;
