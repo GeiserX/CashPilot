@@ -46,10 +46,13 @@ const api = async (...args) => { requests.push(args); return answers.shift() ?? 
 const shownLinks = [];
 // _imageChoice and _instancesFor read the form's Advanced box and Instances
 // box; undefined is "unchanged", so the request body is the env alone.
-const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState', '_imageChoice', '_instancesFor', '_showDeviceLink',
+// _confirmDeviceRenames asks before a redeploy renames a provider device;
+// renameAnswer is what the user clicks.
+let renameAnswer = false;
+const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState', '_imageChoice', '_instancesFor', '_showDeviceLink', '_confirmDeviceRenames',
   `${grab('_deployToWorkers')}\nreturn _deployToWorkers;`)(document, api, () => { toasts++; },
   async () => { preflights++; return true; }, { deployed: [] }, () => undefined, () => undefined,
-  (slug, statusEl, links) => shownLinks.push(links));
+  (slug, statusEl, links) => shownLinks.push(links), async () => renameAnswer);
 const input = (key, value, { valid, required }) => ({ value, required, pattern: '[a-f0-9-]+',
   dataset: { key }, style: {}, checkValidity: () => valid, reportValidity: () => { reports++; } });
 
@@ -75,6 +78,19 @@ await deploy('svc', [1]);
 assert.equal(requests.length, 2, 'a blank optional patterned field never blocks the deploy');
 assert.equal(requests[1][1].body.env.UI_ADDRESS, '');
 console.log('An invalid typed value stops before preflight; valid values go out trimmed; blanks keep their old meaning.');
+
+// A declined rename sends no rename flag; an accepted one sends it on the
+// deploy of every worker in the batch.
+assert.equal(requests[1][1].body.rename_devices, undefined, 'a declined rename keeps the device name');
+renameAnswer = true;
+inputs = [input('API_KEY', '12345678-1234-4abc-8def-123456789abc', { valid: true, required: true })];
+await deploy('svc', [1, 2]);
+assert.equal(requests.length, 4);
+assert.equal(requests[2][1].body.rename_devices, true, 'an accepted rename is sent');
+assert.equal(requests[3][1].body.rename_devices, true, 'to every worker in the deploy');
+renameAnswer = false;
+requests.length = 2;
+console.log('A device rename is sent only after the user accepts it, to every worker in the deploy.');
 
 // A deploy whose answer carries a device_link shows the step once per id, even
 // when two workers report the same one; an answer without it shows nothing.
