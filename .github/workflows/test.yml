@@ -125,6 +125,13 @@ jobs:
       - name: Device ids
         run: node scripts/identity_view_check.mjs
 
+      # The restore preview is the last thing the owner reads before an
+      # identity or a wallet goes onto a box: which boxes are disabled and why,
+      # the typed name for a file this CashPilot did not make, and names from
+      # the fleet staying text. Only running it shows what reaches the page.
+      - name: Restore preview
+        run: node scripts/restore_preview_check.mjs
+
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the
       # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`

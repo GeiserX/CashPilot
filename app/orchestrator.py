@@ -15,6 +15,7 @@ import ipaddress
 import logging
 import os
 import re
+import secrets
 import shlex
 import threading
 import time
@@ -54,6 +55,7 @@ from app.constants import (  # noqa: E402
     LABEL_INSTANCE,
     LABEL_MANAGED,
     LABEL_PROXY,
+    LABEL_RESTORE,
     LABEL_ROLE,
     LABEL_SERVICE,
     LABEL_STATE_CREATED,
@@ -849,8 +851,13 @@ def deploy_raw(
     keep_targets: set[str] | None = None,
     instance: int = 1,
     name: str | None = None,
+    start: bool = True,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
+
+    ``start=False`` is for a restore (restore_state): the container is created
+    and left unstarted, and only where none of that name exists. Nothing is
+    replaced, so nothing is moved aside or kept.
 
     A container being REPLACED keeps the mounts it has now — see
     ``_keep_live_mounts``. ``moved_mounts`` names the targets the operator
@@ -925,6 +932,10 @@ def deploy_raw(
     stopped_before = name in user_stopped()
     try:
         old = client.containers.get(name)
+        if not start:
+            raise ContainerRuntimeError(
+                f"{name} already exists, so nothing was restored. A restore only creates a new container.", 409
+            )
         # The name alone is not proof the container is this copy of this
         # service: copy 2 of "foo" and copy 1 of a service slugged "foo-2" are
         # both cashpilot-foo-2. Replacing another service's container would
@@ -1117,9 +1128,15 @@ def deploy_raw(
     try:
         try:
             container = (
-                client.containers.create(**run_kwargs) if gated else client.containers.run(detach=True, **run_kwargs)
+                client.containers.create(**run_kwargs)
+                if gated or not start
+                else client.containers.run(detach=True, **run_kwargs)
             )
             created = container
+            if not start:
+                # Restore: the caller writes the data, checks it, then starts it.
+                logger.info("Container %s created, not started: %s", name, container.short_id)
+                return container.id
             if gated:
                 _mark_stopped(name, False)
                 # Left created, not started, when the fence is not confirmed: the guard
@@ -2498,6 +2515,273 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
                     raise
 
     return b"".join(chunks), read
+
+
+# ---------------------------------------------------------------------------
+# Restore from the dashboard (issue #741)
+#
+# Only into nothing: a new container on a new volume, written before the
+# container ever runs, read back and compared, then started. Never over a live
+# identity, and nothing half-restored is left behind. The bundle is opened and
+# its archives checked by the caller (worker_api), outside any lock.
+#
+# The write goes through a helper container that is created and never
+# started: it mounts the fresh volume at the one folder the socket proxy lets
+# the worker write into (RESTORE_WRITE_DIR, the tunnel sidecar's folder), so a
+# restore needs no wider proxy rule. A compromised worker gains nothing it did
+# not have: it could already create a container on any volume it owns.
+# ---------------------------------------------------------------------------
+
+#: Where the helper mounts the volume being restored. The socket proxy allows
+#: archive writes into this folder only (app/socket_policy.py container_archive).
+RESTORE_WRITE_DIR = "/run/cashpilot-secret"
+#: Suffix of the helper's name. A dot, so no service's container name can match.
+RESTORE_HELPER_SUFFIX = ".restore"
+
+
+class RestoreError(ContainerRuntimeError):
+    """A restore that was refused or undone. The message is safe to show and names no secret."""
+
+    def __init__(self, message: str, status_code: int = 409) -> None:
+        super().__init__(message, status_code=status_code)
+
+
+def restore_targets(slug: str) -> dict[str, str] | None:
+    """critical target -> named volume for ``slug`` from this worker's catalog, or None.
+
+    None when the service keeps its state anywhere a restore cannot create new
+    (a host folder: Storj, Sia) or declares nothing critical.
+    """
+    svc = (get_service(slug) if get_service is not None else None) or {}
+    from app import state_backup
+
+    return state_backup.restore_volumes(svc.get("docker") or {})
+
+
+def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str]) -> str | None:
+    """Why ``slug`` cannot be restored on this box now, or None.
+
+    Any container of the service (any copy, any state, a moved-aside one) or
+    of its name refuses, and so does any of its critical volumes existing at
+    all: a restore never writes over something that is there. A volume the
+    proxy will not show counts as there.
+    """
+    labelled = client.containers.list(all=True, filters={"label": f"{LABEL_SERVICE}={slug}"})
+    if labelled:
+        return (
+            f"{slug} already has a container on this box ({labelled[0].name}). A restore only creates a new one: "
+            "back the running one up, remove it with its data from the dashboard, then restore"
+        )
+    for candidate in (name, name + REPLACED_SUFFIX, name + RESTORE_HELPER_SUFFIX):
+        try:
+            client.containers.get(candidate)
+        except NotFound:
+            continue
+        return f"a container named {candidate} already exists on this box"
+    for volume in volumes.values():
+        try:
+            client.volumes.get(volume)
+        except NotFound:
+            continue
+        except APIError as exc:
+            return f"the volume {volume} could not be checked ({proxy_refusal(exc) or exc}), so it counts as there"
+        return (
+            f"the volume {volume} already exists on this box. A restore never writes into an existing volume: "
+            "if it holds nothing you need, remove it, then restore"
+        )
+    return None
+
+
+def _create_restore_volume(client: Any, volume: str) -> None:
+    """Create ``volume`` new, or raise RestoreError when Docker handed back one that was there."""
+    nonce = secrets.token_hex(16)
+    created = client.volumes.create(name=volume, labels={LABEL_RESTORE: nonce})
+    labels = (getattr(created, "attrs", None) or {}).get("Labels") or {}
+    if labels.get(LABEL_RESTORE) != nonce:
+        # Docker returns the existing volume for a name that exists. One the
+        # proxy hid from the check above is still somebody's data.
+        raise RestoreError(f"the volume {volume} already existed (it was hidden from this worker), so it was not used")
+
+
+def _restore_cleanup(client: Any, name: str, created_volumes: list[str]) -> list[str]:
+    """Remove the container and the volumes this restore made. Returns what could not be removed."""
+    left: list[str] = []
+    # The helper first: it holds the volumes too.
+    for container_name in (name + RESTORE_HELPER_SUFFIX, name):
+        try:
+            client.containers.get(container_name).remove(force=True)
+        except NotFound:
+            pass
+        except Exception as exc:  # noqa: BLE001 - keep going: the volumes must go too
+            logger.error("Restore cleanup could not remove %s: %s", container_name, exc)
+            left.append(container_name)
+    for volume in created_volumes:
+        try:
+            client.volumes.get(volume).remove(force=True)
+        except NotFound:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Restore cleanup could not remove the volume %s: %s", volume, exc)
+            left.append(volume)
+    return left
+
+
+def _read_back(container: Any, target: str) -> bytes:
+    """Docker's archive of ``target`` in the created container, capped like an export."""
+    stream, _stat = container.get_archive(target)
+    chunks: list[bytes] = []
+    size = 0
+    try:
+        for chunk in stream:
+            size += len(chunk)
+            if size > MAX_BACKUP_BYTES:
+                raise RestoreError(f"{target} reads back larger than a backup can be, so it is not the backup")
+            chunks.append(chunk)
+    finally:
+        close = getattr(stream, "close", None)
+        if callable(close):
+            close()
+    return b"".join(chunks)
+
+
+def _write_through_helper(client: Any, container: Any, volume: str, payload: bytes) -> None:
+    """Write ``payload`` into ``volume`` through a helper that is created and never started.
+
+    The helper runs the restored container's own image (already here, so no
+    pull), with no network, no capabilities and nothing to run: Docker writes
+    into a created container's mounts without starting it, as the tunnel
+    sidecar's settings are written. It is removed as soon as the write returns;
+    the volume stays, mounted by the restored container.
+    """
+    from docker.types import Mount
+
+    helper = client.containers.create(
+        image=(getattr(container, "attrs", None) or {}).get("Image") or container.image.id,
+        name=container.name + RESTORE_HELPER_SUFFIX,
+        command=["true"],
+        network_mode="none",
+        mounts=[Mount(RESTORE_WRITE_DIR, volume, type="volume")],
+        labels={LABEL_RESTORE: "helper"},
+        cap_drop=["ALL"],
+        security_opt=["no-new-privileges:true"],
+    )
+    try:
+        if not helper.put_archive(RESTORE_WRITE_DIR, payload):
+            raise RestoreError(f"Docker did not write the volume {volume}")
+    finally:
+        helper.remove(force=True)
+
+
+def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any]) -> dict[str, Any]:
+    """Create ``slug`` from ``deploy`` with ``archives`` in its critical volumes, then start it.
+
+    ``archives`` is split_archives' output, keyed by each critical folder's
+    last path component, and must name exactly this worker's catalog targets.
+    ``deploy`` is deploy_raw's keyword arguments, already validated by the
+    worker API like any deploy. In order: refuse unless nothing of the service
+    is here; create its critical volumes new; create the container without
+    starting it (deploy_raw, so every deploy check applies); write each archive
+    into its volume through a helper that never starts (_write_through_helper);
+    read each folder back from the restored container and compare every file,
+    link, owner and permission with the backup; start. Any failure removes the container
+    and every volume this call made. A fence-gated service holds
+    GATED_DEPLOY_LOCK throughout, so the guard cannot start it half-written.
+    """
+    from app import state_backup
+
+    targets = restore_targets(slug)
+    if not targets:
+        raise RestoreError(
+            f"{slug} keeps its state in a host folder, or keeps none, so it cannot be restored from the dashboard. "
+            "Use the command line steps in the backup guide."
+        )
+    by_folder = {target.rstrip("/").rsplit("/", 1)[-1]: target for target in targets}
+    if len(by_folder) != len(targets) or set(archives) != set(by_folder):
+        want = ", ".join(sorted(by_folder))
+        have = ", ".join(sorted(archives)) or "nothing"
+        raise RestoreError(f"this backup holds {have}, but {slug} keeps {want}. It is not a backup of {slug}.", 400)
+    expected = {by_folder[f]: state_backup.tree_manifest(data) for f, data in archives.items()}
+    payloads = {by_folder[f]: state_backup.relative_archive(data) for f, data in archives.items()}
+
+    lock = GATED_DEPLOY_LOCK if fence_gated(slug) else contextlib.nullcontext()
+    client = _get_client()
+    name = _container_name(slug)
+    with lock:
+        if why := _restore_refusal(client, slug, name, targets):
+            raise RestoreError(f"Nothing was restored: {why}.")
+        before = set(_named_volumes(deploy.get("volumes")))
+        made: list[str] = []
+        files = 0
+        try:
+            for volume in targets.values():
+                _create_restore_volume(client, volume)
+                made.append(volume)
+            # The other volumes the service mounts (Anyone's config) are made
+            # by deploy_raw if missing; those it makes are removed on failure too.
+            existing = {v for v in before - set(made) if _volume_exists(client, v)}
+            made.extend(sorted(before - set(made) - existing))
+            deploy_raw.__wrapped__(slug=slug, **deploy, start=False)
+            container = client.containers.get(name)
+            if getattr(container, "status", "created") != "created":
+                raise RestoreError(f"{name} is {container.status}, not newly created, so it was not written to")
+            for target, payload in sorted(payloads.items()):
+                _write_through_helper(client, container, targets[target], payload)
+            for target in sorted(targets):
+                found = state_backup.tree_manifest(_read_back(container, target))
+                diff = state_backup.manifest_differences(expected[target], found)
+                if diff:
+                    shown = "; ".join(diff[:5]) + (f"; and {len(diff) - 5} more" if len(diff) > 5 else "")
+                    raise RestoreError(f"{target} does not read back as the backup: {shown}")
+                files += sum(1 for entry in found.values() if entry[0] == "file")
+            container.reload()
+            if container.status != "created":
+                raise RestoreError(f"{name} started before the restore finished, so it was undone")
+            started = _start_restored(slug, container)
+        except BaseException as exc:
+            left = _restore_cleanup(client, name, made)
+            note = f" Could not remove {', '.join(left)}: remove it by hand." if left else ""
+            if isinstance(exc, RestoreError):
+                raise RestoreError(f"{exc}. The container and volumes it made were removed.{note}", exc.status_code)
+            if isinstance(exc, ContainerRuntimeError):
+                raise RestoreError(f"{exc} The restore was undone.{note}", exc.status_code) from None
+            if isinstance(exc, APIError):
+                why = proxy_refusal(exc) or " ".join(str(exc.explanation or exc).split())[:300]
+                raise RestoreError(f"Docker refused the restore: {why}. It was undone.{note}") from None
+            if isinstance(exc, Exception):
+                logger.exception("Restore of %s failed", slug)
+                raise RestoreError(f"The restore failed and was undone.{note}", 500) from None
+            raise
+    logger.info("Restored %s from a backup: %d files in %s", slug, files, ", ".join(sorted(targets)))
+    return {"container_id": container.id, "targets": sorted(targets), "files": files, "started": started}
+
+
+def _volume_exists(client: Any, volume: str) -> bool:
+    try:
+        client.volumes.get(volume)
+    except NotFound:
+        return False
+    except APIError:
+        return True
+    return True
+
+
+def _start_restored(slug: str, container: Any) -> bool:
+    """Start the restored container. False when a fence-gated one waits for its fence.
+
+    A fence-gated node starts only behind a confirmed fence, as on a deploy;
+    left created, the guard starts it once the fence holds. Its data is already
+    checked, so waiting is safe.
+    """
+    if fence_gated(slug):
+        _mark_failed(container.name, False)
+        _mark_stopped(container.name, False)
+        try:
+            _require_fence(slug)
+        except ContainerNetworkError as exc:
+            logger.info("Restored %s waits for the LAN fence: %s", slug, exc)
+            return False
+    container.start()
+    return True
 
 
 def remove_instance(slug: str, instance: int) -> dict[str, Any]:

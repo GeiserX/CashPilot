@@ -10,6 +10,7 @@
   <a href="#set-collection">Earnings collection</a>
   <a href="#credential-health-card" id="credential-health-link" hidden>Credential health</a>
   <a href="#set-identities">Device ids</a>
+  <a href="#set-restore">Restore</a>
   <a href="#set-env">Environment</a>
   <a href="#set-about">About and updates</a>
   <a href="/import">Import from another tool</a>
@@ -61,6 +62,21 @@
   <div id="identities-container">
     <p class="loading-line">Loading...</p>
   </div>
+</div>
+
+<!-- Restore from a backup (issue #741, docs/backup.md). Owner only, like the whole page. -->
+<div class="card settings-section" id="set-restore">
+  <h3 class="settings-section-title">Restore from a backup</h3>
+  <p class="settings-section-desc">
+    Put a node identity or wallet back from a <code>.cpbackup</code> file made with a passphrase: Mysterium,
+    ProxyBase or Anyone. The restore only creates a new container on a box that does not run the service, and
+    never writes over a running one. To replace a running identity, download its backup first, remove the service
+    with its data, then restore here. Files sealed to a key, and Storj, use the
+    <a href="https://geiserx.github.io/CashPilot/backup/#restore-a-backup-from-the-command-line" target="_blank" rel="noopener noreferrer">command line steps</a>.
+  </p>
+  <input type="file" id="restore-file" accept=".cpbackup,application/octet-stream">
+  <button type="button" class="btn btn-ghost btn-sm" data-action="checkRestoreFile">Check file</button>
+  <div id="restore-preview"></div>
 </div>
 
 <!-- Environment Variables -->

@@ -4481,15 +4481,19 @@ const CP = (() => {
     }
     return rows.map(r => {
       const where = [r.worker, r.copy].filter(Boolean).join(', ');
-      const state = r.status === 'active' ? 'In use' : 'Removed';
+      const backup = r.kind === 'backup';
+      const state = backup ? (r.source === 'restore' ? 'Restored here' : 'Downloaded from here')
+        : (r.status === 'active' ? 'In use' : 'Removed');
       const reported = r.source === 'node'
-        ? '<div class="credential-health-hint">Reported by the node itself, not checked by CashPilot.</div>' : '';
+        ? '<div class="credential-health-hint">Reported by the node itself, not checked by CashPilot.</div>'
+        : (backup ? '<div class="credential-health-hint">A backup file this CashPilot made or restored. '
+          + 'Restoring it again needs no typed confirmation.</div>' : '');
       const id = escapeHtml(String(r.id));
       const buttons = r.readable
         ? `<button class="btn btn-ghost btn-sm" data-action="revealIdentity" data-a1="${id}">Show</button>
            <button class="btn btn-ghost btn-sm" data-action="copyIdentity" data-a1="${id}">Copy</button>`
         : '<span class="muted">Unreadable: the encryption key changed</span>';
-      const forget = r.status === 'retired' || r.kind === 'node'
+      const forget = r.status === 'retired' || r.kind === 'node' || backup
         ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}">Forget</button>` : '';
       return `
         <div class="credential-health-item identity-row" data-identity="${id}">
@@ -4600,6 +4604,97 @@ const CP = (() => {
       if (input.dataset.slug === slug && input.dataset.key === key) input.value = value;
     });
     _identityPicks(slug, key).forEach(el => { el.innerHTML = ''; });
+  }
+
+  // --- Restore from a backup file (issue #741, docs/backup.md) ---------------
+
+  // What the restore will create and where it may go, as HTML. Pure, so the
+  // harness can run it. Everything in it is text: the service and box names
+  // come from the catalog and the fleet, and where the file was made only from
+  // this CashPilot's own ledger, never from the file.
+  function restorePreviewHtml(p) {
+    const creates = (p.creates || []).map(c =>
+      `<li>volume <code>${escapeHtml(c.volume)}</code> at <code>${escapeHtml(c.target)}</code></li>`).join('');
+    const history = (p.history || []).map(h =>
+      `<li>${escapeHtml(h.what)} on ${escapeHtml(h.worker)}, ${escapeHtml(fmtTimestamp(h.when).text)}</li>`).join('');
+    const origin = p.known
+      ? `<p>This CashPilot knows this file:</p><ul>${history}</ul>`
+      : `<p class="text-warn">This CashPilot did not make this file, so it cannot tell whose identity or wallet is
+          inside. Restore only a file you made yourself. To go on, type <strong>${escapeHtml(p.service)}</strong>:</p>
+         <input type="text" class="form-input" id="restore-confirm" autocomplete="off" spellcheck="false">`;
+    const live = (p.live_on || []).length
+      ? `<p class="text-fail">This identity already runs on ${escapeHtml(p.live_on.join(', '))}. Two boxes on one
+          identity look like one node to the provider, which may merge or ban them. Remove it there first.</p>` : '';
+    const options = (p.workers || []).map(w =>
+      `<option value="${escapeHtml(String(w.id))}"${w.ok ? '' : ' disabled'}>${escapeHtml(w.name)}${
+        w.ok ? (w.plain_http ? ' (plain HTTP: the passphrase crosses your network unencrypted)' : '')
+          : ` (${escapeHtml(w.why)})`}</option>`).join('');
+    const usable = (p.workers || []).some(w => w.ok) && !(p.live_on || []).length;
+    return `
+      <p>Restoring <strong>${escapeHtml(p.service)}</strong> creates a new container
+        <code>${escapeHtml(p.container)}</code> with:</p>
+      <ul>${creates}</ul>
+      <p class="form-hint">It never writes over anything: the box must not run ${escapeHtml(p.service)} and these
+        volumes must not exist. The backup is written and read back before the container first starts.</p>
+      ${origin}${live}
+      <label class="form-label" for="restore-worker">Box</label>
+      <select class="form-input" id="restore-worker">${options || '<option disabled>No box</option>'}</select>
+      <label class="form-label" for="restore-passphrase">Passphrase of the backup</label>
+      <input type="password" class="form-input" id="restore-passphrase" autocomplete="off">
+      <div class="credential-health-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-action="submitRestore"
+          data-a1="${escapeHtml(p.upload_id)}"${usable ? '' : ' disabled'}>Restore</button>
+      </div>`;
+  }
+
+  async function checkRestoreFile() {
+    const input = document.getElementById('restore-file');
+    const out = document.getElementById('restore-preview');
+    const file = input && input.files && input.files[0];
+    if (!file || !out) return;
+    out.innerHTML = '<p class="loading-line">Checking the file...</p>';
+    try {
+      // The raw file as the body: never JSON, never base64 in the page.
+      const res = await fetch('/api/restore/upload', {
+        method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        let detail = data && data.detail;
+        if (detail && typeof detail === 'object') detail = detail.message;
+        throw new Error(detail || `Error ${res.status}`);
+      }
+      out.innerHTML = restorePreviewHtml(data);
+    } catch (err) {
+      out.innerHTML = `<p class="text-fail">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async function submitRestore(uploadId) {
+    const pass = document.getElementById('restore-passphrase');
+    const worker = document.getElementById('restore-worker');
+    const confirmBox = document.getElementById('restore-confirm');
+    const body = {
+      upload_id: uploadId,
+      worker_id: Number(worker && worker.value),
+      passphrase: pass ? pass.value : '',
+    };
+    if (confirmBox) body.confirm_name = confirmBox.value;
+    // Out of the page as soon as it is sent; the server keeps it nowhere either.
+    if (pass) pass.value = '';
+    const out = document.getElementById('restore-preview');
+    try {
+      // api() asks for the owner's password when the server answers step_up_required.
+      const res = await api('/api/restore', { method: 'POST', body });
+      toast(`${res.service} restored on ${res.worker}: ${res.files} files checked`
+        + (res.started ? ', started.' : '. It starts once the LAN fence is confirmed.'), 'success');
+      if (out) out.innerHTML = '';
+      const input = document.getElementById('restore-file');
+      if (input) input.value = '';
+      loadIdentities();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   // Exported for the harness: the message is the whole point of the fix, so it
@@ -5612,6 +5707,8 @@ const CP = (() => {
     revealIdentity,
     copyIdentity,
     forgetIdentity,
+    checkRestoreFile,
+    submitRestore,
     pickPreviousIdentity,
     useIdentity,
     loadPayoutProgress,

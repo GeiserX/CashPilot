@@ -46,6 +46,11 @@ UNDEPLOYABLE_STATUSES = frozenset({"broken", "dead", "dropped"})
 #: void a confirmed backup of it.
 LABEL_STATE_CREATED = "cashpilot.state-created"
 
+#: On a volume a restore from the dashboard creates: a value only that restore
+#: knows. Docker answers a create for a name that exists with the existing
+#: volume, so the label is how the restore proves the volume is its own and new.
+LABEL_RESTORE = "cashpilot.restore"
+
 
 #: deployed-by values only CashPilot itself writes: "worker" by deploy_raw, and
 #: "direct" by the deploy path before workers (removed in #85), whose containers

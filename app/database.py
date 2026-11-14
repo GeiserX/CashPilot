@@ -4904,7 +4904,11 @@ async def _retire_identity_rows(
     The on-box copies by default, the proxied copies with ``proxied``, or just
     the copies named in ``instances``.
     """
-    sql = "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE slug = ? AND status = 'active'"
+    # Backup files are a record of what was made, not an id a copy runs with.
+    sql = (
+        "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+        "WHERE slug = ? AND status = 'active' AND kind != 'backup'"
+    )
     args: list[Any] = [slug]
     if worker_id is not None:
         sql += " AND worker_id = ?"
@@ -4996,7 +5000,7 @@ async def delete_identity(identity_id: int) -> bool:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node')",
+            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind IN ('node', 'backup'))",
             (identity_id,),
         )
         await db.commit()
@@ -5109,6 +5113,51 @@ async def record_node_identity(slug: str, worker_id: int, value: str, instance: 
         return True
     finally:
         await db.close()
+
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+async def record_backup(slug: str, worker_id: int, sha256: str, source: str = "export") -> None:
+    """Keep the SHA-256 of a backup file this CashPilot made (``kind`` 'backup', issue #741).
+
+    ``source`` is 'export' for a file downloaded from ``worker_id``, 'restore'
+    for one restored onto it. A restore looks a file up here: one this
+    CashPilot made, or already restored, needs no typed confirmation, and the
+    boxes listed for it are where its identity may already run.
+    """
+    sha256 = str(sha256 or "").lower()
+    if not _SHA256.fullmatch(sha256) or source not in ("export", "restore"):
+        raise ValueError("not a backup hash")
+    db = await _get_db()
+    try:
+        await db.execute(
+            "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
+            "VALUES (?, ?, '1', 'backup', 'backup file', ?, ?)",
+            (slug, worker_id, encrypt_value(sha256), source),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def backup_records(sha256: str) -> list[dict[str, Any]]:
+    """Every ledger row for this backup file: ``slug``, ``worker_id``, ``source``, ``first_seen``. Oldest first."""
+    sha256 = str(sha256 or "").lower()
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT slug, worker_id, source, first_seen, value_encrypted FROM device_identities "
+            "WHERE kind = 'backup' ORDER BY id"
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    return [
+        {k: row[k] for k in ("slug", "worker_id", "source", "first_seen")}
+        for row in rows
+        if decrypt_value(row["value_encrypted"] or "") == sha256
+    ]
 
 
 async def identity_backfill_specs() -> list[dict[str, Any]]:
