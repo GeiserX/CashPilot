@@ -474,6 +474,7 @@ class TestOrder:
 
     def test_status_reports_the_tunnels_traffic_and_exit(self):
         earner = _container("cashpilot-x-p1", "x", proxy=1)
+        earner.attrs["Config"] = {"Image": "x/x:1.2"}
         tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
         tunnel.exec_run.return_value = (0, b'{"ip":"93.184.215.14","country":"DE"}')
         client = MagicMock()
@@ -484,6 +485,8 @@ class TestOrder:
         ):
             (entry,) = proxy_tunnel.status()
         assert entry["slug"] == "x" and entry["proxy_id"] == 1
+        # What the earner runs, so the UI can say a routed service's image is outdated.
+        assert entry["image"] == "x/x:1.2"
         assert (entry["net_rx_bytes"], entry["net_tx_bytes"]) == (1000, 200)
         assert entry["exit_ip"] == "93.184.215.14" and entry["exit_country"] == "DE"
 
@@ -568,7 +571,7 @@ class TestWorkerApi:
         assert (slug, proxy_id, own_ip) == ("honeygain", 3, "192.0.2.1")
         assert proxy["password"] == PASSWORD and earner["env"] == {"A": "b"}
         assert PASSWORD not in resp.text
-        assert deploy.call_args.kwargs == {"own_tunnel": False, "only_if_running": False}
+        assert deploy.call_args.kwargs == {"only_if_running": False}
 
     def test_deploy_passes_only_if_running_through(self):
         body = {"earner": {"image": "honeygain/honeygain:1"}, "proxy": _socks(), "only_if_running": True}
@@ -580,7 +583,7 @@ class TestWorkerApi:
         ):
             resp = _api().post("/api/proxied/honeygain/3/deploy", json=body, headers=AUTH)
         assert resp.status_code == 200, resp.text
-        assert deploy.call_args.kwargs == {"own_tunnel": False, "only_if_running": True}
+        assert deploy.call_args.kwargs == {"only_if_running": True}
 
     def test_proxy_test_refuses_a_private_exit(self):
         with (

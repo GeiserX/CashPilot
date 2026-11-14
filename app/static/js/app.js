@@ -4565,7 +4565,10 @@ const CP = (() => {
     const fresh = _selectedWorkerIds(`${picked}:not([data-routed])`);
     // A routed box ticked to leave its route (_routeSwitchBoxes) already runs the service.
     const switching = _selectedWorkerIds(`${picked}[data-routed]`);
-    const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id) && !switching.includes(id));
+    // Unlocked by Direct, a routed box leaves its route only by its own tick,
+    // never through a changed Instances count (route 0 would go with it).
+    const switchable = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"][data-routed]:not(:disabled)`);
+    const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id) && !switchable.includes(id));
     const again = [...switching, ...rescaled];
     // Only nodes that already run the service: their recorded credentials are
     // reused, so the empty credential boxes are not missing.

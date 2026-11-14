@@ -244,6 +244,34 @@ assert.equal(box1(run.dom).disabled, true, 'back on the default it is locked aga
 assert.equal(box1(run.dom).checked, true, 'and ticked again');
 console.log('Route change: a routed box is selectable only once Direct is chosen, and sends it.');
 
+// ---- A changed Instances count never moves a routed box off its route -----------
+// Direct unlocks the routed box unticked; its Instances box can still change.
+for (const [routeValue, want] of [['0', []], ['', [{ path: '/api/deploy/honeygain?worker_id=1', route: undefined }]]]) {
+  const dom = formDom(rows, routeValue);
+  const instances = [{ dataset: { slug: 'honeygain', wid: '1', current: '1' }, value: '2', disabled: false }];
+  const boxesOnly = dom.querySelectorAll;
+  dom.querySelectorAll = sel => (sel.startsWith('.instances-input') ? instances : boxesOnly(sel));
+  const calls = [];
+  const api = async (path, opts) => { calls.push({ path, route: opts.body.route }); return {}; };
+  const live = new Function(
+    'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
+    'wizardState', '_confirmDeviceRenames',
+    ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
+      'deployServiceToWorkers'].map(grab).join('\n')
+      + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
+  )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
+    async () => false);
+  live._routeSwitchBoxes(dom.select);
+  await live.deployServiceToWorkers('honeygain');
+  assert.deepEqual(
+    calls, want,
+    routeValue === '0'
+      ? 'Direct with the routed box unticked: its new count sends nothing, so it keeps its route'
+      : 'control: on the default a new count rescales it and keeps its route',
+  );
+}
+console.log('Instances: a changed count rescales a routed box on its route, never off it.');
+
 // ---- Two forms in the DOM: each deploy reads its own Route box ------------------
 // The wizard's form stays in the DOM, hidden, while the service page is open.
 {

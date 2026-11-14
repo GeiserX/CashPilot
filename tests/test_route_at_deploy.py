@@ -437,12 +437,11 @@ PROXY = {"kind": "socks5", "host": "proxy.example", "port": 1080}
 
 class TestTheWorkerProxiedRoutes:
     def _deploy(self, worker, monkeypatch, routed, outcome, **extra):
+        """The real proxy_tunnel.deploy, which picks the tunnel under its lock, with no Docker below it."""
         seen = {}
 
-        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel=False, only_if_running=False):
+        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
             seen["own_tunnel"] = own_tunnel
-            if only_if_running:
-                seen["only_if_running"] = True
             seen["marked_first"] = route_gate.routed().get(slug)
             if isinstance(outcome, Exception):
                 raise outcome
@@ -450,7 +449,8 @@ class TestTheWorkerProxiedRoutes:
 
         monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
         monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
-        monkeypatch.setattr(worker_api.proxy_tunnel, "deploy", deploy)
+        monkeypatch.setattr(proxy_tunnel, "_deploy", deploy)
+        monkeypatch.setattr(proxy_tunnel, "_require_running", lambda slug, pid: seen.update(only_if_running=True))
         body = {"earner": BODY, "proxy": PROXY, "routed": routed, **extra}
         return worker("POST", "/api/proxied/honeygain/3/deploy", body), seen
 
@@ -472,6 +472,60 @@ class TestTheWorkerProxiedRoutes:
         resp, seen = self._deploy(worker, monkeypatch, False, {"container_id": "e"}, only_if_running=True)
         assert resp.status_code == 200, resp.text
         assert seen == {"own_tunnel": True, "only_if_running": True, "marked_first": 3}
+
+    def test_a_copy_deploy_sees_a_route_set_while_it_waited_for_the_tunnel_lock(self, worker, monkeypatch):
+        """A routed deploy that finished meanwhile made it the routed service: never into the shared tunnel."""
+        lock = proxy_tunnel._deploy_lock(3)
+
+        class RoutedMeanwhile:
+            def __enter__(self):
+                lock.acquire()
+                route_gate.mark("honeygain", 3)
+
+            def __exit__(self, *exc):
+                lock.release()
+
+        monkeypatch.setattr(proxy_tunnel, "_deploy_lock", lambda pid: RoutedMeanwhile())
+        resp, seen = self._deploy(worker, monkeypatch, False, {"container_id": "e"}, only_if_running=True)
+        assert resp.status_code == 200, resp.text
+        assert seen == {"own_tunnel": True, "only_if_running": True, "marked_first": 3}
+
+    def test_a_routed_deploy_honours_only_if_running(self, worker, monkeypatch):
+        """A refusal (the copy is stopped) changes nothing and leaves no route behind it."""
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"}, only_if_running=True)
+        assert resp.status_code == 200, resp.text
+        assert seen == {"own_tunnel": True, "only_if_running": True, "marked_first": 3}
+
+        def stopped(slug, pid):
+            raise proxy_tunnel.ProxyTunnelError("cashpilot-honeygain-p3 is not running, so it was left as it was")
+
+        route_gate.release("honeygain")
+        monkeypatch.setattr(proxy_tunnel, "_require_running", stopped)
+        resp = worker(
+            "POST",
+            "/api/proxied/honeygain/3/deploy",
+            {"earner": BODY, "proxy": PROXY, "routed": True, "only_if_running": True},
+        )
+        assert resp.status_code >= 400 and "not running" in _detail(resp)
+        assert route_gate.routed() == {}
+
+    def test_a_failed_first_routed_deploy_whose_copy_survived_keeps_the_route(self, worker, monkeypatch):
+        """Its earner may run through the proxy: a direct deploy beside it still needs the owner's password."""
+        (copy,) = _copies_on(worker.docker, (3, "honeygain"))
+        resp, _ = self._deploy(worker, monkeypatch, True, RuntimeError("the start's answer was lost"))
+        assert resp.status_code >= 400
+        assert copy.name in _detail(resp) and "stays routed" in _detail(resp)
+        assert route_gate.routed() == {"honeygain": 3}
+        resp = worker("POST", "/api/containers/honeygain/deploy", BODY)
+        assert resp.status_code == 403 and _detail(resp)["error"] == "route_locked"
+        assert worker.deployed == []
+
+    def test_a_failed_first_routed_deploy_that_cannot_look_for_its_copy_keeps_the_route(self, worker, monkeypatch):
+        # The look before the mark answers; the one after the failure does not.
+        worker.docker.containers.list.side_effect = [[], RuntimeError("docker is down")]
+        resp, _ = self._deploy(worker, monkeypatch, True, RuntimeError("tunnel did not start"))
+        assert resp.status_code >= 400 and "stays routed" in _detail(resp)
+        assert route_gate.routed() == {"honeygain": 3}
 
     def test_a_failed_routed_deploy_puts_the_previous_route_back(self, worker, monkeypatch):
         route_gate.mark("honeygain", 2)
@@ -651,7 +705,7 @@ class TestOneDeployOfAServiceAtATime:
     def test_a_failed_routed_deploy_never_undoes_a_route_set_after_it(self, monkeypatch):
         inside, go = threading.Event(), threading.Event()
 
-        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel=False):
+        def deploy(slug, proxy_id, earner, proxy, own_ip, **_):
             if proxy_id == 2:
                 inside.set()
                 assert go.wait(5)
@@ -1140,6 +1194,31 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
         assert "through proxy 3 ran during this removal" in resp.json()["proxied_error"]
         # Control: with no deploy running at any point, nothing is held.
         monkeypatch.setattr(worker_api.proxy_tunnel, "remove_all", lambda slug: ["p4"])
+        resp = worker("DELETE", "/api/containers/honeygain")
+        assert resp.status_code == 200, resp.text
+        assert "proxied_error" not in resp.json()
+
+    def test_a_copy_deploy_that_starts_and_ends_during_the_removal_still_keeps_the_records(self, worker, monkeypatch):
+        """In neither the set read before the removal nor the one read after it: its start is counted."""
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
+        monkeypatch.setattr(worker_api.proxy_tunnel, "deploy", lambda *a, **k: {"container_id": "e"})
+        monkeypatch.setattr(worker_api.orchestrator, "remove_extra_instances", lambda slug: [])
+        monkeypatch.setattr(worker_api.proxy_tunnel, "remove_all", lambda slug: [])
+        deployed = []
+
+        def remove_service(slug, **k):
+            # A deploy of a copy through proxy 3 arrives and answers while the service goes.
+            deployed.append(worker("POST", "/api/proxied/honeygain/3/deploy", {"earner": BODY, "proxy": PROXY}))
+            return {"container_id": "d"}
+
+        monkeypatch.setattr(worker_api.orchestrator, "remove_service", remove_service)
+        resp = worker("DELETE", "/api/containers/honeygain")
+        assert deployed[0].status_code == 200, deployed[0].text
+        assert resp.status_code == 200, resp.text
+        assert "through proxy 3 ran during this removal" in resp.json()["proxied_error"]
+        # Control: a removal with no deploy during it holds nothing, whatever ran before it.
+        monkeypatch.setattr(worker_api.orchestrator, "remove_service", lambda slug, **k: {"container_id": "d"})
         resp = worker("DELETE", "/api/containers/honeygain")
         assert resp.status_code == 200, resp.text
         assert "proxied_error" not in resp.json()
@@ -1692,6 +1771,14 @@ class TestTheDashboardCountsIt:
         assert [r["slug"] for r in rows] == ["honeygain"]
         assert rows[0]["route"]["exit_ip"] == "203.0.113.9" and rows[0]["instance"] == 1
 
+    def test_the_status_rows_carry_its_image_so_an_outdated_one_is_flagged(self, db):
+        """A worker older than the field sends no image: the row keeps "" as before."""
+        sent = {**self.ROUTED, "image": "honeygain/honeygain:1.0"}
+        for entry, image in ((sent, "honeygain/honeygain:1.0"), (self.ROUTED, "")):
+            with patch.object(main.database, "list_workers", AsyncMock(return_value=[_worker_row(proxied=[entry])])):
+                (row,) = asyncio.run(main._get_all_worker_containers())
+            assert row["image"] == image
+
     def test_routed_entries_reads_a_raw_database_row(self):
         assert proxies.routed_entries(_worker_row(proxied=[self.ROUTED, self.COPY])) == [self.ROUTED]
         assert proxies.routed_entries({"system_info": "{not json"}) == []
@@ -2078,6 +2165,24 @@ class TestATunnelIsKnownByItsName:
         client.containers.list.return_value = [direct]
         with patch.object(orchestrator, "_get_client", return_value=client):
             assert orchestrator.hold_direct_earners() == ["cashpilot-honeygain"]
+        direct.stop.assert_called_once()
+
+    @pytest.mark.parametrize("service", ["tunnel-p3", "proxy-tunnel"])
+    def test_a_direct_earner_made_under_a_tunnels_name_is_not_one(self, monkeypatch, service):
+        """Before deploy_raw refused the name, a direct deploy of slug tunnel-p3 was cashpilot-tunnel-p3, and
+        kept the tunnel's labels (the service label too, before ed3afa9). deploy_raw's own label it cannot lose."""
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        direct = self._container(
+            "cashpilot-tunnel-p3",
+            "honeygain/honeygain:1.0",
+            {"cashpilot.service": service, "cashpilot.proxy": "3", "cashpilot.version": "1"},
+        )
+        assert not orchestrator.is_tunnel_sidecar(direct)
+        assert not orchestrator.is_proxied(direct)
+        client = _client_with()
+        client.containers.list.return_value = [direct]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert orchestrator.hold_direct_earners() == ["cashpilot-tunnel-p3"]
         direct.stop.assert_called_once()
 
     def test_control_the_name_without_the_label_is_not_one(self):

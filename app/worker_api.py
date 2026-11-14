@@ -1946,7 +1946,12 @@ def _proxy_http_error(exc: Exception) -> HTTPException:
 
 
 def _deploy_routed(
-    slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None
+    slug: str,
+    proxy_id: int,
+    earner: dict[str, Any],
+    proxy: dict[str, Any],
+    own_ip: str | None,
+    only_if_running: bool = False,
 ) -> dict[str, Any]:
     """Deploy the routed copy of ``slug``, holding route_gate.deploying from its mark to its end.
 
@@ -2006,25 +2011,26 @@ def _deploy_routed(
                 "then deploy it with a route; nothing changed",
             )
         try:
-            return proxy_tunnel.deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=True)
+            # In a tunnel of its own: the mark now names this proxy (proxy_tunnel.deploy).
+            return proxy_tunnel.deploy(slug, proxy_id, earner, proxy, own_ip, only_if_running=only_if_running)
         except Exception as exc:  # noqa: BLE001 - mapped to a status below
-            route_gate.release(slug, before)
-            raise _proxy_http_error(exc) from None
-
-
-def _deploy_copy(
-    slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None, only_if_running: bool
-) -> dict[str, Any]:
-    """Deploy a copy of ``slug`` beside its service, or rebuild one in place.
-
-    A rebuild (a device rename) can reach the copy that IS a routed service:
-    it stays in its own tunnel, as a start keeps it (proxy_tunnel._start),
-    never moved into the proxy's shared one beside other services.
-    """
-    own_tunnel = proxy_tunnel._routed_here(slug, proxy_id)
-    return proxy_tunnel.deploy(
-        slug, proxy_id, earner, proxy, own_ip, own_tunnel=own_tunnel, only_if_running=only_if_running
-    )
+            error = _proxy_http_error(exc)
+            # A deploy can fail after its earner exists (a start whose answer
+            # was lost, a cleanup that failed too). Released then, the route
+            # would let a direct deploy run the same account from this box's
+            # own IP beside it without the owner's password.
+            try:
+                left = [name for pid, name in proxy_tunnel.routed_copies(slug, proxy_id) if pid == int(proxy_id)]
+            except Exception as look:  # noqa: BLE001 - not knowing is not "none"
+                left = [f"unknown ({proxy_tunnel.redact(str(look))[:120]})"]
+            if not left:
+                route_gate.release(slug, before)
+            else:
+                error.detail = (
+                    f"{error.detail}. {slug} stays routed through proxy {proxy_id} on this worker, because its "
+                    f"routed copy may still exist: {', '.join(left)}"
+                )
+            raise error from None
 
 
 #: How many deploys of each copy, by (slug, proxy id), this worker is running,
@@ -2033,6 +2039,9 @@ def _deploy_copy(
 #: routed one may still be waiting on route_gate.deploying); a removal that ran
 #: first would leave the earner it makes running with no record in the UI.
 _copy_deploys: dict[tuple[str, int], int] = {}
+#: How many deploys of each copy ever started here. A removal compares it before
+#: and after, so a deploy that started and ended inside it is not missed.
+_copy_starts: dict[tuple[str, int], int] = {}
 
 
 @app.post("/api/proxied/{slug}/{proxy_id}/deploy")
@@ -2041,6 +2050,7 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
     _verify_api_key(request)
     key = (slug, int(proxy_id))
     _copy_deploys[key] = _copy_deploys.get(key, 0) + 1
+    _copy_starts[key] = _copy_starts.get(key, 0) + 1
     try:
         return await _proxied_deploy(slug, proxy_id, spec)
     finally:
@@ -2064,12 +2074,20 @@ async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> 
     if not spec.routed:
         try:
             result = await asyncio.to_thread(
-                _deploy_copy, slug, proxy_id, earner, spec.proxy.plain(), own_ip, spec.only_if_running
+                proxy_tunnel.deploy,
+                slug,
+                proxy_id,
+                earner,
+                spec.proxy.plain(),
+                own_ip,
+                only_if_running=spec.only_if_running,
             )
         except Exception as exc:  # noqa: BLE001 - mapped to a status below
             raise _proxy_http_error(exc) from None
     else:
-        result = await asyncio.to_thread(_deploy_routed, slug, proxy_id, earner, spec.proxy.plain(), own_ip)
+        result = await asyncio.to_thread(
+            _deploy_routed, slug, proxy_id, earner, spec.proxy.plain(), own_ip, spec.only_if_running
+        )
     return {"status": "deployed", **result}
 
 
@@ -2361,10 +2379,12 @@ async def api_remove_container(
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
     _verify_api_key(request)
-    # Copy deploys running when the removal starts. One may finish inside
-    # remove_all, after it listed the copies, so the set read afterwards alone
-    # would miss the earner it made.
+    # Copy deploys running when the removal starts, and how many had started.
+    # One may finish inside remove_all, after it listed the copies, or start
+    # and finish inside it, so the set read afterwards alone would miss the
+    # earner it made.
     deploying = {pid for s, pid in list(_copy_deploys) if s == slug}
+    started = {pid: n for (s, pid), n in list(_copy_starts.items()) if s == slug}
     try:
         result = await asyncio.to_thread(
             orchestrator.remove_service,
@@ -2389,7 +2409,9 @@ async def api_remove_container(
         # the removal (the UI gave up on it after 180 s) may be made after it
         # listed them, so the UI must keep the copies' records, as
         # api_proxied_remove holds them.
-        if held := sorted(deploying | {pid for s, pid in list(_copy_deploys) if s == slug}):
+        deploying |= {pid for s, pid in list(_copy_deploys) if s == slug}
+        deploying |= {pid for (s, pid), n in list(_copy_starts.items()) if s == slug and n != started.get(pid)}
+        if held := sorted(deploying):
             result.setdefault(
                 "proxied_error",
                 f"A deploy of {slug} through proxy {', '.join(map(str, held))} ran during this removal on this worker",

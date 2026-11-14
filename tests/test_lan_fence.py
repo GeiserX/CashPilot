@@ -861,6 +861,28 @@ class TestReattach:
         assert lan_fence.reattach(_docker(net, earners=[c]), net) == ["cashpilot-honeygain"]
         c.start.assert_not_called()
 
+    def test_a_direct_earner_made_under_a_tunnels_name_is_left_stopped(self, tmp_path, monkeypatch):
+        """Before deploy_raw refused the name, a direct deploy of slug tunnel-p3 took cashpilot-tunnel-p3."""
+        from app import route_gate
+        from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_VERSION, ROLE_TUNNEL
+
+        monkeypatch.setattr(route_gate, "ROUTED_MARKER", str(tmp_path / ".routed"))
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        net = _network()
+        c = _orphan("cashpilot-tunnel-p3", "old-id", error=self.GONE)
+        c.labels.update(
+            {
+                "cashpilot.service": "tunnel-p3",
+                LABEL_MANAGED: "true",
+                LABEL_ROLE: ROLE_TUNNEL,
+                LABEL_PROXY: "3",
+                LABEL_VERSION: "1",
+            }
+        )
+        assert lan_fence.reattach(_docker(net, earners=[c]), net) == ["cashpilot-tunnel-p3"]
+        net.connect.assert_called_once_with(c)
+        c.start.assert_not_called()
+
     def test_a_fence_gated_one_is_moved_but_left_to_the_guard(self):
         net = _network()
         c = _orphan("cashpilot-mysterium", "old-id", error=self.GONE)

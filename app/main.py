@@ -319,7 +319,8 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                         "slug": str(e.get("slug")),
                         "name": str(e.get("name") or e.get("slug")),
                         "status": str(e.get("status") or "unknown"),
-                        "image": "",
+                        # A worker older than the field sends none.
+                        "image": str(e.get("image") or ""),
                         "cpu_percent": 0,
                         "memory_mb": 0,
                         "net_rx_bytes": e.get("net_rx_bytes"),

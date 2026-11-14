@@ -1152,7 +1152,6 @@ def deploy(
     proxy: dict[str, Any],
     own_ip: str | None,
     *,
-    own_tunnel: bool = False,
     only_if_running: bool = False,
 ) -> dict:
     """Deploy (or replace) the proxied copy of ``slug`` through proxy ``proxy_id``.
@@ -1164,8 +1163,11 @@ def deploy(
     the new one is created inside the shared tunnel's namespace. A tunnel that
     cannot start therefore costs nothing.
 
-    ``own_tunnel`` (a routed service) puts the earner in a tunnel of its own
-    instead; a tunnel it leaves goes once no copy is left in it.
+    A routed service (the route mark names this proxy) gets a tunnel of its
+    own instead; a tunnel it leaves goes once no copy is left in it. The mark
+    is read under the lock that chooses the tunnel, so a routed deploy that
+    finished while this one waited is seen, and its copy never lands in the
+    proxy's shared tunnel beside other services.
 
     ``only_if_running`` replaces only a copy that runs and that the owner or
     the cap did not stop, and changes nothing otherwise (409). It is checked
@@ -1174,7 +1176,7 @@ def deploy(
     with _deploy_lock(proxy_id):
         if only_if_running:
             _require_running(slug, proxy_id)
-        return _deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=own_tunnel)
+        return _deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=_routed_here(slug, proxy_id))
 
 
 def _require_running(slug: str, proxy_id: int) -> None:
@@ -1927,6 +1929,8 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
                 "name": earner.name if earner is not None else earner_name(slug, pid),
                 "status": earner.status if earner is not None else "missing",
                 "container_id": earner.short_id if earner is not None else "",
+                # What a routed service runs, for the UI's outdated-image notice.
+                "image": _image_of(earner) if earner is not None else "",
                 "tunnel_status": sidecar.status if sidecar is not None else "missing",
                 "tunnel_container_id": sidecar.short_id if sidecar is not None else "",
                 "tunnel_started_at": _started_at(sidecar) if sidecar is not None else "",

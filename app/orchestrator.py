@@ -2697,19 +2697,22 @@ def start_service(slug: str, instance: int = 1) -> None:
 
 
 def is_tunnel_sidecar(container: Any) -> bool:
-    """A proxy tunnel (app/proxy_tunnel.py): labelled one AND named as one.
+    """A proxy tunnel (app/proxy_tunnel.py): labelled one, named as one, and never made by deploy_raw.
 
     A tunnel reaches its proxy from the box's own IP; that is its job. The
     label alone is not enough: a direct deploy once kept any label it was
     given (DeploySpec.labels), and any image it was given, so an earner made
-    then can carry both. Its name it could not choose: a direct deploy is
-    always ``cashpilot-<slug>[-N]`` and deploy_raw refuses a name that starts
-    with TUNNEL_PREFIX, which only proxy_tunnel gives its tunnels. The image
-    does not count either way: a tunnel keeps running the image it was made
-    from after CASHPILOT_TUNNEL_IMAGE changes.
+    then can carry both. deploy_raw now refuses a name that starts with
+    TUNNEL_PREFIX, which only proxy_tunnel gives its tunnels, but before that
+    a direct deploy of a slug such as ``tunnel-p3`` took one. What no earner
+    can lose is the LABEL_VERSION key: deploy_raw has set it on every
+    container it made, a caller's labels could only change its value, and
+    proxy_tunnel never sets it on a tunnel. The image does not count either
+    way: a tunnel keeps running the image it was made from after
+    CASHPILOT_TUNNEL_IMAGE changes.
     """
     labels = getattr(container, "labels", None)
-    if not isinstance(labels, dict) or labels.get(LABEL_ROLE) != ROLE_TUNNEL:
+    if not isinstance(labels, dict) or labels.get(LABEL_ROLE) != ROLE_TUNNEL or LABEL_VERSION in labels:
         return False
     return str(getattr(container, "name", "") or "").startswith(TUNNEL_PREFIX)
 
