@@ -177,7 +177,7 @@ class TestNewDeployments:
     def test_a_new_deployment_asks_nothing(self, client):
         resp = _renames(client, {"env": {}}, [_worker(1, "cid-a")])
         assert resp.status_code == 200, resp.text
-        assert resp.json() == {"renames": []}
+        assert resp.json()["renames"] == []
 
 
 class TestCopiesStayDistinct:
@@ -242,7 +242,7 @@ class TestRunningDeploymentsAreNotRenamedSilently:
 
     def test_a_name_the_operator_chose_is_never_offered_or_renamed(self, client):
         w = _worker(1, "cid-a")
-        assert _renames(client, {"env": {}}, [w], recorded=_recorded("my-nas")).json() == {"renames": []}
+        assert _renames(client, {"env": {}}, [w], recorded=_recorded("my-nas")).json()["renames"] == []
         _, sent = _deploy(client, {"env": {}, "rename_devices": True}, [w], recorded=_recorded("my-nas"))
         assert sent[0]["env"]["DEVICE_NAME"] == "my-nas"
 
@@ -259,6 +259,10 @@ class TestRunningDeploymentsAreNotRenamedSilently:
         assert kept[0]["env"]["DEVICE_NAME"] == LEGACY
         _, renamed = _deploy(client, {"env": {"EMAIL": "me@x.io"}, "rename_devices": True}, [w])
         assert renamed[0]["env"]["DEVICE_NAME"] == "cashpilot-" + main._device_hostname(w, 1)
+
+    def test_the_check_says_which_box_by_name(self, client):
+        resp = _renames(client, {"env": {}}, [_worker(3, "cid-a", name="unraid")], recorded=_recorded(LEGACY))
+        assert resp.json()["worker"] == "unraid"
 
     def test_the_check_is_for_the_owner_only(self, client):
         resp = _renames(client, {"env": {}}, [_worker(1, "cid-a")], recorded=_recorded(LEGACY), role="writer")
@@ -291,7 +295,7 @@ const env = {
     if (url.includes('/device-names')) {
       if (scenario.checkFails) throw new Error('down');
       const wid = new URL(url, 'http://x').searchParams.get('worker_id');
-      return { renames: scenario.renames[wid] || [] };
+      return { worker: (scenario.names || {})[wid], renames: scenario.renames[wid] || [] };
     }
     return {};
   },
@@ -300,11 +304,28 @@ const env = {
   console: { warn() {} },
   toast() {}, _showDeviceLink() {}, _imageChoice: () => undefined, _instancesFor: () => undefined,
   _confirmPreflight: async () => true, wizardState: { deployed: [] },
+  escapeHtml: (t) => String(t), loadServicesTable() {}, openServiceDetail() {}, _showDeviceLink() {},
+  _detailWorkers: scenario.detailWorkers || [],
 };
-const body = `${grab('_confirmDeviceRenames')}\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`;
-const deploy = new Function(...Object.keys(env), body)(...Object.values(env));
-deploy('iproyal', scenario.workers).then(() => {
-  console.log(JSON.stringify({ calls, confirms }));
+// The rename note on the service page, for the scenarios that open it.
+const note = { innerHTML: '', style: { display: 'none' } };
+env.document = {
+  getElementById: (id) => (id === 'device-rename-iproyal' && scenario.page ? note : null),
+  querySelectorAll: () => [],
+};
+const names = ['_deviceRenameLines', '_confirmDeviceRenames', '_deployToWorkers', 'loadDeviceRenames',
+  'renameDevices', 'redeployOnWorker'];
+const body = `${names.map(grab).join('\n')}\nfunction _runningWorkerIds(slug) {
+  return (_detailWorkers || []).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug)).map(w => w.id);
+}\nreturn { ${names.join(', ')} };`;
+const fns = new Function(...Object.keys(env), body)(...Object.values(env));
+const run = {
+  deploy: () => fns._deployToWorkers('iproyal', scenario.workers),
+  page: async () => { await fns.loadDeviceRenames('iproyal'); if (scenario.click) await fns.renameDevices('iproyal'); },
+  redeploy: () => fns.redeployOnWorker('iproyal', String(scenario.workers[0])),
+}[scenario.run || 'deploy'];
+run().then(() => {
+  console.log(JSON.stringify({ calls, confirms, note }));
 });
 """
 
@@ -322,6 +343,8 @@ def _form(**scenario):
     )
     result = json.loads(out.stdout)
     deploys = [c for c in result["calls"] if c["url"].startswith("/api/deploy/iproyal?")]
+    if scenario.get("run") == "page":
+        return deploys, result["confirms"], result["note"]
     return deploys, result["confirms"]
 
 
@@ -348,3 +371,68 @@ class TestTheFormAsksBeforeRenaming:
     def test_a_check_that_fails_keeps_the_names(self):
         deploys, confirms = _form(workers=[1], renames={}, answer=True, checkFails=True)
         assert confirms == [] and len(deploys) == 1 and "rename_devices" not in deploys[0]["body"]
+
+    def test_each_line_names_the_box_not_its_id(self):
+        _, confirms = _form(
+            workers=[3, 7], renames={"3": [RENAME], "7": [RENAME]}, names={"3": "local", "7": "unraid"}, answer=False
+        )
+        assert f"• local: Device name {LEGACY}" in confirms[0]
+        assert f"• unraid: Device name {LEGACY}" in confirms[0]
+        assert "node 3" not in confirms[0]
+
+
+# A box that already runs the service cannot be ticked in the deploy form, and
+# IPRoyal and Honeygain allow one device per IP, so they have no Instances box
+# either. The service page is where those boxes get their own name.
+_RUNNING = [
+    {"id": 3, "name": "local", "status": "online", "containers": [{"slug": "iproyal"}]},
+    {"id": 7, "name": "unraid", "status": "online", "containers": [{"slug": "iproyal"}]},
+    {"id": 9, "name": "spare", "status": "online", "containers": []},
+]
+
+
+class TestRunningBoxesCanBeRenamed:
+    def test_the_service_page_offers_the_rename_for_running_boxes(self):
+        deploys, confirms, note = _form(
+            run="page", page=True, detailWorkers=_RUNNING, workers=[], renames={"3": [RENAME]}, answer=True
+        )
+        assert note["style"]["display"] == ""
+        assert 'data-action="renameDevices"' in note["innerHTML"]
+        assert confirms == [] and deploys == [], "opening the page changes nothing"
+
+    def test_nothing_to_rename_shows_nothing(self):
+        _, _, note = _form(run="page", page=True, detailWorkers=_RUNNING, workers=[], renames={}, answer=True)
+        assert note["style"]["display"] == "none"
+
+    def test_the_button_asks_once_then_renames_every_running_box(self):
+        deploys, confirms, _ = _form(
+            run="page",
+            page=True,
+            click=True,
+            detailWorkers=_RUNNING,
+            workers=[],
+            renames={"3": [RENAME], "7": [RENAME]},
+            names={"3": "local", "7": "unraid"},
+            answer=True,
+        )
+        assert len(confirms) == 1 and "• unraid:" in confirms[0]
+        assert [d["url"] for d in deploys] == ["/api/deploy/iproyal?worker_id=3", "/api/deploy/iproyal?worker_id=7"]
+        assert all(d["body"] == {"env": {}, "rename_devices": True} for d in deploys)
+
+    def test_cancel_on_the_button_redeploys_nothing(self):
+        deploys, confirms, _ = _form(
+            run="page", page=True, click=True, detailWorkers=_RUNNING, workers=[], renames={"3": [RENAME]}, answer=False
+        )
+        assert len(confirms) == 1 and deploys == []
+
+    def test_the_redeploy_button_offers_the_rename_too(self):
+        deploys, confirms = _form(run="redeploy", workers=[3], renames={"3": [RENAME]}, answer=True)
+        # The redeploy question, then the rename question.
+        assert len(confirms) == 2 and LEGACY in confirms[1]
+        assert deploys[0]["body"] == {"env": {}, "rename_devices": True}
+
+    def test_the_page_has_the_note_and_the_button_is_wired(self):
+        js = (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")
+        assert 'id="device-rename-${escapeHtml(svc.slug)}"' in js
+        assert "loadDeviceRenames(slug);" in js
+        assert "\n    renameDevices,\n" in js

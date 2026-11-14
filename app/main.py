@@ -4343,9 +4343,11 @@ async def api_deploy_device_names(
 ) -> dict[str, Any]:
     """The device names a deploy of ``slug`` with this body could rename on this worker.
 
-    Asked by the deploy form before it deploys, so the operator sees each name
-    (old -> new) and chooses: confirm sends ``rename_devices``, and anything
-    else keeps the names the deployment has. Changes nothing.
+    Asked by the deploy form before it deploys, by the redeploy buttons, and
+    when the service page opens for the boxes that already run it, so the
+    operator sees each name (old -> new) and chooses: confirm sends
+    ``rename_devices``, and anything else keeps the names the deployment has.
+    Changes nothing.
     """
     worker_id = await _resolve_worker_id(worker_id)
     svc = catalog.get_service(slug) or await _custom_service(slug, reveal=True)
@@ -4353,7 +4355,9 @@ async def api_deploy_device_names(
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     _, renames = await _device_names(slug, svc.get("docker") or {}, body, worker_id, recorded)
-    return {"renames": renames}
+    # The box's name, so the confirm says which box each line is about.
+    worker = await database.get_worker(worker_id)
+    return {"worker": str((worker or {}).get("name") or f"node {worker_id}"), "renames": renames}
 
 
 _is_port_range = catalog.is_port_range
