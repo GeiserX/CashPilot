@@ -197,6 +197,98 @@ Or run an auto-updater such as [Watchtower](https://containrrr.dev/watchtower/)
 or [Diun](https://crazymax.dev/diun/) against the CashPilot containers. These
 are optional. CashPilot does not bundle an updater.
 
+### Cleaning up old images
+
+CashPilot pulls images but never deletes them. Each update and each redeploy
+can leave the previous image on disk. On a three-server test fleet the old
+CashPilot and earner images came to about 3 GB in total. That is small next
+to what other programs on the same host usually leave behind, so look at the
+whole host:
+
+```bash
+docker system df
+```
+
+The `RECLAIMABLE` value on the `Images` line is what Docker could free.
+
+**Why CashPilot does not do this for you.** The worker reaches Docker through
+the socket proxy. For images, the proxy lets it pull one and read one by name,
+and nothing else. It cannot list the host's images or delete one. A worker that
+could would also see and delete the images of every other program on the host.
+See [what the proxy refuses](security-defaults.md#docker-socket-proxy).
+
+**Step 1: remove dangling images.** A dangling image has no tag and no
+container uses it, running or stopped. An update over a moving tag such as
+`2.4`, `latest` or a digest leaves exactly these behind:
+
+```bash
+docker image prune
+```
+
+This also deletes the image you ran before an update over a moving tag: once
+the new `2.4` image arrives, the old one has no tag. To keep a way back, write
+down the exact version before you update (the foot of the sidebar shows it), so
+you can pull `drumsergio/cashpilot:<X.Y.Z>` again. Or pin the compose file to
+an exact `X.Y.Z` tag; then the old image keeps its tag and step 2 applies.
+
+Docker asks before it deletes. In a cron entry, add `--force` to skip the
+question. It changes nothing else:
+
+```cron
+30 4 * * 0  docker image prune --force
+```
+
+!!! warning "Do not add `-a`"
+    `docker image prune -a` deletes every image that no container uses right
+    now, dangling or tagged. That includes images of stacks you stopped on
+    purpose and images you built locally and cannot pull again.
+
+**Step 2: remove old pinned tags.** An image pinned to a version keeps its tag
+after you move to a newer one, so `prune` skips it. These CashPilot images are
+pinned:
+
+| Repository | What pins it |
+|---|---|
+| `drumsergio/cashpilot` | The compose file (an old series, or an exact version you pinned) |
+| `drumsergio/cashpilot-worker` | The compose file, same as above |
+| `drumsergio/cashpilot-tunnel` | The worker, one tag per worker version |
+| `drumsergio/cashpilot-earnapp` | The EarnApp catalog entry |
+| `drumsergio/cashpilot-anyone` | The Anyone Protocol catalog entry |
+
+The same goes for the image of a service you removed: its tag stays until you
+remove it. A catalog image pinned by digest, such as MystNodes or ProxyBase,
+loses its tag when a newer one replaces it, so step 1 already covers it.
+
+First list the tags no container uses. This example is for the worker image.
+For another repository from the table, change `repo`:
+
+```bash
+repo=drumsergio/cashpilot-worker
+used=$(docker ps -a --format '{{.Image}}')
+docker image ls "$repo" --format '{{.Repository}}:{{.Tag}}' | grep -vxF "$used"
+```
+
+Then remove each old tag by name, one at a time:
+
+```bash
+docker image rm drumsergio/cashpilot-worker:<old tag>
+```
+
+Do not add `-f`. Without it, Docker refuses to remove an image that a
+container still uses, running or stopped, and prints
+`conflict: unable to delete`. When you see that, keep the image. Keep the tag
+you run and the tag you ran before it, so you can still go back one version.
+Remove only tags older than those two.
+
+The dashboard's **Host disk** column shows free space on the filesystem that
+holds the worker's `/data`. Images usually sit on the same filesystem, under
+Docker's data root, but not always. `docker info --format '{{.DockerRootDir}}'`
+shows Docker's data root. With the containerd image store, the default on a
+new Docker Engine 29 install, images sit under containerd's root instead,
+normally `/var/lib/containerd`. `docker info --format '{{.Driver}}'` prints
+`overlayfs` for the containerd image store and `overlay2` for the classic one.
+Check free space on the filesystem that holds the directory that applies.
+
 ## Supported Services
 
 CashPilot supports **<!-- n:live -->42<!-- /n --> services** that are active or in beta, across four categories:

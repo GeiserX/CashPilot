@@ -119,21 +119,46 @@ def _errors(tmp_path: Path, link) -> list[str]:
 
 
 def test_the_loader_accepts_a_well_formed_block(tmp_path):
-    assert _errors(tmp_path, {"id_env": "ID", "url": "https://x.test/${ID}", "steps": "Open it."}) == []
+    link = {"id_env": "ID", "url": "https://x.test/${ID}", "steps": "Open it.", "id_shape": "x-[0-9]{8}"}
+    assert _errors(tmp_path, link) == []
+    assert _errors(tmp_path, {**link, "id_shape_unique": True}) == []
 
 
 @pytest.mark.parametrize(
     "link",
     [
-        {"id_env": "TOKEN", "steps": "Open it."},  # a secret must never be shown or put in a link
-        {"id_env": "NOPE", "steps": "Open it."},  # not a declared env var
-        {"id_env": "ID", "steps": ""},  # no instructions
-        {"id_env": "ID", "url": "http://x.test", "steps": "Open it."},  # not https
-        {"id_env": "ID", "url": "https://x.test/${TOKEN}", "steps": "Open it."},  # a secret in the link
-        {"id_env": "ID", "url": "https://x.test/${NOPE}", "steps": "Open it."},  # an undeclared placeholder
-        {"id_env": "TWICE", "steps": "Open it."},  # declared twice, once secret: secret
-        {"id_env": "PLAIN", "steps": "Open it."},  # not marked per_device, so a proxied copy would clone it
+        {
+            "id_env": "TOKEN",
+            "steps": "Open it.",
+            "id_shape": "x-[0-9]{8}",
+        },  # a secret must never be shown or put in a link
+        {"id_env": "NOPE", "steps": "Open it.", "id_shape": "x-[0-9]{8}"},  # not a declared env var
+        {"id_env": "ID", "steps": "", "id_shape": "x-[0-9]{8}"},  # no instructions
+        {"id_env": "ID", "url": "http://x.test", "steps": "Open it.", "id_shape": "x-[0-9]{8}"},  # not https
+        {
+            "id_env": "ID",
+            "url": "https://x.test/${TOKEN}",
+            "steps": "Open it.",
+            "id_shape": "x-[0-9]{8}",
+        },  # a secret in the link
+        {
+            "id_env": "ID",
+            "url": "https://x.test/${NOPE}",
+            "steps": "Open it.",
+            "id_shape": "x-[0-9]{8}",
+        },  # an undeclared placeholder
+        {"id_env": "TWICE", "steps": "Open it.", "id_shape": "x-[0-9]{8}"},  # declared twice, once secret: secret
+        {
+            "id_env": "PLAIN",
+            "steps": "Open it.",
+            "id_shape": "x-[0-9]{8}",
+        },  # not marked per_device, so a proxied copy would clone it
         "EARNAPP_UUID",  # not a mapping
+        {"id_env": "ID", "steps": "Open it."},  # no id_shape: nothing would mask the id
+        {"id_env": "ID", "steps": "Open it.", "id_shape": "("},  # not a regex
+        {"id_env": "ID", "steps": "Open it.", "id_shape": "[0-9]*"},  # matches the empty string
+        {"id_env": "ID", "steps": "Open it.", "id_shape": "(?i)x-[0-9]{8}"},  # global flag: the masker's wrap fails
+        {"id_env": "ID", "steps": "Open it.", "id_shape": "x", "id_shape_unique": "yes"},  # not a boolean
     ],
 )
 def test_the_loader_refuses_a_malformed_block(tmp_path, link):

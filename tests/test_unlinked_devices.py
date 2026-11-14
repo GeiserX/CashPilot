@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.collectors.base import EarningsResult
 from app.collectors.earnapp import EarnAppCollector
-from app.main import _unlinked_devices_warning
+from app.main import _unlinked_devices, _unlinked_devices_warning
 
 LINKED = "sdk-node-" + "a" * 32
 UNLINKED = "sdk-node-" + "b" * 32
@@ -71,11 +71,19 @@ def test_no_deployed_ids_means_no_extra_request():
     assert client.get.call_count == 2
 
 
-def test_the_notice_names_the_device_and_its_link():
+def test_the_notice_names_the_device_by_a_masked_suffix_and_carries_no_link():
+    # The text is logged, stored, shown to every role and pushed off-box, and
+    # an unlinked id claims the device's earnings: the owner's bell has the rest.
     text = _unlinked_devices_warning(EarningsResult(platform="earnapp", balance=1.0, unlinked_devices=[UNLINKED]))
     assert "not on your EarnApp account" in text
-    assert f"https://earnapp.com/r/{UNLINKED}" in text
+    assert "...bbbb" in text
+    assert UNLINKED not in text and "earnapp.com" not in text
     assert _unlinked_devices_warning(EarningsResult(platform="earnapp", balance=1.0, unlinked_devices=[])) == ""
+
+
+def test_the_owner_side_of_the_notice_keeps_the_full_id_and_its_link():
+    (device,) = _unlinked_devices(EarningsResult(platform="earnapp", balance=1.0, unlinked_devices=[UNLINKED]))
+    assert device == {"id": UNLINKED, "masked": "...bbbb", "url": f"https://earnapp.com/r/{UNLINKED}"}
 
 
 def test_the_collection_loop_hands_collectors_the_deployed_ids_and_raises_a_notice():
@@ -103,7 +111,8 @@ def test_the_collection_loop_hands_collectors_the_deployed_ids_and_raises_a_noti
     lookup.assert_awaited_with("earnapp", "EARNAPP_UUID")
     assert collector.device_ids == {UNLINKED}
     notices = [a for a in main._collector_alerts if a.get("kind") == "notice" and a["platform"] == "earnapp"]
-    assert notices and UNLINKED in notices[0]["error"]
+    assert notices and UNLINKED not in notices[0]["error"] and "...bbbb" in notices[0]["error"]
+    assert [d["id"] for d in notices[0]["devices"]] == [UNLINKED]
 
 
 # ProxyRack answers per device. Both bodies are what /api/device/status

@@ -306,6 +306,23 @@ def test_compose_folder_written_untidily_still_closes_what_is_under_it(monkeypat
     assert exc.value.status_code == 403
 
 
+@pytest.mark.parametrize(
+    "source",
+    ["//volume1/docker/cashpilot", "///volume1/docker/cashpilot/.env", "//volume1/docker", "/Volume1/Docker/CashPilot"],
+)
+def test_no_spelling_of_the_compose_folder_gets_past_a_direct_socket_worker(monkeypatch, source):
+    """normpath keeps "//", so "//volume1/docker/cashpilot" once missed "/volume1/docker/cashpilot"."""
+    from app import orchestrator, worker_api
+
+    monkeypatch.setenv("CASHPILOT_COMPOSE_DIR", "/volume1/docker/cashpilot")
+    monkeypatch.setattr(orchestrator, "proxied", lambda: False)
+    spec = worker_api.DeploySpec(image="alpine:3.20", volumes={source: {"bind": "/x", "mode": "rw"}})
+    with pytest.raises(HTTPException) as exc:
+        worker_api._validate_deploy_spec(spec, "custom")
+    assert exc.value.status_code == 403
+    assert "compose folder" in exc.value.detail
+
+
 def test_deploy_may_bind_a_sibling_of_the_compose_folder(monkeypatch):
     """Only the folder itself is closed: a name that merely starts the same is not under it."""
     from app import orchestrator, worker_api

@@ -230,6 +230,15 @@
 #     url: "https://earnapp.com/r/${EARNAPP_UUID}"   (optional) where to claim it;
 #          ${VAR} is filled from the deployed env, URL-encoded
 #     steps: "Open this link while signed in..."      what to do, in plain words
+#     id_shape: 'sdk-node-[0-9a-f]{32}'   regex of the id's shape, matched case-insensitively
+#          as a whole token. An unlinked id claims its earnings for whoever adds it
+#          first, so every text shown to anyone but the owner (logs, notices, pushes)
+#          masks what matches it; ids derived for proxied copies are found this way.
+#     id_shape_unique: true   (optional, default false) the shape fits this provider's
+#          ids only (EarnApp's sdk-node- prefix), so it is masked in any text, not
+#          only this service's. Leave it off for a bare shape such as 64 hex, which
+#          a digest also has.
+#     A link built from url with the id in it is masked in any text.
 
 # requirements:
 #   residential_ip: true/false

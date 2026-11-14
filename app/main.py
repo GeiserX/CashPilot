@@ -72,6 +72,7 @@ from app import (
     proxies,
     ratings,
     setup_token,
+    step_up,
     update_check,
     usage,
     version,
@@ -1462,7 +1463,12 @@ async def _warm_collector_alerts() -> None:
         if key in seen:
             continue
         seen.add(key)
-        entry = {"kind": alert["kind"], "platform": alert["subject"], "error": alert["message"]}
+        message = alert["message"]
+        if alert["kind"] == "notice":
+            # A row stored before notices masked device ids holds the full id
+            # and claim link; every role reads the bell, so mask it on the way in.
+            message = notify.redact(await _mask_service_device_ids(alert["subject"], message))
+        entry = {"kind": alert["kind"], "platform": alert["subject"], "error": message}
         if alert.get("category"):
             entry["category"] = alert["category"]
         restored.append(entry)
@@ -1668,11 +1674,13 @@ async def _retry_device_links() -> None:
                 slug, device_id, attempts=attempts, next_at=row["next_at"], gave_up=True
             )
             svc = catalog.get_service(slug) or {}
-            step = catalog.device_link_step(svc, {(svc.get("device_link") or {}).get("id_env"): device_id}) or {}
+            # Masked, with no link: this message is stored and pushed off-box
+            # (_unlinked_devices_warning says why). The next collection puts
+            # the device in the owner's bell with its full id and link.
             message = (
-                f"{svc.get('name') or slug} never accepted the device {device_id} after a day of retries, "
-                f"so it earns for nobody. {step.get('steps', '')} {step.get('url', '')}"
-            ).strip()
+                f"{svc.get('name') or slug} never accepted the device {notify.mask_device_id(device_id)} "
+                f"after a day of retries, so it earns for nobody. {_DEVICE_ID_IN_BELL}"
+            )
             if alert_id := await database.record_alert("notice", slug, message):
                 _spawn(
                     _push_alert(
@@ -1710,28 +1718,83 @@ async def _retrying_device_ids() -> dict[str, set[str]]:
     return retrying
 
 
+async def _mask_service_device_ids(slug: str, text: str) -> str:
+    """``text`` with the claimable device ids of ``slug`` masked, for anyone but the owner.
+
+    The deployed ids of a service with a ``device_link``, its copies' derived
+    ids by their catalog id_shape, and every catalog claim link and unique shape
+    anywhere. A failed read of the deployed ids still masks by shape.
+    """
+    link = (catalog.get_service(slug) or {}).get("device_link")
+    known: set[str] = set()
+    if isinstance(link, dict) and link.get("id_env"):
+        try:
+            known = await database.get_deployed_env_values(slug, link["id_env"])
+        except Exception as exc:
+            logger.warning("Could not read the deployed %s device ids to mask: %s", slug, exc)
+    return notify.mask_device_ids(text, known, slug=slug)
+
+
+async def _gave_up_device_ids(slug: str) -> set[str]:
+    """The ids of ``slug`` the app gave up adding that still run.
+
+    A proxied copy's derived id is in no deployment record, so without these
+    the collection never checks it and the owner's bell never shows it, while
+    the give-up notice says the bell does. Once the device is on the account the
+    check stops listing it. A row past the retry window counts even before the
+    retry job marks it given up: _retrying_device_ids no longer lists it, so it
+    must be checked here or it is in neither set.
+    """
+    ids: set[str] = set()
+    window_start = _db_time(datetime.now(UTC) - DEVICE_LINK_GIVE_UP)
+    for row in await database.list_pending_device_links():
+        expired = row["gave_up"] or str(row.get("first_at") or "") <= window_start
+        if row["slug"] == slug and expired and await _device_still_deployed(slug, row["device_id"]):
+            ids.add(row["device_id"])
+    return ids
+
+
+def _unlinked_devices(result: Any, retrying: set[str] | frozenset[str] = frozenset()) -> list[dict[str, str]]:
+    """The deployed devices the provider says are not on the account, each with its link.
+
+    The full id and the link that adds it are for the owner's bell only
+    (api_collector_alerts): while a device is unlinked, its id claims its
+    earnings for whoever adds it first. A device in ``retrying`` is left out:
+    the app is still adding it, so asking the user to add it by hand is wrong,
+    and the notice would take the day's push from the give-up message that
+    follows if the retries fail.
+    """
+    ids = sorted(set(getattr(result, "unlinked_devices", None) or []) - set(retrying))
+    svc = catalog.get_service(result.platform) or {}
+    id_env = (svc.get("device_link") or {}).get("id_env")
+    devices = []
+    for device_id in ids:
+        step = catalog.device_link_step(svc, {id_env: device_id}) or {}
+        devices.append({"id": device_id, "masked": notify.mask_device_id(device_id), "url": step.get("url", "")})
+    return devices
+
+
+#: Said in place of the id and its link wherever a notice leaves the owner's bell.
+_DEVICE_ID_IN_BELL = "The owner sees the full ID and the link to add it in CashPilot's notification bell."
+
+
 def _unlinked_devices_warning(result: Any, retrying: set[str] | frozenset[str] = frozenset()) -> str:
     """The notice for deployed devices the provider says are not on the account.
 
-    A device in ``retrying`` is left out: the app is still adding it, so asking
-    the user to add it by hand is wrong, and the notice would take the day's
-    push from the give-up message that follows if the retries fail.
+    It names each device by a masked suffix and carries no link: this text is
+    logged, stored, shown to every role and pushed to ntfy, Telegram and
+    webhooks, and an unlinked device's id claims its earnings. The owner gets
+    the full ids and links beside it (_unlinked_devices).
     """
-    ids = sorted(set(getattr(result, "unlinked_devices", None) or []) - set(retrying))
-    if not ids:
+    devices = _unlinked_devices(result, retrying)
+    if not devices:
         return ""
     svc = catalog.get_service(result.platform) or {}
-    link = svc.get("device_link") or {}
-    steps = []
-    for device_id in ids:
-        step = catalog.device_link_step(svc, {link.get("id_env"): device_id}) or {}
-        steps.append(f"{device_id} ({step['url']})" if step.get("url") else device_id)
     name = svc.get("name") or result.platform
-    which = "A deployed device is" if len(ids) == 1 else f"{len(ids)} deployed devices are"
-    earns = "earns" if len(ids) == 1 else "earn"
-    return (
-        f"{which} not on your {name} account and {earns} for nobody: {'; '.join(steps)}. {link.get('steps', '')}"
-    ).strip()
+    which = "A deployed device is" if len(devices) == 1 else f"{len(devices)} deployed devices are"
+    earns = "earns" if len(devices) == 1 else "earn"
+    masked = ", ".join(d["masked"] for d in devices)
+    return f"{which} not on your {name} account and {earns} for nobody: {masked}. {_DEVICE_ID_IN_BELL}"
 
 
 async def _run_collection() -> None:
@@ -1772,6 +1835,10 @@ async def _run_collection() -> None:
                     # Only this service's device check is lost, never the run.
                     logger.warning("Could not read the deployed %s device ids: %s", slug, exc)
                     continue
+                try:
+                    c.device_ids |= await _gave_up_device_ids(slug)
+                except Exception as exc:
+                    logger.warning("Could not read the %s devices the app gave up adding: %s", slug, exc)
                 if c.device_ids:
                     device_checked.add(slug)
             results = await asyncio.gather(*(_collect_bounded(c) for c in collectors), return_exceptions=True)
@@ -1851,12 +1918,22 @@ async def _run_collection() -> None:
                     # A caveat on a SUCCESSFUL reading. It is shown, because the
                     # figure is partial and the user should know, but it is not
                     # a failure: the balance below is stored exactly as any other.
-                    if unlinked := _unlinked_devices_warning(result, retrying.get(result.platform, set())):
+                    platform_retrying = retrying.get(result.platform, set())
+                    if unlinked := _unlinked_devices_warning(result, platform_retrying):
                         result.warning = f"{result.warning} {unlinked}" if result.warning else unlinked
                     if getattr(result, "warning", None):
                         safe_warning = notify.redact(result.warning)
                         logger.info("Collector notice for %s: %s", result.platform, safe_warning)
-                        alerts.append({"kind": "notice", "platform": result.platform, "error": safe_warning})
+                        notice: dict[str, Any] = {"kind": "notice", "platform": result.platform, "error": safe_warning}
+                        if devices := _unlinked_devices(result, platform_retrying):
+                            # In memory only, never record_alert: the owner's
+                            # bell is the one place the full ids are shown.
+                            notice["devices"] = devices
+                            notice["device_steps"] = str(
+                                ((catalog.get_service(result.platform) or {}).get("device_link") or {}).get("steps")
+                                or ""
+                            ).strip()
+                        alerts.append(notice)
                         # Push out-of-band with the same once-per-window dedupe
                         # errors get. A notice used to reach ONLY the bell,
                         # which is read by whoever happens to open the UI — and
@@ -3081,6 +3158,7 @@ from app.deps import (  # noqa: E402
     _require_reader,
     _require_writer,
     client_ip,  # noqa: F401  (re-exported for app.main.* router surface)
+    require_step_up,
     templates,  # noqa: F401  (re-exported for app.main.* router/test surface)
 )
 
@@ -3808,6 +3886,10 @@ class DeployRequest(BaseModel):
     # that never showed the box cannot drop a choice. "" goes back to the
     # catalog image; anything else must be a plain image reference.
     image: str | None = None
+    # The owner's password, re-entered for this one deploy. Asked for only when
+    # the image is not the catalog's on a service that keeps a wallet or node
+    # identity (app/step_up.py); never stored, never sent to a worker.
+    step_up_password: str | None = None
 
 
 # repository[:tag][@sha256:digest]; see custom_services.IMAGE_REF.
@@ -3903,7 +3985,7 @@ async def api_deploy(
 ) -> dict[str, Any]:
     """Validate the effective service configuration and deploy it to the selected worker."""
     if not custom_services.is_custom_slug(slug):
-        return await _deploy(slug, body, worker_id)
+        return await _deploy(slug, body, worker_id, request=request)
     # A custom deploy holds its slug until it is recorded, so a delete cannot
     # remove the definition while the worker is still pulling and starting it,
     # which would leave a container running that no definition describes.
@@ -3912,7 +3994,7 @@ async def api_deploy(
         raise HTTPException(status_code=409, detail=f"{slug} is being deleted")
     _custom_deploying[slug] += 1
     try:
-        return await _deploy(slug, body, worker_id)
+        return await _deploy(slug, body, worker_id, request=request)
     finally:
         _custom_deploying[slug] -= 1
         if not _custom_deploying[slug]:
@@ -3925,7 +4007,9 @@ _custom_deploying: collections.Counter[str] = collections.Counter()
 _custom_deleting: collections.Counter[str] = collections.Counter()
 
 
-async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict[str, Any]:
+async def _deploy(
+    slug: str, body: DeployRequest, worker_id: int | None, request: Request | None = None
+) -> dict[str, Any]:
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
     # the deploy has run and persisted — a stricter type turns the successful
@@ -4181,7 +4265,18 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug} copy {n}: {exc}") from exc
 
-    result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts})
+    # A service that keeps a wallet or node identity runs as the catalog says,
+    # or with the owner's password now, not just a session: whatever runs in its
+    # container can take the wallet. The worker checks the approval this
+    # produces against the exact spec it receives; see _step_up_critical.
+    approve = await _step_up_critical(request, slug, svc, custom_image, getattr(body, "step_up_password", None))
+    # Passed only when set, so the plain call keeps its three-argument shape.
+    signed: dict[str, Any] = {"approve": True} if approve else {}
+    try:
+        result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
+    except HTTPException as exc:
+        await _audit_worker_refusal(request, exc, slug, worker_id)
+        raise
     container_id = result.get("container_id", "remote")
     # Reported, deliberately NOT recorded. The worker reads the running container
     # on every deploy, so the record does not need the kept source - and writing
@@ -4212,7 +4307,7 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
         await database.record_health_event(
             slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
         )
-        await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf))
+        await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
     for n in sorted(c for c in running_copies if c > instances):
         await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
     metrics.record_container_lifecycle("deploy", slug)
@@ -4230,6 +4325,87 @@ async def _deploy(slug: str, body: DeployRequest, worker_id: int | None) -> dict
 
 
 _is_port_range = catalog.is_port_range
+
+
+async def _step_up_critical(
+    request: Request | None, slug: str, svc: dict[str, Any], custom_image: str, password: Any
+) -> bool:
+    """Whether this deploy goes out with a signed approval, after the password check.
+
+    Only for a service whose YAML declares ``critical_volumes``, as on the
+    worker. A custom image always needs the password: no password answers 403
+    ``step_up_required``, which the dashboard turns into a password prompt and
+    a retry. Anything else the worker may still find different from its own
+    catalog (an env key the catalog does not declare, or a UI and a worker on
+    different releases with different pinned images or commands); the worker
+    then answers ``step_up_required`` itself, and the retry carries the
+    password, so a password in the request is checked and the spec signed
+    whatever the reason.
+    """
+    if svc.get("custom") or not catalog.critical_volume_targets(slug):
+        return False
+    has_password = isinstance(password, str) and bool(password)
+    if not has_password and not custom_image:
+        return False
+    if request is None or not has_password:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": f"{svc.get('name') or slug} keeps a wallet or node identity, so running another "
+                "image than the catalog's needs your password.",
+            },
+        )
+    image = custom_image or (svc.get("docker") or {}).get("image") or ""
+    await require_step_up(request, password, action=step_up.ACTION_CUSTOM_IMAGE, target=f"{slug}|{image}")
+    return True
+
+
+async def _approve_spec(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """``spec`` with the signed approval the worker checks, keyed with that worker's own key.
+
+    Signed over the exact spec sent (step_up.deploy_target), so it is minted
+    last, per request: each copy gets its own and none is ever recorded. A
+    worker still on the shared fleet key cannot check one, so it is refused here.
+    """
+    worker = await database.get_worker(worker_id) or {}
+    key = await _confirmed_worker_key(worker.get("client_id") or "")
+    if not key:
+        raise HTTPException(
+            status_code=409,
+            detail="This worker has not finished enrolling, so it cannot check a password confirmation. "
+            "Wait for its next heartbeat and try again.",
+        )
+    target = step_up.deploy_target(
+        slug, spec.get("image") or "", spec.get("command"), spec.get("env"), spec.get("volumes")
+    )
+    return {**spec, "approval": step_up.sign(key, step_up.ACTION_CUSTOM_IMAGE, target)}
+
+
+async def _audit_worker_refusal(request: Request | None, exc: HTTPException, slug: str, worker_id: int) -> None:
+    """Write a worker's critical-volume or step-up refusal to the audit table."""
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    error = detail.get("error")
+    if error not in ("critical_volume_mount", "step_up_required", "step_up_rejected"):
+        return
+    actor = auth.get_current_user(request) if request is not None else None
+    await _audit(
+        "deploy", slug, f"refused: {error}", actor=actor, worker_id=worker_id, detail=str(detail.get("message"))
+    )
+
+
+async def _audit(action: str, target: str, outcome: str, **kwargs: Any) -> None:
+    """One audit row for something that already happened, or a log line when it cannot be written.
+
+    Best effort on purpose: the action (a refusal, a removal, a reveal) has
+    happened, and a database hiccup must not turn it into an error. The step-up
+    itself (deps.require_step_up) writes its rows without this, so a failed
+    write there stops the action instead.
+    """
+    try:
+        await database.add_audit_event(action, target, outcome, **kwargs)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not write the audit row %s %s %s", action, target, outcome)
 
 
 def fence_gated_ports(docker_conf: dict[str, Any], env: dict[str, Any]) -> dict[str, Any]:
@@ -4516,6 +4692,10 @@ async def _svc_remove(
         if allow_delete_critical:
             params["allow_delete_critical"] = "true"
     result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
+    if delete_volumes and allow_delete_critical:
+        await _audit(
+            "delete_critical_volumes", slug, "deleted", actor=auth.get_current_user(request), worker_id=worker_id
+        )
     await database.remove_deployment(slug, worker_id=worker_id)
     # The worker removed the service's proxied copies with it (worker_api
     # remove_all), so their records go too. The removal itself already
@@ -4641,9 +4821,7 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     # The worker then read as online from its heartbeats while every deploy,
     # start, stop, restart and logs call failed 401, with nothing connecting
     # the two symptoms.
-    key_state = await database.get_worker_key_state(cid) if cid else (None, False)
-    stored_key, key_confirmed = key_state if isinstance(key_state, tuple) else (key_state, False)
-    auth_key = stored_key if (stored_key and key_confirmed) else FLEET_API_KEY
+    auth_key = await _confirmed_worker_key(cid) or FLEET_API_KEY
     headers: dict[str, str] = {}
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
@@ -4682,7 +4860,15 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     # The isolation check's "already running" and "no Docker socket" answers
     # are fixed worker-authored strings too; without them the card read
     # "Worker request failed" and busy looked the same as broken.
-    if error in ("self_update_unavailable", "isolation_check_busy", "isolation_check_unavailable"):
+    if error in (
+        "self_update_unavailable",
+        "isolation_check_busy",
+        "isolation_check_unavailable",
+        # A deploy refused for a wallet or identity volume (app/step_up.py).
+        "critical_volume_mount",
+        "step_up_required",
+        "step_up_rejected",
+    ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
         return None
@@ -4755,6 +4941,13 @@ def _worker_failure_text(status: int) -> str:
     if status == 404:
         return "The worker does not know this request (HTTP 404); it may be older than the UI, so update it"
     return f"Worker request failed (HTTP {status}); the worker's log has the reason"
+
+
+async def _confirmed_worker_key(cid: str) -> str | None:
+    """The worker's own key once it has confirmed it, else None."""
+    key_state = await database.get_worker_key_state(cid) if cid else (None, False)
+    stored_key, key_confirmed = key_state if isinstance(key_state, tuple) else (key_state, False)
+    return stored_key if (stored_key and key_confirmed) else None
 
 
 async def _proxy_to_worker(
@@ -4891,7 +5084,9 @@ def _deploy_timeout(slug: str) -> int:
     return 60 + _catalog_stop_timeout(slug) + constants.START_SETTLE_SECONDS
 
 
-async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+async def _proxy_worker_deploy(
+    worker_id: int, slug: str, spec: dict[str, Any], *, approve: bool = False
+) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
     The worker stops the container it replaces with the catalog's stop timeout
@@ -4912,6 +5107,9 @@ async def _proxy_worker_deploy(worker_id: int, slug: str, spec: dict[str, Any]) 
         image = _image_for_arch(docker_conf, arch)
         if image:
             spec = {**spec, "image": image}
+    if approve:
+        # After the image is final: the approval covers the spec as sent.
+        spec = await _approve_spec(worker_id, slug, spec)
     return await _proxy_to_worker(
         worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
@@ -5748,9 +5946,14 @@ async def api_service_start(
 async def api_service_logs(
     request: Request, slug: str, lines: int = 50, worker_id: int | None = None, instance: int = 1
 ) -> dict[str, str]:
-    _require_writer(request)
+    user = _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    return await _proxy_worker_logs(worker_id, slug, lines, instance=_instance_param(instance))
+    resp = await _proxy_worker_logs(worker_id, slug, lines, instance=_instance_param(instance))
+    if not auth.require_role(user, "owner") and isinstance(resp.get("logs"), str):
+        # EarnApp prints its device id and claim link at every start: a writer
+        # who restarts it and reads the log must not get what the bell masks.
+        resp = {**resp, "logs": await _mask_service_device_ids(slug, resp["logs"])}
+    return resp
 
 
 @app.delete("/api/services/{slug}")
@@ -7756,6 +7959,12 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
         entry = {"kind": alert.get("kind", "collector"), "platform": alert["platform"], "error": clean}
         if alert.get("category"):
             entry["category"] = alert["category"]
+        if owner and alert.get("devices"):
+            # An unlinked device's full id and the link that adds it: while it
+            # is unlinked the id claims its earnings, so only the owner gets
+            # them. Every other role, and every push, has the masked text.
+            entry["devices"] = [{"id": d["id"], "masked": d["masked"], "url": d["url"]} for d in alert["devices"]]
+            entry["device_steps"] = alert.get("device_steps", "")
         if alert.get("kind") == "missing" and "everywhere" in alert:
             # What the dashboard's Forget buttons act on. Absent on an entry
             # restored at startup until the next health check rebuilds it.
@@ -7786,8 +7995,13 @@ async def api_exchange_rates(request: Request) -> dict[str, Any]:
 
 @app.get("/api/services/{slug}/per-node-earnings")
 async def api_per_node_earnings(request: Request, slug: str) -> list[dict[str, Any]]:
-    """Return per-node earnings for services that support it (e.g. MystNodes)."""
-    _require_auth_api(request)
+    """Return per-node earnings for services that support it (e.g. MystNodes).
+
+    Owner only: each row names a node's identity and its LAN address, which are
+    not a viewer's or writer's to read. No page calls this yet; the reader key
+    must never be opted in here.
+    """
+    _require_owner(request)
     config = await database.get_config() or {}
     if not isinstance(config, dict):
         config = {}
@@ -9081,7 +9295,15 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
                 status_code=409 if deploy_status == "broken" else 410,
                 detail=f"Service '{body.slug}' is no longer available for deployment ({deploy_status})",
             )
-        result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
+        # An approval comes only from the password step-up of /api/deploy; one
+        # pasted into a raw spec is dropped, so this route can never run another
+        # image than the catalog's on a service with critical volumes.
+        body.spec.pop("approval", None)
+        try:
+            result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
+        except HTTPException as exc:
+            await _audit_worker_refusal(request, exc, body.slug, worker_id)
+            raise
     elif body.command in ("stop", "restart", "start"):
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
     elif body.command == "remove":
@@ -9194,8 +9416,18 @@ async def api_fleet_api_key(request: Request) -> dict[str, Any]:
 async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
     """Reveal the configured fleet API key (owner only, audit-logged)."""
     user = _require_owner(request)
+    # Fail closed, unlike _audit: the key has not left yet, so no audit row
+    # means no key (a write that fails answers 500 and reveals nothing).
+    await database.add_audit_event("fleet_key_reveal", "", "revealed", actor=user)
     logger.warning("Fleet key revealed by uid=%s", user.get("uid"))
     return {"api_key": FLEET_API_KEY or ""}
+
+
+@app.get("/api/audit")
+async def api_audit(request: Request, limit: int = 100) -> list[dict[str, Any]]:
+    """The newest owner-action audit rows (app/step_up.py), owner only."""
+    _require_owner(request)
+    return await database.get_audit_events(limit)
 
 
 # ---------------------------------------------------------------------------

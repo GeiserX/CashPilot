@@ -114,9 +114,16 @@ python3 state_backup.py decrypt <file>.cpbackup --out restored
 
 It checks the file's integrity, refuses an altered one, and writes one tar
 archive per folder, printing where each goes. It never overwrites a file: give
-it an empty `--out` folder. It also refuses an archive with an entry that could
-land outside its folder (an absolute path, `..`, a link pointing out, a device),
-because step 2 extracts as root:
+it an empty `--out` folder. Step 2 extracts as root, so it also refuses the
+whole file if any entry could land outside its folder (an absolute path, `..`,
+a link pointing out, a device or pipe), names a path twice, is a sparse file,
+carries an extended attribute such as a file capability, has a control
+character in a name or link target, or has an invalid time. The error says
+which rule fired. It writes each entry again from its name, type, permission
+bits, owner ids, time and contents only, and drops setuid, setgid and sticky
+bits. A file that unpacks to more than 256 MB or holds more than 20,000 entries
+is refused too. An export runs the same checks before it hands you the file,
+so a backup that this command would refuse is never exported. A good run prints:
 
 ```
 mysterium from box-a, checksum verified.
@@ -142,7 +149,8 @@ first, keeping its volumes, and move that volume's contents aside before step 2.
 
 **3. Deploy the service** on that box from CashPilot. It finds the restored
 volume and starts with the old identity. Check it is the same one, for
-Mysterium with `curl -s http://127.0.0.1:4050/identities`.
+Mysterium with
+`docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities`.
 
 To make a key pair for recipient mode, run the same tool with `keygen`. Keep
 the private key offline; give CashPilot only the public one.

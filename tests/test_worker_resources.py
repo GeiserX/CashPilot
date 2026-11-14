@@ -304,7 +304,8 @@ class TestWorkerDeployEndpoint:
         with patch("app.worker_api.orchestrator.deploy_raw", side_effect=_fake_deploy):
             resp = self._client().post(
                 "/api/containers/storj/deploy",
-                json={"image": "img", "resources": {"mem_limit": "2g", "oom_score_adj": -100}},
+                # The catalog's image: storj keeps an identity, so any other needs a step-up.
+                json={"image": "storjlabs/storagenode", "resources": {"mem_limit": "2g", "oom_score_adj": -100}},
                 headers=self._auth(),
             )
         assert resp.status_code == 200, resp.text

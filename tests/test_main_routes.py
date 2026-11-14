@@ -1711,14 +1711,16 @@ class TestApiFleet:
             assert resp.status_code == 403
 
     def test_fleet_api_key_reveal_owner(self, client):
-        """POST reveal returns the actual key for an owner."""
+        """POST reveal returns the actual key for an owner, after its audit row."""
         with (
             _auth_owner(),
             patch("app.main.FLEET_API_KEY", "test-key"),
+            patch("app.main.database.add_audit_event", new_callable=AsyncMock) as audit,
         ):
             resp = client.post("/api/fleet/api-key/reveal")
             assert resp.status_code == 200
             assert resp.json()["api_key"] == "test-key"
+            audit.assert_awaited_once()
 
     def test_fleet_reveal_non_owner_403(self, client):
         with _auth_viewer():

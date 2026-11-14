@@ -24,6 +24,13 @@ one empty keeps what is stored. To drop a stored user or password (for example
 when you move to IP allowlisting), tick **Remove the stored user** or **Remove
 the stored password** and save.
 
+A stored secret is kept only while the proxy points at the same server. When
+you change a SOCKS5 or HTTP proxy's host or port, or a Tailscale proxy's login
+server, type the user, password or auth key again (or tick **Remove** to save
+without it); the save is refused otherwise. So an edit can never send a stored
+credential to a server it was not entered for. A new name, cap or exit node
+keeps the stored secret.
+
 The **Test** button starts a throwaway tunnel on the box picked in **Run a copy
 through a proxy**, reports the exit IP and country it gets, and removes it. It
 passes only when the exit IP is public and, when the worker knows its own

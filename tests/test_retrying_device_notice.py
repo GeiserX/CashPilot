@@ -38,7 +38,7 @@ def test_a_device_being_retried_gets_no_notice():
 def test_a_device_whose_retries_gave_up_is_reported_again():
     pending = [{"slug": "earnapp", "device_id": UNLINKED, "gave_up": 1, "first_at": _ago(25)}]
     (notice,) = _loop_with_pending({"return_value": pending})
-    assert UNLINKED in notice["error"]
+    assert [d["id"] for d in notice["devices"]] == [UNLINKED]
 
 
 def test_a_retry_of_another_service_or_device_changes_nothing():
@@ -47,12 +47,12 @@ def test_a_retry_of_another_service_or_device_changes_nothing():
         {"slug": "earnapp", "device_id": "sdk-node-" + "c" * 32, "gave_up": 0, "first_at": NOW},
     ]
     (notice,) = _loop_with_pending({"return_value": pending})
-    assert UNLINKED in notice["error"]
+    assert [d["id"] for d in notice["devices"]] == [UNLINKED]
 
 
 def test_an_unreadable_retry_table_keeps_the_plain_notice():
     (notice,) = _loop_with_pending({"side_effect": RuntimeError("db locked")})
-    assert UNLINKED in notice["error"]
+    assert [d["id"] for d in notice["devices"]] == [UNLINKED]
 
 
 def test_a_retry_left_past_its_window_no_longer_hides_the_notice():
@@ -60,4 +60,4 @@ def test_a_retry_left_past_its_window_no_longer_hides_the_notice():
     # day the retries were allowed, the device is reported again.
     pending = [{"slug": "earnapp", "device_id": UNLINKED, "gave_up": 0, "first_at": _ago(25)}]
     (notice,) = _loop_with_pending({"return_value": pending})
-    assert UNLINKED in notice["error"]
+    assert [d["id"] for d in notice["devices"]] == [UNLINKED]

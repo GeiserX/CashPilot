@@ -23,6 +23,17 @@ const CP = (() => {
       const res = await fetch(path, config);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
+        // An action that can take a wallet or node identity asks for the
+        // owner's password again (app/step_up.py). Asked once, then the same
+        // request is sent again with it; a refusal after that is shown as is.
+        const asked = data && data.detail;
+        if (asked && asked.error === 'step_up_required' && !opts.steppedUp
+            && opts.body && typeof opts.body === 'object') {
+          const password = await askStepUp(asked.message);
+          if (password) {
+            return api(path, { ...opts, steppedUp: true, body: { ...opts.body, step_up_password: password } });
+          }
+        }
         // detail can be a structured refusal ({error, message, ...}); surface
         // its message instead of the useless "[object Object]".
         let detail = data && data.detail;
@@ -36,6 +47,51 @@ const CP = (() => {
       }
       throw err;
     }
+  }
+
+  // One prompt at a time: the modal is shared, so a second prompt opened over a
+  // first would take its buttons and its close would cancel the first.
+  let stepUpQueue = Promise.resolve();
+
+  // The password prompt of a step-up. Resolves to the typed password, or null
+  // when the owner cancels or closes it (Escape and the overlay close every modal).
+  // A prompt asked while another is open waits for that one to finish.
+  function askStepUp(message) {
+    const turn = stepUpQueue.then(() => showStepUp(message));
+    stepUpQueue = turn.catch(() => null);
+    return turn;
+  }
+
+  function showStepUp(message) {
+    const overlay = document.getElementById('stepup-modal');
+    const input = document.getElementById('stepup-password');
+    if (!overlay || !input) return Promise.resolve(null);
+    const text = document.getElementById('stepup-message');
+    if (text) text.textContent = message || 'Enter your password to continue.';
+    input.value = '';
+    // Focus goes back where it was when the prompt closes, however it closes,
+    // so a keyboard or screen-reader user keeps their place in the page.
+    const before = document.activeElement;
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        watcher.disconnect();
+        input.value = '';
+        overlay.classList.remove('open');
+        if (before && before.isConnected && typeof before.focus === 'function') before.focus();
+        resolve(value);
+      };
+      const watcher = new MutationObserver(() => { if (!overlay.classList.contains('open')) finish(null); });
+      watcher.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+      document.getElementById('stepup-submit').onclick = () => finish(input.value || null);
+      document.getElementById('stepup-cancel').onclick = () => finish(null);
+      document.getElementById('stepup-close').onclick = () => finish(null);
+      input.onkeydown = (e) => { if (e.key === 'Enter') finish(input.value || null); };
+      overlay.classList.add('open');
+      setTimeout(() => input.focus(), 50);
+    });
   }
 
   // -----------------------------------------------------------
@@ -4954,6 +5010,23 @@ const CP = (() => {
     banner.hidden = false;
   }
 
+  // The full ids and links of devices a provider says are not on the account.
+  // The server sends them to the owner only; the notice text every role sees,
+  // and every push, names each device by a masked suffix. A link is shown only
+  // when it is https, so a bad catalog value never becomes a clickable URL.
+  function notifyDevicesHtml(a) {
+    if (!_isOwner || !Array.isArray(a.devices) || a.devices.length === 0) return '';
+    const rows = a.devices.map(d => {
+      const url = typeof d.url === 'string' && /^https:\/\//i.test(d.url) ? d.url : '';
+      const link = url
+        ? ` <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Add to account</a>`
+        : '';
+      return `<li><code>${escapeHtml(d.id)}</code>${link}</li>`;
+    }).join('');
+    const steps = a.device_steps ? `<div>${escapeHtml(a.device_steps)}</div>` : '';
+    return `<div class="notify-item-devices">${steps}<ul>${rows}</ul></div>`;
+  }
+
   async function loadCollectorAlerts() {
     const container = document.getElementById('topbar-notifications');
     const badge = document.getElementById('notify-badge');
@@ -5087,6 +5160,7 @@ const CP = (() => {
           <div class="notify-item-body">
             <div class="notify-item-platform">${escapeHtml(a.platform)}${suffix}</div>
             <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
+            ${notifyDevicesHtml(a)}
           </div>
           ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}">${isAuth ? 'Fix credential' : 'Update'}</button>` : ''}
         </div>
