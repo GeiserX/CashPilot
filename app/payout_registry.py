@@ -259,14 +259,15 @@ def critical_state(service: dict[str, Any]) -> list[dict[str, Any]]:
 BACKUP_MAX_AGE = timedelta(days=183)
 
 
-def all_state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], list[str]]:
+def all_state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], list[str | None]]:
     """(worker_id, slug) -> every state fingerprint that worker last reported, in its order.
 
     A box can report several containers of one slug (copies, an unmanaged one
-    of the same image). Absent when the worker is older than the fingerprint,
-    or could not read it.
+    of the same image). A container with no fingerprint (a worker older than
+    it, or a volume it could not read) is None: unknown, which may be any
+    volume, never "a different one".
     """
-    out: dict[tuple[int, str], list[str]] = {}
+    out: dict[tuple[int, str], list[str | None]] = {}
     for w in workers:
         containers = w.get("containers") or []
         if isinstance(containers, str):
@@ -275,8 +276,9 @@ def all_state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], list[s
             except ValueError:
                 continue
         for c in containers if isinstance(containers, list) else []:
-            if isinstance(c, dict) and c.get("slug") and isinstance(c.get("state_id"), str) and c["state_id"]:
-                out.setdefault((w.get("id"), c["slug"]), []).append(c["state_id"])
+            if isinstance(c, dict) and c.get("slug"):
+                found = c.get("state_id")
+                out.setdefault((w.get("id"), c["slug"]), []).append(found if isinstance(found, str) and found else None)
     return out
 
 
@@ -285,7 +287,8 @@ def state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], str]:
 
     Absent when the worker is older than the fingerprint, or could not read it.
     """
-    return {key: found[-1] for key, found in all_state_ids(workers).items()}
+    known = {key: [s for s in found if s] for key, found in all_state_ids(workers).items()}
+    return {key: found[-1] for key, found in known.items() if found}
 
 
 def _sqlite_time(value: Any) -> datetime | None:

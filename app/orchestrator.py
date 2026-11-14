@@ -2743,6 +2743,22 @@ def _read_back(container: Any, target: str) -> bytes:
     return b"".join(chunks)
 
 
+def _create_restore_helper(client: Any, image: str, name: str, volume: str) -> Any:
+    """A created, never started container mounting ``volume``: nothing to run, no network, no capabilities."""
+    from docker.types import Mount
+
+    return client.containers.create(
+        image=image,
+        name=name,
+        command=["true"],
+        network_mode="none",
+        mounts=[Mount(RESTORE_WRITE_DIR, volume, type="volume")],
+        labels={LABEL_RESTORE: "helper"},
+        cap_drop=["ALL"],
+        security_opt=["no-new-privileges:true"],
+    )
+
+
 def _write_through_helper(client: Any, container: Any, volume: str, payload: bytes, made: list[Any]) -> None:
     """Write ``payload`` into ``volume`` through a helper that is created and never started.
 
@@ -2753,17 +2769,11 @@ def _write_through_helper(client: Any, container: Any, volume: str, payload: byt
     the volume stays, mounted by the restored container. Until then it is in
     ``made``, so a failed removal is retried by the cleanup.
     """
-    from docker.types import Mount
-
-    helper = client.containers.create(
-        image=(getattr(container, "attrs", None) or {}).get("Image") or container.image.id,
-        name=container.name + RESTORE_HELPER_SUFFIX,
-        command=["true"],
-        network_mode="none",
-        mounts=[Mount(RESTORE_WRITE_DIR, volume, type="volume")],
-        labels={LABEL_RESTORE: "helper"},
-        cap_drop=["ALL"],
-        security_opt=["no-new-privileges:true"],
+    helper = _create_restore_helper(
+        client,
+        (getattr(container, "attrs", None) or {}).get("Image") or container.image.id,
+        container.name + RESTORE_HELPER_SUFFIX,
+        volume,
     )
     made.append(helper)
     try:
@@ -3008,7 +3018,8 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
             raise ContainerRuntimeError(
                 f"A restore of {slug} is running on this box, so nothing was removed. Try again when it ends.", 409
             )
-    if not delete_volumes and _restore_helper(slug) is not None:
+    helper = _restore_helper(slug)
+    if not delete_volumes and helper is not None:
         # The helper is the only mark of a half-written volume: removing it
         # while the volume stays would let the next deploy start on half the data.
         raise ContainerRuntimeError(
@@ -3016,11 +3027,31 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
             "Remove the service with its data, then restore the backup again.",
             409,
         )
-    container = _find_container(slug)
-    name = container.name
+    # The volumes the helper holds: those a restore that did not finish wrote into.
+    mounts = (getattr(helper, "attrs", None) or {}).get("Mounts") or [] if helper is not None else []
+    held = [m["Name"] for m in mounts if m.get("Type") == "volume" and m.get("Name")]
+    try:
+        container = _find_container(slug)
+    except ValueError:
+        if helper is None:
+            raise
+        # The restore's undo removed the service but not its helper. Removing
+        # it with its data is the only way the box takes this service again.
+        container = None
+    name = container.name if container is not None else helper.name
 
     volume_names: list[str] = []
-    if delete_volumes:
+    if container is None:
+        volume_names = held
+        if not allow_delete_critical:
+            raise CriticalVolumeError(
+                slug,
+                [
+                    {"volume": v, "target": v, "holds": f"what a restore of {slug} that did not finish wrote"}
+                    for v in held
+                ],
+            )
+    elif delete_volumes:
         raw_critical = _critical_volume_targets(slug)
         # Normalise a trailing slash on both sides: a catalog entry written as
         # "/app/identity/" must still match Docker's "/app/identity", or the
@@ -3060,18 +3091,20 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
         if blocked and not allow_delete_critical:
             raise CriticalVolumeError(slug, blocked)
 
-    container.remove(force=True)
-    logger.info("Removed container %s", name)
+    if container is not None:
+        container.remove(force=True)
+        logger.info("Removed container %s", name)
     # A restore that died midway left its helper, which mounts the volume, so
     # the volume could not go and the next restore would refuse it. Only here
     # with delete_volumes: without it the refusal above stopped first.
-    try:
-        helper = _restore_helper(slug)
-        if helper is not None:
+    helper_gone = False
+    if helper is not None:
+        try:
             helper.remove(force=True)
+            helper_gone = True
             logger.info("Removed %s, left by a restore that did not finish", helper.name)
-    except Exception as exc:  # noqa: BLE001 - its volume then shows as not deleted
-        logger.warning("Could not remove the helper a restore of %s left: %s", slug, exc)
+        except Exception as exc:  # noqa: BLE001 - its volume then shows as not deleted
+            logger.warning("Could not remove the helper a restore of %s left: %s", slug, exc)
 
     deleted_volumes: list[str] = []
     failed_volumes: list[str] = []
@@ -3087,6 +3120,17 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
             except APIError as exc:
                 failed_volumes.append(vol_name)
                 logger.warning("Failed to remove volume %s: %s", vol_name, exc)
+    # The helper had to go first (it mounts the volume), and it is the only mark
+    # of a half-written one: a volume of it that stays gets its mark back, so
+    # no start or deploy runs on half the data.
+    for vol_name in [v for v in held if v in failed_volumes] if helper_gone else []:
+        try:
+            image = (getattr(helper, "attrs", None) or {}).get("Image") or helper.image.id
+            _create_restore_helper(_get_client(), image, helper.name, vol_name)
+        except Exception as exc:  # noqa: BLE001 - said in the log; the volume is reported as not deleted
+            logger.error(
+                "The half-written volume %s stays, and its restore mark could not be put back: %s", vol_name, exc
+            )
 
     return {
         "container": name,

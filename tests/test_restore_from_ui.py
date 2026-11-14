@@ -327,9 +327,9 @@ class FakeContainers:
         raise NotFound(name_or_id)
 
     def list(self, all=False, filters=None):  # noqa: A002 - docker-py's name
-        label = (filters or {}).get("label", "")
-        key, _, value = label.partition("=")
-        return [c for c in self.docker.container_map.values() if c.labels.get(key) == value]
+        labels = (filters or {}).get("label", "")
+        wanted = [label.partition("=") for label in ([labels] if isinstance(labels, str) else labels)]
+        return [c for c in self.docker.container_map.values() if not [k for k, _, v in wanted if c.labels.get(k) != v]]
 
     def create(self, **kwargs):
         self.docker.creates.append(kwargs)
@@ -1436,11 +1436,31 @@ class TestARestoredBoxRedeployedSince:
 class TestOneMoreContainerOfTheImage:
     """A box reports one fingerprint per container; one more of the same image must not hide the restored node."""
 
-    def _beat(self, ui, worker_id: int, *state_ids: str) -> None:
-        """The heartbeat as the worker sends it: one entry per container, with its own fingerprint."""
+    def _beat(self, ui, worker_id: int, *state_ids: str | None) -> None:
+        """The heartbeat as the worker sends it: one entry per container, with its own fingerprint (None: none sent)."""
         box = next(w for w in ui.workers if w["id"] == worker_id)
-        box["containers"] = [{"slug": "mysterium", "state_id": s} for s in state_ids]
+        box["containers"] = [{"slug": "mysterium", **({"state_id": s} if s else {})} for s in state_ids]
         _heartbeat(ui, worker_id)
+
+    def test_an_unknown_fingerprint_beside_another_container_still_holds_it(self, ui):
+        """The restored node's volume read failed this beat; one more container of the image reports its own."""
+        f1 = mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")
+        _runs(ui, None)
+        _restore_ok(ui, f1, 1, "SA")
+        with (
+            patch.object(main.payout_registry, "state_ids", REAL_STATE_IDS),
+            patch.object(main.payout_registry, "all_state_ids", REAL_ALL_STATE_IDS),
+        ):
+            self._beat(ui, 1, None, "H")
+            preview = _upload(ui, f1).json()
+            assert preview["live_on"] == ["box-a"]
+            resp = _restore(
+                ui, preview["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True
+            )
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+        assert [s["worker_id"] for s in ui.sent if s["path"].endswith("/restore")] == [1]
 
     def test_a_second_container_does_not_free_the_restored_node(self, ui):
         f1 = mysterium_bundle()
@@ -1494,6 +1514,12 @@ class TestOneMoreContainerOfTheImage:
         ]
         assert payout_registry.all_state_ids(workers) == {(1, "mysterium"): ["SA", "H"]}
         assert payout_registry.state_ids(workers) == {(1, "mysterium"): "H"}
+
+    def test_a_container_with_no_fingerprint_is_kept_as_unknown(self):
+        workers = [{"id": 1, "containers": [{"slug": "mysterium"}, {"slug": "mysterium", "state_id": "H"}]}]
+        assert payout_registry.all_state_ids(workers) == {(1, "mysterium"): [None, "H"]}
+        assert payout_registry.state_ids(workers) == {(1, "mysterium"): "H"}
+        assert payout_registry.state_ids([{"id": 1, "containers": [{"slug": "mysterium"}]}]) == {}
 
 
 class TestARestoreWithNoAnswer:
@@ -1773,6 +1799,7 @@ class TestStartAndRemoveAroundARestore:
                 {"/restore": "mysterium-data"},
                 {orchestrator.LABEL_RESTORE: "helper"},
             )
+            left.attrs["Mounts"] = [{"Type": "volume", "Name": "mysterium-data", "Destination": "/restore"}]
             docker.container_map[left.name] = left
         return container
 
@@ -1811,6 +1838,38 @@ class TestStartAndRemoveAroundARestore:
         result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
         assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
         assert docker.container_map == {} and docker.volume_map == {}
+
+    def test_a_volume_that_will_not_go_gets_its_restore_mark_back(self, docker):
+        """The helper had to go first; a half-written volume that stays must still refuse a start and a deploy."""
+        self._service(docker, helper=True)
+        response = requests.Response()
+        response.status_code = 500
+        with patch.object(FakeVolume, "remove", side_effect=APIError("daemon timeout", response=response)):
+            result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert result["failed_volumes"] == ["mysterium-data"] and "mysterium-data" in docker.volume_map
+        assert docker.container_map["cashpilot-mysterium.restore"].mounts == {
+            orchestrator.RESTORE_WRITE_DIR: "mysterium-data"
+        }
+        assert orchestrator._restore_helper("mysterium") is not None
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            self._deploy(docker)
+
+    def test_remove_with_data_clears_a_helper_whose_service_is_gone(self, docker):
+        """A restore's undo removed the container but not its helper: remove with data is the way out."""
+        self._service(docker, helper=True)
+        del docker.container_map["cashpilot-mysterium"]
+        with pytest.raises(orchestrator.CriticalVolumeError):
+            orchestrator.remove_service("mysterium", delete_volumes=True)
+        assert "cashpilot-mysterium.restore" in docker.container_map and "mysterium-data" in docker.volume_map
+        result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
+        assert docker.container_map == {} and docker.volume_map == {}
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
+            self._deploy(docker)
+
+    def test_remove_with_no_container_and_no_helper_is_still_not_found(self, docker):
+        with pytest.raises(ValueError):
+            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
 
     def _deploy(self, docker):
         """The real deploy_raw, as the worker's deploy route calls it. The fake has no image, so

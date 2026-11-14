@@ -10014,9 +10014,10 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
             live_ids.add(w)
         elif w in running:
             # Every container of the slug on that box counts: one more of the
-            # same image (a copy, an unmanaged node) must not hide this one.
+            # same image (a copy, an unmanaged node) must not hide this one,
+            # and one with no fingerprint (None) may be this very volume.
             now = states.get((w, slug))
-            if r["here"] and now and r["here"] not in {database.backup_origin(w, s) for s in now}:
+            if r["here"] and now and None not in now and r["here"] not in {database.backup_origin(w, s) for s in now}:
                 # Only a heartbeat sent after this row says what the box runs
                 # now: an older one still shows the node it ran before.
                 seen = placement._sqlite_time(r["last_seen"])
