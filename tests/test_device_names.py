@@ -390,6 +390,29 @@ class TestARenameReachesProxiedCopies:
         assert all(c[3]["only_if_running"] is True for c in calls), "the worker must not start a stopped copy"
         assert "kept_from_previous_deployment" not in resp.json()
 
+    def test_the_identity_ledger_follows_each_rebuilt_copy(self, client):
+        """Each rebuilt copy's new name goes in the ledger, which retires its old one (issue #740)."""
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+        record = AsyncMock()
+        with patch("app.main.database.record_identities", record):
+            _, _, calls = _rename_with_copies(client, [_copy(4)], entries)
+        written = [c for c in record.await_args_list if "p4" in c.args[2]]
+        assert written, "the rebuilt copy's new name never reached the ledger"
+        assert written[-1].args[2]["p4"]["DEVICE_NAME"] == calls[0][3]["earner"]["env"]["DEVICE_NAME"]
+        assert written[-1].kwargs["scope"] == "given"
+
+    def test_the_identity_ledger_write_is_under_the_copys_lock(self, client):
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+        held: list[bool] = []
+
+        async def record(slug, worker_id, values, **kwargs):
+            if "p4" in values:
+                held.append(main._proxy_copy_lock(4, worker_id, slug).locked())
+
+        with patch("app.main.database.record_identities", side_effect=record):
+            _rename_with_copies(client, [_copy(4)], entries)
+        assert held == [True]
+
     def test_a_copy_that_exited_without_a_stop_is_not_started_by_the_rename(self, client):
         entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "exited"}]
         resp, _, calls = _rename_with_copies(client, [_copy(4)], entries)

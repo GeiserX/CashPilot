@@ -860,6 +860,38 @@ class TestStorageAndRoutes:
         status, detail = _run(go)
         assert status == 409 and "too old" in detail
 
+    def test_the_identity_ledger_row_is_written_under_the_copys_lock(self, db):
+        """The add path's ledger write is ordered with its deploy (issue #740)."""
+        svc = {
+            "slug": "honeygain",
+            "name": "Honeygain",
+            "status": "active",
+            "docker": {"image": "honeygain/honeygain:1", "env": [{"key": "DEVICE", "default": "cp-{hostname}"}]},
+        }
+        recorded = {"image": "honeygain/honeygain:1", "env": {"DEVICE": "cp-box", "EMAIL": "a@b"}, "ports": {}}
+        call = AsyncMock(return_value={"status": "deployed", "exit": {"ip": "93.184.215.14", "country": "ES"}})
+        held: list[bool] = []
+
+        async def record(slug, worker_id, values, **kwargs):
+            pid = int(next(iter(values))[1:])
+            held.append(main._proxy_copy_lock(pid, worker_id, slug).locked())
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(username=USERNAME, password=PASSWORD)), {})
+            await database.save_deployment("honeygain", "c1", spec=recorded, worker_id=7)
+            with (
+                patch.object(main.catalog, "get_service", return_value=svc),
+                patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
+                patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+                patch.object(main, "_proxy_to_worker", call),
+                patch.object(main.database, "record_identities", record),
+            ):
+                await main.api_add_proxied_copy(created["id"], main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+
+        _run(go)
+        assert held == [True]
+
     def test_a_copy_is_sent_from_the_recorded_spec_without_host_settings(self, db):
         svc = {
             "slug": "honeygain",

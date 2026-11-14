@@ -17,7 +17,10 @@ const grab = name => {
 
 // A secret field with a pattern renders the pattern and asks the browser for
 // a new secret, never a saved one; a plain field renders neither.
-const render = new Function('escapeHtml', `${grab('envInputFields')}\nreturn envInputFields;`)(escapeHtml);
+const render = new Function(
+  'escapeHtml', '_isOwner',
+  `${grab('isIdentityField')}\n${grab('identityPickButton')}\n${grab('envInputFields')}\nreturn envInputFields;`,
+)(escapeHtml, true);
 const envs = [
   { key: 'API_KEY', label: 'API key', secret: true, required: true, pattern: '[a-f0-9-]+' },
   { key: 'EMAIL', label: 'Email', secret: false, required: true },

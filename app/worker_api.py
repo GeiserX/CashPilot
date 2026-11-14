@@ -314,6 +314,10 @@ def _active_key() -> str:
     return _worker_key or API_KEY
 
 
+# The heartbeat's identity_digest is keyed with the same key, which the UI holds too.
+orchestrator.identity_digest_key = _active_key
+
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
@@ -1995,6 +1999,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     # Last of the checks: it spends the approval, which a refusal above must not.
     await asyncio.to_thread(_validate_critical_spec, spec, slug)
     kept_mounts: list[dict[str, str]] = []
+    replaced: dict[str, str] = {}
     try:
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
@@ -2017,11 +2022,16 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
+            replaced_identity=replaced,
         )
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
             response["kept_mounts"] = kept_mounts
+        # The ids the replaced container ran, for the UI's ledger (a replacement
+        # is a removal of the old container).
+        if digest := replaced.get("identity_digest"):
+            response["replaced_identity_digest"] = digest
         return response
     except orchestrator.ContainerNetworkError as exc:
         # The operator's own setting, and the message says how to fix it; a bare
@@ -2107,6 +2117,13 @@ async def api_remove_container(
             delete_volumes=delete_volumes,
             allow_delete_critical=allow_delete_critical,
         )
+        # Read before they go: the UI keeps the ids the copies ran with.
+        try:
+            digests = await asyncio.to_thread(orchestrator.copy_identity_digests, slug)
+        except Exception:  # noqa: BLE001 - bookkeeping never blocks a removal
+            digests = {}
+        if digests:
+            result["identity_digests"] = digests
         extras = await asyncio.to_thread(orchestrator.remove_extra_instances, slug)
         if extras:
             result["extra_instances"] = extras

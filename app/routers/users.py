@@ -19,6 +19,12 @@ from app import database, deps
 router = APIRouter()
 
 
+def _is_signed_in_user(user: dict[str, Any]) -> bool:
+    """A real account's session, not the admin API key (which resolves to uid 0)."""
+    uid = user.get("uid")
+    return isinstance(uid, int) and not isinstance(uid, bool) and uid > 0
+
+
 @router.get("/api/users")
 async def api_list_users(request: Request) -> list[dict[str, Any]]:
     deps._require_owner(request)
@@ -37,6 +43,11 @@ async def api_update_user_role(request: Request, user_id: int, body: UserRoleUpd
     user = await database.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if body.role == "owner" and not _is_signed_in_user(current):
+        # The admin API key must not mint an owner: an owner session reads the
+        # claimable device ids and passes the password step-ups, which the key
+        # alone is refused (issue #740). Promote someone from the dashboard.
+        raise HTTPException(status_code=403, detail="Sign in to the dashboard as an owner to make someone an owner")
     if current["uid"] == user_id and body.role != "owner":
         raise HTTPException(status_code=400, detail="Cannot demote yourself")
     if user["role"] == "owner" and body.role != "owner":

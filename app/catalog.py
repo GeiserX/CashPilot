@@ -7,7 +7,10 @@ Reload on SIGHUP.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import ipaddress
+import json
 import logging
 import re
 import signal
@@ -289,6 +292,25 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         errors.append(f"{path.name}: docker.env[{i}].pattern must be a valid regular expression")
                 if isinstance(item, dict) and "per_device" in item and not isinstance(item["per_device"], bool):
                     errors.append(f"{path.name}: docker.env[{i}].per_device must be a boolean")
+                if isinstance(item, dict) and "identifier" in item and not isinstance(item["identifier"], bool):
+                    errors.append(f"{path.name}: docker.env[{i}].identifier must be a boolean")
+                if isinstance(item, dict) and item.get("secret") and (item.get("identifier") or item.get("per_device")):
+                    # The identity ledger keeps these after a removal and shows
+                    # them to the owner; a secret must never be one of them.
+                    errors.append(f"{path.name}: docker.env[{i}] is secret, so it cannot be an identifier")
+            # A key declared twice, once secret and once an identifier, is still secret.
+            declared_env = [v for v in env if isinstance(v, dict)]
+            secret_keys = {v.get("key") for v in declared_env if v.get("secret")}
+            for key in sorted(
+                {
+                    str(v.get("key"))
+                    for v in declared_env
+                    if v.get("key") in secret_keys
+                    and not v.get("secret")
+                    and (v.get("identifier") or v.get("per_device"))
+                }
+            ):
+                errors.append(f"{path.name}: docker.env key {key} is secret, so it cannot be an identifier")
         signals = docker.get("health_signals")
         if isinstance(signals, list):
             for i, item in enumerate(signals):
@@ -581,6 +603,56 @@ def device_id_masks(slug: str | None = None) -> tuple[list[re.Pattern[str]], lis
                 )
                 ids.append(_FALLBACK_ID_MASK)
     return links, ids
+
+
+def identity_keys(svc: dict[str, Any] | None) -> dict[str, str]:
+    """The env keys whose values name this device to the provider, with their labels.
+
+    A key marked ``per_device`` (the id the provider knows the device by) or
+    ``identifier`` (a device name or id the user may want back later), and never
+    a secret one: the identity ledger keeps these values after a removal. The
+    loader refuses a secret identifier; the check here is the second line.
+    """
+    docker_conf = (svc or {}).get("docker") or {}
+    env = [var for var in docker_conf.get("env") or [] if isinstance(var, dict)]
+    # A key declared secret anywhere is secret, even if declared twice.
+    secret = {var.get("key") for var in env if var.get("secret")}
+    keys: dict[str, str] = {}
+    for var in env:
+        if var.get("key") in secret:
+            continue
+        if var.get("per_device") is True or var.get("identifier") is True:
+            key = str(var.get("key") or "")
+            if key:
+                keys[key] = str(var.get("label") or key)
+    return keys
+
+
+# Domain separation: the digest key is derived from the shared key, never the
+# key itself, so a digest can never be replayed as a bearer token or an approval.
+_IDENTITY_DIGEST_LABEL = b"cashpilot-identity-digest-v1"
+
+
+def identity_digest(svc: dict[str, Any] | None, env: Any, key: str | None) -> str | None:
+    """A keyed hash of the device ids in ``env``, never the ids: which ids a copy runs with.
+
+    The worker reports it per container from the env the container really has,
+    and the UI computes it from the env a deploy record derives for that copy;
+    a ledger row is written only when the two agree. Device ids let whoever
+    holds them claim the device, and a device name is easy to guess, so the
+    hash is an HMAC keyed with the worker's API key (its own once enrolled,
+    else the fleet key): only the UI and that worker can make or check it, and
+    whoever reads a heartbeat cannot test a guess against it. None without a
+    key, when the service has no identity key, or when ``env`` holds none.
+    """
+    keys = sorted(identity_keys(svc))
+    if not key or not keys or not isinstance(env, dict):
+        return None
+    pairs = [[name, str(env.get(name) or "").strip()] for name in keys]
+    if not any(value for _, value in pairs):
+        return None
+    subkey = hmac.new(key.encode(), _IDENTITY_DIGEST_LABEL, hashlib.sha256).digest()
+    return hmac.new(subkey, json.dumps(pairs).encode(), hashlib.sha256).hexdigest()[:16]
 
 
 def device_link_step(svc: dict[str, Any], env: dict[str, Any]) -> dict[str, str] | None:

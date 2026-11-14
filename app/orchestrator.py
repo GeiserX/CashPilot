@@ -35,13 +35,15 @@ if "stop_timeout" not in docker.models.containers.RUN_CREATE_KWARGS:
     docker.models.containers.RUN_CREATE_KWARGS.append("stop_timeout")
 
 try:
-    from app.catalog import critical_volume_targets, get_service, get_services
+    from app.catalog import critical_volume_targets, get_service, get_services, identity_digest, identity_keys
 except ImportError:
     # Defensive fallback if the catalog module isn't importable in some context.
     # (The worker image does ship catalog.py + services/, so this normally no-ops.)
     get_service = None  # type: ignore[assignment]
     get_services = None  # type: ignore[assignment]
     critical_volume_targets = None  # type: ignore[assignment]
+    identity_digest = None  # type: ignore[assignment]
+    identity_keys = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -849,6 +851,7 @@ def deploy_raw(
     keep_targets: set[str] | None = None,
     instance: int = 1,
     name: str | None = None,
+    replaced_identity: dict[str, str] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -856,7 +859,9 @@ def deploy_raw(
     ``_keep_live_mounts``. ``moved_mounts`` names the targets the operator
     relocated on purpose this deploy; ``keep_targets`` limits keeping to the
     targets the caller vouches for; ``kept_mounts``, when given, is filled with
-    what was kept so the caller can report it.
+    what was kept so the caller can report it. ``replaced_identity``, when
+    given, gets the ``identity_digest`` of the container being replaced, read
+    before it goes, so the UI can keep the ids it ran (identity ledger).
 
     ``network_mode="container:<id>"`` and ``name`` are for app/proxy_tunnel.py
     only: the worker API refuses a container: network mode from any caller.
@@ -938,6 +943,8 @@ def deploy_raw(
             )
         if problem := _aside_taken(client, old, name, slug):
             raise ContainerRuntimeError(problem)
+        if replaced_identity is not None:
+            replaced_identity.update(_identity_entry(old, slug))
         volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
         if kept:
             # A kept mount is the old container's own: one made before this
@@ -2509,13 +2516,15 @@ def remove_instance(slug: str, instance: int) -> dict[str, Any]:
     if instance <= 1:
         raise ValueError("The first instance is removed with the service, not on its own")
     container = _find_container(slug, instance)
+    # Read before it goes: the UI keeps the ids this copy ran with (identity ledger).
+    identity = _identity_entry(container, slug)
     try:
         container.stop(timeout=_get_stop_timeout(slug))
     except APIError as exc:
         logger.warning("Could not stop %s cleanly before removing it: %s", container.name, exc)
     _remove_container(container, slug)
     logger.info("Removed container %s", container.name)
-    return {"container": container.name}
+    return {"container": container.name, **identity}
 
 
 def remove_extra_instances(slug: str) -> list[str]:
@@ -3414,6 +3423,59 @@ def _advertised_address(container: Any, slug: str) -> str | None:
     return None
 
 
+# What keys identity_digest: the worker's active API key, set by worker_api.
+# Unset (the UI process, a test) means no digest at all.
+identity_digest_key: Any = None
+
+# Container id -> the identity values it runs with. A container's env never
+# changes, so each is inspected once; the cap only bounds a long uptime. The
+# digest is made per call, so it follows the key when the worker enrols.
+_identity_values: dict[str, dict[str, str]] = {}
+
+
+def _identity_entry(container: Any, slug: str) -> dict[str, str]:
+    """``identity_digest``: a keyed hash of the device ids this container runs with.
+
+    The UI writes a copy's ledger row only when this matches what its deploy
+    record derives (catalog.identity_digest), so a copy still running an older
+    id is never given a newer one. Only for a service with identity keys, and
+    never the ids themselves: they let whoever holds them claim the device.
+    """
+    if get_service is None or identity_digest is None or identity_keys is None or identity_digest_key is None:
+        return {}
+    try:
+        service = get_service(slug)
+        key = identity_digest_key()
+    except Exception:
+        return {}
+    cid = str(getattr(container, "id", "") or "")
+    if not service or not cid or not key:
+        return {}
+    if cid not in _identity_values:
+        names = identity_keys(service)
+        if not names:
+            return {}
+        try:
+            env_list = (container.client.api.inspect_container(cid).get("Config") or {}).get("Env") or []
+        except Exception:
+            return {}
+        env = dict(e.split("=", 1) for e in env_list if isinstance(e, str) and "=" in e)
+        if len(_identity_values) > 1024:
+            _identity_values.clear()
+        _identity_values[cid] = {name: env.get(name, "") for name in names}
+    digest = identity_digest(service, _identity_values[cid], key)
+    return {"identity_digest": digest} if digest else {}
+
+
+def copy_identity_digests(slug: str) -> dict[str, str]:
+    """The digest of every copy of ``slug`` on this worker, by copy number, before a removal."""
+    digests: dict[str, str] = {}
+    for container in service_instances(slug):
+        if digest := _identity_entry(container, slug).get("identity_digest"):
+            digests[str(_instance_of(container))] = digest
+    return digests
+
+
 def get_status() -> list[dict[str, Any]]:
     """Return live status of all known containers (labeled + image-matched).
 
@@ -3476,6 +3538,7 @@ def get_status() -> list[dict[str, Any]]:
                 "instance": _instance_of(c),
                 **_shape_entry(c),
                 **_stop_facts(c),
+                **_identity_entry(c, slug),
                 **_state_id_entry(c, slug, client),
                 **_fatal_entry(c, slug),
                 **_held_entry(c),

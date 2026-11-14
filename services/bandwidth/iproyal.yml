@@ -38,12 +38,14 @@ docker:
       secret: true
       description: "Your IPRoyal Pawns account password (passed as -password flag)"
     - key: IPROYALPAWNS_DEVICE_NAME
+      identifier: true
       label: "Device name"
       required: false
       secret: false
       description: "Name shown in your Pawns dashboard (passed as -device-name flag)"
       default: "cashpilot-{hostname}"
     - key: IPROYALPAWNS_DEVICE_ID
+      identifier: true
       label: "Device ID"
       required: false
       secret: false
