@@ -1408,6 +1408,41 @@ class TestTheUiManagesARoutedService:
         assert left == []
         assert confirmed is None
 
+    def test_removing_the_routed_copy_beside_a_plain_one_drops_the_record(self, db):
+        """A plain copy through another proxy that nobody removes runs nothing routed: the record goes."""
+        ui, setup = self._routed(db)
+
+        async def go():
+            pid = await setup()
+            other = await ui.proxy()
+            await database.save_proxied_copy(other, 1, "honeygain")
+            ui.worker_reply = _Ui._no_container
+            with ui.active():
+                await main._remove_copy(pid, 1, "honeygain")
+            left = [c["proxy_id"] for c in await database.list_proxied_copies() if c["worker_id"] == 1]
+            return other, left, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        other, left, record = _run(go)
+        assert left == [other]
+        assert record is None
+
+    def test_removing_a_plain_copy_beside_the_routed_one_keeps_the_record(self, db):
+        ui, setup = self._routed(db)
+
+        async def go():
+            pid = await setup()
+            other = await ui.proxy()
+            await database.save_proxied_copy(other, 1, "honeygain")
+            ui.worker_reply = _Ui._no_container
+            with ui.active():
+                await main._remove_copy(other, 1, "honeygain")
+            left = [c["proxy_id"] for c in await database.list_proxied_copies() if c["worker_id"] == 1]
+            return pid, left, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, left, record = _run(go)
+        assert left == [pid]
+        assert record is not None and proxies.route_of(record) == pid
+
     def test_a_copy_through_the_same_proxy_is_refused(self, db):
         ui, setup = self._routed(db)
 

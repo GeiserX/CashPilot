@@ -5247,9 +5247,12 @@ async def _remove_routed(worker_id: int, slug: str) -> dict[str, Any]:
     """Remove a routed service: every proxied copy of it on the worker, as a direct removal does."""
     removed: list[str] = []
     pending: list[int] = []
-    for copy in await database.list_proxied_copies():
-        if copy["worker_id"] != worker_id or copy["slug"] != slug:
-            continue
+    route = await _route_on(worker_id, slug)
+    copies = [c for c in await database.list_proxied_copies() if c["worker_id"] == worker_id and c["slug"] == slug]
+    # The copy through the route goes last: its confirmation drops the record
+    # only once no other copy is still being removed (_finish_copy_removal),
+    # so the others are already marked or gone by then.
+    for copy in sorted(copies, key=lambda c: c["proxy_id"] == route):
         result = await _remove_copy(copy["proxy_id"], worker_id, slug)
         if isinstance(result, JSONResponse):
             pending.append(copy["proxy_id"])
@@ -6311,13 +6314,15 @@ _copy_removals_running: set[tuple[int, int, str]] = set()
 async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str, *, leaving_route: bool = False) -> None:
     """The worker confirmed the copy is gone: drop its record and its device's pending link.
 
-    A service routed at deploy runs only as its copies, so its deployment
-    record goes too once the last copy of it on the worker is gone: a removal
-    still waiting for another copy keeps it, and the heartbeat's retry that
-    confirms that copy (_resume_copy_removals) drops it. With
-    ``leaving_route`` the service is about to run from the worker's own IP
-    (_deploy): its record stays, without the route, so a direct deploy that
-    fails can be tried again with the same settings.
+    A service routed at deploy runs only as its copy through its route, so
+    its deployment record goes too once that copy is gone and no other copy
+    of it on the worker is still being removed: a removal still waiting for
+    another copy keeps it, and the heartbeat's retry that confirms that copy
+    (_resume_copy_removals) drops it. A plain copy through another proxy that
+    nobody is removing does not keep it: nothing routed runs there any more.
+    With ``leaving_route`` the service is about to run from the worker's own
+    IP (_deploy): its record stays, without the route, so a direct deploy
+    that fails can be tried again with the same settings.
     """
     await database.delete_proxied_copy(proxy_id, worker_id, slug)
     spec = await database.get_deployment_spec(slug, worker_id=worker_id)
@@ -6327,7 +6332,8 @@ async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str, *, leav
             direct = {k: v for k, v in spec.items() if k != "route"}
             await database.save_deployment(slug=slug, container_id="remote", spec=direct, worker_id=worker_id)
     elif route is not None and not any(
-        c["worker_id"] == worker_id and c["slug"] == slug for c in await database.list_proxied_copies()
+        c["worker_id"] == worker_id and c["slug"] == slug and (c["proxy_id"] == route or c.get("removing_since"))
+        for c in await database.list_proxied_copies()
     ):
         await database.remove_deployment(slug, worker_id=worker_id)
     await _drop_copy_device_links(proxy_id, slug)
