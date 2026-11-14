@@ -2622,6 +2622,20 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
         labels = found.labels if isinstance(getattr(found, "labels", None), dict) else {}
         if candidate.endswith(RESTORE_HELPER_SUFFIX) and labels.get(LABEL_RESTORE) == "helper":
             # Never started, and no restore runs (_RESTORE_LOCK): a dead worker's leftover.
+            # While a volume it mounts is there, it is that half-written volume's only
+            # mark (_refuse_mid_restore): removing it would let a deploy start on it.
+            mounts = (getattr(found, "attrs", None) or {}).get("Mounts") or []
+            for held in [m["Name"] for m in mounts if m.get("Type") == "volume" and m.get("Name")]:
+                try:
+                    client.volumes.get(held)
+                except NotFound:
+                    continue
+                except Exception:  # noqa: BLE001 - a volume that cannot be checked counts as there
+                    pass
+                return (
+                    f"a restore of {slug} did not finish, so the volume {held} may be half-written. "
+                    "Remove the service with its data from the dashboard, then restore"
+                )
             try:
                 found.remove(force=True)
             except NotFound:
@@ -3117,7 +3131,7 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
                 logger.info("Removed volume %s", vol_name)
             except NotFound:
                 deleted_volumes.append(vol_name)
-            except APIError as exc:
+            except Exception as exc:  # noqa: BLE001 - an APIError or a transport error: the volume stays
                 failed_volumes.append(vol_name)
                 logger.warning("Failed to remove volume %s: %s", vol_name, exc)
     # The helper had to go first (it mounts the volume), and it is the only mark

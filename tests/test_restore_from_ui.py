@@ -338,6 +338,10 @@ class FakeContainers:
             if source not in self.docker.volume_map:
                 raise AssertionError(f"helper mounts a volume that does not exist: {source} at {target}")
         container = FakeContainer(self.docker, kwargs["name"], mounts, kwargs.get("labels"), kwargs.get("image"))
+        # As Docker's inspect shows them: what a leftover helper is found to hold.
+        container.attrs["Mounts"] = [
+            {"Type": "volume", "Name": source, "Destination": target} for target, source in mounts.items()
+        ]
         self.docker.container_map[container.name] = container
         return container
 
@@ -1865,6 +1869,31 @@ class TestStartAndRemoveAroundARestore:
         assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
         assert docker.container_map == {} and docker.volume_map == {}
         with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
+            self._deploy(docker)
+
+    def test_a_restore_attempt_keeps_the_mark_of_a_half_written_volume(self, docker):
+        """Helper only, its volume still there: the restore refuses and keeps the helper, so no deploy starts on it."""
+        self._service(docker, helper=True)
+        del docker.container_map["cashpilot-mysterium"]
+        with pytest.raises(orchestrator.RestoreError, match="with its data"):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "cashpilot-mysterium.restore" in docker.container_map and "mysterium-data" in docker.volume_map
+        assert orchestrator._restore_helper("mysterium") is not None
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            self._deploy(docker)
+
+    def test_a_volume_delete_that_times_out_still_gets_its_mark_back(self, docker):
+        """A transport error is not an APIError; the half-written volume that stays must keep its mark."""
+        self._service(docker, helper=True)
+        with patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")):
+            result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert result["failed_volumes"] == ["mysterium-data"] and "mysterium-data" in docker.volume_map
+        assert orchestrator._restore_helper("mysterium") is not None
+        # A restore tried next on this box keeps the mark it put back.
+        with pytest.raises(orchestrator.RestoreError, match="with its data"):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert orchestrator._restore_helper("mysterium") is not None
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             self._deploy(docker)
 
     def test_remove_with_no_container_and_no_helper_is_still_not_found(self, docker):
