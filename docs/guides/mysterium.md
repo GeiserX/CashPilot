@@ -447,6 +447,19 @@ Never `0.0.0.0`: that publishes the WebUI on every address of the machine.
 The Tequila API (4050) is never published; the WebUI reaches it from inside
 the node.
 
+A WebUI page that loads forever from another machine means 4449 is not
+published on the address you opened. Then something on the path drops the
+request silently: NAT, a hypervisor without a port forward, or a firewall. The
+browser waits until it times out. On a plain LAN the browser shows
+"connection refused" at once instead. Use the SSH tunnel
+(`ssh -L 4449:127.0.0.1:4449 <host>`, then browse `http://127.0.0.1:4449`), or
+add that address to `UI_ADDRESS`.
+
+The **Node settings** button on my.mystnodes.com links to the local IP the node
+reports. For a node on CashPilot's bridge, that is normally the container's
+internal address, so the button cannot open the WebUI. Use the SSH tunnel
+instead ([mysteriumnetwork/node#3535](https://github.com/mysteriumnetwork/node/issues/3535)).
+
 Set it in the deploy form and redeploy that machine's node; each worker keeps
 its own value. To go back to loopback only, enter `localhost`: the form treats
 the prefilled `127.0.0.1` as untouched and keeps the address recorded for that
@@ -480,10 +493,11 @@ registers and still advertises itself to the network, and carries no traffic.
    capabilities are added back. The device can be present and correct and the
    node still cannot use it.
 
-**Confirm it.** Ask the node itself, on the host running it:
+**Confirm it.** Ask the node itself. Its Tequila API (4050) is not published on
+the host, so ask from inside the container:
 
 ```bash
-curl -s http://127.0.0.1:4050/node/monitoring-agent-statuses
+docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/node/monitoring-agent-statuses
 ```
 
 A missing device (cause 1) looks like this:
@@ -503,7 +517,7 @@ only `connect_fail`:
              "scraping":{"connect_fail":4}}}
 ```
 
-In both cases `curl -s http://127.0.0.1:4050/node/monitoring-status` returns
+In both cases `docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/node/monitoring-status` returns
 `{"status":"failed"}`.
 
 Then check each cause. Both commands run inside the container's own limits, so

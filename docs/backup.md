@@ -142,7 +142,8 @@ first, keeping its volumes, and move that volume's contents aside before step 2.
 
 **3. Deploy the service** on that box from CashPilot. It finds the restored
 volume and starts with the old identity. Check it is the same one, for
-Mysterium with `curl -s http://127.0.0.1:4050/identities`.
+Mysterium with
+`docker exec cashpilot-mysterium wget -qO- http://127.0.0.1:4050/identities`.
 
 To make a key pair for recipient mode, run the same tool with `keygen`. Keep
 the private key offline; give CashPilot only the public one.
