@@ -750,6 +750,9 @@ async def _send_heartbeat() -> None:
         # Starts a fence_gated service (Mysterium) only behind a confirmed fence,
         # on the bridge, with its port range and several WebUI addresses.
         payload["system_info"]["features"].append("fence_gated")
+        # Takes "only_if_running" on a proxied copy deploy, so the UI can rebuild
+        # a running copy without starting one the owner stopped meanwhile.
+        payload["system_info"]["features"].append("proxied_if_running")
     # Only what the owner asked for, and only a finished round.
     sent_seq = _activity_seq
     if _activity_enabled and _pending_activity is not None:
@@ -1774,6 +1777,9 @@ class ProxySpec(BaseModel):
 class ProxiedDeploySpec(BaseModel):
     earner: DeploySpec
     proxy: ProxySpec
+    # Replace the copy only while it runs and the owner has not stopped it:
+    # a rebuild the UI makes on its own (a device rename) must never start it.
+    only_if_running: bool = False
 
 
 class ProxyTestSpec(BaseModel):
@@ -1874,7 +1880,15 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
         "resources": spec.earner.resources,
     }
     try:
-        result = await asyncio.to_thread(proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip)
+        result = await asyncio.to_thread(
+            proxy_tunnel.deploy,
+            slug,
+            proxy_id,
+            earner,
+            spec.proxy.plain(),
+            own_ip,
+            only_if_running=spec.only_if_running,
+        )
     except Exception as exc:  # noqa: BLE001 - mapped to a status below
         raise _proxy_http_error(exc) from None
     return {"status": "deployed", **result}
