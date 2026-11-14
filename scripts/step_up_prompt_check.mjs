@@ -46,7 +46,9 @@ const els = {
   'stepup-message': {textContent: ''},
   'stepup-submit': {}, 'stepup-cancel': {}, 'stepup-close': {},
 };
-const document = {getElementById: id => els[id] || null};
+// The control the owner pressed to start the deploy; focus must come back to it.
+const trigger = {isConnected: true, focused: 0, focus() { this.focused++; }};
+const document = {getElementById: id => els[id] || null, activeElement: trigger};
 const setTimeout = () => 0;
 const {askStepUp} = new Function('document', 'MutationObserver', 'setTimeout', `${code}; return {askStepUp};`)(
   document, MutationObserver, setTimeout,
@@ -103,6 +105,27 @@ els['stepup-submit'].onclick();
 const [rc, rd] = await Promise.all([c, d]);
 check('the closed prompt answers null', rc === null, rc);
 check('the one behind it gets its password', rd === 'pw-d', rd);
+
+// --- focus returns to the control that opened the prompt, on every close ----
+for (const [label, close] of [
+  ['submit', () => { type('pw'); els['stepup-submit'].onclick(); }],
+  ['cancel', () => els['stepup-cancel'].onclick()],
+  ['an outside close', () => overlay.classList.remove('open')],
+]) {
+  trigger.focused = 0;
+  const p = askStepUp(label);
+  await tick();
+  close();
+  await p;
+  check(`focus returns to the opener after ${label}`, trigger.focused === 1, trigger.focused);
+}
+trigger.isConnected = false;
+trigger.focused = 0;
+const gone = askStepUp('gone');
+await tick();
+els['stepup-cancel'].onclick();
+await gone;
+check('a removed opener is not focused', trigger.focused === 0, trigger.focused);
 
 console.log(bad ? `\nRESULT: FAIL (${bad})` : '\nRESULT: PASS');
 process.exit(bad ? 1 : 0);

@@ -69,6 +69,9 @@ const CP = (() => {
     const text = document.getElementById('stepup-message');
     if (text) text.textContent = message || 'Enter your password to continue.';
     input.value = '';
+    // Focus goes back where it was when the prompt closes, however it closes,
+    // so a keyboard or screen-reader user keeps their place in the page.
+    const before = document.activeElement;
     return new Promise((resolve) => {
       let done = false;
       const finish = (value) => {
@@ -77,6 +80,7 @@ const CP = (() => {
         watcher.disconnect();
         input.value = '';
         overlay.classList.remove('open');
+        if (before && before.isConnected && typeof before.focus === 'function') before.focus();
         resolve(value);
       };
       const watcher = new MutationObserver(() => { if (!overlay.classList.contains('open')) finish(null); });
