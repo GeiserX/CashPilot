@@ -517,6 +517,28 @@ class TestTheWorkerProxiedRoutes:
         assert copy.name in _detail(resp) and seen == {}
         assert route_gate.routed() == {"honeygain": 2}
 
+    def test_a_refused_routed_deploy_never_moves_the_mark_a_start_could_read(self, worker, monkeypatch):
+        """proxy_tunnel._start does not hold route_gate.deploying. A start of the copy through 2 that read a
+        mark moved to 3 for a moment would rebuild it, tunnel gone, in proxy 2's shared tunnel."""
+        route_gate.mark("honeygain", 2)
+        _copies_on(worker.docker, (2, "honeygain"))
+        _tunnel_gone(worker.docker, "t2")
+        real_copies, real_write = proxy_tunnel.routed_copies, route_gate._write
+        read_by_a_start, writes = [], []
+
+        def copies_while_a_start_reads(slug, marked):
+            read_by_a_start.append(proxy_tunnel._routed_here(slug, 2))
+            return real_copies(slug, marked)
+
+        monkeypatch.setattr(worker_api.proxy_tunnel, "routed_copies", copies_while_a_start_reads)
+        monkeypatch.setattr(route_gate, "_write", lambda data: (writes.append(dict(data)), real_write(data)))
+        resp, seen = self._deploy(worker, monkeypatch, True, {"container_id": "e"})
+        assert resp.status_code == 409, resp.text
+        assert seen == {}
+        assert read_by_a_start == [True]
+        assert writes == []
+        assert route_gate.routed() == {"honeygain": 2}
+
     @pytest.mark.parametrize("before", [None, 3])
     def test_a_shared_copy_whose_tunnel_is_gone_does_not_count(self, worker, monkeypatch, before):
         """No mark names its proxy, so its next start brings it back in the shared tunnel, never routed."""

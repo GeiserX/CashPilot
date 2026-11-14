@@ -1949,6 +1949,30 @@ def _deploy_routed(
     the route put back after a failure is the one this deploy found.
     """
     with route_gate.deploying(slug):
+        # A routed copy through another proxy stays when this one is made
+        # (proxy_tunnel._deploy replaces only its own proxy's), and the mark
+        # moved here would hide it from the next switch to direct. Asked before
+        # the mark moves: a copy whose tunnel is gone comes back routed only
+        # through the marked proxy, and a start of it (proxy_tunnel._start,
+        # which does not hold this lock) that read a mark moved here only for
+        # a moment would rebuild it in the proxy's shared tunnel.
+        try:
+            elsewhere = [
+                name
+                for pid, name in proxy_tunnel.routed_copies(slug, route_gate.routed().get(slug))
+                if pid != int(proxy_id)
+            ]
+        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not list the proxied copies of {slug} on this worker ({exc}); nothing changed",
+            ) from None
+        if elsewhere:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{slug} already runs through another proxy on this worker ({', '.join(elsewhere)}). "
+                "Remove it first, then deploy it through this one; nothing changed",
+            )
         # Recorded before the earner exists, so no deploy path can start this
         # service from the box's own IP while the routed one is being made.
         try:
@@ -1974,26 +1998,6 @@ def _deploy_routed(
                 status_code=409,
                 detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
                 "then deploy it with a route; nothing changed",
-            )
-        # A routed copy through another proxy stays when this one is made
-        # (proxy_tunnel._deploy replaces only its own proxy's), and the mark
-        # moved here would hide it from the next switch to direct. Asked with
-        # the mark as it was: a copy whose tunnel is gone comes back routed
-        # only through that proxy.
-        try:
-            elsewhere = [name for pid, name in proxy_tunnel.routed_copies(slug, before) if pid != int(proxy_id)]
-        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
-            route_gate.release(slug, before)
-            raise HTTPException(
-                status_code=503,
-                detail=f"Could not list the proxied copies of {slug} on this worker ({exc}); nothing changed",
-            ) from None
-        if elsewhere:
-            route_gate.release(slug, before)
-            raise HTTPException(
-                status_code=409,
-                detail=f"{slug} already runs through another proxy on this worker ({', '.join(elsewhere)}). "
-                "Remove it first, then deploy it through this one; nothing changed",
             )
         try:
             return proxy_tunnel.deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=True)
