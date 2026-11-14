@@ -309,3 +309,172 @@ def test_a_link_that_is_not_https_is_not_rendered_and_values_are_escaped():
     html = _render(alert, "owner")
     assert "href" not in html and "javascript:" not in html
     assert "&lt;b&gt;x&lt;/b&gt;" in html
+
+
+# --------------------------------------------------------------------------
+# Container logs: masked for everyone but the owner
+# --------------------------------------------------------------------------
+
+# The derived id of a ProxyRack copy: in no deployment record, so only its
+# shape can mask it.
+PROXYRACK_COPY_ID = "e" * 60 + "c0de"
+_EARNAPP_LOG = (
+    f"EarnApp running, device {EARNAPP_ID}\n"
+    f"Link this device once, while logged in: https://earnapp.com/r/{EARNAPP_ID}\n"
+)
+_PROXYRACK_LOG = f"pop started for {PROXYRACK_ID}\ncopy uuid {PROXYRACK_COPY_ID}\n"
+
+
+def _logs(client, user, slug, text, deployed):
+    with (
+        patch("app.main.auth.get_current_user", return_value=user),
+        patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+        patch("app.main._proxy_worker_logs", new_callable=AsyncMock, return_value={"logs": text}),
+        patch("app.main.database.get_deployed_env_values", new_callable=AsyncMock, return_value=deployed),
+    ):
+        return client.get(f"/api/services/{slug}/logs?lines=1000")
+
+
+def test_a_writer_reads_earnapp_logs_without_the_id_or_claim_link(client):
+    resp = _logs(client, WRITER, "earnapp", _EARNAPP_LOG, {EARNAPP_ID})
+    assert resp.status_code == 200
+    logs = resp.json()["logs"]
+    assert EARNAPP_ID not in logs and "earnapp.com/r/" not in logs
+    assert "...cdef" in logs and "<link in CashPilot>" in logs
+
+
+def test_a_writer_reads_proxyrack_logs_without_the_ids_of_the_device_or_its_copies(client):
+    resp = _logs(client, WRITER, "proxyrack", _PROXYRACK_LOG, {PROXYRACK_ID})
+    assert resp.status_code == 200
+    logs = resp.json()["logs"]
+    assert PROXYRACK_ID not in logs and PROXYRACK_COPY_ID not in logs
+    assert "...9a8b" in logs and "...c0de" in logs
+
+
+def test_the_owner_reads_the_logs_as_they_are(client):
+    resp = _logs(client, OWNER, "earnapp", _EARNAPP_LOG, {EARNAPP_ID})
+    assert resp.status_code == 200
+    assert resp.json()["logs"] == _EARNAPP_LOG
+
+
+def test_a_failed_read_of_the_deployed_ids_still_masks_by_shape(client):
+    with (
+        patch("app.main.auth.get_current_user", return_value=WRITER),
+        patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+        patch("app.main._proxy_worker_logs", new_callable=AsyncMock, return_value={"logs": _EARNAPP_LOG}),
+        patch("app.main.database.get_deployed_env_values", new_callable=AsyncMock, side_effect=RuntimeError("db")),
+    ):
+        resp = client.get("/api/services/earnapp/logs")
+    assert resp.status_code == 200
+    assert EARNAPP_ID not in resp.json()["logs"]
+
+
+def test_a_known_id_is_masked_whatever_its_shape_and_hex_elsewhere_is_left_alone():
+    odd = "custom-device-0123456789"
+    digest = "sha256:" + "a" * 64
+    text = notify.mask_device_ids(f"{odd} {digest}", {odd, "short"})
+    assert odd not in text and "...6789" in text
+    assert digest in text
+
+
+# --------------------------------------------------------------------------
+# Restored at startup: a notice stored before the masking
+# --------------------------------------------------------------------------
+
+
+def test_a_notice_stored_before_the_upgrade_reaches_the_bell_masked(client):
+    stored = [
+        {
+            "kind": "notice",
+            "subject": "earnapp",
+            "message": f"A deployed device is not on your EarnApp account: {EARNAPP_ID} "
+            f"(https://earnapp.com/r/{EARNAPP_ID}).",
+            "category": None,
+        },
+        {
+            "kind": "notice",
+            "subject": "proxyrack",
+            "message": f"A deployed device is not on your ProxyRack account: {PROXYRACK_ID} (https://peer.proxyrack.com).",
+            "category": None,
+        },
+    ]
+
+    async def deployed(slug, _key):
+        return {"earnapp": {EARNAPP_ID}, "proxyrack": {PROXYRACK_ID}}[slug]
+
+    with (
+        patch("app.main._collector_alerts", []),
+        patch("app.main.database.list_alerts", new_callable=AsyncMock, return_value=stored),
+        patch("app.main.database.get_deployed_env_values", side_effect=deployed),
+    ):
+        asyncio.run(main._warm_collector_alerts())
+        restored = list(main._collector_alerts)
+        with patch("app.main.auth.get_current_user", return_value=VIEWER):
+            resp = client.get("/api/collector-alerts")
+    text = json.dumps(restored)
+    assert EARNAPP_ID not in text and PROXYRACK_ID not in text and "earnapp.com/r/" not in text
+    assert "...cdef" in text and "...9a8b" in text
+    assert resp.status_code == 200
+    assert EARNAPP_ID not in resp.text and PROXYRACK_ID not in resp.text
+
+
+# --------------------------------------------------------------------------
+# A device the app gave up adding still reaches the owner's bell
+# --------------------------------------------------------------------------
+
+
+def test_the_collection_checks_a_gave_up_copy_id_so_the_owner_bell_shows_it(caplog):
+    copy_id = "sdk-node-" + "fedcba9876543210" * 2
+    collector = EarnAppCollector(oauth_token="t")
+    gave_up = [{"slug": "earnapp", "device_id": copy_id, "gave_up": 1, "first_at": "2000-01-01 00:00:00"}]
+    with (
+        patch("app.main.database.list_pending_device_links", new_callable=AsyncMock, return_value=gave_up),
+        patch("app.main._device_still_deployed", new_callable=AsyncMock, return_value=True),
+    ):
+        collector.collect = AsyncMock(
+            return_value=EarningsResult(platform="earnapp", balance=1.0, unlinked_devices=[copy_id])
+        )
+        with (
+            patch("app.main._collector_alerts", []),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[{"slug": "earnapp"}]),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.collectors.make_collectors", return_value=[collector]),
+            patch("app.collectors._close_stale", new_callable=AsyncMock),
+            patch("app.main.database.get_deployed_env_values", new_callable=AsyncMock, return_value={EARNAPP_ID}),
+            patch("app.main.database.record_alert", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.clear_alerts", new_callable=AsyncMock),
+            patch("app.main.database.upsert_earnings", new_callable=AsyncMock),
+            patch("app.main._detect_payout", new_callable=AsyncMock, return_value=None),
+            patch("app.main._pending_payout_alerts", new_callable=AsyncMock, return_value=[]),
+            patch("app.main._flatline_check", new_callable=AsyncMock, return_value=[]),
+            patch("app.main._offline_worker_alerts", new_callable=AsyncMock, return_value=[]),
+            patch("app.main._spawn"),
+        ):
+            asyncio.run(main._run_collection())
+            alerts = list(main._collector_alerts)
+    # The derived id is checked with the deployed ones...
+    assert collector.device_ids == {EARNAPP_ID, copy_id}
+    # ...so the owner's bell gets its full id and link while it is unlinked.
+    (notice,) = [a for a in alerts if a.get("kind") == "notice"]
+    assert notice["devices"] == [
+        {"id": copy_id, "masked": "...3210", "url": f"https://earnapp.com/r/{copy_id}"},
+    ]
+    assert copy_id not in notice["error"]
+
+
+def test_a_gave_up_device_that_no_longer_runs_is_not_checked():
+    rows = [
+        {"slug": "earnapp", "device_id": "running", "gave_up": 1},
+        {"slug": "earnapp", "device_id": "gone", "gave_up": 1},
+        {"slug": "earnapp", "device_id": "still-retrying", "gave_up": 0},
+        {"slug": "proxyrack", "device_id": "other-service", "gave_up": 1},
+    ]
+
+    async def still(_slug, device_id):
+        return device_id != "gone"
+
+    with (
+        patch("app.main.database.list_pending_device_links", new_callable=AsyncMock, return_value=rows),
+        patch("app.main._device_still_deployed", side_effect=still),
+    ):
+        assert asyncio.run(main._gave_up_device_ids("earnapp")) == {"running"}

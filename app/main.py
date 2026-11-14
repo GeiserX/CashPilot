@@ -1462,7 +1462,12 @@ async def _warm_collector_alerts() -> None:
         if key in seen:
             continue
         seen.add(key)
-        entry = {"kind": alert["kind"], "platform": alert["subject"], "error": alert["message"]}
+        message = alert["message"]
+        if alert["kind"] == "notice":
+            # A row stored before notices masked device ids holds the full id
+            # and claim link; every role reads the bell, so mask it on the way in.
+            message = notify.redact(await _mask_service_device_ids(alert["subject"], message))
+        entry = {"kind": alert["kind"], "platform": alert["subject"], "error": message}
         if alert.get("category"):
             entry["category"] = alert["category"]
         restored.append(entry)
@@ -1712,6 +1717,38 @@ async def _retrying_device_ids() -> dict[str, set[str]]:
     return retrying
 
 
+async def _mask_service_device_ids(slug: str, text: str) -> str:
+    """``text`` with the claimable device ids of ``slug`` masked, for anyone but the owner.
+
+    The deployed ids of a service with a ``device_link``, its copies' derived
+    ids by their shape, and EarnApp's id and link anywhere. A failed read of the
+    deployed ids still masks by shape.
+    """
+    link = (catalog.get_service(slug) or {}).get("device_link")
+    known: set[str] = set()
+    if isinstance(link, dict) and link.get("id_env"):
+        try:
+            known = await database.get_deployed_env_values(slug, link["id_env"])
+        except Exception as exc:
+            logger.warning("Could not read the deployed %s device ids to mask: %s", slug, exc)
+    return notify.mask_device_ids(text, known, hex64=isinstance(link, dict))
+
+
+async def _gave_up_device_ids(slug: str) -> set[str]:
+    """The ids of ``slug`` the app gave up adding that still run.
+
+    A proxied copy's derived id is in no deployment record, so without these
+    the collection never checks it and the owner's bell never shows it, while
+    the give-up notice says the bell does. Once the device is on the account the
+    check stops listing it.
+    """
+    ids: set[str] = set()
+    for row in await database.list_pending_device_links():
+        if row["slug"] == slug and row["gave_up"] and await _device_still_deployed(slug, row["device_id"]):
+            ids.add(row["device_id"])
+    return ids
+
+
 def _unlinked_devices(result: Any, retrying: set[str] | frozenset[str] = frozenset()) -> list[dict[str, str]]:
     """The deployed devices the provider says are not on the account, each with its link.
 
@@ -1793,6 +1830,10 @@ async def _run_collection() -> None:
                     # Only this service's device check is lost, never the run.
                     logger.warning("Could not read the deployed %s device ids: %s", slug, exc)
                     continue
+                try:
+                    c.device_ids |= await _gave_up_device_ids(slug)
+                except Exception as exc:
+                    logger.warning("Could not read the %s devices the app gave up adding: %s", slug, exc)
                 if c.device_ids:
                     device_checked.add(slug)
             results = await asyncio.gather(*(_collect_bounded(c) for c in collectors), return_exceptions=True)
@@ -5779,9 +5820,14 @@ async def api_service_start(
 async def api_service_logs(
     request: Request, slug: str, lines: int = 50, worker_id: int | None = None, instance: int = 1
 ) -> dict[str, str]:
-    _require_writer(request)
+    user = _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    return await _proxy_worker_logs(worker_id, slug, lines, instance=_instance_param(instance))
+    resp = await _proxy_worker_logs(worker_id, slug, lines, instance=_instance_param(instance))
+    if not auth.require_role(user, "owner") and isinstance(resp.get("logs"), str):
+        # EarnApp prints its device id and claim link at every start: a writer
+        # who restarts it and reads the log must not get what the bell masks.
+        resp = {**resp, "logs": await _mask_service_device_ids(slug, resp["logs"])}
+    return resp
 
 
 @app.delete("/api/services/{slug}")
