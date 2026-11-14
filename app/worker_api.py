@@ -2237,6 +2237,8 @@ async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[s
         payload, targets = await asyncio.to_thread(orchestrator.read_critical_state, slug)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Backup read failed for %s: %s", slug, exc)
         raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
@@ -2299,6 +2301,8 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
         payload, _targets = await asyncio.to_thread(orchestrator.read_critical_state, slug)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Backup verify read failed for %s: %s", slug, exc)
         raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
@@ -2431,6 +2435,10 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
         result = await asyncio.to_thread(orchestrator.restore_state, slug, archives, deploy)
     except orchestrator.RestoreError as exc:
         logger.warning("Restore of %s refused or undone: %s", slug, exc)
+        if exc.left:
+            # The undo could not remove these: the restored data may still be
+            # on the box, so the UI keeps holding the identity there.
+            return JSONResponse(status_code=exc.status_code, content={"detail": str(exc), "left": exc.left})
         # "restored": false tells the UI this is the worker's own answer, so a
         # 503 here is not a gateway's: nothing of this restore is on the box.
         return JSONResponse(status_code=exc.status_code, content={"detail": str(exc), "restored": False})

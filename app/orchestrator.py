@@ -2464,6 +2464,9 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
     perfectly and restores a corrupt node — the worst possible outcome, because
     it fails only when it is finally needed. Pause is used rather than stop so a
     node does not lose its uptime score for a backup.
+
+    Refused while a restore of the service writes, or after one left its data
+    half-written (_refuse_mid_restore): that file would hold half a node.
     """
     targets = _critical_volume_targets(slug)
     if not targets:
@@ -2471,6 +2474,7 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
             f"{slug} declares no critical_volumes, so there is no irreplaceable state to export. "
             "Adding a backup for a service whose state is re-downloadable would teach a false habit."
         )
+    _refuse_mid_restore(slug, "read for a backup")
 
     container = _find_container(slug)
     was_running = container.status == "running"
@@ -2568,10 +2572,15 @@ _RESTORE_LOCK = threading.Lock()
 
 
 class RestoreError(ContainerRuntimeError):
-    """A restore that was refused or undone. The message is safe to show and names no secret."""
+    """A restore that was refused or undone. The message is safe to show and names no secret.
 
-    def __init__(self, message: str, status_code: int = 409) -> None:
+    ``left`` names what the undo could not remove (a container, a volume):
+    then the restored data may still be on the box.
+    """
+
+    def __init__(self, message: str, status_code: int = 409, left: list[str] | None = None) -> None:
         super().__init__(message, status_code=status_code)
+        self.left = list(left or [])
 
 
 def restore_targets(slug: str) -> dict[str, str] | None:
@@ -2876,15 +2885,15 @@ def _restore_locked(
             _mark_failed(name, failed_before or _name_taken(client, name))
         note = f" Could not remove {', '.join(left)}: remove it by hand." if left else ""
         if isinstance(exc, RestoreError):
-            raise RestoreError(f"{exc}. The container and volumes it made were removed.{note}", exc.status_code)
+            raise RestoreError(f"{exc}. The container and volumes it made were removed.{note}", exc.status_code, left)
         if isinstance(exc, ContainerRuntimeError):
-            raise RestoreError(f"{exc} The restore was undone.{note}", exc.status_code) from None
+            raise RestoreError(f"{exc} The restore was undone.{note}", exc.status_code, left) from None
         if isinstance(exc, APIError):
             why = proxy_refusal(exc) or " ".join(str(exc.explanation or exc).split())[:300]
-            raise RestoreError(f"Docker refused the restore: {why}. It was undone.{note}") from None
+            raise RestoreError(f"Docker refused the restore: {why}. It was undone.{note}", left=left) from None
         if isinstance(exc, Exception):
             logger.exception("Restore of %s failed", slug)
-            raise RestoreError(f"The restore failed and was undone.{note}", 500) from None
+            raise RestoreError(f"The restore failed and was undone.{note}", 500, left) from None
         raise
     logger.info("Restored %s from a backup: %d files in %s", slug, files, ", ".join(sorted(targets)))
     return {

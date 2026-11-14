@@ -5107,17 +5107,28 @@ async def _confirmed_worker_key(cid: str) -> str | None:
     return stored_key if (stored_key and key_confirmed) else None
 
 
-def _worker_restored_nothing(resp: Any) -> bool:
-    """Whether this error is the worker's own answer to a restore it refused or undid (``"restored": false``)."""
+def _worker_restore_answer(resp: Any) -> dict[str, Any]:
     try:
         body = resp.json()
     except (ValueError, AttributeError):
-        return False
-    return isinstance(body, dict) and body.get("restored") is False
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+def _worker_restored_nothing(resp: Any) -> bool:
+    """Whether this error is the worker's own answer to a restore it refused or undid (``"restored": false``)."""
+    return _worker_restore_answer(resp).get("restored") is False
+
+
+def _worker_left_restore(resp: Any) -> bool:
+    """Whether the worker says its undo of a restore left something on the box (``"left"``)."""
+    return bool(_worker_restore_answer(resp).get("left"))
 
 
 class WorkerNoAnswer(HTTPException):
     """The request may have reached the worker, which gave no answer: it may still act on it.
+
+    Also a restore the worker could not fully undo: what it made may be on the box.
 
     Same status codes as before (504 for a timeout, 503 otherwise), so every
     caller that reads only the status sees no change.
@@ -5170,8 +5181,10 @@ async def _proxy_to_worker(
                 logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
                 # 502-504 come from a proxy in front of the worker as often as
                 # from the worker: whether it got the request is not known,
-                # unless the worker itself says nothing was restored.
-                unknown = resp.status_code in (502, 503, 504) and not _worker_restored_nothing(resp)
+                # unless the worker itself says nothing was restored. A restore
+                # whose undo left something behind may still be on the box.
+                gateway = resp.status_code in (502, 503, 504) and not _worker_restored_nothing(resp)
+                unknown = gateway or _worker_left_restore(resp)
                 raise (WorkerNoAnswer if unknown else HTTPException)(
                     status_code=resp.status_code,
                     detail=safe or _worker_failure_text(resp.status_code),

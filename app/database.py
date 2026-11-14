@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import re
+import secrets
 import sqlite3
 import time
 from collections.abc import Collection, Mapping, Sequence
@@ -5189,8 +5190,13 @@ async def record_node_identity(slug: str, worker_id: int, value: str, instance: 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
-#: ``name`` of a backup row whose origin is not known.
+#: ``name`` of a backup row whose origin is not known (none is written since every row gets one).
 _BACKUP_NO_ORIGIN = "backup file"
+
+
+def _backup_new_origin(worker_id: int) -> str:
+    """A lineage of its own for a file nothing links yet. The ':' in it never matches a backup_origin."""
+    return f"state:{int(worker_id)}:file:{secrets.token_hex(8)}"
 
 
 def backup_origin(worker_id: int, state_id: Any) -> str | None:
@@ -5213,12 +5219,12 @@ def _backup_name(origin: str | None, here: str | None) -> str:
 
 
 def _backup_parse(name: Any, source: Any) -> tuple[str | None, str | None]:
-    """(origin, here) from a backup row's ``name``. An export row written as one origin is its own volume."""
+    """(origin, here) from a backup row's ``name``. A row written as its origin alone names no volume."""
     parts = str(name or "").split(" ")
     origin = parts[0] if parts[0].startswith("state:") else None
     if len(parts) == 2 and parts[1].startswith("state:"):
         return origin, parts[1]
-    return origin, origin if source == "export" else None
+    return origin, None
 
 
 async def record_backup(
@@ -5241,11 +5247,13 @@ async def record_backup(
     export was read from, the one a restore created. Both are kept in
     ``name``. A restore looks a file up here: one this CashPilot made, or
     already restored, needs no typed confirmation, and the boxes listed for
-    its origin are where its identity may run.
+    its origin are where its identity may run. A row with neither starts a
+    lineage of its own, so a later file of the same node can still join it.
     """
     sha256 = str(sha256 or "").lower()
     if not _SHA256.fullmatch(sha256) or source not in ("export", "restore", "pending"):
         raise ValueError("not a backup hash")
+    origin = origin or here or _backup_new_origin(worker_id)
     db = await _get_db()
     try:
         cursor = await db.execute(
@@ -5265,10 +5273,12 @@ async def backup_lineage(slug: str, worker_id: int, here: str | None) -> str | N
     An export from a box whose node came from a restore is a file of that
     restored node: it takes the restore's origin, not a new one, so every file
     of a node stays linked however many times it moved. When the volume is not
-    known on one side, the newest restore sent to that box counts: a restore
-    whose new volume the worker did not report, one still 'pending' (it got no
-    answer, and may have happened), or any of them for an export whose own
-    volume is not known. None when the ledger knows nothing of that volume.
+    known on one side, the newest row of that box counts (an export, a restore
+    or one still 'pending'): the box runs that node, or one made since that no
+    file names yet. Joining the newest lineage can only hold more boxes, never
+    split one node across two lineages. Not when both volumes are known and
+    differ: the box runs a node made since. None when the ledger knows nothing
+    of that volume.
     """
     db = await _get_db()
     try:
@@ -5279,17 +5289,18 @@ async def backup_lineage(slug: str, worker_id: int, here: str | None) -> str | N
         rows = await cursor.fetchall()
     finally:
         await db.close()
-    unplaced = None
+    newest: tuple[str, str | None] | None = None
     for row in rows:
         origin, at = _backup_parse(row["name"], row["source"])
         if not origin:
             continue
         if here and at == here:
             return origin
-        restored_here = row["source"] in ("restore", "pending") and int(row["worker_id"]) == int(worker_id)
-        if restored_here and (at is None or here is None):
-            unplaced = origin
-    return unplaced
+        if int(row["worker_id"]) == int(worker_id):
+            newest = (origin, at)
+    if newest is not None and (newest[1] is None or here is None):
+        return newest[0]
+    return None
 
 
 async def settle_backup(row_id: int, applied: bool, here: str | None = None) -> None:

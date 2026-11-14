@@ -1150,7 +1150,7 @@ def _sha(bundle: bytes) -> str:
 
 def _export(bundle: bytes, worker_id: int, state_id: str = "sid-1") -> None:
     origin = database.backup_origin(worker_id, state_id)
-    asyncio.run(database.record_backup("mysterium", worker_id, _sha(bundle), "export", origin))
+    asyncio.run(database.record_backup("mysterium", worker_id, _sha(bundle), "export", origin, origin))
 
 
 class TestOneNodeManyFiles:
@@ -1323,6 +1323,56 @@ class TestALineageThroughAnUnknown:
         _runs(ui, None)
         _restore_ok(ui, f2, 2, "SB")
         preview = _upload(ui, f1).json()
+        assert preview["live_on"] == ["box-b"]
+        resp = _restore(ui, preview["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 409 and "box-b" in _detail(resp)
+
+
+class TestALineageWhenNothingNamesTheVolume:
+    """When the volume of an export or a restore is not known, its file still joins the node the box runs."""
+
+    def test_an_export_with_no_volume_joins_the_node_the_box_ran_last(self, ui):
+        f1, fn0, fn1 = mysterium_bundle(), mysterium_bundle(), mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")  # node L1 on box-b
+        _runs(ui, None)
+        _restore_ok(ui, f1, 1, "SA1")  # L1 moved to box-a
+        _runs(ui, None)  # removed with its data
+        _runs(ui, 1, "X")  # a fresh node N on box-a
+        _export_route(ui, fn0, 1, "X")
+        _runs(ui, 1)  # no fingerprint from the worker or the heartbeat
+        _export_route(ui, fn1, 1, "")
+        (row,) = asyncio.run(database.backup_records(_sha(fn1)))
+        assert row["origin"] == "state:1:X"
+        _runs(ui, None)
+        _restore_ok(ui, fn1, 2, "SB")  # N moved to box-b
+        preview = _upload(ui, fn0).json()
+        assert preview["live_on"] == ["box-b"]
+        resp = _restore(ui, preview["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 409 and "box-b" in _detail(resp)
+        # The dead node L1 is not held by box-b, which runs N.
+        assert _upload(ui, f1).json()["live_on"] == []
+
+    def test_a_first_export_with_no_volume_links_the_next_one(self, ui):
+        fa, fb = mysterium_bundle(), mysterium_bundle()
+        _runs(ui, 2)  # box-b runs its own node and reports no volume
+        _export_route(ui, fa, 2, "")
+        _runs(ui, 2, "S1")
+        _export_route(ui, fb, 2, "S1")
+        _runs(ui, None)
+        _restore_ok(ui, fb, 1, "SA")
+        preview = _upload(ui, fa).json()
+        assert preview["live_on"] == ["box-a"]
+        resp = _restore(ui, preview["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+
+    def test_an_unknown_file_restored_with_no_volume_links_the_next_export(self, ui):
+        f0, f2 = mysterium_bundle(), mysterium_bundle()
+        _restore_ok(ui, f0, 1, "", confirm_name="Mysterium")  # the worker named no volume
+        _export_route(ui, f2, 1, "SA")
+        _runs(ui, None)
+        _restore_ok(ui, f2, 2, "SB")
+        preview = _upload(ui, f0).json()
         assert preview["live_on"] == ["box-b"]
         resp = _restore(ui, preview["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
         assert resp.status_code == 409 and "box-b" in _detail(resp)
@@ -1504,6 +1554,25 @@ class TestARestoreTheWorkerUndid:
         assert self._answer(ui, bundle, 503, None).status_code == 503
         assert _upload(ui, bundle).json()["live_on"] == ["box-a"]
 
+    def test_a_restore_the_worker_could_not_fully_undo_says_so(self, worker, monkeypatch):
+        def fails(*_a):
+            raise orchestrator.RestoreError("Could not remove cashpilot-proxybase-xyz", 409, left=["cashpilot-x"])
+
+        monkeypatch.setattr(worker_api.orchestrator, "restore_state", fails)
+        resp = worker("proxybase-xyz", proxybase_bundle())
+        assert resp.status_code == 409 and "restored" not in resp.json()
+        assert resp.json()["left"] == ["cashpilot-x"]
+
+    @pytest.mark.parametrize("status", [409, 500, 503])
+    def test_what_the_worker_left_on_the_box_still_holds_it(self, ui, status):
+        """The data it wrote may still be there, in a container the owner can start."""
+        bundle = mysterium_bundle()
+        _export(bundle, 2)
+        body = {"detail": "It was undone. Could not remove cashpilot-mysterium: remove it by hand.", "left": ["x"]}
+        assert self._answer(ui, bundle, status, body).status_code == status
+        assert [r["source"] for r in asyncio.run(database.backup_records(_sha(bundle)))] == ["export", "pending"]
+        assert _upload(ui, bundle).json()["live_on"] == ["box-a"]
+
 
 class TestTheUploadFolder:
     def test_a_sweep_from_another_request_spares_an_upload_still_arriving(self, ui):
@@ -1588,6 +1657,7 @@ class TestTheRestoreSafetyBranches:
         with patch.object(FakeContainer, "remove", remove), pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert "cashpilot-mysterium" in str(caught.value) and "mysterium-data" in str(caught.value)
+        assert caught.value.left == ["cashpilot-mysterium", "mysterium-data"]
 
     def test_a_helper_whose_removal_failed_is_removed_by_the_cleanup(self, docker):
         real_remove = FakeContainer.remove
@@ -1599,10 +1669,11 @@ class TestTheRestoreSafetyBranches:
                 raise RuntimeError("busy")
             return real_remove(self, force)
 
-        with patch.object(FakeContainer, "remove", remove), pytest.raises(orchestrator.RestoreError):
+        with patch.object(FakeContainer, "remove", remove), pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert tries.count("cashpilot-mysterium.restore") == 2
         assert docker.container_map == {} and docker.volume_map == {}
+        assert caught.value.left == []
 
 
 class TestStartAndRemoveAroundARestore:
@@ -1682,6 +1753,39 @@ class TestStartAndRemoveAroundARestore:
             result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert result["started"] is True and "mysterium-data" in docker.volume_map
         assert len(seen) == 1 and seen[0].status_code == 409
+
+    def test_no_export_while_the_restore_writes(self, docker):
+        seen: list[Exception] = []
+        real_put = FakeContainer.put_archive
+
+        def put(self, path, data):
+            try:
+                orchestrator.read_critical_state("mysterium")
+            except orchestrator.ContainerRuntimeError as exc:
+                seen.append(exc)
+            return real_put(self, path, data)
+
+        with patch.object(FakeContainer, "put_archive", put):
+            result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert result["started"] is True
+        assert len(seen) == 1 and seen[0].status_code == 409 and "restore of mysterium is running" in str(seen[0])
+
+    def test_a_half_written_restore_is_never_exported(self, docker):
+        """A file of half the data would read back as itself, so a restore of it would pass as good."""
+        self._service(docker, helper=True)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish") as caught:
+            orchestrator.read_critical_state("mysterium")
+        assert caught.value.status_code == 409
+
+    def test_the_worker_answers_an_export_refusal_as_409(self, worker):
+        refusal = orchestrator.ContainerRuntimeError("A restore of mysterium did not finish", 409)
+        with patch.object(orchestrator, "read_critical_state", side_effect=refusal):
+            resp = worker.client.post(
+                "/api/containers/mysterium/backup",
+                json={"passphrase": PASSPHRASE},
+                headers={"Authorization": f"Bearer {WORKER_KEY}"},
+            )
+        assert resp.status_code == 409 and "did not finish" in resp.text
 
     def test_the_worker_answers_a_refusal_as_409(self, worker):
         with patch.object(
