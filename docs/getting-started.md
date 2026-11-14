@@ -201,7 +201,7 @@ are optional. CashPilot does not bundle an updater.
 
 CashPilot pulls images but never deletes them. Each update and each redeploy
 can leave the previous image on disk. On a three-server test fleet the old
-CashPilot and earner images came to between 0.5 and 1.2 GB per server. That is small next
+CashPilot and earner images came to about 3 GB in total. That is small next
 to what other programs on the same host usually leave behind, so look at the
 whole host:
 
@@ -212,8 +212,8 @@ docker system df
 The `RECLAIMABLE` value on the `Images` line is what Docker could free.
 
 **Why CashPilot does not do this for you.** The worker reaches Docker through
-the socket proxy, which lets it pull an image and read one by name, and
-nothing else. It cannot list the host's images or delete one. A worker that
+the socket proxy. For images, the proxy lets it pull one and read one by name,
+and nothing else. It cannot list the host's images or delete one. A worker that
 could would also see and delete the images of every other program on the host.
 The full reasoning is in [Security defaults](security-defaults.md).
 
@@ -226,7 +226,7 @@ docker image prune
 ```
 
 Docker asks before it deletes. In a cron entry, add `--force` to skip the
-question; it changes nothing else:
+question. It changes nothing else:
 
 ```cron
 30 4 * * 0  docker image prune --force
@@ -234,7 +234,7 @@ question; it changes nothing else:
 
 !!! warning "Do not add `-a`"
     `docker image prune -a` deletes every image that no container uses right
-    now, not only dangling ones. That includes images of stacks you stopped on
+    now, dangling or tagged. That includes images of stacks you stopped on
     purpose and images you built locally and cannot pull again.
 
 **Step 2: remove old pinned tags.** An image pinned to a version keeps its tag
@@ -253,8 +253,8 @@ The same goes for the image of a service you removed: its tag stays until you
 remove it. A catalog image pinned by digest, such as MystNodes or ProxyBase,
 loses its tag when a newer one replaces it, so step 1 already covers it.
 
-First list the tags no container uses. This example is for the worker image;
-put another repository from the table in `repo`:
+First list the tags no container uses. This example is for the worker image.
+For another repository from the table, change `repo`:
 
 ```bash
 repo=drumsergio/cashpilot-worker
