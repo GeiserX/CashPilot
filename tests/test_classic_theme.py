@@ -207,8 +207,8 @@ def test_theme_click_does_not_reset_setup_completed(client):
 
 def test_schema_version_counts_the_theme_column():
     # 14 added the theme column; 15 added the Activity tables; 16 added import_drafts;
-    # 17 added health_events.worker_id.
-    assert database.SCHEMA_VERSION == 17
+    # 17 added health_events.worker_id; 18 added audit_events.
+    assert database.SCHEMA_VERSION == 18
 
 
 def test_classic_success_hover_stays_white_but_not_on_claim_icons():

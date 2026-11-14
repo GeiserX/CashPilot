@@ -53,6 +53,7 @@ from app import (
     payout_read,
     proxy_tunnel,
     state_backup,
+    step_up,
     version,
 )
 from app.constants import MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
@@ -1292,6 +1293,10 @@ class DeploySpec(BaseModel):
     runtime: str | None = None
     # Which copy of the service this is; see constants.LABEL_INSTANCE.
     instance: int = 1
+    # The UI's signed note that the owner re-entered their password for this
+    # image on this service (app/step_up.py). Needed only to run an image other
+    # than the catalog's on a service with critical volumes.
+    approval: str | None = None
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -1587,6 +1592,35 @@ def _validate_fence_gated(spec: DeploySpec, slug: str | None) -> None:
         raise HTTPException(status_code=403, detail=f"'{slug}' runs only the image this worker's catalog pins")
     if (spec.network_mode or "bridge") not in ("bridge", "default"):
         raise HTTPException(status_code=403, detail=f"'{slug}' runs only on the fenced bridge")
+
+
+def _validate_critical_image(spec: DeploySpec, slug: str) -> None:
+    """A service that keeps a wallet or identity runs the catalog's image, or one the owner confirmed.
+
+    Decided from this worker's catalog: the service's YAML marks the volumes
+    (``critical_volumes``), and the image must be the one its YAML names. Any
+    other image needs the UI's signed approval, which the UI gives only after
+    the owner re-entered their password; a stolen session or the admin API key
+    cannot get one. Without this an image of anyone's choosing would start on
+    the wallet volume and could copy or replace the wallet.
+    """
+    if slug not in orchestrator.critical_slugs() or orchestrator.catalog_image_matches(slug, spec.image):
+        return
+    if not spec.approval:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": f"{slug} keeps a wallet or node identity, so another image than the catalog's "
+                "needs the owner's password. Nothing was deployed.",
+            },
+        )
+    try:
+        step_up.check(_worker_key, spec.approval, step_up.ACTION_CUSTOM_IMAGE, f"{slug}|{spec.image}")
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was deployed."}
+        ) from None
 
 
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
@@ -1935,6 +1969,8 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     # because an unrelated route was stuck. HTTPException propagates through
     # to_thread unchanged, so the 400/403 behaviour is identical.
     await asyncio.to_thread(_validate_deploy_spec, spec, slug)
+    # Last of the checks: it spends the approval, which a refusal above must not.
+    await asyncio.to_thread(_validate_critical_image, spec, slug)
     kept_mounts: list[dict[str, str]] = []
     try:
         container_id = await asyncio.to_thread(
@@ -1968,6 +2004,10 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # The operator's own setting, and the message says how to fix it; a bare
         # 500 would hide both. Raised before the old container was touched.
         raise HTTPException(status_code=409, detail=str(exc)) from None
+    except orchestrator.CriticalMountError as exc:
+        # Structured, so the UI can show it and write it to its audit table.
+        logger.warning("Deploy of %s refused: %s", slug, exc)
+        raise HTTPException(status_code=403, detail={"error": "critical_volume_mount", "message": str(exc)}) from None
     except orchestrator.ContainerRuntimeError as exc:
         # Same shape as the network setting, also raised before the old container
         # was touched; 503 when the daemon could not be asked at all.

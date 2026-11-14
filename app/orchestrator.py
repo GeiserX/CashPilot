@@ -878,6 +878,9 @@ def deploy_raw(
     network = container_network(network_mode)
     runtime = container_runtime(slug, network_mode, runtime)
     dns = container_dns(network)
+    # Another service's wallet or identity volume is never this container's,
+    # whoever asks (the worker API checks it first; this is the backstop).
+    refuse_critical_mounts(slug, volumes, client)
     if gated:
         from app import lan_fence
 
@@ -935,6 +938,10 @@ def deploy_raw(
         if problem := _aside_taken(client, old, name, slug):
             raise ContainerRuntimeError(problem)
         volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
+        if kept:
+            # A kept mount is the old container's own: one made before this
+            # check existed must not carry another service's volume forward.
+            refuse_critical_mounts(slug, volumes, client)
         for entry in kept:
             logger.warning(
                 "%s keeps %s at %s; the spec asked for %s",
@@ -2063,6 +2070,186 @@ def _critical_volume_targets(slug: str) -> dict[str, str] | None:
     except Exception:  # pragma: no cover - defensive
         logger.exception("Could not resolve critical volumes for %s", slug)
         return None
+
+
+# ---------------------------------------------------------------------------
+# Critical volumes stay with their own service
+#
+# A critical volume (``critical_volumes`` in a service's YAML) holds a wallet or
+# a node identity. Any container that mounts it can read it or replace it, so
+# the worker lets only that service's own containers mount it, and only on the
+# catalog's image unless the owner confirmed another with their password
+# (app/step_up.py, checked in app/worker_api.py). Which volumes count comes from
+# the YAML, never from a list of names here.
+# ---------------------------------------------------------------------------
+
+
+class CriticalMountError(ContainerRuntimeError):
+    """A container would mount another service's critical volume. Always 403."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, status_code=403)
+
+
+def critical_slugs() -> dict[str, set[str]]:
+    """slug -> the container paths its YAML marks critical, for every service that marks any."""
+    if get_services is None:
+        return {}
+    found: dict[str, set[str]] = {}
+    for svc in get_services():
+        entries = (svc.get("docker") or {}).get("critical_volumes") or []
+        targets = {_norm_mount(str(e["target"])) for e in entries if isinstance(e, dict) and e.get("target")}
+        if targets and svc.get("slug"):
+            found[str(svc["slug"])] = targets
+    return found
+
+
+def _catalog_critical_named_volumes(critical: dict[str, set[str]]) -> dict[str, str]:
+    """Named volume -> owning slug, from the YAML's own ``volumes`` lines.
+
+    Only literal names count. A ``${VAR}`` source is a host folder the operator
+    picks at deploy time; the running container says where it is (see
+    critical_sources).
+    """
+    owners: dict[str, str] = {}
+    for svc in get_services() if get_services is not None else []:
+        slug = svc.get("slug")
+        if slug not in critical:
+            continue
+        for mapping in (svc.get("docker") or {}).get("volumes") or []:
+            parts = str(mapping).split(":")
+            if len(parts) < 2 or _norm_mount(parts[1]) not in critical[slug]:
+                continue
+            source = parts[0]
+            if source and not source.startswith(("/", "$", ".", "~")):
+                owners[source] = slug
+    return owners
+
+
+def critical_sources(client: Any = None) -> tuple[dict[str, str], dict[str, str]]:
+    """Where critical state lives on this host: (named volume -> slug, host folder -> slug).
+
+    The catalog's named volumes, plus what each critical service's containers
+    have mounted at a critical path right now: a bind-mounted Storj identity, a
+    node moved off its catalog volume by hand. A folder or volume is learned
+    only while a container of its service exists; one left behind by a removed
+    container is no longer known to be critical.
+
+    Raises DockerException when the containers cannot be listed: the caller
+    refuses rather than guess.
+    """
+    critical = critical_slugs()
+    named = _catalog_critical_named_volumes(critical)
+    binds: dict[str, str] = {}
+    if not critical:
+        return named, binds
+    client = client or _get_client()
+    for container in client.containers.list(all=True, filters={"label": f"{LABEL_MANAGED}=true"}):
+        labels = getattr(container, "labels", None)
+        slug = labels.get(LABEL_SERVICE) if isinstance(labels, dict) else None
+        if slug not in critical:
+            continue
+        attrs = getattr(container, "attrs", None)
+        mounts = attrs.get("Mounts") if isinstance(attrs, dict) else None
+        for mount in mounts if isinstance(mounts, list) else []:
+            if not isinstance(mount, dict) or _norm_mount(str(mount.get("Destination") or "")) not in critical[slug]:
+                continue
+            if mount.get("Type") == "volume" and mount.get("Name"):
+                named.setdefault(str(mount["Name"]), slug)
+            elif mount.get("Type") == "bind" and str(mount.get("Source") or "").startswith("/"):
+                binds.setdefault(os.path.normpath(str(mount["Source"])), slug)
+    return named, binds
+
+
+def _mount_sources(volumes: Any) -> list[str]:
+    """The host side of each mount, from a spec dict or a ``source:target:mode`` list."""
+    if isinstance(volumes, dict):
+        return [str(source) for source in volumes]
+    if isinstance(volumes, list):
+        return [str(entry).split(":", 1)[0] for entry in volumes]
+    return []
+
+
+def critical_mount_conflicts(slug: str, volumes: Any, client: Any = None) -> list[tuple[str, str]]:
+    """(source, owning slug) for each mount in ``volumes`` that holds another service's critical state.
+
+    A host folder conflicts when it is a critical folder, lies inside one, or
+    contains one: binding a parent hands over everything under it. Folders are
+    compared as written, after normalising; a symlink to a critical folder is
+    not seen here (the worker cannot see the host's filesystem).
+    """
+    sources = _mount_sources(volumes)
+    if not sources:
+        return []
+    named, binds = critical_sources(client)
+    found: list[tuple[str, str]] = []
+    for source in sources:
+        if not source.startswith("/"):
+            owner = named.get(source)
+            if owner and owner != slug:
+                found.append((source, owner))
+            continue
+        path = os.path.normpath(source)
+        for folder, owner in binds.items():
+            if owner == slug:
+                continue
+            if path == folder or path.startswith(folder.rstrip("/") + "/") or folder.startswith(path.rstrip("/") + "/"):
+                found.append((source, owner))
+                break
+    return found
+
+
+def refuse_critical_mounts(slug: str, volumes: Any, client: Any = None) -> None:
+    """Raise CriticalMountError when ``volumes`` reaches another service's critical state."""
+    conflicts = critical_mount_conflicts(slug, volumes, client)
+    if conflicts:
+        what = ", ".join(f"{source} ({owner})" for source, owner in conflicts)
+        raise CriticalMountError(
+            f"{slug} cannot mount {what}: it holds another service's wallet or identity, which only that "
+            "service may mount. Nothing was deployed; the running container was not touched."
+        )
+
+
+_DEFAULT_REGISTRIES = ("docker.io/", "index.docker.io/", "registry-1.docker.io/")
+
+
+def _split_image(ref: str) -> tuple[str, str, str]:
+    """(repository, tag, digest) of an image reference; tag and digest may be ""."""
+    ref = ref.strip()
+    digest = ""
+    if "@" in ref:
+        ref, digest = ref.split("@", 1)
+    tag = ""
+    slash = ref.rfind("/")
+    colon = ref.rfind(":")
+    if colon > slash:
+        ref, tag = ref[:colon], ref[colon + 1 :]
+    repo = ref.lower()
+    for prefix in _DEFAULT_REGISTRIES:
+        if repo.startswith(prefix):
+            repo = repo[len(prefix) :]
+            break
+    repo = repo.removeprefix("library/")
+    return repo, tag, digest.lower()
+
+
+def catalog_image_matches(slug: str, image: str) -> bool:
+    """Whether ``image`` is the image this worker's catalog runs ``slug`` on.
+
+    Same repository, and the same tag and digest wherever the catalog pins one:
+    an untagged catalog image (``storjlabs/storagenode``) accepts any tag of that
+    repository, a pinned one only itself. Any build in ``image_by_arch`` counts.
+    """
+    docker_conf = ((get_service(slug) if get_service is not None else None) or {}).get("docker") or {}
+    candidates = [docker_conf.get("image")] + list((docker_conf.get("image_by_arch") or {}).values())
+    repo, tag, digest = _split_image(str(image or ""))
+    for candidate in candidates:
+        if not isinstance(candidate, str) or not candidate.strip():
+            continue
+        c_repo, c_tag, c_digest = _split_image(candidate)
+        if repo == c_repo and (not c_tag or tag == c_tag) and (not c_digest or digest == c_digest):
+            return True
+    return False
 
 
 #: The largest state ``read_critical_state`` will hold in memory. Node identities,
