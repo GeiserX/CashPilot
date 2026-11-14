@@ -145,6 +145,24 @@ check('Cancel sends nothing more and shows the reason', r.calls.length === 1 && 
 r = await runApi([inUse, inUse], true);
 check('a second refusal is shown, never asked again', r.calls.length === 2 && r.asked === 1 && r.error, JSON.stringify(r));
 
+// --- two Use clicks: the later one wins, whichever reveal answers first -------
+const useFn = slice('function _identityTargetWorker(', '// Exported for the harness');
+{
+  const input = {dataset: {slug: 'earnapp', key: 'EARNAPP_UUID'}, value: ''};
+  const document = {querySelectorAll: (sel) => (sel.startsWith('input') ? [input] : [])};
+  const pending = {};
+  const reveal = (id) => new Promise(resolve => { pending[id] = resolve; });
+  const useIdentity = new Function('document', 'window', '_revealIdentity', 'toast', '_identityPicks',
+    `${useFn}; return useIdentity;`)(document, {confirm: () => true}, reveal, () => {}, () => []);
+  const first = useIdentity('earnapp', 'EARNAPP_UUID', 7, '');
+  const second = useIdentity('earnapp', 'EARNAPP_UUID', 8, '');
+  pending[8]('id-of-8');
+  await second;
+  pending[7]('id-of-7');
+  await first;
+  check('a reveal that answers after a later Use leaves the later id', input.value === 'id-of-8', input.value);
+}
+
 // --- the Settings list loads even when /api/config fails ----------------------
 // loadIdentities has its own error path; behind the config call it never ran,
 // and the panel said "Loading..." forever.

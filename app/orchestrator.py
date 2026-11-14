@@ -70,6 +70,8 @@ _docker_available: bool | None = None
 # In-memory status cache — populated by health check, served instantly to UI
 _status_cache: list[dict[str, Any]] = []
 _status_cache_time: float = 0.0
+# Whether the last get_status listed every managed container (status_listed).
+_status_listed = False
 
 
 def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
@@ -3484,8 +3486,9 @@ def get_status() -> list[dict[str, Any]]:
     than a plain list. Use get_status_cached() for page loads; this is for
     background refresh.
     """
-    global _status_cache, _status_cache_time
+    global _status_cache, _status_cache_time, _status_listed
 
+    _status_listed = False
     try:
         client = _get_client()
     except RuntimeError:
@@ -3516,6 +3519,7 @@ def get_status() -> list[dict[str, Any]]:
     seen_ids.update(c.id for c in labeled if is_proxied(c))
     labeled = [c for c in labeled if not is_proxied(c)]
     labeled_stats = _collect_stats_bulk(list(labeled))
+    listed = True
     for c in labeled:
         try:
             seen_ids.add(c.id)
@@ -3549,6 +3553,7 @@ def get_status() -> list[dict[str, Any]]:
                 entry["advertised_address"] = advertised
             results.append(entry)
         except Exception as exc:
+            listed = False
             logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Image-matched containers (deployed externally)
@@ -3611,8 +3616,18 @@ def get_status() -> list[dict[str, Any]]:
     # Update the cache
     _status_cache = results
     _status_cache_time = time.monotonic()
+    _status_listed = listed
 
     return results
+
+
+def status_listed() -> bool:
+    """Whether the last get_status listed every managed container.
+
+    get_status answers an empty list when Docker would not list them, and
+    skips a container it could not read. Neither means those copies are gone.
+    """
+    return _status_listed
 
 
 def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:

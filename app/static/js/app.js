@@ -4750,18 +4750,24 @@ const CP = (() => {
     return ids.length === 1 ? ids[0] : null;
   }
 
+  // The latest Use per field: a reveal that answers after a later click lost.
+  const _identityChoice = {};
+
   async function useIdentity(slug, key, id, inUseOn) {
     if (inUseOn && !window.confirm(
       `This id still runs on ${inUseOn}. Two boxes on one id look like one device to the provider, `
       + 'which may merge or ban them. Use it anyway?')) return;
+    const field = `${slug}\n${key}`;
+    const turn = (_identityChoice[field] || 0) + 1;
+    _identityChoice[field] = turn;
     let value;
     try {
       value = await _revealIdentity(id);
     } catch (err) {
-      toast(`Could not read the id: ${err.message}`, 'error');
+      if (_identityChoice[field] === turn) toast(`Could not read the id: ${err.message}`, 'error');
       return;
     }
-    if (!value) return;
+    if (!value || _identityChoice[field] !== turn) return;
     document.querySelectorAll('input[data-slug][data-key]').forEach(input => {
       if (input.dataset.slug === slug && input.dataset.key === key) input.value = value;
     });

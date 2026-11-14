@@ -4584,11 +4584,12 @@ async def _device_id_claim(slug: str, svc: dict[str, Any], env: dict[str, Any]):
     this, two deploys of one id to two boxes at once both pass. Per id, so
     deploys of different ids never wait for each other; taken in sorted order,
     so two deploys that share several ids cannot each hold one. The id itself
-    is never kept, only its hash, and an entry goes with its last holder.
+    is never kept, only its hash (of any letter case, as identity_in_use
+    compares), and an entry goes with its last holder.
     """
     keys = sorted(
         {
-            (slug, key, hashlib.sha256(value.encode()).hexdigest())
+            (slug, key, hashlib.sha256(value.casefold().encode()).hexdigest())
             for key in _per_device_keys(svc)
             if (value := str(env.get(key) or "").strip())
         }
@@ -4665,20 +4666,22 @@ async def _record_deploy_identities(
     docker_conf: dict[str, Any],
     *,
     scope: str = "copies",
-) -> None:
+    if_record: dict[str, Any] | None = None,
+) -> bool:
     """Put the device names and ids these copies run with in the identity ledger.
 
     Each copy's own values, from the same _instance_spec the copies are deployed
     with, so the ledger shows what the provider sees; an empty ``spec`` retires
-    the copies named. ``scope`` is record_identities'. Bookkeeping: a failure is
-    logged and never fails a deploy that already happened; False says it failed.
+    the copies named. ``scope`` and ``if_record`` are record_identities'.
+    Bookkeeping: a failure is logged and never fails a deploy that already
+    happened; False says it failed.
     """
     try:
         values: dict[str, dict[str, Any]] = {}
         for n in copies:
             copy_spec = spec if n == 1 or not spec else _instance_spec(spec, n, docker_conf)
             values[str(n)] = dict(copy_spec.get("env") or {})
-        await database.record_identities(slug, worker_id, values, scope=scope)
+        await database.record_identities(slug, worker_id, values, scope=scope, if_record=if_record)
     except Exception:  # noqa: BLE001
         logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
         return False
@@ -4707,6 +4710,7 @@ async def _record_unrecorded_copies(
     have: Collection[str] | None = None,
     prior: dict[str, Any] | None = None,
     current_only: Collection[int] = (),
+    if_record: dict[str, Any] | None = None,
 ) -> set[int] | None:
     """Record each copy with no active ledger row whose ids are proven, as its deploy derived them.
 
@@ -4719,8 +4723,9 @@ async def _record_unrecorded_copies(
     record holds the count asked for, saved before the extra copies deploy. No
     proof, no row. A record of one copy (a raw deploy names ``instance``) holds
     that copy's own env. ``current_only`` copies are proven against the current
-    record alone, never the spec it replaced. Bookkeeping: never raises. Returns
-    the copies proven and written, or None when a write failed.
+    record alone, never the spec it replaced. ``if_record`` is record_identities'.
+    Bookkeeping: never raises. Returns the copies proven and written, or None
+    when a write failed.
     """
     try:
         svc = catalog.get_service(slug)
@@ -4779,9 +4784,15 @@ async def _record_unrecorded_copies(
             if own > 1:
                 env = source.get("env")
                 await database.record_identities(
-                    slug, worker_id, {str(own): env if isinstance(env, dict) else {}}, scope="given"
+                    slug,
+                    worker_id,
+                    {str(own): env if isinstance(env, dict) else {}},
+                    scope="given",
+                    if_record=if_record,
                 )
-            elif not await _record_deploy_identities(slug, worker_id, source, copies, docker_conf, scope="given"):
+            elif not await _record_deploy_identities(
+                slug, worker_id, source, copies, docker_conf, scope="given", if_record=if_record
+            ):
                 return None
         return set(proven)
     except Exception:  # noqa: BLE001
@@ -4803,14 +4814,45 @@ async def _identity_digest_keys(worker_id: int) -> list[str]:
 
 
 def _copy_digests(containers: Any, slug: str) -> dict[int, str]:
-    """The ``identity_digest`` a heartbeat reported for each copy of ``slug``, by copy number."""
+    """The ``identity_digest`` a heartbeat reported for each copy of ``slug``, by copy number.
+
+    A copy listed twice with two digests (a redeploy keeps the old container
+    aside under the same copy until the new one runs) proves neither: left out.
+    """
     digests: dict[int, str] = {}
+    twice: set[int] = set()
     for entry in containers if isinstance(containers, list) else []:
         if isinstance(entry, dict) and entry.get("slug") == slug and isinstance(entry.get("identity_digest"), str):
             n = _copy_number(entry)
-            if n is not None and n >= 1:
+            if n is not None and n >= 1 and entry["identity_digest"]:
+                if digests.get(n, entry["identity_digest"]) != entry["identity_digest"]:
+                    twice.add(n)
                 digests[n] = entry["identity_digest"]
-    return digests
+    return {n: d for n, d in digests.items() if n not in twice}
+
+
+async def _standing_rows(slug: str, worker_id: int, digests: Mapping[int, str]) -> tuple[set[str], set[int]]:
+    """The copies of ``slug`` whose active row stands, and the copies whose row is stale.
+
+    A row is stale when the copy's digest proves it runs other ids (a
+    replacement whose write failed). It says nothing about what the copy runs,
+    so the copy counts as having no row: the heartbeat, a removal and a
+    replacement each record what the digest proves instead of skipping it.
+    """
+    active = await database.active_identity_values(slug, worker_id)
+    stale: set[int] = set()
+    if any(str(n) in active for n in digests):
+        svc = catalog.get_service(slug)
+        keys = await _identity_digest_keys(worker_id)
+        stale = {
+            n
+            for n in digests
+            if str(n) in active
+            and not any(
+                hmac.compare_digest(catalog.identity_digest(svc, active[str(n)], k) or "", digests[n]) for k in keys
+            )
+        }
+    return {i for i in active if not (i.isdigit() and int(i) in stale)}, stale
 
 
 async def _stored_copy_digests(worker_id: int, slug: str) -> dict[int, str]:
@@ -4846,14 +4888,15 @@ async def _record_removed_copies(slug: str, worker_id: int, result: Any) -> None
     try:
         spec = await database.get_deployment_spec(slug, worker_id=worker_id)
         digests = await _stored_copy_digests(worker_id, slug)
+        answered = result.get("identity_digests") if isinstance(result, dict) else None
+        for copy, digest in (answered if isinstance(answered, dict) else {}).items():
+            if str(copy).isdigit() and isinstance(digest, str):
+                digests[int(copy)] = digest
+        have, stale = await _standing_rows(slug, worker_id, digests)
     except Exception:  # noqa: BLE001
         logger.warning("Could not read the deploy record of %s on worker %s", slug, worker_id, exc_info=True)
         return
-    answered = result.get("identity_digests") if isinstance(result, dict) else None
-    for copy, digest in (answered if isinstance(answered, dict) else {}).items():
-        if str(copy).isdigit() and isinstance(digest, str):
-            digests[int(copy)] = digest
-    await _record_unrecorded_copies(slug, worker_id, spec, trusted={1}, digests=digests)
+    await _record_unrecorded_copies(slug, worker_id, spec, trusted={1}, digests=digests, have=have, current_only=stale)
 
 
 async def _record_replaced_copy(
@@ -4867,8 +4910,9 @@ async def _record_replaced_copy(
 ) -> None:
     """A redeploy replaced copy ``n``: keep the ids the old container ran, as a removal does.
 
-    Only for a copy with no active row (its write failed and nothing recorded it
-    since); one with a row is retired by the new copy's own write. The worker's
+    Only for a copy with no active row that stands (its write failed and nothing
+    recorded it since, _standing_rows); one whose row stands is retired by the
+    new copy's own write. The worker's
     ``replaced_identity_digest`` is the proof, checked against the record the
     old container was deployed from and the spec that record replaced. Matched,
     the ids go in and are retired at once: that container is gone.
@@ -4877,7 +4921,7 @@ async def _record_replaced_copy(
     if not isinstance(digest, str) or not isinstance(old_spec, dict):
         return
     try:
-        have = await database.active_identity_copies(slug, worker_id)
+        have, _ = await _standing_rows(slug, worker_id, {n: digest})
     except Exception:  # noqa: BLE001
         logger.warning("Could not read the device ids of %s on worker %s", slug, worker_id, exc_info=True)
         return
@@ -4934,52 +4978,49 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
     if previous is None:
         # The first heartbeat since the UI started: what the last one listed is
         # gone with the process, so the extra copies the ledger holds active
-        # stand in for it. Otherwise a copy a scale-down removed, brought back
-        # by a heartbeat or the startup backfill just before a restart, would
-        # stay active for good. One read per service, once per worker.
-        previous = set()
-        for slug in sorted({slug for slug, _ in present}):
-            rows = await database.active_identity_copies(slug, worker_id)
-            previous |= {(slug, int(i)) for i in rows if i.isdigit() and int(i) > 1}
+        # stand in for it, of every service, listed now or not. Otherwise a
+        # copy a scale-down removed, brought back by a heartbeat or the startup
+        # backfill just before a restart, would stay active for good. One read,
+        # once per worker.
+        previous = await database.active_extra_copies(worker_id)
     gone = previous - present
     _IDENTITIES_LISTED[worker_id] = copies
     for slug in sorted({slug for slug, n in gone if n > 1}):
-        await _retire_dropped_copies(slug, worker_id, {n for s, n in gone if s == slug})
+        dropped = {n for s, n in gone if s == slug}
+        if not await _retire_dropped_copies(slug, worker_id, dropped):
+            # Kept as listed, so the next heartbeat tries again.
+            _IDENTITIES_LISTED[worker_id] = _IDENTITIES_LISTED.get(worker_id, set()) | {(slug, n) for n in dropped}
     fresh: dict[str, set[tuple[str, int, str, str]]] = {}
     for key in listed - checked:
         fresh.setdefault(key[0], set()).add(key)
     for slug, keys in fresh.items():
-        digests = {n: digest for _, n, _, digest in keys}
-        active = await database.active_identity_values(slug, worker_id)
-        stale: set[int] = set()
-        if any(str(n) in active for n in digests):
-            svc = catalog.get_service(slug)
-            secrets_ = await _identity_digest_keys(worker_id)
-            for n in (n for n in digests if str(n) in active):
-                values = active[str(n)]
-                if not any(
-                    hmac.compare_digest(catalog.identity_digest(svc, values, k) or "", digests[n]) for k in secrets_
-                ):
-                    stale.add(n)
-        if all(str(n) in active for n in digests) and not stale:
+        # A copy listed twice with two digests is left for a later heartbeat.
+        digests = {n: d for n, d in _copy_digests(containers, slug).items() if any(k[1] == n for k in keys)}
+        keys = {k for k in keys if k[1] in digests}
+        if not digests:
+            continue
+        have, stale = await _standing_rows(slug, worker_id, digests)
+        if all(str(n) in have for n in digests):
             checked.update(keys)
             continue
         spec = await database.get_deployment_spec(slug, worker_id=worker_id)
-        # No record yet (the deploy is still saving it): look again next beat.
-        if spec is None:
-            continue
-        have = {i for i in active if not i.isdigit() or int(i) not in stale}
-        proven = await _record_unrecorded_copies(slug, worker_id, spec, digests=digests, have=have, current_only=stale)
-        if proven is None:
-            continue
-        # Checked, proven or not: until the record changes (_forget_checked_copies)
-        # or the container or its digest does, nothing could prove it otherwise,
-        # so a digest that never matches (a UI and a worker whose catalogs mark
-        # other identity keys) costs one read, not one per heartbeat.
+        # Checked, with a record or not: until the record changes
+        # (_forget_checked_copies, which a deploy that is still saving it also
+        # calls) or the container or its digest does, nothing could prove it
+        # otherwise, so a digest that never matches (a UI and a worker whose
+        # catalogs mark other identity keys, or a copy with no record) costs one
+        # read, not one per heartbeat. The write holds only while ``spec`` is
+        # still the record: a removal in between keeps the ids it retired.
+        if spec is not None:
+            proven = await _record_unrecorded_copies(
+                slug, worker_id, spec, digests=digests, have=have, current_only=stale, if_record=spec
+            )
+            if proven is None:
+                continue
         checked.update(keys)
 
 
-async def _retire_dropped_copies(slug: str, worker_id: int, gone: set[int]) -> None:
+async def _retire_dropped_copies(slug: str, worker_id: int, gone: set[int]) -> bool:
     """Retire the rows of extra copies the last heartbeat listed and this one does not, above the record's count.
 
     A heartbeat built before a scale-down's DELETE can arrive after it and
@@ -4988,19 +5029,19 @@ async def _retire_dropped_copies(slug: str, worker_id: int, gone: set[int]) -> N
     nothing runs it. A copy the record describes is never retired here: one
     missing from one heartbeat may be in a replacement. Should the copy come
     back, the next heartbeat that lists it proves it again. Bookkeeping: never
-    raises.
+    raises; False says a read or the write failed.
     """
     try:
         spec = await database.get_deployment_spec(slug, worker_id=worker_id)
         if spec is None:
-            return
+            return True
         drop = sorted(n for n in gone if n > 1 and n not in _spec_copies(spec))
         have = await database.active_identity_copies(slug, worker_id) if drop else set()
         drop = [n for n in drop if str(n) in have]
-        if drop:
-            await _record_deploy_identities(slug, worker_id, {}, drop, {}, scope="given")
+        return not drop or await _record_deploy_identities(slug, worker_id, {}, drop, {}, scope="given")
     except Exception:  # noqa: BLE001
         logger.warning("Could not retire the removed copies of %s on worker %s", slug, worker_id, exc_info=True)
+        return False
 
 
 async def _backfill_identities() -> None:
@@ -9886,9 +9927,12 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not resume copy removals for worker %s: %s", worker_id, exc)
     # The identity ledger: a running copy with no row (its write failed at
-    # deploy) gets one now. Never allowed to reject a heartbeat.
+    # deploy) gets one now. Never allowed to reject a heartbeat. Not on a
+    # heartbeat whose box could not list its containers: its empty list would
+    # read as every extra copy gone, and retire ids that still run.
     try:
-        await _reconcile_running_identities(worker_id, body.containers)
+        if (body.system_info or {}).get("containers_listed") is not False:
+            await _reconcile_running_identities(worker_id, body.containers)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not check the device ids of worker %s: %s", worker_id, type(exc).__name__)
     # Activity: the switch is read on every heartbeat, because the reply is
@@ -10283,6 +10327,26 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
     slug = body.slug
     if body.command == "deploy":
         container_id = result.get("container_id", "remote")
+        # The worker deploys the one copy the spec names, so a start of copy 2 says
+        # nothing about a stopped copy 1.
+        copy = _copy_number(body.spec) if isinstance(body.spec, dict) else 1
+        # As /api/deploy: keep the ids the replaced container ran, read before
+        # the save moves the record on. Bookkeeping: a failed read records nothing.
+        try:
+            recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+            old_prior = await database.prior_deployment_spec(slug, worker_id) if recorded else None
+        except Exception:  # noqa: BLE001
+            logger.warning("Could not read the deploy record of %s on worker %s", slug, worker_id, exc_info=True)
+            recorded = old_prior = None
+        await _record_replaced_copy(
+            slug,
+            worker_id,
+            recorded,
+            old_prior,
+            copy if copy and copy > 0 else 1,
+            result,
+            (catalog.get_service(slug) or {}).get("docker") or {},
+        )
         # Record the spec this route actually deployed. It is supplied raw by the
         # caller rather than built from the catalog, so it is the only description
         # of this container that will ever exist.
@@ -10293,9 +10357,6 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             worker_id=worker_id,
         )
         _forget_checked_copies(worker_id, slug)
-        # The worker deploys the one copy the spec names, so a start of copy 2 says
-        # nothing about a stopped copy 1.
-        copy = _copy_number(body.spec) if isinstance(body.spec, dict) else 1
         # The device ids it now runs with go in the identity ledger as a deploy's
         # do, so a raw redeploy with a new id retires the old one (issue #740).
         try:

@@ -35,6 +35,10 @@ OWNER = {"uid": 1, "u": "owner", "r": "owner"}
 def db(tmp_path):
     with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"):
         asyncio.run(database.init_db())
+        # Boxes 1 and 2, which most tests deploy to: a deleted box's rows count
+        # for nothing, so a box a test names must exist.
+        for n in (1, 2):
+            asyncio.run(database.upsert_worker(f"client-box-{n}", name=f"box-{n}"))
         yield tmp_path / "cashpilot.db"
 
 
@@ -323,10 +327,10 @@ class TestTheReuseOffer:
         [offer] = _call(OWNER, "GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID").json()
         assert offer["masked"].endswith(UUID_A[-4:]) and offer["in_use_on"] == []
         # Deployed again elsewhere: the offer now says where.
-        asyncio.run(database.record_identities("earnapp", 7, {"1": {"EARNAPP_UUID": UUID_A}}))
+        asyncio.run(database.record_identities("earnapp", 2, {"1": {"EARNAPP_UUID": UUID_A}}))
         [offer] = _call(OWNER, "GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID").json()
-        assert offer["in_use_on"] == ["a removed worker (#7)"]
-        [offer] = _call(OWNER, "GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID&worker_id=7").json()
+        assert offer["in_use_on"] == ["box-2"]
+        [offer] = _call(OWNER, "GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID&worker_id=2").json()
         assert offer["in_use_on"] == []
 
     def test_it_never_offers_an_active_or_node_reported_value(self, db):
@@ -894,10 +898,14 @@ def _no_checked_copies():
     getattr(main, "_IDENTITIES_LISTED", {}).clear()
 
 
-def _heartbeat(name, copies, *, slug="honeygain"):
-    """Send box ``name``'s heartbeat through the real route, listing ``copies`` of ``slug`` (see _entries)."""
-    containers = _entries(slug, copies)
-    body = main.WorkerHeartbeat(name=name, client_id=f"client-{name}", containers=containers)
+def _heartbeat(name, copies, *, slug="honeygain", containers=None, listed=None):
+    """Send box ``name``'s heartbeat through the real route, listing ``copies`` of ``slug`` (see _entries).
+
+    ``containers``: the raw list instead. ``listed``: the worker's ``containers_listed``.
+    """
+    containers = _entries(slug, copies) if containers is None else containers
+    info = {} if listed is None else {"containers_listed": listed}
+    body = main.WorkerHeartbeat(name=name, client_id=f"client-{name}", containers=containers, system_info=info)
     with (
         patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
         patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
@@ -1302,6 +1310,8 @@ class TestAHeartbeatBeforeTheRecord:
                 slug="earnapp", container_id="c1", spec={"env": {"EARNAPP_UUID": UUID_A}}, worker_id=wid
             )
         )
+        # As every deploy route does right after its save.
+        main._forget_checked_copies(wid, "earnapp")
         _heartbeat("box-a", ids, slug="earnapp")
         assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
 
@@ -1501,9 +1511,9 @@ class TestARenamePendingProxiedCopy:
 # ---------------------------------------------------------------------------
 
 
-def _raw_deploy(env, worker_id, *, allow=False):
+def _raw_deploy(env, worker_id, *, allow=False, answer=None):
     """Deploy earnapp through POST /api/workers/{id}/command; returns (error, the worker hop)."""
-    hop = AsyncMock(return_value={"container_id": "c"})
+    hop = AsyncMock(return_value={"container_id": "c", **(answer or {})})
 
     async def run():
         with (
@@ -1889,3 +1899,315 @@ class TestTheImportPagesDeploy:
         call = source[source.index("/api/import/drafts/") :]
         call = call[: call.index(");")]
         assert "body: {}" in call
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, twelfth round: a box that could not list its containers, a
+# deleted box's records, a stale row at removal and replacement, the raw
+# route's replaced copy, a heartbeat that outlives the record it read, and
+# a device id in capitals
+# ---------------------------------------------------------------------------
+
+
+HEX = "a1" * 32
+
+
+def _hg_losing_copy_two(wid, name):
+    """Redeploy honeygain as ``name`` on two copies; copy 2's write fails, so its row stays what it was."""
+    real = database.record_identities
+
+    async def flaky(slug, worker_id, values, **kwargs):
+        if "2" in values:
+            raise RuntimeError("database is locked")
+        return await real(slug, worker_id, values, **kwargs)
+
+    with (
+        patch.object(main, "scaling_limit", lambda svc: (3, "")),
+        patch.object(main.database, "record_identities", flaky),
+    ):
+        assert (
+            _deploy("honeygain", {**TestACopyWhoseWriteFailed.HG, "HONEYGAIN_DEVICE_NAME": name}, wid, instances=2)[0]
+            is None
+        )
+
+
+class TestABoxThatCouldNotListItsContainers:
+    """A worker whose Docker would not list sends an empty list: no copy it leaves out is gone."""
+
+    def _copy_two_above_the_count(self):
+        wid = _worker(running=[("honeygain", [1])])
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=2)[0] is None
+            assert _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=1, running=set())[0] is None
+        runs = {1: {"HONEYGAIN_DEVICE_NAME": "box"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}
+        _heartbeat("box-a", runs)
+        return wid, runs
+
+    def test_its_empty_list_retires_nothing(self, db):
+        wid, runs = self._copy_two_above_the_count()
+        _heartbeat("box-a", {}, listed=False)
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+        # And the next real list still compares against the last real one.
+        _heartbeat("box-a", {1: runs[1]}, listed=True)
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") not in _active()
+
+    def test_a_real_empty_list_still_retires(self, db):
+        """The positive control: a box that listed and found no copy 2."""
+        wid, _ = self._copy_two_above_the_count()
+        _heartbeat("box-a", {}, listed=True)
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") not in _active()
+
+    def test_get_status_says_whether_it_listed(self):
+        from app import orchestrator
+
+        client = MagicMock()
+        client.containers.list.side_effect = RuntimeError("daemon 500")
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert orchestrator.get_status() == []
+        assert orchestrator.status_listed() is False
+        client.containers.list.side_effect = None
+        client.containers.list.return_value = []
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={}),
+        ):
+            orchestrator.get_status()
+        assert orchestrator.status_listed() is True
+
+    def test_the_worker_sends_it(self):
+        from app import worker_api
+
+        resp = MagicMock()
+        resp.json = MagicMock(return_value={"status": "ok"})
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=resp)
+        sent = []
+        for listed in (False, True):
+            with (
+                patch.object(worker_api, "UI_URL", "http://ui:8080"),
+                patch.object(worker_api.orchestrator, "get_status", return_value=[]),
+                patch.object(worker_api.orchestrator, "status_listed", return_value=listed),
+                patch.object(worker_api.orchestrator, "docker_available", return_value=False),
+                patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+                patch.object(worker_api.httpx, "AsyncClient", return_value=client),
+            ):
+                asyncio.run(worker_api._send_heartbeat())
+            sent.append(client.post.await_args.kwargs["json"]["system_info"]["containers_listed"])
+        assert sent == [False, True]
+
+
+class TestARestartThenAnEmptyList:
+    def test_a_reactivated_copy_of_a_service_the_list_leaves_out_is_retired(self, db):
+        case = TestARestartAfterAScaleDown()
+        wid = case._scaled_down()
+        _heartbeat("box-a", case.RUNS)  # built before the DELETE, it proves copy 3 again
+        case._restart()
+        for _ in range(2):
+            _heartbeat("box-a", {})
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME") not in _active()
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME", "box-3") in _retired()
+
+
+class TestAFailedRetirement:
+    def test_the_next_heartbeat_retires_it(self, db):
+        wid, runs = TestABoxThatCouldNotListItsContainers()._copy_two_above_the_count()
+        real = database.record_identities
+
+        async def locked(slug, worker_id, values, **kwargs):
+            if values == {"2": {}}:
+                raise RuntimeError("database is locked")
+            return await real(slug, worker_id, values, **kwargs)
+
+        with patch.object(main.database, "record_identities", locked):
+            _heartbeat("box-a", {1: runs[1]})
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+        _heartbeat("box-a", {1: runs[1]})
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") not in _active()
+
+
+class TestACopyWithNoRecord:
+    def test_the_heartbeat_reads_it_once(self, db):
+        """A labelled copy that runs with no deploy record (a box enrolled again, a forgotten record)."""
+        _worker()
+        specs = AsyncMock(side_effect=database.get_deployment_spec)
+        reads = AsyncMock(side_effect=database.active_identity_values)
+        with (
+            patch.object(main.database, "get_deployment_spec", specs),
+            patch.object(main.database, "active_identity_values", reads),
+        ):
+            for _ in range(4):
+                _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp")
+        assert (specs.await_count, reads.await_count) == (1, 1)
+        assert _rows() == []
+
+
+class TestACopyListedTwice:
+    """A redeploy keeps the old container aside under the same copy until the new one runs."""
+
+    def test_neither_digest_counts(self):
+        both = [
+            {"slug": "earnapp", "instance": 1, "container_id": "old", "identity_digest": "x"},
+            {"slug": "earnapp", "instance": 1, "container_id": "new", "identity_digest": "y"},
+            {"slug": "earnapp", "instance": 2, "container_id": "two", "identity_digest": "z"},
+        ]
+        assert main._copy_digests(both, "earnapp") == {2: "z"}
+
+    def test_the_stale_row_is_still_repaired_once_the_old_one_is_gone(self, db):
+        wid = TestAStaleActiveRow()._stale()
+        old, new = (
+            {"slug": "earnapp", "instance": 1, "container_id": cid, "identity_digest": _digest("earnapp", ids)}
+            for cid, ids in (("old" * 4, {"EARNAPP_UUID": UUID_A}), ("new" * 4, {"EARNAPP_UUID": UUID_B}))
+        )
+        _heartbeat("box-a", None, containers=[old, new])
+        _heartbeat("box-a", None, containers=[new])
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+
+
+class TestAStaleRowAtRemovalAndReplacement:
+    """Copy 2's row says box-2, but a redeploy to "new" put it on new-2 and that write failed."""
+
+    def _stale_copy_two(self):
+        wid = _worker(running=[("honeygain", [1])])
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=2)[0] is None
+        _hg_losing_copy_two(wid, "new")
+        assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
+        return wid
+
+    def test_a_removal_keeps_new_2(self, db):
+        wid = self._stale_copy_two()
+        _remove("honeygain", wid, ran={2: {"HONEYGAIN_DEVICE_NAME": "new-2"}})
+        assert _active() == {}
+        assert {
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2"),
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "new-2"),
+        } <= _retired()
+
+    def test_a_replacement_keeps_new_2(self, db):
+        wid = self._stale_copy_two()
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, _ = _deploy(
+                "honeygain",
+                {**TestACopyWhoseWriteFailed.HG, "HONEYGAIN_DEVICE_NAME": "third"},
+                wid,
+                instances=2,
+                replaced={2: {"HONEYGAIN_DEVICE_NAME": "new-2"}},
+            )
+        assert error is None
+        assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "third-2"
+        assert {
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2"),
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "new-2"),
+        } <= _retired()
+
+
+class TestTheRawRouteKeepsTheReplacedIds:
+    def test_a_raw_redeploy_keeps_the_id_whose_write_failed(self, db):
+        wid = _worker()
+
+        async def failing(*args, **kwargs):
+            raise RuntimeError("database is locked")
+
+        with patch.object(main.database, "record_identities", failing):
+            assert _raw_deploy({"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        assert _rows() == []
+        answer = {"replaced_identity_digest": _digest("earnapp", {"EARNAPP_UUID": UUID_A})}
+        assert _raw_deploy({"EARNAPP_UUID": UUID_B}, wid, answer=answer)[0] is None
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+
+class TestAHeartbeatThatOutlivesItsRecord:
+    def test_a_removal_between_its_read_and_its_write_keeps_the_id_retired(self, db):
+        wid = _worker()
+        _deploy_losing_the_write("earnapp", {"EARNAPP_UUID": UUID_A}, wid)
+        real = database.get_deployment_spec
+
+        async def read_then_removed(slug, worker_id=None):
+            spec = await real(slug, worker_id=worker_id)
+            await database.remove_deployment(slug, worker_id=worker_id)
+            return spec
+
+        with patch.object(main.database, "get_deployment_spec", read_then_removed):
+            asyncio.run(main._reconcile_running_identities(wid, _entries("earnapp", {1: {"EARNAPP_UUID": UUID_A}})))
+        assert _active() == {}
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+    def test_with_the_record_in_place_it_writes(self, db):
+        """The positive control: the same heartbeat, no removal, records the id."""
+        wid = _worker()
+        _deploy_losing_the_write("earnapp", {"EARNAPP_UUID": UUID_A}, wid)
+        asyncio.run(main._reconcile_running_identities(wid, _entries("earnapp", {1: {"EARNAPP_UUID": UUID_A}})))
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+
+class TestADeletedBoxsRecords:
+    def _deleted_box_ran(self, uuid):
+        wid = _worker()
+        asyncio.run(
+            database.save_deployment(
+                slug="earnapp", container_id="c1", spec={"env": {"EARNAPP_UUID": uuid}}, worker_id=wid
+            )
+        )
+        asyncio.run(database.record_identities("earnapp", wid, {"1": {"EARNAPP_UUID": uuid}}))
+        asyncio.run(database.delete_worker(wid))
+        return wid
+
+    @pytest.mark.parametrize("where", ["everywhere", "that box"])
+    def test_a_forgotten_id_stays_forgotten(self, db, where):
+        wid = self._deleted_box_ran(UUID_A)
+        (row,) = _rows()
+        assert asyncio.run(database.delete_identity(row["id"]))
+        asyncio.run(database.remove_deployment("earnapp", worker_id=None if where == "everywhere" else wid))
+        assert _rows() == []
+
+    def test_a_write_after_the_delete_claims_no_box(self, db):
+        """A deploy that finished after its box was deleted."""
+        wid = _worker()
+        asyncio.run(database.delete_worker(wid))
+        asyncio.run(database.record_identities("proxyrack", wid, {"1": {"UUID": HEX}}))
+        assert asyncio.run(database.identity_in_use("proxyrack", "UUID", HEX)) == []
+
+    def test_a_deployment_from_before_per_box_records_is_kept(self, db):
+        wid = _legacy_deployment("earnapp", {"EARNAPP_UUID": UUID_A})
+        asyncio.run(database.delete_worker(wid))
+        assert _active() == {}
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+
+
+class TestAFleetWideSpecIsInUse:
+    def test_the_shared_id_check_sees_it(self, db):
+        """A deployment from before per-box records, whose backfill has not run: no ledger row."""
+        wid = _legacy_deployment("earnapp", {"EARNAPP_UUID": UUID_A})
+        assert _rows() == []
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A, except_worker=2)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+
+
+class TestADeviceIdInCapitals:
+    def test_the_shared_id_check_ignores_letter_case(self, db):
+        asyncio.run(database.record_identities("proxyrack", 1, {"1": {"UUID": HEX}}))
+        assert asyncio.run(database.identity_in_use("proxyrack", "UUID", HEX.upper(), except_worker=2)) == [1]
+
+    def test_the_claim_holds_an_id_in_any_letter_case(self):
+        svc = catalog.get_service("proxyrack")
+
+        async def run():
+            entered = asyncio.Event()
+
+            async def second():
+                async with main._device_id_claim("proxyrack", svc, {"UUID": HEX.upper()}):
+                    entered.set()
+
+            async with main._device_id_claim("proxyrack", svc, {"UUID": HEX}):
+                task = asyncio.create_task(second())
+                await asyncio.sleep(0.02)
+                held = not entered.is_set()
+            await task
+            return held
+
+        assert asyncio.run(run())
+        assert not main._DEVICE_ID_CLAIMS

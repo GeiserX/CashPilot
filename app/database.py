@@ -3172,8 +3172,11 @@ async def delete_worker(worker_id: int) -> None:
         # The device ids it ran with become retired, not stuck as "in use" on a
         # box that is gone: they stay in the list and the deploy form offers
         # them for the replacement box (issue #740). A deploy record from before
-        # the ledger is kept as retired first, as a removal does.
-        cursor = await db.execute("SELECT DISTINCT slug FROM deployment_specs WHERE worker_id = ?", (worker_id,))
+        # the ledger is kept as retired first, as a removal does: its own, or the
+        # fleet-wide row of one from before per-worker records, if this box runs it.
+        cursor = await db.execute(
+            "SELECT slug FROM deployment_specs WHERE worker_id = ? UNION SELECT slug FROM deployments", (worker_id,)
+        )
         for (slug,) in await cursor.fetchall():
             await _retire_identities(db, slug, worker_id)
         await db.execute(
@@ -4984,12 +4987,31 @@ async def active_identity_copies(slug: str, worker_id: int) -> set[str]:
         await db.close()
 
 
+async def active_extra_copies(worker_id: int) -> set[tuple[str, int]]:
+    """Each (slug, copy above the first) with an active ledger row on a worker."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT DISTINCT slug, instance FROM device_identities WHERE worker_id = ? AND kind = 'env' AND status = 'active'",
+            (worker_id,),
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    return {
+        (row["slug"], int(row["instance"]))
+        for row in rows
+        if str(row["instance"]).isdigit() and int(row["instance"]) > 1
+    }
+
+
 async def record_identities(
     slug: str,
     worker_id: int,
     values: Mapping[str, Mapping[str, Any]],
     *,
     scope: str = "copies",
+    if_record: Mapping[str, Any] | None = None,
 ) -> None:
     """Record the identifier values one worker now runs ``slug`` with.
 
@@ -4998,7 +5020,9 @@ async def record_identities(
     changed gets a new active row and its old value is retired, not lost. With
     ``scope="copies"`` (a deploy, which decides every on-box copy) an on-box copy
     absent from ``values`` is retired too; ``scope="given"`` touches only the
-    copies named (a proxied copy).
+    copies named (a proxied copy). ``if_record``: write only while that spec is
+    still the worker's deploy record of ``slug``, so a proof read before a
+    removal cannot bring the removed copy's ids back after it.
     """
     keys = _identity_keys(slug)
     if not keys:
@@ -5017,7 +5041,8 @@ async def record_identities(
         db.row_factory = aiosqlite.Row
         await db.execute("BEGIN IMMEDIATE")
         try:
-            await _record_identities_locked(db, slug, worker_id, keys, values, wanted, scope)
+            if if_record is None or await _deploy_records(db, slug, worker_id) == [(worker_id, dict(if_record))]:
+                await _record_identities_locked(db, slug, worker_id, keys, values, wanted, scope)
             await db.commit()
         except BaseException:
             await db.rollback()
@@ -5118,6 +5143,30 @@ async def _retire_identity_rows(
     await db.execute(sql, args)
 
 
+async def _deploy_records(db: Any, slug: str, worker_id: int | None = None) -> list[tuple[int, dict[str, Any]]]:
+    """The deploy record of ``slug`` on each worker that still exists (``worker_id``'s alone, when given).
+
+    The per-worker records, and, for a deployment from before them, the
+    fleet-wide row's spec for the box that runs its container. A deleted box's
+    records stay behind, but its ids were retired with it: they must neither
+    count as running nor come back after the owner forgot them.
+    """
+    sql = "SELECT worker_id, spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id IN (SELECT id FROM workers)"
+    args: tuple[Any, ...] = (slug,)
+    if worker_id is not None:
+        sql += " AND worker_id = ?"
+        args = (slug, worker_id)
+    cursor = await db.execute(sql, args)
+    records = [
+        (int(row["worker_id"]), _decode_spec(row["spec_encrypted"] or "", slug) or {})
+        for row in await cursor.fetchall()
+    ]
+    legacy = await _legacy_deployment_spec(db, slug)
+    if legacy and legacy[0] not in {wid for wid, _ in records} and worker_id in (None, legacy[0]):
+        records.append(legacy)
+    return records
+
+
 async def _retire_identities(db: Any, slug: str, worker_id: int | None) -> None:
     """On removal: retire the on-box copies' rows, keeping what the deploy records hold.
 
@@ -5127,22 +5176,7 @@ async def _retire_identities(db: Any, slug: str, worker_id: int | None) -> None:
     """
     keys = _identity_keys(slug)
     if keys:
-        sql = "SELECT worker_id, spec_encrypted FROM deployment_specs WHERE slug = ?"
-        args: tuple[Any, ...] = (slug,)
-        if worker_id is not None:
-            sql += " AND worker_id = ?"
-            args = (slug, worker_id)
-        cursor = await db.execute(sql, args)
-        specs = [
-            (int(row["worker_id"]), _decode_spec(row["spec_encrypted"] or "", slug) or {})
-            for row in await cursor.fetchall()
-        ]
-        # Older still: a spec kept only in the fleet-wide row, for the box that
-        # runs the container it recorded.
-        legacy = await _legacy_deployment_spec(db, slug)
-        if legacy and legacy[0] not in {wid for wid, _ in specs} and worker_id in (None, legacy[0]):
-            specs.append(legacy)
-        for wid, spec in specs:
+        for wid, spec in await _deploy_records(db, slug, worker_id):
             env = spec.get("env") or {}
             if not isinstance(env, dict):
                 continue
@@ -5229,9 +5263,11 @@ async def identity_in_use(slug: str, name: str, value: str, *, except_worker: in
     From the ledger's active rows (every copy, proxied ones too) and from the
     deploy records (deployments from before the ledger). Deleting a worker
     retires its rows, so a deleted box no longer counts: the owner said it is
-    gone, and its ids are what the replacement box should reuse.
+    gone, and its ids are what the replacement box should reuse; a row a deploy
+    wrote after the delete does not count either. Letter case is ignored: a
+    UUID copied from a dashboard in capitals is the same device.
     """
-    value = _identity_value(value)
+    value = _identity_value(value).casefold()
     if not value:
         return []
     found: set[int] = set()
@@ -5239,20 +5275,16 @@ async def identity_in_use(slug: str, name: str, value: str, *, except_worker: in
     try:
         cursor = await db.execute(
             "SELECT worker_id, value_encrypted FROM device_identities "
-            "WHERE slug = ? AND name = ? AND kind = 'env' AND status = 'active'",
+            "WHERE slug = ? AND name = ? AND kind = 'env' AND status = 'active' AND worker_id IN (SELECT id FROM workers)",
             (slug, name),
         )
         for row in await cursor.fetchall():
-            if decrypt_value(row["value_encrypted"]) == value:
+            if decrypt_value(row["value_encrypted"]).casefold() == value:
                 found.add(int(row["worker_id"]))
-        cursor = await db.execute(
-            "SELECT worker_id, spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id IN (SELECT id FROM workers)",
-            (slug,),
-        )
-        for row in await cursor.fetchall():
-            env = (_decode_spec(row["spec_encrypted"] or "", slug) or {}).get("env") or {}
-            if isinstance(env, dict) and _identity_value(env.get(name)) == value:
-                found.add(int(row["worker_id"]))
+        for wid, spec in await _deploy_records(db, slug):
+            env = spec.get("env") or {}
+            if isinstance(env, dict) and _identity_value(env.get(name)).casefold() == value:
+                found.add(wid)
     finally:
         await db.close()
     found.discard(except_worker if except_worker is not None else -1)

@@ -685,8 +685,10 @@ async def _send_heartbeat() -> None:
     global _consecutive_heartbeat_failures, _link_hint_logged, _last_heartbeat_ok
 
     containers = []
+    listed = False
     try:
         containers = await asyncio.to_thread(orchestrator.get_status)
+        listed = orchestrator.status_listed()
     except Exception as exc:
         logger.warning("Failed to get container status for heartbeat: %s", exc)
 
@@ -721,6 +723,10 @@ async def _send_heartbeat() -> None:
             "arch": platform.machine(),
             "hostname": socket.gethostname(),
             "docker_available": docker_ok,
+            # False when "containers" is not the whole list (Docker would not
+            # list them, or one could not be read): the UI then retires no
+            # device id of a copy the list leaves out.
+            "containers_listed": listed,
             # So the UI can tell an operator when the two halves are different
             # releases. An older worker sends nothing here, which reads as
             # unknown rather than as a mismatch (CashPilot-l6c).
