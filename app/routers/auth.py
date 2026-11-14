@@ -23,7 +23,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 # setup_token is aliased because it is ALSO a Form parameter name inside
 # do_register, so importing it bare would be shadowed exactly where it is used.
 from app import auth as auth_module
-from app import database, deps, login_rate_limit, metrics
+from app import captcha, database, deps, login_rate_limit, metrics
 from app import setup_token as setup_token_module
 from app.users import USERNAME_PATTERN
 
@@ -73,14 +73,22 @@ async def _rearm_setup_token() -> None:
     raise HTTPException(status_code=403, detail="A setup token was just written to the container log.")
 
 
-@router.get("/login", response_class=HTMLResponse)
-async def page_login(request: Request):
-    # If no users exist, redirect to onboarding
-    if not await database.has_any_users():
-        return RedirectResponse("/onboarding", status_code=303)
-    # If already logged in, go to dashboard
-    if auth_module.get_current_user(request):
-        return RedirectResponse("/", status_code=303)
+_CAPTCHA_ERRORS = {
+    "missing": "Complete the CAPTCHA check and try again.",
+    "rejected": "Complete the CAPTCHA check and try again.",
+    "unavailable": "The CAPTCHA check could not be completed. Try again in a moment.",
+}
+
+
+def _login_page(request: Request, error: str = "", status_code: int = 200):
+    """The sign-in page, with the CAPTCHA widget when one is configured.
+
+    Setting ``request.state.captcha`` is what tells the security-headers
+    middleware to widen this one response's CSP to the provider's origins.
+    """
+    cfg = captcha.config()
+    if cfg is not None:
+        request.state.captcha = cfg
     return deps.templates.TemplateResponse(
         request,
         "auth.html",
@@ -90,10 +98,23 @@ async def page_login(request: Request):
             "mode": "login",
             "action": "/login",
             "button_text": "Sign In",
-            "error": "",
+            "error": error,
             "is_first": False,
+            "captcha": cfg,
         },
+        status_code=status_code,
     )
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def page_login(request: Request):
+    # If no users exist, redirect to onboarding
+    if not await database.has_any_users():
+        return RedirectResponse("/onboarding", status_code=303)
+    # If already logged in, go to dashboard
+    if auth_module.get_current_user(request):
+        return RedirectResponse("/", status_code=303)
+    return _login_page(request)
 
 
 @router.post("/login")
@@ -115,6 +136,19 @@ async def do_login(
     except HTTPException:
         metrics.record_rate_limit()
         raise
+    # The CAPTCHA after the rate limit, so a flood cannot make this server call
+    # the provider without limit, and before the password, so a bot that did
+    # not solve it never costs a bcrypt run. A failure stays counted as an
+    # attempt: the bucket is cleared only by a successful sign-in.
+    if captcha.required():
+        cfg = captcha.config()
+        form = await request.form()
+        token = form.get(cfg.provider.response_field) if cfg is not None else None
+        result = await captcha.verify(token if isinstance(token, str) else None, deps.client_ip(request))
+        if not result.ok:
+            metrics.record_login(success=False)
+            metrics.record_captcha_failure(result.reason)
+            return _login_page(request, error=_CAPTCHA_ERRORS[result.reason], status_code=400)
     user = await database.get_user_by_username(username)
     if user:
         ok = await auth_module.verify_password_async(password, user["password"])
@@ -123,20 +157,7 @@ async def do_login(
         ok = False
     if not ok:
         metrics.record_login(success=False)
-        return deps.templates.TemplateResponse(
-            request,
-            "auth.html",
-            {
-                "title": "Sign In",
-                "subtitle": "Sign in to your CashPilot instance",
-                "mode": "login",
-                "action": "/login",
-                "button_text": "Sign In",
-                "error": "Invalid username or password",
-                "is_first": False,
-            },
-            status_code=401,
-        )
+        return _login_page(request, error="Invalid username or password", status_code=401)
 
     login_rate_limit.clear(rate_key)
     metrics.record_login(success=True)

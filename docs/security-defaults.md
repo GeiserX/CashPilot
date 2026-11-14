@@ -40,6 +40,7 @@ You can change all of these. None of them require changing for a normal install.
 | `CASHPILOT_COMPOSE_DIR` | empty | Your compose folder, which the proxy then lets the in-app update bind. Opt-in: it also lets containers bind that folder, which weakens the proxy (see below). Unset, update with `docker compose pull && docker compose up -d`; the **Update** button tells you the line to add if you want it. |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | empty | Opts specific host paths past the volume block. Each entry is a deliberate widening; system paths are still refused. |
 | `CASHPILOT_ALLOW_EPHEMERAL_KEY` | off | Lets CashPilot start when the encryption key cannot be persisted. Every credential then dies on the next restart. |
+| `CASHPILOT_CAPTCHA_PROVIDER` | off | Adds a CAPTCHA to the sign-in page. Sign-in then needs JavaScript, and both the browser and the server must reach the provider. See [Protect the sign-in page with a CAPTCHA](#protect-the-sign-in-page-with-a-captcha). |
 | `allow_delete_critical` (per request) | refuses | Permits deleting a volume that holds irreplaceable state. There is no undo. |
 | Alert delivery (ntfy / webhook / Telegram) | inert | Nothing is sent anywhere until you configure a target. |
 | `CASHPILOT_UPDATE_CHECK` | on | One unauthenticated request a day to GitHub's public releases endpoint, to tell you a newer CashPilot exists. `off` stops it and the banner never appears. |
@@ -75,6 +76,60 @@ docker exec cashpilot-ui cat /data/.fernet_key
 Restoring onto a fresh volume: pass the saved value as `CASHPILOT_ENCRYPTION_KEY`. An existing key file always wins over the environment variable, so setting it on a running instance is safe and changes nothing.
 
 Note this is a **different key** from `CASHPILOT_SECRET_KEY`, which only signs login sessions.
+
+## Protect the sign-in page with a CAPTCHA
+
+The sign-in page can show a CAPTCHA. It stops bots that guess passwords. It is off by default.
+
+Turn it on when people on the internet can reach your CashPilot UI, for example through a reverse proxy or a tunnel. A UI that only your LAN or your VPN can reach does not need it. The rate limit on sign-in is always on, with or without a CAPTCHA.
+
+CashPilot supports three providers:
+
+| Provider | `CASHPILOT_CAPTCHA_PROVIDER` |
+|---|---|
+| Cloudflare Turnstile | `turnstile` |
+| hCaptcha | `hcaptcha` |
+| Google reCAPTCHA v2, the "I'm not a robot" checkbox | `recaptcha` |
+
+reCAPTCHA v3 is not supported. It gives a score instead of a pass or a fail.
+
+### Get the keys
+
+Each provider gives you two keys: a site key, which is public, and a secret key.
+
+- **Cloudflare Turnstile:** in the Cloudflare dashboard, open **Turnstile** and select **Add widget**. Add the host name you open CashPilot at, for example `cashpilot.example.com`. Choose the **Managed** mode. Copy the site key and the secret key. You do not need to host your domain on Cloudflare.
+- **hCaptcha:** sign in at https://dashboard.hcaptcha.com, add a site, and add the same host name. The secret key is in your account settings.
+- **Google reCAPTCHA:** open https://www.google.com/recaptcha/admin/create, choose **reCAPTCHA v2** and then **"I'm not a robot" Checkbox**, and add the same host name.
+
+### Turn it on
+
+Set the three variables on the UI container, for example in the `.env` file next to `docker-compose.yml`:
+
+```bash
+CASHPILOT_CAPTCHA_PROVIDER=turnstile
+CASHPILOT_CAPTCHA_SITE_KEY=<your site key>
+CASHPILOT_CAPTCHA_SECRET_KEY=<your secret key>
+```
+
+Then recreate the UI container: `docker compose up -d cashpilot-ui`. The log shows one line that names the provider.
+
+On Unraid, the three fields are under **Show more settings** in the CashPilot template. Apply the template to recreate the container.
+
+If the provider name is unknown, or a key is missing, the UI refuses to start. The error names the variable to fix. CashPilot never runs without the CAPTCHA after you asked for one.
+
+### What changes
+
+- The sign-in page shows the provider's widget above the **Sign In** button.
+- CashPilot asks the provider to check the answer before it checks the password. A failed check counts as a failed sign-in attempt, the same as a wrong password.
+- If CashPilot cannot reach the provider, sign-in fails with a message that says so. It does not let you in without the check.
+- Only the sign-in page lets the browser load the provider's script and frame. Every other page keeps the normal security policy.
+- Workers, the Android app and API keys do not use the sign-in page. The CAPTCHA does not affect them.
+
+The sign-in page now needs JavaScript. Your browser must also reach the provider. A LAN-only install still works, as long as the browser can reach the internet. The CashPilot server must reach the provider too, to check each answer.
+
+### If you are locked out
+
+Remove the three variables and recreate the UI container (`docker compose up -d cashpilot-ui`). A plain `docker restart` keeps the old variables. The sign-in page is then the same as before, with no CAPTCHA.
 
 ---
 

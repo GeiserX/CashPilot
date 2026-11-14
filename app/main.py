@@ -41,6 +41,7 @@ from app import (
     activity_ui,
     arch,
     auth,
+    captcha,
     catalog,
     compose_generator,
     constants,
@@ -2582,6 +2583,9 @@ async def lifespan(app: FastAPI):
     # cannot survive a restart. Continuing would encrypt every credential entered
     # during this run under a key that dies with the process.
     database.verify_encryption_key_persisted()
+    # A sign-in CAPTCHA the operator asked for but that cannot work refuses the
+    # start the same way, rather than running with sign-in unprotected.
+    captcha.check_startup()
     await database.init_db()
     await database.connect_shared()
     # Warm the per-user session-epoch cache (password changes + delete/demote
@@ -2909,6 +2913,37 @@ app.add_middleware(_SameOriginMiddleware)
 
 
 # Security headers middleware
+def _content_security_policy(nonce: str, extra: dict[str, tuple[str, ...]] | None = None) -> str:
+    """The CSP for one response. ``extra`` adds origins per directive.
+
+    Without ``extra`` there is no frame-src, so frames fall back to
+    default-src 'self'. With a frame-src origin, 'self' stays in it, so adding
+    an origin never takes that fallback away.
+    """
+    extra = extra or {}
+
+    def more(directive: str) -> str:
+        return "".join(f" {origin}" for origin in extra.get(directive, ()))
+
+    frame_src = f"frame-src 'self'{more('frame-src')}; " if extra.get("frame-src") else ""
+    return (
+        "default-src 'self'; "
+        # Only the one CDN file the pages load (chart.js, with SRI in
+        # base.html). The whole jsdelivr host would let an injected
+        # <script src> load any npm package or GitHub file.
+        f"script-src 'self' {_CHART_JS_URL} 'nonce-{nonce}'{more('script-src')}; "
+        f"style-src 'self' https://fonts.googleapis.com 'unsafe-inline'{more('style-src')}; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        f"connect-src 'self'{more('connect-src')}; "
+        f"{frame_src}"
+        "frame-ancestors 'none'; "
+        "base-uri 'none'; "
+        "object-src 'none'; "
+        "form-action 'self'"
+    )
+
+
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         # A fresh nonce per response. Templates read it via request.state so the
@@ -2936,20 +2971,14 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # base-uri/object-src/form-action are additive hardening that costs
         # nothing: block <base> hijack of relative script URLs, disallow plugins,
         # and stop a form POSTing credentials off-origin if an XSS is ever found.
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            # Only the one CDN file the pages load (chart.js, with SRI in
-            # base.html). The whole jsdelivr host would let an injected
-            # <script src> load any npm package or GitHub file.
-            f"script-src 'self' {_CHART_JS_URL} 'nonce-{nonce}'; "
-            "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data:; "
-            "connect-src 'self'; "
-            "frame-ancestors 'none'; "
-            "base-uri 'none'; "
-            "object-src 'none'; "
-            "form-action 'self'"
+        #
+        # The sign-in page alone, and only while a CAPTCHA is configured, adds
+        # that one provider's origins (app/captcha.py). The route marks the
+        # response by setting request.state.captcha; every other page, and the
+        # login page with the CAPTCHA off, gets the policy unchanged.
+        captcha_cfg = getattr(request.state, "captcha", None)
+        response.headers["Content-Security-Policy"] = _content_security_policy(
+            nonce, captcha_cfg.provider.csp if captcha_cfg is not None else None
         )
         # HSTS only when the request is actually HTTPS, so plain-HTTP local dev is never
         # pinned to https (which would hard-break it). Behind a trusted proxy that
