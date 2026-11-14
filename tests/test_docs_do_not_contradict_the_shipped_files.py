@@ -242,3 +242,12 @@ def test_the_image_cleanup_section_names_the_containerd_image_store():
     section = " ".join(section.split("\n## ", 1)[0].split())
     assert "/var/lib/containerd" in section
     assert "containerd image store" in section
+
+
+def test_the_prune_step_warns_it_takes_the_previous_moving_tag_image():
+    """CodeRabbit on #746: after an update over a moving tag the old image has no
+    tag, so step 1's prune deletes it; the doc must say how to keep a way back."""
+    section = GETTING_STARTED.read_text(encoding="utf-8").split("### Cleaning up old images", 1)[1]
+    step1 = " ".join(section.split("**Step 2", 1)[0].split())
+    assert "write down the exact version before you update" in step1
+    assert "X.Y.Z" in step1

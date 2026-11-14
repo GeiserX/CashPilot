@@ -225,6 +225,12 @@ container uses it, running or stopped. An update over a moving tag such as
 docker image prune
 ```
 
+This also deletes the image you ran before an update over a moving tag: once
+the new `2.4` image arrives, the old one has no tag. To keep a way back, write
+down the exact version before you update (the foot of the sidebar shows it), so
+you can pull `drumsergio/cashpilot:<X.Y.Z>` again. Or pin the compose file to
+an exact `X.Y.Z` tag; then the old image keeps its tag and step 2 applies.
+
 Docker asks before it deletes. In a cron entry, add `--force` to skip the
 question. It changes nothing else:
 
