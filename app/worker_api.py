@@ -15,7 +15,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import hashlib
 import hmac
+import json
 import logging
 import os
 import platform
@@ -38,7 +40,7 @@ from docker.errors import APIError, DockerException
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from app import (
     activity,
@@ -754,6 +756,8 @@ async def _send_heartbeat() -> None:
         # Starts a fence_gated service (Mysterium) only behind a confirmed fence,
         # on the bridge, with its port range and several WebUI addresses.
         payload["system_info"]["features"].append("fence_gated")
+        # Restores a passphrase backup into a new container (POST /api/containers/{slug}/restore).
+        payload["system_info"]["features"].append("state_restore")
     # Only what the owner asked for, and only a finished round.
     sent_seq = _activity_seq
     if _activity_enabled and _pending_activity is not None:
@@ -2052,6 +2056,9 @@ async def api_restart_container(request: Request, slug: str, instance: int = 1) 
         return {"status": "restarted"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.ContainerRuntimeError as exc:
+        # A refusal (a restore of it runs or did not finish), not an unreachable Docker.
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -2078,6 +2085,9 @@ async def api_start_container(request: Request, slug: str, instance: int = 1) ->
         return {"status": "started"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.ContainerRuntimeError as exc:
+        # A refusal (a restore of it runs or did not finish), not an unreachable Docker.
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -2138,6 +2148,8 @@ async def api_remove_container(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -2310,6 +2322,131 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
             recipient_private_key=body.recipient_private_key,
         )
     )
+
+
+#: The largest restore request the worker reads: a bundle of the largest export
+#: (orchestrator.MAX_BACKUP_BYTES) in base64, plus the deploy spec. Read by hand
+#: and counted as it arrives, so a bigger body is refused without being held.
+MAX_RESTORE_BODY = (orchestrator.MAX_BACKUP_BYTES + 1024 * 1024) * 4 // 3 + 256 * 1024
+
+
+async def _read_capped(request: Request, limit: int) -> bytes:
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail="The restore request is larger than any backup can be")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            raise HTTPException(status_code=413, detail="The restore request is larger than any backup can be")
+    return bytes(body)
+
+
+@app.post("/api/containers/{slug}/restore")
+async def api_restore(slug: str, request: Request) -> dict[str, Any]:
+    """Restore a passphrase backup into a new container of ``slug`` on this box (issue #741).
+
+    The body is the deploy spec the UI built for a plain deploy, plus
+    ``bundle_b64``, ``passphrase`` and ``approval``. It is read by hand, never
+    through a model, so no error can echo the passphrase, and it is capped.
+
+    In order: the spec passes every deploy check, and must be exactly the
+    catalog's (no custom image, command, env key or mount, even with a
+    password); the approval must be the UI's, for this action, this service,
+    this worker and the SHA-256 of these bytes. Then the bundle is opened here and checked by the same rules as
+    the command line restore, outside any lock, and orchestrator.restore_state
+    writes it into a new container, compares and starts it. Recipient-key
+    bundles are refused: their private key never comes through the dashboard.
+    """
+    _verify_api_key(request)
+    raw = await _read_capped(request, MAX_RESTORE_BODY)
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        body = None
+    del raw
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected a JSON object")
+    bundle_b64, passphrase, approval = (
+        body.pop("bundle_b64", None),
+        body.pop("passphrase", None),
+        body.pop("approval", None),
+    )
+    if not all(isinstance(v, str) and v for v in (bundle_b64, passphrase, approval)):
+        raise HTTPException(status_code=400, detail="A restore needs the file, its passphrase and the approval")
+    try:
+        spec = DeploySpec(**body)
+    except (ValidationError, TypeError):
+        raise HTTPException(status_code=400, detail="The deploy spec of the restore is malformed") from None
+    if spec.instance != 1 or spec.approval:
+        raise HTTPException(status_code=400, detail="A restore creates the first copy, as the catalog runs it")
+    await asyncio.to_thread(_validate_deploy_spec, spec, slug)
+    if slug not in orchestrator.critical_slugs() or orchestrator.restore_targets(slug) is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{slug} cannot be restored from the dashboard: it keeps its state in a host folder, or none. "
+            "Use the command line steps in the backup guide.",
+        )
+    found = orchestrator.critical_spec_deviations(slug, spec.image, spec.command, spec.env, spec.volumes)
+    if found:
+        raise HTTPException(
+            status_code=403,
+            detail=f"A restore runs {slug} exactly as this worker's catalog does, and this one differs: "
+            f"{'; '.join(found)}. Nothing was restored.",
+        )
+    try:
+        bundle = base64.b64decode(bundle_b64, validate=True)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="The backup file is not valid base64") from None
+    del bundle_b64
+    digest = hashlib.sha256(bundle).hexdigest()
+    try:
+        step_up.check(_worker_key, approval, step_up.ACTION_RESTORE, step_up.restore_target(slug, CLIENT_ID, digest))
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was restored."}
+        ) from None
+    try:
+        header = state_backup.read_header(bundle)
+        if header.get("mode") != state_backup.MODE_PASSPHRASE:
+            raise state_backup.BackupError(
+                "This file is sealed to a key, not a passphrase. Its private key never goes through the dashboard: "
+                "restore it with the command line steps in the backup guide."
+            )
+        payload = await asyncio.to_thread(state_backup.open_bundle, bundle, passphrase=passphrase)
+        del passphrase
+        meta = header.get("metadata") or {}
+        if meta.get("slug") != slug:
+            # The header is authenticated, so this is what the file really holds.
+            raise state_backup.BackupError(f"This is a backup of {meta.get('slug')!r}, not of {slug}.")
+        archives = await asyncio.to_thread(state_backup.split_archives, payload)
+        del payload
+    except state_backup.BackupError as exc:
+        raise HTTPException(status_code=400, detail=f"{exc} Nothing was restored.") from None
+    deploy = {
+        "image": spec.image,
+        "env": spec.env,
+        "ports": spec.ports,
+        "volumes": spec.volumes,
+        "network_mode": spec.network_mode,
+        "cap_add": spec.cap_add,
+        "devices": spec.devices,
+        "command": spec.command,
+        "hostname": spec.hostname,
+        "labels": spec.labels,
+        "resources": spec.resources,
+        "runtime": spec.runtime,
+        "keep_targets": _catalog_volume_targets(slug),
+    }
+    try:
+        result = await asyncio.to_thread(orchestrator.restore_state, slug, archives, deploy)
+    except orchestrator.RestoreError as exc:
+        logger.warning("Restore of %s refused or undone: %s", slug, exc)
+        # "restored": false tells the UI this is the worker's own answer, so a
+        # 503 here is not a gateway's: nothing of this restore is on the box.
+        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc), "restored": False})
+    await asyncio.to_thread(lan_fence.refresh_outside)
+    return {"status": "restored", "bundle_sha256": digest, **result}
 
 
 @app.get("/api/runtimes")

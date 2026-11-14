@@ -44,6 +44,10 @@ from typing import Any
 #: mount. Target: :func:`deploy_target` of the exact spec sent to the worker.
 ACTION_CUSTOM_IMAGE = "deploy-custom-image"
 
+#: Restoring a backup file into a new container on one worker (issue #741).
+#: Target: :func:`restore_target`.
+ACTION_RESTORE = "restore-backup"
+
 #: How long an approval stays valid. Long enough for a slow pull before the
 #: worker checks it (the check runs before the pull), short enough that one seen
 #: in a log is useless soon after. The UI and the worker clocks must agree to
@@ -78,6 +82,16 @@ def deploy_target(slug: str, image: str, command: str | None, env: Any, volumes:
     }
     digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return f"{slug}|{image}|{digest}"
+
+
+def restore_target(slug: str, worker_client_id: str, bundle_sha256: str) -> str:
+    """The approval target of one restore: this service, on this worker, from this exact file.
+
+    The worker recomputes the file's SHA-256 from the bytes it received, so an
+    approval for one file cannot carry another one, and one given for one box
+    names that box even before its key is checked.
+    """
+    return f"{slug}|{worker_client_id}|{bundle_sha256}"
 
 
 class StepUpError(Exception):

@@ -5005,7 +5005,11 @@ async def _retire_identity_rows(
     The on-box copies by default, the proxied copies with ``proxied``, or just
     the copies named in ``instances``.
     """
-    sql = "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE slug = ? AND status = 'active'"
+    # Backup files are a record of what was made, not an id a copy runs with.
+    sql = (
+        "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+        "WHERE slug = ? AND status = 'active' AND kind != 'backup'"
+    )
     args: list[Any] = [slug]
     if worker_id is not None:
         sql += " AND worker_id = ?"
@@ -5119,7 +5123,7 @@ async def delete_identity(identity_id: int) -> bool:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node')",
+            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind IN ('node', 'backup'))",
             (identity_id,),
         )
         await db.commit()
@@ -5232,6 +5236,174 @@ async def record_node_identity(slug: str, worker_id: int, value: str, instance: 
         return True
     finally:
         await db.close()
+
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+#: ``name`` of a backup row whose origin is not known.
+_BACKUP_NO_ORIGIN = "backup file"
+
+
+def backup_origin(worker_id: int, state_id: Any) -> str | None:
+    """The origin of a file exported from ``worker_id`` with this state fingerprint, or None.
+
+    Every export seals with a fresh salt and nonce, so two files of one node
+    share no hash. They share the volume they were read from, which the
+    worker's state fingerprint names (orchestrator.state_id).
+    """
+    if not isinstance(state_id, str) or not state_id or ":" in state_id or any(c.isspace() for c in state_id):
+        return None
+    return f"state:{int(worker_id)}:{state_id}"
+
+
+def _backup_name(origin: str | None, here: str | None) -> str:
+    """``name`` of a backup row: its lineage origin, then the volume it names on its own box, space-separated."""
+    if here:
+        return f"{origin or here} {here}"
+    return origin or _BACKUP_NO_ORIGIN
+
+
+def _backup_parse(name: Any, source: Any) -> tuple[str | None, str | None]:
+    """(origin, here) from a backup row's ``name``. An export row written as one origin is its own volume."""
+    parts = str(name or "").split(" ")
+    origin = parts[0] if parts[0].startswith("state:") else None
+    if len(parts) == 2 and parts[1].startswith("state:"):
+        return origin, parts[1]
+    return origin, origin if source == "export" else None
+
+
+async def record_backup(
+    slug: str,
+    worker_id: int,
+    sha256: str,
+    source: str = "export",
+    origin: str | None = None,
+    here: str | None = None,
+) -> int:
+    """Keep the SHA-256 of a backup file this CashPilot made (``kind`` 'backup', issue #741). Returns the row id.
+
+    ``source`` is 'export' for a file downloaded from ``worker_id``, 'restore'
+    for one restored onto it, and 'pending' for a restore sent there whose
+    outcome is not known yet (the worker may still finish it). ``origin`` is
+    the node's lineage: the backup_origin of the first export of that node,
+    kept by every later file and restore of it however often it moved (see
+    backup_lineage), so one node has one origin. ``here`` is the volume the
+    row is about on its own box (backup_origin of ``worker_id``): the one an
+    export was read from, the one a restore created. Both are kept in
+    ``name``. A restore looks a file up here: one this CashPilot made, or
+    already restored, needs no typed confirmation, and the boxes listed for
+    its origin are where its identity may run.
+    """
+    sha256 = str(sha256 or "").lower()
+    if not _SHA256.fullmatch(sha256) or source not in ("export", "restore", "pending"):
+        raise ValueError("not a backup hash")
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
+            "VALUES (?, ?, '1', 'backup', ?, ?, ?)",
+            (slug, worker_id, _backup_name(origin, here), encrypt_value(sha256), source),
+        )
+        await db.commit()
+        return int(cursor.lastrowid or 0)
+    finally:
+        await db.close()
+
+
+async def backup_lineage(slug: str, worker_id: int, here: str | None) -> str | None:
+    """The origin of the node ``worker_id`` runs on volume ``here``, when a restore or an export already named it.
+
+    An export from a box whose node came from a restore is a file of that
+    restored node: it takes the restore's origin, not a new one, so every file
+    of a node stays linked however many times it moved. A restore whose new
+    volume the worker did not report counts for any export from its box (the
+    newest one). None when the ledger knows nothing of that volume.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT worker_id, source, name FROM device_identities "
+            "WHERE kind = 'backup' AND slug = ? AND source != 'pending' ORDER BY id",
+            (slug,),
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    unplaced = None
+    for row in rows:
+        origin, at = _backup_parse(row["name"], row["source"])
+        if origin and here and at == here:
+            return origin
+        if origin and at is None and row["source"] == "restore" and int(row["worker_id"]) == int(worker_id):
+            unplaced = origin
+    return unplaced
+
+
+async def settle_backup(row_id: int, applied: bool, here: str | None = None) -> None:
+    """A 'pending' restore row once its outcome is known: 'restore' when it happened, gone when it did not.
+
+    ``here`` is the volume the restore created (backup_origin of its box). A
+    file with no origin starts its lineage there.
+    """
+    db = await _get_db()
+    try:
+        if applied:
+            cursor = await db.execute(
+                "SELECT name FROM device_identities WHERE id = ? AND kind = 'backup' AND source = 'pending'",
+                (row_id,),
+            )
+            row = await cursor.fetchone()
+            origin = _backup_parse(row["name"], "pending")[0] if row else None
+            await db.execute(
+                "UPDATE device_identities SET source = 'restore', name = ?, last_seen = datetime('now') "
+                "WHERE id = ? AND kind = 'backup' AND source = 'pending'",
+                (_backup_name(origin, here), row_id),
+            )
+        else:
+            await db.execute(
+                "DELETE FROM device_identities WHERE id = ? AND kind = 'backup' AND source = 'pending'", (row_id,)
+            )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def backup_records(
+    sha256: str | None, slug: str | None = None, origins: set[str] | None = None
+) -> list[dict[str, Any]]:
+    """Ledger rows for this backup file, and with ``slug`` and ``origins`` for every file of those origins.
+
+    Each row: ``id``, ``slug``, ``worker_id``, ``source``, ``origin`` (None
+    when not known), ``here`` (the volume it names on its box, None when not
+    known), ``first_seen``, ``file`` (True for this file's own rows).
+    Oldest first.
+    """
+    sha256 = str(sha256 or "").lower()
+    origins = origins or set()
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, slug, worker_id, source, name, first_seen, value_encrypted FROM device_identities "
+            "WHERE kind = 'backup' ORDER BY id"
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    out = []
+    for row in rows:
+        origin, here = _backup_parse(row["name"], row["source"])
+        own = bool(sha256) and decrypt_value(row["value_encrypted"] or "") == sha256
+        if own or (origin is not None and origin in origins and row["slug"] == slug):
+            out.append(
+                {
+                    **{k: row[k] for k in ("id", "slug", "worker_id", "source", "first_seen")},
+                    "origin": origin,
+                    "here": here,
+                    "file": own,
+                }
+            )
+    return out
 
 
 async def identity_backfill_specs() -> list[dict[str, Any]]:

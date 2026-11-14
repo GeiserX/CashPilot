@@ -462,6 +462,147 @@ def split_archives(payload: bytes) -> dict[str, bytes]:
     return out
 
 
+def restore_volumes(docker_conf: dict[str, Any]) -> dict[str, str] | None:
+    """critical target -> named volume, when a restore from the dashboard may fill this service.
+
+    Only a service whose every ``critical_volumes`` target sits on a named
+    volume the catalog YAML names literally: the worker creates that volume new
+    for the restore and checks it did. A target on a host folder (``${VAR}``, a
+    path) is refused, because the worker cannot see or empty a host folder;
+    Storj and Sia keep terabytes there anyway. None when nothing qualifies.
+    """
+    critical = [
+        str(e["target"]).rstrip("/") or "/"
+        for e in docker_conf.get("critical_volumes") or []
+        if isinstance(e, dict) and e.get("target")
+    ]
+    if not critical:
+        return None
+    sources: dict[str, str] = {}
+    for mapping in docker_conf.get("volumes") or []:
+        parts = str(mapping).split(":")
+        if len(parts) >= 2:
+            sources[parts[1].rstrip("/") or "/"] = parts[0]
+    found: dict[str, str] = {}
+    for target in critical:
+        source = sources.get(target, "")
+        # A literal volume name ([A-Za-z0-9][A-Za-z0-9_.-]*), never ${VAR} or a path.
+        if not (source[:1].isalnum() and source.isascii() and all(c.isalnum() or c in "_.-" for c in source)):
+            return None
+        found[target] = source
+    return found
+
+
+def _below_top(name: str) -> str:
+    """``name`` without its first path component: the path inside the backed-up folder."""
+    return _clean(name).partition("/")[2]
+
+
+def relative_archive(archive: bytes) -> bytes:
+    """One archive from :func:`split_archives`, renamed to sit inside its folder.
+
+    split_archives keeps Docker's layout, each entry under the folder's own name
+    (``mysterium-node/keystore/...``). A restore writes into the folder itself,
+    so the first component goes, and with it the folder's own entry: Docker does
+    not apply it to a folder that exists, and the folder is the volume's root.
+    Hard links are renamed the same way. Only names change.
+
+    Each entry is a new TarInfo with the fields split_archives keeps. Renaming
+    the one read in is not enough: a name over 100 bytes or not ASCII arrives
+    as a PAX ``path`` record, which tarfile writes back in preference to the
+    new name, so the entry would land one folder too deep. A real Mysterium
+    keystore file is one.
+    """
+    import io
+    import tarfile
+
+    out = io.BytesIO()
+    with (
+        tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as src,
+        tarfile.open(fileobj=out, mode="w", format=tarfile.PAX_FORMAT) as dst,
+    ):
+        for member in src:
+            name = _below_top(member.name)
+            if not name:
+                continue
+            data = src.extractfile(member).read() if member.isfile() else None  # type: ignore[union-attr]
+            clean = tarfile.TarInfo(name)
+            clean.type, clean.mode, clean.uid, clean.gid = member.type, member.mode, member.uid, member.gid
+            clean.mtime, clean.size = member.mtime, member.size
+            clean.linkname = _below_top(member.linkname) if member.islnk() else member.linkname
+            dst.addfile(clean, io.BytesIO(data) if data is not None else None)
+    return out.getvalue()
+
+
+def tree_manifest(archive: bytes, *, max_bytes: int = MAX_ARCHIVE_BYTES) -> dict[str, tuple[Any, ...]]:
+    """What a folder holds, as ``path -> (type, mode, uid, gid, content)``, from Docker's archive of it.
+
+    ``path`` is below the folder (the folder's own entry is left out), ``content``
+    is a file's SHA-256 or a link's target. Modification times are not compared:
+    they say nothing about whether the restore is the backup. Used twice by a
+    restore, on what it meant to write and on what Docker reads back, so a file
+    missing, changed, added or owned by someone else shows as a difference.
+    More than ``max_bytes`` of file data is refused rather than read.
+    """
+    import io
+    import tarfile
+
+    found: dict[str, tuple[Any, ...]] = {}
+    total = 0
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as src:
+            for member in src:
+                path = _below_top(member.name)
+                if not path:
+                    continue
+                if member.isfile():
+                    total += member.size
+                    if total > max_bytes:
+                        raise BackupError("The restored folder holds more than a backup can, so it was not compared.")
+                    data = src.extractfile(member).read()  # type: ignore[union-attr]
+                    entry: tuple[Any, ...] = ("file", hashlib.sha256(data).hexdigest())
+                elif member.isdir():
+                    entry = ("dir", "")
+                elif member.issym():
+                    entry = ("symlink", member.linkname)
+                elif member.islnk():
+                    entry = ("hardlink", _below_top(member.linkname))
+                else:
+                    entry = ("other", "")
+                found[path] = (entry[0], member.mode & 0o777, member.uid, member.gid, entry[1])
+    except tarfile.TarError as exc:
+        raise BackupError(f"The restored folder could not be read back: {exc}") from exc
+    return found
+
+
+def manifest_differences(expected: dict[str, tuple[Any, ...]], found: dict[str, tuple[Any, ...]]) -> list[str]:
+    """How ``found`` differs from ``expected``, one line per path; [] when it is the backup.
+
+    A folder the image already had at that path (Docker copies the image's
+    folders into a new volume when the container is created) may stay when the
+    backup does not name it: it is empty or its files are listed on their own.
+    Every file, link and owner must match exactly.
+    """
+    lines: list[str] = []
+    for path in sorted(set(expected) | set(found)):
+        want, got = expected.get(path), found.get(path)
+        if want == got:
+            continue
+        if want is None and got is not None and got[0] == "dir":
+            continue
+        if want is None:
+            lines.append(f"{path}: not in the backup")
+        elif got is None:
+            lines.append(f"{path}: missing")
+        elif want[0] != got[0]:
+            lines.append(f"{path}: a {got[0]}, not a {want[0]}")
+        elif want[4] != got[4]:
+            lines.append(f"{path}: different content")
+        else:
+            lines.append(f"{path}: owner or permissions differ")
+    return lines
+
+
 def _cli(argv: list[str] | None = None) -> int:
     """``python -m app.state_backup`` -- open a bundle on your own machine.
 

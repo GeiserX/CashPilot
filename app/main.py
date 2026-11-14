@@ -7,8 +7,10 @@ management, and earnings tracking.
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import contextlib
+import hashlib
 import hmac
 import ipaddress
 import json
@@ -73,6 +75,7 @@ from app import (
     proxies,
     ratings,
     setup_token,
+    state_backup,
     step_up,
     update_check,
     usage,
@@ -4014,7 +4017,11 @@ _custom_deleting: collections.Counter[str] = collections.Counter()
 
 
 async def _deploy(
-    slug: str, body: DeployRequest, worker_id: int | None, request: Request | None = None
+    slug: str,
+    body: DeployRequest,
+    worker_id: int | None,
+    request: Request | None = None,
+    restore: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
@@ -4278,14 +4285,24 @@ async def _deploy(
     # or with the owner's password now, not just a session: whatever runs in its
     # container can take the wallet. The worker checks the approval this
     # produces against the exact spec it receives; see _step_up_critical.
-    approve = await _step_up_critical(request, slug, svc, custom_image, getattr(body, "step_up_password", None))
-    # Passed only when set, so the plain call keeps its three-argument shape.
-    signed: dict[str, Any] = {"approve": True} if approve else {}
-    try:
-        result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
-    except HTTPException as exc:
-        await _audit_worker_refusal(request, exc, slug, worker_id)
-        raise
+    signed: dict[str, Any] = {}
+    if restore is not None:
+        # A restore (api_restore) builds the spec exactly as a deploy does, and
+        # only the last step differs: the worker creates the container, writes
+        # the backup into it, checks it and only then starts it. Its own
+        # step-up was taken by the caller; a custom image is never restored.
+        if custom_image or instances != 1:
+            raise HTTPException(status_code=400, detail="A restore runs one copy of the catalog's image")
+        result = await _proxy_worker_restore(worker_id, slug, spec, restore)
+    else:
+        approve = await _step_up_critical(request, slug, svc, custom_image, getattr(body, "step_up_password", None))
+        # Passed only when set, so the plain call keeps its three-argument shape.
+        signed = {"approve": True} if approve else {}
+        try:
+            result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
+        except HTTPException as exc:
+            await _audit_worker_refusal(request, exc, slug, worker_id)
+            raise
     container_id = result.get("container_id", "remote")
     # Reported, deliberately NOT recorded. The worker reads the running container
     # on every deploy, so the record does not need the kept source - and writing
@@ -4348,6 +4365,8 @@ async def _deploy(
         response["device_link"] = link
     if divergence:
         response["kept_from_previous_deployment"] = divergence
+    if restore is not None:
+        response["restored"] = {key: result.get(key) for key in ("files", "targets", "started")}
     return response
 
 
@@ -5275,6 +5294,23 @@ async def _confirmed_worker_key(cid: str) -> str | None:
     return stored_key if (stored_key and key_confirmed) else None
 
 
+def _worker_restored_nothing(resp: Any) -> bool:
+    """Whether this error is the worker's own answer to a restore it refused or undid (``"restored": false``)."""
+    try:
+        body = resp.json()
+    except (ValueError, AttributeError):
+        return False
+    return isinstance(body, dict) and body.get("restored") is False
+
+
+class WorkerNoAnswer(HTTPException):
+    """The request may have reached the worker, which gave no answer: it may still act on it.
+
+    Same status codes as before (504 for a timeout, 503 otherwise), so every
+    caller that reads only the status sees no change.
+    """
+
+
 async def _proxy_to_worker(
     worker_id: int,
     method: str,
@@ -5319,25 +5355,32 @@ async def _proxy_to_worker(
                 safe: dict[str, Any] | str | None = _safe_worker_detail(resp) or _worker_refusal_text(resp, json)
                 logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
                 logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(
+                # 502-504 come from a proxy in front of the worker as often as
+                # from the worker: whether it got the request is not known,
+                # unless the worker itself says nothing was restored.
+                unknown = resp.status_code in (502, 503, 504) and not _worker_restored_nothing(resp)
+                raise (WorkerNoAnswer if unknown else HTTPException)(
                     status_code=resp.status_code,
                     detail=safe or _worker_failure_text(resp.status_code),
                 )
             return resp.json()
-    except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
-        # Both are TimeoutException subclasses, but the request never reached
-        # the worker, so "it may still be working on it" would be wrong.
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+        # The request never reached the worker (ConnectTimeout and PoolTimeout
+        # are TimeoutException subclasses), so "it may still be working on it"
+        # would be wrong.
         logger.warning("worker proxy error: %s", exc)
         raise HTTPException(status_code=503, detail="Worker communication failed")
     except httpx.TimeoutException as exc:
         logger.warning("worker proxy timeout after %ss: %s", timeout, exc)
-        raise HTTPException(
+        raise WorkerNoAnswer(
             status_code=504,
             detail=f"The worker did not answer within {timeout:g} s. It may still be working on it; check the worker.",
         )
     except httpx.HTTPError as exc:
+        # A read error or a dropped connection after the request went out: the
+        # worker may have it and go on.
         logger.warning("worker proxy error: %s", exc)
-        raise HTTPException(status_code=503, detail="Worker communication failed")
+        raise WorkerNoAnswer(status_code=503, detail="Worker communication failed")
 
 
 async def _proxy_worker_command(
@@ -5419,25 +5462,73 @@ async def _proxy_worker_deploy(
     cover that stop. With a flat 60 s the dashboard reported a failed deploy
     while the worker was still shutting the old node down cleanly.
     """
-    docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
-    # Which build THIS worker runs is decided here, at the edge, from the
-    # architecture in its heartbeat. The deployment record stays on the
-    # catalog's default image: it is one row for the whole fleet, and a
-    # Raspberry Pi's tag must not be replayed onto an x86 box.
-    # A custom image is the operator's choice for this worker and is sent as is.
-    custom = spec.pop("custom_image", None)
-    if not custom and isinstance(docker_conf.get("image_by_arch"), dict):
-        worker = await database.get_worker(worker_id) or {}
-        arch = _safe_json(worker.get("system_info", "{}"), {}).get("arch")
-        image = _image_for_arch(docker_conf, arch)
-        if image:
-            spec = {**spec, "image": image}
+    spec = await _image_for_worker(worker_id, slug, spec)
     if approve:
         # After the image is final: the approval covers the spec as sent.
         spec = await _approve_spec(worker_id, slug, spec)
     return await _proxy_to_worker(
         worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
+
+
+async def _image_for_worker(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """``spec`` with the image this worker runs, and without ``custom_image``.
+
+    Which build THIS worker runs is decided here, at the edge, from the
+    architecture in its heartbeat. The deployment record stays on the
+    catalog's default image: it is one row for the whole fleet, and a
+    Raspberry Pi's tag must not be replayed onto an x86 box.
+    A custom image is the operator's choice for this worker and is sent as is.
+    """
+    docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
+    spec = dict(spec)
+    custom = spec.pop("custom_image", None)
+    if not custom and isinstance(docker_conf.get("image_by_arch"), dict):
+        worker = await database.get_worker(worker_id) or {}
+        arch = _safe_json(worker.get("system_info", "{}"), {}).get("arch")
+        image = _image_for_arch(docker_conf, arch)
+        if image:
+            spec["image"] = image
+    return spec
+
+
+async def _proxy_worker_restore(
+    worker_id: int, slug: str, spec: dict[str, Any], restore: dict[str, Any]
+) -> dict[str, Any]:
+    """Send a restore to the worker: the deploy spec, the file, its passphrase and a signed approval.
+
+    The approval is minted here, after the owner's password was checked, keyed
+    with that worker's own key and bound to this service, this worker and the
+    file's SHA-256 (step_up.restore_target); the worker recomputes the hash
+    from the bytes it gets. The passphrase goes in this one request body and
+    nowhere else.
+    """
+    spec = await _image_for_worker(worker_id, slug, spec)
+    worker = await database.get_worker(worker_id) or {}
+    client_id = worker.get("client_id") or ""
+    key = await _confirmed_worker_key(client_id)
+    if not key:
+        raise HTTPException(
+            status_code=409,
+            detail="This worker has not finished enrolling, so it cannot check a password confirmation. "
+            "Wait for its next heartbeat and try again.",
+        )
+    target = step_up.restore_target(slug, client_id, restore["sha256"])
+    body = {
+        **spec,
+        "bundle_b64": restore["bundle_b64"],
+        "passphrase": restore["passphrase"],
+        "approval": step_up.sign(key, step_up.ACTION_RESTORE, target),
+    }
+    # The worker pulls the image, creates the container and writes and reads
+    # the backup back before it answers; a deploy's time plus the copy.
+    result = await _proxy_to_worker(
+        worker_id, "POST", f"/api/containers/{slug}/restore", json=body, timeout=_deploy_timeout(slug) + 120
+    )
+    # The worker restored it: whatever fails after this, the restore happened.
+    restore["answered"] = True
+    restore["state_id"] = result.get("state_id") if isinstance(result, dict) else None
+    return result
 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50, instance: int = 1) -> dict[str, str]:
@@ -8038,6 +8129,15 @@ async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
     if not isinstance(fingerprint, str) or not fingerprint:
         fingerprint = payout_registry.state_ids(box["workers"]).get((worker_id, slug))
     await database.confirm_state_backup(slug, worker_id, fingerprint, "export")
+    try:
+        # A restore of this file needs no typed confirmation: this CashPilot made it.
+        digest = hashlib.sha256(base64.b64decode(bundle, validate=True)).hexdigest()
+        here = database.backup_origin(worker_id, fingerprint)
+        # A node this box got from a restore keeps the origin it had: one node, one origin.
+        origin = await database.backup_lineage(slug, worker_id, here) or here
+        await database.record_backup(slug, worker_id, digest, "export", origin, here)
+    except Exception:  # noqa: BLE001 - the file is good; only the ledger row is missing
+        logger.warning("Could not record the backup of %s from worker %s in the ledger", slug, worker_id, exc_info=True)
     box_name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(box["name"])).strip("-") or str(worker_id)
     return {
         "filename": f"cashpilot-{slug}-{box_name}-{datetime.now(UTC):%Y%m%d}.cpbackup",
@@ -9830,7 +9930,12 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
         copy = f"copy {instance}"
     else:
         copy = ""
-    label = "Node identity" if row.get("kind") == "node" else labels.get(slug, {}).get(row["name"], row["name"])
+    if row.get("kind") == "node":
+        label = "Node identity"
+    elif row.get("kind") == "backup":
+        label = "Backup file (SHA-256)"
+    else:
+        label = labels.get(slug, {}).get(row["name"], row["name"])
     return {
         "id": row["id"],
         "slug": slug,
@@ -9938,6 +10043,449 @@ async def api_identity_reuse(
         view["in_use_on"] = await _worker_names(in_use)
         offers.append(view)
     return offers
+
+
+# ---------------------------------------------------------------------------
+# Restore from a backup file (issue #741; docs/backup.md)
+#
+# Two steps, so the file never travels with the secrets and the owner sees what
+# will happen first. POST /api/restore/upload streams the .cpbackup into a
+# private file under the data folder, capped, and answers what the restore
+# would create where. POST /api/restore then takes the passphrase and the
+# owner's password for that one file on one worker, and the worker does the
+# rest (worker_api.api_restore). The file is deleted once used, or after
+# RESTORE_UPLOAD_TTL. Only the plaintext-free bundle is ever on this disk.
+# ---------------------------------------------------------------------------
+
+#: The largest file the dashboard takes: the worker's export cap
+#: (orchestrator.MAX_BACKUP_BYTES, 64 MB) plus room for the header and the
+#: encryption. Anything bigger was not made by an export.
+RESTORE_UPLOAD_MAX = 65 * 1024 * 1024
+#: How long an uploaded file waits for its restore before it is deleted.
+RESTORE_UPLOAD_TTL = 15 * 60
+#: Files waiting at once, for the whole installation.
+RESTORE_UPLOAD_MAX_PENDING = 4
+#: The longest header a bundle may declare; the real one is a few hundred bytes.
+_RESTORE_HEADER_MAX = 64 * 1024
+
+_restore_uploads: dict[str, dict[str, Any]] = {}
+#: SHA-256 of the file a restore is sending now. One restore at a time for the
+#: whole installation: two exports of one node are two files, and a second
+#: restore checked while the first is between its check and its ledger row
+#: could otherwise put that node on two boxes.
+_restore_inflight: set[str] = set()
+#: Paths of uploads still streaming in, which the sweep must not delete.
+_restore_receiving: set[str] = set()
+
+
+def _restore_dir() -> str:
+    return os.path.join(str(database.DB_DIR), "restore-uploads")
+
+
+def _restore_forget(upload_id: str) -> None:
+    entry = _restore_uploads.pop(upload_id, None)
+    path = entry["path"] if entry else os.path.join(_restore_dir(), upload_id)
+    with contextlib.suppress(OSError):
+        os.remove(path)
+
+
+def _restore_sweep() -> None:
+    """Delete expired uploads, and any file in the folder this process does not know (one from before a restart)."""
+    now = time.time()
+    for upload_id, entry in list(_restore_uploads.items()):
+        if now - entry["created"] > RESTORE_UPLOAD_TTL or not os.path.exists(entry["path"]):
+            _restore_forget(upload_id)
+    known = {entry["path"] for entry in _restore_uploads.values()} | _restore_receiving
+    try:
+        names = os.listdir(_restore_dir())
+    except OSError:
+        return
+    for name in names:
+        path = os.path.join(_restore_dir(), name)
+        if path not in known:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+
+
+def _restore_service(slug: Any) -> tuple[dict[str, Any], dict[str, str]]:
+    """The catalog service a backup file is for, and its critical target -> volume map. 400 otherwise."""
+    svc = catalog.get_service(slug) if isinstance(slug, str) else None
+    if not svc or svc.get("custom"):
+        raise HTTPException(status_code=400, detail="This backup is not of a service in this CashPilot's catalog.")
+    docker_conf = svc.get("docker") or {}
+    targets = state_backup.restore_volumes(docker_conf)
+    if not targets:
+        name = svc.get("name") or slug
+        if docker_conf.get("critical_volumes"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{name} keeps its state in a host folder (or more than an export can hold), so the "
+                "dashboard cannot restore it. Use the command line steps in the backup guide.",
+            )
+        raise HTTPException(status_code=400, detail=f"{name} keeps nothing a backup restores.")
+    return svc, targets
+
+
+def _read_bundle_header(path: str) -> dict[str, Any]:
+    """The bundle's header, read from the start of the file only."""
+    with open(path, "rb") as fh:
+        start = fh.read(4)
+        length = int.from_bytes(start, "big") if len(start) == 4 else 0
+        if not 0 < length <= _RESTORE_HEADER_MAX:
+            raise state_backup.BackupError("Not a CashPilot backup bundle.")
+        return state_backup.read_header(start + fh.read(length))
+
+
+async def _runs_on(slug: str, worker_id: int, workers: list[dict[str, Any]]) -> bool:
+    """Whether ``slug`` has a container on ``worker_id``: in its last report, or in a deploy record."""
+    if any(row["worker_id"] == worker_id for row in placement.runs_on(workers).get(slug, [])):
+        return True
+    return await database.get_deployment_spec(slug, worker_id=worker_id) is not None
+
+
+async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
+    """What a restore of this upload would create, where it may go, and what is known about the file.
+
+    Where the file was made comes only from this CashPilot's ledger, never from
+    the file's own header: anyone with the passphrase can write a header. The
+    identity counts as live on a box where the ledger puts this file, or any
+    other file of the same origin (another export of the same node), and the
+    box runs the service; on the box it was exported from, only while the box
+    still runs that same state; and on a box a restore of it was sent to with
+    no answer yet, running or not. The header is used only to refuse more: a
+    file the ledger does not know (made before it) names its box there, and
+    when that box runs the service now, the file may hold the very identity it
+    runs. Sets ``entry["origin"]``, which a restore of it records.
+
+    One node keeps one origin however often it moved: an export from a box
+    whose node came from a restore takes that restore's origin
+    (database.backup_lineage). An export or a restore row holds the identity
+    on its box only while the box still runs the volume it named.
+    """
+    slug = entry["slug"]
+    svc, targets = _restore_service(slug)
+    workers = await database.list_workers()
+    names = {w["id"]: str(w.get("name") or f"worker {w['id']}") for w in workers}
+    running = [w["id"] for w in workers if await _runs_on(slug, w["id"], workers)]
+    own = [r for r in await database.backup_records(entry["sha256"]) if r["slug"] == slug]
+    origins = {r["origin"] for r in own if r["origin"]}
+    linked = await database.backup_records(entry["sha256"], slug, origins) if origins else own
+    entry["origin"] = min(origins) if origins else None
+    shown = {"export": "made here", "restore": "restored here", "pending": "restore sent here, no answer yet"}
+    history = [
+        {
+            "what": shown.get(r["source"], r["source"])
+            if r["file"]
+            else f"another backup of this node {shown.get(r['source'], r['source'])}",
+            "worker": names.get(r["worker_id"], f"a removed worker (#{r['worker_id']})"),
+            "when": r["first_seen"],
+        }
+        for r in linked
+    ]
+    states = payout_registry.state_ids(workers)
+    live_ids: set[int] = set()
+    for r in linked:
+        w = r["worker_id"]
+        if w not in names:
+            continue
+        if r["source"] == "pending":
+            # The worker may still finish it, and a box still pulling the image
+            # reports no container yet.
+            live_ids.add(w)
+        elif w in running:
+            now = states.get((w, slug))
+            if r["here"] and now and r["here"] != database.backup_origin(w, now):
+                continue  # that box runs another volume now: a node made since, not this one
+            live_ids.add(w)
+    if not any(r["source"] != "pending" for r in own):
+        live_ids |= {w for w in running if names[w] == entry.get("made_on")}
+    live = sorted(live_ids, key=lambda w: names[w])
+    boxes = []
+    for w in workers:
+        info = placement.system_info(w)
+        if placement.is_android(info) or placement.is_desktop(info):
+            continue
+        why = ""
+        if w.get("status") != "online":
+            why = "offline"
+        elif "state_restore" not in await _worker_features(w["id"]):
+            why = "its worker is too old to restore; update it"
+        elif w["id"] in running:
+            why = f"it already runs {svc.get('name') or slug}"
+        elif elsewhere := [names[x] for x in live if x != w["id"]]:
+            why = f"this identity already runs on {', '.join(elsewhere)}"
+        boxes.append(
+            {
+                "id": w["id"],
+                "name": names[w["id"]],
+                "ok": not why,
+                "why": why,
+                # The passphrase travels to the worker in this request.
+                "plain_http": str(w.get("url") or "").lower().startswith("http://"),
+            }
+        )
+    return {
+        "upload_id": entry["id"],
+        "slug": slug,
+        "service": svc.get("name") or slug,
+        "bytes": entry["size"],
+        "sha256": entry["sha256"],
+        "known": any(r["source"] != "pending" for r in own),
+        "history": history,
+        "live_on": [names[w] for w in live],
+        "live_ids": live,
+        # Where the service runs now, whatever the file holds: named for a file
+        # this CashPilot does not know, which may be a backup of one of them.
+        "runs_on": sorted(names[w] for w in running),
+        "container": f"{constants.CONTAINER_PREFIX}{slug}",
+        "creates": [{"target": t, "volume": v} for t, v in sorted(targets.items())],
+        "workers": boxes,
+    }
+
+
+@app.post("/api/restore/upload")
+async def api_restore_upload(request: Request) -> dict[str, Any]:
+    """Take a .cpbackup file (the raw request body) and say what restoring it would do. Owner, signed in, only.
+
+    Streamed to a private file and counted as it arrives: more than
+    RESTORE_UPLOAD_MAX is refused without being kept. A file sealed to a key
+    is refused here, before any secret is asked for: its private key never
+    goes through the dashboard.
+    """
+    user = _require_owner_session(request)
+    _restore_sweep()
+    if len(_restore_uploads) >= RESTORE_UPLOAD_MAX_PENDING:
+        raise HTTPException(status_code=429, detail="Too many backup files are waiting. Try again in a few minutes.")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > RESTORE_UPLOAD_MAX:
+        raise HTTPException(status_code=413, detail="This file is larger than any backup CashPilot makes.")
+    os.makedirs(_restore_dir(), mode=0o700, exist_ok=True)
+    upload_id = secrets.token_urlsafe(18)
+    path = os.path.join(_restore_dir(), upload_id)
+    digest = hashlib.sha256()
+    size = 0
+    _restore_receiving.add(path)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > RESTORE_UPLOAD_MAX:
+                    raise HTTPException(status_code=413, detail="This file is larger than any backup CashPilot makes.")
+                digest.update(chunk)
+                fh.write(chunk)
+        header = _read_bundle_header(path)
+        if header.get("mode") != state_backup.MODE_PASSPHRASE:
+            raise HTTPException(
+                status_code=400,
+                detail="This file is sealed to a key, not a passphrase. Its private key never goes through the "
+                "dashboard: restore it with the command line steps in the backup guide.",
+            )
+        slug = (header.get("metadata") or {}).get("slug")
+        made_on = (header.get("metadata") or {}).get("worker")
+        _restore_service(slug)
+    except state_backup.BackupError as exc:
+        with contextlib.suppress(OSError):
+            os.remove(path)
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(path)
+        raise
+    finally:
+        _restore_receiving.discard(path)
+    entry = {
+        "id": upload_id,
+        "path": path,
+        "uid": user.get("uid"),
+        "slug": slug,
+        "size": size,
+        "sha256": digest.hexdigest(),
+        "made_on": made_on if isinstance(made_on, str) else None,
+        "created": time.time(),
+    }
+    _restore_uploads[upload_id] = entry
+    return await _restore_preview(entry)
+
+
+#: Refusals the step-up itself writes to the audit table (deps.require_step_up),
+#: or that only ask for the password; the restore route does not write them twice.
+_STEP_UP_ERRORS = frozenset({"step_up_required", "step_up_failed", "step_up_api_key"})
+
+
+@app.post("/api/restore")
+async def api_restore(request: Request) -> dict[str, Any]:
+    """Restore an uploaded backup file into a new container on one worker. Owner, signed in, with the password.
+
+    Refused when the service already has a container on that worker (export
+    it, remove it with its data, then restore), and when the file's identity
+    already runs on another box per the ledger, naming that box. A file this
+    CashPilot did not make needs the service's name typed. Every attempt and
+    outcome is an audit row. The passphrase is passed to the worker in this one
+    request and kept nowhere; the uploaded file is deleted once the restore
+    was tried. To a worker on plain HTTP only with ``allow_plain_http``, the
+    owner's yes to the passphrase crossing the network unencrypted. One
+    restore at a time (_restore_inflight).
+    """
+    user = _require_owner_session(request)
+    body = await _json_object(request)
+    _restore_sweep()
+    upload_id = body.get("upload_id")
+    entry = _restore_uploads.get(upload_id) if isinstance(upload_id, str) else None
+    if not entry or entry["uid"] != user.get("uid"):
+        raise HTTPException(status_code=404, detail="That backup file is no longer here. Choose it again.")
+    sha = entry["sha256"]
+    if _restore_inflight:
+        worker_id = body.get("worker_id")
+        detail = "A backup is already being restored. Wait for that restore to end, then try again."
+        await _audit(
+            "restore",
+            f"{entry['slug']}|worker {worker_id}|{sha[:16]}",
+            "refused",
+            actor=user,
+            worker_id=worker_id if isinstance(worker_id, int) and not isinstance(worker_id, bool) else None,
+            detail=detail,
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    _restore_inflight.add(sha)
+    try:
+        return await _restore_upload(request, user, body, entry)
+    finally:
+        _restore_inflight.discard(sha)
+
+
+async def _restore_upload(
+    request: Request, user: dict[str, Any], body: dict[str, Any], entry: dict[str, Any]
+) -> dict[str, Any]:
+    """api_restore for one file, while it is marked in flight."""
+    slug, sha = entry["slug"], entry["sha256"]
+    worker_id = body.get("worker_id")
+    target = f"{slug}|worker {worker_id}|{sha[:16]}"
+    consumed = False
+    try:
+        if isinstance(worker_id, bool) or not isinstance(worker_id, int):
+            raise HTTPException(status_code=400, detail="worker_id must be a number.")
+        preview = await _restore_preview(entry)
+        box = next((w for w in preview["workers"] if w["id"] == worker_id), None)
+        if box is None:
+            raise HTTPException(status_code=404, detail="No such worker, or it cannot run containers.")
+        elsewhere = [n for i, n in zip(preview["live_ids"], preview["live_on"], strict=True) if i != worker_id]
+        if elsewhere:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This backup's identity already runs on {', '.join(elsewhere)}. Two boxes on one "
+                "identity look to the provider like one node, which it may merge or ban. Remove the service "
+                "there first; if that box is gone for good, delete it on the Fleet page. If you know it runs "
+                "another node now, Forget this backup's rows for it under Settings, Device ids.",
+            )
+        if not box["ok"]:
+            raise HTTPException(status_code=409, detail=f"Cannot restore on {box['name']}: {box['why']}.")
+        if box["plain_http"] and body.get("allow_plain_http") is not True:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "restore_plain_http",
+                    "message": f"{box['name']} is reached over plain HTTP, so the passphrase would cross your "
+                    "network unencrypted. Tick the box that accepts this, or give that worker an HTTPS address.",
+                },
+            )
+        if not preview["known"]:
+            typed = str(body.get("confirm_name") or "").strip().casefold()
+            if typed not in {preview["service"].casefold(), slug.casefold()}:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "restore_confirm_required",
+                        "message": "This CashPilot did not make this file, so it cannot tell whose identity or "
+                        f"wallet is inside. Type {preview['service']} to restore it anyway.",
+                    },
+                )
+        passphrase = body.get("passphrase")
+        if not isinstance(passphrase, str) or not passphrase:
+            raise HTTPException(status_code=400, detail="Enter the passphrase the backup was made with.")
+        password = body.get("step_up_password")
+        if not isinstance(password, str) or not password:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "step_up_required",
+                    "message": f"Restoring {preview['service']} on {box['name']} puts a node identity or wallet "
+                    "there. Enter your password to continue.",
+                },
+            )
+        await require_step_up(request, password, action=step_up.ACTION_RESTORE, target=target)
+        consumed = True
+        with open(entry["path"], "rb") as fh:
+            bundle = fh.read(RESTORE_UPLOAD_MAX + 1)
+        if hashlib.sha256(bundle).hexdigest() != sha:
+            raise HTTPException(status_code=409, detail="The uploaded file changed on disk. Choose it again.")
+        # Written before anything is sent, and kept unless the restore surely did
+        # not happen there: a worker that gets it may finish it whatever the
+        # dashboard sees (no answer, a dropped connection, this process gone),
+        # and until then it reports no container. While the row is 'pending'
+        # a restore of this node on any other box is refused.
+        pending = await database.record_backup(slug, worker_id, sha, "pending", entry.get("origin"))
+        restore = {"sha256": sha, "bundle_b64": base64.b64encode(bundle).decode("ascii"), "passphrase": passphrase}
+        del bundle, passphrase
+        try:
+            result = await _deploy(
+                slug, DeployRequest(image="", instances=1), worker_id, request=request, restore=restore
+            )
+        except BaseException as exc:
+            answered = restore.get("answered") is True
+            # Refused before it was sent, or by the worker itself, which undoes a
+            # failed restore before it answers. Anything else may have happened.
+            refused = isinstance(exc, HTTPException) and not isinstance(exc, WorkerNoAnswer) and not answered
+            if answered or refused:
+                with contextlib.suppress(Exception):
+                    landed = database.backup_origin(worker_id, restore.get("state_id"))
+                    await database.settle_backup(pending, applied=answered, here=landed)
+            raise
+        finally:
+            # The volume the restore created, which an export from it later inherits the origin by.
+            landed = database.backup_origin(worker_id, restore.get("state_id"))
+            restore.clear()
+        del restore
+        try:
+            await database.settle_backup(pending, applied=True, here=landed)
+            # An earlier try of this file on this box that got no answer is settled by this one.
+            for row in await database.backup_records(sha):
+                if row["source"] == "pending" and row["worker_id"] == worker_id and row["id"] != pending:
+                    await database.settle_backup(row["id"], applied=False)
+        except Exception:  # noqa: BLE001 - the row stays 'pending', which refuses as much
+            logger.warning("Could not record the restore of %s on worker %s", slug, worker_id, exc_info=True)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {"message": exc.detail}
+        if detail.get("error") not in _STEP_UP_ERRORS:
+            outcome = "failed" if consumed else "refused"
+            await _audit(
+                "restore",
+                target,
+                outcome,
+                actor=user,
+                worker_id=worker_id if isinstance(worker_id, int) else None,
+                detail=str(detail.get("message") or "")[:300],
+            )
+        raise
+    except Exception:
+        await _audit(
+            "restore", target, "failed", actor=user, worker_id=worker_id if isinstance(worker_id, int) else None
+        )
+        raise
+    finally:
+        if consumed:
+            _restore_forget(entry["id"])
+    restored = result.get("restored") or {}
+    await _audit(
+        "restore",
+        target,
+        "restored",
+        actor=user,
+        worker_id=worker_id,
+        detail=f"{restored.get('files')} files; {'started' if restored.get('started') else 'waits for the LAN fence'}"
+        + ("; passphrase sent over plain HTTP, as the owner accepted" if box["plain_http"] else ""),
+    )
+    return {"status": "restored", "service": preview["service"], "worker": box["name"], **restored}
 
 
 # ---------------------------------------------------------------------------
