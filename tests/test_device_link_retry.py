@@ -165,7 +165,10 @@ def test_after_a_day_it_gives_up_and_tells_the_user(db):
         _exit(stack)
     assert row["gave_up"] == 1
     notice = [a for a in alerts if a.get("subject") == "proxyrack"]
-    assert notice and UUID in notice[0]["message"] and "Add device" in notice[0]["message"]
+    # Stored and pushed off-box, so the device is named by a masked suffix and
+    # its full id waits in the owner's bell (the next collection puts it there).
+    assert notice and "...ABAB" in notice[0]["message"] and UUID not in notice[0]["message"]
+    assert "notification bell" in notice[0]["message"]
 
 
 def test_a_given_up_device_is_not_tried_again(db):

@@ -274,6 +274,12 @@ an architecture the provider does not publish.
   `venatum/earnapp`).
 - The dashboard marks such an instance **custom image** and judges "update available" against
   the image you chose, not the catalog's.
+- A service that keeps a wallet or a node identity (ProxyBase Markets, Mysterium, Storj, Anyone
+  Protocol, Sia) asks for your password again before it runs another image, on every deploy and
+  redeploy that uses one. The image would run on that volume and could copy or replace what is
+  in it. The admin API key cannot confirm with a password, so it cannot do this at all. Mysterium
+  runs only its catalog image, password or not. See
+  [Irreplaceable state](security-defaults.md#irreplaceable-state).
 
 To run an image the catalog does not list at all, add it as a
 [custom service](custom-services.md) instead.

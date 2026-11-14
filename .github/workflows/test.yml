@@ -115,6 +115,11 @@ jobs:
       - name: Phone apps on the dashboard
         run: node scripts/phone_copy_check.mjs
 
+      # The password step-up prompt is one shared modal: two prompts at once
+      # must each get their own answer, and closing one must not cancel the next.
+      - name: Step-up prompt queue
+        run: node scripts/step_up_prompt_check.mjs
+
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the
       # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`

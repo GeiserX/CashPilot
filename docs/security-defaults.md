@@ -65,6 +65,21 @@ Some services keep state that cannot be recovered if it is destroyed: there is n
 
 These are declared as `critical_volumes` in the service catalog. CashPilot refuses to delete them, and tells you what would have been lost rather than just saying no.
 
+The same declaration keeps each of them with its own service. The worker checks every deploy, whichever way it arrives (the dashboard, the raw `/api/workers/{id}/command` route, a redeploy that keeps the old container's mounts):
+
+- **Only the owning service mounts it.** Any other container that names the volume (`proxybase-data`, `mysterium-data`, ...) or a host folder a critical service has mounted at a critical path, a folder inside it or a folder above it, is refused with `critical_volume_mount`.
+- **Only as the catalog runs it.** The image is the catalog's: the same repository, and the same tag and digest wherever the catalog pins one. The command is the catalog's, filled from the env, and a value cannot add arguments to it. The env sets only keys the catalog declares, so nothing like `LD_PRELOAD` or a wallet-import variable gets in. Each mount lands only where the catalog mounts something, so no volume covers the image's own programs. The catalog's own image with a shell as its command could read the wallet as easily as another image, which is why all four count.
+- **Anything else needs the owner's password**, typed again at the deploy. The UI then sends the worker a signed approval for that exact container: the service, the image, and a hash of the command, the env and the mounts. It is valid for five minutes, the worker takes it once, and it is keyed with that worker's own fleet key. So a stolen session, the admin API key or the shared fleet key cannot produce one, and the raw command route drops any approval it is given. A worker that has not finished enrolling accepts none.
+- **A UI and a worker on different releases** can disagree on the pinned image or the command after a catalog update. The worker then asks for the password and says to update the worker; confirming the password deploys the UI's version anyway.
+
+Each confirmation counts against two sign-in limits, then answers 429. One is per user: 5 wrong passwords in 5 minutes. The other is per address and shared with sign-in: 30 tries in 5 minutes, and a right password counts here too. Each deploy to a worker asks once, so confirming a custom image on more than about 25 workers in 5 minutes runs into the second limit.
+
+Two limits. A host folder is known to be critical only while a container of its service exists, and only by the path Docker reports: a symlink to it, or a folder left behind by a removed container, is not seen. Proxied copies cannot mount volumes at all, so they never reach the wallet.
+
+### Audit log
+
+Each password confirmation (confirmed, wrong password, or refused because an API key asked), each deploy a worker refused under these rules, each reveal of the fleet key, and each deletion of a critical volume writes one row to the `audit_events` table. `GET /api/audit?limit=100` lists the newest rows, owner only. Rows are kept as long as earnings (400 days). They never hold a secret or an environment value.
+
 ## Backing up the encryption key
 
 Your credentials are only as recoverable as `/data/.fernet_key`. Lose it and you re-enter everything, because there is no way to decrypt the stored values without it.

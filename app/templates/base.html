@@ -249,6 +249,29 @@
       </div>
     </div>
   </div>
+
+  <!-- Password step-up (app/step_up.py): asked before an action that can take a wallet or identity. -->
+  <div class="modal-overlay" id="stepup-modal">
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="stepup-title">
+      <div class="modal-header">
+        <h3 class="modal-title" id="stepup-title">Confirm with your password</h3>
+        <button class="modal-close" id="stepup-close" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p id="stepup-message"></p>
+        <div class="form-group">
+          <label class="form-label" for="stepup-password">Password</label>
+          <input class="form-input" type="password" id="stepup-password" autocomplete="current-password">
+        </div>
+        <div class="modal-actions modal-actions-end">
+          <button class="btn btn-ghost" id="stepup-cancel">Cancel</button>
+          <button class="btn btn-primary" id="stepup-submit">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
   {% endif %}
 
   {% if user %}

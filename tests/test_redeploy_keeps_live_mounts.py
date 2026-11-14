@@ -197,8 +197,13 @@ def _mysterium_spec():
     from app import catalog
 
     docker = catalog.get_service("mysterium")["docker"]
+    # As the UI sends it: the catalog's command, filled from the env. The worker
+    # refuses anything else on a service with an identity volume.
+    env = {"UI_ADDRESS": "127.0.0.1", "UDP_PORTS": "10000:10100"}
     return {
         "image": docker["image"],
+        "env": env,
+        "command": docker["command"].replace("${UDP_PORTS}", env["UDP_PORTS"]),
         "volumes": CATALOG_VOLUMES,
         "network_mode": docker.get("network_mode"),
         "cap_add": docker["cap_add"],
