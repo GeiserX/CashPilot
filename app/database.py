@@ -2177,6 +2177,25 @@ async def list_deployment_placements() -> list[dict[str, Any]]:
         await db.close()
 
 
+async def list_worker_specs(slug: str | None = None) -> list[dict[str, Any]]:
+    """Every per-worker deploy record, of ``slug`` or of every service, decoded: slug, worker_id, spec (or None)."""
+    db = await _get_db()
+    try:
+        query = "SELECT slug, worker_id, spec_encrypted FROM deployment_specs"
+        cursor = await (
+            db.execute(f"{query} WHERE slug = ? ORDER BY worker_id", (slug,))
+            if slug is not None
+            else db.execute(f"{query} ORDER BY slug, worker_id")
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+    return [
+        {"slug": r["slug"], "worker_id": r["worker_id"], "spec": _decode_spec(r["spec_encrypted"] or "", r["slug"])}
+        for r in rows
+    ]
+
+
 async def forget_deployment(slug: str) -> None:
     """Drop every record of ``slug`` being deployed: the fleet row and each box's."""
     await remove_deployment(slug)

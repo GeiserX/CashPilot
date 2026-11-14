@@ -253,6 +253,10 @@ def worker(monkeypatch):
     monkeypatch.setattr(worker_api.orchestrator, "service_instances", MagicMock(return_value=[]))
     monkeypatch.setattr(worker_api, "_validate_runtime", lambda runtime: None)
     monkeypatch.setattr(worker_api.lan_fence, "refresh_outside", lambda: None)
+    # No proxied copy on this box, unless a test says so.
+    docker = MagicMock()
+    docker.containers.get.side_effect = NotFound("no such container")
+    monkeypatch.setattr(worker_api.orchestrator, "_get_client", lambda: docker)
     client = TestClient(worker_api.app, raise_server_exceptions=False)
     headers = {"Authorization": f"Bearer {WORKER_KEY}"}
 
@@ -260,6 +264,7 @@ def worker(monkeypatch):
         return client.request(method, path, json=body, headers=headers, **kwargs)
 
     call.deployed = deployed
+    call.docker = docker
     return call
 
 
@@ -290,6 +295,32 @@ class TestTheWorkerDeployRoute:
         route_gate.mark("honeygain", 3)
         resp = worker("POST", "/api/containers/honeygain/deploy", {**BODY, "route_approval": approval})
         assert resp.status_code == 403 and _detail(resp)["error"] == "step_up_rejected"
+
+    def test_leaving_the_route_is_refused_while_its_routed_copy_still_runs(self, worker):
+        """A routed redeploy that ran between the UI's remove and this deploy put the copy back.
+
+        Deployed direct beside it, the same account would run from the box's IP and the proxy's.
+        """
+        route_gate.mark("honeygain", 3)
+        copy = MagicMock()
+        copy.name = proxy_tunnel.earner_name("honeygain", 3)
+        copy.labels = {LABEL_MANAGED: "true", "cashpilot.service": "honeygain", "cashpilot.proxy": "3"}
+        worker.docker.containers.get.side_effect = None
+        worker.docker.containers.get.return_value = copy
+        approval = step_up.sign(WORKER_KEY, step_up.ACTION_LEAVE_ROUTE, "honeygain")
+        resp = worker("POST", "/api/containers/honeygain/deploy", {**BODY, "route_approval": approval})
+        assert resp.status_code == 409, resp.text
+        assert copy.name in _detail(resp)
+        assert worker.deployed == [] and route_gate.routed() == {"honeygain": 3}
+        worker.docker.containers.get.assert_called_with(copy.name)
+
+    def test_leaving_the_route_when_the_copy_cannot_be_looked_up_deploys_nothing(self, worker):
+        route_gate.mark("honeygain", 3)
+        worker.docker.containers.get.side_effect = RuntimeError("docker is down")
+        approval = step_up.sign(WORKER_KEY, step_up.ACTION_LEAVE_ROUTE, "honeygain")
+        resp = worker("POST", "/api/containers/honeygain/deploy", {**BODY, "route_approval": approval})
+        assert resp.status_code == 503, resp.text
+        assert worker.deployed == [] and route_gate.routed() == {"honeygain": 3}
 
     @pytest.mark.parametrize(
         "approval",
@@ -776,6 +807,42 @@ class TestTheUiDeploysARoute:
         error = _run(go)
         assert error.status_code == 409 and "too old" in str(error.detail)
         assert ui.calls == []
+
+
+class TestTheRouteBoxFollowsTheRecord:
+    """svc.routes tells the Route box what a deploy with no route does: api_deploy keeps the recorded route."""
+
+    def _routes(self, ui, heard):
+        async def read():
+            with ui.active(patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=heard))):
+                detail = await main.api_get_service(_request(), "honeygain")
+                listed = {s["slug"]: s for s in await main.api_services_available(_request())}
+            return detail["routes"], listed["honeygain"]["routes"]
+
+        return read()
+
+    def test_a_recorded_route_the_box_has_not_reported_yet_is_kept(self, db):
+        """A routed deploy that timed out keeps its record: Keep redeploys it routed, so the box offers Keep."""
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            return pid, await self._routes(ui, [])
+
+        pid, (detail, listed) = _run(go)
+        assert detail == listed == {"1": pid}
+
+    def test_a_route_only_the_heartbeat_reports_is_not_offered_as_kept(self, db):
+        """With no record a deploy with no route goes direct and asks for the password, so the box says Direct."""
+        ui = _Ui()
+        heard = [{"slug": "honeygain", "_worker_id": 1, "_node": "box", "route": {"proxy_id": 3}}]
+
+        async def go():
+            return await self._routes(ui, heard)
+
+        detail, listed = _run(go)
+        assert detail == listed == {}
 
 
 class TestTheUiLeavesARouteOnlyWithThePassword:

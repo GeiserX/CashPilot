@@ -1895,9 +1895,10 @@ const CP = (() => {
 
   // The deploy form's Route box: the box's own IP, or one of the owner's
   // proxies. Filled once the proxy list arrives (owner only). A service the
-  // catalog cannot route says why instead. Where it already runs through a
-  // proxy (svc.routes), the first choice keeps that route and Direct is its
-  // own choice, which leaves the route with the owner's password.
+  // catalog cannot route says why instead. Where it is recorded as routed
+  // (svc.routes, what a deploy with no route keeps), the first choice keeps
+  // that route and Direct is its own choice, which leaves the route with the
+  // owner's password.
   function routeChoiceSection(svc) {
     const slug = escapeHtml(svc.slug);
     if (svc.route_refusal) {

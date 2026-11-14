@@ -820,6 +820,30 @@ class TestReattach:
         net.connect.assert_called_once_with(c)
         c.start.assert_not_called()
 
+    @pytest.mark.parametrize(("rule", "service"), [("proxied_only", "proxy-tunnel"), ("routed", "honeygain")])
+    def test_a_tunnel_is_moved_and_started_whatever_the_route_gate_says(self, rule, service, tmp_path, monkeypatch):
+        """A tunnel is what keeps routed earners off the box's own IP; nothing else starts a stopped one.
+
+        A legacy pair's tunnel carries its copy's slug, which can also be routed through another proxy.
+        """
+        from app import route_gate
+        from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, ROLE_TUNNEL
+
+        monkeypatch.setattr(route_gate, "ROUTED_MARKER", str(tmp_path / ".routed"))
+        if rule == "proxied_only":
+            monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        else:
+            monkeypatch.delenv(route_gate.PROXIED_ONLY_ENV, raising=False)
+            route_gate.mark(service, 5)
+        net = _network()
+        tunnel = _orphan("cashpilot-tunnel-p3", "old-id", error=self.GONE)
+        tunnel.labels.update(
+            {"cashpilot.service": service, LABEL_MANAGED: "true", LABEL_ROLE: ROLE_TUNNEL, LABEL_PROXY: "3"}
+        )
+        assert lan_fence.reattach(_docker(net, earners=[tunnel]), net) == ["cashpilot-tunnel-p3"]
+        net.connect.assert_called_once_with(tunnel)
+        tunnel.start.assert_called_once()
+
     def test_a_fence_gated_one_is_moved_but_left_to_the_guard(self):
         net = _network()
         c = _orphan("cashpilot-mysterium", "old-id", error=self.GONE)

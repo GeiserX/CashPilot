@@ -599,6 +599,12 @@ def _routed_here(slug: str, proxy_id: int) -> bool:
         ) from None
 
 
+def copy_name(slug: str, proxy_id: int) -> str | None:
+    """The name of the copy of ``slug`` through ``proxy_id`` on this worker, or None. Raises when Docker cannot answer."""
+    earner = _get(orchestrator._get_client(), earner_name(slug, proxy_id))
+    return earner.name if _is_ours(earner, slug, proxy_id) else None
+
+
 def _hostname(name: str) -> str:
     return name.removeprefix(CONTAINER_PREFIX)[:63]
 

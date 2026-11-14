@@ -2102,6 +2102,29 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+def _refuse_beside_routed_copy(slug: str) -> None:
+    """Refuse leaving the route while the routed copy of ``slug`` still exists.
+
+    The UI removes that copy before it sends the direct deploy, but a routed
+    redeploy that ran in between puts it back; deployed direct beside it, the
+    same account would run from the box's own IP and from the proxy's.
+    """
+    try:
+        proxy_id = route_gate.routed().get(slug)
+        copy = proxy_tunnel.copy_name(slug, proxy_id) if proxy_id is not None else None
+    except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not check whether {slug} still runs through a proxy on this worker ({exc}); nothing changed",
+        ) from None
+    if copy:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{slug} still runs through proxy {proxy_id} on this worker ({copy}). Remove that copy first, "
+            "then deploy it direct; nothing changed",
+        )
+
+
 def _deploy_direct(**kwargs: Any) -> str:
     """orchestrator.deploy_raw, and with an approval to leave the route, forget the route in the same lock.
 
@@ -2110,6 +2133,8 @@ def _deploy_direct(**kwargs: Any) -> str:
     """
     slug = kwargs["slug"]
     with route_gate.deploying(slug):
+        if kwargs.get("leave_route"):
+            _refuse_beside_routed_copy(slug)
         container_id = orchestrator.deploy_raw(**kwargs)
         if kwargs.get("leave_route"):
             # It runs from this box's own IP now, as the owner confirmed.
@@ -2190,6 +2215,8 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         logger.warning("Deploy of %s refused by Docker: %s", slug, exc)
         reason = " ".join(str(exc.explanation or exc).split())[:300]
         raise HTTPException(status_code=409, detail=f"Docker refused the container: {reason}") from None
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")

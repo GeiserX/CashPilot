@@ -3702,6 +3702,7 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
                 worker_node_counts[slug] = set()
             worker_node_counts[slug].add(node)
 
+    recorded_routes = await _recorded_routes()
     available = []
     for svc in services:
         if svc.get("status") in _UNDEPLOYABLE_STATUSES:
@@ -3721,11 +3722,7 @@ async def api_services_available(request: Request) -> list[dict[str, Any]]:
         svc["rating_result"] = ratings.for_service(svc)
         # The wizard's Route box, as on the detail page (api_get_service).
         svc["route_refusal"] = proxies.refusal(svc)
-        svc["routes"] = {
-            str(c["_worker_id"]): (c.get("route") or {}).get("proxy_id")
-            for c in worker_containers
-            if c.get("slug") == slug and c.get("route")
-        }
+        svc["routes"] = recorded_routes.get(slug, {})
         available.append(svc)
     return available
 
@@ -3767,14 +3764,23 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     # Only catalog services are graded; a service a user added is not reviewed.
     svc["rating_result"] = ratings.for_service(None if svc.get("custom") else svc)
     # The deploy form's Route box: why it must stay direct, and the worker id ->
-    # proxy id of each box where it already runs through a proxy.
+    # proxy id of each box where it is recorded as routed.
     svc["route_refusal"] = proxies.refusal(svc)
-    svc["routes"] = {
-        str(c["_worker_id"]): (c.get("route") or {}).get("proxy_id")
-        for c in worker_containers
-        if c.get("slug") == slug and c.get("route")
-    }
+    svc["routes"] = (await _recorded_routes(slug)).get(slug, {})
     return svc
+
+
+async def _recorded_routes(slug: str | None = None) -> dict[str, dict[str, int]]:
+    """slug -> worker id -> proxy id, from the deploy records.
+
+    The record, not the heartbeat: a deploy that sends no route keeps the
+    recorded one (api_deploy), so this is what the Route box's default does.
+    """
+    found: dict[str, dict[str, int]] = {}
+    for row in await database.list_worker_specs(slug):
+        if (proxy_id := proxies.route_of(row["spec"])) is not None:
+            found.setdefault(row["slug"], {})[str(row["worker_id"])] = proxy_id
+    return found
 
 
 # ---------------------------------------------------------------------------

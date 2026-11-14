@@ -793,9 +793,14 @@ def _route_allows(client: Any, container: Any) -> bool:
     from app import route_gate
     from app.constants import LABEL_SERVICE
 
+    orchestrator = _orchestrator()
+    if orchestrator.is_proxied(container):
+        # A tunnel is what keeps a routed earner off this IP; deploy_raw strips
+        # these labels from anything that does not join one (direct_problem).
+        return True
     slug = str((getattr(container, "labels", None) or {}).get(LABEL_SERVICE) or "")
     try:
-        route_gate.check(slug, _orchestrator()._network_mode(container), client)
+        route_gate.check(slug, orchestrator._network_mode(container), client)
     except route_gate.RouteRefused as exc:
         logger.warning("Left %s stopped on the recreated %s network: %s", container.name, NETWORK_NAME, exc)
         return False
