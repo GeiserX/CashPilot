@@ -785,6 +785,28 @@ def _run(fn):
     return asyncio.run(go())
 
 
+# The concurrency tests below step two tasks through gates. A regression that
+# skips the step a gate waits for must fail the test, not hang the suite.
+WAIT = 5
+
+
+async def _within(aw, what: str):
+    """Await ``aw`` for at most WAIT seconds, failing with ``what`` never happened."""
+    try:
+        return await asyncio.wait_for(aw, WAIT)
+    except TimeoutError:
+        raise AssertionError(f"waited {WAIT}s for {what}") from None
+
+
+async def _settle(gates, tasks):
+    """Open every gate, then cancel and await any task still running, so none outlives its test."""
+    for gate in gates:
+        gate.set()
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
 class _Req:
     def __init__(self, body):
         self._body = body
@@ -1170,18 +1192,22 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
                 patch.object(main, "_proxy_worker_call", side_effect=worker_call),
             ):
-                rebuild = asyncio.create_task(main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], new))
-                await in_rebuild.wait()
-                add = asyncio.create_task(
-                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
-                )
-                # Let the add run as far as it can while the rebuild is still on the worker.
-                for _ in range(50):
-                    if add.done():
-                        break
-                    await asyncio.sleep(0.01)
-                release.set()
-                await asyncio.gather(rebuild, add)
+                tasks = [asyncio.create_task(main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], new))]
+                try:
+                    await _within(in_rebuild.wait(), "the rebuild to reach the worker")
+                    add = asyncio.create_task(
+                        main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                    )
+                    tasks.append(add)
+                    # Let the add run as far as it can while the rebuild is still on the worker.
+                    for _ in range(50):
+                        if add.done():
+                            break
+                        await asyncio.sleep(0.01)
+                    release.set()
+                    await _within(asyncio.gather(*tasks), "the rebuild and the add to finish")
+                finally:
+                    await _settle([release], tasks)
             return running, [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
 
         running, marks = _run(go)
@@ -1253,15 +1279,20 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "settle_proxied_copy_rename_pending", side_effect=settle),
                 patch.object(main, "_proxy_worker_call", side_effect=worker_call),
             ):
-                rebuild = asyncio.create_task(main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], new))
-                await in_rebuild.wait()
-                add = asyncio.create_task(
-                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
-                )
-                for _ in range(20):
-                    await asyncio.sleep(0)
-                release.set()
-                await asyncio.gather(rebuild, add)
+                tasks = [asyncio.create_task(main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], new))]
+                try:
+                    await _within(in_rebuild.wait(), "the rebuild to reach the worker")
+                    tasks.append(
+                        asyncio.create_task(
+                            main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                        )
+                    )
+                    for _ in range(20):
+                        await asyncio.sleep(0)
+                    release.set()
+                    await _within(asyncio.gather(*tasks), "the rebuild and the add to finish")
+                finally:
+                    await _settle([release, add_settled], tasks)
             return running, [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
 
         running, marks = _run(go)
@@ -1310,14 +1341,21 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "save_proxied_copy", side_effect=save),
                 patch.object(main, "_proxy_worker_call", side_effect=worker_call),
             ):
-                remove = asyncio.create_task(main.api_remove_proxied_copy(pid, 7, "honeygain", {}))
-                await in_delete.wait()
-                add = asyncio.create_task(
-                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
-                )
-                await saved.wait()
-                release.set()
-                results = await asyncio.gather(remove, add, return_exceptions=True)
+                tasks = [asyncio.create_task(main.api_remove_proxied_copy(pid, 7, "honeygain", {}))]
+                try:
+                    await _within(in_delete.wait(), "the removal to reach the worker")
+                    tasks.append(
+                        asyncio.create_task(
+                            main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                        )
+                    )
+                    await _within(saved.wait(), "the add to save its record")
+                    release.set()
+                    results = await _within(
+                        asyncio.gather(*tasks, return_exceptions=True), "the removal and the add to finish"
+                    )
+                finally:
+                    await _settle([release], tasks)
             return calls, results, await database.list_proxied_copies(pid)
 
         calls, (removed, added), rows = _run(go)
@@ -1365,21 +1403,28 @@ class TestStorageAndRoutes:
             ):
                 lock = main._proxy_copy_lock(pid, 7, "honeygain")
                 await lock.acquire()
+                held = True
                 add = asyncio.create_task(
                     main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
                 )
-                await saved.wait()
-                if change == "capped":
-                    await database.update_proxy_state(
-                        pid, {"capped_at": "2026-11-14T00:00:00+00:00", "cap_reason": "cap"}
-                    )
-                elif change == "removing":
-                    await database.set_proxied_copy_removing(pid, 7, "honeygain", True)
-                else:
-                    proxy = await database.get_proxy(pid)
-                    await database.update_proxy_definition(pid, {**proxy["definition"], "password": "NEWPASS"})
-                lock.release()
-                result = await asyncio.gather(add, return_exceptions=True)
+                try:
+                    await _within(saved.wait(), "the add to save its record")
+                    if change == "capped":
+                        await database.update_proxy_state(
+                            pid, {"capped_at": "2026-11-14T00:00:00+00:00", "cap_reason": "cap"}
+                        )
+                    elif change == "removing":
+                        await database.set_proxied_copy_removing(pid, 7, "honeygain", True)
+                    else:
+                        proxy = await database.get_proxy(pid)
+                        await database.update_proxy_definition(pid, {**proxy["definition"], "password": "NEWPASS"})
+                    lock.release()
+                    held = False
+                    result = await _within(asyncio.gather(add, return_exceptions=True), "the add to finish")
+                finally:
+                    await _settle([], [add])
+                    if held:
+                        lock.release()
             return sent, result[0], await database.list_proxied_copies(pid)
 
         sent, added, rows = _run(go)
@@ -1666,14 +1711,21 @@ class TestReleasedCopiesThatDidNotStart:
             await database.save_proxied_copy(pid, 7, "honeygain")
             await database.set_proxied_copy_capped(pid, 7, "honeygain", True)
             with patch.object(main, "_proxy_worker_call", side_effect=worker_call):
-                stop = asyncio.create_task(main.api_proxied_copy_command(pid, 7, "honeygain", "stop", {}))
-                while not calls:
-                    await asyncio.sleep(0)
-                retry = asyncio.create_task(main._restart_capped_copies(pid, 7, {"honeygain"}))
-                for _ in range(20):
-                    await asyncio.sleep(0)
-                gate.set()
-                await asyncio.gather(stop, retry)
+                tasks = [asyncio.create_task(main.api_proxied_copy_command(pid, 7, "honeygain", "stop", {}))]
+                try:
+
+                    async def stop_sent():
+                        while not calls:
+                            await asyncio.sleep(0)
+
+                    await _within(stop_sent(), "the stop to reach the worker")
+                    tasks.append(asyncio.create_task(main._restart_capped_copies(pid, 7, {"honeygain"})))
+                    for _ in range(20):
+                        await asyncio.sleep(0)
+                    gate.set()
+                    await _within(asyncio.gather(*tasks), "the stop and the retry to finish")
+                finally:
+                    await _settle([gate], tasks)
             return pid
 
         pid = _run(go)
