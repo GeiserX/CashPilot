@@ -61,6 +61,7 @@ from app.constants import (  # noqa: E402
     LABEL_VERSION,
     ROLE_TUNNEL,
     START_SETTLE_SECONDS,
+    TUNNEL_PREFIX,
     drift_warnings_enabled,
 )
 
@@ -490,7 +491,8 @@ def is_proxied(container: Any) -> bool:
     stopping or removing copy 1 could hit it instead.
 
     Judged by what the container is, not by its labels alone: a copy runs in
-    another container's network namespace and a tunnel runs the tunnel image.
+    another container's network namespace and a tunnel has a tunnel's name
+    (is_tunnel_sidecar).
     A direct earner made before deploy_raw stripped those labels may carry
     them, and it must still count as the service's own container wherever
     that keeps it off this box's IP (the routed deploy's refusal beside a
@@ -907,6 +909,10 @@ def deploy_raw(
     """
     client = _get_client()
     name = name or _container_name(slug, instance)
+    if name.startswith(TUNNEL_PREFIX):
+        # Only a tunnel is named so, and is_tunnel_sidecar trusts the name: an
+        # earner under it would run from this box's own IP as if it were one.
+        raise ContainerRuntimeError(f"{name} is a proxy tunnel's name, so {slug} cannot run under it; nothing changed.")
     joined = (network_mode or "").startswith("container:")
     # First, before anything is pulled or replaced: a refused earner costs the
     # running one nothing.
@@ -2691,31 +2697,21 @@ def start_service(slug: str, instance: int = 1) -> None:
 
 
 def is_tunnel_sidecar(container: Any) -> bool:
-    """A proxy tunnel (app/proxy_tunnel.py): labelled one AND running a tunnel image.
+    """A proxy tunnel (app/proxy_tunnel.py): labelled one AND named as one.
 
     A tunnel reaches its proxy from the box's own IP; that is its job. The
     label alone is not enough: a direct deploy once kept any label it was
-    given (DeploySpec.labels), so an earner made then can carry it.
-
-    A tunnel image is any ``cashpilot-tunnel`` repository, from any registry
-    or mirror, or the one CASHPILOT_TUNNEL_IMAGE names now. Not only the image
-    this worker would pull today: a tunnel made before the override changed
-    keeps running its image, and the copies in it have no other network.
+    given (DeploySpec.labels), and any image it was given, so an earner made
+    then can carry both. Its name it could not choose: a direct deploy is
+    always ``cashpilot-<slug>[-N]`` and deploy_raw refuses a name that starts
+    with TUNNEL_PREFIX, which only proxy_tunnel gives its tunnels. The image
+    does not count either way: a tunnel keeps running the image it was made
+    from after CASHPILOT_TUNNEL_IMAGE changes.
     """
     labels = getattr(container, "labels", None)
     if not isinstance(labels, dict) or labels.get(LABEL_ROLE) != ROLE_TUNNEL:
         return False
-    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
-    config = attrs.get("Config") if isinstance(attrs.get("Config"), dict) else {}
-    image = _split_image(str(config.get("Image") or ""))[0]
-    if not image:
-        return False
-    from app.proxy_tunnel import TUNNEL_REPOSITORY  # noqa: PLC0415 - proxy_tunnel imports this module
-
-    if image.rsplit("/", 1)[-1] == TUNNEL_REPOSITORY.rsplit("/", 1)[-1]:
-        return True
-    override = (os.getenv("CASHPILOT_TUNNEL_IMAGE") or "").strip()
-    return bool(override) and image == _split_image(override)[0]
+    return str(getattr(container, "name", "") or "").startswith(TUNNEL_PREFIX)
 
 
 def direct_problem(container: Any) -> str | None:

@@ -73,6 +73,7 @@ from app.constants import (
     LABEL_ROLE,
     LABEL_SERVICE,
     ROLE_TUNNEL,
+    TUNNEL_PREFIX,
 )
 
 logger = logging.getLogger(__name__)
@@ -223,13 +224,13 @@ def tunnel_image() -> str:
 
 def tunnel_name(slug: str, proxy_id: int) -> str:
     """A legacy tunnel: one per copy, from workers older than the shared tunnel."""
-    return f"{CONTAINER_PREFIX}tunnel-{slug}-p{proxy_id}"
+    return f"{TUNNEL_PREFIX}{slug}-p{proxy_id}"
 
 
 def shared_tunnel_name(proxy_id: int, slug: str | None = None) -> str:
     """The one tunnel every copy through ``proxy_id`` on this worker joins, or with
     ``slug`` the routed service's own tunnel through it."""
-    return f"{CONTAINER_PREFIX}tunnel-p{proxy_id}" + (f"-{slug}" if slug else "")
+    return f"{TUNNEL_PREFIX}p{proxy_id}" + (f"-{slug}" if slug else "")
 
 
 def shared_label(proxy_id: int, slug: str | None = None) -> str:
@@ -1041,7 +1042,7 @@ def _prove(client: Any, proxy: dict[str, Any] | None, own_ip: str | None, files:
     trial = dict(files)
     if trial.get("kind") == "tailscale":
         trial["hostname"] = _ts_hostname(TEST_SLUG)
-    name = f"{CONTAINER_PREFIX}tunnel-test-{uuid.uuid4().hex[:10]}"
+    name = f"{TUNNEL_PREFIX}test-{uuid.uuid4().hex[:10]}"
     sidecar, _ = start_sidecar(client, name, TEST_SLUG, None, proxy, own_ip, files=trial)
     _remove_quietly(sidecar, SIDECAR_STOP_SECONDS)
 
@@ -1946,7 +1947,7 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
 def test(proxy: dict[str, Any], own_ip: str | None) -> dict[str, Any]:
     """Start a throwaway sidecar, read the exit IP it gets, and remove it on every path."""
     client = orchestrator._get_client()
-    name = f"{CONTAINER_PREFIX}tunnel-test-{uuid.uuid4().hex[:10]}"
+    name = f"{TUNNEL_PREFIX}test-{uuid.uuid4().hex[:10]}"
     began = time.monotonic()
     sidecar, exit_info = start_sidecar(client, name, TEST_SLUG, None, proxy, own_ip)
     try:

@@ -1052,6 +1052,62 @@ class TestARemovalDuringARoutedDeploy:
         assert record is None
 
 
+class TestARemovalAfterTheUiGaveUpOnTheDeploy:
+    """The UI answers 504 after 180 s and frees the copy's lock; the worker's deploy goes on, so its removal waits."""
+
+    def test_the_worker_defers_the_removal_until_the_deploy_ends(self, worker, monkeypatch):
+        created, removed = [], []
+        service_lock = route_gate.deploying("honeygain")
+        waiting = threading.Event()
+
+        class Watched:
+            """route_gate.deploying, saying when the routed deploy starts to wait on it."""
+
+            def __enter__(self):
+                waiting.set()
+                service_lock.acquire()
+
+            def __exit__(self, *exc):
+                service_lock.release()
+
+        monkeypatch.setattr(route_gate, "deploying", lambda slug: Watched())
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
+        monkeypatch.setattr(worker_api.proxy_tunnel, "routed_copies", lambda slug, marked: [])
+        monkeypatch.setattr(
+            worker_api.proxy_tunnel, "deploy", lambda slug, pid, *a, **k: created.append(pid) or {"container_id": "e"}
+        )
+        monkeypatch.setattr(
+            worker_api.proxy_tunnel, "remove", lambda slug, pid: removed.append((pid, list(created))) or ["e"]
+        )
+        answer = {}
+        # Another deploy of the service holds its lock for longer than the UI waits.
+        service_lock.acquire()
+        try:
+            deploy = threading.Thread(
+                target=lambda: answer.setdefault(
+                    "deploy",
+                    worker("POST", "/api/proxied/honeygain/3/deploy", {"earner": BODY, "proxy": PROXY, "routed": True}),
+                ),
+                daemon=True,
+            )
+            deploy.start()
+            assert waiting.wait(5)
+            resp = worker("DELETE", "/api/proxied/honeygain/3")
+            assert resp.status_code == 503, resp.text
+            assert removed == []
+            # Control: a copy through another proxy is not held up by it.
+            assert worker("DELETE", "/api/proxied/honeygain/4").status_code == 200
+        finally:
+            service_lock.release()
+        deploy.join(5)
+        assert answer["deploy"].status_code == 200, answer["deploy"].text
+        assert created == [3]
+        # The UI's next heartbeat asks again, and now removes the earner the deploy made.
+        assert worker("DELETE", "/api/proxied/honeygain/3").status_code == 200
+        assert removed == [(4, []), (3, [3])]
+
+
 class TestTheRouteBoxFollowsTheRecord:
     """svc.routes tells the Route box what a deploy with no route does: api_deploy keeps the recorded route."""
 
@@ -1408,6 +1464,41 @@ class TestTheUiManagesARoutedService:
         assert left == []
         assert confirmed is None
 
+    @pytest.mark.parametrize("where", ["heartbeat", "again"])
+    def test_a_pending_removal_that_fails_for_good_still_drops_the_record(self, db, where):
+        """The record waited for the other copy; its removal then fails for good, by the heartbeat's retry or
+        the owner's own Remove. Nothing routed runs any more, so the record goes; the copy stays listed."""
+        ui, setup = self._routed(db)
+
+        async def go():
+            pid = await setup()
+            other = await ui.proxy()
+            await database.save_proxied_copy(other, 1, "honeygain")
+            answer = {"other": HTTPException(status_code=504, detail="the worker did not answer in time")}
+
+            def reply(method, path_, body):
+                if method == "DELETE" and path_ == f"/api/proxied/honeygain/{other}":
+                    return answer["other"]
+                return _Ui._no_container(method, path_, body)
+
+            ui.worker_reply = reply
+            with ui.active(patch.object(main, "_require_writer", lambda r: None)):
+                await main._svc_remove(_request(), "honeygain", 1, False)
+                pending = await database.get_deployment_spec("honeygain", worker_id=1)
+                answer["other"] = HTTPException(status_code=409, detail="Docker refused it")
+                if where == "heartbeat":
+                    await main._resume_copy_removals([(other, 1, "honeygain")])
+                else:
+                    with pytest.raises(HTTPException):
+                        await main._remove_copy(other, 1, "honeygain")
+            left = [c for c in await database.list_proxied_copies() if c["worker_id"] == 1]
+            return pid, other, pending, left, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, other, pending, left, record = _run(go)
+        assert pending is not None and proxies.route_of(pending) == pid
+        assert [(c["proxy_id"], bool(c.get("removing_since"))) for c in left] == [(other, False)]
+        assert record is None
+
     def test_removing_the_routed_copy_beside_a_plain_one_drops_the_record(self, db):
         """A plain copy through another proxy that nobody removes runs nothing routed: the record goes."""
         ui, setup = self._routed(db)
@@ -1649,7 +1740,7 @@ class TestProxiedOnlyStopsWhatAlreadyRuns:
 
 # ---------------------------------------------------------------------------
 # Review round: the route exit takes the copy's lock, labels never hide a
-# direct earner, a tunnel from any registry is a tunnel, and a routed rename
+# direct earner, a tunnel is known by its name, and a routed rename
 # reaches the plain copies too
 # ---------------------------------------------------------------------------
 
@@ -1743,6 +1834,7 @@ def _labelled_direct(extra):
 
 # The real one: the worker fixture replaces it on the module.
 _SERVICE_INSTANCES = orchestrator.service_instances
+_DEPLOY_RAW = orchestrator.deploy_raw
 _STRAY_LABELS = [{"cashpilot.proxy": "3"}, {LABEL_ROLE: ROLE_TUNNEL}, {"cashpilot.proxy": "3", LABEL_ROLE: ROLE_TUNNEL}]
 
 
@@ -1805,39 +1897,108 @@ class TestLabelsNeverHideADirectEarner:
         assert route_gate.routed() == {}
 
 
-class TestATunnelFromAnyRegistryIsATunnel:
-    def _tunnel_running(self, image):
-        tunnel = _earner(
-            "cashpilot-tunnel-p3",
-            labels={LABEL_MANAGED: "true", LABEL_ROLE: ROLE_TUNNEL, "cashpilot.service": "proxy-tunnel"},
+class TestATunnelIsKnownByItsName:
+    """is_tunnel_sidecar: the tunnel label AND a tunnel's name, which a direct deploy cannot take. Never the image."""
+
+    MIRROR = "mirror.example:5000/cp-tunnel:1.4.0"
+
+    def _container(self, name, image, extra=None):
+        c = _earner(
+            name,
+            labels={
+                LABEL_MANAGED: "true",
+                LABEL_ROLE: ROLE_TUNNEL,
+                "cashpilot.service": "proxy-tunnel",
+                **(extra or {}),
+            },
         )
-        tunnel.attrs["Config"] = {"Image": image}
-        return tunnel
+        c.attrs["Config"] = {"Image": image}
+        return c
 
     @pytest.mark.parametrize(
         ("image", "override"),
         [
             ("docker.io/drumsergio/cashpilot-tunnel:2.4.0", ""),
-            ("index.docker.io/drumsergio/cashpilot-tunnel@sha256:" + "a" * 64, ""),
-            # A mirror the override named once; the override changed or went since.
-            ("mirror.example:5000/cashpilot-tunnel:2.4.0", ""),
-            ("mirror.example:5000/cashpilot-tunnel:2.4.0", "other.example/cashpilot-tunnel:2.5.0"),
-            # Whatever the override names now.
-            ("mirror.example/own-tunnel:1.0", "mirror.example/own-tunnel:1.0"),
+            # Made from a renamed mirror; the override has been removed, or points elsewhere, since.
+            (MIRROR, ""),
+            (MIRROR, "other.example/own-tunnel:2.5.0"),
+            # The override on a registry with a port, matching: the control for the collision below.
+            (MIRROR, MIRROR),
         ],
     )
-    def test_proxied_only_leaves_it_running(self, monkeypatch, image, override):
+    def test_a_tunnel_stays_one_whatever_image_it_runs(self, monkeypatch, image, override):
         monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
         monkeypatch.setenv("CASHPILOT_TUNNEL_IMAGE", override)
-        tunnel = self._tunnel_running(image)
+        tunnel = self._container("cashpilot-tunnel-p3", image, {"cashpilot.proxy": "3"})
         assert orchestrator.is_tunnel_sidecar(tunnel)
+        assert orchestrator.is_proxied(tunnel)
         with patch.object(orchestrator, "_get_client", return_value=_client_with()):
             assert orchestrator.direct_problem(tunnel) is None
 
-    @pytest.mark.parametrize("image", ["honeygain/honeygain:1.0", "mirror.example/own-tunnel:1.0", ""])
-    def test_control_any_other_image_with_the_label_is_not_one(self, monkeypatch, image):
-        monkeypatch.setenv("CASHPILOT_TUNNEL_IMAGE", "")
-        assert not orchestrator.is_tunnel_sidecar(self._tunnel_running(image))
+    @pytest.mark.parametrize(
+        ("image", "override"),
+        [
+            ("ghcr.io/attacker/cashpilot-tunnel:1", ""),
+            ("drumsergio/cashpilot-tunnel:2.4.0", ""),
+            # Another image on the override's registry and port, and the override's own image.
+            ("mirror.example:5000/other:1.0", MIRROR),
+            (MIRROR, MIRROR),
+        ],
+    )
+    def test_a_direct_earner_with_a_tunnels_labels_and_image_is_not_one(self, monkeypatch, image, override):
+        """A direct deploy once kept any label and image it was given; never the name."""
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        monkeypatch.setenv("CASHPILOT_TUNNEL_IMAGE", override)
+        direct = self._container(
+            "cashpilot-honeygain", image, {"cashpilot.service": "honeygain", "cashpilot.proxy": "3"}
+        )
+        assert not orchestrator.is_tunnel_sidecar(direct)
+        assert not orchestrator.is_proxied(direct)
+        client = _client_with()
+        client.containers.list.return_value = [direct]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert orchestrator.hold_direct_earners() == ["cashpilot-honeygain"]
+        direct.stop.assert_called_once()
+
+    def test_control_the_name_without_the_label_is_not_one(self):
+        named = _earner("cashpilot-tunnel-p3", labels={LABEL_MANAGED: "true", "cashpilot.service": "proxy-tunnel"})
+        assert not orchestrator.is_tunnel_sidecar(named)
+
+    @pytest.mark.parametrize(
+        ("kwargs", "name"),
+        [
+            ({"slug": "tunnel-p3"}, "cashpilot-tunnel-p3"),
+            ({"slug": "tunnel", "instance": 2}, "cashpilot-tunnel-2"),
+            # A proxied earner of a service slugged "tunnel" would take the proxy's shared tunnel's name.
+            ({"slug": "tunnel", "name": "cashpilot-tunnel-p3", "network_mode": "container:t3"}, "cashpilot-tunnel-p3"),
+        ],
+    )
+    def test_no_earner_can_take_a_tunnels_name(self, kwargs, name):
+        client = MagicMock()
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.ContainerRuntimeError) as exc,
+        ):
+            orchestrator.deploy_raw(image="honeygain/honeygain:1.0", **kwargs)
+        assert name in str(exc.value)
+        client.images.pull.assert_not_called()
+        client.containers.run.assert_not_called()
+
+    def test_the_worker_route_refuses_a_tunnels_name(self, worker, monkeypatch):
+        monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", _DEPLOY_RAW)
+        resp = worker("POST", "/api/containers/tunnel-p3/deploy", BODY)
+        assert resp.status_code == 409, resp.text
+        assert "cashpilot-tunnel-p3" in str(_detail(resp))
+        worker.docker.images.pull.assert_not_called()
+
+    @pytest.mark.parametrize(("slug", "refused"), [("tunnel", True), ("tunnel-x", True), ("tunnelbear", False)])
+    def test_the_catalog_refuses_a_slug_that_names_a_tunnel(self, tmp_path, slug, refused):
+        from app import catalog
+
+        data = {"name": "X", "slug": slug, "category": "bandwidth", "status": "active", "description": "x"}
+        data["docker"] = {"image": "x/x:1"}
+        errors = catalog._validate(data, tmp_path / "x.yml")
+        assert any("proxy tunnel" in e for e in errors) is refused
 
 
 class TestARoutedRenameReachesThePlainCopies:

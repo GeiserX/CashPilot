@@ -6325,18 +6325,30 @@ async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str, *, leav
     that fails can be tried again with the same settings.
     """
     await database.delete_proxied_copy(proxy_id, worker_id, slug)
-    spec = await database.get_deployment_spec(slug, worker_id=worker_id)
-    route = proxies.route_of(spec)
     if leaving_route:
-        if spec is not None and route == proxy_id:
+        spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+        if spec is not None and proxies.route_of(spec) == proxy_id:
             direct = {k: v for k, v in spec.items() if k != "route"}
             await database.save_deployment(slug=slug, container_id="remote", spec=direct, worker_id=worker_id)
-    elif route is not None and not any(
+    else:
+        await _drop_unkept_routed_record(worker_id, slug)
+    await _drop_copy_device_links(proxy_id, slug)
+
+
+async def _drop_unkept_routed_record(worker_id: int, slug: str) -> None:
+    """Drop the record of a service routed at deploy once nothing on the worker keeps it.
+
+    Its copy through its route keeps it, and so does any copy of it whose
+    removal is still pending (_finish_copy_removal). Run again when a pending
+    removal ends: a final failure clears that mark and may leave a record
+    whose routed copy is already gone.
+    """
+    route = proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id))
+    if route is not None and not any(
         c["worker_id"] == worker_id and c["slug"] == slug and (c["proxy_id"] == route or c.get("removing_since"))
         for c in await database.list_proxied_copies()
     ):
         await database.remove_deployment(slug, worker_id=worker_id)
-    await _drop_copy_device_links(proxy_id, slug)
 
 
 async def _drop_copy_device_links(proxy_id: int, slug: str | None = None) -> None:
@@ -6407,6 +6419,7 @@ async def _remove_copy(proxy_id: int, worker_id: int, slug: str) -> Any:
                     },
                 )
             await database.set_proxied_copy_removing(proxy_id, worker_id, slug, False)
+            await _drop_unkept_routed_record(worker_id, slug)
             raise
         await _finish_copy_removal(proxy_id, worker_id, slug)
     return result
@@ -6443,6 +6456,7 @@ async def _resume_copy_removals(copies: list[tuple[int, int, str]]) -> None:
                     # The worker answered and could not remove it: the copy is
                     # still there, so it is listed again with its buttons.
                     await database.set_proxied_copy_removing(proxy_id, worker_id, slug, False)
+                    await _drop_unkept_routed_record(worker_id, slug)
                     logger.warning(
                         "Worker %s could not remove the copy of %s through proxy %s: %s",
                         worker_id,

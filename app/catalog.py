@@ -226,6 +226,10 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         # a catalog entry with such a slug would take over a user's service and
         # hand it whatever capabilities the entry declares.
         errors.append(f"{path.name}: slug {slug!r} uses the reserved 'custom-' prefix")
+    if isinstance(slug, str) and f"{slug}-".startswith("tunnel-"):
+        # Its containers would be named as a proxy tunnel (constants.TUNNEL_PREFIX),
+        # which the worker refuses to deploy.
+        errors.append(f"{path.name}: slug {slug!r} would name its containers as a proxy tunnel")
 
     category = data.get("category")
     if category is not None and category not in _CATEGORIES:

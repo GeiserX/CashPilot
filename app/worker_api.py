@@ -2027,10 +2027,29 @@ def _deploy_copy(
     )
 
 
+#: How many deploys of each copy, by (slug, proxy id), this worker is running,
+#: counted from the request's arrival to its answer. The UI stops waiting after
+#: 180 s and lets a removal of the copy through, but the deploy goes on here (a
+#: routed one may still be waiting on route_gate.deploying); a removal that ran
+#: first would leave the earner it makes running with no record in the UI.
+_copy_deploys: dict[tuple[str, int], int] = {}
+
+
 @app.post("/api/proxied/{slug}/{proxy_id}/deploy")
 async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
     """Run a copy of ``slug`` whose only way out is the given proxy (docs/proxies.md)."""
     _verify_api_key(request)
+    key = (slug, int(proxy_id))
+    _copy_deploys[key] = _copy_deploys.get(key, 0) + 1
+    try:
+        return await _proxied_deploy(slug, proxy_id, spec)
+    finally:
+        _copy_deploys[key] -= 1
+        if not _copy_deploys[key]:
+            del _copy_deploys[key]
+
+
+async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
     await asyncio.to_thread(_validate_proxied, slug, spec)
     own_ip = await _own_egress_ip()
     earner = {
@@ -2098,6 +2117,14 @@ async def api_proxied_logs(request: Request, slug: str, proxy_id: int, lines: in
 @app.delete("/api/proxied/{slug}/{proxy_id}")
 async def api_proxied_remove(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
     _verify_api_key(request)
+    if _copy_deploys.get((slug, int(proxy_id))):
+        # 503 keeps the removal pending in the UI, which asks again with each
+        # heartbeat (main._resume_copy_removals) and then removes what it made.
+        raise HTTPException(
+            status_code=503,
+            detail=f"A deploy of {slug} through proxy {proxy_id} is still running on this worker; "
+            "the removal waits for it",
+        )
     try:
         removed = await asyncio.to_thread(proxy_tunnel.remove, slug, proxy_id)
     except Exception as exc:  # noqa: BLE001
