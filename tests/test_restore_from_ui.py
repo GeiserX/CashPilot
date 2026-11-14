@@ -50,6 +50,7 @@ from app import (  # noqa: E402
     database,
     main,
     orchestrator,
+    payout_registry,
     socket_policy,
     state_backup,
     step_up,
@@ -59,6 +60,11 @@ from app import (  # noqa: E402
 PASSPHRASE = "correct horse battery staple"
 #: The real proxy, before the ui fixture swaps it out.
 REAL_PROXY = main._proxy_to_worker
+#: The real deploy_raw with its guard, before the docker fixture swaps it out.
+REAL_DEPLOY_RAW = orchestrator.deploy_raw
+#: The real fingerprint readers, before the ui fixture swaps them out.
+REAL_STATE_IDS = payout_registry.state_ids
+REAL_ALL_STATE_IDS = payout_registry.all_state_ids
 WORKER_KEY = "per-worker-key-restore"
 CLIENT_ID = "worker-client-1"
 KEY_FILE = b'{"address":"0xabc","crypto":{"cipher":"aes-128-ctr"}}'
@@ -823,6 +829,11 @@ def ui(tmp_path):
             ),
             patch.object(main.placement, "runs_on", side_effect=lambda ws: state["runs_on"]),
             patch.object(main.payout_registry, "state_ids", side_effect=lambda ws: state["states"]),
+            patch.object(
+                main.payout_registry,
+                "all_state_ids",
+                side_effect=lambda ws: {k: [v] for k, v in state["states"].items()},
+            ),
             patch.object(main, "_confirmed_worker_key", AsyncMock(return_value=WORKER_KEY)),
             patch.object(main, "_resolve_worker_id", AsyncMock(side_effect=lambda wid, *a, **k: wid)),
             patch.object(main, "_proxy_to_worker", proxy),
@@ -1422,6 +1433,69 @@ class TestARestoredBoxRedeployedSince:
         assert _upload(ui, bundle).json()["live_on"] == []
 
 
+class TestOneMoreContainerOfTheImage:
+    """A box reports one fingerprint per container; one more of the same image must not hide the restored node."""
+
+    def _beat(self, ui, worker_id: int, *state_ids: str) -> None:
+        """The heartbeat as the worker sends it: one entry per container, with its own fingerprint."""
+        box = next(w for w in ui.workers if w["id"] == worker_id)
+        box["containers"] = [{"slug": "mysterium", "state_id": s} for s in state_ids]
+        _heartbeat(ui, worker_id)
+
+    def test_a_second_container_does_not_free_the_restored_node(self, ui):
+        f1 = mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")  # F1 from box-b
+        _runs(ui, None)
+        _restore_ok(ui, f1, 1, "SA")  # F1 restored on box-a
+        with (
+            patch.object(main.payout_registry, "state_ids", REAL_STATE_IDS),
+            patch.object(main.payout_registry, "all_state_ids", REAL_ALL_STATE_IDS),
+        ):
+            # box-a's heartbeat: the restored node, then one more mysterium-image container listed after it.
+            self._beat(ui, 1, "SA", "H")
+            preview = _upload(ui, f1).json()
+            assert preview["live_on"] == ["box-a"]
+            resp = _restore(
+                ui, preview["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True
+            )
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+        assert [s["worker_id"] for s in ui.sent if s["path"].endswith("/restore")] == [1]
+
+    def test_no_container_on_the_restored_volume_frees_it(self, ui):
+        """The check still goes red: when nothing on the box reports the restored volume, it is free."""
+        f1 = mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")
+        _runs(ui, None)
+        _restore_ok(ui, f1, 1, "SA")
+        with (
+            patch.object(main.payout_registry, "state_ids", REAL_STATE_IDS),
+            patch.object(main.payout_registry, "all_state_ids", REAL_ALL_STATE_IDS),
+        ):
+            self._beat(ui, 1, "a-fresh-volume", "H")
+            assert _upload(ui, f1).json()["live_on"] == []
+
+    def test_a_restore_helper_is_not_listed_as_a_node_of_its_image(self):
+        image = MYSTERIUM_DEPLOY["image"]
+
+        def container(cid, labels):
+            return MagicMock(id=cid, short_id=cid, labels=labels, attrs={"Config": {"Image": image}})
+
+        helper = container("helper", {orchestrator.LABEL_RESTORE: "helper"})
+        node = container("node", {})
+        client = MagicMock()
+        client.containers.list.return_value = [node, helper]
+        assert orchestrator._external_candidates(client, {image: "mysterium"}) == [node]
+
+    def test_the_fingerprint_list_keeps_every_container_in_order(self):
+        workers = [
+            {"id": 1, "containers": [{"slug": "mysterium", "state_id": "SA"}, {"slug": "mysterium", "state_id": "H"}]}
+        ]
+        assert payout_registry.all_state_ids(workers) == {(1, "mysterium"): ["SA", "H"]}
+        assert payout_registry.state_ids(workers) == {(1, "mysterium"): "H"}
+
+
 class TestARestoreWithNoAnswer:
     def _lost(self, ui, bundle, exc):
         upload = _upload(ui, bundle).json()
@@ -1737,6 +1811,44 @@ class TestStartAndRemoveAroundARestore:
         result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
         assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
         assert docker.container_map == {} and docker.volume_map == {}
+
+    def _deploy(self, docker):
+        """The real deploy_raw, as the worker's deploy route calls it. The fake has no image, so
+        a deploy past the guard stops at 'not available' before it touches the old container."""
+        docker.images = MagicMock()
+        docker.images.get.side_effect = orchestrator.DockerException("no such image")
+        return REAL_DEPLOY_RAW(slug="mysterium", image=MYSTERIUM_DEPLOY["image"], volumes=MYSTERIUM_DEPLOY["volumes"])
+
+    def test_a_half_written_restore_is_never_redeployed(self, docker):
+        """After a worker restart _restoring is empty; the helper is the only mark, and a deploy keeps the volume."""
+        container = self._service(docker, helper=True)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish") as caught:
+            self._deploy(docker)
+        assert caught.value.status_code == 409
+        docker.images.pull.assert_not_called()
+        assert docker.container_map["cashpilot-mysterium"] is container and docker.started == []
+
+    def test_a_service_with_no_leftover_gets_past_the_guard(self, docker):
+        self._service(docker)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
+            self._deploy(docker)
+        docker.images.pull.assert_called_once()
+
+    def test_remove_without_data_keeps_the_helper_and_the_refusal(self, docker):
+        """The helper marks the half-written volume; removing it alone would let the next deploy start on it."""
+        container = self._service(docker, helper=True)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="with its data") as caught:
+            orchestrator.remove_service("mysterium", delete_volumes=False)
+        assert caught.value.status_code == 409
+        assert docker.container_map["cashpilot-mysterium"] is container
+        assert "cashpilot-mysterium.restore" in docker.container_map and "mysterium-data" in docker.volume_map
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            orchestrator.start_service("mysterium")
+
+    def test_remove_without_data_of_a_service_with_no_leftover_goes(self, docker):
+        self._service(docker)
+        orchestrator.remove_service("mysterium", delete_volumes=False)
+        assert docker.container_map == {} and "mysterium-data" in docker.volume_map
 
     def test_no_remove_while_the_restore_writes(self, docker):
         seen: list[Exception] = []

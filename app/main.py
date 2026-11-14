@@ -10001,7 +10001,7 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
         }
         for r in linked
     ]
-    states = payout_registry.state_ids(workers)
+    states = payout_registry.all_state_ids(workers)
     beats = {w["id"]: placement._sqlite_time(w.get("last_heartbeat")) for w in workers}
     live_ids: set[int] = set()
     for r in linked:
@@ -10013,8 +10013,10 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
             # reports no container yet.
             live_ids.add(w)
         elif w in running:
+            # Every container of the slug on that box counts: one more of the
+            # same image (a copy, an unmanaged node) must not hide this one.
             now = states.get((w, slug))
-            if r["here"] and now and r["here"] != database.backup_origin(w, now):
+            if r["here"] and now and r["here"] not in {database.backup_origin(w, s) for s in now}:
                 # Only a heartbeat sent after this row says what the box runs
                 # now: an older one still shows the node it ran before.
                 seen = placement._sqlite_time(r["last_seen"])

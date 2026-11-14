@@ -833,6 +833,11 @@ def _holds_gated_lock(fn: Any) -> Any:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         slug = str(kwargs.get("slug", args[0] if args else ""))
+        if kwargs.get("start", True):
+            # A restore that died mid-write left its helper and a half-written
+            # volume, which this deploy would keep and start; _restoring is empty
+            # after a worker restart, so only the helper on disk tells.
+            _refuse_mid_restore(slug, "deployed")
         with _SLUG_WORK_LOCK:
             if slug in _restoring:
                 raise ContainerRuntimeError(
@@ -3003,6 +3008,14 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
             raise ContainerRuntimeError(
                 f"A restore of {slug} is running on this box, so nothing was removed. Try again when it ends.", 409
             )
+    if not delete_volumes and _restore_helper(slug) is not None:
+        # The helper is the only mark of a half-written volume: removing it
+        # while the volume stays would let the next deploy start on half the data.
+        raise ContainerRuntimeError(
+            f"A restore of {slug} did not finish, so its data may be half-written and nothing was removed. "
+            "Remove the service with its data, then restore the backup again.",
+            409,
+        )
     container = _find_container(slug)
     name = container.name
 
@@ -3050,7 +3063,8 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
     container.remove(force=True)
     logger.info("Removed container %s", name)
     # A restore that died midway left its helper, which mounts the volume, so
-    # the volume could not go and the next restore would refuse it.
+    # the volume could not go and the next restore would refuse it. Only here
+    # with delete_volumes: without it the refusal above stopped first.
     try:
         helper = _restore_helper(slug)
         if helper is not None:
@@ -4083,6 +4097,14 @@ def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
                 # the daemon's and propagates, so the caller marks Docker blind.
                 logger.debug("Container %s is gone", getattr(c, "short_id", "?"))
                 continue
+        try:
+            labels = c.labels
+        except Exception:  # noqa: BLE001 - no labels to read: not a helper
+            labels = None
+        if isinstance(labels, dict) and labels.get(LABEL_RESTORE) == "helper":
+            # A restore's own helper runs the catalog image but is not a node:
+            # listed, its fingerprint would hide the restored node's.
+            continue
         found.append(c)
     return found
 

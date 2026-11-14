@@ -259,12 +259,14 @@ def critical_state(service: dict[str, Any]) -> list[dict[str, Any]]:
 BACKUP_MAX_AGE = timedelta(days=183)
 
 
-def state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], str]:
-    """(worker_id, slug) -> the state fingerprint that worker last reported.
+def all_state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], list[str]]:
+    """(worker_id, slug) -> every state fingerprint that worker last reported, in its order.
 
-    Absent when the worker is older than the fingerprint, or could not read it.
+    A box can report several containers of one slug (copies, an unmanaged one
+    of the same image). Absent when the worker is older than the fingerprint,
+    or could not read it.
     """
-    out: dict[tuple[int, str], str] = {}
+    out: dict[tuple[int, str], list[str]] = {}
     for w in workers:
         containers = w.get("containers") or []
         if isinstance(containers, str):
@@ -274,8 +276,16 @@ def state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], str]:
                 continue
         for c in containers if isinstance(containers, list) else []:
             if isinstance(c, dict) and c.get("slug") and isinstance(c.get("state_id"), str) and c["state_id"]:
-                out[(w.get("id"), c["slug"])] = c["state_id"]
+                out.setdefault((w.get("id"), c["slug"]), []).append(c["state_id"])
     return out
+
+
+def state_ids(workers: list[dict[str, Any]]) -> dict[tuple[int, str], str]:
+    """(worker_id, slug) -> the state fingerprint that worker last reported (the last container's).
+
+    Absent when the worker is older than the fingerprint, or could not read it.
+    """
+    return {key: found[-1] for key, found in all_state_ids(workers).items()}
 
 
 def _sqlite_time(value: Any) -> datetime | None:
