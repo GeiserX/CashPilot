@@ -44,6 +44,10 @@ from typing import Any
 #: mount. Target: :func:`deploy_target` of the exact spec sent to the worker.
 ACTION_CUSTOM_IMAGE = "deploy-custom-image"
 
+#: Running a service from the box's own IP after it was routed through a proxy
+#: there (app/route_gate.py). Target: the service's slug.
+ACTION_LEAVE_ROUTE = "leave-route"
+
 #: How long an approval stays valid. Long enough for a slow pull before the
 #: worker checks it (the check runs before the pull), short enough that one seen
 #: in a log is useless soon after. The UI and the worker clocks must agree to

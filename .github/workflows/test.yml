@@ -120,6 +120,12 @@ jobs:
       - name: Step-up prompt queue
         run: node scripts/step_up_prompt_check.mjs
 
+      # A service routed through a proxy from its deploy is reported as a
+      # proxied copy: it must still count as running on its box, and the Route
+      # choice must reach the deploy request.
+      - name: Route at deploy
+        run: node scripts/route_choice_check.mjs
+
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the
       # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`

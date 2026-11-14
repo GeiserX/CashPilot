@@ -117,7 +117,15 @@ class TestCopiesAreNotProxied:
 class TestDeployRawJoined:
     def test_joined_container_gets_no_ports_hostname_dns_or_network(self):
         client = MagicMock()
-        client.containers.get.side_effect = NotFound("none")
+        tunnel = MagicMock(labels={"cashpilot.managed": "true", "cashpilot.role": "tunnel"})
+
+        def get(key):
+            # The tunnel it joins exists; no container holds the earner's name yet.
+            if key == "sidecar-id":
+                return tunnel
+            raise NotFound("none")
+
+        client.containers.get.side_effect = get
         client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/app/run"], "Cmd": []}}
         client.containers.run.return_value = MagicMock(id="earner-id", short_id="earner")
         with (

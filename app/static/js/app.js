@@ -1865,7 +1865,77 @@ const CP = (() => {
   // One rule for "this box runs it", shared by the wizard's node list and the
   // catalog's Add link, so the two cannot disagree.
   function runsOn(worker, slug) {
-    return (worker.containers || []).some((c) => c.slug === slug);
+    return workerCopies(worker, slug).length > 0;
+  }
+
+  // The copies of a service on one box: its containers, and a service routed
+  // through a proxy from its deploy, which runs only as a proxied copy and so
+  // is reported apart (app/route_gate.py). That copy carries its route.
+  function workerCopies(worker, slug) {
+    const copies = (worker.containers || []).filter((c) => c.slug === slug);
+    const proxied = (worker.system_info || {}).proxied;
+    for (const e of Array.isArray(proxied) ? proxied : []) {
+      if (e && e.routed === true && e.slug === slug) {
+        copies.push({
+          slug, status: e.status || 'unknown', instance: 1,
+          route: { proxy_id: e.proxy_id, exit_ip: e.exit_ip, exit_country: e.exit_country },
+        });
+      }
+    }
+    return copies;
+  }
+
+  // "via proxy 203.0.113.9 (DE)" for a routed copy; empty for a direct one.
+  function routeBadge(container) {
+    const r = container && container.route;
+    if (!r) return '';
+    const where = [r.exit_ip, r.exit_country ? `(${r.exit_country})` : ''].filter(Boolean).join(' ');
+    return `<span class="badge badge-routed" title="Runs through one of your proxies, never from this box's own IP">via proxy${where ? ` ${escapeHtml(where)}` : ''}</span>`;
+  }
+
+  // The deploy form's Route box: the box's own IP, or one of the owner's
+  // proxies. Filled once the proxy list arrives (owner only). A service the
+  // catalog cannot route says why instead.
+  function routeChoiceSection(svc) {
+    const slug = escapeHtml(svc.slug);
+    if (svc.route_refusal) {
+      return `<div class="form-hint route-hint">Route: this box's own IP. ${escapeHtml(svc.route_refusal)}</div>`;
+    }
+    return `
+      <div class="form-group route-choice">
+        <label class="form-label" for="route-select-${slug}">Route</label>
+        <select class="form-input" id="route-select-${slug}" data-slug="${slug}">
+          <option value="">Direct: the box's own IP</option>
+        </select>
+        <div class="form-hint">A route through one of your proxies applies from the first start, so the service never
+          runs from the box's own IP. It hides that IP from the service's traffic, not from the provider's website or
+          your earnings login. One box per route.</div>
+      </div>`;
+  }
+
+  async function loadRouteChoices(slug) {
+    const select = document.getElementById(`route-select-${slug}`);
+    if (!select || !_isOwner) return;
+    try {
+      const data = await api('/api/proxies');
+      for (const p of (data && data.proxies) || []) {
+        const opt = document.createElement('option');
+        opt.value = String(p.id);
+        const exit = [p.last_exit_ip, p.last_country ? `(${p.last_country})` : ''].filter(Boolean).join(' ');
+        opt.textContent = `Through ${p.name || `proxy ${p.id}`}${exit ? `, exit ${exit}` : ''}`;
+        select.appendChild(opt);
+      }
+    } catch (err) {
+      select.title = `Could not load your proxies: ${err.message}`;
+    }
+  }
+
+  // The proxy id to send as "route", or undefined for the box's own IP (the
+  // server then keeps a route the box already has, and asks before leaving it).
+  function _routeChoice(slug) {
+    const select = document.getElementById(`route-select-${slug}`);
+    const id = select ? parseInt(select.value, 10) : NaN;
+    return Number.isInteger(id) && id > 0 ? id : undefined;
   }
 
   function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
@@ -1875,8 +1945,9 @@ const CP = (() => {
     // copies one worker may run (the setup wizard's list has no such answer).
     const maxInstances = svc.max_instances;
     for (const w of onlineWorkers) {
-      const copies = (w.containers || []).filter((c) => c.slug === svc.slug).length;
-      const deployed = runsOn(w, svc.slug);
+      const copies = workerCopies(w, svc.slug).length;
+      const deployed = copies > 0;
+      const proxiedOnly = (w.system_info || {}).proxied_only === true;
       if (!deployed) allDeployed = false;
       let instancesBox = '';
       if (maxInstances) {
@@ -1893,6 +1964,7 @@ const CP = (() => {
       <label class="worker-pick">
         <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
+        ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
         ${deployed
           ? '<span class="badge badge-deployed">Deployed</span>'
           : '<span class="badge badge-available">Available</span>'}
@@ -3489,6 +3561,8 @@ const CP = (() => {
         if (image !== undefined) body.image = image;
         const instances = _instancesFor(slug, wid);
         if (instances !== undefined) body.instances = instances;
+        const route = _routeChoice(slug);
+        if (route !== undefined) body.route = route;
         const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
         ok++;
         if (res && res.device_link && res.device_link.id) links.set(res.device_link.id, res.device_link);
@@ -3774,6 +3848,7 @@ const CP = (() => {
       // holds up the rest of the modal.
       loadPayoutProgress();
       loadDeployRisk();
+      loadRouteChoices(svc.slug);
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
     }
@@ -3988,6 +4063,7 @@ const CP = (() => {
           <div class="form-label">Deploy to</div>
           <div id="deploy-worker-list">${workerRows}</div>
           ${instancesHint(svc)}
+          ${svc.custom ? '' : routeChoiceSection(svc)}
         </div>
         <div class="sd-actions">
           <button class="btn btn-primary" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
@@ -4003,7 +4079,7 @@ const CP = (() => {
     const onlineWorkers = (workers || []).filter(w => w.status === 'online');
     const instances = [];
     for (const w of onlineWorkers) {
-      const copies = (w.containers || []).filter(c => c.slug === svc.slug)
+      const copies = workerCopies(w, svc.slug)
         .sort((a, b) => (a.instance || 1) - (b.instance || 1));
       for (const container of copies) instances.push({ worker: w, container, several: copies.length > 1 });
     }
@@ -4022,6 +4098,7 @@ const CP = (() => {
           <span class="cell cell-${st}"></span>
           <strong class="sd-inst-box">${escapeHtml(inst.worker.name)}${inst.several ? ` #${inst.container.instance || 1}` : ''}</strong>
           <span class="state state-${st}">${escapeHtml(s)}</span>
+          ${routeBadge(inst.container)}
           ${(svc.custom_images || {})[String(inst.worker.id)] ? `<span class="muted" title="${escapeHtml(svc.custom_images[String(inst.worker.id)])}">custom image</span>` : ''}
           ${_canWrite ? `<div class="sd-inst-actions">
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>

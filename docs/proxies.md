@@ -8,12 +8,75 @@ You add a proxy once, then pick a box, a service already deployed on it, and
 the proxy. The copy runs with the same settings as the service on that box,
 under its own device name (`cashpilot-box-p3` for proxy 3).
 
+A service can also run only through a proxy, from its first start: see
+[Route a service at deploy](#route-a-service-at-deploy).
+
+## Route a service at deploy
+
+A proxied copy runs beside the service, so the service itself still starts once
+from the box's own IP. When you do not want the provider to see that IP at
+all, pick a **Route** on the deploy form: the box's own IP (the default), or
+one of your proxies. With a proxy, the service never runs outside the tunnel:
+its first and every later start is inside it.
+
+- **Only services that can run through a proxy get the choice.** The catalog
+  decides, by the rules in
+  [What cannot run through a proxy](#what-cannot-run-through-a-proxy). A
+  service that publishes a port, keeps a volume, needs a device or extra
+  capabilities, or whose terms forbid proxies has no Route box, and the form
+  says why.
+- **It runs with the settings you deploy it with,** under the device name you
+  give it. There is no second device: the routed service is the only copy of
+  it on that box.
+- **One route per box, one copy.** A routed service runs one instance. To
+  route a service that already runs from the box's own IP, remove it first,
+  then deploy it with the route; the box's IP was already seen once. To move it
+  to another proxy, remove it and deploy it again through the new one.
+- **Its own tunnel.** A routed service gets a tunnel of its own
+  (`cashpilot-tunnel-p<id>-<service>`), so it never shares a namespace with
+  another provider's software. Proxied copies keep sharing one tunnel per
+  proxy, as in [One tunnel per proxy](#one-tunnel-per-proxy).
+- **Stop, Start, Restart, Logs and Remove act on it** from the dashboard and
+  the service page, as they do on any service. A routed row shows the exit IP
+  and country it leaves from.
+- **Leaving the route asks for your password.** The worker remembers every
+  service routed on it, in its data folder (`.routed`), and refuses to start
+  it from its own IP without your confirmation, even after you remove it, and
+  whichever way the deploy arrives (the form, a redeploy, the API, an agent).
+  The confirmation is the same password prompt as for a wallet change, and it
+  names the IP the provider would then see.
+
+The usual route is a Tailscale exit node at another site you own (a
+relative's house, a second line): set it up with the steps in
+[Tailscale exit nodes](#tailscale-exit-nodes). In short, an auth key that is
+reusable, ephemeral, pre-approved and tagged `tag:cashpilot-proxy`, and a
+tailnet policy that lets that tag reach `autogroup:internet` through the exit
+node and nothing else. A SOCKS5 or HTTP proxy works the same way, but it is not
+encrypted (see [What a proxy can be](#what-a-proxy-can-be)).
+
+Routing hides the box's IP from the service's own traffic: its connections,
+its name lookups and its registration with the provider's servers. It does not
+hide it from what you do outside the container. Your login to the provider's
+website, an earnings collector CashPilot runs from the UI's own connection, and
+a referral or payout page you open in your browser all come from wherever they
+run. If the provider must never link the account to your home IP, open its
+website through the same exit too.
+
+### A worker that runs only routed services
+
+Set `CASHPILOT_PROXIED_ONLY=true` in a worker's environment and it refuses to
+start any earner outside one of its tunnels. A deploy without a route, a
+redeploy of an old direct service and an extra copy all fail with a message
+naming the setting; nothing reaches the box's own IP. Proxied copies and routed
+services still run. The UI cannot change it: only whoever edits the worker's
+compose file can. The deploy form marks such a box **proxy only**.
+
 ## What a proxy can be
 
 | Type | What you give it | Notes |
 |---|---|---|
-| SOCKS5 | host, port, optional user and password | TCP only: the tunnel lets out only TCP to the proxy's port, so SOCKS5 UDP relays are dropped. Name lookups still work (see [DNS](#dns)). |
-| HTTP CONNECT | host, port, optional user and password | TCP only. Name lookups still work (see [DNS](#dns)). |
+| SOCKS5 | host, port, optional user and password | TCP only: the tunnel lets out only TCP to the proxy's port, so SOCKS5 UDP relays are dropped. Name lookups still work (see [DNS](#dns)). Not encrypted: the user, the password and any plain-HTTP traffic cross the network in the clear. |
+| HTTP CONNECT | host, port, optional user and password | TCP only. Name lookups still work (see [DNS](#dns)). Not encrypted, as SOCKS5. |
 | Tailscale exit node | an auth key and the exit node's 100.x address | Traffic leaves from the exit node's connection, UDP included. See [Tailscale exit nodes](#tailscale-exit-nodes). |
 
 Any provider works. Nothing in CashPilot is specific to one.
@@ -112,6 +175,9 @@ SOCKS5 and HTTP, each with and without a password:
 - a DNS lookup of a random name, through Docker's resolver and straight at
   8.8.8.8, never appears in a capture of the box's own network stack;
 - the tunnel's log names no session or destination the earner reached;
+- a name that resolves to a private address on the proxy's own network
+  (`172-25-0-4.nip.io`) does not reach that address;
+- an address in `100.64.0.0/10` on the tunnel's own loopback is not reachable;
 - `docker inspect` of the tunnel shows no proxy password.
 
 `scripts/proxy_shared_tunnel_lab.sh` runs the same kind of checks with two
@@ -237,10 +303,16 @@ memory, and moves copies deployed by the previous release into one tunnel.
 
 ## DNS
 
-Name lookups from the earner never leave the box directly. tun2proxy answers
-them inside the tunnel with placeholder addresses and passes the name to the
-proxy when a connection opens, so the proxy resolves it where it is. This
-works with plain HTTP CONNECT proxies, which cannot carry DNS themselves.
+Name lookups from the earner never leave the box directly. tun2proxy sends
+each one as DNS over TCP, port 53, through the proxy, so the name is resolved
+from the proxy's side and the answer is a real address. The tunnel's firewall
+then judges that address like any other: a name that points at a private,
+loopback or tailnet address is dropped before it leaves the tunnel, so a
+name cannot be used to reach your LAN or the proxy's own network.
+
+The proxy must therefore let TCP connections to port 53 through. Most do. If
+the tunnel's start fails with a message about DNS over TCP, the proxy blocks
+it; use another proxy.
 
 ## What cannot run through a proxy
 
@@ -533,7 +605,8 @@ What changes:
   its CPU rises with the traffic. Measure it under load (see
   [Budgeting a small box](fleet.md#budgeting-a-small-box)).
 - **The box that runs the copies holds one tunnel per proxy**, shared by every
-  copy through it, plus one container per earner. The tunnel joins the tailnet
+  copy through it, plus one container per earner (and one tunnel more per
+  service routed through it at deploy). The tunnel joins the tailnet
   as that box's ephemeral node for the proxy; the earners share its network
   and never join it.
 - **The path to the exit node is over the internet.** With
@@ -546,7 +619,10 @@ On a Linux machine, the exit node also needs IP forwarding turned on before
 Tailscale lets it advertise itself; Tailscale's
 [exit node guide](https://tailscale.com/kb/1103/exit-nodes) has the commands
 per system. Then set it up with the steps in [Tailscale exit nodes](#tailscale-exit-nodes).
-For each service you move:
+For each service you move, the simplest way is to remove it from the second
+site's worker and deploy it on the worker that will run it, with the exit node
+as its **Route** ([Route a service at deploy](#route-a-service-at-deploy)).
+To keep it running there as well, add a proxied copy instead:
 
 1. Deploy it on the worker that will run the copy, if it is not there yet: a
    copy runs with that worker's deployment of the service and is refused

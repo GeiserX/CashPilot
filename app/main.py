@@ -21,6 +21,7 @@ import socket
 import time
 import urllib.parse
 import weakref
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -308,6 +309,36 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "_is_android": False,
                         }
                     )
+            # A service routed through a proxy from its deploy (app/route_gate.py)
+            # runs only as a proxied copy, which the containers list leaves out.
+            # It is this box's copy of the service all the same.
+            for e in proxies.routed_entries({"system_info": sys_info}):
+                result.append(
+                    {
+                        "slug": str(e.get("slug")),
+                        "name": str(e.get("name") or e.get("slug")),
+                        "status": str(e.get("status") or "unknown"),
+                        "image": "",
+                        "cpu_percent": 0,
+                        "memory_mb": 0,
+                        "net_rx_bytes": e.get("net_rx_bytes"),
+                        "net_tx_bytes": e.get("net_tx_bytes"),
+                        "category": "",
+                        "deployed_by": worker_name,
+                        "instance": 1,
+                        "route": {
+                            "proxy_id": e.get("proxy_id"),
+                            "exit_ip": e.get("exit_ip"),
+                            "exit_country": e.get("exit_country"),
+                            "tunnel_status": e.get("tunnel_status"),
+                        },
+                        "_arch": sys_info.get("arch"),
+                        "_node": worker_name,
+                        "_worker_id": w.get("id"),
+                        "_has_docker": worker_has_docker,
+                        "_is_android": False,
+                    }
+                )
 
         # Android apps (from Android workers)
         if is_android:
@@ -3652,6 +3683,14 @@ async def api_get_service(request: Request, slug: str) -> dict[str, Any]:
     svc["custom_images"] = {str(wid): image for wid, image in (await database.get_custom_images(slug)).items()}
     # Only catalog services are graded; a service a user added is not reviewed.
     svc["rating_result"] = ratings.for_service(None if svc.get("custom") else svc)
+    # The deploy form's Route box: why it must stay direct, and the worker id ->
+    # proxy id of each box where it already runs through a proxy.
+    svc["route_refusal"] = proxies.refusal(svc)
+    svc["routes"] = {
+        str(c["_worker_id"]): (c.get("route") or {}).get("proxy_id")
+        for c in worker_containers
+        if c.get("slug") == slug and c.get("route")
+    }
     return svc
 
 
@@ -3814,6 +3853,12 @@ class DeployRequest(BaseModel):
     # the image is not the catalog's on a service that keeps a wallet or node
     # identity (app/step_up.py); never stored, never sent to a worker.
     step_up_password: str | None = None
+    # Where the service runs from on this worker: the id of one of the owner's
+    # proxies, or 0 for the worker's own IP. None (left out) keeps what this
+    # worker's deployment already has, the worker's own IP for a new one, so a
+    # redeploy from a form or a script that never showed the choice cannot move
+    # a routed service onto the box's own IP (docs/proxies.md).
+    route: int | None = None
 
 
 # repository[:tag][@sha256:digest]; see custom_services.IMAGE_REF.
@@ -3998,6 +4043,13 @@ async def _deploy(
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     recorded_env = (recorded or {}).get("env") or {}
     custom_image = "" if is_custom else _custom_image(body.image, recorded)
+    recorded_route = proxies.route_of(recorded)
+    asked_route = getattr(body, "route", None)
+    if not isinstance(asked_route, int) or isinstance(asked_route, bool):
+        asked_route = None
+    elif asked_route < 0:
+        raise HTTPException(status_code=400, detail="route is a proxy id, or 0 for the worker's own IP")
+    route = recorded_route if asked_route is None else (asked_route or None)
 
     # What the operator actually TYPED on this deploy. The dashboard has no
     # separate redeploy action: it posts the deploy form, and the form posts
@@ -4028,6 +4080,8 @@ async def _deploy(
     # How many copies this worker runs, decided before anything is deployed.
     instances = body.instances if body.instances is not None else int((recorded or {}).get("instances") or 1)
     _instance_param(instances)
+    if route is not None:
+        await _check_route(slug, svc, worker_id, route, recorded, recorded_route, instances)
     # Read only when copies are involved, so a plain deploy asks the worker
     # record nothing it did not ask before.
     running_copies = (
@@ -4196,11 +4250,36 @@ async def _deploy(
     approve = await _step_up_critical(request, slug, svc, custom_image, getattr(body, "step_up_password", None))
     # Passed only when set, so the plain call keeps its three-argument shape.
     signed: dict[str, Any] = {"approve": True} if approve else {}
+    if route is not None:
+        return await _deploy_routed(slug, svc, spec, worker_id, route, merged_env, divergence)
+    password = getattr(body, "step_up_password", None)
+    # A service routed through a proxy on this worker leaves the route only with
+    # the owner's password, and its routed copy goes first: both run the same
+    # device. The worker refuses the direct deploy without that confirmation.
+    if recorded_route is not None:
+        await _confirm_leave_route(request, svc, slug, worker_id, password)
+        await _remove_routed_copies(worker_id, slug, [recorded_route])
+        signed["leave_route"] = True
+    result: dict[str, Any] | None = None
     try:
         result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
     except HTTPException as exc:
-        await _audit_worker_refusal(request, exc, slug, worker_id)
-        raise
+        # A route this UI has no record of (a lost record, a worker enrolled
+        # again): the worker remembers it and refuses. Same confirmation.
+        if _worker_error(exc) != "route_locked" or signed.get("leave_route"):
+            await _audit_worker_refusal(request, exc, slug, worker_id)
+            raise
+    if result is None:
+        await _confirm_leave_route(request, svc, slug, worker_id, password)
+        # A routed copy the box still reports goes first, as above.
+        if leaving := await _routes_on(worker_id, slug):
+            await _remove_routed_copies(worker_id, slug, leaving)
+        signed["leave_route"] = True
+        try:
+            result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
+        except HTTPException as exc:
+            await _audit_worker_refusal(request, exc, slug, worker_id)
+            raise
     container_id = result.get("container_id", "remote")
     # Reported, deliberately NOT recorded. The worker reads the running container
     # on every deploy, so the record does not need the kept source - and writing
@@ -4251,6 +4330,208 @@ async def _deploy(
 _is_port_range = catalog.is_port_range
 
 
+def _worker_error(exc: HTTPException) -> str | None:
+    """The ``error`` code of a structured worker refusal, else None."""
+    return exc.detail.get("error") if isinstance(exc.detail, dict) else None
+
+
+async def _check_route(
+    slug: str,
+    svc: dict[str, Any],
+    worker_id: int,
+    route: int,
+    recorded: dict[str, Any] | None,
+    recorded_route: int | None,
+    instances: int,
+) -> None:
+    """Refuse a deploy through ``route`` that cannot run as one routed service on this worker."""
+    name = svc.get("name") or slug
+    if why := proxies.refusal(svc):
+        raise HTTPException(status_code=400, detail=why)
+    if instances != 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name} runs once per worker through a proxy. To run more, add workers or proxies.",
+        )
+    if recorded_route is not None and recorded_route != route:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{name} runs through another proxy on this worker. Remove it, then deploy it again "
+            "through this one.",
+        )
+    if (recorded and recorded_route is None) or await _worker_instances(worker_id, slug):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{name} already runs from this worker's own IP. Remove it there first and deploy it again "
+            "with the route, or keep it and add a copy through the proxy on the Proxies page.",
+        )
+    proxy = await _proxy_or_404(route)
+    if proxy["state"].get("capped_at"):
+        raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap")
+    if "route_at_deploy" not in await _worker_features(worker_id):
+        raise HTTPException(
+            status_code=409,
+            detail="This worker is too old to deploy a service through a proxy, or has no Docker socket. "
+            "Update it first.",
+        )
+
+
+async def _deploy_routed(
+    slug: str,
+    svc: dict[str, Any],
+    spec: dict[str, Any],
+    worker_id: int,
+    proxy_id: int,
+    merged_env: dict[str, Any],
+    divergence: list[str],
+) -> dict[str, Any]:
+    """Deploy ``slug`` on a worker through one of the owner's proxies, never from the worker's own IP.
+
+    The service runs as the proxy's copy of it, from its first start: the
+    worker creates no direct container, and records the route so that no
+    other deploy path starts it from its own IP (app/route_gate.py). Its
+    device ids are the deploy's own (proxies.routed_spec), so the device the
+    provider is asked to link is the one that runs.
+    """
+    docker_conf = svc.get("docker") or {}
+    earner = proxies.routed_spec(spec)
+    if not spec.get("custom_image") and isinstance(docker_conf.get("image_by_arch"), dict):
+        worker = await database.get_worker(worker_id) or {}
+        arch_image = _image_for_arch(docker_conf, _safe_json(worker.get("system_info", "{}"), {}).get("arch"))
+        if arch_image:
+            earner["image"] = arch_image
+    # As api_add_proxied_copy: the copy's record goes in first, under the
+    # proxy's lock, so a deploy that times out is still under the cap and listed.
+    async with _proxy_state_lock(proxy_id):
+        fresh = await _proxy_or_404(proxy_id)
+        if fresh["state"].get("capped_at"):
+            raise HTTPException(
+                status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
+            )
+        definition = fresh["definition"]
+        had_record = any(
+            c["worker_id"] == worker_id and c["slug"] == slug for c in await database.list_proxied_copies(proxy_id)
+        )
+        await database.save_proxied_copy(proxy_id, worker_id, slug)
+    record = {**spec, "route": {"proxy_id": proxy_id}}
+    record.pop("instances", None)
+    try:
+        result = await _proxy_worker_call(
+            worker_id,
+            "POST",
+            f"/api/proxied/{slug}/{proxy_id}/deploy",
+            definition,
+            json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition), "routed": True},
+            timeout=180,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 504:
+            # The worker may still finish it: both records stay, so the service
+            # is listed, its route is kept, and it can be stopped or removed.
+            await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
+        elif not had_record:
+            await database.delete_proxied_copy(proxy_id, worker_id, slug)
+        raise
+    container_id = str(result.get("container_id") or "remote")
+    await database.save_deployment(slug=slug, container_id=container_id, spec=record, worker_id=worker_id)
+    await database.record_health_event(
+        slug, "start", f"deployed to worker {worker_id} through proxy {proxy_id}", worker_id=worker_id, instance=1
+    )
+    metrics.record_container_lifecycle("deploy", slug)
+    _spawn(_run_collection())
+    exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
+    exit_ip = egress.public_ip(exit_info.get("ip"))
+    response: dict[str, Any] = {
+        "status": "deployed",
+        "container_id": container_id,
+        "route": {
+            "proxy_id": proxy_id,
+            "name": definition.get("name") or "",
+            "exit_ip": exit_ip,
+            "country": exit_info.get("country") or None,
+        },
+    }
+    workers = await database.list_workers()
+    for w in workers:
+        _parse_worker_json(w)
+    if others := proxies.same_exit_copies(workers, slug, exit_ip, itself=(worker_id, proxy_id)):
+        limit = egress.devices_per_ip_limit(svc)
+        response["warning"] = f"{svc.get('name') or slug} already leaves from {exit_ip} on {', '.join(others)}. " + (
+            "Its provider allows one device per IP, so this one earns nothing there."
+            if limit == 1
+            else "Devices on one IP share its bandwidth, and the provider may limit devices per IP."
+        )
+    if link := catalog.device_link_step(svc, merged_env):
+        registered = await _register_device(slug, link["id"], merged_env)
+        link["registered"] = registered is True
+        link["retrying"] = registered is None
+        response["device_link"] = link
+    if divergence:
+        response["kept_from_previous_deployment"] = divergence
+    return response
+
+
+async def _routes_on(worker_id: int, slug: str) -> list[int]:
+    """The proxies ``slug`` is routed through on this worker, by its last heartbeat."""
+    found: set[int] = set()
+    worker = await database.get_worker(worker_id)
+    if worker:
+        _parse_worker_json(worker)
+        for entry in proxies.routed_entries(worker, slug):
+            if isinstance(entry.get("proxy_id"), int):
+                found.add(entry["proxy_id"])
+    return sorted(found)
+
+
+async def _confirm_leave_route(
+    request: Request | None, svc: dict[str, Any], slug: str, worker_id: int, password: Any
+) -> None:
+    """The owner's password before a routed service runs from the worker's own IP.
+
+    Without one the answer is 403 ``step_up_required``, which the dashboard
+    turns into a password prompt that names the IP the service would then show.
+    """
+    if request is None or not (isinstance(password, str) and password):
+        worker = await database.get_worker(worker_id) or {}
+        ip = egress.public_ip(_safe_json(worker.get("system_info", "{}"), {}).get("egress_ip"))
+        box = worker.get("name") or f"worker {worker_id}"
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": f"{svc.get('name') or slug} runs through a proxy on {box}. Running it from {box}'s "
+                f"own IP{f' ({ip})' if ip else ''} shows that address to {svc.get('name') or slug} and to "
+                "everyone its traffic reaches. Confirm with your password.",
+            },
+        )
+    await require_step_up(request, password, action=step_up.ACTION_LEAVE_ROUTE, target=f"{slug}|{worker_id}")
+
+
+async def _remove_routed_copies(worker_id: int, slug: str, proxy_ids: list[int]) -> None:
+    """Remove the routed copies of ``slug`` before it runs from the worker's own IP.
+
+    They run the same device ids, so the direct one never starts beside them.
+    Anything but a confirmed removal stops the switch: nothing is deployed.
+    """
+    for proxy_id in proxy_ids:
+        proxy = await database.get_proxy(proxy_id)
+        try:
+            await _proxy_worker_call(
+                worker_id,
+                "DELETE",
+                f"/api/proxied/{slug}/{proxy_id}",
+                (proxy or {}).get("definition") or {},
+                timeout=COPY_REMOVE_TIMEOUT,
+            )
+        except HTTPException as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"The copy of {slug} through proxy {proxy_id} could not be removed first ({exc.detail}), "
+                "so nothing was deployed from the worker's own IP.",
+            ) from None
+        await _finish_copy_removal(proxy_id, worker_id, slug)
+
+
 async def _step_up_critical(
     request: Request | None, slug: str, svc: dict[str, Any], custom_image: str, password: Any
 ) -> bool:
@@ -4292,6 +4573,14 @@ async def _approve_spec(worker_id: int, slug: str, spec: dict[str, Any]) -> dict
     last, per request: each copy gets its own and none is ever recorded. A
     worker still on the shared fleet key cannot check one, so it is refused here.
     """
+    target = step_up.deploy_target(
+        slug, spec.get("image") or "", spec.get("command"), spec.get("env"), spec.get("volumes")
+    )
+    return {**spec, "approval": await _sign_for_worker(worker_id, step_up.ACTION_CUSTOM_IMAGE, target)}
+
+
+async def _sign_for_worker(worker_id: int, action: str, target: str) -> str:
+    """A step-up approval for ``action`` on ``target``, keyed with that worker's own key."""
     worker = await database.get_worker(worker_id) or {}
     key = await _confirmed_worker_key(worker.get("client_id") or "")
     if not key:
@@ -4300,17 +4589,14 @@ async def _approve_spec(worker_id: int, slug: str, spec: dict[str, Any]) -> dict
             detail="This worker has not finished enrolling, so it cannot check a password confirmation. "
             "Wait for its next heartbeat and try again.",
         )
-    target = step_up.deploy_target(
-        slug, spec.get("image") or "", spec.get("command"), spec.get("env"), spec.get("volumes")
-    )
-    return {**spec, "approval": step_up.sign(key, step_up.ACTION_CUSTOM_IMAGE, target)}
+    return step_up.sign(key, action, target)
 
 
 async def _audit_worker_refusal(request: Request | None, exc: HTTPException, slug: str, worker_id: int) -> None:
     """Write a worker's critical-volume or step-up refusal to the audit table."""
     detail = exc.detail if isinstance(exc.detail, dict) else {}
     error = detail.get("error")
-    if error not in ("critical_volume_mount", "step_up_required", "step_up_rejected"):
+    if error not in ("critical_volume_mount", "step_up_required", "step_up_rejected", "route_locked", "proxied_only"):
         return
     actor = auth.get_current_user(request) if request is not None else None
     await _audit(
@@ -4562,10 +4848,80 @@ def _merge_recorded_spec(
 # /api/{action}/{slug} and the service-scoped /api/services/{slug}/... — with identical
 # behavior. Both sets of routes delegate to these helpers so the writer-guard, worker
 # resolution, proxy, and bookkeeping live in exactly one place per action.
+async def _route_on(worker_id: int, slug: str) -> int | None:
+    """The proxy ``slug`` is routed through on this worker by its record, or None."""
+    try:
+        return proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id))
+    except Exception as exc:  # noqa: BLE001 - only asked after a 404, which then stands
+        logger.warning("Could not read the route of %s on worker %s: %s", slug, worker_id, exc)
+        return None
+
+
+async def _or_routed(
+    worker_id: int,
+    slug: str,
+    instance: int,
+    direct: Callable[[], Awaitable[Any]],
+    routed: Callable[[int], Awaitable[Any]],
+) -> Any:
+    """``direct()``, or ``routed(proxy_id)`` when the worker has no such container and the service is routed.
+
+    A service routed through a proxy at deploy has no container of its own on
+    the worker: its proxied copy is the service, and the worker's container
+    routes answer 404 for it. Its buttons then act on that copy, with the
+    proxy's current settings and its traffic cap, as the Proxies page does.
+    """
+    try:
+        return await direct()
+    except HTTPException as exc:
+        if exc.status_code != 404 or instance != 1:
+            raise
+        proxy_id = await _route_on(worker_id, slug)
+        if proxy_id is None:
+            raise
+    return await routed(proxy_id)
+
+
+async def _routed_command(worker_id: int, slug: str, command: str, proxy_id: int) -> dict[str, Any]:
+    """Stop, start or restart a routed service through its proxied copy."""
+    if command == "restart":
+        await _proxied_command(proxy_id, worker_id, slug, "stop")
+        command = "start"
+    return await _proxied_command(proxy_id, worker_id, slug, command)
+
+
+async def _remove_routed(worker_id: int, slug: str) -> dict[str, Any]:
+    """Remove a routed service: every proxied copy of it on the worker, as a direct removal does."""
+    removed: list[str] = []
+    pending: list[int] = []
+    for copy in await database.list_proxied_copies():
+        if copy["worker_id"] != worker_id or copy["slug"] != slug:
+            continue
+        result = await _remove_copy(copy["proxy_id"], worker_id, slug)
+        if isinstance(result, JSONResponse):
+            pending.append(copy["proxy_id"])
+        elif isinstance(result, dict):
+            removed += [str(c) for c in result.get("containers") or []]
+    out: dict[str, Any] = {"status": "removed", "containers": removed}
+    if pending:
+        out["status"] = "removing"
+        out["note"] = (
+            "The worker has not confirmed yet. CashPilot asks it again with each of its heartbeats and drops "
+            "the copy once it confirms."
+        )
+    return out
+
+
 async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _proxy_worker_command(worker_id, "stop", slug, instance=instance)
+    result = await _or_routed(
+        worker_id,
+        slug,
+        instance,
+        lambda: _proxy_worker_command(worker_id, "stop", slug, instance=instance),
+        lambda pid: _routed_command(worker_id, slug, "stop", pid),
+    )
     await database.record_health_event(slug, "stop", worker_id=worker_id, instance=instance)
     metrics.record_container_lifecycle("stop", slug)
     return result
@@ -4579,7 +4935,13 @@ async def _command_and_record(worker_id: int, command: str, slug: str, instance:
     that copy is never alerted.
     """
     try:
-        result = await _proxy_worker_command(worker_id, command, slug, instance=instance)
+        result = await _or_routed(
+            worker_id,
+            slug,
+            instance,
+            lambda: _proxy_worker_command(worker_id, command, slug, instance=instance),
+            lambda pid: _routed_command(worker_id, slug, command, pid),
+        )
     except HTTPException as exc:
         if exc.status_code == 504:
             await database.record_health_event(slug, command, worker_id=worker_id, instance=instance)
@@ -4615,7 +4977,17 @@ async def _svc_remove(
         params = {"delete_volumes": "true"}
         if allow_delete_critical:
             params["allow_delete_critical"] = "true"
-    result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
+    try:
+        result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
+    except HTTPException as exc:
+        if exc.status_code != 404 or await _route_on(worker_id, slug) is None:
+            raise
+        # A routed service: no container of its own and no volumes, its copy is the service.
+        result = await _remove_routed(worker_id, slug)
+        await database.remove_deployment(slug, worker_id=worker_id)
+        await database.record_health_event(slug, "remove", worker_id=worker_id)
+        metrics.record_container_lifecycle("remove", slug)
+        return result
     if delete_volumes and allow_delete_critical:
         await _audit(
             "delete_critical_volumes", slug, "deleted", actor=auth.get_current_user(request), worker_id=worker_id
@@ -4792,6 +5164,11 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "critical_volume_mount",
         "step_up_required",
         "step_up_rejected",
+        # A deploy refused from the worker's own IP (app/route_gate.py).
+        "route_locked",
+        "proxied_only",
+        "route_not_tunnel",
+        "route_unknown",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -5009,7 +5386,7 @@ def _deploy_timeout(slug: str) -> int:
 
 
 async def _proxy_worker_deploy(
-    worker_id: int, slug: str, spec: dict[str, Any], *, approve: bool = False
+    worker_id: int, slug: str, spec: dict[str, Any], *, approve: bool = False, leave_route: bool = False
 ) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -5034,6 +5411,9 @@ async def _proxy_worker_deploy(
     if approve:
         # After the image is final: the approval covers the spec as sent.
         spec = await _approve_spec(worker_id, slug, spec)
+    if leave_route:
+        # Only after _confirm_leave_route checked the owner's password.
+        spec = {**spec, "route_approval": await _sign_for_worker(worker_id, step_up.ACTION_LEAVE_ROUTE, slug)}
     return await _proxy_to_worker(
         worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
@@ -5300,6 +5680,10 @@ async def api_add_proxied_copy(
             status_code=409,
             detail=f"Deploy {svc.get('name') or slug} on this worker first; the proxied copy runs with its settings.",
         )
+    if proxies.route_of(recorded) == proxy_id:
+        raise HTTPException(
+            status_code=409, detail=f"{svc.get('name') or slug} already runs through this proxy on this worker."
+        )
     docker_conf = svc.get("docker") or {}
     try:
         earner = proxies.earner_spec(recorded, docker_conf, proxy_id)
@@ -5371,6 +5755,11 @@ async def api_proxied_copy_command(
 ) -> dict[str, Any]:
     if command not in ("start", "stop"):
         raise HTTPException(status_code=400, detail="The command is start or stop")
+    return await _proxied_command(proxy_id, worker_id, slug, command)
+
+
+async def _proxied_command(proxy_id: int, worker_id: int, slug: str, command: str) -> dict[str, Any]:
+    """Start or stop one proxied copy, with the proxy's current settings and its cap."""
     proxy = await _proxy_or_404(proxy_id)
     if command == "start" and proxy["state"].get("capped_at"):
         raise HTTPException(status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap")
@@ -5411,8 +5800,14 @@ _copy_removals_running: set[tuple[int, int, str]] = set()
 
 
 async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str) -> None:
-    """The worker confirmed the copy is gone: drop its record and its device's pending link."""
+    """The worker confirmed the copy is gone: drop its record and its device's pending link.
+
+    A service routed through this proxy at deploy was that copy, so its
+    deployment record goes too: nothing of it runs on the worker any more.
+    """
     await database.delete_proxied_copy(proxy_id, worker_id, slug)
+    if proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == proxy_id:
+        await database.remove_deployment(slug, worker_id=worker_id)
     await _drop_copy_device_links(proxy_id, slug)
 
 
@@ -5452,6 +5847,11 @@ async def api_remove_proxied_copy(
     (_resume_copy_removals), so the record never outlives the containers and
     never disappears while they still run.
     """
+    return await _remove_copy(proxy_id, worker_id, slug)
+
+
+async def _remove_copy(proxy_id: int, worker_id: int, slug: str) -> Any:
+    """api_remove_proxied_copy without the route: a dict, or a 202 JSONResponse while pending."""
     proxy = await _proxy_or_404(proxy_id)
     if not await database.get_worker(worker_id):
         # The box was deleted or enrolled again under a new id: there is no
@@ -5872,7 +6272,16 @@ async def api_service_logs(
 ) -> dict[str, str]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    return await _proxy_worker_logs(worker_id, slug, lines, instance=_instance_param(instance))
+    copy = _instance_param(instance)
+    return await _or_routed(
+        worker_id,
+        slug,
+        copy,
+        lambda: _proxy_worker_logs(worker_id, slug, lines, instance=copy),
+        lambda pid: _proxy_to_worker(
+            worker_id, "GET", f"/api/proxied/{slug}/{pid}/logs", params={"lines": max(1, min(lines, 1000))}
+        ),
+    )
 
 
 @app.delete("/api/services/{slug}")
@@ -9207,15 +9616,32 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         # pasted into a raw spec is dropped, so this route can never run another
         # image than the catalog's on a service with critical volumes.
         body.spec.pop("approval", None)
+        # The same for leaving a route, and a route this spec claims is not
+        # one it deploys: this route runs on the worker's own IP only.
+        body.spec.pop("route_approval", None)
+        body.spec.pop("route", None)
         try:
             result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, body.slug, worker_id)
             raise
     elif body.command in ("stop", "restart", "start"):
-        result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
+        command = body.command
+        result = await _or_routed(
+            worker_id,
+            body.slug,
+            1,
+            lambda: _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{command}"),
+            lambda pid: _routed_command(worker_id, body.slug, command, pid),
+        )
     elif body.command == "remove":
-        result = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{body.slug}")
+        result = await _or_routed(
+            worker_id,
+            body.slug,
+            1,
+            lambda: _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{body.slug}"),
+            lambda pid: _remove_routed(worker_id, body.slug),
+        )
     else:
         raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
 

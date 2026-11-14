@@ -45,7 +45,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from app import socket_policy, version  # noqa: E402
+from app import route_gate, socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
@@ -849,6 +849,7 @@ def deploy_raw(
     keep_targets: set[str] | None = None,
     instance: int = 1,
     name: str | None = None,
+    leave_route: bool = False,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -867,10 +868,18 @@ def deploy_raw(
     ``resources`` (mem_limit / mem_reservation / oom_score_adj / cpu_shares)
     makes the container's cgroup limits durable across recreates. Returns the
     container ID.
+
+    Every earner this worker creates passes here, so this is where a service
+    routed through a proxy, or a proxied-only worker, refuses to run from the
+    box's own IP (route_gate.check). ``leave_route`` is set only by the worker
+    API, after it checked the owner's password approval for that switch.
     """
     client = _get_client()
     name = name or _container_name(slug, instance)
     joined = (network_mode or "").startswith("container:")
+    # First, before anything is pulled or replaced: a refused earner costs the
+    # running one nothing.
+    route_gate.check(slug, network_mode, client, leave_route=leave_route)
     gated = fence_gated(slug)
 
     # Decided before the old container is touched: a network or runtime that

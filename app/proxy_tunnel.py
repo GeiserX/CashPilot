@@ -18,6 +18,14 @@ tunnel per copy (``cashpilot-tunnel-<slug>-p<id>``); those "legacy" pairs keep
 working, and ``migrate_legacy`` moves them into the shared tunnel. An earner's
 tunnel is always the container its NetworkMode names, never a name lookup.
 
+A service routed through a proxy from its first deploy (app/route_gate.py) is
+the one exception: it gets a tunnel of its own (``cashpilot-tunnel-p<id>-<slug>``,
+``own_tunnel``). Earners in one namespace share its loopback and its /proc/net,
+so one provider's client could reach another's local ports, take a port first
+or read its connections. Direct earners are kept apart on the bridge
+(enable_icc off), and a routed service, which runs in place of a direct one,
+keeps that separation. Its tunnel works exactly as a shared one with one copy.
+
 A copy the owner (or the cap) stopped is written down in ``HELD_MARKER``: its
 tunnel may stay up for the other copies, so a stopped earner beside a ready
 tunnel no longer means "stopped by a reboot or a crash", and the heartbeat
@@ -55,7 +63,7 @@ from urllib.parse import quote, unquote
 from docker.errors import APIError, NotFound
 from docker.types import Mount
 
-from app import orchestrator, version
+from app import orchestrator, route_gate, version
 from app.constants import (
     CONTAINER_PREFIX,
     LABEL_CATEGORY,
@@ -106,7 +114,9 @@ def _deploy_lock(proxy_id: int) -> threading.Lock:
 
 
 #: The service label of a shared tunnel: it belongs to a proxy, not to a service.
+#: A routed service's own tunnel carries the same, plus LABEL_TUNNEL_FOR naming it.
 SHARED_SLUG = "proxy-tunnel"
+LABEL_TUNNEL_FOR = "cashpilot.tunnel-for"
 
 #: Earners the owner or the cap stopped, one container name per line. Their
 #: tunnel may keep running for the other copies, so without this the heartbeat
@@ -216,14 +226,15 @@ def tunnel_name(slug: str, proxy_id: int) -> str:
     return f"{CONTAINER_PREFIX}tunnel-{slug}-p{proxy_id}"
 
 
-def shared_tunnel_name(proxy_id: int) -> str:
-    """The one tunnel every copy through ``proxy_id`` on this worker joins."""
-    return f"{CONTAINER_PREFIX}tunnel-p{proxy_id}"
+def shared_tunnel_name(proxy_id: int, slug: str | None = None) -> str:
+    """The one tunnel every copy through ``proxy_id`` on this worker joins, or with
+    ``slug`` the routed service's own tunnel through it."""
+    return f"{CONTAINER_PREFIX}tunnel-p{proxy_id}" + (f"-{slug}" if slug else "")
 
 
-def shared_label(proxy_id: int) -> str:
-    """What names the shared tunnel inside the tunnel (its tailnet host name)."""
-    return f"p{proxy_id}"
+def shared_label(proxy_id: int, slug: str | None = None) -> str:
+    """What names the tunnel inside the tunnel (its tailnet host name)."""
+    return f"{slug}-p{proxy_id}" if slug else f"p{proxy_id}"
 
 
 def earner_name(slug: str, proxy_id: int) -> str:
@@ -407,8 +418,12 @@ def secret_mount() -> Mount:
     return Mount(SECRET_DIR, None, type="volume")
 
 
-def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | None, hostname: str) -> dict[str, Any]:
+def sidecar_kwargs(
+    name: str, slug: str, proxy_id: int | None, network: str | None, hostname: str, tunnel_for: str | None = None
+) -> dict[str, Any]:
     """Everything the sidecar is created with. No secret appears here.
+
+    ``tunnel_for`` names the service whose copy the tunnel carries.
 
     A Test tunnel (no proxy id) gets no restart policy: one left behind by a
     worker that died during the test must not come back with every daemon
@@ -422,6 +437,8 @@ def sidecar_kwargs(name: str, slug: str, proxy_id: int | None, network: str | No
     }
     if proxy_id is not None:
         labels[LABEL_PROXY] = str(proxy_id)
+    if tunnel_for:
+        labels[LABEL_TUNNEL_FOR] = tunnel_for
     return {
         "image": tunnel_image(),
         "name": name,
@@ -530,6 +547,7 @@ def start_sidecar(
     *,
     label: str | None = None,
     files: dict[str, str] | None = None,
+    tunnel_for: str | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Create, provision and start a tunnel, then wait for its exit. Removed on any failure.
 
@@ -550,7 +568,7 @@ def start_sidecar(
         client.images.pull(image)
     except APIError as exc:
         logger.warning("Could not pull %s: %s (trying the local copy)", image, exc)
-    kwargs = sidecar_kwargs(name, slug, proxy_id, network, hostname=hostname or _hostname(name))
+    kwargs = sidecar_kwargs(name, slug, proxy_id, network, hostname=hostname or _hostname(name), tunnel_for=tunnel_for)
     kwargs.pop("detach")
     container = client.containers.create(**kwargs)
     try:
@@ -565,6 +583,14 @@ def start_sidecar(
         detail = orchestrator.proxy_refusal(exc) or str(exc)
         raise ProxyTunnelError(redact(f"The tunnel could not start: {detail}", secrets)) from None
     return container, exit_info
+
+
+def _routed_here(slug: str, proxy_id: int) -> bool:
+    """Whether ``slug`` is routed through ``proxy_id`` on this worker (app/route_gate.py)."""
+    try:
+        return route_gate.routed().get(slug) == int(proxy_id)
+    except (OSError, ValueError):
+        return False
 
 
 def _hostname(name: str) -> str:
@@ -602,7 +628,18 @@ def _is_tunnel(container: Any | None, proxy_id: int | None = None) -> bool:
 
 
 def _is_shared(container: Any | None, proxy_id: int | None = None) -> bool:
+    """A tunnel the shared-tunnel code made: a proxy's shared one or a routed service's own."""
     return _is_tunnel(container, proxy_id) and _labels(container).get(LABEL_SERVICE) == SHARED_SLUG
+
+
+def _is_tunnel_for(container: Any | None, proxy_id: int, slug: str | None) -> bool:
+    """The proxy's shared tunnel (``slug`` None), or the routed service ``slug``'s own."""
+    return _is_shared(container, proxy_id) and _labels(container).get(LABEL_TUNNEL_FOR) == slug
+
+
+def _own_key(tunnel: Any | None) -> str | None:
+    """Whose own tunnel this is: the routed service's slug, or None for a shared one."""
+    return _labels(tunnel).get(LABEL_TUNNEL_FOR) or None
 
 
 def _is_earner(container: Any | None) -> bool:
@@ -769,7 +806,7 @@ def _move_members(client: Any, old: Any, new: Any) -> None:
 def _shared_ready(client: Any, proxy_id: int) -> tuple[Any, dict[str, Any]] | None:
     """The proxy's shared tunnel when it runs and has written /run/ready."""
     current = _get(client, shared_tunnel_name(proxy_id))
-    if not _is_shared(current, proxy_id) or getattr(current, "status", "") != "running":
+    if not _is_tunnel_for(current, proxy_id, None) or getattr(current, "status", "") != "running":
         return None
     exit_info = _read_exit(current)
     return (current, exit_info) if exit_info is not None else None
@@ -783,8 +820,10 @@ def _ensure_tunnel(
     *,
     files: dict[str, str] | None = None,
     upgrade: bool = False,
+    slug: str | None = None,
 ) -> tuple[Any, dict[str, Any]]:
-    """The proxy's shared tunnel, running on the given settings and ready.
+    """The proxy's shared tunnel, running on the given settings and ready; with
+    ``slug``, the routed service's own tunnel through the proxy instead.
 
     Its earners are never recreated for a settings change. A container's state
     lives in its writable layer (proxied copies have no volumes), and several
@@ -807,7 +846,7 @@ def _ensure_tunnel(
     is the way only when there is none yet, for an upgrade, or when Docker
     cannot start this one at all (its container is broken).
     """
-    label = shared_label(proxy_id)
+    label = shared_label(proxy_id, slug)
     if files is None:
         try:
             files = secret_files(proxy or {}, own_ip, label)
@@ -815,13 +854,17 @@ def _ensure_tunnel(
             raise ProxyTunnelError(redact(str(exc), _secret_values(proxy or {})), exc.status_code) from None
     secrets = [*_secret_values(proxy or {}), files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
     image = tunnel_image()
-    final = shared_tunnel_name(proxy_id)
+    final = shared_tunnel_name(proxy_id, slug)
     staged = final + STAGED_SUFFIX
     current = _get(client, final)
-    if current is not None and not _is_shared(current, proxy_id):
+    if current is not None and not _is_tunnel_for(current, proxy_id, slug):
         raise ProxyTunnelError(f"A container named {final} that CashPilot did not create is in the way")
     leftover = _get(client, staged)
-    if _is_shared(leftover, proxy_id) and _age_seconds(leftover) >= STAGED_STALE_SECONDS and _members(client, leftover):
+    if (
+        _is_tunnel_for(leftover, proxy_id, slug)
+        and _age_seconds(leftover) >= STAGED_STALE_SECONDS
+        and _members(client, leftover)
+    ):
         # A change that died after it began moving copies: finish it first.
         with _swap_lock:
             current = _finish_staged(client, leftover, current, final)
@@ -833,7 +876,7 @@ def _ensure_tunnel(
     # Left by a deploy that died midway, on this name only if it is ours. A young
     # one can belong to a deploy another worker on this daemon is running.
     if (leftover := _get(client, staged)) is not None:
-        if not _is_shared(leftover, proxy_id):
+        if not _is_tunnel_for(leftover, proxy_id, slug):
             raise ProxyTunnelError(f"A container named {staged} that CashPilot did not create is in the way")
         if _age_seconds(leftover) < STAGED_STALE_SECONDS:
             raise ProxyTunnelError(
@@ -842,7 +885,16 @@ def _ensure_tunnel(
             )
         _remove_quietly(leftover, SIDECAR_STOP_SECONDS)
     new, exit_info = start_sidecar(
-        client, staged, SHARED_SLUG, proxy_id, proxy, own_ip, hostname=_hostname(final), label=label, files=files
+        client,
+        staged,
+        SHARED_SLUG,
+        proxy_id,
+        proxy,
+        own_ip,
+        hostname=_hostname(final),
+        label=label,
+        files=files,
+        tunnel_for=slug,
     )
     try:
         with _swap_lock:
@@ -1054,7 +1106,15 @@ def _drop_if_empty(client: Any, tunnel: Any | None) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None) -> dict:
+def deploy(
+    slug: str,
+    proxy_id: int,
+    earner: dict[str, Any],
+    proxy: dict[str, Any],
+    own_ip: str | None,
+    *,
+    own_tunnel: bool = False,
+) -> dict:
     """Deploy (or replace) the proxied copy of ``slug`` through proxy ``proxy_id``.
 
     The proxy's shared tunnel is made ready first (see _ensure_tunnel): a
@@ -1063,16 +1123,28 @@ def deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, An
     earner of this copy goes (with its tunnel, when it is a legacy pair), and
     the new one is created inside the shared tunnel's namespace. A tunnel that
     cannot start therefore costs nothing.
+
+    ``own_tunnel`` (a routed service) puts the earner in a tunnel of its own
+    instead; a tunnel it leaves goes once no copy is left in it.
     """
     with _deploy_lock(proxy_id):
-        return _deploy(slug, proxy_id, earner, proxy, own_ip)
+        return _deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=own_tunnel)
 
 
-def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None) -> dict:
+def _deploy(
+    slug: str,
+    proxy_id: int,
+    earner: dict[str, Any],
+    proxy: dict[str, Any],
+    own_ip: str | None,
+    *,
+    own_tunnel: bool = False,
+) -> dict:
     client = orchestrator._get_client()
+    key = slug if own_tunnel else None
     # Checked first: settings that cannot work (a host that does not resolve,
     # no tunnel image) fail fast, before a tunnel is created.
-    secret_files(proxy, own_ip, shared_label(proxy_id))
+    secret_files(proxy, own_ip, shared_label(proxy_id, key))
     tunnel_image()
     name = earner_name(slug, proxy_id)
     # A new tunnel image is taken only when no other copy would be recreated
@@ -1081,14 +1153,16 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
     others = [
         m
         for t in (
-            _get(client, shared_tunnel_name(proxy_id)),
-            _get(client, shared_tunnel_name(proxy_id) + STAGED_SUFFIX),
+            _get(client, shared_tunnel_name(proxy_id, key)),
+            _get(client, shared_tunnel_name(proxy_id, key) + STAGED_SUFFIX),
         )
-        if _is_shared(t, proxy_id)
+        if _is_tunnel_for(t, proxy_id, key)
         for m in _members(client, t)
         if str(m.name) != name
     ]
-    tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others)
+    old = _get(client, name)
+    old_tunnel = _tunnel_of(client, old if _is_ours(old, slug, proxy_id) else None, slug, proxy_id)
+    tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others, slug=key)
     # Cleared before anything changes: deploy_raw starts the earner, and a copy
     # left running while recorded as stopped is never restarted after a reboot.
     try:
@@ -1119,6 +1193,10 @@ def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, A
             _remove_quietly(left, 2)
         _drop_if_empty(client, tunnel)
         raise
+    if old_tunnel is not None and old_tunnel.id != tunnel.id:
+        # The shared tunnel this copy left for its own, or the other way round.
+        with contextlib.suppress(Exception):
+            _drop_if_empty(client, _get(client, old_tunnel.id))
     return {"container_id": container_id, "tunnel_id": tunnel.id, "exit": exit_info}
 
 
@@ -1206,7 +1284,9 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
     if tunnel is not None and not _is_shared(tunnel) and proxy is None:
         return _start_legacy(slug, earner, tunnel, name)
     if proxy is not None:
-        shared, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip)
+        # A routed service keeps its own tunnel; anything else is a shared copy.
+        key = _own_key(tunnel) if _is_shared(tunnel) else (slug if _routed_here(slug, proxy_id) else None)
+        shared, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, slug=key)
     else:
         if tunnel is None:
             raise ProxyTunnelError(
@@ -1225,11 +1305,15 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
             if earner is not None and _tunnel_id_of(earner) != shared.id:
                 # A legacy pair, or a copy whose tunnel is gone: a namespace is
                 # fixed at create, so its earner is recreated in the shared
-                # tunnel. A legacy tunnel goes with it.
+                # tunnel (a routed service's in its own). A legacy tunnel goes
+                # with it.
                 with _swap_lock:
                     _clone_into(client, earner, shared, start=False)
                     if tunnel is not None and not _is_shared(tunnel):
                         _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
+                    elif tunnel is not None and tunnel.id != shared.id:
+                        with contextlib.suppress(Exception):
+                            _drop_if_empty(client, tunnel)
                 earner = _get(client, name)
             if earner is None:
                 raise ProxyTunnelError(f"{name} disappeared while its tunnel was replaced")
@@ -1265,6 +1349,14 @@ def _start_legacy(slug: str, earner: Any, sidecar: Any, name: str) -> dict[str, 
     else:
         earner.start()
     return {"exit": exit_info}
+
+
+def logs(slug: str, proxy_id: int, lines: int = 50) -> str:
+    """The last ``lines`` log lines of the copy's earner. ValueError when there is no such copy."""
+    earner = _get(orchestrator._get_client(), earner_name(slug, proxy_id))
+    if not _is_ours(earner, slug, proxy_id) or not _is_earner(earner):
+        raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
+    return earner.logs(tail=lines, timestamps=True).decode("utf-8", errors="replace")
 
 
 def remove(slug: str, proxy_id: int) -> list[str]:
@@ -1466,10 +1558,13 @@ def _finish_stale_staged(client: Any, staged: Any) -> str | None:
     lock = _deploy_lock(int(pid))
     if not lock.acquire(blocking=False):
         return "Another change to this proxy is running on this worker."
-    final = shared_tunnel_name(int(pid))
+    # The name the staged tunnel was made for: the proxy's shared one, or a
+    # routed service's own.
+    key = _own_key(staged)
+    final = shared_tunnel_name(int(pid), key)
     try:
         current = _get(client, final)
-        if current is not None and not _is_shared(current, int(pid)):
+        if current is not None and not _is_tunnel_for(current, int(pid), key):
             return f"A container named {final} that CashPilot did not create holds the name the new tunnel needs."
         _finish_staged(client, staged, current, final)
         return None

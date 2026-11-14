@@ -13,6 +13,7 @@ the exit IP a provider sees.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from collections.abc import Callable
 from datetime import UTC, date, datetime
@@ -311,6 +312,51 @@ def earner_spec(recorded: dict[str, Any], docker_conf: dict[str, Any], proxy_id:
     elif recorded.get("command"):
         spec["command"] = rename(recorded["command"])
     return spec
+
+
+def routed_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    """The earner of a service routed through a proxy from its deploy: the deploy's own spec.
+
+    Unlike a copy (earner_spec), nothing is renamed: no direct container of
+    the service runs on that box, so the routed one is the device the deploy
+    named, and the device the provider is asked to link.
+    """
+    out: dict[str, Any] = {
+        "image": spec.get("custom_image") or spec.get("image"),
+        "env": dict(spec.get("env") or {}),
+        "cap_add": spec.get("cap_add") or None,
+        "labels": dict(spec.get("labels") or {}),
+    }
+    if spec.get("resources"):
+        out["resources"] = spec["resources"]
+    if spec.get("command"):
+        out["command"] = spec["command"]
+    return out
+
+
+def route_of(spec: dict[str, Any] | None) -> int | None:
+    """The proxy a deployment record says the service runs through, or None for the box's own IP."""
+    route = (spec or {}).get("route")
+    proxy_id = route.get("proxy_id") if isinstance(route, dict) else None
+    return proxy_id if isinstance(proxy_id, int) and not isinstance(proxy_id, bool) and proxy_id > 0 else None
+
+
+def routed_entries(worker: dict[str, Any] | None, slug: str | None = None) -> list[dict[str, Any]]:
+    """The proxied entries of a worker's last heartbeat that are a routed service (app/route_gate.py).
+
+    Takes a worker row as the database returns it too, with ``system_info`` still JSON.
+    """
+    info = (worker or {}).get("system_info")
+    if isinstance(info, str):
+        try:
+            worker = {**(worker or {}), "system_info": json.loads(info)}
+        except ValueError:
+            return []
+    return [
+        e
+        for e in proxied_entries(worker)
+        if e.get("routed") is True and (slug is None or egress.container_slug(e) == slug)
+    ]
 
 
 # ---------------------------------------------------------------------------

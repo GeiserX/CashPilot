@@ -52,6 +52,7 @@ from app import (
     orchestrator,
     payout_read,
     proxy_tunnel,
+    route_gate,
     state_backup,
     step_up,
     version,
@@ -707,6 +708,8 @@ async def _send_heartbeat() -> None:
         except Exception as exc:  # noqa: BLE001 - one missed reading, not a missed heartbeat
             logger.warning("Failed to read proxied copies for heartbeat: %s", exc)
             proxied = None
+    if proxied:
+        _mark_routed(proxied)
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -741,6 +744,9 @@ async def _send_heartbeat() -> None:
             # Kept out of "containers": they are on another exit IP and are not
             # copies of the service, so nothing that counts copies may see them.
             "proxied": proxied,
+            # Set by the operator (app/route_gate.py): no earner runs from this
+            # box's own IP, so the UI offers only routed deploys here.
+            "proxied_only": route_gate.proxied_only(),
         },
     }
     if docker_ok:
@@ -750,6 +756,9 @@ async def _send_heartbeat() -> None:
         # Starts a fence_gated service (Mysterium) only behind a confirmed fence,
         # on the bridge, with its port range and several WebUI addresses.
         payload["system_info"]["features"].append("fence_gated")
+        # Deploys a service through a proxy from its first start, and keeps it
+        # off this box's own IP until the owner confirms otherwise (route_gate).
+        payload["system_info"]["features"].append("route_at_deploy")
     # Only what the owner asked for, and only a finished round.
     sent_seq = _activity_seq
     if _activity_enabled and _pending_activity is not None:
@@ -865,6 +874,22 @@ async def _send_heartbeat() -> None:
         _consecutive_heartbeat_failures += 1
         logger.warning("Heartbeat failed: %s", _redact_userinfo(_reason(exc)))
         _log_link_failure_hint(exc)
+
+
+def _mark_routed(entries: list[dict[str, Any]]) -> None:
+    """Flag the proxied entries that are a routed service, not a copy beside a direct one.
+
+    The UI counts those as the service running on this box (app/placement.py)
+    and shows them on the dashboard; a copy keeps its own list on the Proxies page.
+    """
+    try:
+        lock = route_gate.routed()
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not read which services are routed: %s", exc)
+        return
+    for entry in entries:
+        if lock.get(str(entry.get("slug"))) == entry.get("proxy_id"):
+            entry["routed"] = True
 
 
 async def _heartbeat_loop() -> None:
@@ -1297,6 +1322,10 @@ class DeploySpec(BaseModel):
     # exact spec on this service (app/step_up.py). Needed only to run a service
     # with critical volumes other than as the catalog says.
     approval: str | None = None
+    # The UI's signed note that the owner confirmed, with their password, running
+    # a service routed through a proxy on this worker from the worker's own IP
+    # instead (app/route_gate.py, step_up.ACTION_LEAVE_ROUTE).
+    route_approval: str | None = None
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -1630,6 +1659,24 @@ def _validate_critical_spec(spec: DeploySpec, slug: str) -> None:
         ) from None
 
 
+def _validate_route_approval(spec: DeploySpec, slug: str) -> bool:
+    """Whether this deploy carries the owner's checked approval to leave a route.
+
+    Only the UI holds this worker's key, and it signs the approval only after
+    the owner re-entered their password (step_up.ACTION_LEAVE_ROUTE). Without
+    one, route_gate.check refuses a routed service from the box's own IP.
+    """
+    if not spec.route_approval:
+        return False
+    try:
+        step_up.check(_worker_key, spec.route_approval, step_up.ACTION_LEAVE_ROUTE, slug)
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was deployed."}
+        ) from None
+    return True
+
+
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
     _validate_instance(spec.instance)
@@ -1774,6 +1821,10 @@ class ProxySpec(BaseModel):
 class ProxiedDeploySpec(BaseModel):
     earner: DeploySpec
     proxy: ProxySpec
+    # The service itself, routed at deploy, not a copy beside a direct one:
+    # recorded on this worker so it is never started from the box's own IP
+    # without the owner's password (app/route_gate.py).
+    routed: bool = False
 
 
 class ProxyTestSpec(BaseModel):
@@ -1873,9 +1924,23 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
         "labels": spec.earner.labels,
         "resources": spec.earner.resources,
     }
+    before: int | None = None
+    if spec.routed:
+        # Recorded before the earner exists, so no deploy path can start this
+        # service from the box's own IP while the routed one is being made.
+        try:
+            before = await asyncio.to_thread(route_gate.mark, slug, proxy_id)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(
+                status_code=503, detail=f"Could not record the route of {slug} on this worker ({exc}); nothing changed"
+            ) from None
     try:
-        result = await asyncio.to_thread(proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip)
+        result = await asyncio.to_thread(
+            proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip, own_tunnel=spec.routed
+        )
     except Exception as exc:  # noqa: BLE001 - mapped to a status below
+        if spec.routed:
+            await asyncio.to_thread(route_gate.release, slug, before)
         raise _proxy_http_error(exc) from None
     return {"status": "deployed", **result}
 
@@ -1908,6 +1973,17 @@ async def api_proxied_start(
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
     return {"status": "started", **result}
+
+
+@app.get("/api/proxied/{slug}/{proxy_id}/logs")
+async def api_proxied_logs(request: Request, slug: str, proxy_id: int, lines: int = 50) -> dict[str, Any]:
+    """The log tail of a proxied copy's earner, as /api/containers/{slug}/logs gives a service's."""
+    _verify_api_key(request)
+    try:
+        logs = await asyncio.to_thread(proxy_tunnel.logs, slug, proxy_id, max(1, min(lines, 1000)))
+    except Exception as exc:  # noqa: BLE001
+        raise _proxy_http_error(exc) from None
+    return {"logs": logs}
 
 
 @app.delete("/api/proxied/{slug}/{proxy_id}")
@@ -1980,6 +2056,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     await asyncio.to_thread(_validate_deploy_spec, spec, slug)
     # Last of the checks: it spends the approval, which a refusal above must not.
     await asyncio.to_thread(_validate_critical_spec, spec, slug)
+    leave_route = await asyncio.to_thread(_validate_route_approval, spec, slug)
     kept_mounts: list[dict[str, str]] = []
     try:
         container_id = await asyncio.to_thread(
@@ -2003,7 +2080,11 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
+            leave_route=leave_route,
         )
+        if leave_route:
+            # It runs from this box's own IP now, as the owner confirmed.
+            await asyncio.to_thread(route_gate.release, slug)
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
@@ -2017,6 +2098,10 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # Structured, so the UI can show it and write it to its audit table.
         logger.warning("Deploy of %s refused: %s", slug, exc)
         raise HTTPException(status_code=403, detail={"error": "critical_volume_mount", "message": str(exc)}) from None
+    except route_gate.RouteRefused as exc:
+        # Raised before the running container was touched (orchestrator.deploy_raw).
+        logger.warning("Deploy of %s refused: %s", slug, exc)
+        raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
     except orchestrator.ContainerRuntimeError as exc:
         # Same shape as the network setting, also raised before the old container
         # was touched; 503 when the daemon could not be asked at all.
