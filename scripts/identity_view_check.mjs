@@ -80,6 +80,34 @@ check('the Use button carries where it runs, for the warning', offers.includes('
 check('a free id carries no warning', offers.includes('data-a3="7" data-a4=""'), offers);
 check('no offer says so', owner.identityOffersHtml('s', 'k', []).includes('no earlier id'), '');
 
+// --- the reuse offer leaves out the box being deployed to ------------------
+// The server leaves ``worker_id`` out of "in use on", as the deploy's shared-id
+// check does, so the offer warns about the same boxes the deploy refuses.
+const pickFn = slice('async function pickPreviousIdentity(', 'async function useIdentity(');
+async function pick(checked) {
+  const asked = [];
+  const document = {querySelectorAll: (sel) => {
+    if (sel.includes('worker-cb')) {
+      return sel.split(',').some(part => part.includes('earnapp')) ? checked.map(wid => ({dataset: {wid: String(wid)}})) : [];
+    }
+    return [];
+  }};
+  const api = async (path) => { asked.push(path); return []; };
+  const run = new Function('document', 'api', 'identityOffersHtml', '_identityPicks', 'toast', '_selectedWorkerIds',
+    '_rescaledWorkerIds', `${pickFn}; return pickPreviousIdentity;`)(
+    document, api, () => '', () => [], () => {},
+    (sel) => Array.from(document.querySelectorAll(sel)).map(cb => parseInt(cb.dataset.wid)),
+    () => []);
+  await run('earnapp', 'EARNAPP_UUID');
+  return asked[0] || '';
+}
+let asked = await pick([2]);
+check('one box picked: the offer asks without it', asked.includes('worker_id=2'), asked);
+asked = await pick([2, 3]);
+check('two boxes picked: the offer leaves none out', !asked.includes('worker_id'), asked);
+asked = await pick([]);
+check('no box picked: the offer leaves none out', !asked.includes('worker_id'), asked);
+
 // --- the deploy retry when an id runs on another box -----------------------
 async function runApi(answers, confirmAnswer) {
   const calls = [];

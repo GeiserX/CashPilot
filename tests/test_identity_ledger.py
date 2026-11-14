@@ -871,8 +871,10 @@ class TestACopyWhoseWriteFailed:
 def _no_checked_copies():
     """Each test starts with no copy marked as checked by an earlier heartbeat."""
     getattr(main, "_IDENTITIES_CHECKED", {}).clear()
+    getattr(main, "_IDENTITIES_LISTED", {}).clear()
     yield
     getattr(main, "_IDENTITIES_CHECKED", {}).clear()
+    getattr(main, "_IDENTITIES_LISTED", {}).clear()
 
 
 def _heartbeat(name, copies, *, slug="honeygain"):
@@ -1432,14 +1434,15 @@ class TestAStaleActiveRow:
         assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
         assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
 
-    def test_an_unproven_digest_leaves_it_and_is_checked_again(self, db):
+    def test_an_unproven_digest_leaves_it_and_is_not_read_again(self, db):
+        """Nothing that could prove it changes until a new record, which checks it again."""
         wid = self._stale()
         reads = AsyncMock(side_effect=database.active_identity_values)
         with patch.object(main.database, "active_identity_values", reads):
             for _ in range(2):
                 _heartbeat("box-a", {1: {"EARNAPP_UUID": "0123456789abcdef"}}, slug="earnapp")
         assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
-        assert reads.await_count == 2
+        assert reads.await_count == 1
 
     def test_only_the_current_record_proves_the_repair(self, db):
         wid = self._stale()
@@ -1473,3 +1476,118 @@ class TestARenamePendingProxiedCopy:
         asyncio.run(database.set_proxied_copy_rename_pending(7, wid, "proxyrack", True))
         asyncio.run(main._backfill_identities())
         assert {k[2] for k in _active()} == {"1"}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, tenth round: the raw deploy route, a late heartbeat after a
+# scale-down, and a digest that can never match
+# ---------------------------------------------------------------------------
+
+
+def _raw_deploy(env, worker_id, *, allow=False):
+    """Deploy earnapp through POST /api/workers/{id}/command; returns (error, the worker hop)."""
+    hop = AsyncMock(return_value={"container_id": "c"})
+
+    async def run():
+        with (
+            patch.object(main, "_require_owner", lambda r: OWNER),
+            patch.object(main, "_proxy_to_worker", hop),
+            patch.object(main.database, "record_health_event", AsyncMock()),
+            patch.object(main, "_spawn", lambda coro: coro.close()),
+            patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+        ):
+            body = main.WorkerCommand(command="deploy", slug="earnapp", spec={"env": env}, allow_shared_identity=allow)
+            try:
+                await main.api_worker_command(_request(), worker_id, body)
+            except HTTPException as exc:
+                return exc
+            return None
+
+    return asyncio.run(run()), hop
+
+
+class TestTheRawDeployChecksSharedIds:
+    def test_it_refuses_an_id_another_box_runs(self, db):
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        error, hop = _raw_deploy({"EARNAPP_UUID": UUID_A}, 2)
+        assert isinstance(error, HTTPException) and error.status_code == 409
+        assert error.detail["error"] == "identity_in_use" and UUID_A not in str(error.detail)
+        hop.assert_not_awaited()
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [1]
+
+    def test_the_owner_may_confirm_it(self, db):
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        error, hop = _raw_deploy({"EARNAPP_UUID": UUID_A}, 2, allow=True)
+        assert error is None
+        hop.assert_awaited_once()
+
+    def test_the_same_box_is_not_a_second_one(self, db):
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        assert _raw_deploy({"EARNAPP_UUID": UUID_A}, 1)[0] is None
+
+
+class TestALateHeartbeatAfterAScaleDown:
+    """A heartbeat built before copy 3's DELETE arrives after it."""
+
+    def test_the_removed_copy_does_not_stay_active(self, db):
+        wid = _worker(running=[("honeygain", [1])])
+        hg = TestACopyWhoseWriteFailed.HG
+        runs = {n: {"HONEYGAIN_DEVICE_NAME": "box" if n == 1 else f"box-{n}"} for n in (1, 2, 3)}
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", hg, wid, instances=3)[0] is None
+            _heartbeat("box-a", runs)
+            assert _deploy("honeygain", hg, wid, instances=2, running={1, 2, 3}, ran={3: runs[3]})[0] is None
+        copy_three = ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME")
+        assert copy_three not in _active()
+        _heartbeat("box-a", runs)  # the late one
+        _heartbeat("box-a", {1: runs[1], 2: runs[2]})
+        _heartbeat("box-a", {1: runs[1], 2: runs[2]})
+        assert copy_three not in _active()
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME", "box-3") in _retired()
+        assert set(_active()) == {
+            ("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME"),
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME"),
+        }
+
+    def test_a_copy_within_the_count_that_drops_out_keeps_its_row(self, db):
+        """Copy 2 missing from one heartbeat (being replaced, or its inspect failed) is no removal."""
+        wid = _worker(running=[("honeygain", [1])])
+        runs = {1: {"HONEYGAIN_DEVICE_NAME": "box"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", TestACopyWhoseWriteFailed.HG, wid, instances=2)[0] is None
+        _heartbeat("box-a", runs)
+        _heartbeat("box-a", {1: runs[1]})
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+
+    def test_a_copy_above_the_count_that_comes_back_is_proven_again(self, db):
+        """Retired when a heartbeat stops listing it; a later one that lists it again restores it."""
+        wid = _worker(running=[("honeygain", [1])])
+        hg = TestACopyWhoseWriteFailed.HG
+        runs = {n: {"HONEYGAIN_DEVICE_NAME": "box" if n == 1 else f"box-{n}"} for n in (1, 2)}
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", hg, wid, instances=2)[0] is None
+            # A scale-down a stale heartbeat hid: copy 2 keeps running above the count.
+            assert _deploy("honeygain", hg, wid, instances=1, running=set())[0] is None
+        _heartbeat("box-a", runs)
+        _heartbeat("box-a", {1: runs[1]})
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") not in _active()
+        _heartbeat("box-a", runs)
+        assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
+
+
+class TestADigestThatNeverMatches:
+    """The UI and the worker disagree on a service's identity keys (different releases)."""
+
+    def test_the_heartbeat_reads_it_once_until_the_record_changes(self, db):
+        wid = _worker()
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        reads = AsyncMock(side_effect=database.active_identity_values)
+        with patch.object(main.database, "active_identity_values", reads):
+            for _ in range(3):
+                _heartbeat("box-a", {1: {"EARNAPP_UUID": "0123456789abcdef"}}, slug="earnapp")
+            assert reads.await_count == 1
+            # A new record is checked again.
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+            _heartbeat("box-a", {1: {"EARNAPP_UUID": "0123456789abcdef"}}, slug="earnapp")
+            assert reads.await_count == 2
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}

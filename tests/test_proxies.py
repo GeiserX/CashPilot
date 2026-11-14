@@ -1426,7 +1426,7 @@ class TestStorageAndRoutes:
         else:
             assert [r["removing_since"] is not None for r in rows] == [True], "the removal keeps its row"
 
-    def test_a_copy_of_a_linked_device_runs_and_registers_its_own_id(self, db):
+    def _add_linked_copy(self, user):
         original = "cd" * 32
         svc = {
             "slug": "proxyrack",
@@ -1454,14 +1454,25 @@ class TestStorageAndRoutes:
                 patch.object(main, "_register_device", register),
             ):
                 return await main.api_add_proxied_copy(
-                    created["id"], main.ProxyCopyRequest(worker_id=7, slug="proxyrack"), {}
+                    created["id"], main.ProxyCopyRequest(worker_id=7, slug="proxyrack"), user
                 )
 
         result = _run(go)
         sent_id = call.call_args.kwargs["json"]["earner"]["env"]["UUID"]
+        return result, sent_id, original, register
+
+    def test_a_copy_of_a_linked_device_runs_and_registers_its_own_id(self, db):
+        result, sent_id, original, register = self._add_linked_copy({"uid": 1, "u": "owner", "r": "owner"})
         assert sent_id != original and len(sent_id) == 64
         assert register.call_args.args[:2] == ("proxyrack", sent_id)
         assert result["device_link"]["id"] == sent_id and result["device_link"]["registered"] is True
+
+    def test_the_admin_api_key_gets_the_copys_step_without_its_id(self, db):
+        """The id claims the device: only a signed-in owner reads it in full (issue #740)."""
+        result, sent_id, _, register = self._add_linked_copy({"uid": 0, "u": "api", "r": "owner"})
+        assert register.call_args.args[:2] == ("proxyrack", sent_id)
+        assert sent_id not in json.dumps(result)
+        assert result["device_link"]["registered"] is True
 
     def test_dropping_the_cap_lifts_the_stop_and_starts_the_copies(self, db):
         call = AsyncMock(return_value={})

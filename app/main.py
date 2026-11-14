@@ -4484,7 +4484,7 @@ async def _deploy(
         registered = await _register_device(slug, link["id"], merged_env)
         link["registered"] = registered is True
         link["retrying"] = registered is None
-        response["device_link"] = link
+        response["device_link"] = _device_link_for(auth.get_current_user(request) if request else None, link)
     if divergence:
         response["kept_from_previous_deployment"] = divergence
     return response
@@ -4816,6 +4816,9 @@ async def _record_replaced_copy(
 # already found, wrote or could not prove, so a steady heartbeat reads nothing.
 # Pruned to what the last heartbeat listed, so it never outgrows the fleet.
 _IDENTITIES_CHECKED: dict[int, set[tuple[str, int, str, str]]] = {}
+# (slug, copy) per worker that the last heartbeat listed with a digest, so the
+# next one sees which copies went away (_retire_dropped_copies).
+_IDENTITIES_LISTED: dict[int, set[tuple[str, int]]] = {}
 
 
 def _forget_checked_copies(worker_id: int, slug: str) -> None:
@@ -4832,9 +4835,11 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
     one when the digest proves its ids. A copy whose active row is not what it
     runs (a replacement whose write failed) has that row retired and the ids it
     runs recorded, but only when the current record proves them; unproven, the
-    row stays and the copy is checked again on the next heartbeat. Only a copy
-    with a digest counts: an older worker sends none. One indexed read per
-    service on a container not seen before, and a write only on a proven miss.
+    row stays, and the copy is checked again once its record, container or
+    digest changes. An extra copy above the record's count that a heartbeat
+    stops listing is retired (_retire_dropped_copies). Only a copy with a
+    digest counts: an older worker sends none. One indexed read per service on
+    a container not seen before, and a write only on a proven miss.
     """
     listed: set[tuple[str, int, str, str]] = set()
     for entry in containers if isinstance(containers, list) else []:
@@ -4846,6 +4851,11 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
             listed.add((entry["slug"], n, str(entry.get("container_id") or ""), digest))
     checked = _IDENTITIES_CHECKED.get(worker_id, set()) & listed
     _IDENTITIES_CHECKED[worker_id] = checked
+    copies = {(slug, n) for slug, n, _, _ in listed}
+    gone = _IDENTITIES_LISTED.get(worker_id, set()) - copies
+    _IDENTITIES_LISTED[worker_id] = copies
+    for slug in sorted({slug for slug, n in gone if n > 1}):
+        await _retire_dropped_copies(slug, worker_id, {n for s, n in gone if s == slug})
     fresh: dict[str, set[tuple[str, int, str, str]]] = {}
     for key in listed - checked:
         fresh.setdefault(key[0], set()).add(key)
@@ -4873,8 +4883,35 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
         proven = await _record_unrecorded_copies(slug, worker_id, spec, digests=digests, have=have, current_only=stale)
         if proven is None:
             continue
-        # A stale row nothing proved wrong yet stays unchecked, so the next beat looks again.
-        checked.update(k for k in keys if k[1] not in stale - proven)
+        # Checked, proven or not: until the record changes (_forget_checked_copies)
+        # or the container or its digest does, nothing could prove it otherwise,
+        # so a digest that never matches (a UI and a worker whose catalogs mark
+        # other identity keys) costs one read, not one per heartbeat.
+        checked.update(keys)
+
+
+async def _retire_dropped_copies(slug: str, worker_id: int, gone: set[int]) -> None:
+    """Retire the rows of extra copies the last heartbeat listed and this one does not, above the record's count.
+
+    A heartbeat built before a scale-down's DELETE can arrive after it and
+    prove the removed copy again (any copy number is proven by its digest).
+    Once a heartbeat no longer lists it, and the record does not describe it,
+    nothing runs it. A copy the record describes is never retired here: one
+    missing from one heartbeat may be in a replacement. Should the copy come
+    back, the next heartbeat that lists it proves it again. Bookkeeping: never
+    raises.
+    """
+    try:
+        spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+        if spec is None:
+            return
+        drop = sorted(n for n in gone if n > 1 and n not in _spec_copies(spec))
+        have = await database.active_identity_copies(slug, worker_id) if drop else set()
+        drop = [n for n in drop if str(n) in have]
+        if drop:
+            await _record_deploy_identities(slug, worker_id, {}, drop, {}, scope="given")
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not retire the removed copies of %s on worker %s", slug, worker_id, exc_info=True)
 
 
 async def _backfill_identities() -> None:
@@ -6198,7 +6235,7 @@ async def api_add_proxied_copy(
         registered = await _register_device(slug, step["id"], earner["env"])
         step["registered"] = registered is True
         step["retrying"] = registered is None
-        response["device_link"] = step
+        response["device_link"] = _device_link_for(_auth, step)
     return response
 
 
@@ -6710,9 +6747,10 @@ async def api_service_logs(
     user = _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     resp = await _proxy_worker_logs(worker_id, slug, lines, instance=_instance_param(instance))
-    if not auth.require_role(user, "owner") and isinstance(resp.get("logs"), str):
+    if not _signed_in_owner(user) and isinstance(resp.get("logs"), str):
         # EarnApp prints its device id and claim link at every start: a writer
-        # who restarts it and reads the log must not get what the bell masks.
+        # who restarts it and reads the log, or an API key, must not get what
+        # the bell masks.
         resp = {**resp, "logs": await _mask_service_device_ids(slug, resp["logs"])}
     return resp
 
@@ -8737,10 +8775,11 @@ async def api_collector_alerts(request: Request) -> dict[str, Any]:
         entry = {"kind": alert.get("kind", "collector"), "platform": alert["platform"], "error": clean}
         if alert.get("category"):
             entry["category"] = alert["category"]
-        if owner and alert.get("devices"):
+        if _signed_in_owner(user) and alert.get("devices"):
             # An unlinked device's full id and the link that adds it: while it
-            # is unlinked the id claims its earnings, so only the owner gets
-            # them. Every other role, and every push, has the masked text.
+            # is unlinked the id claims its earnings, so only a signed-in owner
+            # gets them, never an API key. Every other caller, and every push,
+            # has the masked text.
             entry["devices"] = [{"id": d["id"], "masked": d["masked"], "url": d["url"]} for d in alert["devices"]]
             entry["device_steps"] = alert.get("device_steps", "")
         if alert.get("kind") == "missing" and "everywhere" in alert:
@@ -10062,6 +10101,8 @@ class WorkerCommand(BaseModel):
     command: str  # deploy, stop, restart, start, remove
     slug: str = ""
     spec: dict[str, Any] = {}
+    # As DeployRequest's: the owner's yes to a device id that runs on another box.
+    allow_shared_identity: bool = False
 
 
 @app.post("/api/workers/{worker_id}/command")
@@ -10089,6 +10130,11 @@ async def api_worker_command(request: Request, worker_id: int, body: WorkerComma
         # pasted into a raw spec is dropped, so this route can never run another
         # image than the catalog's on a service with critical volumes.
         body.spec.pop("approval", None)
+        # The same refusal /api/deploy gives a device id that runs on another box.
+        raw_svc = catalog.get_service(body.slug)
+        raw_env = body.spec.get("env")
+        if raw_svc and isinstance(raw_env, dict) and not body.allow_shared_identity:
+            await _refuse_shared_device_ids(body.slug, raw_svc, raw_env, worker_id)
         try:
             result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
         except HTTPException as exc:
@@ -10247,10 +10293,22 @@ def _require_owner_session(request: Request) -> dict[str, Any]:
     script or a dashboard tile, and the read-only key never gets here at all.
     """
     user = _require_owner(request)
-    uid = user.get("uid")
-    if not isinstance(uid, int) or uid == 0:
+    if not _signed_in_owner(user):
         raise HTTPException(status_code=403, detail="Sign in to the dashboard as the owner to see device ids")
     return user
+
+
+def _signed_in_owner(user: dict[str, Any] | None) -> bool:
+    """Whether ``user`` is an owner's dashboard session: the one caller that reads a full device id."""
+    uid = (user or {}).get("uid")
+    return auth.require_role(user, "owner") and isinstance(uid, int) and not isinstance(uid, bool) and uid > 0
+
+
+def _device_link_for(user: dict[str, Any] | None, link: dict[str, Any]) -> dict[str, Any]:
+    """A deploy answer's device_link: the id and the link that embeds it only for a signed-in owner."""
+    if _signed_in_owner(user):
+        return link
+    return {**{k: v for k, v in link.items() if k != "url"}, "id": notify.mask_device_id(str(link.get("id") or ""))}
 
 
 def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str, dict[str, str]]) -> dict[str, Any]:

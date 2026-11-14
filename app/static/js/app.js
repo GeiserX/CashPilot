@@ -4729,14 +4729,25 @@ const CP = (() => {
 
   async function pickPreviousIdentity(slug, key) {
     let offers;
+    // The box this form deploys to, when exactly one is picked: the server leaves
+    // it out of "in use on", as the deploy's shared-id check leaves it out.
+    const target = _identityTargetWorker(slug);
+    const query = `?key=${encodeURIComponent(key)}${target === null ? '' : `&worker_id=${target}`}`;
     try {
-      offers = await api(`/api/identities/reuse/${encodeURIComponent(slug)}?key=${encodeURIComponent(key)}`);
+      offers = await api(`/api/identities/reuse/${encodeURIComponent(slug)}${query}`);
     } catch (err) {
       toast(`Could not read earlier ids: ${err.message}`, 'error');
       return;
     }
     const html = identityOffersHtml(slug, key, offers);
     _identityPicks(slug, key).forEach(el => { el.innerHTML = html; });
+  }
+
+  function _identityTargetWorker(slug) {
+    const picked = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled), `
+      + `.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`);
+    const ids = [...new Set([...picked, ..._rescaledWorkerIds(slug)])];
+    return ids.length === 1 ? ids[0] : null;
   }
 
   async function useIdentity(slug, key, id, inUseOn) {
