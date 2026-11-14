@@ -282,7 +282,7 @@ def _proxied_worker(entries: list[dict]) -> dict:
     """A box that runs IPRoyal and reports its proxied copies."""
     w = _worker(1, "cid-a", containers=[{"slug": "iproyal", "status": "running"}])
     w["system_info"] = json.dumps(
-        {"features": ["instances", "proxy_tunnel"], "docker_available": True, "proxied": entries}
+        {"features": ["instances", "proxy_tunnel", "proxied_if_running"], "docker_available": True, "proxied": entries}
     )
     return w
 
@@ -291,12 +291,14 @@ def _copy(pid: int, **kw) -> dict:
     return {"proxy_id": pid, "worker_id": 1, "slug": "iproyal", "stopped_by_cap": 0, "removing_since": None, **kw}
 
 
-def _rename_with_copies(client, copies, entries, *, rename=True, capped=()):
+def _rename_with_copies(client, copies, entries, *, rename=True, capped=(), worker=None, answer=None):
     """A rename deploy on a box with proxied copies. Returns (response, copy deploys sent to the worker)."""
     calls: list[tuple] = []
 
     async def _call(worker_id, method, path, definition, *, json=None, timeout=30):
         calls.append((worker_id, method, path, json))
+        if answer is not None:
+            raise answer
         return {"status": "deployed"}
 
     async def _proxy(pid):
@@ -310,7 +312,7 @@ def _rename_with_copies(client, copies, entries, *, rename=True, capped=()):
         patch("app.main._register_device", new_callable=AsyncMock),
     ):
         body = {"env": {}, "rename_devices": rename}
-        resp, sent = _deploy(client, body, [_proxied_worker(entries)], recorded=_recorded(LEGACY))
+        resp, sent = _deploy(client, body, [worker or _proxied_worker(entries)], recorded=_recorded(LEGACY))
     assert resp.status_code == 200, resp.text
     return resp, sent, calls
 
@@ -325,7 +327,35 @@ class TestARenameReachesProxiedCopies:
         names = [c[3]["earner"]["env"]["DEVICE_NAME"] for c in calls]
         assert names == [f"{new}-p4", f"{new}-p9"]
         assert all(f"-device-name {n} " in c[3]["earner"]["command"] for n, c in zip(names, calls, strict=True))
+        assert all(c[3]["only_if_running"] is True for c in calls), "the worker must not start a stopped copy"
         assert "kept_from_previous_deployment" not in resp.json()
+
+    def test_a_copy_that_exited_without_a_stop_is_not_started_by_the_rename(self, client):
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "exited"}]
+        resp, _, calls = _rename_with_copies(client, [_copy(4)], entries)
+        assert calls == []
+        assert resp.json()["kept_from_previous_deployment"][0].startswith("proxied copy p4: stopped")
+
+    def test_a_stop_that_lands_after_the_report_wins(self, client):
+        """The report says running; the owner stopped it since. The worker refuses, and the note says so."""
+        from fastapi import HTTPException
+
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+        refused = HTTPException(409, "cashpilot-iproyal-p4 is not running, so it was left as it was")
+        resp, _, calls = _rename_with_copies(client, [_copy(4)], entries, answer=refused)
+        assert len(calls) == 1 and calls[0][3]["only_if_running"] is True
+        (note,) = resp.json()["kept_from_previous_deployment"]
+        assert "keeps its old device name" in note and "not running" in note
+
+    def test_a_worker_too_old_to_check_is_not_sent_the_rebuild(self, client):
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+        old = _proxied_worker(entries)
+        old["system_info"] = json.dumps(
+            {"features": ["instances", "proxy_tunnel"], "docker_available": True, "proxied": entries}
+        )
+        resp, _, calls = _rename_with_copies(client, [_copy(4)], entries, worker=old)
+        assert calls == []
+        assert "too old" in resp.json()["kept_from_previous_deployment"][0]
 
     def test_no_rename_leaves_the_copies_alone(self, client):
         entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
@@ -372,7 +402,9 @@ const env = {
     if (url.includes('/device-names')) {
       if (scenario.checkFails) throw new Error('down');
       const wid = new URL(url, 'http://x').searchParams.get('worker_id');
-      return { worker: (scenario.names || {})[wid], renames: scenario.renames[wid] || [], missing: (scenario.missing || {})[wid] || [] };
+      // A value typed in the form is no longer missing.
+      const typed = Object.values((opts && opts.body && opts.body.env) || {}).some(v => v);
+      return { worker: (scenario.names || {})[wid], renames: scenario.renames[wid] || [], missing: typed ? [] : (scenario.missing || {})[wid] || [] };
     }
     return {};
   },
@@ -386,12 +418,19 @@ const env = {
 };
 // The rename note on the service page, for the scenarios that open it.
 const note = { innerHTML: '', style: { display: 'none' } };
+// The deploy form's fields, and the fold it sits in on a deployed service.
+const details = { open: false };
+const inputs = Object.entries(scenario.typed || {}).map(([key, value]) => (
+  { dataset: { key }, value, required: true, style: {}, pattern: '' }
+));
 env.document = {
   getElementById: (id) => (id === 'device-rename-iproyal' && scenario.page ? note : null),
-  querySelectorAll: () => [],
+  querySelectorAll: (sel) => (sel === 'details.sd-more' ? [details] : sel.includes('[data-key]') ? inputs : []),
 };
+env.openServiceDetail = () => { note.reopened = true; };
+note.details = details;
 const names = ['_deviceRenameLines', '_confirmDeviceRenames', '_deployToWorkers', 'loadDeviceRenames',
-  'renameDevices', 'redeployOnWorker'];
+  'renameDevices', 'redeployOnWorker', 'redeployWithValues'];
 const body = `${names.map(grab).join('\n')}\nfunction _runningWorkerIds(slug) {
   return (_detailWorkers || []).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug)).map(w => w.id);
 }\nreturn { ${names.join(', ')} };`;
@@ -400,6 +439,7 @@ const run = {
   deploy: () => fns._deployToWorkers('iproyal', scenario.workers),
   page: async () => { await fns.loadDeviceRenames('iproyal'); if (scenario.click) await fns.renameDevices('iproyal'); },
   redeploy: () => fns.redeployOnWorker('iproyal', String(scenario.workers[0])),
+  withValues: () => fns.redeployWithValues('iproyal', String(scenario.workers[0])),
 }[scenario.run || 'deploy'];
 run().then(() => {
   console.log(JSON.stringify({ calls, confirms, note }));
@@ -420,7 +460,7 @@ def _form(**scenario):
     )
     result = json.loads(out.stdout)
     deploys = [c for c in result["calls"] if c["url"].startswith("/api/deploy/iproyal?")]
-    if scenario.get("run") == "page":
+    if scenario.get("run") in ("page", "withValues"):
         return deploys, result["confirms"], result["note"]
     return deploys, result["confirms"]
 
@@ -541,8 +581,47 @@ class TestRunningBoxesCanBeRenamed:
         assert len(confirms) == 2 and LEGACY in confirms[1]
         assert deploys[0]["body"] == {"env": {}, "rename_devices": True}
 
+    def test_a_box_that_needs_a_value_gets_its_own_redeploy_button(self):
+        _, _, note = _form(
+            run="page",
+            page=True,
+            detailWorkers=_RUNNING,
+            renames={"3": [RENAME]},
+            names={"3": "local"},
+            missing={"3": ["Email"]},
+        )
+        assert 'data-action="redeployWithValues" data-a1="iproyal" data-a2="3"' in note["innerHTML"]
+
+    def test_that_redeploy_sends_the_typed_values_and_renames(self):
+        deploys, confirms, note = _form(
+            run="withValues",
+            workers=[3],
+            renames={"3": [RENAME]},
+            names={"3": "local"},
+            missing={"3": ["Email"]},
+            typed={"EMAIL": "me@x.io"},
+            answer=True,
+        )
+        assert note["details"]["open"] is True, "the folded deploy form is opened"
+        assert len(confirms) == 1 and LEGACY in confirms[0]
+        assert [d["url"] for d in deploys] == ["/api/deploy/iproyal?worker_id=3"]
+        assert deploys[0]["body"] == {"env": {"EMAIL": "me@x.io"}, "rename_devices": True}
+        assert note.get("reopened") is True
+
+    def test_that_redeploy_with_the_value_left_blank_sends_nothing(self):
+        deploys, confirms, note = _form(
+            run="withValues",
+            workers=[3],
+            renames={"3": [RENAME]},
+            missing={"3": ["Email"]},
+            typed={"EMAIL": ""},
+            answer=True,
+        )
+        assert deploys == [] and confirms == [] and not note.get("reopened")
+
     def test_the_page_has_the_note_and_the_button_is_wired(self):
         js = (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")
         assert 'id="device-rename-${escapeHtml(svc.slug)}"' in js
         assert "loadDeviceRenames(slug);" in js
         assert "\n    renameDevices,\n" in js
+        assert "\n    redeployWithValues,\n" in js

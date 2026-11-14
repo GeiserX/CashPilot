@@ -5326,9 +5326,13 @@ async def _refresh_proxied_copies(
     original leaves its copies on the old shared name until they are rebuilt
     from the new record. Each goes through the worker's copy deploy, under the
     copy's lock, the way the owner's start does. A redeploy starts the copy, so
-    a copy the owner stopped, the cap stopped, one being removed, or one whose
-    box cannot say whether it runs keeps its old name, and the note says so.
-    Never raises: the original is already renamed. Returns the notes.
+    only a copy last reported running is sent, and the worker replaces it only
+    if it still runs and nobody stopped it (``only_if_running``, checked under
+    the worker's own stop lock): a stop that lands after the report wins. A
+    copy the owner stopped, the cap stopped, one being removed, one whose box
+    cannot say whether it runs or is too old to check keeps its old name, and
+    the note says so. Never raises: the original is already renamed. Returns
+    the notes.
     """
     copies = [c for c in await database.list_proxied_copies() if c["worker_id"] == worker_id and c["slug"] == slug]
     if not copies:
@@ -5342,16 +5346,23 @@ async def _refresh_proxied_copies(
             (e for e in entries or [] if e.get("proxy_id") == pid and egress.container_slug(e) == slug),
             None,
         )
-        if copy.get("removing_since") or copy.get("stopped_by_cap") or (entry or {}).get("held") is True:
+        held = (entry or {}).get("held")
+        if (
+            copy.get("removing_since")
+            or copy.get("stopped_by_cap")
+            or held is True
+            or (held is False and str(entry.get("status") or "") not in _LIVE_STATES)
+        ):
             notes.append(f"{label}: stopped, so it keeps its old device name; add it again to rename it")
             continue
-        if entry is None or entry.get("held") is not False:
+        if entry is None or held is not False:
             notes.append(f"{label}: its box did not report it, so it keeps its old device name; add it again")
             continue
         try:
             if why := proxies.refusal(svc):
                 raise ValueError(why)
-            await _require_proxy_feature(worker_id)
+            if "proxied_if_running" not in await _worker_features(worker_id):
+                raise ValueError("its worker is too old to rebuild it without starting a stopped copy; update it")
             earner = await _proxied_earner(recorded, docker_conf, worker_id, pid)
             async with _proxy_copy_lock(pid, worker_id, slug):
                 # Under the lock, as a start: the cap may have stopped it meanwhile.
@@ -5363,7 +5374,11 @@ async def _refresh_proxied_copies(
                     "POST",
                     f"/api/proxied/{slug}/{pid}/deploy",
                     proxy["definition"],
-                    json={"earner": earner, "proxy": proxies.worker_proxy_spec(proxy["definition"])},
+                    json={
+                        "earner": earner,
+                        "proxy": proxies.worker_proxy_spec(proxy["definition"]),
+                        "only_if_running": True,
+                    },
                     timeout=180,
                 )
         except (HTTPException, ValueError) as exc:

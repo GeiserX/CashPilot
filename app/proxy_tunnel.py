@@ -1054,7 +1054,15 @@ def _drop_if_empty(client: Any, tunnel: Any | None) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None) -> dict:
+def deploy(
+    slug: str,
+    proxy_id: int,
+    earner: dict[str, Any],
+    proxy: dict[str, Any],
+    own_ip: str | None,
+    *,
+    only_if_running: bool = False,
+) -> dict:
     """Deploy (or replace) the proxied copy of ``slug`` through proxy ``proxy_id``.
 
     The proxy's shared tunnel is made ready first (see _ensure_tunnel): a
@@ -1063,9 +1071,26 @@ def deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, An
     earner of this copy goes (with its tunnel, when it is a legacy pair), and
     the new one is created inside the shared tunnel's namespace. A tunnel that
     cannot start therefore costs nothing.
+
+    ``only_if_running`` replaces only a copy that runs and that the owner or
+    the cap did not stop, and changes nothing otherwise (409). It is checked
+    under the lock a stop takes, so a stop that came first always wins.
     """
     with _deploy_lock(proxy_id):
+        if only_if_running:
+            _require_running(slug, proxy_id)
         return _deploy(slug, proxy_id, earner, proxy, own_ip)
+
+
+def _require_running(slug: str, proxy_id: int) -> None:
+    name = earner_name(slug, proxy_id)
+    earner = _get(orchestrator._get_client(), name)
+    try:
+        stopped = name in held()
+    except OSError as exc:
+        raise ProxyTunnelError(f"Could not read which copies are stopped ({exc}); {name} was left as it was") from None
+    if not _is_ours(earner, slug, proxy_id) or stopped or getattr(earner, "status", "") not in _LIVE:
+        raise ProxyTunnelError(f"{name} is not running, so it was left as it was")
 
 
 def _deploy(slug: str, proxy_id: int, earner: dict[str, Any], proxy: dict[str, Any], own_ip: str | None) -> dict:

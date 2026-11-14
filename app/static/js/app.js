@@ -3374,7 +3374,7 @@ const CP = (() => {
     const answers = await Promise.all(workerIds.map(id =>
       api(`/api/deploy/${encodeURIComponent(slug)}/device-names?worker_id=${encodeURIComponent(id)}`, { method: 'POST', body: { env } })
     ));
-    const lines = [], skipped = [], ids = [];
+    const lines = [], skipped = [], skippedIds = [], ids = [];
     answers.forEach((a, i) => {
       const box = (a && a.worker) || `node ${workerIds[i]}`;
       const renames = (a && a.renames) || [];
@@ -3382,12 +3382,13 @@ const CP = (() => {
       const missing = (a && a.missing) || [];
       if (missing.length) {
         skipped.push(`• ${box}: needs ${missing.join(', ')}, which it has no record of. Deploy it again with them filled in to rename it.`);
+        skippedIds.push(workerIds[i]);
         return;
       }
       ids.push(workerIds[i]);
       renames.forEach(r => lines.push(`• ${box}: ${r.label} ${r.old} -> ${r.new}`));
     });
-    return { lines, skipped, ids };
+    return { lines, skipped, skippedIds, ids };
   }
 
   // A box that still runs under the old shared device name ("cashpilot-cashpilot")
@@ -3511,6 +3512,7 @@ const CP = (() => {
         wizardState.deployed.push(slug);
       }
     }
+    return ok;
   }
 
   // Some providers pay a device only once the user adds its id to their
@@ -3850,13 +3852,16 @@ const CP = (() => {
       console.warn('Could not check device names:', err);
       return;
     }
-    const { lines, skipped } = check;
+    const { lines, skipped, skippedIds } = check;
     if (!lines.length && !skipped.length) return;
-    // A box the one-click redeploy cannot rename gets a note, not the button.
+    // A box the one-click redeploy cannot rename gets a note, not the button,
+    // and its own redeploy that sends the values typed in the deploy form: the
+    // form cannot tick a box that already runs the service.
     el.innerHTML = `${lines.length + skipped.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
       before CashPilot gave each box its own, so ${escapeHtml(slug)} may count them as one device.
       ${lines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Give each box its own device name</button>` : ''}
-      ${skipped.map(line => `<br>${escapeHtml(line)}`).join('')}`;
+      ${skipped.map((line, i) => `<br>${escapeHtml(line)}
+        <button class="btn btn-secondary btn-sm" data-action="redeployWithValues" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(String(skippedIds[i]))}">Redeploy it with the values in the deploy form</button>`).join('')}`;
     el.style.display = '';
   }
 
@@ -3885,6 +3890,14 @@ const CP = (() => {
     }
     if (ok) toast(`${slug}: device names updated on ${ok} box(es)`, 'success');
     openServiceDetail(slug);
+  }
+
+  // A box that runs the service with no record of a required value: redeploy
+  // it with what is typed in the deploy form, which a blank redeploy cannot send.
+  async function redeployWithValues(slug, workerId) {
+    // The form is folded away under the boxes list; open it so a missing value shows.
+    document.querySelectorAll('details.sd-more').forEach(d => { d.open = true; });
+    if (await _deployToWorkers(slug, [parseInt(workerId)])) openServiceDetail(slug);
   }
 
   async function redeployOnWorker(slug, workerId) {
@@ -5482,6 +5495,7 @@ const CP = (() => {
     deployServiceToWorkers,
     redeployWithImage,
     redeployOnWorker,
+    redeployWithValues,
     renameDevices,
     openCustomServiceEditor,
     saveCustomService,
