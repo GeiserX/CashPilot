@@ -31,7 +31,7 @@ TURNSTILE_FAIL = "2x0000000000000000000000000000000AA"
 HCAPTCHA_SITE = "10000000-ffff-ffff-ffff-000000000001"
 HCAPTCHA_SECRET = "0x0000000000000000000000000000000000000000"
 RECAPTCHA_SITE = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
-RECAPTCHA_SECRET = "6LeIxAcTAAAAAGG-vFI1TrJWDtKJ8uJnOOJUoTfC"
+RECAPTCHA_SECRET = "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
 
 KEYS = {
     "turnstile": (TURNSTILE_SITE, TURNSTILE_PASS),
@@ -265,7 +265,11 @@ class TestVerify:
         assert asyncio.run(captcha.verify("tok-123", "203.0.113.9")) == captcha.Result(True, "ok")
         assert str(fake.requests[0].url) == cfg.provider.verify_url
         assert fake.requests[0].method == "POST"
-        assert fake.form() == {"secret": cfg.secret_key, "response": "tok-123", "remoteip": "203.0.113.9"}
+        expected = {"secret": cfg.secret_key, "response": "tok-123", "remoteip": "203.0.113.9"}
+        if name == "hcaptcha":
+            # hCaptcha secrets are account-wide; the sitekey pins the token to this site.
+            expected["sitekey"] = cfg.site_key
+        assert fake.form() == expected
 
     @pytest.mark.parametrize("remote_ip", [None, "", "testclient", "unknown"])
     def test_remoteip_is_sent_only_when_it_is_an_address(self, monkeypatch, remote_ip):
@@ -554,6 +558,7 @@ class TestCsp:
                 {
                     "script-src": ["https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/"],
                     "frame-src": ["https://www.google.com/recaptcha/", "https://recaptcha.google.com/recaptcha/"],
+                    "connect-src": ["https://www.google.com/recaptcha/"],
                 },
             ),
         ],

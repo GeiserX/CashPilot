@@ -43,6 +43,9 @@ class Provider:
     verify_url: str
     #: Origins to add to each CSP directive, from each provider's own CSP docs.
     csp: dict[str, tuple[str, ...]]
+    #: Send ``sitekey`` to siteverify. hCaptcha secrets cover the whole account,
+    #: so without it a token solved on another of the account's sites passes here.
+    send_sitekey: bool = False
 
 
 _HCAPTCHA_ORIGINS = ("https://hcaptcha.com", "https://*.hcaptcha.com")
@@ -73,6 +76,7 @@ PROVIDERS: dict[str, Provider] = {
             "style-src": _HCAPTCHA_ORIGINS,
             "connect-src": _HCAPTCHA_ORIGINS,
         },
+        send_sitekey=True,
     ),
     "recaptcha": Provider(
         name="recaptcha",
@@ -84,6 +88,7 @@ PROVIDERS: dict[str, Provider] = {
         csp={
             "script-src": ("https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/"),
             "frame-src": ("https://www.google.com/recaptcha/", "https://recaptcha.google.com/recaptcha/"),
+            "connect-src": ("https://www.google.com/recaptcha/",),
         },
     ),
 }
@@ -190,6 +195,8 @@ async def verify(token: str | None, remote_ip: str | None) -> Result:
     if not token or not token.strip():
         return Result(False, "missing")
     data = {"secret": cfg.secret_key, "response": token}
+    if cfg.provider.send_sitekey:
+        data["sitekey"] = cfg.site_key
     if remote_ip and _is_ip(remote_ip):
         data["remoteip"] = remote_ip
     try:
