@@ -3443,6 +3443,63 @@ const CP = (() => {
     );
   }
 
+  // The device names a deploy of `slug` with `env` would rename, one line per
+  // name ("box: label old -> new"), named by box, and the ids of those boxes.
+  // A box whose deploy with `env` would lack a required value cannot be renamed
+  // this way: it goes to `skipped`, with what it lacks. A box whose original is
+  // renamed but whose proxied copies kept the old name (their rebuild failed or
+  // was skipped) goes to `copyLines`/`copyIds`: only those copies are rebuilt.
+  // Throws when the check fails.
+  async function _deviceRenameLines(slug, workerIds, env) {
+    const answers = await Promise.all(workerIds.map(id =>
+      api(`/api/deploy/${encodeURIComponent(slug)}/device-names?worker_id=${encodeURIComponent(id)}`, { method: 'POST', body: { env } })
+    ));
+    const lines = [], skipped = [], skippedIds = [], ids = [], copyLines = [], copyIds = [];
+    answers.forEach((a, i) => {
+      const box = (a && a.worker) || `node ${workerIds[i]}`;
+      const renames = (a && a.renames) || [];
+      const copies = (a && a.copies) || [];
+      if (!renames.length && copies.length) {
+        copyIds.push(workerIds[i]);
+        copies.forEach(c => copyLines.push(`• ${box}: ${c} still has the old device name`));
+        return;
+      }
+      if (!renames.length) return;
+      const missing = (a && a.missing) || [];
+      if (missing.length) {
+        skipped.push(`• ${box}: needs ${missing.join(', ')}, which it has no record of. Deploy it again with them filled in to rename it.`);
+        skippedIds.push(workerIds[i]);
+        return;
+      }
+      ids.push(workerIds[i]);
+      renames.forEach(r => lines.push(`• ${box}: ${r.label} ${r.old} -> ${r.new}`));
+    });
+    return { lines, skipped, skippedIds, ids, copyLines, copyIds };
+  }
+
+  // A box that still runs under the old shared device name ("cashpilot-cashpilot")
+  // keeps it unless the user agrees to the new one: a new name is a new device to
+  // the provider. Ask once for every node in this deploy, showing each name
+  // old -> new. Returns true to rename. A check that cannot be reached returns
+  // false, which keeps every name as it is.
+  async function _confirmDeviceRenames(slug, workerIds, env) {
+    let lines, skipped;
+    try {
+      ({ lines, skipped } = await _deviceRenameLines(slug, workerIds, env));
+    } catch (err) {
+      console.warn('Device-name check unavailable, keeping names:', err);
+      return false;
+    }
+    if (!lines.length) return false;
+    return window.confirm(
+      `${slug}: these nodes still use the device name every box got before CashPilot gave each box its own.\n\n` +
+      `${lines.join('\n')}\n\n` +
+      (skipped.length ? `Not renamed:\n${skipped.join('\n')}\n\n` : '') +
+      'OK renames them, so the provider counts each box apart. It may list them as new devices. ' +
+      'Cancel keeps the current names.'
+    );
+  }
+
   async function _deployToWorkers(slug, workerIds, { rescaleOnly = false } = {}) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
     if (workerIds.length === 0) {
@@ -3497,6 +3554,8 @@ const CP = (() => {
       return;
     }
 
+    const renameDevices = await _confirmDeviceRenames(slug, workerIds, env);
+
     if (statusEl) {
       statusEl.innerHTML = '<span class="spinner spinner-inline"></span> Deploying';
     }
@@ -3506,6 +3565,7 @@ const CP = (() => {
     for (const wid of workerIds) {
       try {
         const body = { env };
+        if (renameDevices) body.rename_devices = true;
         const image = _imageChoice(slug);
         if (image !== undefined) body.image = image;
         const instances = _instancesFor(slug, wid);
@@ -3538,6 +3598,7 @@ const CP = (() => {
         wizardState.deployed.push(slug);
       }
     }
+    return ok;
   }
 
   // Some providers pay a device only once the user adds its id to their
@@ -3795,6 +3856,7 @@ const CP = (() => {
       // holds up the rest of the modal.
       loadPayoutProgress();
       loadDeployRisk();
+      loadDeviceRenames(slug);
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
     }
@@ -3853,10 +3915,93 @@ const CP = (() => {
     }
   }
 
+  // The boxes that run `slug` now, from the workers the detail modal loaded.
+  function _runningWorkerIds(slug) {
+    return (_detailWorkers || [])
+      .filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug))
+      .map(w => w.id);
+  }
+
+  // Boxes that already run a service cannot be ticked in the deploy form, and a
+  // service with one device per IP has no Instances box, so this is how a
+  // running deployment still on the old shared device name gets its own: the
+  // service page says which boxes, and one button renames them after a confirm.
+  async function loadDeviceRenames(slug) {
+    const el = document.getElementById(`device-rename-${slug}`);
+    if (!el) return;
+    const ids = _runningWorkerIds(slug);
+    if (!ids.length) return;
+    let check;
+    try {
+      check = await _deviceRenameLines(slug, ids, {});
+    } catch (err) {
+      console.warn('Could not check device names:', err);
+      return;
+    }
+    const { lines, skipped, skippedIds, copyLines } = check;
+    if (!lines.length && !skipped.length && !copyLines.length) return;
+    // A box the one-click redeploy cannot rename gets a note, not the button,
+    // and its own redeploy that sends the values typed in the deploy form: the
+    // form cannot tick a box that already runs the service.
+    el.innerHTML = `${lines.length + skipped.length + copyLines.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
+      before CashPilot gave each box its own, so ${escapeHtml(slug)} may count them as one device.
+      ${lines.length || copyLines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Give each box its own device name</button>` : ''}
+      ${skipped.map((line, i) => `<br>${escapeHtml(line)}
+        <button class="btn btn-secondary btn-sm" data-action="redeployWithValues" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(String(skippedIds[i]))}">Redeploy it with the values in the deploy form</button>`).join('')}`;
+    el.style.display = '';
+  }
+
+  async function renameDevices(slug) {
+    let ids, copyIds, copyLines;
+    try {
+      ({ ids, copyIds, copyLines } = await _deviceRenameLines(slug, _runningWorkerIds(slug), {}));
+    } catch (err) {
+      toast(`Could not check device names: ${err.message}`, 'error');
+      return;
+    }
+    const base = ids.length && await _confirmDeviceRenames(slug, ids, {});
+    const copies = copyIds.length && window.confirm(
+      `${slug}: these proxied copies kept the old device name when their box was renamed.\n\n${copyLines.join('\n')}\n\n` +
+      'OK rebuilds each running copy under its own name; a stopped copy stays as it is. Cancel keeps them.'
+    );
+    if (!base && !copies) return;
+    let ok = 0;
+    // A box with only copies left: rebuild those, never its renamed original.
+    const jobs = [
+      ...(base ? ids : []).map(id => [id, `/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true } }]),
+      ...(copies ? copyIds : []).map(id => [id, `/api/deploy/${slug}/device-names/copies?worker_id=${id}`, { method: 'POST' }]),
+    ];
+    for (const [id, url, opts] of jobs) {
+      try {
+        // No env: the redeploy keeps every setting this box was deployed with.
+        const res = await api(url, opts);
+        // A proxied copy that kept its old name says so here.
+        const kept = res && res.kept_from_previous_deployment;
+        if (Array.isArray(kept) && kept.length) toast(`${slug}: redeploy notes: ${kept.join('; ')}`, 'warning');
+        ok++;
+      } catch (err) {
+        const box = ((_detailWorkers || []).find(w => w.id === id) || {}).name || `node ${id}`;
+        toast(`Rename on ${box} failed: ${err.message}`, 'error');
+      }
+    }
+    if (ok) toast(`${slug}: device names updated on ${ok} box(es)`, 'success');
+    openServiceDetail(slug);
+  }
+
+  // A box that runs the service with no record of a required value: redeploy
+  // it with what is typed in the deploy form, which a blank redeploy cannot send.
+  async function redeployWithValues(slug, workerId) {
+    // The form is folded away under the boxes list; open it so a missing value shows.
+    document.querySelectorAll('details.sd-more').forEach(d => { d.open = true; });
+    if (await _deployToWorkers(slug, [parseInt(workerId)])) openServiceDetail(slug);
+  }
+
   async function redeployOnWorker(slug, workerId) {
     if (!window.confirm(`Redeploy ${slug} on this box? It keeps the settings it was deployed with.`)) return;
+    const body = { env: {} };
+    if (await _confirmDeviceRenames(slug, [workerId], {})) body.rename_devices = true;
     try {
-      const res = await api(`/api/deploy/${slug}?worker_id=${workerId}`, { method: 'POST', body: { env: {} } });
+      const res = await api(`/api/deploy/${slug}?worker_id=${workerId}`, { method: 'POST', body });
       // The same notes the deploy form shows: what the redeploy kept, and a
       // device the provider still needs linked, or it earns for nobody.
       const kept = res && res.kept_from_previous_deployment;
@@ -3879,12 +4024,18 @@ const CP = (() => {
     if (!workers.length) { toast('No running instances to redeploy', 'warning'); return; }
     const what = image || 'the catalog image';
     if (!window.confirm(`Redeploy ${slug} on ${workers.map(w => w.name).join(', ')} with ${what}?`)) return;
+    const renameDevices = await _confirmDeviceRenames(slug, workers.map(w => w.id), {});
     if (statusEl) statusEl.textContent = 'Redeploying...';
     let ok = 0, fail = 0;
     for (const w of workers) {
       try {
         // No env: a blank redeploy keeps the credentials this worker was deployed with.
-        await api(`/api/deploy/${slug}?worker_id=${w.id}`, { method: 'POST', body: { env: {}, image } });
+        const body = { env: {}, image };
+        if (renameDevices) body.rename_devices = true;
+        const res = await api(`/api/deploy/${slug}?worker_id=${w.id}`, { method: 'POST', body });
+        // A proxied copy that kept its old name says so here.
+        const kept = res && res.kept_from_previous_deployment;
+        if (Array.isArray(kept) && kept.length) toast(`${slug} on ${w.name}: redeploy notes: ${kept.join('; ')}`, 'warning');
         ok++;
       } catch (err) {
         fail++;
@@ -4034,7 +4185,9 @@ const CP = (() => {
       const boxCount = new Set(instances.map(i => i.worker.id)).size;
       html += `
       <div class="sd-block sd-instances">
-        <h4 class="sd-h">Deployed on ${boxCount} ${boxCount === 1 ? 'box' : 'boxes'}</h4>`;
+        <h4 class="sd-h">Deployed on ${boxCount} ${boxCount === 1 ? 'box' : 'boxes'}</h4>
+        ${_isOwner && !svc.unmanaged ? `<!-- Filled by loadDeviceRenames when a box still has the old shared device name. -->
+        <div class="sd-note device-rename" id="device-rename-${escapeHtml(svc.slug)}" style="display:none;"></div>` : ''}`;
       for (const inst of instances) {
         const s = inst.container.status || 'unknown';
         const st = instanceState(s);
@@ -5593,6 +5746,8 @@ const CP = (() => {
     deployServiceToWorkers,
     redeployWithImage,
     redeployOnWorker,
+    redeployWithValues,
+    renameDevices,
     openCustomServiceEditor,
     saveCustomService,
     addCustomEnvRow,

@@ -147,6 +147,7 @@ def _deploy(instances, *, svc=SCALABLE, recorded=None, worker=None, image=None, 
     body = MagicMock()
     body.env = env or {"TOKEN": "t"}
     body.hostname = None
+    body.rename_devices = False
     body.instances = instances
     body.image = image
     saved = AsyncMock()

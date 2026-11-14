@@ -1519,6 +1519,76 @@ class TestFifthReview:
 
 
 # ---------------------------------------------------------------------------
+# A rebuild the UI makes on its own (a device rename) never starts a stopped copy
+# ---------------------------------------------------------------------------
+
+
+def _rebuild(slug, proxy_id=3):
+    earner = {"image": f"{slug}/{slug}:1", "env": {"K": f"{slug}-new"}}
+    return proxy_tunnel.deploy(slug, proxy_id, earner, _socks(), None, only_if_running=True)
+
+
+class TestOnlyIfRunning:
+    def test_a_running_copy_is_replaced(self, docker):
+        _deploy("honeygain")
+        old = docker.named("cashpilot-honeygain-p3")
+        _rebuild("honeygain")
+        new = docker.named("cashpilot-honeygain-p3")
+        assert new is not old and new.status == "running"
+        assert "K=honeygain-new" in new.attrs["Config"]["Env"]
+
+    def test_a_copy_the_owner_stopped_first_stays_stopped(self, docker):
+        _deploy("honeygain")
+        proxy_tunnel.stop("honeygain", 3)
+        copy = docker.named("cashpilot-honeygain-p3")
+        with pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
+            _rebuild("honeygain")
+        assert err.value.status_code == 409
+        assert docker.named("cashpilot-honeygain-p3") is copy and copy.status == "exited"
+        assert "cashpilot-honeygain-p3" in proxy_tunnel.held()
+
+    def test_a_copy_that_exited_on_its_own_is_not_started(self, docker):
+        _deploy("honeygain")
+        copy = docker.named("cashpilot-honeygain-p3")
+        copy.status = "exited"
+        with pytest.raises(proxy_tunnel.ProxyTunnelError):
+            _rebuild("honeygain")
+        assert docker.named("cashpilot-honeygain-p3") is copy and copy.status == "exited"
+
+    def test_no_copy_is_not_created(self, docker):
+        with pytest.raises(proxy_tunnel.ProxyTunnelError):
+            _rebuild("honeygain")
+        assert docker.named("cashpilot-honeygain-p3") is None and not docker.tunnels()
+
+    def test_the_check_waits_for_a_stop_in_progress(self, docker):
+        """The check runs under the lock a stop holds, so a stop that started first wins."""
+        _deploy("honeygain")
+        lock = proxy_tunnel._deploy_lock(3)
+        lock.acquire()
+        result: dict = {}
+
+        def rebuild():
+            try:
+                _rebuild("honeygain")
+                result["ok"] = True
+            except proxy_tunnel.ProxyTunnelError as exc:
+                result["refused"] = str(exc)
+            except Exception as exc:  # noqa: BLE001 - reported by the assert below
+                result["error"] = repr(exc)
+
+        t = threading.Thread(target=rebuild, daemon=True)
+        try:
+            t.start()
+            t.join(0.2)
+            assert t.is_alive(), "the rebuild must wait for the lock"
+            proxy_tunnel._stop("honeygain", 3)  # the owner's stop, inside the lock it holds
+        finally:
+            lock.release()
+        t.join(5)
+        assert "refused" in result and docker.named("cashpilot-honeygain-p3").status == "exited"
+
+
+# ---------------------------------------------------------------------------
 # What the heartbeat tells the UI's proxied-copy alert
 # ---------------------------------------------------------------------------
 
