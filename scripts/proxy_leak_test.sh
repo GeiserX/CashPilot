@@ -14,7 +14,13 @@
 #   d. with tun2proxy killed, the sidecar exits and the earner is left with
 #      loopback only;
 #   e. a DNS canary name, looked up through Docker's resolver and straight at
-#      8.8.8.8, never shows up on the box's own uplink.
+#      8.8.8.8, never shows up as a plain UDP lookup on the box's own stack;
+#   f. a public name that resolves to a private address (a nip.io name for a
+#      server on the proxy's own network) does not reach that server: the
+#      name is resolved inside the tunnel and the private address is dropped;
+#   g. an address in 100.64.0.0/10 that is local to the namespace (a tailnet
+#      node's own address, where tailscaled's PeerAPI listens) is not reachable
+#      over loopback.
 #
 # Every leak check first runs once against a deliberately opened namespace
 # (the sidecar's firewall table deleted and a default route put back) and must
@@ -61,13 +67,13 @@ start_gost() {
     sleep 1
 }
 
-# host_dns_mentions <seconds> <name> -> how many DNS packets on the box's own
-# network stack (every interface of the Docker host) carry <name>. Other DNS
-# traffic on the box is ignored, so only the canary counts.
+# host_dns_mentions <seconds> <name> -> how many plain UDP DNS packets on the
+# box's own network stack (every interface of the Docker host) carry <name>.
+# Other DNS traffic on the box is ignored, so only the canary counts.
 host_dns_mentions() {
     local secs=$1 name=$2
     docker run --rm --network=host --cap-drop ALL --cap-add NET_RAW --cap-add NET_ADMIN "$P-tcpdump-img" \
-        timeout "$secs" tcpdump -n -i any -l -A "udp port 53 or tcp port 53" 2>/dev/null | grep -c "${name%%.*}" || true
+        timeout "$secs" tcpdump -n -i any -l -A "udp port 53" 2>/dev/null | grep -c "${name%%.*}" || true
 }
 
 start_pair() { # kind auth port  (auth is "user:pass@", percent-encoded, or "-" for none)
@@ -181,11 +187,12 @@ for variant in "socks5 u1:p%40ss@ 1080" \
 done
 
 # e. DNS canary, on the last variant's settings (plain HTTP CONNECT, the case
-# with no UDP at all). The canary must not appear anywhere on the box's own
-# network stack. Only lookups are made: tun2proxy answers them inside the
-# tunnel (virtual DNS) and hands the name to the proxy when a connection is
-# opened, so the proxy resolving a name is the intended path. Here the proxy
-# runs on this same box, so a connection would put its lookup on the capture.
+# with no UDP at all). tun2proxy sends every lookup through the proxy as DNS
+# over TCP (--dns over-tcp), so the canary must never appear as a plain UDP
+# lookup on the box's own network stack, which is the way a lookup that left
+# from the box itself would go. The proxy runs on this same box, so its own
+# TCP lookup on the earner's behalf is on the box too; that one is the
+# intended path, and the capture leaves TCP out.
 start_gost
 start_pair http - 8081
 canary="leak-$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n').example.com"
@@ -198,6 +205,47 @@ wait $cap
 n=$(cat /tmp/cpmp-host-dns.$$)
 rm -f /tmp/cpmp-host-dns.$$
 [ "$n" = 0 ] && pass "e: the canary name appears in 0 DNS packets on the box's own stack" || fail "e: the canary name appears in $n DNS packets on the box's own stack"
+
+# f. A name the proxy could resolve to its own LAN. The target is a plain HTTP
+# server on the proxy's network, named through nip.io (a public name that
+# resolves to the address written in it). Resolved by the proxy, as tun2proxy's
+# virtual DNS did, the name reaches the server; resolved inside the tunnel, the
+# earner gets the private address and the tunnel drops it.
+docker run -d --name "$P-lan" --network "$NET" "$ALPINE" \
+    sh -c 'while true; do printf "HTTP/1.0 200 OK\r\n\r\ncpmp-lan-secret" | nc -l -p 80; done' >/dev/null
+LAN_IP=$(docker inspect "$P-lan" -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}")
+LAN_NAME="$(printf %s "$LAN_IP" | tr . -).nip.io"
+reaches_lan_name() { earner curl -s -m 6 "http://$LAN_NAME/" 2>/dev/null | grep -q cpmp-lan-secret; }
+for variant in "socks5 - 1081" "http - 8081"; do
+    set -- $variant
+    start_gost
+    start_pair "$1" "$2" "$3"
+    if reaches_lan_name; then
+        fail "$1:$3 f: $LAN_NAME reached the proxy's own network"
+    else
+        pass "$1:$3 f: $LAN_NAME (a name for $LAN_IP) does not reach the proxy's own network"
+    fi
+done
+# Its control: the same earner, with the tunnel's address rules gone but its
+# route still into the tunnel, reaches the server through the proxy.
+docker exec "$P-tun" sh -c 'nft flush chain inet cashpilot out && nft add rule inet cashpilot out accept'
+if reaches_lan_name; then pass "control: the name check sees $LAN_NAME through the proxy once the tunnel allows it"; else fail "control: the name check could not reach $LAN_NAME even with the tunnel open"; fi
+
+# g. A tailnet address local to the namespace. On a Tailscale tunnel the node's
+# own 100.x address is local, so the earner's connection to it goes over
+# loopback, past the rules on tailscale0. Simulated here on a SOCKS tunnel:
+# an address in 100.64.0.0/10 on lo, a listener on it in the namespace.
+start_gost
+start_pair socks5 - 1081
+docker exec "$P-tun" ip addr add 100.101.0.1/32 dev lo
+docker run -d --name "$P-peer" --network "container:$P-tun" --cap-drop ALL "$ALPINE" \
+    sh -c 'while true; do printf "HTTP/1.0 200 OK\r\n\r\ncpmp-peerapi" | nc -l -s 100.101.0.1 -p 9999; done' >/dev/null
+sleep 1
+reaches_peer() { earner curl -s -m 4 http://100.101.0.1:9999/ 2>/dev/null | grep -q cpmp-peerapi; }
+if reaches_peer; then fail "g: the earner reached 100.101.0.1 on loopback"; else pass "g: the earner cannot reach a 100.64.0.0/10 address on loopback"; fi
+docker exec "$P-tun" sh -c 'nft -a list chain inet cashpilot out | sed -n "s/.*100.64.0.0\/10 drop # handle \([0-9]*\)/\1/p" | xargs -I{} nft delete rule inet cashpilot out handle {}'
+if reaches_peer; then pass "control: the loopback check reaches 100.101.0.1 once its rule is gone"; else fail "control: the loopback check could not reach 100.101.0.1 even without its rule"; fi
+docker rm -f "$P-peer" >/dev/null
 
 # Positive controls: the same checks against a namespace opened on purpose.
 open_namespace

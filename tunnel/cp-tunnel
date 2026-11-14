@@ -48,9 +48,10 @@ socks5 | http)
     case "$PROXY_PORT" in *[!0-9]* | "") die "proxy_port is not a number" ;; esac
     TUN=tun0
     EGRESS_RULE="oifname \"$DEV\" ip daddr $PROXY_IP tcp dport $PROXY_PORT accept"
-    # A literal private or tailnet address sent into the tunnel would ask the
-    # proxy to connect there, which reaches the proxy's own LAN. Host names are
-    # mapped into 198.18.0.0/15 by tun2proxy's virtual DNS and stay allowed.
+    # A private or tailnet address sent into the tunnel would ask the proxy to
+    # connect there, which reaches the proxy's own LAN. Names are resolved
+    # inside the tunnel (tun2proxy --dns over-tcp, below), so a name that
+    # resolves to such an address is dropped here too, by its real address.
     TUN_DENY="oifname \"$TUN\" ip daddr { 100.64.0.0/10, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } drop"
     ;;
 tailscale)
@@ -90,6 +91,11 @@ table inet cashpilot {
     chain out {
         type filter hook output priority 0; policy drop;
         ip daddr 127.0.0.11 drop
+        # Before loopback: on a tailnet the node's own 100.x address is local, so
+        # a connection to it goes over lo and would reach tailscaled's PeerAPI
+        # as the node itself. Nothing in the tunnel needs it.
+        ip daddr 100.64.0.0/10 drop
+        ip6 daddr fd7a:115c:a1e0::/48 drop
         oifname "lo" accept
         ${TUN_DENY:-}
         oifname "$TUN" accept
@@ -174,14 +180,18 @@ else
     # takes the URL on the command line; that is visible inside this
     # container's own PID namespace, which the earner does not share.
     # At warn, so the log never names the sites the earner's sessions reach.
+    # --dns over-tcp: a lookup goes through the proxy as DNS over TCP to the
+    # resolver it was sent to, and the earner gets the real address back. With
+    # --dns virtual the proxy resolved the name itself, so a name that points
+    # at the proxy host's own LAN or loopback reached it past TUN_DENY.
     case "$(read_key proxy_scheme)" in socks5 | http) ;; *) die "proxy_scheme is not socks5 or http" ;; esac
     tun2proxy-bin --tun tun0 --proxy "$(read_key proxy_scheme)://$(read_key proxy_auth)$PROXY_IP:$PROXY_PORT" \
-        --dns virtual --exit-on-fatal-error --verbosity warn &
+        --dns over-tcp --exit-on-fatal-error --verbosity warn &
     TPID=$!
 fi
 
 # 4: ready only when traffic really leaves through the tunnel.
-(probe_until_ready || echo "cp-tunnel: no working exit through the tunnel after 40 probe attempts" >&2) &
+(probe_until_ready || echo "cp-tunnel: no working exit through the tunnel after 40 probe attempts. Names are looked up through the proxy over TCP port 53, so the proxy must allow that" >&2) &
 
 wait "$TPID"
 die "the tunnel process exited; the earner stays cut off until this container restarts"
