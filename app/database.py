@@ -5043,6 +5043,16 @@ async def record_identities(
         try:
             if if_record is None or await _deploy_records(db, slug, worker_id) == [(worker_id, dict(if_record))]:
                 await _record_identities_locked(db, slug, worker_id, keys, values, wanted, scope)
+                # A deploy that finished after its box was deleted: its ids are
+                # retired as delete_worker retires them, so the replacement box
+                # is offered them and the owner may forget them (issue #740).
+                cursor = await db.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,))
+                if await cursor.fetchone() is None:
+                    await db.execute(
+                        "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+                        "WHERE slug = ? AND worker_id = ? AND status = 'active'",
+                        (slug, worker_id),
+                    )
             await db.commit()
         except BaseException:
             await db.rollback()

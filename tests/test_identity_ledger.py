@@ -2005,7 +2005,7 @@ class TestARestartThenAnEmptyList:
         _heartbeat("box-a", case.RUNS)  # built before the DELETE, it proves copy 3 again
         case._restart()
         for _ in range(2):
-            _heartbeat("box-a", {})
+            _heartbeat("box-a", {}, listed=True)
         assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME") not in _active()
         assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME", "box-3") in _retired()
 
@@ -2211,3 +2211,65 @@ class TestADeviceIdInCapitals:
 
         assert asyncio.run(run())
         assert not main._DEVICE_ID_CLAIMS
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, thirteenth round: a box that could not list everything still
+# repairs what it did list, an older worker's empty list is not proof, and a
+# deploy write that lands after its box was deleted leaves nothing in use
+# ---------------------------------------------------------------------------
+
+
+class TestAPartialListStillRepairs:
+    def test_a_copy_the_list_proves_gets_its_row(self, db):
+        """Copy 2's deploy write failed; a heartbeat that missed some other container still proves copy 2."""
+        wid = _worker(running=[("honeygain", [1])])
+        TestACopyWhoseWriteFailed()._deploy_losing_copy_two(wid)
+        _heartbeat("box-a", {1: {"HONEYGAIN_DEVICE_NAME": "box"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}, listed=False)
+        assert _active()[("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
+
+    def test_it_still_retires_nothing(self, db):
+        """Copy 2 above the count, left out of a partial list, stays active, and the next real list still decides."""
+        wid, runs = TestABoxThatCouldNotListItsContainers()._copy_two_above_the_count()
+        _heartbeat("box-a", {1: runs[1]}, listed=False)
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+        _heartbeat("box-a", {1: runs[1]}, listed=True)
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") not in _active()
+
+
+class TestAnOlderWorkersEmptyList:
+    """A worker from before containers_listed sends [] when its Docker list fails, with no flag."""
+
+    def test_it_retires_nothing(self, db):
+        wid, runs = TestABoxThatCouldNotListItsContainers()._copy_two_above_the_count()
+        _heartbeat("box-a", {})
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+
+    def test_its_real_list_still_retires(self, db):
+        """The positive control: the same worker listing copy 1 alone."""
+        wid, runs = TestABoxThatCouldNotListItsContainers()._copy_two_above_the_count()
+        _heartbeat("box-a", {})
+        _heartbeat("box-a", {1: runs[1]})
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME") not in _active()
+        assert ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+
+class TestADeployWriteAfterItsBoxWasDeleted:
+    def _late_write(self, scope):
+        wid = asyncio.run(database.upsert_worker("client-box-z", name="box-z"))
+        asyncio.run(database.delete_worker(wid))
+        asyncio.run(database.record_identities("earnapp", wid, {"1": {"EARNAPP_UUID": UUID_A}}, scope=scope))
+        return wid
+
+    @pytest.mark.parametrize("scope", ["given", "copies"])
+    def test_its_id_is_retired_and_offered_again(self, db, scope):
+        wid = self._late_write(scope)
+        assert _active() == {}
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
+        row = next(r for r in _rows() if r["value"] == UUID_A)
+        assert asyncio.run(database.delete_identity(row["id"])) is True
+
+    def test_a_live_box_still_gets_an_active_row(self, db):
+        """The positive control: the same write for a box that exists."""
+        asyncio.run(database.record_identities("earnapp", 2, {"1": {"EARNAPP_UUID": UUID_A}}, scope="given"))
+        assert _active() == {("earnapp", 2, "1", "EARNAPP_UUID"): UUID_A}

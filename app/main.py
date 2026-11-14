@@ -4946,7 +4946,7 @@ def _forget_checked_copies(worker_id: int, slug: str) -> None:
         _IDENTITIES_CHECKED[worker_id] = {k for k in _IDENTITIES_CHECKED[worker_id] if k[0] != slug}
 
 
-async def _reconcile_running_identities(worker_id: int, containers: Any) -> None:
+async def _reconcile_running_identities(worker_id: int, containers: Any, *, complete: bool = True) -> None:
     """Make the ledger match the ids a heartbeat proves each copy runs.
 
     A copy whose ledger write failed at deploy still runs, so its box reports
@@ -4957,8 +4957,10 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
     row stays, and the copy is checked again once its record, container or
     digest changes. An extra copy above the record's count that a heartbeat
     stops listing is retired (_retire_dropped_copies). Only a copy with a
-    digest counts: an older worker sends none. One indexed read per service on
-    a container not seen before, and a write only on a proven miss.
+    digest counts: an older worker sends none. ``complete`` False (the box could
+    not list every container) keeps the repair and skips the retirement: a
+    copy the list leaves out may still run. One indexed read per service on a
+    container not seen before, and a write only on a proven miss.
     """
     listed: set[tuple[str, int, str, str]] = set()
     present: set[tuple[str, int]] = set()
@@ -4975,7 +4977,10 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
     _IDENTITIES_CHECKED[worker_id] = checked
     copies = {(slug, n) for slug, n, _, _ in listed}
     previous = _IDENTITIES_LISTED.get(worker_id)
-    if previous is None:
+    if not complete:
+        # Nothing is gone, and the last full list stays what the next one compares against.
+        previous = set()
+    elif previous is None:
         # The first heartbeat since the UI started: what the last one listed is
         # gone with the process, so the extra copies the ledger holds active
         # stand in for it, of every service, listed now or not. Otherwise a
@@ -4984,7 +4989,8 @@ async def _reconcile_running_identities(worker_id: int, containers: Any) -> None
         # once per worker.
         previous = await database.active_extra_copies(worker_id)
     gone = previous - present
-    _IDENTITIES_LISTED[worker_id] = copies
+    if complete:
+        _IDENTITIES_LISTED[worker_id] = copies
     for slug in sorted({slug for slug, n in gone if n > 1}):
         dropped = {n for s, n in gone if s == slug}
         if not await _retire_dropped_copies(slug, worker_id, dropped):
@@ -9927,12 +9933,16 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not resume copy removals for worker %s: %s", worker_id, exc)
     # The identity ledger: a running copy with no row (its write failed at
-    # deploy) gets one now. Never allowed to reject a heartbeat. Not on a
-    # heartbeat whose box could not list its containers: its empty list would
-    # read as every extra copy gone, and retire ids that still run.
+    # deploy) gets one now. Never allowed to reject a heartbeat. A box that
+    # could not list every container retires nothing: a copy its list leaves
+    # out would read as gone while it still runs. An older worker sends no
+    # containers_listed and an empty list when its Docker list fails, so an
+    # empty list without the flag is not proof either.
     try:
-        if (body.system_info or {}).get("containers_listed") is not False:
-            await _reconcile_running_identities(worker_id, body.containers)
+        info = body.system_info if isinstance(body.system_info, dict) else {}
+        flag = info.get("containers_listed")
+        complete = flag is True or (flag is None and bool(body.containers))
+        await _reconcile_running_identities(worker_id, body.containers, complete=complete)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not check the device ids of worker %s: %s", worker_id, type(exc).__name__)
     # Activity: the switch is read on every heartbeat, because the reply is
