@@ -14,6 +14,7 @@ import asyncio
 import json
 import os
 import sqlite3
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -353,7 +354,19 @@ def _request():
 
 
 def _deploy(
-    slug, env, worker_id, *, instances=None, allow=False, fail=None, running=frozenset(), ran=None, replaced=None
+    slug,
+    env,
+    worker_id,
+    *,
+    instances=None,
+    allow=False,
+    fail=None,
+    running=frozenset(),
+    ran=None,
+    replaced=None,
+    user=OWNER,
+    image=None,
+    password=None,
 ):
     """Deploy through the route.
 
@@ -374,11 +387,13 @@ def _deploy(
         old = (replaced or {}).get(n)
         return {"container_id": f"c{wid}", **({"replaced_identity_digest": _digest(slug, old)} if old else {})}
 
-    body = main.DeployRequest(env=env, instances=instances, allow_shared_identity=allow)
+    body = main.DeployRequest(
+        env=env, instances=instances, allow_shared_identity=allow, image=image, step_up_password=password
+    )
 
     async def run():
         with (
-            patch.object(auth, "get_current_user", return_value=OWNER),
+            patch.object(auth, "get_current_user", return_value=user),
             patch.object(main, "_resolve_worker_id", AsyncMock(return_value=worker_id)),
             patch.object(main, "_proxy_to_worker", hop),
             patch.object(main, "_worker_features", AsyncMock(return_value={"instances"})),
@@ -574,6 +589,8 @@ class TestOldDeployments:
         wid = _worker(running=[("proxyrack", {1: None, 2: copy_two})])
         asyncio.run(database.save_deployment(slug="proxyrack", container_id="c1", spec=spec, worker_id=wid))
         asyncio.run(database.save_proxied_copy(7, wid, "proxyrack"))
+        p7 = main.proxies.earner_spec(spec, catalog.get_service("proxyrack")["docker"], 7)["env"]
+        _proxied_heartbeat(wid, "proxyrack", 7, p7)
         asyncio.run(main._backfill_identities())
         active = _active()
         assert {k[2] for k in active} == {"1", "2", "p7"}
@@ -1591,3 +1608,284 @@ class TestADigestThatNeverMatches:
             _heartbeat("box-a", {1: {"EARNAPP_UUID": "0123456789abcdef"}}, slug="earnapp")
             assert reads.await_count == 2
         assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, eleventh round: the admin key and a custom image, two deploys
+# of one id at once, proxied copies at startup, a restart after a scale-down,
+# and the import page's deploy
+# ---------------------------------------------------------------------------
+
+
+class TestTheAdminKeyCannotCarryADeviceIdOut:
+    """A recorded per_device id must not ride an image the caller chose without the owner's password."""
+
+    def test_the_admin_key_cannot_send_the_recorded_id_to_another_image(self, db):
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)[0] is None
+        error, sent = _deploy("earnapp", {}, 1, user=ADMIN_KEY, image="attacker/exfil:1")
+        assert isinstance(error, HTTPException) and error.status_code == 403
+        assert not any(UUID_A in str(s["json"]) for s in sent)
+
+    def test_a_signed_in_owner_is_asked_for_the_password(self, db):
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)[0] is None
+        error, sent = _deploy("earnapp", {}, 1, image="mirror/earnapp:1")
+        assert error.status_code == 403 and error.detail["error"] == "step_up_required"
+        assert sent == []
+        with patch.object(main, "require_step_up", AsyncMock(return_value=OWNER)) as step_up_:
+            error, sent = _deploy("earnapp", {}, 1, image="mirror/earnapp:1", password="pw")
+        assert error is None and sent[0]["json"]["image"] == "mirror/earnapp:1"
+        step_up_.assert_awaited_once()
+        assert "approval" not in sent[0]["json"]
+
+    def test_a_redeploy_that_keeps_the_owners_image_is_not_asked_again(self, db):
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)[0] is None
+        with patch.object(main, "require_step_up", AsyncMock(return_value=OWNER)):
+            assert _deploy("earnapp", {}, 1, image="mirror/earnapp:1", password="pw")[0] is None
+        error, sent = _deploy("earnapp", {}, 1, user=ADMIN_KEY)
+        assert error is None and sent[0]["json"]["image"] == "mirror/earnapp:1"
+
+    def test_a_service_with_no_device_id_is_not_asked(self, db):
+        env = {"HONEYGAIN_EMAIL": "me@example.com", "HONEYGAIN_PASSWORD": "pw", "HONEYGAIN_DEVICE_NAME": "box"}
+        assert _deploy("honeygain", env, 1, user=ADMIN_KEY, image="mirror/honeygain:1")[0] is None
+
+
+class TestTwoDeploysOfOneIdAtOnce:
+    def test_only_one_box_gets_it_without_asking(self, db):
+        async def hop(wid, method, path, *, json=None, **kwargs):
+            await asyncio.sleep(0.05)  # an image pull
+            return {"container_id": f"c{wid}"}
+
+        async def one(wid):
+            body = main.DeployRequest(env={"EARNAPP_UUID": UUID_A})
+            try:
+                await main.api_deploy(_request(), "earnapp", body, wid)
+            except HTTPException as exc:
+                return exc.status_code
+            return 200
+
+        async def run():
+            with (
+                patch.object(auth, "get_current_user", return_value=OWNER),
+                patch.object(main, "_resolve_worker_id", AsyncMock(side_effect=lambda wid: wid)),
+                patch.object(main, "_proxy_to_worker", hop),
+                patch.object(main, "_register_device", AsyncMock(return_value=True)),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                return await asyncio.gather(one(1), one(2))
+
+        assert sorted(asyncio.run(run())) == [200, 409]
+        assert len(_active()) == 1
+        assert not main._DEVICE_ID_CLAIMS
+
+    def test_two_different_ids_do_not_wait_for_each_other(self, db):
+        """The claim is per id: deploys of different ids to two boxes still run side by side."""
+        started: list[int] = []
+        both = asyncio.Event()
+
+        async def hop(wid, method, path, *, json=None, **kwargs):
+            started.append(wid)
+            if len(started) == 2:
+                both.set()
+            await asyncio.wait_for(both.wait(), 1)
+            return {"container_id": f"c{wid}"}
+
+        async def one(wid, uuid):
+            await main.api_deploy(_request(), "earnapp", main.DeployRequest(env={"EARNAPP_UUID": uuid}), wid)
+
+        async def run():
+            with (
+                patch.object(auth, "get_current_user", return_value=OWNER),
+                patch.object(main, "_resolve_worker_id", AsyncMock(side_effect=lambda wid: wid)),
+                patch.object(main, "_proxy_to_worker", hop),
+                patch.object(main, "_register_device", AsyncMock(return_value=True)),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                await asyncio.gather(one(1, UUID_A), one(2, UUID_B))
+
+        asyncio.run(run())
+        assert len(_active()) == 2
+
+    def test_two_raw_deploys_at_once_too(self, db):
+        async def hop(*args, **kwargs):
+            await asyncio.sleep(0.05)
+            return {"container_id": "c"}
+
+        async def one(wid):
+            body = main.WorkerCommand(command="deploy", slug="earnapp", spec={"env": {"EARNAPP_UUID": UUID_A}})
+            try:
+                await main.api_worker_command(_request(), wid, body)
+            except HTTPException as exc:
+                return exc.status_code
+            return 200
+
+        async def run():
+            with (
+                patch.object(main, "_require_owner", lambda r: OWNER),
+                patch.object(main, "_proxy_to_worker", hop),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                return await asyncio.gather(one(1), one(2))
+
+        assert sorted(asyncio.run(run())) == [200, 409]
+
+
+def _proxied_heartbeat(wid, slug, proxy_id, ids):
+    """Store a heartbeat whose proxied copy ``proxy_id`` runs with ``ids`` (proxy_tunnel.status)."""
+    entry = {"slug": slug, "proxy_id": proxy_id, "status": "running"}
+    if ids:
+        entry["identity_digest"] = _digest(slug, ids)
+    worker = asyncio.run(database.get_worker(wid))
+    asyncio.run(
+        database.upsert_worker(
+            worker["client_id"],
+            name=worker["name"],
+            containers=worker["containers"],
+            system_info=json.dumps({"proxied": [entry]}),
+        )
+    )
+
+
+class TestAProxiedCopyAtStartup:
+    """The backfill records a proxied copy only when its box proves the ids it runs."""
+
+    def _setup(self, name):
+        wid = _worker()
+        spec = {"env": {"HONEYGAIN_EMAIL": "me@example.com", "HONEYGAIN_PASSWORD": "pw", "HONEYGAIN_DEVICE_NAME": name}}
+        asyncio.run(database.save_deployment(slug="honeygain", container_id="c1", spec=spec, worker_id=wid))
+        asyncio.run(database.save_proxied_copy(7, wid, "honeygain"))
+        return wid
+
+    def test_a_copy_built_from_an_older_record_is_not_given_the_new_name(self, db):
+        wid = self._setup("boxB")
+        _proxied_heartbeat(wid, "honeygain", 7, {"HONEYGAIN_DEVICE_NAME": "boxA-p7"})
+        asyncio.run(main._backfill_identities())
+        assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME") not in _active()
+
+    def test_a_copy_with_no_digest_is_not_recorded(self, db):
+        wid = self._setup("boxB")
+        _proxied_heartbeat(wid, "honeygain", 7, None)
+        asyncio.run(main._backfill_identities())
+        assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME") not in _active()
+
+    def test_a_proven_copy_is_recorded(self, db):
+        wid = self._setup("boxB")
+        _proxied_heartbeat(wid, "honeygain", 7, {"HONEYGAIN_DEVICE_NAME": "boxB-p7"})
+        asyncio.run(main._backfill_identities())
+        assert _active()[("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME")] == "boxB-p7"
+
+
+class TestTheWorkerReportsAProxiedCopysDigest:
+    def test_status_carries_the_digest_never_the_id(self, db):
+        from app import orchestrator, proxy_tunnel
+
+        earner = MagicMock()
+        earner.id, earner.short_id, earner.name, earner.status = "e1", "e1", "cashpilot-earnapp-p7", "running"
+        earner.labels = {"cashpilot.service": "earnapp", "cashpilot.managed": "true", proxy_tunnel.LABEL_PROXY: "7"}
+        earner.client.api.inspect_container.return_value = {"Config": {"Env": [f"EARNAPP_UUID={UUID_A}"]}}
+        client = MagicMock()
+        client.containers.list.return_value = [earner]
+        orchestrator._identity_values.clear()
+        with (
+            patch.object(orchestrator, "identity_digest_key", lambda: WORKER_KEY),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
+            patch.object(proxy_tunnel, "held", return_value=set()),
+        ):
+            (entry,) = proxy_tunnel.status()
+        orchestrator._identity_values.clear()
+        assert entry["identity_digest"] == _digest("earnapp", {"EARNAPP_UUID": UUID_A})
+        assert UUID_A not in json.dumps(entry)
+
+
+class TestARestartAfterAScaleDown:
+    """The in-memory list of copies is empty after a restart; a removed copy must still stay retired."""
+
+    HG = {"HONEYGAIN_EMAIL": "me@example.com", "HONEYGAIN_PASSWORD": "pw", "HONEYGAIN_DEVICE_NAME": "box"}
+    RUNS = {n: {"HONEYGAIN_DEVICE_NAME": "box" if n == 1 else f"box-{n}"} for n in (1, 2, 3)}
+    COPY_THREE = ("honeygain", None, "3", "HONEYGAIN_DEVICE_NAME")
+
+    def _scaled_down(self):
+        wid = _worker(running=[("honeygain", [1])])
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", self.HG, wid, instances=3)[0] is None
+            _heartbeat("box-a", self.RUNS)  # stored: still lists copy 3
+            assert _deploy("honeygain", self.HG, wid, instances=2, running={1, 2, 3}, ran={3: self.RUNS[3]})[0] is None
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME") not in _active()
+        return wid
+
+    def _restart(self):
+        main._IDENTITIES_CHECKED.clear()
+        main._IDENTITIES_LISTED.clear()
+
+    def test_the_backfill_does_not_bring_it_back(self, db):
+        wid = self._scaled_down()
+        self._restart()
+        asyncio.run(main._backfill_identities())
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME") not in _active()
+        for _ in range(3):
+            _heartbeat("box-a", {1: self.RUNS[1], 2: self.RUNS[2]})
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME") not in _active()
+
+    def test_a_late_heartbeat_then_a_restart(self, db):
+        wid = self._scaled_down()
+        _heartbeat("box-a", self.RUNS)  # built before the DELETE, it proves copy 3 again
+        self._restart()
+        for _ in range(2):
+            _heartbeat("box-a", {1: self.RUNS[1], 2: self.RUNS[2]})
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME") not in _active()
+        assert ("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME", "box-3") in _retired()
+        assert set(_active()) == {
+            ("honeygain", wid, "1", "HONEYGAIN_DEVICE_NAME"),
+            ("honeygain", wid, "2", "HONEYGAIN_DEVICE_NAME"),
+        }
+
+    def test_a_copy_above_the_count_that_still_runs_is_kept(self, db):
+        wid = self._scaled_down()
+        _heartbeat("box-a", self.RUNS)
+        self._restart()
+        _heartbeat("box-a", self.RUNS)
+        assert _active()[("honeygain", wid, "3", "HONEYGAIN_DEVICE_NAME")] == "box-3"
+
+
+class TestTheImportPagesDeploy:
+    def _deploy(self, wid, body):
+        hop = AsyncMock(return_value={"container_id": "c"})
+
+        async def run():
+            with (
+                patch.object(main, "_resolve_worker_id", AsyncMock(return_value=wid)),
+                patch.object(main.importers_router, "draft_env", AsyncMock(return_value={"EARNAPP_UUID": UUID_A})),
+                patch.object(main, "_proxy_to_worker", hop),
+                patch.object(main, "_register_device", AsyncMock(return_value=True)),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                try:
+                    await main.api_import_draft_deploy(_request(), "earnapp", body, worker_id=wid, user=OWNER)
+                except HTTPException as exc:
+                    return exc
+                return None
+
+        return asyncio.run(run()), hop
+
+    def test_the_owner_may_confirm_a_shared_id(self, db):
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        error, hop = self._deploy(2, main.ImportDeployRequest())
+        assert error.status_code == 409 and error.detail["error"] == "identity_in_use"
+        hop.assert_not_awaited()
+        error, hop = self._deploy(2, main.ImportDeployRequest(allow_shared_identity=True))
+        assert error is None
+        hop.assert_awaited_once()
+
+    def test_the_page_posts_a_body_the_retry_can_extend(self):
+        source = (Path(__file__).resolve().parents[1] / "app/static/js/import.js").read_text()
+        call = source[source.index("/api/import/drafts/") :]
+        call = call[: call.index(");")]
+        assert "body: {}" in call

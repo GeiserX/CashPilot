@@ -1812,6 +1812,10 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         )
         if stopped is not None and earner is not None:
             out[-1]["held"] = str(earner.name) in stopped
+        if earner is not None:
+            # The keyed hash of the device ids it runs with, never the ids: the
+            # UI's proof before it records this copy in the identity ledger.
+            out[-1].update(orchestrator._identity_entry(earner, slug))
         if sidecar is None and earner is not None and (change := stuck.get(_tunnel_id_of(earner))):
             out[-1]["tunnel_change"] = dict(change)
     return out
