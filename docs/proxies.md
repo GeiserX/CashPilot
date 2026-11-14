@@ -333,7 +333,7 @@ loopback or tailnet address is dropped before it leaves the tunnel, so a
 name cannot be used to reach your LAN or the proxy's own network.
 
 Many HTTP proxies allow connections to port 443 only, and some SOCKS5
-providers block port 53. The tunnel checks this when it starts: when names do
+providers block port 53, by refusing it or by letting it time out. The tunnel checks this when it starts: when names do
 not resolve but the proxy carries a connection to an address, it lets the
 proxy resolve names instead, as before, and says so in its log. The earner
 keeps earning, but a name that points at the proxy's own network is then not

@@ -64,10 +64,24 @@ def _container(name, slug, *, proxy=None, role=None, instance=None, status="runn
 # ---------------------------------------------------------------------------
 
 
+def _copy(name, slug, proxy):
+    """A proxied copy as Docker shows it: inside its tunnel's network namespace."""
+    c = _container(name, slug, proxy=proxy)
+    c.attrs["HostConfig"] = {"NetworkMode": f"container:id-tunnel-p{proxy}"}
+    return c
+
+
+def _sidecar(name, slug, proxy):
+    """A tunnel as Docker shows it: labelled one and running the tunnel image."""
+    c = _container(name, slug, proxy=proxy, role="tunnel")
+    c.attrs["Config"] = {"Image": "drumsergio/cashpilot-tunnel:1.64.0"}
+    return c
+
+
 class TestCopiesAreNotProxied:
     def test_find_container_fallback_skips_a_proxied_copy(self):
-        proxied = _container("cashpilot-honeygain-p3", "honeygain", proxy=3)
-        tunnel = _container("cashpilot-tunnel-honeygain-p3", "honeygain", proxy=3, role="tunnel")
+        proxied = _copy("cashpilot-honeygain-p3", "honeygain", 3)
+        tunnel = _sidecar("cashpilot-tunnel-honeygain-p3", "honeygain", 3)
         client = MagicMock()
         client.containers.get.side_effect = NotFound("gone")
         client.containers.list.return_value = [proxied, tunnel]
@@ -75,7 +89,7 @@ class TestCopiesAreNotProxied:
             orchestrator._find_container("honeygain", 1)
 
     def test_find_container_picks_the_real_first_copy(self):
-        proxied = _container("cashpilot-honeygain-p3", "honeygain", proxy=3)
+        proxied = _copy("cashpilot-honeygain-p3", "honeygain", 3)
         real = _container("cashpilot-honeygain-renamed", "honeygain")
         client = MagicMock()
         client.containers.get.side_effect = NotFound("gone")
@@ -86,8 +100,8 @@ class TestCopiesAreNotProxied:
     def test_service_instances_leaves_out_proxied_copies_and_tunnels(self):
         real = _container("cashpilot-honeygain", "honeygain")
         second = _container("cashpilot-honeygain-2", "honeygain", instance=2)
-        proxied = _container("cashpilot-honeygain-p3", "honeygain", proxy=3)
-        tunnel = _container("cashpilot-tunnel-honeygain-p3", "honeygain", proxy=3, role="tunnel")
+        proxied = _copy("cashpilot-honeygain-p3", "honeygain", 3)
+        tunnel = _sidecar("cashpilot-tunnel-honeygain-p3", "honeygain", 3)
         client = MagicMock()
         client.containers.list.return_value = [proxied, second, tunnel, real]
         with patch.object(orchestrator, "_get_client", return_value=client):
@@ -95,8 +109,8 @@ class TestCopiesAreNotProxied:
 
     def test_status_light_reports_neither_the_copy_nor_its_tunnel(self):
         real = _container("cashpilot-honeygain", "honeygain")
-        proxied = _container("cashpilot-honeygain-p3", "honeygain", proxy=3)
-        tunnel = _container("cashpilot-tunnel-honeygain-p3", "honeygain", proxy=3, role="tunnel")
+        proxied = _copy("cashpilot-honeygain-p3", "honeygain", 3)
+        tunnel = _sidecar("cashpilot-tunnel-honeygain-p3", "honeygain", 3)
         client = MagicMock()
         client.containers.list.side_effect = lambda **kw: (
             [real, proxied, tunnel] if kw.get("filters") else [real, proxied, tunnel]
@@ -1140,3 +1154,75 @@ class TestTheTunnelFirewallFallsBack:
         code, out, err = _run_firewall_step(tmp_path, "refuse")
         assert code != 0 and "RULES_LOADED" not in out
         assert "refusing to start" in err
+
+
+# ---------------------------------------------------------------------------
+# cp-tunnel: when names go back to the proxy (--dns virtual)
+# ---------------------------------------------------------------------------
+
+
+def _proxy_refuses_dns(tmp_path: Path, scheme: str, first_rc: int, out: str, rc: int) -> bool:
+    """Run cp-tunnel's proxy_refuses_dns with a stub curl.
+
+    The stub answers the first request (the proxy carries a connection) with
+    ``first_rc``, and the request to port 53 by printing ``out`` (what its
+    ``-w`` asks for) and exiting ``rc``. The values are what curl 8 gives:
+    checked against a SOCKS5 proxy that refuses (97, pretransfer 0), stalls the
+    CONNECT (28, pretransfer 0), connects and then hears nothing (28,
+    pretransfer > 0), or connects and is closed (56, pretransfer > 0).
+    """
+    import subprocess
+
+    start = _CP_TUNNEL.index("    proxy_refuses_dns() {")
+    body = _CP_TUNNEL[start : _CP_TUNNEL.index("\n    }\n", start) + len("\n    }\n")]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "curl").write_text(
+        '#!/bin/sh\ncase "$*" in *:53/*) printf %s "$STUB_OUT"; exit "$STUB_RC" ;; esac\nexit "$STUB_FIRST"\n'
+    )
+    (bin_dir / "curl").chmod(0o755)
+    script = (
+        f'read_key() {{ case "$1" in proxy_scheme) echo {scheme} ;; *) echo ;; esac; }}\n'
+        "PROXY_IP=203.0.113.5 PROXY_PORT=1080 DNS_TARGET=1.1.1.1\n"
+        f"{body}\nproxy_refuses_dns\n"
+    )
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "STUB_FIRST": str(first_rc),
+        "STUB_OUT": out,
+        "STUB_RC": str(rc),
+    }
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    return proc.returncode == 0
+
+
+class TestTheTunnelFallsBackToProxyDns:
+    @pytest.mark.parametrize(
+        ("scheme", "out", "rc"),
+        [
+            ("socks5", "0.000000", 97),  # refused
+            ("socks5", "0.000000", 28),  # the CONNECT to port 53 stalls past 6 s
+            ("http", "403", 56),  # refused
+            ("http", "000", 28),  # no answer to the CONNECT within 6 s
+            ("http", "000", 52),  # closed without an answer
+        ],
+    )
+    def test_a_working_proxy_that_will_not_open_port_53(self, tmp_path, scheme, out, rc):
+        assert _proxy_refuses_dns(tmp_path, scheme, 0, out, rc)
+
+    @pytest.mark.parametrize(
+        ("scheme", "out", "rc"),
+        [
+            ("socks5", "0.005044", 28),  # connected; the resolver ignores the HTTP request
+            ("socks5", "0.008344", 56),  # connected; the resolver closes
+            ("http", "200", 52),
+            ("http", "200", 28),
+        ],
+    )
+    def test_control_a_proxy_that_opens_port_53_keeps_dns_over_tcp(self, tmp_path, scheme, out, rc):
+        assert not _proxy_refuses_dns(tmp_path, scheme, 0, out, rc)
+
+    @pytest.mark.parametrize("scheme", ["socks5", "http"])
+    def test_control_a_proxy_that_is_down_never_switches(self, tmp_path, scheme):
+        assert not _proxy_refuses_dns(tmp_path, scheme, 7, "0.000000" if scheme == "socks5" else "000", 28)

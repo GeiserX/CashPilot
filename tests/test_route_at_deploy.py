@@ -1610,3 +1610,224 @@ class TestProxiedOnlyStopsWhatAlreadyRuns:
         held, _ = _guard([node])
         node.start.assert_not_called()
         assert "proxy" in held["cashpilot-mysterium"]
+
+
+# ---------------------------------------------------------------------------
+# Review round: the route exit takes the copy's lock, labels never hide a
+# direct earner, a tunnel from any registry is a tunnel, and a routed rename
+# reaches the plain copies too
+# ---------------------------------------------------------------------------
+
+
+class TestARouteExitDuringARoutedRedeploy:
+    """_remove_routed_copies holds the copy's lock, as _remove_copy does."""
+
+    def test_the_exit_waits_for_the_redeploy_so_no_routed_earner_runs_without_its_record(self, db):
+        ui = _Ui()
+        real_lock = main._proxy_copy_lock
+        # The worker: whether a routed earner runs, as its deploys and removals leave it.
+        box = {"routed": False}
+
+        async def go():
+            uid = await database.create_user("owner", auth.hash_password("right one!"), "owner")
+            pid = await ui.proxy()
+            entered, release, blocked = asyncio.Event(), asyncio.Event(), asyncio.Event()
+            hold = {"on": False}
+
+            class Probe:
+                def __init__(self, lock):
+                    self.lock = lock
+
+                async def __aenter__(self):
+                    if self.lock.locked():
+                        blocked.set()
+                    await self.lock.acquire()
+
+                async def __aexit__(self, *exc):
+                    self.lock.release()
+
+            async def hop(worker_id, method, path, *, json=None, **kwargs):
+                if (method, path) == ("GET", "/api/status"):
+                    return {"proxied_only": False}
+                ui.calls.append((method, path, json))
+                if path == f"/api/proxied/honeygain/{pid}/deploy":
+                    if hold["on"]:
+                        entered.set()
+                        await release.wait()
+                    box["routed"] = True
+                    return {"container_id": "c2", "status": "deployed"}
+                if method == "DELETE":
+                    box["routed"] = False
+                    return {"status": "removed", "containers": []}
+                if path == "/api/containers/honeygain/deploy":
+                    if box["routed"]:
+                        raise HTTPException(status_code=409, detail="beside a routed copy")
+                    return {"container_id": "d", "status": "deployed"}
+                return {"status": "ok"}
+
+            with ui.active(
+                patch.object(main, "_proxy_to_worker", hop),
+                patch.object(main, "_proxy_copy_lock", lambda *key: Probe(real_lock(*key))),
+                owner_uid=uid,
+            ):
+                await main.api_deploy(_request(), "honeygain", main.DeployRequest(env=ENV, route=pid))
+                hold["on"] = True
+                redeploying = asyncio.create_task(
+                    main.api_deploy(_request(), "honeygain", main.DeployRequest(env=ENV, route=pid))
+                )
+                await entered.wait()
+                leaving = asyncio.create_task(
+                    main.api_deploy(
+                        _request(),
+                        "honeygain",
+                        main.DeployRequest(env=ENV, route=0, step_up_password="right one!"),
+                    )
+                )
+                waiter = asyncio.create_task(blocked.wait())
+                await asyncio.wait({leaving, waiter}, return_when=asyncio.FIRST_COMPLETED)
+                waiter.cancel()
+                release.set()
+                await asyncio.gather(redeploying, leaving, return_exceptions=True)
+            copies = [c for c in await database.list_proxied_copies(pid) if c["worker_id"] == 1]
+            return copies, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        copies, record = _run(go)
+        # Whatever order the two land in, the record, the copy row and the box agree.
+        routed = proxies.route_of(record) is not None
+        assert routed == bool(copies) == box["routed"], (record, copies, box)
+        # The exit waited for the redeploy, then removed what it made and ran direct.
+        assert not routed
+
+
+def _labelled_direct(extra):
+    """A direct earner made on main, which kept any label it was given (DeploySpec.labels)."""
+    c = _earner(labels={LABEL_MANAGED: "true", "cashpilot.service": "honeygain", **extra})
+    c.attrs["Config"] = {"Image": "honeygain/honeygain:1.0"}
+    return c
+
+
+# The real one: the worker fixture replaces it on the module.
+_SERVICE_INSTANCES = orchestrator.service_instances
+_STRAY_LABELS = [{"cashpilot.proxy": "3"}, {LABEL_ROLE: ROLE_TUNNEL}, {"cashpilot.proxy": "3", LABEL_ROLE: ROLE_TUNNEL}]
+
+
+class TestLabelsNeverHideADirectEarner:
+    """service_instances, _find_container and the LAN fence judge by network and image, as direct_problem does."""
+
+    def _real_copy_and_tunnel(self):
+        copy = _earner(
+            "cashpilot-honeygain-p3",
+            network_mode="container:t3",
+            labels={LABEL_MANAGED: "true", "cashpilot.service": "honeygain", "cashpilot.proxy": "3"},
+        )
+        tunnel = _earner(
+            "cashpilot-tunnel-p3",
+            labels={LABEL_MANAGED: "true", "cashpilot.service": "honeygain", LABEL_ROLE: ROLE_TUNNEL},
+        )
+        tunnel.attrs["Config"] = {"Image": "drumsergio/cashpilot-tunnel:2.4.0"}
+        return copy, tunnel
+
+    @pytest.mark.parametrize("extra", _STRAY_LABELS)
+    def test_service_instances_lists_it_and_still_skips_real_copies_and_tunnels(self, extra):
+        direct = _labelled_direct(extra)
+        copy, tunnel = self._real_copy_and_tunnel()
+        client = MagicMock()
+        client.containers.list.return_value = [copy, tunnel, direct]
+        assert orchestrator.service_instances("honeygain", client) == [direct]
+
+    @pytest.mark.parametrize("extra", _STRAY_LABELS)
+    def test_find_container_finds_it(self, extra):
+        direct = _labelled_direct(extra)
+        client = MagicMock()
+        client.containers.get.return_value = direct
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert orchestrator._find_container("honeygain") is direct
+
+    @pytest.mark.parametrize("extra", _STRAY_LABELS)
+    def test_the_lan_fence_gates_it(self, extra):
+        from app import lan_fence
+
+        direct = _labelled_direct(extra)
+        copy, tunnel = self._real_copy_and_tunnel()
+        with (
+            patch.object(orchestrator, "fence_gated", return_value=True),
+            patch.object(orchestrator, "predates_fence", return_value=False),
+        ):
+            assert lan_fence._gated(MagicMock(), [copy, tunnel, direct]) == [direct]
+
+    def test_the_worker_refuses_a_routed_deploy_beside_it(self, worker, monkeypatch):
+        direct = _labelled_direct({"cashpilot.proxy": "3"})
+        worker.docker.containers.list.return_value = [direct]
+        monkeypatch.setattr(worker_api.orchestrator, "service_instances", _SERVICE_INSTANCES)
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
+        monkeypatch.setattr(
+            worker_api.proxy_tunnel, "deploy", MagicMock(side_effect=AssertionError("deployed beside it"))
+        )
+        resp = worker("POST", "/api/proxied/honeygain/4/deploy", {"earner": BODY, "proxy": PROXY, "routed": True})
+        assert resp.status_code == 409, resp.text
+        assert direct.name in _detail(resp)
+        assert route_gate.routed() == {}
+
+
+class TestATunnelFromAnyRegistryIsATunnel:
+    def _tunnel_running(self, image):
+        tunnel = _earner(
+            "cashpilot-tunnel-p3",
+            labels={LABEL_MANAGED: "true", LABEL_ROLE: ROLE_TUNNEL, "cashpilot.service": "proxy-tunnel"},
+        )
+        tunnel.attrs["Config"] = {"Image": image}
+        return tunnel
+
+    @pytest.mark.parametrize(
+        ("image", "override"),
+        [
+            ("docker.io/drumsergio/cashpilot-tunnel:2.4.0", ""),
+            ("index.docker.io/drumsergio/cashpilot-tunnel@sha256:" + "a" * 64, ""),
+            # A mirror the override named once; the override changed or went since.
+            ("mirror.example:5000/cashpilot-tunnel:2.4.0", ""),
+            ("mirror.example:5000/cashpilot-tunnel:2.4.0", "other.example/cashpilot-tunnel:2.5.0"),
+            # Whatever the override names now.
+            ("mirror.example/own-tunnel:1.0", "mirror.example/own-tunnel:1.0"),
+        ],
+    )
+    def test_proxied_only_leaves_it_running(self, monkeypatch, image, override):
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "true")
+        monkeypatch.setenv("CASHPILOT_TUNNEL_IMAGE", override)
+        tunnel = self._tunnel_running(image)
+        assert orchestrator.is_tunnel_sidecar(tunnel)
+        with patch.object(orchestrator, "_get_client", return_value=_client_with()):
+            assert orchestrator.direct_problem(tunnel) is None
+
+    @pytest.mark.parametrize("image", ["honeygain/honeygain:1.0", "mirror.example/own-tunnel:1.0", ""])
+    def test_control_any_other_image_with_the_label_is_not_one(self, monkeypatch, image):
+        monkeypatch.setenv("CASHPILOT_TUNNEL_IMAGE", "")
+        assert not orchestrator.is_tunnel_sidecar(self._tunnel_running(image))
+
+
+class TestARoutedRenameReachesThePlainCopies:
+    """A confirmed rename on a routed deploy rebuilds or marks the copies through other proxies, as the direct one."""
+
+    def test_the_copy_through_another_proxy_is_marked_for_the_rename(self, db):
+        ui = _Ui()
+        legacy = f"{main.HOSTNAME_PREFIX}-{main.HOSTNAME_PREFIX}"
+
+        async def go():
+            routed_pid = await ui.proxy()
+            other_pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env={**ENV, "HONEYGAIN_DEVICE_NAME": legacy}, route=routed_pid))
+            await database.save_proxied_copy(other_pid, 1, "honeygain")
+            ui.calls.clear()
+            result = await ui.deploy(main.DeployRequest(env={}, rename_devices=True))
+            copies = {c["proxy_id"]: c for c in await database.list_proxied_copies() if c["worker_id"] == 1}
+            record = await database.get_deployment_spec("honeygain", worker_id=1)
+            return routed_pid, other_pid, result, copies, record
+
+        routed_pid, other_pid, result, copies, record = _run(go)
+        assert proxies.route_of(record) == routed_pid
+        assert record["env"]["HONEYGAIN_DEVICE_NAME"] != legacy
+        # Its box has not reported it running, so it is not rebuilt now: it is
+        # marked, so the service page offers the retry, and the deploy says so.
+        assert copies[other_pid]["rename_pending"] == 1
+        assert copies[routed_pid]["rename_pending"] == 0
+        assert any(f"p{other_pid}" in note for note in result.get("kept_from_previous_deployment", []))

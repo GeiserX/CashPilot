@@ -4459,7 +4459,16 @@ async def _deploy(
     # Passed only when set, so the plain call keeps its three-argument shape.
     signed: dict[str, Any] = {"approve": True} if approve else {}
     if route is not None:
-        return await _deploy_routed(slug, svc, spec, worker_id, route, merged_env, divergence)
+        return await _deploy_routed(
+            slug,
+            svc,
+            spec,
+            worker_id,
+            route,
+            merged_env,
+            divergence,
+            rename_copies=bool(device_renames and body.rename_devices),
+        )
     password = getattr(body, "step_up_password", None)
     # A service routed through a proxy on this worker leaves the route only with
     # the owner's password, and its routed copy goes first: both run the same
@@ -4671,6 +4680,8 @@ async def _deploy_routed(
     proxy_id: int,
     merged_env: dict[str, Any],
     divergence: list[str],
+    *,
+    rename_copies: bool = False,
 ) -> dict[str, Any]:
     """Deploy ``slug`` on a worker through one of the owner's proxies, never from the worker's own IP.
 
@@ -4731,6 +4742,11 @@ async def _deploy_routed(
     await database.record_health_event(
         slug, "start", f"deployed to worker {worker_id} through proxy {proxy_id}", worker_id=worker_id, instance=1
     )
+    if rename_copies:
+        # A confirmed rename reaches its plain copies through other proxies too,
+        # as on the direct path: rebuilt, or marked for the retry. The routed
+        # copy itself was just built from the new names.
+        divergence.extend(await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, record))
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
@@ -4844,24 +4860,29 @@ async def _remove_routed_copies(worker_id: int, slug: str, proxy_ids: list[int])
 
     They run the same device ids, so the direct one never starts beside them.
     Anything but a confirmed removal stops the switch: nothing is deployed.
+    Each removal holds the copy's lock, as _remove_copy does: a routed
+    redeploy through that proxy (_deploy_routed) then finishes first and this
+    removes what it made, or starts after and the worker refuses the direct
+    deploy beside it. Never a routed earner left without its copy record.
     """
     for proxy_id in proxy_ids:
         proxy = await database.get_proxy(proxy_id)
-        try:
-            await _proxy_worker_call(
-                worker_id,
-                "DELETE",
-                f"/api/proxied/{slug}/{proxy_id}",
-                (proxy or {}).get("definition") or {},
-                timeout=COPY_REMOVE_TIMEOUT,
-            )
-        except HTTPException as exc:
-            raise HTTPException(
-                status_code=409,
-                detail=f"The copy of {slug} through proxy {proxy_id} could not be removed first ({exc.detail}), "
-                "so nothing was deployed from the worker's own IP.",
-            ) from None
-        await _finish_copy_removal(proxy_id, worker_id, slug, leaving_route=True)
+        async with _proxy_copy_lock(proxy_id, worker_id, slug):
+            try:
+                await _proxy_worker_call(
+                    worker_id,
+                    "DELETE",
+                    f"/api/proxied/{slug}/{proxy_id}",
+                    (proxy or {}).get("definition") or {},
+                    timeout=COPY_REMOVE_TIMEOUT,
+                )
+            except HTTPException as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"The copy of {slug} through proxy {proxy_id} could not be removed first ({exc.detail}), "
+                    "so nothing was deployed from the worker's own IP.",
+                ) from None
+            await _finish_copy_removal(proxy_id, worker_id, slug, leaving_route=True)
 
 
 async def _step_up_critical(

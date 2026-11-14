@@ -488,12 +488,21 @@ def is_proxied(container: Any) -> bool:
     Neither is "copy N" of its service. A proxied copy carries no instance
     label, so without this check _instance_of() reads it as copy 1, and
     stopping or removing copy 1 could hit it instead.
+
+    Judged by what the container is, not by its labels alone: a copy runs in
+    another container's network namespace and a tunnel runs the tunnel image.
+    A direct earner made before deploy_raw stripped those labels may carry
+    them, and it must still count as the service's own container wherever
+    that keeps it off this box's IP (the routed deploy's refusal beside a
+    direct one, the LAN fence).
     """
     try:
         labels = container.labels
         if not isinstance(labels, dict):
             return False
-        return bool(labels.get(LABEL_PROXY) or labels.get(LABEL_ROLE))
+        if is_tunnel_sidecar(container):
+            return True
+        return bool(labels.get(LABEL_PROXY)) and _network_mode(container).startswith("container:")
     except Exception:  # noqa: BLE001 - an unreadable container is handled by the caller's own guard
         return False
 
@@ -2681,30 +2690,32 @@ def start_service(slug: str, instance: int = 1) -> None:
     logger.info("Started container %s", container.name)
 
 
-def _image_repository(image: str) -> str:
-    """``drumsergio/cashpilot-tunnel`` from ``drumsergio/cashpilot-tunnel:1.2.3`` or ``...@sha256:...``."""
-    image = image.split("@", 1)[0]
-    head, _, last = image.rpartition("/")
-    return (f"{head}/" if head else "") + last.split(":", 1)[0]
-
-
 def is_tunnel_sidecar(container: Any) -> bool:
     """A proxy tunnel (app/proxy_tunnel.py): labelled one AND running a tunnel image.
 
     A tunnel reaches its proxy from the box's own IP; that is its job. The
     label alone is not enough: a direct deploy once kept any label it was
     given (DeploySpec.labels), so an earner made then can carry it.
+
+    A tunnel image is any ``cashpilot-tunnel`` repository, from any registry
+    or mirror, or the one CASHPILOT_TUNNEL_IMAGE names now. Not only the image
+    this worker would pull today: a tunnel made before the override changed
+    keeps running its image, and the copies in it have no other network.
     """
     labels = getattr(container, "labels", None)
     if not isinstance(labels, dict) or labels.get(LABEL_ROLE) != ROLE_TUNNEL:
         return False
     attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
     config = attrs.get("Config") if isinstance(attrs.get("Config"), dict) else {}
-    image = _image_repository(str(config.get("Image") or ""))
-    override = (os.getenv("CASHPILOT_TUNNEL_IMAGE") or "").strip()
+    image = _split_image(str(config.get("Image") or ""))[0]
+    if not image:
+        return False
     from app.proxy_tunnel import TUNNEL_REPOSITORY  # noqa: PLC0415 - proxy_tunnel imports this module
 
-    return bool(image) and image in {TUNNEL_REPOSITORY, _image_repository(override) if override else ""}
+    if image.rsplit("/", 1)[-1] == TUNNEL_REPOSITORY.rsplit("/", 1)[-1]:
+        return True
+    override = (os.getenv("CASHPILOT_TUNNEL_IMAGE") or "").strip()
+    return bool(override) and image == _split_image(override)[0]
 
 
 def direct_problem(container: Any) -> str | None:
