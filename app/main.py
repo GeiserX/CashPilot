@@ -4415,13 +4415,10 @@ async def _deploy(
             result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, slug, worker_id)
-            if exc.status_code == 504:
+            if _outcome_unknown(exc):
                 # The worker may still finish it: the ids count as running here
                 # before the claim goes, so a deploy waiting on it is asked first.
-                # Should it not have, the next heartbeat proves the ids the old
-                # record runs, which replace these (_reconcile_running_identities).
-                await _record_deploy_identities(slug, worker_id, spec, [1], docker_conf, scope="given")
-                _forget_checked_copies(worker_id, slug)
+                await _record_pending_identities(slug, worker_id, {1: spec.get("env")})
             raise
         container_id = result.get("container_id", "remote")
         # Reported, deliberately NOT recorded. The worker reads the running container
@@ -4466,7 +4463,12 @@ async def _deploy(
         await database.record_health_event(
             slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
         )
-        answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
+        try:
+            answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
+        except HTTPException as exc:
+            if _outcome_unknown(exc):
+                await _record_pending_identities(slug, worker_id, {n: _instance_spec(spec, n, docker_conf).get("env")})
+            raise
         await _record_replaced_copy(slug, worker_id, recorded, old_prior, n, answer, docker_conf)
         await _record_deploy_identities(slug, worker_id, spec, [n], docker_conf, scope="given")
     deleted: set[int] = set()
@@ -4958,6 +4960,62 @@ def _forget_checked_copies(worker_id: int, slug: str) -> None:
         _IDENTITIES_CHECKED[worker_id] = {k for k in _IDENTITIES_CHECKED[worker_id] if k[0] != slug}
 
 
+#: How long the ids of a deploy the worker never answered stay claimed while no
+#: heartbeat shows them running. The worker pulls the image before it touches
+#: the running container, and a pull has no deadline, so no wait proves the
+#: deploy is over: this is far past any the worker could still be running.
+PENDING_IDENTITY_SECONDS = 6 * 3600
+# Per worker: whether it has unconfirmed ids (False: none, so a heartbeat reads
+# nothing). Unknown after a restart, until its first heartbeat reads them.
+_IDENTITIES_PENDING: dict[int, bool] = {}
+
+
+async def _record_pending_identities(slug: str, worker_id: int, envs: Mapping[int, Any]) -> None:
+    """A deploy the worker did not answer: hold the ids it sent as in use on that box, unconfirmed.
+
+    Beside the copy's own row (``u<copy>``, database.PENDING_COPY_PREFIX), not
+    in it: until a heartbeat shows the new ids, the old container may be what
+    still runs, so both ids count as in use there. _settle_pending_identities
+    makes them the copy's row once a heartbeat proves them, or retires them
+    once PENDING_IDENTITY_SECONDS pass with no proof. Bookkeeping: never raises.
+    """
+    values = {f"{database.PENDING_COPY_PREFIX}{n}": dict(env) for n, env in envs.items() if isinstance(env, Mapping)}
+    try:
+        await database.record_identities(slug, worker_id, values, scope="given")
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
+        return
+    _IDENTITIES_PENDING[worker_id] = True
+
+
+async def _settle_pending_identities(worker_id: int, containers: Any, *, complete: bool) -> None:
+    """Confirm or drop the unconfirmed ids of a deploy the worker did not answer (_record_pending_identities).
+
+    A copy this heartbeat lists with their digest runs them: they become its
+    row. Past PENDING_IDENTITY_SECONDS, a full list that does not show them
+    retires them. A copy still showing its old ids proves nothing before that:
+    the worker may still be pulling. Bookkeeping: never raises.
+    """
+    if _IDENTITIES_PENDING.get(worker_id) is False:
+        return
+    try:
+        pending = await database.pending_identities(worker_id)
+        _IDENTITIES_PENDING[worker_id] = bool(pending)
+        keys = await _identity_digest_keys(worker_id) if pending else []
+        for entry in pending:
+            slug, copy, env = entry["slug"], entry["copy"], entry["env"]
+            svc = catalog.get_service(slug)
+            digest = _copy_digests(containers, slug).get(copy)
+            runs = bool(svc and digest) and any(
+                hmac.compare_digest(catalog.identity_digest(svc, env, k) or "", digest or "") for k in keys
+            )
+            if runs or (complete and entry["age"] >= PENDING_IDENTITY_SECONDS):
+                await database.settle_pending_identities(slug, worker_id, copy, env, runs=runs)
+                _forget_checked_copies(worker_id, slug)
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not settle the unconfirmed device ids on worker %s", worker_id, exc_info=True)
+
+
 async def _reconcile_running_identities(worker_id: int, containers: Any, *, complete: bool = True) -> None:
     """Make the ledger match the ids a heartbeat proves each copy runs.
 
@@ -4974,6 +5032,7 @@ async def _reconcile_running_identities(worker_id: int, containers: Any, *, comp
     copy the list leaves out may still run. One indexed read per service on a
     container not seen before, and a write only on a proven miss.
     """
+    await _settle_pending_identities(worker_id, containers, complete=complete)
     listed: set[tuple[str, int, str, str]] = set()
     present: set[tuple[str, int]] = set()
     for entry in containers if isinstance(containers, list) else []:
@@ -5776,6 +5835,21 @@ async def _confirmed_worker_key(cid: str) -> str | None:
     return stored_key if (stored_key and key_confirmed) else None
 
 
+#: Answers only something between the UI and a worker gives (the worker never
+#: does): a gateway that timed out waiting on it, or lost it mid-request
+#: (Cloudflare's 520 and 524). The request may have reached the worker.
+_GATEWAY_NO_ANSWER = frozenset({502, 504, 520, 524})
+
+
+class _WorkerNoAnswer(HTTPException):
+    """The request may have reached the worker, but its answer never came back."""
+
+
+def _outcome_unknown(exc: HTTPException) -> bool:
+    """Whether the worker may still carry out the request this failure ended: it did not say no."""
+    return isinstance(exc, _WorkerNoAnswer) or exc.status_code in _GATEWAY_NO_ANSWER
+
+
 async def _proxy_to_worker(
     worker_id: int,
     method: str,
@@ -5832,10 +5906,15 @@ async def _proxy_to_worker(
         raise HTTPException(status_code=503, detail="Worker communication failed")
     except httpx.TimeoutException as exc:
         logger.warning("worker proxy timeout after %ss: %s", timeout, exc)
-        raise HTTPException(
+        raise _WorkerNoAnswer(
             status_code=504,
             detail=f"The worker did not answer within {timeout:g} s. It may still be working on it; check the worker.",
         )
+    except (httpx.ReadError, httpx.WriteError, httpx.CloseError, httpx.RemoteProtocolError) as exc:
+        # The connection broke once the request was on its way: the worker may
+        # have it all and carry it out.
+        logger.warning("worker proxy error: %s", exc)
+        raise _WorkerNoAnswer(status_code=503, detail="Worker communication failed")
     except httpx.HTTPError as exc:
         logger.warning("worker proxy error: %s", exc)
         raise HTTPException(status_code=503, detail="Worker communication failed")
@@ -10340,16 +10419,10 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, body.slug, worker_id)
-            if exc.status_code == 504 and isinstance(raw_env, dict):
+            if _outcome_unknown(exc) and isinstance(raw_env, dict):
                 # As /api/deploy's: the worker may still finish it.
                 copy = _copy_number(body.spec)
-                try:
-                    await database.record_identities(
-                        body.slug, worker_id, {str(copy if copy and copy > 0 else 1): raw_env}, scope="given"
-                    )
-                except Exception:  # noqa: BLE001
-                    logger.exception("Could not record the device ids of %s on worker %s", body.slug, worker_id)
-                _forget_checked_copies(worker_id, body.slug)
+                await _record_pending_identities(body.slug, worker_id, {copy if copy and copy > 0 else 1: raw_env})
             raise
     elif body.command in ("stop", "restart", "start"):
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
@@ -10545,6 +10618,9 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
     instance = str(row.get("instance") or "1")
     if instance.startswith("p"):
         copy = f"through proxy {instance[1:]}"
+    elif instance.startswith(database.PENDING_COPY_PREFIX):
+        n = instance[len(database.PENDING_COPY_PREFIX) :]
+        copy = "deploy not confirmed" if n == "1" else f"copy {n}, deploy not confirmed"
     elif instance != "1":
         copy = f"copy {instance}"
     else:

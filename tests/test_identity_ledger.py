@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
+import httpx  # noqa: E402
 import pytest  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -365,7 +366,8 @@ def _deploy(
     instances=None,
     allow=False,
     fail=None,
-    fail_status=502,
+    fail_status=500,
+    fail_exc=None,
     running=frozenset(),
     ran=None,
     replaced=None,
@@ -383,7 +385,7 @@ def _deploy(
 
     async def hop(wid, method, path, *, json=None, **kwargs):
         if fail and fail(method, path, json):
-            raise HTTPException(status_code=fail_status, detail="worker failed")
+            raise fail_exc or HTTPException(status_code=fail_status, detail="worker failed")
         sent.append({"worker": wid, "path": path, "json": json})
         if method == "DELETE":
             n = int(path.rsplit("/", 1)[1])
@@ -894,9 +896,11 @@ def _no_checked_copies():
     """Each test starts with no copy marked as checked by an earlier heartbeat."""
     getattr(main, "_IDENTITIES_CHECKED", {}).clear()
     getattr(main, "_IDENTITIES_LISTED", {}).clear()
+    getattr(main, "_IDENTITIES_PENDING", {}).clear()
     yield
     getattr(main, "_IDENTITIES_CHECKED", {}).clear()
     getattr(main, "_IDENTITIES_LISTED", {}).clear()
+    getattr(main, "_IDENTITIES_PENDING", {}).clear()
 
 
 def _heartbeat(name, copies, *, slug="honeygain", containers=None, listed=None):
@@ -2349,17 +2353,125 @@ class TestADeployTheWorkerDidNotAnswer:
     def test_a_refusal_claims_nothing(self, db):
         """The positive control: a worker that answered no did not deploy it."""
         error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=self._timed_out)
-        assert error.status_code == 502
+        assert error.status_code == 500
         assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)[0] is None
 
-    def test_a_heartbeat_showing_it_never_ran_gives_the_old_id_back(self, db):
+    def test_a_heartbeat_during_the_pull_keeps_both_ids(self, db):
+        """The worker pulls before it touches the old container: a heartbeat then still shows the old id."""
+        wid = self._box_on_b()
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        assert error.status_code == 504
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        for uuid in (UUID_A, UUID_B):
+            assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", uuid)) == [wid]
+        # The pull ends and the new container runs: the attempted id is the copy's now, the old one retired.
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_B) in _retired()
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+
+    def test_one_that_never_ran_gives_the_attempted_id_back_once_its_time_is_up(self, db):
+        wid = self._box_on_b()
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        self._age_pending()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+
+    def test_a_first_deploy_that_never_ran_is_not_held_for_good(self, db):
+        """No record and no container: a full list that shows nothing frees the id once its time is up."""
+        wid = _worker()
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        for _ in range(3):
+            _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        self._age_pending()
+        _heartbeat("box-a", {}, slug="earnapp", listed=False)  # a partial list proves nothing is gone
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        assert _active() == {}
+        row = next(r for r in _rows() if r["value"] == UUID_A)
+        assert asyncio.run(database.delete_identity(row["id"]))
+
+    def test_a_late_landing_before_its_time_is_up_is_recorded(self, db):
+        """The same first deploy, but the container comes up an hour later."""
+        wid = _worker()
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+    def test_a_connection_lost_mid_request_counts_as_no_answer(self, db):
+        """A reset after the request was sent (httpx.ReadError): the worker may still deploy it."""
+        lost = self._proxy_failure(httpx.ReadError("connection reset"))
+        assert lost.status_code == 503 and main._outcome_unknown(lost)
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=self._timed_out, fail_exc=lost)
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+
+    def test_a_connection_never_made_claims_nothing(self, db):
+        """The positive control: the request never reached the worker."""
+        refused = self._proxy_failure(httpx.ConnectError("refused"))
+        assert refused.status_code == 503 and not main._outcome_unknown(refused)
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=self._timed_out, fail_exc=refused)
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)[0] is None
+
+    def test_a_gateway_timeout_in_front_of_the_worker_counts_too(self, db):
+        """Cloudflare's 524: the worker never answers it, something in between timed out on it."""
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=self._timed_out, fail_status=524)
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)[0].status_code == 409
+
+    def test_an_extra_copy_the_worker_did_not_answer_too(self, db):
+        hg = TestACopyWhoseWriteFailed.HG
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, _ = _deploy(
+                "honeygain", hg, 1, instances=2, fail=lambda m, p, j: (j or {}).get("instance") == 2, fail_status=504
+            )
+        assert error.status_code == 504
+        assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box-2")) == [1]
+
+    @staticmethod
+    def _box_on_b():
         wid = _worker(running=[("earnapp", {1: {"EARNAPP_UUID": UUID_B}})])
         assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid)[0] is None
-        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp")
-        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
-        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
-        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp")
-        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        return wid
+
+    @staticmethod
+    def _age_pending():
+        """The unconfirmed rows' wait runs out."""
+        with sqlite3.connect(database.DB_PATH) as conn:
+            conn.execute(
+                "UPDATE device_identities SET last_seen = datetime('now', ?) WHERE status = 'active'",
+                (f"-{main.PENDING_IDENTITY_SECONDS + 60} seconds",),
+            )
+
+    @staticmethod
+    def _proxy_failure(error):
+        """What the real _proxy_to_worker raises when its POST fails with ``error``."""
+
+        async def run():
+            client = MagicMock()
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=False)
+            client.post = AsyncMock(side_effect=error)
+            with (
+                patch.object(main.database, "get_worker", AsyncMock(return_value={"url": "http://w"})),
+                patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("http://w", {}))),
+                patch.object(main.httpx, "AsyncClient", return_value=client),
+            ):
+                try:
+                    await main._proxy_to_worker(1, "POST", "/api/containers/earnapp/deploy", json={})
+                except HTTPException as exc:
+                    return exc
+            raise AssertionError("no failure")
+
+        return asyncio.run(run())
 
     def test_the_raw_route_too(self, db):
         async def run():
