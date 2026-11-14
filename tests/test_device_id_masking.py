@@ -393,6 +393,18 @@ def test_the_shapes_come_from_the_catalog_not_the_code():
         assert EARNAPP_ID in notify.redact(EARNAPP_ID)
 
 
+def test_a_shape_the_masker_cannot_compile_masks_more_and_never_raises(caplog):
+    # A global inline flag compiles alone but not after the masker's lookbehind.
+    # If such a shape ever reaches the masker, the notice still goes out, with
+    # every long token masked rather than none.
+    bad = {"slug": "flagged", "device_link": {"id_env": "N", "id_shape": "(?i)node-[0-9]{12}", "id_shape_unique": True}}
+    node = "NODE-123456789012"
+    with patch("app.catalog.get_services", return_value=[bad]), caplog.at_level(logging.ERROR):
+        text = notify.redact(f"device {node} is offline")
+    assert node not in text and "device" in text and "offline" in text
+    assert "flagged" in caplog.text
+
+
 def test_a_known_id_is_masked_whatever_its_shape_and_hex_elsewhere_is_left_alone():
     odd = "custom-device-0123456789"
     digest = "sha256:" + "a" * 64

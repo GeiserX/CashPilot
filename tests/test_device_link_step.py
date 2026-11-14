@@ -157,6 +157,7 @@ def test_the_loader_accepts_a_well_formed_block(tmp_path):
         {"id_env": "ID", "steps": "Open it."},  # no id_shape: nothing would mask the id
         {"id_env": "ID", "steps": "Open it.", "id_shape": "("},  # not a regex
         {"id_env": "ID", "steps": "Open it.", "id_shape": "[0-9]*"},  # matches the empty string
+        {"id_env": "ID", "steps": "Open it.", "id_shape": "(?i)x-[0-9]{8}"},  # global flag: the masker's wrap fails
         {"id_env": "ID", "steps": "Open it.", "id_shape": "x", "id_shape_unique": "yes"},  # not a boolean
     ],
 )
