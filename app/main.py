@@ -5726,9 +5726,14 @@ async def api_add_proxied_copy(
         if not fresh or current is None or current.get("removing_since"):
             raise HTTPException(status_code=409, detail="This copy was removed meanwhile; add it again")
         if fresh["state"].get("capped_at") or current.get("stopped_by_cap"):
+            # Nothing reached the worker: a new copy's record goes, as on a failed deploy.
+            if not had_record:
+                await database.delete_proxied_copy(proxy_id, worker_id, slug)
             raise HTTPException(
                 status_code=409, detail=fresh["state"].get("cap_reason") or "This proxy reached its traffic cap"
             )
+        # An edit made while this waited (a rotated password) is what the copy gets.
+        definition = fresh["definition"]
         try:
             result = await _proxy_worker_call(
                 worker_id,

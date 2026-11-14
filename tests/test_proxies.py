@@ -1326,6 +1326,74 @@ class TestStorageAndRoutes:
         assert calls == ["DELETE", "DELETE-done"], "the removed copy must not be deployed again"
         assert rows == []
 
+    @pytest.mark.parametrize("change", ["capped", "removing", "edited"])
+    def test_an_add_waiting_on_the_copy_lock_sees_what_changed_meanwhile(self, db, change):
+        """The add queues on the copy's lock while a cap stop, a removal or an edit lands.
+
+        capped: no copy past the cap, and a new copy's record goes with the refusal.
+        removing: a removal that timed out keeps its row marked; the add must not
+        deploy a copy the next heartbeat deletes. edited: the copy gets the new
+        proxy definition, never the one read before the wait.
+        """
+        svc = {"slug": "honeygain", "name": "Honeygain", "status": "active", "docker": {"image": "x"}}
+        spec = {"image": "x", "env": {"DEVICE": "cashpilot"}}
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks(password="OLDPASS")), {})
+            pid = created["id"]
+            await database.save_deployment("honeygain", "c1", spec=spec, worker_id=7)
+            sent: list[dict] = []
+            saved = asyncio.Event()
+            real_save = database.save_proxied_copy
+
+            async def save(*args):
+                await real_save(*args)
+                saved.set()
+
+            async def worker_call(worker_id, method, path, definition, *, json=None, timeout=30):
+                sent.append(json or {})
+                return {"status": "deployed", "exit": {}}
+
+            with (
+                patch.object(main.catalog, "get_service", return_value=svc),
+                patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
+                patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value={"id": 7}),
+                patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
+                patch.object(main.database, "save_proxied_copy", side_effect=save),
+                patch.object(main, "_proxy_worker_call", side_effect=worker_call),
+            ):
+                lock = main._proxy_copy_lock(pid, 7, "honeygain")
+                await lock.acquire()
+                add = asyncio.create_task(
+                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                )
+                await saved.wait()
+                if change == "capped":
+                    await database.update_proxy_state(
+                        pid, {"capped_at": "2026-11-14T00:00:00+00:00", "cap_reason": "cap"}
+                    )
+                elif change == "removing":
+                    await database.set_proxied_copy_removing(pid, 7, "honeygain", True)
+                else:
+                    proxy = await database.get_proxy(pid)
+                    await database.update_proxy_definition(pid, {**proxy["definition"], "password": "NEWPASS"})
+                lock.release()
+                result = await asyncio.gather(add, return_exceptions=True)
+            return sent, result[0], await database.list_proxied_copies(pid)
+
+        sent, added, rows = _run(go)
+        if change == "edited":
+            assert added["status"] == "deployed"
+            assert [s["proxy"].get("password") for s in sent] == ["NEWPASS"]
+            return
+        assert isinstance(added, HTTPException) and added.status_code == 409, added
+        assert sent == [], "nothing may reach the worker"
+        if change == "capped":
+            assert rows == [], "a refused new copy leaves no record behind"
+        else:
+            assert [r["removing_since"] is not None for r in rows] == [True], "the removal keeps its row"
+
     def test_a_copy_of_a_linked_device_runs_and_registers_its_own_id(self, db):
         original = "cd" * 32
         svc = {
