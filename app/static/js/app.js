@@ -4954,6 +4954,23 @@ const CP = (() => {
     banner.hidden = false;
   }
 
+  // The full ids and links of devices a provider says are not on the account.
+  // The server sends them to the owner only; the notice text every role sees,
+  // and every push, names each device by a masked suffix. A link is shown only
+  // when it is https, so a bad catalog value never becomes a clickable URL.
+  function notifyDevicesHtml(a) {
+    if (!_isOwner || !Array.isArray(a.devices) || a.devices.length === 0) return '';
+    const rows = a.devices.map(d => {
+      const url = typeof d.url === 'string' && /^https:\/\//i.test(d.url) ? d.url : '';
+      const link = url
+        ? ` <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Add to account</a>`
+        : '';
+      return `<li><code>${escapeHtml(d.id)}</code>${link}</li>`;
+    }).join('');
+    const steps = a.device_steps ? `<div>${escapeHtml(a.device_steps)}</div>` : '';
+    return `<div class="notify-item-devices">${steps}<ul>${rows}</ul></div>`;
+  }
+
   async function loadCollectorAlerts() {
     const container = document.getElementById('topbar-notifications');
     const badge = document.getElementById('notify-badge');
@@ -5087,6 +5104,7 @@ const CP = (() => {
           <div class="notify-item-body">
             <div class="notify-item-platform">${escapeHtml(a.platform)}${suffix}</div>
             <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
+            ${notifyDevicesHtml(a)}
           </div>
           ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}">${isAuth ? 'Fix credential' : 'Update'}</button>` : ''}
         </div>

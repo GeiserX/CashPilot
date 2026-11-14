@@ -48,6 +48,7 @@ docker:
 device_link:
   id_env: UUID
   url: "https://peer.proxyrack.com"
+  id_shape: '[0-9a-f]{64}'
   steps: >-
     Sign in to ProxyRack, open Devices, choose Add device and paste this UUID.
     Until the device is on your account it earns for nobody. If you entered an
