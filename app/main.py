@@ -9324,8 +9324,10 @@ async def api_fleet_api_key(request: Request) -> dict[str, Any]:
 async def api_fleet_api_key_reveal(request: Request) -> dict[str, str]:
     """Reveal the configured fleet API key (owner only, audit-logged)."""
     user = _require_owner(request)
+    # Fail closed, unlike _audit: the key has not left yet, so no audit row
+    # means no key (a write that fails answers 500 and reveals nothing).
+    await database.add_audit_event("fleet_key_reveal", "", "revealed", actor=user)
     logger.warning("Fleet key revealed by uid=%s", user.get("uid"))
-    await _audit("fleet_key_reveal", "", "revealed", actor=user)
     return {"api_key": FLEET_API_KEY or ""}
 
 

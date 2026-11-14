@@ -2158,8 +2158,22 @@ def critical_sources(client: Any = None) -> tuple[dict[str, str], dict[str, str]
             if mount.get("Type") == "volume" and mount.get("Name"):
                 named.setdefault(str(mount["Name"]), slug)
             elif mount.get("Type") == "bind" and str(mount.get("Source") or "").startswith("/"):
-                binds.setdefault(os.path.normpath(str(mount["Source"])), slug)
+                binds.setdefault(host_path_key(str(mount["Source"])), slug)
     return named, binds
+
+
+def host_path_key(path: str) -> str:
+    """One spelling per host folder, for comparing a requested bind with a known folder.
+
+    ``os.path.normpath`` alone keeps exactly two leading slashes on POSIX, so
+    ``//mnt/user/node`` would not equal ``/mnt/user/node`` although the kernel
+    mounts the same folder. Every leading slash collapses to one, then ``.``,
+    ``..`` and trailing slashes go. Case is folded too: a host on a
+    case-insensitive filesystem mounts ``/Mnt/User/Node`` as the same folder,
+    and on a case-sensitive one the only cost is a refusal of a lookalike name.
+    Only for deny checks: folding case would widen an allow list.
+    """
+    return os.path.normpath("/" + path.lstrip("/")).casefold()
 
 
 def _mount_sources(volumes: Any) -> list[str]:
@@ -2176,7 +2190,7 @@ def critical_mount_conflicts(slug: str, volumes: Any, client: Any = None) -> lis
 
     A host folder conflicts when it is a critical folder, lies inside one, or
     contains one: binding a parent hands over everything under it. Folders are
-    compared as written, after normalising; a symlink to a critical folder is
+    compared as written, after host_path_key; a symlink to a critical folder is
     not seen here (the worker cannot see the host's filesystem).
     """
     sources = _mount_sources(volumes)
@@ -2190,7 +2204,7 @@ def critical_mount_conflicts(slug: str, volumes: Any, client: Any = None) -> lis
             if owner and owner != slug:
                 found.append((source, owner))
             continue
-        path = os.path.normpath(source)
+        path = host_path_key(source)
         for folder, owner in binds.items():
             if owner == slug:
                 continue

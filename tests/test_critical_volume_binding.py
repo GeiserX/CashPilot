@@ -187,6 +187,38 @@ class TestConflicts:
         with pytest.raises(orchestrator.CriticalMountError):
             orchestrator.refuse_critical_mounts("honeygain", volumes, _docker(STORJ))
 
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "//mnt/user/storj/identity",  # normpath keeps exactly two leading slashes
+            "///mnt/user/storj/identity",
+            "//mnt/user/storj/identity/",
+            "/mnt/user/./storj/identity",
+            "/mnt//user/storj/identity",
+            "/mnt/user/other/../storj/identity",
+            "/MNT/User/Storj/Identity",  # one folder on a case-insensitive host
+            "//mnt/user/storj/identity/sub",
+            "//mnt/user",  # a parent of it
+            "//mnt",
+            "/",
+            "//",
+        ],
+    )
+    def test_no_spelling_of_the_folder_gets_past(self, source):
+        with pytest.raises(orchestrator.CriticalMountError):
+            orchestrator.refuse_critical_mounts("honeygain", {source: {"bind": "/id"}}, _docker(STORJ))
+
+    @pytest.mark.parametrize(
+        "live", ["//mnt/user/storj/identity", "/mnt/user/storj/identity/", "/mnt/user/./storj/identity"]
+    )
+    def test_a_folder_the_owner_mounted_untidily_is_still_known(self, live):
+        """The other side of the comparison: Docker reports the source as it was written."""
+        owner = _container("storj", [{"Type": "bind", "Source": live, "Destination": "/app/identity"}])
+        with pytest.raises(orchestrator.CriticalMountError):
+            orchestrator.refuse_critical_mounts(
+                "honeygain", {"/mnt/user/storj/identity": {"bind": "/id"}}, _docker(owner)
+            )
+
     def test_its_own_service_can(self):
         orchestrator.refuse_critical_mounts("proxybase-xyz", {"proxybase-data": {"bind": "/x"}}, _docker())
         orchestrator.refuse_critical_mounts("storj", {"/mnt/user/storj/identity": {"bind": "/id"}}, _docker(STORJ))
@@ -301,6 +333,24 @@ PROXYBASE_COMMAND = catalog.get_service("proxybase-xyz")["docker"]["command"]
 
 
 class TestTheWorkerRefuses:
+    def test_a_double_slash_spelling_of_another_services_folder(self, worker, monkeypatch):
+        """The whole route, on a direct-socket worker that allowlists the array share."""
+        monkeypatch.setattr(worker_api, "_ALLOWED_VOLUME_ROOTS", frozenset({"/mnt/user"}))
+        deployed: list[dict] = []
+
+        def fake_deploy(**kwargs):
+            orchestrator.refuse_critical_mounts(kwargs["slug"], kwargs.get("volumes"), _docker(STORJ))
+            deployed.append(kwargs)
+            return "cid"
+
+        monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", fake_deploy)
+        resp = worker(
+            "/api/containers/honeygain/deploy",
+            {"image": "honeygain/honeygain", "volumes": {"//mnt/user/storj/identity": {"bind": "/id"}}},
+        )
+        assert resp.status_code == 403 and _error(resp) == "critical_volume_mount"
+        assert deployed == []
+
     def test_another_image_mounting_the_wallet(self, worker):
         """The raw command route's attack: any slug, any image, the wallet volume."""
         resp = worker(
@@ -666,6 +716,33 @@ class TestTheAuditTable:
         assert rows[0]["action"] == "fleet_key_reveal" and rows[0]["actor"] == "owner"
         assert "k" not in (rows[0]["detail"], rows[0]["target"])
 
+    def test_no_audit_row_means_no_key(self, db):
+        """The reveal has not happened yet when the row is written, so a failed write stops it."""
+
+        async def run():
+            with (
+                patch.object(main, "_require_owner", lambda r: {"uid": 1, "u": "owner", "r": "owner"}),
+                patch.object(main, "FLEET_API_KEY", "fleet-secret"),
+                patch.object(
+                    main.database, "add_audit_event", AsyncMock(side_effect=RuntimeError("database is locked"))
+                ),
+            ):
+                return await main.api_fleet_api_key_reveal(_request())
+
+        with pytest.raises(RuntimeError, match="locked"):
+            asyncio.run(run())
+
+    def test_a_failed_row_after_a_critical_delete_is_logged_as_an_error(self, db, caplog):
+        """The volumes are gone by then, so the delete still answers; the log says the row is missing."""
+
+        async def run():
+            with patch.object(main.database, "add_audit_event", AsyncMock(side_effect=RuntimeError("locked"))):
+                await main._audit("delete_critical_volumes", "storj", "deleted")
+
+        with caplog.at_level("ERROR"):
+            asyncio.run(run())
+        assert any(r.levelname == "ERROR" and "delete_critical_volumes" in r.getMessage() for r in caplog.records)
+
     def test_the_list_is_owner_only(self, db):
         with (
             patch.object(main, "_require_owner", side_effect=HTTPException(status_code=403)),
@@ -681,3 +758,17 @@ class TestTheAuditTable:
 
         rows = asyncio.run(run())
         assert [r["target"] for r in rows] == ["t4", "t3", "t2"]
+
+
+def test_the_step_up_prompt_is_a_named_modal_dialog():
+    """A screen reader announces the prompt by its title, not just a bare password field."""
+    with open(os.path.join(os.path.dirname(main.__file__), "templates", "base.html"), encoding="utf-8") as fh:
+        html = fh.read()
+    block = html[html.index('id="stepup-modal"') :]
+    block = block[: block.index('id="stepup-password"')]
+    dialog = re.search(r'<div class="modal[^"]*"([^>]*)>', block)
+    assert dialog, block
+    attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', dialog.group(1)))
+    assert attrs.get("role") == "dialog" and attrs.get("aria-modal") == "true"
+    title = attrs.get("aria-labelledby")
+    assert title and re.search(rf'<h3[^>]*id="{title}"[^>]*>Confirm with your password</h3>', block)

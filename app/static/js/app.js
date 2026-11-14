@@ -49,9 +49,20 @@ const CP = (() => {
     }
   }
 
+  // One prompt at a time: the modal is shared, so a second prompt opened over a
+  // first would take its buttons and its close would cancel the first.
+  let stepUpQueue = Promise.resolve();
+
   // The password prompt of a step-up. Resolves to the typed password, or null
   // when the owner cancels or closes it (Escape and the overlay close every modal).
+  // A prompt asked while another is open waits for that one to finish.
   function askStepUp(message) {
+    const turn = stepUpQueue.then(() => showStepUp(message));
+    stepUpQueue = turn.catch(() => null);
+    return turn;
+  }
+
+  function showStepUp(message) {
     const overlay = document.getElementById('stepup-modal');
     const input = document.getElementById('stepup-password');
     if (!overlay || !input) return Promise.resolve(null);

@@ -1663,7 +1663,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_fence_gated(spec, slug)
     proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
     compose_dir = os.getenv(orchestrator.COMPOSE_DIR_ENV, "").strip()
-    compose_dir = os.path.normpath(compose_dir) if compose_dir.startswith("/") else ""
+    compose_dir = orchestrator.host_path_key(compose_dir) if compose_dir.startswith("/") else ""
     for source in spec.volumes:
         if source in orchestrator.PROXY_VOLUMES:
             # The volume holds the worker's own Docker socket; a container
@@ -1671,7 +1671,9 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             raise HTTPException(status_code=403, detail=f"Volume '{source}' is the worker's Docker socket")
         if not source.startswith("/"):
             continue  # named volume (e.g. "mysterium-data") — always allowed
-        src = os.path.normpath(source)
+        # host_path_key, not normpath: normpath keeps "//" and would let
+        # "//compose/dir" past a comparison with "/compose/dir".
+        src = orchestrator.host_path_key(source)
         if compose_dir and (
             src == compose_dir or src.startswith(compose_dir + "/") or compose_dir.startswith(src.rstrip("/") + "/")
         ):
