@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
+import httpx  # noqa: E402
 import pytest  # noqa: E402
 from docker.errors import NotFound  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
@@ -1106,6 +1107,104 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
         # The UI's next heartbeat asks again, and now removes the earner the deploy made.
         assert worker("DELETE", "/api/proxied/honeygain/3").status_code == 200
         assert removed == [(4, []), (3, [3])]
+
+    def test_removing_the_service_keeps_the_copy_records_while_a_copy_deploy_runs(self, worker, monkeypatch):
+        """remove_all sees only copies that exist, so the one still deploying is reported, not dropped."""
+        monkeypatch.setattr(worker_api.orchestrator, "remove_service", lambda slug, **k: {"container_id": "d"})
+        monkeypatch.setattr(worker_api.orchestrator, "remove_extra_instances", lambda slug: [])
+        monkeypatch.setattr(worker_api.proxy_tunnel, "remove_all", lambda slug: [])
+        # Control: a deploy of another service does not hold this one's copies.
+        monkeypatch.setitem(worker_api._copy_deploys, ("earnfm", 3), 1)
+        resp = worker("DELETE", "/api/containers/honeygain")
+        assert resp.status_code == 200, resp.text
+        assert "proxied_error" not in resp.json()
+        monkeypatch.setitem(worker_api._copy_deploys, ("honeygain", 3), 1)
+        resp = worker("DELETE", "/api/containers/honeygain")
+        assert resp.status_code == 200, resp.text
+        assert "through proxy 3 is still running" in resp.json()["proxied_error"]
+
+    def test_the_ui_keeps_the_records_of_that_removal(self, db):
+        ui = _Ui()
+        reply = {"status": "removed", "proxied_error": "A deploy of honeygain through proxy 3 is still running"}
+
+        async def go():
+            pid = await ui.proxy()
+            await database.save_deployment(slug="honeygain", container_id="d", spec={}, worker_id=1)
+            await database.save_proxied_copy(pid, 1, "honeygain")
+            ui.worker_reply = lambda method, path, body: reply
+            with ui.active():
+                await main._svc_remove(_request(), "honeygain", 1, False)
+            return pid, await database.list_proxied_copies(pid)
+
+        pid, copies = _run(go)
+        assert [(c["worker_id"], c["slug"]) for c in copies] == [(1, "honeygain")]
+
+
+class TestADroppedConnectionIsNotAFailedDeploy:
+    """A connection that drops after the request went out leaves the worker working: the UI keeps the records."""
+
+    @staticmethod
+    def _hop_raising(exc):
+        """_proxy_to_worker as it is, against a worker whose connection fails with ``exc``."""
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(side_effect=exc)
+        client.delete = AsyncMock(side_effect=exc)
+        client.get = AsyncMock(side_effect=exc)
+        return (
+            patch.object(main.httpx, "AsyncClient", return_value=client),
+            patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("http://w:8081", {}))),
+            patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 1, "url": "http://w:8081"})),
+        )
+
+    @pytest.mark.parametrize(
+        ("exc", "status"),
+        [
+            (httpx.ReadError("reset"), 504),
+            (httpx.RemoteProtocolError("server disconnected"), 504),
+            (httpx.WriteError("broken pipe"), 504),
+            # Control: these never reached the worker.
+            (httpx.ConnectError("refused"), 503),
+            (httpx.ConnectTimeout("slow"), 503),
+        ],
+        ids=["read", "remote-protocol", "write", "connect", "connect-timeout"],
+    )
+    def test_the_status_says_whether_the_worker_got_it(self, db, exc, status):
+        async def go():
+            with ExitStack() as stack:
+                for p in self._hop_raising(exc):
+                    stack.enter_context(p)
+                with pytest.raises(HTTPException) as err:
+                    await main._proxy_to_worker(1, "POST", "/api/proxied/honeygain/3/deploy", json={})
+            return err.value
+
+        assert _run(go).status_code == status
+
+    def test_a_routed_deploy_keeps_both_records(self, db):
+        ui = _Ui()
+        hop = ui.hop
+
+        async def go():
+            pid = await ui.proxy()
+            with ExitStack() as stack:
+                for p in self._hop_raising(httpx.ReadError("reset")):
+                    stack.enter_context(p)
+                real = main._proxy_to_worker
+                stack.enter_context(ui.active())
+                # Only the deploy goes through the real mapping; the rest stays on the stub.
+                main._proxy_to_worker = lambda wid, m, path, **k: (
+                    real(wid, m, path, **k) if path.endswith("/deploy") else hop(wid, m, path, **k)
+                )
+                with pytest.raises(HTTPException) as err:
+                    await main.api_deploy(_request(), "honeygain", main.DeployRequest(env=ENV, route=pid))
+            copies = [c for c in await database.list_proxied_copies(pid) if c["worker_id"] == 1]
+            return pid, err.value, copies, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, err, copies, record = _run(go)
+        assert err.status_code == 504
+        assert [c["slug"] for c in copies] == ["honeygain"]
+        assert proxies.route_of(record) == pid
 
 
 class TestTheRouteBoxFollowsTheRecord:

@@ -5659,9 +5659,16 @@ async def _proxy_to_worker(
                     detail=safe or _worker_failure_text(resp.status_code),
                 )
             return resp.json()
-    except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
-        # Both are TimeoutException subclasses, but the request never reached
-        # the worker, so "it may still be working on it" would be wrong.
+    except (
+        httpx.ConnectError,
+        httpx.ConnectTimeout,
+        httpx.PoolTimeout,
+        httpx.ProxyError,
+        httpx.UnsupportedProtocol,
+        httpx.LocalProtocolError,
+    ) as exc:
+        # The request never reached the worker, so "it may still be working on
+        # it" would be wrong.
         logger.warning("worker proxy error: %s", exc)
         raise HTTPException(status_code=503, detail="Worker communication failed")
     except httpx.TimeoutException as exc:
@@ -5669,6 +5676,16 @@ async def _proxy_to_worker(
         raise HTTPException(
             status_code=504,
             detail=f"The worker did not answer within {timeout:g} s. It may still be working on it; check the worker.",
+        )
+    except httpx.TransportError as exc:
+        # The connection dropped after the request went out (a read error, a
+        # reset): the worker goes on with it, so callers treat it as a timeout
+        # and keep the records of what it may still create.
+        logger.warning("worker proxy connection lost: %s", exc)
+        raise HTTPException(
+            status_code=504,
+            detail="The connection to the worker dropped before it answered. "
+            "It may still be working on it; check the worker.",
         )
     except httpx.HTTPError as exc:
         logger.warning("worker proxy error: %s", exc)
