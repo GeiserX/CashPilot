@@ -38,7 +38,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest  # noqa: E402
-from docker.errors import NotFound  # noqa: E402
+import requests  # noqa: E402
+from docker.errors import APIError, NotFound  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import (  # noqa: E402
@@ -193,6 +194,11 @@ class FakeVolume:
         self.files: dict[str, tuple[tarfile.TarInfo, bytes | None]] = {}
 
     def remove(self, force=False):
+        # Docker refuses to remove a volume a container mounts, force or not.
+        if any(self.name in c.mounts.values() for c in self.docker.container_map.values()):
+            response = requests.Response()
+            response.status_code = 409
+            raise APIError("volume is in use", response=response)
         self.docker.volume_map.pop(self.name, None)
         self.docker.removed.append(("volume", self.name))
 
@@ -266,10 +272,12 @@ class FakeContainers:
     def __init__(self, docker: FakeDocker):
         self.docker = docker
 
-    def get(self, name):
-        if name not in self.docker.container_map:
-            raise NotFound(name)
-        return self.docker.container_map[name]
+    def get(self, name_or_id):
+        # Docker finds a container by its name or its id.
+        for container in self.docker.container_map.values():
+            if name_or_id in (container.name, container.id):
+                return container
+        raise NotFound(name_or_id)
 
     def list(self, all=False, filters=None):  # noqa: A002 - docker-py's name
         label = (filters or {}).get("label", "")
@@ -432,6 +440,146 @@ class TestTheRestoreSequence:
     def test_storj_is_left_to_the_command_line(self, docker):
         with pytest.raises(orchestrator.RestoreError, match="command line"):
             orchestrator.restore_state("storj", {"identity": b""}, {})
+
+    def test_a_name_another_deploy_took_meanwhile_is_left_alone(self, docker):
+        """deploy_raw refuses with 409 because the name is taken: that container is someone else's."""
+
+        def taken(**_kw):
+            theirs = FakeContainer(
+                docker,
+                "cashpilot-mysterium",
+                {"/var/lib/mysterium-node": "mysterium-data"},
+                {orchestrator.LABEL_SERVICE: "mysterium"},
+            )
+            theirs.status = "running"
+            docker.container_map[theirs.name] = theirs
+            raise orchestrator.ContainerRuntimeError("cashpilot-mysterium already exists", 409)
+
+        orchestrator.deploy_raw.__wrapped__ = taken
+        with pytest.raises(orchestrator.RestoreError) as caught:
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.container_map["cashpilot-mysterium"].status == "running"
+        assert ("container", "cashpilot-mysterium") not in docker.removed
+        # Its volume is in use: kept, and the owner is not told to remove it by hand.
+        assert "mysterium-data" in docker.volume_map and "by hand" not in str(caught.value)
+
+    def test_the_helper_a_dead_restore_left_is_removed_and_the_restore_goes_on(self, docker):
+        stale = FakeContainer(docker, "cashpilot-mysterium.restore", {}, {orchestrator.LABEL_RESTORE: "helper"})
+        docker.container_map[stale.name] = stale
+        result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert result["started"] is True and ("container", "cashpilot-mysterium.restore") in docker.removed
+
+    def test_a_container_of_the_helpers_name_that_is_not_a_helper_refuses(self, docker):
+        other = FakeContainer(docker, "cashpilot-mysterium.restore", {}, {"someone": "else"})
+        docker.container_map[other.name] = other
+        with pytest.raises(orchestrator.RestoreError, match="already exists"):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.container_map["cashpilot-mysterium.restore"] is other
+
+    def test_one_restore_at_a_time_on_a_box(self, docker):
+        with orchestrator._RESTORE_LOCK, pytest.raises(orchestrator.RestoreError, match="another restore is running"):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.creates == [] and docker.volume_map == {}
+
+
+@pytest.fixture
+def gated(docker, tmp_path, monkeypatch):
+    """Mysterium as it really runs: fence-gated, with the guard's records on disk."""
+    # The docker fixture patched fence_gated already; re-patched on its mock, so
+    # the real function comes back whatever order the patches unwind in.
+    orchestrator.fence_gated.side_effect = lambda slug: slug == "mysterium"
+    monkeypatch.setattr(orchestrator, "FAILED_MARKER", str(tmp_path / "failed"))
+    monkeypatch.setattr(orchestrator, "STOPPED_MARKER", str(tmp_path / "stopped"))
+    monkeypatch.setattr(orchestrator, "IDENTITY_DIR", str(tmp_path / "identity"))
+    monkeypatch.setattr(orchestrator, "_FAILED_UNWRITTEN", {})
+    monkeypatch.setattr(orchestrator, "_MISMATCH_HELD", {})
+    fence: dict[str, Any] = {"problem": None, "asked": 0}
+
+    def require_fence(slug):
+        fence["asked"] += 1
+        if fence["problem"]:
+            raise orchestrator.ContainerNetworkError(fence["problem"])
+
+    monkeypatch.setattr(orchestrator, "_require_fence", require_fence)
+    docker.fence = fence
+    real = docker.deploy_raw
+
+    def deploy_raw(**kwargs):
+        docker.locked_at_create = orchestrator.GATED_DEPLOY_LOCK.locked()
+        return real(**kwargs)
+
+    orchestrator.deploy_raw.__wrapped__ = deploy_raw
+    return docker
+
+
+class TestAFenceGatedRestore:
+    NAME = "cashpilot-mysterium"
+
+    def test_it_holds_the_guards_lock_and_starts_only_behind_the_fence(self, gated):
+        result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert gated.locked_at_create is True and gated.fence["asked"] == 1
+        assert result["started"] is True and gated.started == [self.NAME]
+        assert self.NAME not in orchestrator.deploy_failed() and self.NAME not in orchestrator.user_stopped()
+
+    def test_without_the_fence_it_waits_created_for_the_guard(self, gated):
+        gated.fence["problem"] = "the fence is not confirmed"
+        result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert result["started"] is False and gated.started == []
+        assert gated.container_map[self.NAME].status == "created"
+        # Checked data: the guard may start it once the fence holds.
+        assert self.NAME not in orchestrator.deploy_failed() and self.NAME not in orchestrator.user_stopped()
+
+    def test_while_the_data_is_written_the_guard_is_held_off_on_disk(self, gated):
+        """A worker that dies mid-write leaves a created node the guard must never start."""
+        seen = []
+        real_put = FakeContainer.put_archive
+
+        def put(container, path, data):
+            seen.append(self.NAME in orchestrator._failed_on_disk())
+            return real_put(container, path, data)
+
+        with patch.object(FakeContainer, "put_archive", put):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert seen == [True]
+        assert self.NAME not in orchestrator.deploy_failed()
+
+    def test_a_failed_restore_whose_container_stays_is_never_started_by_the_guard(self, gated):
+        gated.corrupt_put = True
+        with (
+            patch.object(FakeContainer, "remove", side_effect=RuntimeError("proxy down")),
+            pytest.raises(orchestrator.RestoreError, match="by hand"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert gated.container_map[self.NAME].status == "created"
+        assert self.NAME in orchestrator._failed_on_disk()
+
+    def test_a_failed_restore_that_removed_everything_leaves_no_hold(self, gated):
+        gated.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert gated.container_map == {} and self.NAME not in orchestrator.deploy_failed()
+
+    def test_a_leftover_deploy_raws_roll_back_could_not_remove_stays_held(self, gated):
+        """deploy_raw marks such a leftover failed; the restore's own cleanup must not lift that."""
+
+        def half_made(**_kw):
+            left = FakeContainer(gated, self.NAME, {}, {orchestrator.LABEL_SERVICE: "mysterium"})
+            gated.container_map[self.NAME] = left
+            orchestrator._mark_failed(self.NAME, True)
+            raise orchestrator.ContainerRuntimeError("create failed; the leftover could not be removed")
+
+        orchestrator.deploy_raw.__wrapped__ = half_made
+        with pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert self.NAME in orchestrator._failed_on_disk()
+
+    def test_an_old_identity_hold_does_not_stop_the_restored_node(self, gated):
+        """The owner removed a node held on the wrong keystore, then restored it: the restore proved the data."""
+        orchestrator._remember_identity(self.NAME, "MISMATCH its identity is 0xnew, not 0xold")
+        orchestrator._MISMATCH_HELD[self.NAME] = "its identity is 0xnew, not 0xold"
+        orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert orchestrator.identity_problem(gated.container_map[self.NAME]) is None
+        assert not os.path.exists(orchestrator._identity_file(self.NAME))
 
 
 # ---------------------------------------------------------------------------
@@ -811,6 +959,86 @@ class TestTheRestoreRoute:
             resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
         assert resp.status_code == 409
         assert ("restore", "failed") in _audit() and _uploads_on_disk(ui) == []
+
+
+class TestTheRestoreRouteGuards:
+    def test_a_plain_http_box_needs_the_owner_to_accept_it(self, ui):
+        """The passphrase crosses the network unencrypted to an http:// worker: never without an explicit yes."""
+        upload = _upload(ui, mysterium_bundle()).json()
+        resp = _restore(ui, upload["upload_id"], worker_id=2, confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 400 and resp.json()["detail"]["error"] == "restore_plain_http"
+        assert ui.sent == [] and ("restore", "refused") in _audit()
+
+    def test_with_the_owners_yes_it_goes_and_the_audit_says_so(self, ui):
+        upload = _upload(ui, mysterium_bundle()).json()
+        resp = _restore(
+            ui,
+            upload["upload_id"],
+            worker_id=2,
+            confirm_name="Mysterium",
+            step_up_password=OWNER_PASSWORD,
+            allow_plain_http=True,
+        )
+        assert resp.status_code == 200, resp.text
+        (row,) = [e for e in asyncio.run(database.get_audit_events()) if e["outcome"] == "restored"]
+        assert "plain HTTP" in row["detail"]
+
+    def test_an_unknown_file_from_a_box_that_runs_the_service_is_refused(self, ui):
+        """A file made before the ledger: its header names box-a, and box-a runs Mysterium now."""
+        ui.state["runs_on"] = {"mysterium": [{"worker_id": 1}]}
+        upload = _upload(ui, mysterium_bundle()).json()
+        assert upload["known"] is False and upload["live_on"] == ["box-a"]
+        resp = _restore(
+            ui,
+            upload["upload_id"],
+            worker_id=2,
+            confirm_name="Mysterium",
+            step_up_password=OWNER_PASSWORD,
+            allow_plain_http=True,
+        )
+        assert resp.status_code == 409 and "box-a" in _detail(resp) and ui.sent == []
+
+    def test_an_unknown_file_names_where_the_service_runs_now(self, ui):
+        ui.state["runs_on"] = {"mysterium": [{"worker_id": 2}]}
+        upload = _upload(ui, mysterium_bundle()).json()
+        assert upload["live_on"] == [] and upload["runs_on"] == ["box-b"]
+
+    def test_a_file_already_being_restored_is_refused(self, ui):
+        """Two tabs, two boxes, one file: the second waits for the first, or the identity lands twice."""
+        bundle = mysterium_bundle()
+        upload = _upload(ui, bundle).json()
+        main._restore_inflight.add(hashlib.sha256(bundle).hexdigest())
+        try:
+            resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        finally:
+            main._restore_inflight.clear()
+        assert resp.status_code == 409 and "already being restored" in _detail(resp) and ui.sent == []
+
+    def test_a_restore_leaves_nothing_in_flight(self, ui):
+        upload = _upload(ui, mysterium_bundle()).json()
+        _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        assert main._restore_inflight == set()
+
+    def test_a_restore_whose_outcome_is_unknown_is_recorded_on_that_box(self, ui):
+        """The worker may finish after the dashboard gave up: a later restore elsewhere must still see it."""
+        from fastapi import HTTPException
+
+        bundle = mysterium_bundle()
+        upload = _upload(ui, bundle).json()
+        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=HTTPException(504, "no answer"))):
+            resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 504
+        rows = asyncio.run(database.backup_records(hashlib.sha256(bundle).hexdigest()))
+        assert [(r["worker_id"], r["source"]) for r in rows] == [(1, "restore")]
+
+    def test_a_refused_restore_is_not_recorded(self, ui):
+        from fastapi import HTTPException
+
+        bundle = mysterium_bundle()
+        upload = _upload(ui, bundle).json()
+        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=HTTPException(409, "volume exists"))):
+            _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        assert asyncio.run(database.backup_records(hashlib.sha256(bundle).hexdigest())) == []
 
 
 class TestTheExportHook:

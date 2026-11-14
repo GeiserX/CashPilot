@@ -114,15 +114,24 @@ identity sits on a named Docker volume. The rules:
 - **Files it does not know need the name typed.** CashPilot keeps the SHA-256
   of every file it exports (the Device ids list shows them). For any other
   file, you type the service name, because nobody can tell from the file whose
-  identity or wallet is inside.
+  identity or wallet is inside. A file exported before this record existed is
+  one of these: the preview names the boxes that run the service now.
 - **One identity, one box.** If the file came from a box that still runs the
-  service, the restore is refused and names that box. Two boxes on one identity
-  look like one node to the provider, which may merge or ban them.
+  service, the restore is refused and names that box. For a file it does not
+  know, the box named inside the file counts too. Two boxes on one identity
+  look like one node to the provider, which may merge or ban them. One restore
+  of a file runs at a time.
+- **Plain HTTP needs your yes.** The passphrase goes to the worker in the
+  request. To a worker reached over `http://`, it crosses your network
+  unencrypted, so the restore asks you to tick a box that accepts this. Give
+  the worker an HTTPS address to avoid it.
 - **Checked before it starts.** The worker creates the container without
   starting it, writes the backup into its new volume, reads the folder back
   from the container and compares every file, link, owner and permission. Only
   then does the container start (Mysterium only behind a confirmed LAN fence).
   On any failure, the container and the volumes the restore made are removed.
+  A Mysterium the restore made and could not remove is held stopped, so the
+  LAN fence guard never starts data that did not check out.
 - **Nothing kept.** The file waits in a private folder under the data folder
   for at most 15 minutes and is deleted once the restore runs. The passphrase
   goes to the worker in that one request and is never stored or logged.

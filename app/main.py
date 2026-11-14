@@ -9844,6 +9844,10 @@ RESTORE_UPLOAD_MAX_PENDING = 4
 _RESTORE_HEADER_MAX = 64 * 1024
 
 _restore_uploads: dict[str, dict[str, Any]] = {}
+#: SHA-256 of the files a restore is sending now. A second restore of the same
+#: file waits: the ledger row that would refuse it is written only once the
+#: first one answers, so both could otherwise land on two boxes.
+_restore_inflight: set[str] = set()
 
 
 def _restore_dir() -> str:
@@ -9915,12 +9919,16 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
     """What a restore of this upload would create, where it may go, and what is known about the file.
 
     Where the file was made comes only from this CashPilot's ledger, never from
-    the file's own header: anyone with the passphrase can write a header.
+    the file's own header: anyone with the passphrase can write a header. The
+    header is used only to refuse more: a file made before the ledger names its
+    box there, and when that box runs the service now, the file may hold the
+    very identity it runs.
     """
     slug = entry["slug"]
     svc, targets = _restore_service(slug)
     workers = await database.list_workers()
     names = {w["id"]: str(w.get("name") or f"worker {w['id']}") for w in workers}
+    running = [w["id"] for w in workers if await _runs_on(slug, w["id"], workers)]
     records = await database.backup_records(entry["sha256"])
     history = [
         {
@@ -9931,10 +9939,9 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
         for r in records
         if r["slug"] == slug
     ]
-    live = sorted(
-        {r["worker_id"] for r in records if r["slug"] == slug and r["worker_id"] in names}, key=lambda w: names[w]
-    )
-    live = [w for w in live if await _runs_on(slug, w, workers)]
+    made_on = {r["worker_id"] for r in records if r["slug"] == slug}
+    made_on |= {w for w in running if names[w] == entry.get("made_on")}
+    live = sorted((w for w in running if w in made_on), key=lambda w: names[w])
     boxes = []
     for w in workers:
         info = placement.system_info(w)
@@ -9945,7 +9952,7 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
             why = "offline"
         elif "state_restore" not in await _worker_features(w["id"]):
             why = "its worker is too old to restore; update it"
-        elif await _runs_on(slug, w["id"], workers):
+        elif w["id"] in running:
             why = f"it already runs {svc.get('name') or slug}"
         elif live:
             why = f"this identity already runs on {', '.join(names[x] for x in live)}"
@@ -9968,6 +9975,9 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
         "known": bool(history),
         "history": history,
         "live_on": [names[w] for w in live],
+        # Where the service runs now, whatever the file holds: named for a file
+        # this CashPilot does not know, which may be a backup of one of them.
+        "runs_on": sorted(names[w] for w in running),
         "container": f"{constants.CONTAINER_PREFIX}{slug}",
         "creates": [{"target": t, "volume": v} for t, v in sorted(targets.items())],
         "workers": boxes,
@@ -10012,6 +10022,7 @@ async def api_restore_upload(request: Request) -> dict[str, Any]:
                 "dashboard: restore it with the command line steps in the backup guide.",
             )
         slug = (header.get("metadata") or {}).get("slug")
+        made_on = (header.get("metadata") or {}).get("worker")
         _restore_service(slug)
     except state_backup.BackupError as exc:
         with contextlib.suppress(OSError):
@@ -10028,6 +10039,7 @@ async def api_restore_upload(request: Request) -> dict[str, Any]:
         "slug": slug,
         "size": size,
         "sha256": digest.hexdigest(),
+        "made_on": made_on if isinstance(made_on, str) else None,
         "created": time.time(),
     }
     _restore_uploads[upload_id] = entry
@@ -10049,7 +10061,9 @@ async def api_restore(request: Request) -> dict[str, Any]:
     CashPilot did not make needs the service's name typed. Every attempt and
     outcome is an audit row. The passphrase is passed to the worker in this one
     request and kept nowhere; the uploaded file is deleted once the restore
-    was tried.
+    was tried. To a worker on plain HTTP only with ``allow_plain_http``, the
+    owner's yes to the passphrase crossing the network unencrypted. One
+    restore of a file at a time (_restore_inflight).
     """
     user = _require_owner_session(request)
     body = await _json_object(request)
@@ -10058,6 +10072,30 @@ async def api_restore(request: Request) -> dict[str, Any]:
     entry = _restore_uploads.get(upload_id) if isinstance(upload_id, str) else None
     if not entry or entry["uid"] != user.get("uid"):
         raise HTTPException(status_code=404, detail="That backup file is no longer here. Choose it again.")
+    sha = entry["sha256"]
+    if sha in _restore_inflight:
+        worker_id = body.get("worker_id")
+        detail = "This file is already being restored. Wait for that restore to end, then choose it again."
+        await _audit(
+            "restore",
+            f"{entry['slug']}|worker {worker_id}|{sha[:16]}",
+            "refused",
+            actor=user,
+            worker_id=worker_id if isinstance(worker_id, int) and not isinstance(worker_id, bool) else None,
+            detail=detail,
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    _restore_inflight.add(sha)
+    try:
+        return await _restore_upload(request, user, body, entry)
+    finally:
+        _restore_inflight.discard(sha)
+
+
+async def _restore_upload(
+    request: Request, user: dict[str, Any], body: dict[str, Any], entry: dict[str, Any]
+) -> dict[str, Any]:
+    """api_restore for one file, while it is marked in flight."""
     slug, sha = entry["slug"], entry["sha256"]
     worker_id = body.get("worker_id")
     target = f"{slug}|worker {worker_id}|{sha[:16]}"
@@ -10078,6 +10116,15 @@ async def api_restore(request: Request) -> dict[str, Any]:
             )
         if not box["ok"]:
             raise HTTPException(status_code=409, detail=f"Cannot restore on {box['name']}: {box['why']}.")
+        if box["plain_http"] and body.get("allow_plain_http") is not True:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "restore_plain_http",
+                    "message": f"{box['name']} is reached over plain HTTP, so the passphrase would cross your "
+                    "network unencrypted. Tick the box that accepts this, or give that worker an HTTPS address.",
+                },
+            )
         if not preview["known"]:
             typed = str(body.get("confirm_name") or "").strip().casefold()
             if typed not in {preview["service"].casefold(), slug.casefold()}:
@@ -10113,6 +10160,11 @@ async def api_restore(request: Request) -> dict[str, Any]:
         result = await _deploy(slug, DeployRequest(image="", instances=1), worker_id, request=request, restore=restore)
         del restore
     except HTTPException as exc:
+        if consumed and exc.status_code == 504:
+            # No answer is not a refusal: the worker may still finish. Recorded,
+            # so a restore of this file elsewhere is refused while it runs there.
+            with contextlib.suppress(Exception):
+                await database.record_backup(slug, worker_id, sha, "restore")
         detail = exc.detail if isinstance(exc.detail, dict) else {"message": exc.detail}
         if detail.get("error") not in _STEP_UP_ERRORS:
             outcome = "failed" if consumed else "refused"
@@ -10144,7 +10196,8 @@ async def api_restore(request: Request) -> dict[str, Any]:
         "restored",
         actor=user,
         worker_id=worker_id,
-        detail=f"{restored.get('files')} files; {'started' if restored.get('started') else 'waits for the LAN fence'}",
+        detail=f"{restored.get('files')} files; {'started' if restored.get('started') else 'waits for the LAN fence'}"
+        + ("; passphrase sent over plain HTTP, as the owner accepted" if box["plain_http"] else ""),
     )
     return {"status": "restored", "service": preview["service"], "worker": box["name"], **restored}
 

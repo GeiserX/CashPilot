@@ -63,12 +63,20 @@ check('the Restore button is enabled', /data-action="submitRestore"[^>]*data-a1=
 
 // --- a file this CashPilot did not make --------------------------------------
 check('asks for the typed name', html.includes('id="restore-confirm"') && html.includes('<strong>Mysterium</strong>'), html);
+check('a plain HTTP box asks the owner to accept it', html.includes('id="restore-plain-http"'), html);
+html = restorePreviewHtml({...base, runs_on: ['box-b']});
+check('names where the service runs now', html.includes('runs now on box-b'), html);
+html = restorePreviewHtml({...base, workers: base.workers.filter(w => !w.plain_http)});
+check('no plain HTTP box, no question', !html.includes('restore-plain-http'), html);
 
 // --- a file it made ----------------------------------------------------------
 html = restorePreviewHtml({...base, known: true,
   history: [{what: 'made here', worker: 'box-a', when: '2026-11-01 10:00:00'}]});
 check('a known file asks for no typed name', !html.includes('id="restore-confirm"'), html);
 check('says where it was made', html.includes('made here on box-a'), html);
+html = restorePreviewHtml({...base, known: true, runs_on: ['box-b'],
+  history: [{what: 'made here', worker: 'box-a', when: '2026-11-01 10:00:00'}]});
+check('a known file not live anywhere has no runs-now warning', !html.includes('runs now on'), html);
 
 // --- the identity runs elsewhere ---------------------------------------------
 html = restorePreviewHtml({...base, live_on: ['box-z']});

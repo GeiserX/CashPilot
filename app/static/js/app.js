@@ -4627,6 +4627,14 @@ const CP = (() => {
     const live = (p.live_on || []).length
       ? `<p class="text-fail">This identity already runs on ${escapeHtml(p.live_on.join(', '))}. Two boxes on one
           identity look like one node to the provider, which may merge or ban them. Remove it there first.</p>` : '';
+    // A file from before CashPilot recorded its backups is unknown too: it may
+    // be a backup of a node that runs now.
+    const elsewhere = !p.known && !(p.live_on || []).length && (p.runs_on || []).length
+      ? `<p class="text-warn">${escapeHtml(p.service)} runs now on ${escapeHtml(p.runs_on.join(', '))}. If this
+          file is a backup of that node, restoring it puts one identity on two boxes: remove it there first.</p>` : '';
+    const plain = (p.workers || []).some(w => w.ok && w.plain_http)
+      ? `<label class="form-hint"><input type="checkbox" id="restore-plain-http"> Send the passphrase to a box
+          on plain HTTP anyway: anyone on the network between can read it.</label>` : '';
     const options = (p.workers || []).map(w =>
       `<option value="${escapeHtml(String(w.id))}"${w.ok ? '' : ' disabled'}>${escapeHtml(w.name)}${
         w.ok ? (w.plain_http ? ' (plain HTTP: the passphrase crosses your network unencrypted)' : '')
@@ -4638,11 +4646,12 @@ const CP = (() => {
       <ul>${creates}</ul>
       <p class="form-hint">It never writes over anything: the box must not run ${escapeHtml(p.service)} and these
         volumes must not exist. The backup is written and read back before the container first starts.</p>
-      ${origin}${live}
+      ${origin}${live}${elsewhere}
       <label class="form-label" for="restore-worker">Box</label>
       <select class="form-input" id="restore-worker">${options || '<option disabled>No box</option>'}</select>
       <label class="form-label" for="restore-passphrase">Passphrase of the backup</label>
       <input type="password" class="form-input" id="restore-passphrase" autocomplete="off">
+      ${plain}
       <div class="credential-health-actions">
         <button type="button" class="btn btn-primary btn-sm" data-action="submitRestore"
           data-a1="${escapeHtml(p.upload_id)}"${usable ? '' : ' disabled'}>Restore</button>
@@ -4682,9 +4691,15 @@ const CP = (() => {
       passphrase: pass ? pass.value : '',
     };
     if (confirmBox) body.confirm_name = confirmBox.value;
+    const plain = document.getElementById('restore-plain-http');
+    if (plain && plain.checked) body.allow_plain_http = true;
     // Out of the page as soon as it is sent; the server keeps it nowhere either.
     if (pass) pass.value = '';
     const out = document.getElementById('restore-preview');
+    // One click, one restore: a second one while the worker works could put
+    // the file on a second box (the server refuses it too).
+    const button = document.querySelector('[data-action="submitRestore"]');
+    if (button) button.disabled = true;
     try {
       // api() asks for the owner's password when the server answers step_up_required.
       const res = await api('/api/restore', { method: 'POST', body });
@@ -4696,6 +4711,8 @@ const CP = (() => {
       loadIdentities();
     } catch (err) {
       toast(err.message, 'error');
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
