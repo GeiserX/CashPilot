@@ -2137,6 +2137,9 @@ async def api_remove_container(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.RestoreUnfinishedError as exc:
+        # A code, so the dashboard's Remove can offer to delete the half-written data.
+        raise HTTPException(status_code=409, detail={"error": "restore_unfinished", "message": str(exc)})
     except orchestrator.ContainerRuntimeError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:

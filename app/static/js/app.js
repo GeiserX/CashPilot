@@ -45,8 +45,10 @@ const CP = (() => {
         // detail can be a structured refusal ({error, message, ...}); surface
         // its message instead of the useless "[object Object]".
         let detail = data && data.detail;
+        const code = detail && typeof detail === 'object' ? detail.error : undefined;
         if (detail && typeof detail === 'object') detail = detail.message || JSON.stringify(detail);
-        throw new Error(detail || `Error ${res.status}`);
+        // The refusal's code goes with it, for a caller that offers a way out.
+        throw Object.assign(new Error(detail || `Error ${res.status}`), { code });
       }
       return data;
     } catch (err) {
@@ -2864,7 +2866,17 @@ const CP = (() => {
   async function removeService(slug) {
     if (!confirm(`Remove ${slug}? This will stop and delete the container.`)) return;
     try {
-      await api(`/api/services/${slug}`, { method: 'DELETE' });
+      try {
+        await api(`/api/services/${slug}`, { method: 'DELETE' });
+      } catch (err) {
+        // A restore that did not finish left a half-written data volume, and
+        // the worker keeps it marked until it goes. The way out is the same
+        // owner-only, audited critical delete a custom service's Remove uses.
+        if (err.code !== 'restore_unfinished') throw err;
+        if (!_isOwner) throw new Error(`${err.message} Only the owner can delete that data.`);
+        if (!confirm(`A restore of ${slug} did not finish, so its data volume holds a partial restore. Remove now deletes that volume, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
+        await api(`/api/services/${slug}?delete_volumes=true&allow_delete_critical=true`, { method: 'DELETE' });
+      }
       toast(`${slug} removed`, 'success');
       loadServicesTable();
     } catch (err) {

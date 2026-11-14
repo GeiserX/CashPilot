@@ -100,8 +100,53 @@ html = restorePreviewHtml({...base, service: '<img src=x onerror=alert(1)>',
 check('no tag from the data reaches the page',
   !/<img|<b>box|<script>|<i>|<u>v/.test(html), html);
 
+// --- Remove after a restore that did not finish ------------------------------
+// The real api() and removeService(), against a stub worker. The worker keeps a
+// half-written volume marked, so a plain Remove is refused with
+// restore_unfinished; the owner is asked, plainly, to delete that data, and
+// only then is the remove sent again as the audited critical delete.
+const apiSrc = slice('async function api(', '// One prompt at a time');
+const removeSrc = slice('async function removeService(', '// Log viewer');
+function runRemove({owner, answers, refusal = 'restore_unfinished'}) {
+  const sent = [];
+  const asked = [];
+  const toasts = [];
+  const fetch = async (path, config) => {
+    sent.push(`${config.method} ${path}`);
+    const ok = sent.length > 1 || !refusal;
+    const body = ok ? {status: 'removed'}
+      : {detail: {error: refusal, message: 'A restore of mysterium did not finish.'}};
+    return {ok, status: ok ? 200 : 409, json: async () => body};
+  };
+  const confirm = (text) => { asked.push(text); return answers.shift(); };
+  const toast = (text, kind) => toasts.push(`${kind}: ${text}`);
+  const {removeService} = new Function(
+    'fetch', 'confirm', 'toast', 'loadServicesTable', '_isOwner', 'window', 'askStepUp',
+    `${apiSrc}\n${removeSrc}\nreturn {removeService};`,
+  )(fetch, confirm, toast, () => {}, owner, {confirm}, async () => null);
+  return removeService('mysterium').then(() => ({sent, asked, toasts}));
+}
+
+let run = await runRemove({owner: true, answers: [true, true]});
+check('a refused Remove asks the owner about the half-written data',
+  run.asked.length === 2 && /partial restore/.test(run.asked[1]) && /deletes that volume/.test(run.asked[1]), run.asked);
+check('and sends it again as the audited critical delete', run.sent.length === 2
+  && run.sent[1] === 'DELETE /api/services/mysterium?delete_volumes=true&allow_delete_critical=true', run.sent);
+check('and says it was removed', run.toasts.join() === 'success: mysterium removed', run.toasts);
+run = await runRemove({owner: true, answers: [true, false]});
+check('an owner who says no deletes nothing', run.sent.length === 1 && run.toasts.length === 0, run);
+run = await runRemove({owner: false, answers: [true]});
+check('a writer is not offered the delete', run.sent.length === 1 && run.asked.length === 1
+  && /Only the owner/.test(run.toasts.join()), run);
+run = await runRemove({owner: true, answers: [true], refusal: 'something_else'});
+check('any other refusal is shown and not retried', run.sent.length === 1 && run.asked.length === 1
+  && /^error: /.test(run.toasts.join()), run);
+run = await runRemove({owner: true, answers: [true], refusal: null});
+check('a Remove the worker takes asks nothing more', run.sent.length === 1
+  && run.sent[0] === 'DELETE /api/services/mysterium' && run.asked.length === 1, run);
+
 if (bad) {
   console.error(`\n${bad} check(s) failed`);
   process.exit(1);
 }
-console.log('\nrestore preview: all checks passed');
+console.log('\nrestore preview and remove: all checks passed');

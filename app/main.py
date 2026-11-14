@@ -5025,6 +5025,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "critical_volume_mount",
         "step_up_required",
         "step_up_rejected",
+        # Remove refused: a restore that did not finish left half-written data.
+        "restore_unfinished",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:

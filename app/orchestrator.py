@@ -736,6 +736,14 @@ class ContainerRuntimeError(RuntimeError):
         self.status_code = status_code
 
 
+class RestoreUnfinishedError(ContainerRuntimeError):
+    """Remove without data refused: a restore that did not finish left a half-written volume.
+
+    The worker API answers it as ``restore_unfinished``, so the dashboard's
+    Remove can offer to delete that data (an owner-only, audited critical delete).
+    """
+
+
 def _runtime_overrides() -> dict[str, str]:
     overrides: dict[str, str] = {}
     for entry in _CONTAINER_RUNTIME_OVERRIDES.split(","):
@@ -2634,7 +2642,7 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
                     pass
                 return (
                     f"a restore of {slug} did not finish, so the volume {held} may be half-written. "
-                    "Remove the service with its data from the dashboard, then restore"
+                    "Remove the service with its data (the dashboard's Remove offers it), then restore"
                 )
             try:
                 found.remove(force=True)
@@ -2688,7 +2696,7 @@ def _refuse_mid_restore(slug: str, what: str) -> None:
     if _restore_helper(slug) is not None:
         raise ContainerRuntimeError(
             f"A restore of {slug} did not finish, so its data may be half-written and it was not {what}. "
-            "Remove the service with its data, then restore the backup again.",
+            "Remove the service with its data (the dashboard's Remove offers it), then restore the backup again.",
             409,
         )
 
@@ -2704,13 +2712,17 @@ def _create_restore_volume(client: Any, volume: str) -> None:
         raise RestoreError(f"the volume {volume} already existed (it was hidden from this worker), so it was not used")
 
 
-def _restore_cleanup(client: Any, containers: list[Any], created_volumes: list[str]) -> list[str]:
+def _restore_cleanup(
+    client: Any, containers: list[Any], created_volumes: list[str], written: list[str] | None = None
+) -> list[str]:
     """Remove the containers and the volumes this restore made. Returns what could not be removed.
 
     Only ``containers``, the objects this restore created, never a container
     found by name: one under that name it did not make is another deploy's.
     A volume Docker refuses as in use, while every container of ours is
-    gone, is that deploy's now and is kept.
+    gone, is that deploy's now and is kept. A volume of ``written`` (one a
+    helper wrote into) that stays gets its helper back, as remove_service
+    does: that helper is the only mark of a half-written volume.
     """
     left: list[str] = []
     # The helper first (made last): it holds the volumes too.
@@ -2736,6 +2748,18 @@ def _restore_cleanup(client: Any, containers: list[Any], created_volumes: list[s
         except Exception as exc:  # noqa: BLE001
             logger.error("Restore cleanup could not remove the volume %s: %s", volume, exc)
             left.append(volume)
+    service = containers[0] if containers else None
+    for volume in [v for v in written or [] if v in left] if service is not None else []:
+        helper = service.name + RESTORE_HELPER_SUFFIX
+        if helper in left:
+            continue  # the helper itself stayed, still mounting it
+        try:
+            image = (getattr(service, "attrs", None) or {}).get("Image") or service.image.id
+            _create_restore_helper(client, image, helper, volume)
+        except Exception as exc:  # noqa: BLE001 - said in the log; the volume is reported as left
+            logger.error(
+                "The half-written volume %s stays, and its restore mark could not be put back: %s", volume, exc
+            )
     return left
 
 
@@ -2872,6 +2896,7 @@ def _restore_locked(
     before = set(_named_volumes(deploy.get("volumes")))
     made: list[str] = []
     containers: list[Any] = []
+    written: list[str] = []
     failed_before = name in deploy_failed()
     files = 0
     try:
@@ -2893,6 +2918,7 @@ def _restore_locked(
         if getattr(container, "status", "created") != "created":
             raise RestoreError(f"{name} is {container.status}, not newly created, so it was not written to")
         for target, payload in sorted(payloads.items()):
+            written.append(targets[target])
             _write_through_helper(client, container, targets[target], payload, containers)
         for target in sorted(targets):
             found = state_backup.tree_manifest(_read_back(container, target))
@@ -2906,12 +2932,14 @@ def _restore_locked(
             raise RestoreError(f"{name} started before the restore finished, so it was undone")
         started = _start_restored(slug, container)
     except BaseException as exc:
-        left = _restore_cleanup(client, containers, made)
+        left = _restore_cleanup(client, containers, made, written)
         if gated:
             # Any container left under the name stays held (ours that could not
-            # be removed, or one deploy_raw's roll-back left): the guard never
-            # starts unchecked data. A free name gets its mark back as it was.
-            _mark_failed(name, failed_before or _name_taken(client, name))
+            # be removed, or one deploy_raw's roll-back left), and so does a
+            # written volume that stayed: the guard never starts unchecked data.
+            # A free name with nothing written left gets its mark back as it was.
+            half_written = any(v in left for v in written)
+            _mark_failed(name, failed_before or half_written or _name_taken(client, name))
         note = f" Could not remove {', '.join(left)}: remove it by hand." if left else ""
         if isinstance(exc, RestoreError):
             raise RestoreError(f"{exc}. The container and volumes it made were removed.{note}", exc.status_code, left)
@@ -3036,9 +3064,9 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
     if not delete_volumes and helper is not None:
         # The helper is the only mark of a half-written volume: removing it
         # while the volume stays would let the next deploy start on half the data.
-        raise ContainerRuntimeError(
-            f"A restore of {slug} did not finish, so its data may be half-written and nothing was removed. "
-            "Remove the service with its data, then restore the backup again.",
+        raise RestoreUnfinishedError(
+            f"A restore of {slug} did not finish, so its data volume holds a partial restore and nothing was "
+            "removed. Remove the service with its data, then restore the backup again.",
             409,
         )
     # The volumes the helper holds: those a restore that did not finish wrote into.

@@ -612,6 +612,17 @@ class TestAFenceGatedRestore:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert gated.container_map == {} and self.NAME not in orchestrator.deploy_failed()
 
+    def test_a_written_volume_the_undo_could_not_remove_stays_held(self, gated):
+        """The name is free, but the unchecked volume stayed: the failed mark must not be lifted."""
+        gated.corrupt_put = True
+        with (
+            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
+            pytest.raises(orchestrator.RestoreError, match="by hand"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert self.NAME not in gated.container_map and "mysterium-data" in gated.volume_map
+        assert self.NAME in orchestrator._failed_on_disk()
+
     def test_a_leftover_deploy_raws_roll_back_could_not_remove_stays_held(self, gated):
         """deploy_raw marks such a leftover failed; the restore's own cleanup must not lift that."""
 
@@ -1620,6 +1631,45 @@ class TestTheWorkerProxyErrors:
         assert caught.value.status_code == 503 and not isinstance(caught.value, main.WorkerNoAnswer)
 
 
+class TestRemoveAfterARestoreThatDidNotFinish:
+    """The dashboard's Remove gets the worker's code, and the delete it then offers stays owner-only and audited."""
+
+    UNFINISHED = {
+        "detail": {
+            "error": "restore_unfinished",
+            "message": "A restore of mysterium did not finish, so its data volume holds a partial restore.",
+        }
+    }
+
+    def _remove(self, ui, query, status, body):
+        request = httpx.Request("DELETE", "https://a/api/containers/mysterium")
+        answer = httpx.Response(status, request=request, json=body)
+        sent = AsyncMock(return_value=answer)
+        with (
+            patch.object(main, "_proxy_to_worker", REAL_PROXY),
+            patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("https://a", {}))),
+            patch("httpx.AsyncClient.delete", sent),
+        ):
+            return ui.delete(f"/api/services/mysterium?worker_id=1{query}"), sent
+
+    def test_the_refusal_reaches_the_dashboard_with_its_code(self, ui):
+        resp, _sent = self._remove(ui, "", 409, self.UNFINISHED)
+        assert resp.status_code == 409 and resp.json()["detail"] == self.UNFINISHED["detail"]
+
+    def test_the_owner_deletes_the_data_and_it_is_audited(self, ui):
+        resp, sent = self._remove(
+            ui, "&delete_volumes=true&allow_delete_critical=true", 200, {"status": "removed", "deleted_volumes": []}
+        )
+        assert resp.status_code == 200
+        assert sent.call_args.kwargs["params"] == {"delete_volumes": "true", "allow_delete_critical": "true"}
+        assert ("delete_critical_volumes", "deleted") in _audit()
+
+    def test_a_writer_cannot_delete_it(self, ui):
+        ui.state["user"] = {**ui.state["user"], "r": "writer"}
+        resp, sent = self._remove(ui, "&delete_volumes=true&allow_delete_critical=true", 200, {"status": "removed"})
+        assert resp.status_code == 403 and not sent.called
+
+
 class TestARestoreTheWorkerUndid:
     """The worker's own 503 says the restore was undone: no gateway sends that, so nothing holds the identity."""
 
@@ -1896,6 +1946,52 @@ class TestStartAndRemoveAroundARestore:
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             self._deploy(docker)
 
+    def test_an_undo_that_cannot_remove_the_container_keeps_the_mark(self, docker):
+        """The write died halfway and the undo could not remove the container: the volume stays in use, marked."""
+        real_put, real_remove = FakeContainer.put_archive, FakeContainer.remove
+
+        def put(container, path, data):
+            real_put(container, path, data)
+            raise RuntimeError("connection reset mid-write")
+
+        def remove(container, force=False):
+            if container.name == "cashpilot-mysterium":
+                raise RuntimeError("read timeout")
+            return real_remove(container, force)
+
+        with (
+            patch.object(FakeContainer, "put_archive", put),
+            patch.object(FakeContainer, "remove", remove),
+            pytest.raises(orchestrator.RestoreError, match="by hand"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "cashpilot-mysterium" in docker.container_map and "mysterium-data" in docker.volume_map
+        assert orchestrator._restore_helper("mysterium") is not None
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            orchestrator.start_service("mysterium")
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            self._deploy(docker)
+
+    def test_an_undo_whose_volume_delete_times_out_keeps_the_mark(self, docker):
+        """The data did not read back, and the undo's volume delete timed out: the unchecked volume stays marked."""
+        docker.corrupt_put = True
+        with (
+            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
+            pytest.raises(orchestrator.RestoreError, match="by hand"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "cashpilot-mysterium" not in docker.container_map and "mysterium-data" in docker.volume_map
+        assert orchestrator._restore_helper("mysterium") is not None
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            self._deploy(docker)
+
+    def test_an_undo_that_removes_everything_leaves_no_mark(self, docker):
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.container_map == {} and docker.volume_map == {}
+        assert orchestrator._restore_helper("mysterium") is None
+
     def test_remove_with_no_container_and_no_helper_is_still_not_found(self, docker):
         with pytest.raises(ValueError):
             orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
@@ -1932,6 +2028,19 @@ class TestStartAndRemoveAroundARestore:
         assert "cashpilot-mysterium.restore" in docker.container_map and "mysterium-data" in docker.volume_map
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             orchestrator.start_service("mysterium")
+
+    def test_the_worker_answers_remove_without_data_with_a_code(self, docker, worker):
+        """The dashboard's Remove reads the code to offer deleting the half-written data."""
+        self._service(docker, helper=True)
+        headers = {"Authorization": f"Bearer {WORKER_KEY}"}
+        resp = worker.client.delete("/api/containers/mysterium", headers=headers)
+        detail = resp.json()["detail"]
+        assert resp.status_code == 409 and detail["error"] == "restore_unfinished"
+        assert "partial restore" in detail["message"]
+        # The critical-volume rule still holds for that data.
+        resp = worker.client.delete("/api/containers/mysterium?delete_volumes=true", headers=headers)
+        assert resp.status_code == 409 and resp.json()["detail"]["error"] == "critical_volume"
+        assert "cashpilot-mysterium.restore" in docker.container_map and "mysterium-data" in docker.volume_map
 
     def test_remove_without_data_of_a_service_with_no_leftover_goes(self, docker):
         self._service(docker)
