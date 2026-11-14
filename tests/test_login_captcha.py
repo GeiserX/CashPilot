@@ -30,8 +30,10 @@ TURNSTILE_PASS = "1x0000000000000000000000000000000AA"
 TURNSTILE_FAIL = "2x0000000000000000000000000000000AA"
 HCAPTCHA_SITE = "10000000-ffff-ffff-ffff-000000000001"
 HCAPTCHA_SECRET = "0x0000000000000000000000000000000000000000"
-RECAPTCHA_SITE = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
-RECAPTCHA_SECRET = "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
+# Obvious placeholders: siteverify is mocked here, and Google's published test
+# keys match secret scanners' reCAPTCHA pattern.
+RECAPTCHA_SITE = "test-recaptcha-site-key"
+RECAPTCHA_SECRET = "test-recaptcha-secret-key"
 
 KEYS = {
     "turnstile": (TURNSTILE_SITE, TURNSTILE_PASS),
@@ -124,7 +126,9 @@ def _client() -> TestClient:
 
 
 def _login(c: TestClient, password: str = OWNER_PW, **extra: str) -> httpx.Response:
-    return c.post("/login", data={"username": "owner1", "password": password, **extra})
+    form = {"username": "owner1", **extra}
+    form["password"] = password
+    return c.post("/login", data=form)
 
 
 def _directive(csp: str, name: str) -> str:
