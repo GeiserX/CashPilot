@@ -96,7 +96,41 @@ then asks once more, because there was no fingerprint to compare against.
 
 **Undo** next to a confirmed line takes the confirmation back.
 
-## Restore a backup
+## Restore from the dashboard
+
+**Settings > Restore from a backup** puts a node identity or wallet back on a
+box from a `.cpbackup` file. It covers Mysterium, ProxyBase and Anyone, whose
+identity sits on a named Docker volume. The rules:
+
+- **It only creates.** The box must not have the service in any state, and
+  its identity volume must not exist. The restore never writes over anything.
+  To replace a running identity, take its backup first, remove the service with
+  its data, then restore.
+- **Passphrase files only.** A file sealed to a key is refused before anything
+  secret is asked for: its private key never goes through the dashboard. Use
+  the command line steps below for it.
+- **Owner only, with your password.** The worker checks a one-use approval for
+  this service, this box and this exact file. The admin API key cannot restore.
+- **Files it does not know need the name typed.** CashPilot keeps the SHA-256
+  of every file it exports (the Device ids list shows them). For any other
+  file, you type the service name, because nobody can tell from the file whose
+  identity or wallet is inside.
+- **One identity, one box.** If the file came from a box that still runs the
+  service, the restore is refused and names that box. Two boxes on one identity
+  look like one node to the provider, which may merge or ban them.
+- **Checked before it starts.** The worker creates the container without
+  starting it, writes the backup into its new volume, reads the folder back
+  from the container and compares every file, link, owner and permission. Only
+  then does the container start (Mysterium only behind a confirmed LAN fence).
+  On any failure, the container and the volumes the restore made are removed.
+- **Nothing kept.** The file waits in a private folder under the data folder
+  for at most 15 minutes and is deleted once the restore runs. The passphrase
+  goes to the worker in that one request and is never stored or logged.
+
+Storj and Sia keep their state in host folders, and Storj's is over the 64 MB
+export cap: restore those with the command line steps.
+
+## Restore a backup from the command line
 
 You need the `.cpbackup` file and its passphrase or private key.
 
