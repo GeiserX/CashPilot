@@ -146,7 +146,11 @@ identity sits on a named Docker volume. The rules:
   it with, and the box records that label: a volume under the same name
   without it is another client's, and the box never offers to delete it. A
   volume the restore made and never wrote holds none of the backup, so the
-  dashboard does not hold the identity on that box for it. A Mysterium the restore made and could not remove is
+  dashboard does not hold the identity on that box for it. The label is read
+  again right before each write. If another client replaced the volume while
+  the restore wrote, the backup may be in that volume, so the restore reports
+  it as left, the dashboard keeps holding the identity there, and the box
+  never deletes that volume: check it yourself. A Mysterium the restore made and could not remove is
   held stopped, so the LAN fence guard never starts data that did not check
   out. While a restore runs, and after a restore that failed or stopped
   mid-write (a worker restart), Start, Restart, Deploy and Restore refuse the
@@ -157,7 +161,15 @@ identity sits on a named Docker volume. The rules:
   each volume the box would delete, with the time Docker made it. You, the
   owner, confirm exactly those, with your password. The box deletes those or
   nothing: a volume made again under the same name since reads another time
-  and stays. The delete goes to that box only, only while that partial
+  and stays. As the last step before each delete, the box reads the volume
+  again and compares the time Docker made it, and the restore's label, with
+  what you confirmed; a volume replaced before that read stays. One gap stays
+  open: Docker deletes a volume by name and has no delete that holds only
+  while it is the same volume. If another client with access to the Docker
+  socket removes the volume and makes its own under the name in the instant
+  between that read and the delete, Docker deletes the new one. Keeping every
+  volume to close that gap would make every delete you confirm impossible.
+  The delete goes to that box only, only while that partial
   restore is still there, and the audit log records it. Then restore again.
 - **Nothing kept.** The file waits in a private folder under the data folder
   for at most 15 minutes and is deleted once the restore runs. The passphrase

@@ -2998,15 +2998,16 @@ class TestTheHelperMarksTheVolumeUntilItIsChecked:
 
     def test_every_volume_of_a_restore_stays_held_by_the_one_helper(self, docker):
         """Two volumes: the restore's helper holds both from before the first write; the second writer goes."""
-        for volume in ("vol-a", "vol-b"):
-            docker.volumes.create(volume)
+        nonces = {"vol-a": "aa" * 16, "vol-b": "bb" * 16}
+        for volume, nonce in nonces.items():
+            docker.volumes.create(volume, labels={orchestrator.LABEL_RESTORE: nonce})
         service = FakeContainer(docker, "cashpilot-two", {}, {orchestrator.LABEL_SERVICE: "two"})
         docker.container_map[service.name] = service
         made: list[Any] = [service]
         written: list[str] = []
         payload = state_backup.relative_archive(_archives()["mysterium-node"], orchestrator.RESTORE_ROOT)
         mark = orchestrator._write_through_helper(
-            docker, service, [("vol-a", payload), ("vol-b", payload)], made, written
+            docker, service, [("vol-a", payload), ("vol-b", payload)], made, written, nonces
         )
         assert mark.name == "cashpilot-two.restore" and made == [service, mark] and written == ["vol-a", "vol-b"]
         assert set(mark.mounts.values()) == {"vol-a", "vol-b"}
@@ -3179,7 +3180,7 @@ class TestAServiceNotFenceGatedStaysHeldAfterACrash:
 
         with (
             patch.object(orchestrator, "_write_through_helper", die),
-            patch.object(orchestrator, "_restore_cleanup", lambda *a, **k: ([], [])),
+            patch.object(orchestrator, "_restore_cleanup", lambda *a, **k: ([], [], [])),
             pytest.raises(SystemExit),
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
@@ -4245,3 +4246,138 @@ class TestTheLiveDriverRemovesAsTheOwnerDoes:
         out = capsys.readouterr().out
         assert "FAIL" not in out, out
         assert "PASS  the volume is gone" in out and docker.volume_map == {}
+
+
+# ---------------------------------------------------------------------------
+# Round 17: the nonce is read again right before each write and each delete,
+# and a helper's mount counts as the restore's only with its nonce
+# ---------------------------------------------------------------------------
+
+
+def _swap(docker: FakeDocker, volume: str = "mysterium-data", same_time: bool = False) -> None:
+    """Another client removes ``volume`` and makes its own under the name (with the same CreatedAt when ``same_time``)."""
+    old = docker.volume_map.pop(volume)
+    new = docker.volumes.create(volume, labels={"theirs": "1"})
+    if same_time:
+        # Docker gives CreatedAt to the second: a volume made again within it reads the same time.
+        new.attrs["CreatedAt"] = old.attrs["CreatedAt"]
+
+
+class TestAVolumeSwappedBeforeItsWriteGetsNoBackup:
+    def test_a_volume_swapped_after_the_container_check_is_not_written_and_stays_held(self, docker):
+        """Another client prunes the created container, then swaps the volume before the helper mounts it."""
+        real = orchestrator._create_restore_helper
+
+        def prune_and_swap_first(client, image, name, volumes):
+            if "cashpilot-mysterium" in docker.container_map:
+                docker.container_map.pop("cashpilot-mysterium")
+                _swap(docker)
+            return real(client, image, name, volumes)
+
+        with (
+            patch.object(orchestrator, "_create_restore_helper", prune_and_swap_first),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        replacement = docker.volume_map["mysterium-data"]
+        assert replacement.attrs["Labels"] == {"theirs": "1"} and replacement.files == {}
+        assert docker.puts == [] and docker.started == []
+        assert ("volume", "mysterium-data") not in docker.removed
+        # Fail closed: reported as left (never restored: false) and the slug stays held.
+        assert "mysterium-data" in caught.value.left
+        assert orchestrator.restore_marks() == {"mysterium"}
+
+    def test_a_written_volume_swapped_before_the_undo_is_reported_left_and_held(self, docker):
+        """Written, then replaced: the undo cannot tell where the backup went, so the dashboard keeps holding it."""
+        real_put = FakeContainer.put_archive
+
+        def put_then_swap(container, path, data):
+            done = real_put(container, path, data)
+            _swap(docker)
+            return done
+
+        with (
+            patch.object(FakeContainer, "put_archive", put_then_swap),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
+        assert ("volume", "mysterium-data") not in docker.removed and docker.started == []
+        assert "mysterium-data" in caught.value.left and "replaced" in str(caught.value)
+        assert orchestrator.restore_marks() == {"mysterium"}
+
+
+class TestAHelperMountWithoutTheNonceIsNotTheRestores:
+    def test_a_volume_swapped_under_the_put_back_helper_survives_the_owners_remove(self, docker):
+        docker.corrupt_put = True
+        real = orchestrator._create_restore_helper
+        calls = []
+
+        def swap_before_put_back(client, image, name, volumes):
+            calls.append(name)
+            if len(calls) == 2:
+                _swap(docker)
+            return real(client, image, name, volumes)
+
+        with (
+            patch.object(orchestrator, "_create_restore_helper", swap_before_put_back),
+            pytest.raises(orchestrator.RestoreError),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), TestTheRestoreSequence.EXTRA_DEPLOY)
+        helper = orchestrator._restore_helper("mysterium")
+        assert [m["Name"] for m in helper.attrs["Mounts"]] == ["mysterium-data"]
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-extra"]
+        assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
+        assert ("volume", "mysterium-data") not in docker.removed
+
+    def test_control_the_helpers_own_volume_goes_with_the_owners_remove(self, docker):
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), TestTheRestoreSequence.EXTRA_DEPLOY)
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert sorted(result["deleted_volumes"]) == ["mysterium-data", "mysterium-extra"]
+
+
+class TestTheLastReadBeforeTheDelete:
+    """The owner's delete reads each volume fresh right before the remove call.
+
+    A volume replaced after the first reads (the review's CreatedAt, the
+    record's nonce) and before that last read is kept. The instant between the
+    last read and Docker's delete by name stays open (docs/backup.md), so no
+    test claims it.
+    """
+
+    def _leftover(self, docker):
+        _recorded(docker)
+        helper = FakeContainer(
+            docker,
+            "cashpilot-mysterium.restore",
+            {"/restore": "mysterium-data"},
+            {orchestrator.LABEL_RESTORE: "helper"},
+        )
+        helper.attrs["Mounts"] = [{"Type": "volume", "Name": "mysterium-data", "Destination": "/restore"}]
+        docker.container_map[helper.name] = helper
+
+    def test_a_replacement_with_the_same_time_made_after_the_first_reads_is_kept(self, docker):
+        self._leftover(docker)
+        real_remove = FakeContainer.remove
+
+        def remove_then_swap(container, force=False):
+            real_remove(container, force)
+            if container.name == "cashpilot-mysterium.restore":
+                _swap(docker, same_time=True)
+
+        with patch.object(FakeContainer, "remove", remove_then_swap):
+            result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == [] and result["failed_volumes"] == ["mysterium-data"]
+        assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
+        # Not the restore's, so no helper is put back over it, and the restore's record goes.
+        assert orchestrator._restore_helper("mysterium") is None
+        assert orchestrator.restore_marks() == set()
+
+    def test_control_the_restores_own_volume_is_deleted(self, docker):
+        self._leftover(docker)
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and docker.volume_map == {}
+        assert orchestrator.restore_marks() == set()

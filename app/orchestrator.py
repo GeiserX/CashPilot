@@ -3228,9 +3228,12 @@ def _require_made(client: Any, made: dict[str, str]) -> None:
     """Raise RestoreError unless each volume of ``made`` still carries the nonce this restore created it with.
 
     Docker names a volume, it keeps no other identity: an unused volume can be
-    removed by another client and one of its own created under the name. Once
-    the restored container mounts them, none can be removed, so read after the
-    create this is final.
+    removed by another client and one of its own created under the name. A
+    container that mounts a volume holds it only while that container exists,
+    and another client can remove the container too. So this is read after the
+    service container is created, and again for each volume right before a
+    helper writes into it (_write_through_helper): that helper mounts it then,
+    so the volume it writes is the one that read carried the nonce.
     """
     for volume, nonce in made.items():
         if _restore_nonce(client.volumes.get(volume)) != nonce:
@@ -3241,8 +3244,10 @@ def _require_made(client: Any, made: dict[str, str]) -> None:
 
 def _restore_cleanup(
     client: Any, containers: list[Any], created_volumes: dict[str, str], written: list[str] | None = None
-) -> tuple[list[str], list[str]]:
-    """Remove the containers this restore made, and keep its volumes. Returns (what could not be removed, kept).
+) -> tuple[list[str], list[str], list[str]]:
+    """Remove the containers this restore made, and keep its volumes.
+
+    Returns (what could not be removed, kept, replaced).
 
     Docker deletes a volume by name only, and has no delete that holds only
     while the volume is still the one this restore made: once no container of
@@ -3251,8 +3256,10 @@ def _restore_cleanup(
     Each one this restore made that still carries its nonce (``created_volumes``
     maps each to it) is kept and returned, and the restore's record holds the
     slug until the owner removes the service with its data. One that no longer
-    carries its nonce is another client's, under the same name, and is not ours
-    to report.
+    carries its nonce is another client's, under the same name: it is never
+    deleted as this restore's. If it is in ``written`` it is returned in
+    ``replaced``, because the backup may have been written into it, so the
+    record still holds the slug and the restore reports it as left.
 
     Only ``containers``, the objects this restore created, never a container
     found by name: one under that name it did not make is another deploy's.
@@ -3270,10 +3277,13 @@ def _restore_cleanup(
             logger.error("Restore cleanup could not remove %s: %s", container.name, exc)
             left.append(container.name)
     kept: list[str] = []
+    replaced: list[str] = []
     for volume, nonce in created_volumes.items():
         try:
             if _restore_nonce(client.volumes.get(volume)) != nonce:
                 logger.warning("Restore cleanup left the volume %s alone: another client replaced it", volume)
+                if volume in (written or []):
+                    replaced.append(volume)
                 continue
         except NotFound:
             continue
@@ -3294,7 +3304,7 @@ def _restore_cleanup(
                 ", ".join(stayed),
                 exc,
             )
-    return left, kept
+    return left, kept, replaced
 
 
 def _read_back(container: Any, target: str) -> bytes:
@@ -3337,7 +3347,12 @@ def _create_restore_helper(client: Any, image: str, name: str, volumes: list[str
 
 
 def _write_through_helper(
-    client: Any, container: Any, writes: list[tuple[str, bytes]], made: list[Any], written: list[str]
+    client: Any,
+    container: Any,
+    writes: list[tuple[str, bytes]],
+    made: list[Any],
+    written: list[str],
+    nonces: dict[str, str],
 ) -> Any:
     """Write each ``(volume, payload)`` of ``writes`` through helpers that are created and never started.
 
@@ -3353,6 +3368,9 @@ def _write_through_helper(
     through a helper of its own, removed once its write returns: the first one
     still holds that volume. Each helper is in ``made`` while it exists, so the
     cleanup removes it; each volume goes in ``written`` before its write.
+    Right before each write, with the helper that writes it mounting it, the
+    volume must still carry the nonce of ``nonces`` (_require_made), or nothing
+    is written into it.
     """
     image = (getattr(container, "attrs", None) or {}).get("Image") or container.image.id
     name = container.name + RESTORE_HELPER_SUFFIX
@@ -3364,6 +3382,7 @@ def _write_through_helper(
         if writer is not mark:
             made.append(writer)
         try:
+            _require_made(client, {volume: nonces[volume]})
             if not writer.put_archive(RESTORE_WRITE_DIR, payload):
                 raise RestoreError(f"Docker did not write the volume {volume}")
         finally:
@@ -3385,8 +3404,10 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
     into its volume through a helper that never starts (_write_through_helper);
     read each folder back from the restored container and compare every file,
     link, owner and permission with the backup, the folder's own owner and
-    permissions included (the write sets them); start. Any failure removes the container
-    and every volume this call made. A fence-gated service holds
+    permissions included (the write sets them); start. Any failure removes the containers
+    this call made and keeps every volume it made, with its record on disk holding
+    the slug until the owner removes the service with its data (_restore_cleanup
+    says why). A fence-gated service holds
     GATED_DEPLOY_LOCK throughout, and is marked failed on disk before it is
     created until its data reads back right, so the guard never starts it
     half-written: not while this runs, nor after a worker that died midway.
@@ -3508,9 +3529,10 @@ def _restore_locked(
         for volume in targets.values():
             made[volume] = _create_restore_volume(client, volume, nonces[volume])
         # The other volumes the service mounts (Anyone's config): this restore
-        # creates the missing ones itself, so the undo removes only a volume it
-        # proved it made (its nonce came back). One another client made first,
-        # after the check, is used as a deploy would use it, and never removed.
+        # creates the missing ones itself, so the record names only a volume it
+        # proved it made (its nonce came back), which the undo keeps and the
+        # owner's Remove may delete. One another client made first, after the
+        # check, is used as a deploy would use it, and never removed.
         for volume in sorted(before - set(made)):
             if not _volume_exists(client, volume) and (nonce := _created_new(client, volume)):
                 made[volume] = nonce
@@ -3520,11 +3542,11 @@ def _restore_locked(
         containers.append(container)
         if getattr(container, "status", "created") != "created":
             raise RestoreError(f"{name} is {container.status}, not newly created, so it was not written to")
-        # The container mounts them now, so none can be swapped from here on:
-        # the one it mounts is the one this restore made, or nothing is written.
+        # The container mounts them now, but another client can remove it and
+        # then a volume: each one is read again right before its write.
         _require_made(client, made)
         writes = [(targets[target], payload) for target, payload in sorted(payloads.items())]
-        mark = _write_through_helper(client, container, writes, containers, written)
+        mark = _write_through_helper(client, container, writes, containers, written, made)
         for target in sorted(targets):
             found = state_backup.tree_manifest(_read_back(container, target))
             diff = state_backup.manifest_differences(expected[target], found)
@@ -3547,7 +3569,7 @@ def _restore_locked(
         containers.remove(mark)
         started = _start_restored(slug, container)
     except BaseException as exc:
-        left, kept = _restore_cleanup(client, containers, made, written)
+        left, kept, replaced = _restore_cleanup(client, containers, made, written)
         # Anything this restore made that stayed keeps the record: every volume
         # it made (the undo never deletes one, see _restore_cleanup), whether or
         # not a written one's helper could be put back, a container it could not
@@ -3557,7 +3579,9 @@ def _restore_locked(
         present = _container_present(client, name)
         taken = present is not False
         recorded = {**nonces, **{v: made[v] for v in kept}}
-        _mark_restore_unfinished(slug, bool(left or kept) or taken, [f"{v}:{n}" for v, n in recorded.items()])
+        _mark_restore_unfinished(
+            slug, bool(left or kept or replaced) or taken, [f"{v}:{n}" for v, n in recorded.items()]
+        )
         # Named with what stayed that may hold the backup (a container, or a
         # volume written into), so the worker answers "left", never "restored":
         # false, and the dashboard holds the identity there. A volume made and
@@ -3568,7 +3592,7 @@ def _restore_locked(
             # be removed, or one deploy_raw's roll-back left), and so does a
             # written volume that stayed: the guard never starts unchecked data.
             # A free name with nothing written left gets its mark back as it was.
-            half_written = any(v in kept for v in written)
+            half_written = bool(replaced) or any(v in kept for v in written)
             _mark_failed(name, failed_before or half_written or taken)
         note = f" Could not remove {', '.join(left)}: remove it by hand." if left else ""
         if kept:
@@ -3579,6 +3603,15 @@ def _restore_locked(
                 "panel, offers it), then restore the backup again."
             )
             left = [*left, *(v for v in kept if v in written)]
+        if replaced:
+            # Possibly written: the dashboard must hold the identity here, never
+            # settle it as not restored.
+            note += (
+                f" Another client replaced the volume(s) {', '.join(replaced)} while this restore wrote, so the "
+                f"backup may be in it and {slug} stays held. It is not this restore's, so the worker never deletes "
+                "it: check it, and remove it yourself if it holds nothing you need."
+            )
+            left = [*left, *replaced]
         if held and present:
             note += (
                 f" {name} is on this box now and may mount a volume this restore made, so {slug} stays held: "
@@ -3835,11 +3868,16 @@ def _remove_service(
     # The volumes the helper holds (those a restore that did not finish wrote
     # into), and each one its record names that still carries the nonce the
     # restore made it with: a volume under the name without it is another
-    # client's, never deleted as the restore's.
+    # client's, never deleted as the restore's. A helper can be put back over a
+    # volume another client swapped in, so what it mounts counts only with the
+    # nonce on record; a name the record keeps no nonce for (a record from an
+    # older worker, or none) proves nothing either way and counts by name.
     mounts = (getattr(helper, "attrs", None) or {}).get("Mounts") or [] if helper is not None else []
     held = [m["Name"] for m in mounts if m.get("Type") == "volume" and m.get("Name")]
+    nonce_on_record = recorded or {}
     if unfinished:
-        held = sorted(set(held) | set(_restore_owned(slug, recorded or {})))
+        owned = set(_restore_owned(slug, nonce_on_record))
+        held = sorted({v for v in held if not nonce_on_record.get(v)} | owned)
     try:
         container = _find_container(slug)
     except ValueError:
@@ -3948,22 +3986,39 @@ def _remove_service(
 
     deleted_volumes: list[str] = []
     failed_volumes: list[str] = []
+    # Held volumes another client replaced since the first read: not the restore's.
+    not_ours: list[str] = []
     if volume_names:
         client = _get_client()
         for vol_name in volume_names:
             try:
-                found = client.volumes.get(vol_name)
-                # Read again right before the delete: once the container and the
-                # helper are gone, another client can remove a critical volume
-                # and make its own under the name, which the owner never
-                # reviewed. Docker deletes by name only, so this is as close as
-                # the check can get.
-                created = (getattr(found, "attrs", None) or {}).get("CreatedAt")
-                if vol_name in approved and created != approved[vol_name]:
+                # The last step before the delete, in the slug work lock: read
+                # the volume fresh and compare the time Docker made it with the
+                # one the owner reviewed, and a restore's volume with the nonce
+                # on record. Once the container and the helper are gone, another
+                # client can remove the volume and make its own under the name;
+                # a replacement made before this read is kept. What stays open:
+                # Docker deletes by name and has no compare-and-delete for a
+                # volume, so a client with Docker socket access that removes and
+                # recreates the volume between this read and the remove call
+                # loses its volume. Keeping every such volume instead would make
+                # every owner-approved delete impossible.
+                with _SLUG_WORK_LOCK:
+                    found = client.volumes.get(vol_name)
+                    created = (getattr(found, "attrs", None) or {}).get("CreatedAt")
+                    nonce = nonce_on_record.get(vol_name) if vol_name in held else None
+                    if nonce and _restore_nonce(found) != nonce:
+                        why = "it is not the one the restore made"
+                        not_ours.append(vol_name)
+                    elif vol_name in approved and created != approved[vol_name]:
+                        why = "it is not the one the owner confirmed"
+                    else:
+                        why = ""
+                        found.remove(force=True)
+                if why:
                     failed_volumes.append(vol_name)
-                    logger.warning("Kept volume %s: it is not the one the owner confirmed", vol_name)
+                    logger.warning("Kept volume %s: %s", vol_name, why)
                     continue
-                found.remove(force=True)
                 deleted_volumes.append(vol_name)
                 logger.info("Removed volume %s", vol_name)
             except NotFound:
@@ -3974,7 +4029,7 @@ def _remove_service(
     # The helper had to go first (it mounts the volume), and it is the only mark
     # of a half-written one: a volume of it that stays gets its mark back, so
     # no start or deploy runs on half the data.
-    stayed = [v for v in held if v in failed_volumes] if helper_gone else []
+    stayed = [v for v in held if v in failed_volumes and v not in not_ours] if helper_gone else []
     if stayed:
         try:
             image = (getattr(helper, "attrs", None) or {}).get("Image") or helper.image.id
@@ -3985,10 +4040,11 @@ def _remove_service(
                 ", ".join(stayed),
                 exc,
             )
-    # The record goes only once every volume it holds is confirmed gone, or
-    # every one it names was read and is gone or another client's; with no
-    # volume known, nothing was confirmed, so it stays.
-    if unfinished and (held or recorded) and set(held) <= set(deleted_volumes):
+    # The record goes only once every volume it holds is confirmed gone or was
+    # found another client's at the delete, or every one it names was read and
+    # is gone or another client's; with no volume known, nothing was confirmed,
+    # so it stays.
+    if unfinished and (held or recorded) and set(held) - set(not_ours) <= set(deleted_volumes):
         _mark_restore_unfinished(slug, False)
 
     return {
