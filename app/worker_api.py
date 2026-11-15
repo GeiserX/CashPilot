@@ -2262,7 +2262,7 @@ def _refuse_beside_routed_copy(slug: str) -> None:
 
 
 def _pull_quietly(image: Any) -> None:
-    """Pull ``image`` if it can be; deploy_raw pulls it again and reports any failure."""
+    """Pull ``image`` if it can be; deploy_raw reports a missing image."""
     if not isinstance(image, str) or not image:
         return
     try:
@@ -2292,11 +2292,11 @@ def _deploy_direct(**kwargs: Any) -> str:
         if marked is not None:
             # Pulled before the tunnel lock: every stop, start and deploy through
             # that proxy, the cap's stop too, waits for it, and a pull can take
-            # minutes. deploy_raw pulls again, which finds the image here.
+            # minutes. deploy_raw does not pull again under the lock.
             _pull_quietly(kwargs.get("image"))
         with proxy_tunnel._deploy_lock(marked) if marked is not None else contextlib.nullcontext():
             _refuse_beside_routed_copy(slug)
-            container_id = orchestrator.deploy_raw(**kwargs)
+            container_id = orchestrator.deploy_raw(**kwargs, pull=marked is None)
             # It runs from this box's own IP now, as the owner confirmed.
             route_gate.release(slug)
         return container_id

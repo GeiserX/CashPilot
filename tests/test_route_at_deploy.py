@@ -948,6 +948,27 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         assert held_at == {"pull": False, "deploy": True}
         assert route_gate.routed() == {}
 
+    def test_the_real_deploy_raw_does_not_pull_again_under_the_tunnel_lock(self, monkeypatch):
+        """A pull asks the registry even for a local image: a slow one must not hold the proxy's lock."""
+        route_gate.mark("honeygain", 3)
+        pulls = []
+        client = _client_with()
+        client.containers.get.side_effect = NotFound("no such container")
+        client.images.get.return_value.attrs = {"Config": {}}
+        client.images.pull.side_effect = lambda image: pulls.append(proxy_tunnel._deploy_lock(3).locked())
+        client.containers.run.side_effect = lambda **kw: pulls.append("run") or MagicMock(id="direct-id")
+        monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+        monkeypatch.setattr(orchestrator, "container_network", lambda mode: None)
+        monkeypatch.setattr(orchestrator, "container_runtime", lambda slug, mode, runtime: None)
+        monkeypatch.setattr(orchestrator, "container_dns", lambda network: None)
+        monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
+        assert (
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", leave_route=True) == "direct-id"
+        )
+        assert pulls == [False, "run"]
+        assert route_gate.routed() == {}
+
 
 class TestAnUnreadableMarker:
     def test_a_start_is_refused_rather_than_put_in_the_shared_tunnel(self, marker):
@@ -1596,7 +1617,7 @@ class TestAFailedRoutedDeployWhoseEarnerSurvived:
         message = "The tunnel could not start. honeygain stays routed through proxy 1 on this worker"
         pid, err, copies, record = self._deploy(
             {"error": "routed_copy_may_exist", "message": message},
-            proxy_fields={"username": "copy", "password": "secret-pw"},
+            proxy_fields={"username": "copy", "password": "-".join(["not", "a", "login"])},
         )
         assert err.detail["error"] == "routed_copy_may_exist"
         assert [c["slug"] for c in copies] == ["honeygain"]

@@ -1187,7 +1187,7 @@ def _proxy_refuses_dns(tmp_path: Path, scheme: str, first_rc: int, out: str, rc:
     script = (
         f'read_key() {{ case "$1" in proxy_scheme) echo {scheme} ;; *) echo ;; esac; }}\n'
         "PROXY_IP=203.0.113.5 PROXY_PORT=1080 DNS_TARGET=1.1.1.1\n"
-        f"{body}\nproxy_refuses_dns api.ipify.org\n"
+        f"{body}\nproxy_refuses_dns\n"
     )
     env = {
         **os.environ,
@@ -1262,11 +1262,13 @@ def _dns_rounds(tmp_path: Path, resolves: str, step: int) -> list[str]:
     return asked.read_text().split() if asked.exists() else []
 
 
-def _dns_mode_after_wait(tmp_path: Path, blocked: str) -> list[str]:
+def _dns_mode_after_wait(tmp_path: Path, blocked: str, **stubs_over: str) -> list[str]:
     """Run cp-tunnel's wait with its real proxy_refuses_dns, against an HTTP proxy that refuses port 53.
 
     No name resolves (over-tcp DNS needs port 53). ``blocked``: the names the
-    proxy will not carry. Returns the DNS modes tun2proxy was started again with.
+    proxy will not carry. ``stubs_over`` replaces stub commands by name. Returns
+    the DNS modes tun2proxy was started again with; the clock reading at each
+    restart is written to ``tmp_path / "switched"``.
     """
     import subprocess
 
@@ -1287,6 +1289,7 @@ def _dns_mode_after_wait(tmp_path: Path, blocked: str) -> list[str]:
         "ip": "exit 0",
         "curl": 'case "$*" in *:53/*) printf 403; exit 56 ;; esac\n'
         'for n in $STUB_BLOCKED; do case "$*" in *"https://$n/"*) exit 7 ;; esac; done\nexit 0',
+        **stubs_over,
     }
     for name, stub in stubs.items():
         (bin_dir / name).write_text(f"#!/bin/sh\n{stub}\n")
@@ -1294,7 +1297,7 @@ def _dns_mode_after_wait(tmp_path: Path, blocked: str) -> list[str]:
     script = (
         'read_key() { case "$1" in proxy_scheme) echo http ;; *) echo ;; esac; }\n'
         "PROXY_IP=203.0.113.5 PROXY_PORT=3128 DNS_TARGET=1.1.1.1\n"
-        f'start_tun2proxy() {{ echo "$1" >>{modes}; /bin/sleep 30 & TPID=$!; }}\n'
+        f'start_tun2proxy() {{ echo "$1" >>{modes}; date +%s >>{tmp_path / "switched"}; /bin/sleep 30 & TPID=$!; }}\n'
         f"{body}\n/bin/sleep 30 &\nTPID=$!\n{loop}kill $TPID\n"
     )
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB_BLOCKED": blocked}
@@ -1305,8 +1308,29 @@ def _dns_mode_after_wait(tmp_path: Path, blocked: str) -> list[str]:
 
 class TestTheTunnelFallsBackOnAnyProbeEndpoint:
     def test_a_proxy_that_blocks_one_endpoint_still_gets_proxy_dns(self, tmp_path):
-        """It refuses port 53 and api.ipify.org: the next round asks through it for ifconfig.me, and works."""
+        """It refuses port 53 and api.ipify.org: the same round asks through it for the other two, and works."""
         assert _dns_mode_after_wait(tmp_path, "api.ipify.org") == ["virtual"]
+
+    def test_stalls_on_two_endpoints_and_on_port_53_still_reach_the_third_in_time(self, tmp_path):
+        """Each stall costs its 6 s. Asked one per round, icanhazip.com came in a round the 15 s bound never started.
+
+        The clock runs five times real time, so the 6 s stalls are 1.2 s sleeps.
+        """
+        import time
+
+        stall = "/bin/sleep 1.2; printf 000; exit 28"
+        modes = _dns_mode_after_wait(
+            tmp_path,
+            "",
+            # Perl, not Python: pytest-cov hooks every Python child, which made the clock itself slow.
+            date=f"exec perl -MTime::HiRes=time -e 'printf \"%d\\n\", (time - {time.time()}) * 5'",
+            getent="/bin/sleep 1.2; exit 2",
+            curl=f'case "$*" in *:53/*|*https://api.ipify.org/*|*https://ifconfig.me/*) {stall} ;; esac\nexit 0',
+            sleep="/bin/sleep 0.2",
+        )
+        assert modes == ["virtual"]
+        # One round of three 6 s stalls, so the exit probe keeps most of the worker's 45 s wait.
+        assert int((tmp_path / "switched").read_text()) < 30
 
     def test_control_a_proxy_that_carries_nothing_keeps_dns_over_tcp(self, tmp_path):
         assert _dns_mode_after_wait(tmp_path, "api.ipify.org ifconfig.me icanhazip.com") == []
