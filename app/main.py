@@ -4716,6 +4716,9 @@ async def _deploy_routed(
                 c["worker_id"] == worker_id and c["slug"] == slug for c in await database.list_proxied_copies(proxy_id)
             )
             await database.save_proxied_copy(proxy_id, worker_id, slug)
+        # A redeploy is one whose record already routes it through this proxy;
+        # a plain copy through it leaves a copy record too, but no such route.
+        redeploy = proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == proxy_id
         record = {**spec, "route": {"proxy_id": proxy_id}}
         record.pop("instances", None)
         try:
@@ -4728,14 +4731,15 @@ async def _deploy_routed(
                 timeout=180,
             )
         except HTTPException as exc:
-            if exc.status_code == 504 or (not had_record and _worker_error(exc) == "routed_copy_may_exist"):
+            if exc.status_code == 504 or (not redeploy and _worker_error(exc) == "routed_copy_may_exist"):
                 # The worker may still finish it, or found the earner of a new
                 # routed copy still there after the failure: both records stay, so
                 # the service is listed and capped, its route is kept, and it can
                 # be stopped or removed. A redeploy keeps the record it had: the
                 # earner found may be the old one, still on the old settings.
                 await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
-            elif not had_record:
+            elif not had_record and _worker_error(exc) != "routed_copy_may_exist":
+                # The copy record of an earner that may still run stays, so it stays capped.
                 await database.delete_proxied_copy(proxy_id, worker_id, slug)
             raise
         container_id = str(result.get("container_id") or "remote")
@@ -5828,7 +5832,9 @@ async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
 
 def _mask(text: Any, secrets_: list[str]) -> Any:
     if isinstance(text, dict):
-        return {key: _mask(value, secrets_) for key, value in text.items()}
+        # A refusal's "error" is the worker's own fixed code, never a secret: a
+        # short login inside it would turn it into a code the UI does not know.
+        return {key: value if key == "error" else _mask(value, secrets_) for key, value in text.items()}
     if not isinstance(text, str):
         return text
     for value in sorted(secrets_, key=len, reverse=True):

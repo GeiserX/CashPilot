@@ -1187,7 +1187,7 @@ def _proxy_refuses_dns(tmp_path: Path, scheme: str, first_rc: int, out: str, rc:
     script = (
         f'read_key() {{ case "$1" in proxy_scheme) echo {scheme} ;; *) echo ;; esac; }}\n'
         "PROXY_IP=203.0.113.5 PROXY_PORT=1080 DNS_TARGET=1.1.1.1\n"
-        f"{body}\nproxy_refuses_dns\n"
+        f"{body}\nproxy_refuses_dns api.ipify.org\n"
     )
     env = {
         **os.environ,
@@ -1260,6 +1260,56 @@ def _dns_rounds(tmp_path: Path, resolves: str, step: int) -> list[str]:
     proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
     return asked.read_text().split() if asked.exists() else []
+
+
+def _dns_mode_after_wait(tmp_path: Path, blocked: str) -> list[str]:
+    """Run cp-tunnel's wait with its real proxy_refuses_dns, against an HTTP proxy that refuses port 53.
+
+    No name resolves (over-tcp DNS needs port 53). ``blocked``: the names the
+    proxy will not carry. Returns the DNS modes tun2proxy was started again with.
+    """
+    import subprocess
+
+    start = _CP_TUNNEL.index("    proxy_refuses_dns() {")
+    body = _CP_TUNNEL[start : _CP_TUNNEL.index("\n    }\n", start) + len("\n    }\n")]
+    begin = _CP_TUNNEL.index("    start_tun2proxy over-tcp\n") + len("    start_tun2proxy over-tcp\n")
+    loop = _CP_TUNNEL[begin : _CP_TUNNEL.index("\n    done\n", begin) + len("\n    done\n")]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    clock = tmp_path / "clock"
+    clock.write_text("0")
+    modes = tmp_path / "modes"
+    stubs = {
+        "getent": "exit 2",
+        "date": f"t=$(cat {clock})\necho $((t + 1)) >{clock}\necho $t",
+        "timeout": 'shift\nexec "$@"',
+        "sleep": "exit 0",
+        "ip": "exit 0",
+        "curl": 'case "$*" in *:53/*) printf 403; exit 56 ;; esac\n'
+        'for n in $STUB_BLOCKED; do case "$*" in *"https://$n/"*) exit 7 ;; esac; done\nexit 0',
+    }
+    for name, stub in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{stub}\n")
+        (bin_dir / name).chmod(0o755)
+    script = (
+        'read_key() { case "$1" in proxy_scheme) echo http ;; *) echo ;; esac; }\n'
+        "PROXY_IP=203.0.113.5 PROXY_PORT=3128 DNS_TARGET=1.1.1.1\n"
+        f'start_tun2proxy() {{ echo "$1" >>{modes}; /bin/sleep 30 & TPID=$!; }}\n'
+        f"{body}\n/bin/sleep 30 &\nTPID=$!\n{loop}kill $TPID\n"
+    )
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB_BLOCKED": blocked}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    return modes.read_text().split() if modes.exists() else []
+
+
+class TestTheTunnelFallsBackOnAnyProbeEndpoint:
+    def test_a_proxy_that_blocks_one_endpoint_still_gets_proxy_dns(self, tmp_path):
+        """It refuses port 53 and api.ipify.org: the next round asks through it for ifconfig.me, and works."""
+        assert _dns_mode_after_wait(tmp_path, "api.ipify.org") == ["virtual"]
+
+    def test_control_a_proxy_that_carries_nothing_keeps_dns_over_tcp(self, tmp_path):
+        assert _dns_mode_after_wait(tmp_path, "api.ipify.org ifconfig.me icanhazip.com") == []
 
 
 class TestTheTunnelWaitsForDnsInsideTheReadyBudget:

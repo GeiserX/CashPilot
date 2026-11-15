@@ -239,12 +239,14 @@ else
     # straight at the proxy, not through tun0, so it needs no name resolved
     # here, no tunnel ready yet, and no CONNECT to a literal IP on 443 (a
     # proxy may allow host names only). A proxy that is down fails the first
-    # request; one that allows port 53 opens the connection in the second.
+    # request, to the probe endpoint named in $1 (each round asks the next, so
+    # one endpoint the proxy blocks decides nothing); one that allows port 53
+    # opens the connection in the second.
     proxy_refuses_dns() {
         scheme=$(read_key proxy_scheme)
         at="$(read_key proxy_auth)$PROXY_IP:$PROXY_PORT"
         if [ "$scheme" = socks5 ]; then
-            curl -ks -m 6 -o /dev/null -x "socks5h://$at" https://api.ipify.org/ 2>/dev/null || return 1
+            curl -ks -m 6 -o /dev/null -x "socks5h://$at" "https://$1/" 2>/dev/null || return 1
             # time_pretransfer stays 0 unless the proxy connected us to port 53:
             # a refusal (curl exit 97) and a stall (exit 28) both leave it 0,
             # while a resolver that took the connection and then ignored the
@@ -252,7 +254,7 @@ else
             t=$(curl -s -m 6 -o /dev/null -w '%{time_pretransfer}' -x "socks5://$at" "http://$DNS_TARGET:53/" 2>/dev/null) || true
             case "$t" in *[1-9]*) return 1 ;; *) return 0 ;; esac
         else
-            curl -ks -m 6 -o /dev/null -x "http://$at" https://api.ipify.org/ 2>/dev/null || return 1
+            curl -ks -m 6 -o /dev/null -x "http://$at" "https://$1/" 2>/dev/null || return 1
             # Any answer to the CONNECT but 2xx, or none at all within 6 s.
             code=$(curl -s -m 6 -p -o /dev/null -w '%{http_connect}' -x "http://$at" "http://$DNS_TARGET:53/" 2>/dev/null) || true
             case "$code" in 2??) return 1 ;; *) return 0 ;; esac
@@ -277,7 +279,7 @@ else
         shift
         set -- "$@" "$name"
         timeout 6 getent hosts "$name" >/dev/null 2>&1 && break
-        if proxy_refuses_dns; then
+        if proxy_refuses_dns "$name"; then
             echo "cp-tunnel: the proxy refuses DNS over TCP (port 53), so names are resolved by the proxy instead. A name that points at the proxy's own network then reaches it; allow TCP 53 on the proxy to close that" >&2
             kill "$TPID" 2>/dev/null
             wait "$TPID" 2>/dev/null || true

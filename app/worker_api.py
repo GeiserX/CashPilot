@@ -2261,6 +2261,16 @@ def _refuse_beside_routed_copy(slug: str) -> None:
         )
 
 
+def _pull_quietly(image: Any) -> None:
+    """Pull ``image`` if it can be; deploy_raw pulls it again and reports any failure."""
+    if not isinstance(image, str) or not image:
+        return
+    try:
+        orchestrator._get_client().images.pull(image)
+    except Exception as exc:  # noqa: BLE001 - deploy_raw decides what a failed pull means
+        logger.warning("Could not pull %s ahead of the deploy: %s", image, proxy_tunnel.redact(str(exc)))
+
+
 def _deploy_direct(**kwargs: Any) -> str:
     """orchestrator.deploy_raw, and with an approval to leave the route, forget the route in the same lock.
 
@@ -2279,6 +2289,11 @@ def _deploy_direct(**kwargs: Any) -> str:
             marked = route_gate.routed().get(slug)
         except (OSError, ValueError):
             marked = None  # _refuse_beside_routed_copy reads it again and refuses
+        if marked is not None:
+            # Pulled before the tunnel lock: every stop, start and deploy through
+            # that proxy, the cap's stop too, waits for it, and a pull can take
+            # minutes. deploy_raw pulls again, which finds the image here.
+            _pull_quietly(kwargs.get("image"))
         with proxy_tunnel._deploy_lock(marked) if marked is not None else contextlib.nullcontext():
             _refuse_beside_routed_copy(slug)
             container_id = orchestrator.deploy_raw(**kwargs)

@@ -864,6 +864,43 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
             worker_api._deploy_routed("honeygain", 3, BODY, PROXY, None)
         assert route_gate.routed() == {"honeygain": 2}
 
+    def test_a_copy_deploy_through_the_old_proxy_waits_for_the_failure_path_decision(self, monkeypatch):
+        """Proxy 2's lock is held from the look to the change: the copy reads the mark only once 2 is back."""
+        route_gate.mark("honeygain", 2)
+        routed_thread = threading.current_thread()
+        copies = []
+        copy_done = threading.Event()
+
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
+            if threading.current_thread() is routed_thread:
+                raise RuntimeError("tunnel did not start")
+            copies.append(own_tunnel)
+            copy_done.set()
+            return {"container_id": "c"}
+
+        looks = []
+
+        def routed_copies(slug, marked):
+            looks.append(marked)
+            if len(looks) == 2:  # the look after the failure, with the mark on 3
+                threading.Thread(
+                    target=proxy_tunnel.deploy, args=("honeygain", 2, BODY, PROXY, None), daemon=True
+                ).start()
+                copy_done.wait(0.5)  # lands now unless proxy 2's lock holds it back
+            return [(2, "cashpilot-honeygain-p2")] if copies and copies[0] else []
+
+        monkeypatch.setattr(proxy_tunnel, "_deploy", tunnel_deploy)
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", routed_copies)
+        monkeypatch.setattr(
+            proxy_tunnel, "copy_name", lambda slug, pid: "cashpilot-honeygain-p2" if copies and not copies[0] else None
+        )
+        monkeypatch.setattr(orchestrator, "service_instances", lambda slug: [])
+        with pytest.raises(HTTPException):
+            worker_api._deploy_routed("honeygain", 3, BODY, PROXY, None)
+        assert copy_done.wait(5)
+        assert route_gate.routed() == {"honeygain": 2}
+        assert copies == [True]  # built under the route put back, in a tunnel of its own
+
     def test_a_direct_deploy_leaving_the_route_and_a_copy_deploy_never_interleave(self, monkeypatch):
         """The mark is checked and forgotten under the tunnel lock: the copy deploy waits, then shares the tunnel."""
         route_gate.mark("honeygain", 3)
@@ -889,6 +926,27 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         assert copy_made.wait(5)
         assert route_gate.routed() == {}
         assert copies == [False]  # never a tunnel of its own that no route covers
+
+    def test_a_direct_deploy_leaving_the_route_pulls_its_image_outside_the_tunnel_lock(self, monkeypatch):
+        """Every stop through the proxy, the cap's too, waits for that lock: a long pull must not hold it."""
+        route_gate.mark("honeygain", 3)
+        held_at = {}
+        client = MagicMock()
+        client.images.pull.side_effect = lambda image: held_at.setdefault("pull", proxy_tunnel._deploy_lock(3).locked())
+
+        def deploy_raw(**kwargs):
+            held_at["deploy"] = proxy_tunnel._deploy_lock(3).locked()
+            return "direct-id"
+
+        monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+        monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
+        monkeypatch.setattr(orchestrator, "deploy_raw", deploy_raw)
+        assert (
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", leave_route=True) == "direct-id"
+        )
+        assert held_at == {"pull": False, "deploy": True}
+        assert route_gate.routed() == {}
 
 
 class TestAnUnreadableMarker:
@@ -1100,9 +1158,9 @@ class _Ui:
                 stack.enter_context(p)
             yield
 
-    async def proxy(self):
+    async def proxy(self, **fields):
         created = await main.api_create_proxy(
-            _Req({"name": "Home", "kind": "socks5", "host": "h.example", "port": 1}), {}
+            _Req({"name": "Home", "kind": "socks5", "host": "h.example", "port": 1, **fields}), {}
         )
         return created["id"]
 
@@ -1488,12 +1546,18 @@ class TestAFailedRoutedDeployWhoseEarnerSurvived:
             patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("http://w:8081", {}))),
         )
 
-    def _deploy(self, detail):
+    def _deploy(self, detail, *, proxy_fields=None, plain_copy_first=False):
         ui = _Ui()
         hop = ui.hop
 
         async def go():
-            pid = await ui.proxy()
+            pid = await ui.proxy(**(proxy_fields or {}))
+            if plain_copy_first:
+                # Deployed direct before, with a plain copy through this proxy: a copy record, no route.
+                await database.save_deployment(
+                    slug="honeygain", container_id="c", spec={"image": "honeygain/honeygain", "env": ENV}, worker_id=1
+                )
+                await database.save_proxied_copy(pid, 1, "honeygain")
             with ExitStack() as stack:
                 for p in self._worker_answering(409, detail):
                     stack.enter_context(p)
@@ -1514,6 +1578,27 @@ class TestAFailedRoutedDeployWhoseEarnerSurvived:
         pid, err, copies, record = self._deploy({"error": "routed_copy_may_exist", "message": message})
         assert err.status_code == 409
         assert err.detail == {"error": "routed_copy_may_exist", "message": message}
+        assert [c["slug"] for c in copies] == ["honeygain"]
+        assert proxies.route_of(record) == pid
+
+    def test_a_first_routed_deploy_over_a_plain_copy_is_not_a_redeploy(self, db):
+        """The plain copy left a copy record but no route: the earner found is the new routed one, so it is recorded."""
+        message = "The tunnel could not start. honeygain stays routed through proxy 1 on this worker"
+        pid, err, copies, record = self._deploy(
+            {"error": "routed_copy_may_exist", "message": message}, plain_copy_first=True
+        )
+        assert err.status_code == 409 and err.detail["error"] == "routed_copy_may_exist"
+        assert [c["slug"] for c in copies] == ["honeygain"]
+        assert proxies.route_of(record) == pid
+
+    def test_a_proxy_login_inside_the_error_code_does_not_break_it(self, db):
+        """Only the message is masked: a short username such as "copy" must not turn the code into another one."""
+        message = "The tunnel could not start. honeygain stays routed through proxy 1 on this worker"
+        pid, err, copies, record = self._deploy(
+            {"error": "routed_copy_may_exist", "message": message},
+            proxy_fields={"username": "copy", "password": "secret-pw"},
+        )
+        assert err.detail["error"] == "routed_copy_may_exist"
         assert [c["slug"] for c in copies] == ["honeygain"]
         assert proxies.route_of(record) == pid
 
