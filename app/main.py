@@ -4728,10 +4728,12 @@ async def _deploy_routed(
                 timeout=180,
             )
         except HTTPException as exc:
-            if exc.status_code == 504 or _worker_error(exc) == "routed_copy_may_exist":
-                # The worker may still finish it, or found its earner still there
-                # after the failure: both records stay, so the service is listed
-                # and capped, its route is kept, and it can be stopped or removed.
+            if exc.status_code == 504 or (not had_record and _worker_error(exc) == "routed_copy_may_exist"):
+                # The worker may still finish it, or found the earner of a new
+                # routed copy still there after the failure: both records stay, so
+                # the service is listed and capped, its route is kept, and it can
+                # be stopped or removed. A redeploy keeps the record it had: the
+                # earner found may be the old one, still on the old settings.
                 await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
             elif not had_record:
                 await database.delete_proxied_copy(proxy_id, worker_id, slug)

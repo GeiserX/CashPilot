@@ -2027,24 +2027,34 @@ def _deploy_routed(
             # own IP beside it without the owner's password. Looked for and
             # released under the tunnel lock, as above: a copy deploy that came
             # in after the failure is either counted here or sees no mark.
-            restore = before if before == int(proxy_id) else None
-            with proxy_tunnel._deploy_lock(proxy_id):
+            # Another proxy's route (``before``) is decided under its lock and this
+            # one's together, taken in id order (nothing else holds two): a copy
+            # deploy through either reads the mark under its own, so none can
+            # land between the look and the change. The mark is never left empty
+            # where a route stood: a direct deploy would then need no password.
+            locks = sorted({int(proxy_id)} | ({int(before)} if before is not None else set()))
+            with contextlib.ExitStack() as held:
+                for pid in locks:
+                    held.enter_context(proxy_tunnel._deploy_lock(pid))
                 try:
                     left = [name for pid, name in proxy_tunnel.routed_copies(slug, proxy_id) if pid == int(proxy_id)]
                 except Exception as look:  # noqa: BLE001 - not knowing is not "none"
                     left = [f"unknown ({proxy_tunnel.redact(str(look))[:120]})"]
-                if not left:
-                    route_gate.release(slug, restore)
-            if not left and restore is None and before is not None:
-                # Another proxy's route goes back under that proxy's lock. A copy
-                # through it found no mark meanwhile and shares its tunnel: no
-                # route is put back over it. No routed one was there (asked above).
-                with proxy_tunnel._deploy_lock(before):
+                if not left and (before is None or before == int(proxy_id)):
+                    route_gate.release(slug, before)
+                elif not left:
+                    # Put back unless a copy through ``before`` came in while the
+                    # mark named this proxy and so shares that proxy's tunnel: a
+                    # route over it would cover an earner that is not routed. The
+                    # mark stays here then, on a proxy with no copy, so the route
+                    # still asks for the password. A copy through ``before`` in a
+                    # tunnel of its own was built under its route: it goes back.
                     try:
                         shared = proxy_tunnel.copy_name(slug, before)
-                    except Exception:  # noqa: BLE001 - not knowing keeps the route, and the password
-                        shared = None
-                    if shared is None:
+                        own = any(pid == int(before) for pid, _ in proxy_tunnel.routed_copies(slug, before))
+                    except Exception:  # noqa: BLE001 - not knowing keeps the mark here, and the password
+                        shared, own = "unknown", False
+                    if shared is None or own:
                         route_gate.release(slug, before)
             if left:
                 # A code the UI reads, as after a timeout: it keeps the copy and
