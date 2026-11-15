@@ -2881,3 +2881,125 @@ class TestADeployReportedDoneStaysDone:
         assert proxy_tunnel._read_names(proxy_tunnel.NEW_MARKER) == set()
         _heartbeat()
         assert docker.named(NAME).status == "running"
+
+    def test_a_redeploy_whose_new_record_cannot_be_read_leaves_the_copy_as_it_was(self, docker, tmp_path):
+        """Read before deploy_raw: undoing after it would remove the new earner with the old one already gone."""
+        _deploy("honeygain")
+        old = docker.named(NAME)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        (tmp_path / "new-dir").mkdir()
+        with (
+            patch.object(proxy_tunnel, "NEW_MARKER", str(tmp_path / "new-dir")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="left as it was"),
+        ):
+            _deploy("honeygain")
+        assert docker.named(NAME) is old and old.status == "running"
+        assert docker.named("cashpilot-tunnel-p3") is tunnel and tunnel.status == "running"
+
+    def test_a_redeploy_whose_new_record_is_not_text_leaves_the_copy_as_it_was(self, docker, tmp_path):
+        _deploy("honeygain")
+        old = docker.named(NAME)
+        marker = tmp_path / "new-garbled"
+        marker.write_bytes(b"\xff\xfe\x00garbled\n")
+        with (
+            patch.object(proxy_tunnel, "NEW_MARKER", str(marker)),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="left as it was"),
+        ):
+            _deploy("honeygain")
+        assert docker.named(NAME) is old and old.status == "running"
+
+    def test_a_kept_record_that_cannot_be_cleared_with_the_aside_unreadable_is_a_success(self, docker):
+        """The old earner is gone by id: the deploy went through, whatever a name lookup answers."""
+        _deploy("honeygain")
+        old = docker.named(NAME)
+        real_get = docker.get
+
+        def get(key):
+            if key == NAME + orchestrator.REPLACED_SUFFIX and old.id not in docker.by_id:
+                raise APIError("500 Server Error: daemon busy")
+            return real_get(key)
+
+        with _clearing_fails("KEPT_MARKER"), patch.object(docker, "get", side_effect=get):
+            result = _deploy("honeygain")
+        new = docker.named(NAME)
+        assert result["container_id"] == new.id and new.status == "running" and old.id not in docker.by_id
+        _heartbeat()
+        assert docker.named(NAME) is new and new.status == "running"
+
+    def test_a_failed_commit_never_removes_the_new_earner_once_the_old_one_may_be_gone(self, docker):
+        """Not known whether the old earner is still here: the new one stays, never the box left with no copy."""
+        _deploy("honeygain")
+        old = docker.named(NAME)
+        old_id = old.id
+        real_get = docker.get
+
+        def get(key):
+            if key == old_id and old_id not in docker.by_id:
+                raise APIError("500 Server Error: daemon busy")
+            return real_get(key)
+
+        with _clearing_fails("KEPT_MARKER"), patch.object(docker, "get", side_effect=get):
+            with pytest.raises(proxy_tunnel.ProxyTunnelError):
+                _deploy("honeygain")
+            new = docker.named(NAME)
+            assert new is not None and new.id != old_id and new.status == "running"
+        _heartbeat()
+        assert docker.named(NAME) is new and new.status == "running"
+
+    def test_a_container_under_the_aside_name_that_is_not_this_copy_never_blocks_a_deploy(self, docker):
+        """Only this copy's own old earner aside is the copy; anything else is deploy_raw's to handle."""
+        _deploy("earnapp")
+        docker.create(
+            name=NAME + orchestrator.REPLACED_SUFFIX,
+            labels={LABEL_MANAGED: "true", LABEL_SERVICE: "honeygain"},
+            network_mode="bridge",
+        )
+        result = _deploy("honeygain")
+        new = docker.named(NAME)
+        assert result["container_id"] == new.id and new.status == "running"
+
+    def test_a_manual_start_never_runs_an_earner_a_first_deploy_died_in(self, docker):
+        """Recorded in NEW_MARKER: it never was the copy, so a start refuses it as the heartbeat would."""
+        _deploy("earnapp")
+        real = orchestrator.deploy_raw.side_effect
+
+        def dies_after_the_start(**kw):
+            real(**kw)
+            raise _WorkerDied
+
+        with patch.object(orchestrator, "deploy_raw", side_effect=dies_after_the_start), pytest.raises(_WorkerDied):
+            _deploy("honeygain")
+        left = docker.named(NAME)
+        left.stop()
+        starts = left.starts
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="did not finish"):
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert left.status == "exited" and left.starts == starts
+
+    def test_a_redeploy_never_needs_the_new_record_once_the_old_earner_is_gone(self, docker):
+        """Unreadable only after deploy_raw removed the old earner: never named there, so the deploy stands."""
+        _deploy("honeygain")
+        old = docker.named(NAME)
+        real_read = proxy_tunnel._read_names
+        real_raw = orchestrator.deploy_raw.side_effect
+        broken = []
+
+        def read(path):
+            if broken and path == proxy_tunnel.NEW_MARKER:
+                raise OSError(5, "Input/output error")
+            return real_read(path)
+
+        def raw(**kw):
+            result = real_raw(**kw)
+            broken.append(True)
+            return result
+
+        with (
+            patch.object(proxy_tunnel, "_read_names", side_effect=read),
+            patch.object(orchestrator, "deploy_raw", side_effect=raw),
+        ):
+            result = _deploy("honeygain")
+        new = docker.named(NAME)
+        assert result["container_id"] == new.id and new.status == "running" and old.id not in docker.by_id
+        _heartbeat()
+        assert docker.named(NAME) is new and new.status == "running"

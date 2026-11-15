@@ -154,11 +154,15 @@ NEW_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_ne
 
 
 def _read_names(path: str) -> set[str]:
+    """The names in the marker at ``path``; none when it does not exist. Raises OSError when it cannot be read."""
     try:
         with open(path, encoding="utf-8") as fh:
             return {line.strip() for line in fh if line.strip()}
     except FileNotFoundError:
         return set()
+    except UnicodeDecodeError as exc:
+        # A garbled marker is one that cannot be read: every caller handles OSError.
+        raise OSError(f"{os.path.basename(path)} is not text ({exc.reason})") from None
 
 
 def _write_names(path: str, names: set[str]) -> None:
@@ -1474,6 +1478,15 @@ def _deploy(
             _set_held(name, True, strict=True, rewrite=True)
         first = previous is None or not _is_ours(previous, slug, proxy_id)
         if not first:
+            # Read now, while a failure changes nothing: a name a dead first
+            # deploy left there is cleared on commit, after deploy_raw has
+            # removed the old earner, and nothing else may need the read then.
+            try:
+                stale_new = name in _read_names(NEW_MARKER)
+            except OSError as exc:
+                raise ProxyTunnelError(
+                    f"Could not read which deploys did not finish ({exc}); {name} was left as it was"
+                ) from None
             # On disk before deploy_raw moves it aside: until this deploy says
             # how it ended, the old earner aside is the copy (_aside_is_copy).
             _set_kept(str(previous.id), True, strict=True)
@@ -1505,7 +1518,7 @@ def _deploy(
         )
         # Recorded as done before it is reported, or undone below: a record
         # left saying otherwise would have the heartbeat undo it.
-        _commit(client, name, None if first else previous)
+        _commit(client, name, None if first else previous, clear_new=first or stale_new)
     except Exception:
         # docker-py's run leaves the container created when only its start
         # fails; the heartbeat would start it later, outside the owner's view.
@@ -1519,9 +1532,17 @@ def _deploy(
         # A read or a record that fails here (the daemon that did not answer the
         # start may not answer this either) skips neither the put back nor the
         # tunnel restore: the old earner aside stays the copy through KEPT_MARKER.
+        # On a redeploy the new earner goes only while the old one is still
+        # here to be put back: once deploy_raw has removed it (a commit that
+        # failed after), the new one is the only copy left. Not known: kept.
         try:
             left = _get(client, name)
-            if left is not None and _is_ours(left, slug, proxy_id) and (previous is None or left.id != previous.id):
+            if (
+                left is not None
+                and _is_ours(left, slug, proxy_id)
+                and (previous is None or left.id != previous.id)
+                and (first or _get(client, str(previous.id)) is not None)
+            ):
                 _set_failed(str(left.id), True)
                 with contextlib.suppress(Exception):
                     _remove_quietly(left, 2)
@@ -1574,28 +1595,37 @@ def _deploy(
     return {"container_id": container_id, "tunnel_id": tunnel.id, "exit": exit_info}
 
 
-def _commit(client: Any, name: str, previous: Any | None) -> None:
+def _commit(client: Any, name: str, previous: Any | None, *, clear_new: bool) -> None:
     """Record that the deploy of ``name`` went through, before it is reported. ProxyTunnelError when it cannot.
 
     The heartbeat undoes the earner of a first deploy still recorded
     (NEW_MARKER), and the earner beside an old earner still recorded aside
-    (KEPT_MARKER). So the first record is cleared, and the second is cleared or
-    its old earner is gone, before the deploy is reported as done. When that
+    (KEPT_MARKER). So the first record is cleared (``clear_new``: this deploy
+    wrote it, or saw it before deploy_raw), and the second is cleared or its
+    old earner is gone, before the deploy is reported as done. When that
     cannot be done the caller undoes the deploy: the old earner is never lost,
     and a deploy reported as done is never undone.
     """
-    if not _set_new(name, False):
+    if clear_new and not _set_new(name, False):
         raise ProxyTunnelError(
             f"{name} was not deployed: the worker could not record on disk that the deploy went through, so it "
             "was undone. Try again in a minute."
         )
     if previous is None or _set_kept(str(previous.id), False):
         return
-    # deploy_raw removes the old earner once the new one runs. One Docker
-    # would not remove then is a leftover now: it goes before the deploy is
-    # reported, and the record naming it no longer matters.
-    aside = _get(client, name + orchestrator.REPLACED_SUFFIX)
-    if aside is None or aside.id != previous.id:
+    # deploy_raw removes the old earner once the new one runs, so one gone (by
+    # id, whatever its name) leaves a record that names nothing: done. One
+    # Docker would not remove then is a leftover now: it goes before the
+    # deploy is reported.
+    try:
+        aside = _get(client, str(previous.id))
+    except Exception as exc:  # noqa: BLE001 - reported; the caller keeps the new earner (not known gone)
+        raise ProxyTunnelError(
+            f"{name} may not have been replaced: the worker could not record on disk that the deploy went "
+            f"through, nor ask Docker whether the previous copy is still here ({redact(str(exc))}). The next "
+            "heartbeat keeps whichever is the copy."
+        ) from None
+    if aside is None or str(aside.name) == name:
         return
     try:
         _remove_quietly(aside, 2, volumes=False)
@@ -1642,14 +1672,14 @@ def _settle_before_deploy(client: Any, name: str, slug: str, proxy_id: int) -> N
     proxy's lock.
     """
     aside_name = name + orchestrator.REPLACED_SUFFIX
-    if (aside := _get(client, aside_name)) is None:
-        return
+    if not _is_aside_of(_get(client, aside_name), name):
+        return  # none, or not this copy's old earner: deploy_raw's to handle, as before
     try:
-        _settle_replaced(client, aside)
+        _settle_replaced(client, _get(client, aside_name))
     except Exception as exc:  # noqa: BLE001 - what is left is checked below
         logger.warning("Could not settle %s before a deploy: %s", aside_name, redact(str(exc)))
     current = _get(client, name)
-    if _get(client, aside_name) is None:
+    if not _is_aside_of(aside := _get(client, aside_name), name):
         return
     if not (_is_ours(current, slug, proxy_id) and _is_earner(current)):
         # The name is free and the aside could not get it back: it is the copy,
@@ -1685,7 +1715,7 @@ def _settle_replaced(client: Any, aside: Any) -> str | None:
     slug, pid = labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, "")
     aside_name = str(aside.name)
     name = aside_name.removesuffix(orchestrator.REPLACED_SUFFIX)
-    if not (_is_earner(aside) and pid.isdigit() and name != aside_name and name == earner_name(slug, int(pid))):
+    if name == aside_name or not _is_aside_of(aside, name):
         return None
     current = _get(client, name)
     if current is None:
@@ -1714,6 +1744,18 @@ def _settle_replaced(client: Any, aside: Any) -> str | None:
     _remove_quietly(aside, 2, volumes=False)
     _remove_anonymous_volumes(client, aside)
     return f"removed {aside_name}"
+
+
+def _is_aside_of(aside: Any | None, name: str) -> bool:
+    """Whether ``aside`` is the copy ``name``'s own earner (by its labels), so one _settle_replaced handles."""
+    labels = _labels(aside)
+    pid = labels.get(LABEL_PROXY, "")
+    return (
+        aside is not None
+        and _is_earner(aside)
+        and pid.isdigit()
+        and name == earner_name(labels.get(LABEL_SERVICE, ""), int(pid))
+    )
 
 
 def _never_ran(container: Any) -> bool:
@@ -1816,6 +1858,17 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
     earner = _get(client, name)
     if not _is_ours(earner, slug, proxy_id):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
+    # One a deploy that failed or never said it went through left is never the
+    # copy: never started, as the heartbeat never starts it (it removes it).
+    try:
+        unfinished = _recorded_failed(earner)
+    except OSError as exc:
+        raise ProxyTunnelError(f"Could not read which deploys did not finish ({exc}); {name} was not started") from None
+    if unfinished:
+        raise ProxyTunnelError(
+            f"{name} was not started: a deploy that did not finish left it, so it is not the copy. The next "
+            "heartbeat removes it; deploy the service again."
+        )
     tunnel = _tunnel_of(client, earner, slug, proxy_id)
     if tunnel is not None and not _is_shared(tunnel) and proxy is None:
         return _start_legacy(slug, earner, tunnel, name)
