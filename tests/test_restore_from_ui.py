@@ -4326,8 +4326,13 @@ class TestAHelperMountWithoutTheNonceIsNotTheRestores:
             orchestrator.restore_state("mysterium", _archives(), TestTheRestoreSequence.EXTRA_DEPLOY)
         helper = orchestrator._restore_helper("mysterium")
         assert [m["Name"] for m in helper.attrs["Mounts"]] == ["mysterium-data"]
+        # The owner is never asked to approve the other client's volume as what the restore wrote.
+        with pytest.raises(orchestrator.CriticalVolumeError) as refusal:
+            orchestrator.remove_service("mysterium", delete_volumes=True, only_if_restore_unfinished=True)
+        assert [b["volume"] for b in refusal.value.blocked] == ["mysterium-extra"]
+        assert "mysterium-data" not in refusal.value.critical_set
         result = _owner_removes("mysterium", only_if_restore_unfinished=True)
-        assert result["deleted_volumes"] == ["mysterium-extra"]
+        assert result["deleted_volumes"] == ["mysterium-extra"] and result["failed_volumes"] == []
         assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
         assert ("volume", "mysterium-data") not in docker.removed
 
@@ -4381,3 +4386,88 @@ class TestTheLastReadBeforeTheDelete:
         result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == ["mysterium-data"] and docker.volume_map == {}
         assert orchestrator.restore_marks() == set()
+
+
+# ---------------------------------------------------------------------------
+# Round 18: a replacement service mounting a replacement volume, a volume made
+# this second, and a delete that holds no worker-wide lock
+# ---------------------------------------------------------------------------
+
+
+def _docker_time(seconds_ago: float = 0) -> str:
+    """A CreatedAt as Docker gives it: RFC 3339, to the second."""
+    return (datetime.now(UTC) - timedelta(seconds=seconds_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class TestAReplacementServiceOverAReplacementVolumeIsNotTheRestores:
+    def test_the_owners_remove_of_the_unfinished_restore_removes_nothing(self, docker):
+        _recorded(docker)
+        # Another client replaces the restore's volume and deploys the service over it.
+        _swap(docker)
+        docker.deploy_raw(slug="mysterium", volumes=MYSTERIUM_DEPLOY["volumes"], start=False)
+        with pytest.raises(orchestrator.RestoreClearedError, match="mysterium-data"):
+            _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert "cashpilot-mysterium" in docker.container_map and docker.removed == []
+        assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
+        assert orchestrator.restore_marks() == {"mysterium"}
+
+    def test_control_the_restores_own_volume_under_the_service_goes(self, docker):
+        _recorded(docker)
+        docker.deploy_raw(slug="mysterium", volumes=MYSTERIUM_DEPLOY["volumes"], start=False)
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and docker.volume_map == {}
+        assert orchestrator.restore_marks() == set()
+
+
+class TestAVolumeMadeThisSecondBindsNoReview:
+    """Docker gives CreatedAt to the second; a record with no nonce leaves only that time to tell volumes apart."""
+
+    def _legacy_record(self, docker, made: str) -> None:
+        """An older worker's record and helper: the volume's name with no nonce."""
+        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+        docker.volumes.create("mysterium-data").attrs["CreatedAt"] = made
+        helper = FakeContainer(
+            docker,
+            "cashpilot-mysterium.restore",
+            {"/restore": "mysterium-data"},
+            {orchestrator.LABEL_RESTORE: "helper"},
+        )
+        helper.attrs["Mounts"] = [{"Type": "volume", "Name": "mysterium-data", "Destination": "/restore"}]
+        docker.container_map[helper.name] = helper
+
+    def test_a_replacement_made_in_the_reviewed_second_is_not_deleted(self, docker):
+        self._legacy_record(docker, _docker_time())
+        with pytest.raises(orchestrator.CriticalVolumeError) as refusal:
+            orchestrator.remove_service("mysterium", delete_volumes=True, only_if_restore_unfinished=True)
+        _swap(docker, same_time=True)
+        with pytest.raises(orchestrator.CriticalVolumeError, match="last 2 seconds"):
+            orchestrator.remove_service(
+                "mysterium",
+                delete_volumes=True,
+                only_if_restore_unfinished=True,
+                allow_delete_critical=True,
+                approved_critical=refusal.value.critical_set,
+            )
+        assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"} and docker.removed == []
+        assert orchestrator.restore_marks() == {"mysterium"}
+
+    def test_control_a_volume_made_a_minute_ago_goes(self, docker):
+        self._legacy_record(docker, _docker_time(60))
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and docker.volume_map == {}
+
+
+class TestTheDeleteHoldsNoWorkerWideLock:
+    def test_a_volume_delete_leaves_other_slugs_and_the_heartbeat_free(self, docker):
+        """Docker's delete of a big volume can take a minute: every other slug's claim and release need the lock."""
+        _recorded(docker)
+        locked_while_deleting = []
+        real_remove = FakeVolume.remove
+
+        def remove(volume, force=False):
+            locked_while_deleting.append(orchestrator._SLUG_WORK_LOCK.locked())
+            return real_remove(volume, force)
+
+        with patch.object(FakeVolume, "remove", remove):
+            result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and locked_while_deleting == [False]

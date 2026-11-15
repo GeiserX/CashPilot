@@ -161,9 +161,13 @@ identity sits on a named Docker volume. The rules:
   each volume the box would delete, with the time Docker made it. You, the
   owner, confirm exactly those, with your password. The box deletes those or
   nothing: a volume made again under the same name since reads another time
-  and stays. As the last step before each delete, the box reads the volume
-  again and compares the time Docker made it, and the restore's label, with
-  what you confirmed; a volume replaced before that read stays. One gap stays
+  and stays. Docker gives that time only to the second, so the box takes no
+  confirmation for a volume made in the last 2 seconds; try again a moment
+  later. If the service now mounts a volume another client made in place of
+  the restore's, the box removes nothing. As the last step before each
+  delete, the box reads the volume again and compares the time Docker made
+  it, and the restore's label, with what you confirmed; a volume replaced
+  before that read stays. One gap stays
   open: Docker deletes a volume by name and has no delete that holds only
   while it is the same volume. If another client with access to the Docker
   socket removes the volume and makes its own under the name in the instant

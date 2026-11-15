@@ -2351,8 +2351,9 @@ class CriticalVolumeError(Exception):
         targets = ", ".join(b["target"] for b in blocked) or "none now"
         if unreadable:
             super().__init__(
-                f"Docker did not say when it made the critical volume(s) of {slug} ({targets}), so the worker "
-                "cannot tell they are the ones you confirmed. Nothing was removed. Try again."
+                f"Docker did not say when it made the critical volume(s) of {slug} ({targets}), or made one in "
+                "the last 2 seconds, so the worker cannot tell they are the ones you confirmed. Nothing was "
+                "removed. Try again."
             )
         elif changed:
             super().__init__(
@@ -2363,15 +2364,35 @@ class CriticalVolumeError(Exception):
             super().__init__(f"Refusing to delete critical volume(s) for {slug}: {targets}")
 
 
+#: Docker gives CreatedAt to the second, so a volume removed and made again
+#: under its name within the second the first one was made reads the same time.
+#: A time younger than this binds nothing (_volume_created): a replacement the
+#: review could not tell apart would have to be made in that second, after the
+#: read, so the owner's review and the delete wait until it has passed.
+_CREATED_BINDS_AFTER_S = 2
+
+
 def _volume_created(client: Any, name: str) -> str | None:
-    """When Docker made the volume ``name`` (its CreatedAt): "" when no volume has the name, None when not known."""
+    """When Docker made the volume ``name`` (its CreatedAt): "" when no volume has the name, None when not known.
+
+    A time less than _CREATED_BINDS_AFTER_S old is not known either: another
+    volume made under the name in the same second would read the same.
+    """
     try:
         value = (getattr(client.volumes.get(name), "attrs", None) or {}).get("CreatedAt")
     except NotFound:
         return ""
     except Exception:  # noqa: BLE001 - not known
         return None
-    return value if isinstance(value, str) and value else None
+    if not (isinstance(value, str) and value):
+        return None
+    try:
+        made = datetime.fromisoformat(value)
+    except ValueError:
+        return value  # Docker gives RFC 3339; another form is compared as it is.
+    if made.tzinfo is not None and (datetime.now(UTC) - made).total_seconds() < _CREATED_BINDS_AFTER_S:
+        return None
+    return value
 
 
 def _critical_entries(blocked: list[dict[str, str]]) -> dict[str, str | None]:
@@ -3875,6 +3896,7 @@ def _remove_service(
     mounts = (getattr(helper, "attrs", None) or {}).get("Mounts") or [] if helper is not None else []
     held = [m["Name"] for m in mounts if m.get("Type") == "volume" and m.get("Name")]
     nonce_on_record = recorded or {}
+    owned: set[str] = set()
     if unfinished:
         owned = set(_restore_owned(slug, nonce_on_record))
         held = sorted({v for v in held if not nonce_on_record.get(v)} | owned)
@@ -3930,6 +3952,21 @@ def _remove_service(
                             "holds": critical[destination],
                         }
                     )
+
+        # The delete of a restore that did not finish deletes only that
+        # restore's data. A volume the service mounts that the record names
+        # with a nonce it no longer carries was replaced by another client,
+        # along with the container that mounts it: neither is the restore's,
+        # so nothing is removed.
+        if only_if_restore_unfinished:
+            replaced = sorted(v for v in volume_names if nonce_on_record.get(v) and v not in owned)
+            if replaced:
+                raise RestoreClearedError(
+                    f"The volume(s) {', '.join(replaced)} that {slug} mounts are not the ones the restore that "
+                    "did not finish made: another client replaced them, so nothing was removed. Check them "
+                    "yourself.",
+                    409,
+                )
 
         # What a restore that did not finish made is reviewed as the container-
         # absent branch reviews it, wherever the container mounts it: the
@@ -3992,29 +4029,32 @@ def _remove_service(
         client = _get_client()
         for vol_name in volume_names:
             try:
-                # The last step before the delete, in the slug work lock: read
-                # the volume fresh and compare the time Docker made it with the
-                # one the owner reviewed, and a restore's volume with the nonce
-                # on record. Once the container and the helper are gone, another
-                # client can remove the volume and make its own under the name;
-                # a replacement made before this read is kept. What stays open:
-                # Docker deletes by name and has no compare-and-delete for a
-                # volume, so a client with Docker socket access that removes and
-                # recreates the volume between this read and the remove call
-                # loses its volume. Keeping every such volume instead would make
-                # every owner-approved delete impossible.
-                with _SLUG_WORK_LOCK:
-                    found = client.volumes.get(vol_name)
-                    created = (getattr(found, "attrs", None) or {}).get("CreatedAt")
-                    nonce = nonce_on_record.get(vol_name) if vol_name in held else None
-                    if nonce and _restore_nonce(found) != nonce:
-                        why = "it is not the one the restore made"
-                        not_ours.append(vol_name)
-                    elif vol_name in approved and created != approved[vol_name]:
-                        why = "it is not the one the owner confirmed"
-                    else:
-                        why = ""
-                        found.remove(force=True)
+                # The last step before the delete: read the volume fresh and
+                # compare the time Docker made it with the one the owner
+                # reviewed, and a restore's volume with the nonce on record.
+                # Once the container and the helper are gone, another client can
+                # remove the volume and make its own under the name; a
+                # replacement made before this read is kept. No worker lock is
+                # held here: _removing[slug] already keeps this worker's restore,
+                # deploy, start and export of the slug out, no other client takes
+                # it, and a slow Docker delete must not stall every other slug
+                # and the heartbeat. What stays open: Docker deletes by name and
+                # has no compare-and-delete for a volume, so a client with Docker
+                # socket access that removes and recreates the volume between
+                # this read and the remove call loses its volume. Keeping every
+                # such volume instead would make every owner-approved delete
+                # impossible.
+                found = client.volumes.get(vol_name)
+                created = (getattr(found, "attrs", None) or {}).get("CreatedAt")
+                nonce = nonce_on_record.get(vol_name) if vol_name in held else None
+                if nonce and _restore_nonce(found) != nonce:
+                    why = "it is not the one the restore made"
+                    not_ours.append(vol_name)
+                elif vol_name in approved and created != approved[vol_name]:
+                    why = "it is not the one the owner confirmed"
+                else:
+                    why = ""
+                    found.remove(force=True)
                 if why:
                     failed_volumes.append(vol_name)
                     logger.warning("Kept volume %s: %s", vol_name, why)
