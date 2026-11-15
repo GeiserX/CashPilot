@@ -1228,8 +1228,9 @@ def _in_place(
         secrets = [*secrets, *_auth_secrets(old)]
     # The digest leaves own_ip out, but the leak guard reads it when the tunnel
     # starts: a new address restarts the tunnel as a settings change does. An
-    # empty one (the worker could not tell its address) is no news, and
-    # _carry_own_ip kept the recorded one in the files written below.
+    # empty one (the worker could not tell its address) is no news:
+    # _carry_own_ip put the recorded one in the files written below, or left
+    # it out when it could not be read, so its file stays as it is.
     same = _read_secret_file(current, "settings") == files["settings"] and (
         not files.get("own_ip") or _read_secret_file(current, "own_ip") == files["own_ip"]
     )
@@ -1263,7 +1264,9 @@ def _in_place(
     # Docker refuses twice is taken for broken.
     for attempt in (1, 2):
         try:
-            if not current.put_archive(SECRET_DIR, _secret_tar({key: files.get(key, "") for key in SECRET_KEYS})):
+            # An own_ip _carry_own_ip left out could not be read: its file stays as it is.
+            written = {key: files.get(key, "") for key in SECRET_KEYS if key != "own_ip" or "own_ip" in files}
+            if not current.put_archive(SECRET_DIR, _secret_tar(written)):
                 raise _Broken("Docker did not take the settings files")
             current.start()
             break
@@ -1304,21 +1307,27 @@ def _carry_own_ip(current: Any, files: dict[str, str]) -> dict[str, str]:
     must never replace a known one: cp-tunnel's leak guard lets any exit
     through when own_ip is empty, the box's own address too.
 
-    A recorded address that cannot be read refuses the change before anything
-    is written: taken for "none recorded", it would be written over with the
-    empty one. With none recorded and none known, the tunnel starts without
-    the comparison, as a first deploy does (docs/proxies.md): its firewall
-    still lets nothing out but the tunnel.
+    A recorded address that cannot be read is left out of the files: written
+    into ``current`` (_in_place), they leave its own_ip file as it is, never
+    empty. A new tunnel started on them (one replacing ``current``, which
+    Docker cannot read when it is broken) has no address to compare, as a
+    first deploy with the address unknown has none. Nothing then tells a proxy
+    whose exit is the box's own address from one that is not; the firewall
+    only forces the traffic through the proxy. The next start that knows the
+    address restarts the tunnel on it.
     """
     if files.get("own_ip"):
         return files
     try:
         stored = _read_secret_file_or_raise(current, "own_ip")
     except Exception as exc:  # noqa: BLE001 - any failure but "not there" is unknown
-        raise ProxyTunnelError(
-            f"Could not read the address {current.name} recorded for this box ({redact(str(exc))}), and the worker "
-            "cannot tell its own address now, so the tunnel was left as it was. Try again in a few minutes."
-        ) from None
+        logger.warning(
+            "Could not read the address %s recorded for this box (%s), and the worker cannot tell its own address "
+            "now; keeping the recorded one where it is",
+            current.name,
+            redact(str(exc)),
+        )
+        return {key: value for key, value in files.items() if key != "own_ip"}
     return {**files, "own_ip": stored} if stored else files
 
 
@@ -2490,6 +2499,17 @@ def _read_exit(sidecar: Any) -> dict[str, Any] | None:
     return result if isinstance(result, dict) and _is_ip(result.get("ip")) else None
 
 
+def _ready_missing(sidecar: Any) -> bool:
+    """Whether the running tunnel answered that /run/ready is not there. An exec that fails is not known: False."""
+    if sidecar.status != "running":
+        return False
+    try:
+        code, _ = sidecar.exec_run(["cat", "/run/ready"], demux=False)
+    except Exception:  # noqa: BLE001 - not known is not "not there"
+        return False
+    return code == 1
+
+
 def _recover(earner: Any, sidecar: Any, slug: str, proxy_id: str, *, ready: bool) -> None:
     """Start or restart an earner inside its ready tunnel, for the heartbeat.
 
@@ -2554,6 +2574,15 @@ def _start_when_ready(earner: Any, sidecar: Any, slug: str, *, ready: bool) -> N
             ready = _read_exit(sidecar) is not None
         action = earner_action(earner, sidecar, ready)
         if action == "stop":
+            # ``ready`` False may come from a read that failed, or from a run
+            # that has ended since: only the current run answering that it has
+            # no /run/ready (written once per run, never removed) stops it.
+            sidecar.reload()
+            run = _started_at(sidecar)
+            missing = _ready_missing(sidecar)
+            sidecar.reload()
+            if not missing or _started_at(sidecar) != run or earner_action(earner, sidecar, False) != "stop":
+                return
             logger.warning("%s runs in a run of its tunnel that has not proved an exit; stopping it", earner.name)
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
             return
@@ -2585,7 +2614,9 @@ def earner_action(earner: Any, sidecar: Any, ready: bool) -> str | None:
     has not written /run/ready is stopped: it joined a namespace nobody proved
     (a start that raced a restart of the tunnel), and it starts again once the
     run is ready. Started before the run, it sits in the old namespace and is
-    left as it is.
+    left as it is. A False ``ready`` may be a read that failed, so the caller
+    stops it only when the current run answers it has no /run/ready
+    (_start_when_ready).
     """
     if getattr(sidecar, "status", "") != "running":
         return None

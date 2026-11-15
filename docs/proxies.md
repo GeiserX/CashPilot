@@ -169,9 +169,16 @@ The tunnel sets things up in this order:
 4. A probe through the tunnel. The earner is started only after the probe sees
    an exit IP within 45 seconds, and, when the worker knows its own public IP,
    one that is not the box's own. Otherwise the copy is refused and the tunnel
-   removed. A copy added through a proxy whose tunnel already runs on the
-   same settings skips all four steps: its earner is created inside the
-   running tunnel, and no other copy is touched.
+   removed. When the worker cannot tell its own IP (the lookup failed, or
+   `CASHPILOT_EGRESS_DETECT=off`), the tunnel keeps the IP it recorded
+   before. With none recorded (a first deploy, or a tunnel that replaced one
+   Docker could no longer read), nothing compares the exit with the box's
+   own IP: the firewall forces traffic through the proxy, but it cannot see
+   a proxy whose exit is your own IP. A later start that knows the IP
+   restarts the tunnel with the check. A copy added through a proxy whose
+   tunnel already runs on the same settings skips all four steps: its
+   earner is created inside the running tunnel, and no other copy is
+   touched.
 
 The tunnel joins the same network as every other earner. With
 [LAN isolation](isolation.md#lan-isolation-by-default) on, that network is fenced
