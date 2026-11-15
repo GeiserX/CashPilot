@@ -202,7 +202,7 @@ class TestValidate:
 
     def test_validate_rejects_the_tunnel_suffixes(self, tmp_path):
         """A routed copy's tunnel ends in the slug, so -next and -moving would read as staged or aside."""
-        for slug in ("node-next", "node-moving"):
+        for slug in ("node-next", "node-moving", "next", "moving"):
             errors = catalog._validate({**self._base(), "slug": slug}, tmp_path / "t.yml")
             assert any("reserve" in e for e in errors), slug
         assert catalog._validate({**self._base(), "slug": "nextnode"}, tmp_path / "t.yml") == []

@@ -1267,6 +1267,18 @@ class TestTheUiDeploysARoute:
         assert error.status_code == status and words in str(error.detail)
         assert ui.calls == []
 
+    @pytest.mark.parametrize("slug", ["custom-foo-next", "custom-moving"])
+    def test_a_custom_service_whose_old_slug_ends_in_a_tunnel_suffix_is_not_routed(self, db, slug):
+        """Slugs made before make_slug refused these would name a tunnel that reads as staged or aside."""
+
+        async def go():
+            with pytest.raises(HTTPException) as exc:
+                await main._check_route(slug, {"name": "Foo"}, 1, 3, None, 1)
+            return exc.value
+
+        error = _run(go)
+        assert error.status_code == 400 and "'-next' or '-moving'" in str(error.detail)
+
     def test_a_service_the_catalog_cannot_route(self, db):
         ui = _Ui()
 
