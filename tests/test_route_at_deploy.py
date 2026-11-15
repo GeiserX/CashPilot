@@ -21,7 +21,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
-from docker.errors import NotFound  # noqa: E402
+from docker.errors import ImageNotFound, NotFound  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -968,6 +968,42 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         )
         assert pulls == [False, "run"]
         assert route_gate.routed() == {}
+
+    def _real_deploy_raw_client(self, monkeypatch):
+        client = _client_with()
+        client.containers.get.side_effect = NotFound("no such container")
+        client.images.get.return_value.attrs = {"Config": {}}
+        monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
+        monkeypatch.setattr(orchestrator, "container_network", lambda mode: None)
+        monkeypatch.setattr(orchestrator, "container_runtime", lambda slug, mode, runtime: None)
+        monkeypatch.setattr(orchestrator, "container_dns", lambda network: None)
+        monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
+        return client
+
+    def test_leaving_the_route_with_no_mark_still_pulls_the_image(self, monkeypatch):
+        """No proxy lock to keep free, so deploy_raw pulls: a moved tag must not run from a stale local copy."""
+        steps = []
+        client = self._real_deploy_raw_client(monkeypatch)
+        client.images.pull.side_effect = lambda image: steps.append(("pull", image))
+        client.containers.run.side_effect = lambda **kw: steps.append("run") or MagicMock(id="direct-id")
+        assert (
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", leave_route=True) == "direct-id"
+        )
+        assert steps == [("pull", "honeygain/honeygain:1"), "run"]
+
+    def test_a_failed_pull_ahead_of_the_lock_keeps_the_registrys_reason(self, monkeypatch):
+        """A typo'd tag and a rate limit read differently; the daemon's "No such image" says neither."""
+        route_gate.mark("honeygain", 3)
+        client = self._real_deploy_raw_client(monkeypatch)
+        client.images.pull.side_effect = ImageNotFound("manifest for honeygain/honeygain:typo not found")
+        client.images.get.side_effect = ImageNotFound("No such image: honeygain/honeygain:typo")
+        with pytest.raises(orchestrator.ContainerRuntimeError) as err:
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:typo", leave_route=True)
+        assert "manifest for honeygain/honeygain:typo not found" in str(err.value)
+        assert client.images.pull.call_count == 1  # not again under the lock
+        client.containers.run.assert_not_called()
+        assert route_gate.routed() == {"honeygain": 3}
 
 
 class TestAnUnreadableMarker:

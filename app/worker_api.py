@@ -2261,14 +2261,16 @@ def _refuse_beside_routed_copy(slug: str) -> None:
         )
 
 
-def _pull_quietly(image: Any) -> None:
-    """Pull ``image`` if it can be; deploy_raw reports a missing image."""
+def _pull_quietly(image: Any) -> Exception | None:
+    """Pull ``image`` if it can be, and return why it could not; deploy_raw reports a missing image."""
     if not isinstance(image, str) or not image:
-        return
+        return None
     try:
         orchestrator._get_client().images.pull(image)
     except Exception as exc:  # noqa: BLE001 - deploy_raw decides what a failed pull means
         logger.warning("Could not pull %s ahead of the deploy: %s", image, proxy_tunnel.redact(str(exc)))
+        return exc
+    return None
 
 
 def _deploy_direct(**kwargs: Any) -> str:
@@ -2289,14 +2291,18 @@ def _deploy_direct(**kwargs: Any) -> str:
             marked = route_gate.routed().get(slug)
         except (OSError, ValueError):
             marked = None  # _refuse_beside_routed_copy reads it again and refuses
+        pull_error = None
         if marked is not None:
             # Pulled before the tunnel lock: every stop, start and deploy through
             # that proxy, the cap's stop too, waits for it, and a pull can take
             # minutes. deploy_raw does not pull again under the lock.
-            _pull_quietly(kwargs.get("image"))
+            # Its error goes on to deploy_raw: without the image, the owner
+            # sees the registry's reason (a typo'd tag, a rate limit), not the
+            # daemon's "No such image".
+            pull_error = _pull_quietly(kwargs.get("image"))
         with proxy_tunnel._deploy_lock(marked) if marked is not None else contextlib.nullcontext():
             _refuse_beside_routed_copy(slug)
-            container_id = orchestrator.deploy_raw(**kwargs, pull=marked is None)
+            container_id = orchestrator.deploy_raw(**kwargs, pull=marked is None, pull_error=pull_error)
             # It runs from this box's own IP now, as the owner confirmed.
             route_gate.release(slug)
         return container_id
