@@ -138,6 +138,12 @@ _held_lock = threading.Lock()
 #: failed one is in: one that started and exited is no proof the deploy went
 #: through, and taking it for the copy would remove the old earner.
 FAILED_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_failed")
+#: Old earners a redeploy is about to move aside, one container id per line,
+#: written before deploy_raw runs and cleared once the deploy says how it
+#: ended. While one is aside it is the copy, whatever holds its name: the
+#: failure of a deploy that died, or whose failure could not be recorded in
+#: FAILED_MARKER, is never taken for a success that removes it.
+KEPT_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_kept")
 
 
 def _read_names(path: str) -> set[str]:
@@ -183,16 +189,43 @@ def _failed_replacement(container: Any) -> bool:
     return _never_ran(container) or str(getattr(container, "id", "")) in _read_names(FAILED_MARKER)
 
 
+def _aside_is_copy(holder: Any, aside: Any) -> bool:
+    """Whether the old earner ``aside`` is still the copy beside ``holder``, which holds its name.
+
+    So when the holder is a failed replacement, or when the redeploy that
+    moved ``aside`` never recorded how it ended (KEPT_MARKER). Raises OSError
+    when a marker cannot be read."""
+    return _failed_replacement(holder) or str(getattr(aside, "id", "")) in _read_names(KEPT_MARKER)
+
+
+def _recorded_failed(container: Any) -> bool:
+    """Whether a failed deploy recorded ``container`` (FAILED_MARKER). Raises OSError when it cannot be read."""
+    return str(getattr(container, "id", "")) in _read_names(FAILED_MARKER)
+
+
 def _set_failed(container_id: str, on: bool) -> None:
     """Record, or forget, a failed deploy's replacement. A failure is logged only."""
+    _set_id(FAILED_MARKER, container_id, on)
+
+
+def _set_kept(container_id: str, on: bool, *, strict: bool = False) -> None:
+    """Record, or forget, an old earner a redeploy moves aside. ``strict`` raises ProxyTunnelError on a failure."""
+    _set_id(KEPT_MARKER, container_id, on, strict=strict)
+
+
+def _set_id(path: str, container_id: str, on: bool, *, strict: bool = False) -> None:
     with _held_lock:
         try:
-            ids = _read_names(FAILED_MARKER)
+            ids = _read_names(path)
             if (container_id in ids) == on:
                 return
-            _write_names(FAILED_MARKER, ids | {container_id} if on else ids - {container_id})
+            _write_names(path, ids | {container_id} if on else ids - {container_id})
         except OSError as exc:
-            logger.warning("Could not record the failed replacement %s: %s", container_id[:12], exc)
+            if strict:
+                raise ProxyTunnelError(
+                    f"Could not record the copy a redeploy replaces ({exc}); it was left as it was"
+                ) from None
+            logger.warning("Could not update %s for %s: %s", os.path.basename(path), container_id[:12], exc)
 
 
 def _set_held(name: str, on: bool, *, strict: bool = False, rewrite: bool = False) -> None:
@@ -1369,6 +1402,8 @@ def _deploy(
         for t in (
             _get(client, shared_tunnel_name(proxy_id, key)),
             _get(client, shared_tunnel_name(proxy_id, key) + STAGED_SUFFIX),
+            # And one a failed redeploy left retired: _ensure_tunnel gives it its name back first.
+            _get(client, shared_tunnel_name(proxy_id, key) + RETIRED_SUFFIX),
         )
         if _is_tunnel_for(t, proxy_id, key)
         for m in _members(client, t)
@@ -1417,6 +1452,10 @@ def _deploy(
             # The stop is cleared once the new earner runs; a marker the disk
             # will not take refuses the deploy now, before anything changes.
             _set_held(name, True, strict=True, rewrite=True)
+        if previous is not None and _is_ours(previous, slug, proxy_id):
+            # On disk before deploy_raw moves it aside: until this deploy says
+            # how it ended, the old earner aside is the copy (_aside_is_copy).
+            _set_kept(str(previous.id), True, strict=True)
     except Exception:
         if retired is not None:
             _restore_retired(client, retired, tunnel)
@@ -1449,14 +1488,22 @@ def _deploy(
         # The failed one is recorded first, whatever state it is in (one whose
         # start got no answer can be "exited"): while Docker keeps it, the old
         # earner aside stays the copy, here and in every later heartbeat.
-        left = _get(client, name)
-        if left is not None and _is_ours(left, slug, proxy_id) and (previous is None or left.id != previous.id):
-            _set_failed(str(left.id), True)
-            with contextlib.suppress(Exception):
-                _remove_quietly(left, 2)
-                _set_failed(str(left.id), False)
+        # A read or a record that fails here (the daemon that did not answer the
+        # start may not answer this either) skips neither the put back nor the
+        # tunnel restore: the old earner aside stays the copy through KEPT_MARKER.
+        try:
+            left = _get(client, name)
+            if left is not None and _is_ours(left, slug, proxy_id) and (previous is None or left.id != previous.id):
+                _set_failed(str(left.id), True)
+                with contextlib.suppress(Exception):
+                    _remove_quietly(left, 2)
+                    _set_failed(str(left.id), False)
+        except Exception as exc:  # noqa: BLE001 - the deploy's own error is the one reported
+            logger.warning("Could not check what the failed deploy of %s left: %s", name, redact(str(exc)))
         with contextlib.suppress(Exception):
             _put_old_back(client, name, slug, proxy_id, was_held)
+            if previous is not None and _get(client, name + orchestrator.REPLACED_SUFFIX) is None:
+                _set_kept(str(previous.id), False)
         if retired is not None:
             _restore_retired(client, retired, tunnel)
         else:
@@ -1468,6 +1515,8 @@ def _deploy(
     # past the stop. A failure here is logged; the deploy is done.
     if was_held:
         _set_held(name, False)
+    if previous is not None:
+        _set_kept(str(previous.id), False)
     # The volumes its image declared went with the old earner when it was
     # removed before its replacement: the new copy starts on fresh ones.
     if previous is not None and previous.id != container_id and _is_ours(previous, slug, proxy_id):
@@ -1542,7 +1591,7 @@ def _settle_before_deploy(client: Any, name: str, slug: str, proxy_id: int) -> N
     if _get(client, aside_name) is None or not (_is_ours(current, slug, proxy_id) and _is_earner(current)):
         return
     try:
-        failed = _failed_replacement(current)
+        failed = _aside_is_copy(current, aside)
     except OSError:
         failed = True  # not known: the copy aside is never taken for a leftover
     if failed:
@@ -1573,13 +1622,14 @@ def _settle_replaced(client: Any, aside: Any) -> str | None:
     current = _get(client, name)
     if current is None:
         aside.rename(name)
+        _set_kept(str(aside.id), False)
         return f"restored {name}"
     if current.id == aside.id:
         return None  # one container under both names: a stale read of one already restored
     if not (_is_ours(current, slug, int(pid)) and _is_earner(current)):
         return None
     try:
-        failed = _failed_replacement(current)
+        failed = _aside_is_copy(current, aside)
     except OSError as exc:
         # Not known whether the deploy went through: both stay as they are.
         logger.warning("Could not read which replacements failed (%s); %s is left aside", exc, aside_name)
@@ -1590,6 +1640,7 @@ def _settle_replaced(client: Any, aside: Any) -> str | None:
         _remove_quietly(current, 2)
         _set_failed(str(current.id), False)
         aside.rename(name)
+        _set_kept(str(aside.id), False)
         return f"restored {name}"
     # As deploy_raw would have removed it once its replacement ran.
     _remove_quietly(aside, 2, volumes=False)
@@ -2175,20 +2226,28 @@ def _start_when_ready(earner: Any, sidecar: Any, slug: str) -> None:
         except OSError as exc:
             logger.warning("Could not read which copies are stopped (%s); starting none", exc)
             return
+        listed = str(earner.name)
         earner.reload()
-        aside = f"{earner.name}{orchestrator.REPLACED_SUFFIX}"
-        if _get(orchestrator._get_client(), aside) is not None:
-            try:
-                failed = _failed_replacement(earner)
-            except OSError:
-                failed = True  # not known: nothing is started
-            if failed:
-                # A failed replacement Docker would not remove: the old earner
-                # aside is the copy, and _settle_replaced gives it the name back.
-                logger.warning(
-                    "Not starting %s: a failed deploy left it, and the copy it replaced is aside", earner.name
-                )
-                return
+        if str(earner.name) != listed:
+            return  # moved aside (or back) since it was listed: the next beat sees it as it is
+        aside = _get(orchestrator._get_client(), f"{earner.name}{orchestrator.REPLACED_SUFFIX}")
+        try:
+            failed = _aside_is_copy(earner, aside) if aside is not None else _recorded_failed(earner)
+        except OSError as exc:
+            logger.warning("Could not read which replacements failed (%s); not starting %s", exc, earner.name)
+            return  # not known: nothing is started, nothing removed
+        if failed and aside is not None:
+            # A failed replacement Docker would not remove: the old earner
+            # aside is the copy, and _settle_replaced gives it the name back.
+            logger.warning("Not starting %s: a failed deploy left it, and the copy it replaced is aside", earner.name)
+            return
+        if failed:
+            # A first deploy that failed and that Docker would not remove: it
+            # never was the copy (the UI dropped its record), so it goes.
+            logger.warning("Not starting %s: a failed deploy left it; removing it", earner.name)
+            _remove_quietly(earner, 2)
+            _set_failed(str(earner.id), False)
+            return
         action = earner_action(earner, sidecar, True)
         if action == "restart":
             earner.restart(timeout=orchestrator._get_stop_timeout(slug))

@@ -46,6 +46,7 @@ def _own_held_marker(tmp_path):
     with (
         patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")),
         patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / ".proxied_failed")),
+        patch.object(proxy_tunnel, "KEPT_MARKER", str(tmp_path / ".proxied_kept")),
     ):
         yield
 

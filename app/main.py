@@ -4775,14 +4775,15 @@ async def _check_route(
     name = svc.get("name") or slug
     if why := proxies.refusal(svc):
         raise HTTPException(status_code=400, detail=why)
-    if f"-{slug}".endswith(("-next", "-moving")):
+    if f"-{slug}".endswith(("-next", "-moving", "-old")):
         # Its own tunnel would be cashpilot-tunnel-p<id>-<slug>, which reads as a
-        # staged or aside tunnel (proxy_tunnel.STAGED_SUFFIX, MOVING_SUFFIX) and
-        # could be removed under it. New slugs never end so (custom_services.
-        # make_slug, catalog._validate); a custom service added before that can.
+        # staged, aside or retired tunnel (proxy_tunnel.STAGED_SUFFIX,
+        # MOVING_SUFFIX, RETIRED_SUFFIX) and could be removed or taken under it.
+        # New slugs never end so (custom_services.make_slug, catalog._validate);
+        # a custom service added before that can.
         raise HTTPException(
             status_code=400,
-            detail=f"{name} has an id ending in '-next' or '-moving', which proxy tunnels use for their own "
+            detail=f"{name} has an id ending in '-next', '-moving' or '-old', which proxy tunnels use for their own "
             "names, so it cannot be deployed through a proxy. Add it again as a new custom service and route that.",
         )
     if instances != 1:

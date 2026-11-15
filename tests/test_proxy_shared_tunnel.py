@@ -293,6 +293,7 @@ def docker(tmp_path):
         patch.object(orchestrator, "_get_stop_timeout", return_value=1),
         patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")),
         patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / ".proxied_failed")),
+        patch.object(proxy_tunnel, "KEPT_MARKER", str(tmp_path / ".proxied_kept")),
         patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": IMAGE}),
         patch.object(proxy_tunnel.time, "sleep", lambda _s: None),
     ):
@@ -2530,3 +2531,152 @@ class TestAnAsideTheHeartbeatCannotSettle:
         ):
             asyncio.run(main._settle_pending_identities(7, containers, complete=True, deadline=True))
         settle.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# A failed redeploy whose outcome cannot be read or recorded keeps the old earner
+# ---------------------------------------------------------------------------
+
+
+class TestAFailureThatCannotBeRecorded:
+    def test_a_read_that_fails_after_deploy_raw_never_costs_the_old_earner(self, docker):
+        """The daemon that did not answer the start does not answer the read either: the copy aside stays."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        stub, made, refused = _failing_redeploy(docker, earner, state="exited")
+        reads = {"left": 0}
+
+        def failing_once():
+            if made and reads["left"] == 0:
+                reads["left"] = 1
+                return True
+            return False
+
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=stub),
+            _get_fails(docker, "cashpilot-honeygain-p3", failing_once),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        (failed,) = made
+        assert reads["left"] == 1
+        _heartbeat()
+        assert earner.id in docker.by_id and failed.status == "exited"
+        refused["on"] = False
+        _heartbeat()
+        assert failed.id not in docker.by_id
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_a_failure_marker_the_disk_refuses_never_costs_the_old_earner(self, docker, tmp_path):
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        stub, made, refused = _failing_redeploy(docker, earner, state="exited")
+        with (
+            patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / "no-such-dir" / "failed")),
+            patch.object(orchestrator, "deploy_raw", side_effect=stub),
+        ):
+            with pytest.raises(orchestrator.ContainerRuntimeError):
+                _deploy("honeygain")
+            (failed,) = made
+            _heartbeat()
+            assert earner.id in docker.by_id and failed.status == "exited"
+            refused["on"] = False
+            _heartbeat()
+        assert failed.id not in docker.by_id
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_a_kept_record_the_disk_refuses_refuses_the_redeploy_before_anything_changes(self, docker, tmp_path):
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        with (
+            patch.object(proxy_tunnel, "KEPT_MARKER", str(tmp_path / "no-such-dir" / "kept")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="left as it was"),
+        ):
+            _deploy("honeygain")
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_a_failed_first_deploy_docker_keeps_is_never_started(self, docker):
+        """No old earner to keep: the failed one is not the copy, so the heartbeat removes it, never starts it."""
+        _deploy("earnapp")
+        refused = {"on": True}
+        made: list[FakeContainer] = []
+
+        def deploy_raw(*, slug, image, env, network_mode, labels, name, **_kw):
+            failed = docker.create(
+                image=image,
+                name=name,
+                network_mode=network_mode,
+                labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
+            )
+            real_remove = failed.remove
+
+            def stuck_remove(force=False, v=False):
+                if refused["on"]:
+                    raise APIError("409 Client Error: removal of container is already in progress")
+                real_remove(force=force, v=v)
+
+            failed.remove = stuck_remove
+            made.append(failed)
+            raise orchestrator.ContainerRuntimeError("did not start")
+
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=deploy_raw),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        (failed,) = made
+        assert failed.status == "created"
+        _heartbeat()
+        assert failed.status == "created"
+        refused["on"] = False
+        _heartbeat()
+        assert failed.id not in docker.by_id
+
+    def test_a_copy_kept_in_a_retired_tunnel_is_not_cloned_by_another_copys_deploy(self, docker):
+        """Its tunnel gets its name back and is used in place: the copy inside keeps its writable layer."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        old_tunnel = docker.named("cashpilot-tunnel-p3")
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+            with (
+                patch.object(orchestrator, "deploy_raw", side_effect=_WorkerDied),
+                pytest.raises(_WorkerDied),
+            ):
+                _deploy("honeygain")
+            assert old_tunnel.name == "cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX
+            _deploy("earnapp")
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+        assert old_tunnel.name == "cashpilot-tunnel-p3"
+        assert _member_ids(docker, old_tunnel) == ["cashpilot-earnapp-p3", "cashpilot-honeygain-p3"]
+
+    def test_an_earner_moved_aside_after_the_listing_is_never_started_under_the_aside_name(self, docker):
+        """The heartbeat listed it under the copy's name; a deploy moved it aside and left a failed one there."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner.stop()
+        listed = copy.copy(earner)
+        earner.rename(f"cashpilot-honeygain-p3{orchestrator.REPLACED_SUFFIX}")
+        docker.create(
+            image="honeygain/honeygain:1",
+            name="cashpilot-honeygain-p3",
+            network_mode=f"container:{tunnel.id}",
+            labels={**earner.labels},
+        )
+        starts = listed.starts
+        proxy_tunnel._start_when_ready(listed, tunnel, "honeygain")
+        # The fake's start acts on the model it is called on, as docker-py's acts on the container's id.
+        assert listed.starts == starts and listed.status == "exited"
+        assert earner.name.endswith(orchestrator.REPLACED_SUFFIX)
+
+    def test_an_unreadable_failure_record_removes_no_earner(self, docker, tmp_path):
+        """Not known whether a deploy failed: nothing is started, and nothing is removed for it."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner.stop()
+        unreadable = tmp_path / "failed-dir"
+        unreadable.mkdir()  # reading a folder raises IsADirectoryError, an OSError
+        with patch.object(proxy_tunnel, "FAILED_MARKER", str(unreadable)):
+            proxy_tunnel._start_when_ready(earner, tunnel, "honeygain")
+        assert earner.id in docker.by_id and earner.status == "exited"
