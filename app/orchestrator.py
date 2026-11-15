@@ -4025,6 +4025,8 @@ def _remove_service(
     failed_volumes: list[str] = []
     # Held volumes another client replaced since the first read: not the restore's.
     not_ours: list[str] = []
+    # Every volume the last read found replaced: kept, and a Remove again cannot change that.
+    replaced: list[str] = []
     if volume_names:
         client = _get_client()
         for vol_name in volume_names:
@@ -4057,6 +4059,7 @@ def _remove_service(
                     found.remove(force=True)
                 if why:
                     failed_volumes.append(vol_name)
+                    replaced.append(vol_name)
                     logger.warning("Kept volume %s: %s", vol_name, why)
                     continue
                 deleted_volumes.append(vol_name)
@@ -4090,7 +4093,10 @@ def _remove_service(
     return {
         "container": name,
         "deleted_volumes": deleted_volumes,
+        # Every volume that stays, replaced ones too, so a caller that reads
+        # only this still reports the delete as partial.
         "failed_volumes": failed_volumes,
+        "replaced_volumes": replaced,
     }
 
 

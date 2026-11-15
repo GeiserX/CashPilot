@@ -3061,8 +3061,16 @@ const CP = (() => {
 
     function removed(result) {
       // A volume the box could not delete stays, and stays marked half-written.
-      const kept = Array.isArray(result?.failed_volumes) ? result.failed_volumes : [];
-      if (kept.length) toast(`${slug} removed${where}, but its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`, 'error');
+      // One another client replaced since the owner's review (or since the
+      // restore made it) is that client's: the box keeps it, and Remove again
+      // would not delete it either.
+      const list = (v) => (Array.isArray(v) ? v : []);
+      const replaced = list(result?.replaced_volumes);
+      const kept = list(result?.failed_volumes).filter((v) => !replaced.includes(v));
+      const notes = [];
+      if (kept.length) notes.push(`its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`);
+      if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')} since you confirmed, so the box kept that volume. Check it yourself.`);
+      if (notes.length) toast(`${slug} removed${where}, but ${notes.join(' And ')}`, 'error');
       else toast(`${slug} removed${where}`, 'success');
       loadServicesTable();
       if (pinned) openServiceDetail(slug);

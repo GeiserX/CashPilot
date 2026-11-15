@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import tarfile
+import time
 
 import docker
 from docker.errors import APIError, NotFound
@@ -64,13 +65,20 @@ def remove_with_data(slug: str) -> dict:
 
     The override alone reviewed nothing, so it deletes no critical volume: the
     first call names them (critical_set), the second confirms exactly those.
+    A volume made in the last 2 seconds names no time ("?"), which no approval
+    binds, and here the remove follows the deploy within a second: review
+    again once it is older, as the owner's next Remove reviews afresh.
     """
     from app import orchestrator
 
-    try:
-        return orchestrator.remove_service(slug, delete_volumes=True)
-    except orchestrator.CriticalVolumeError as refusal:
-        reviewed = refusal.critical_set
+    for _ in range(5):
+        try:
+            return orchestrator.remove_service(slug, delete_volumes=True)
+        except orchestrator.CriticalVolumeError as refusal:
+            reviewed = refusal.critical_set
+        if "@?" not in reviewed:
+            break
+        time.sleep(orchestrator._CREATED_BINDS_AFTER_S + 0.5)
     return orchestrator.remove_service(
         slug, delete_volumes=True, allow_delete_critical=True, approved_critical=reviewed
     )

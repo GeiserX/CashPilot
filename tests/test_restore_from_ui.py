@@ -2393,6 +2393,8 @@ class TestStartAndRemoveAroundARestore:
         with patch.object(FakeVolume, "remove", side_effect=APIError("daemon timeout", response=response)):
             result = _owner_removes("mysterium")
         assert result["failed_volumes"] == ["mysterium-data"] and "mysterium-data" in docker.volume_map
+        # A delete Docker refused is not another client's volume: Remove again is the way out.
+        assert result["replaced_volumes"] == []
         assert docker.container_map["cashpilot-mysterium.restore"].mounts == {WRITE_MOUNT: "mysterium-data"}
         assert orchestrator._restore_helper("mysterium") is not None
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
@@ -4111,6 +4113,7 @@ class TestAVolumeMadeAgainBeforeItsDeleteIsKept:
         with patch.object(FakeContainer, "remove", remove_then_replace):
             result = _owner_removes("mysterium")
         assert result["failed_volumes"] == ["mysterium-data"] and result["deleted_volumes"] == []
+        assert result["replaced_volumes"] == ["mysterium-data"]
         assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
 
 
@@ -4247,6 +4250,34 @@ class TestTheLiveDriverRemovesAsTheOwnerDoes:
         assert "FAIL" not in out, out
         assert "PASS  the volume is gone" in out and docker.volume_map == {}
 
+    def test_the_fresh_phase_waits_until_its_new_volume_can_be_reviewed(self, docker, capsys, frozen_clock):
+        """On a real box the remove follows the deploy within a second: the volume reads "?" and binds no approval."""
+        import importlib.util
+
+        path = Path(__file__).resolve().parents[1] / "scripts" / "socket_proxy_live_driver.py"
+        spec = importlib.util.spec_from_file_location("socket_proxy_live_driver", path)
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+
+        def deploy_now(**kw):
+            done = docker.deploy_raw(**{**kw, "start": False})
+            for volume in docker.volume_map.values():
+                volume.attrs["CreatedAt"] = _docker_time()
+            return done
+
+        def sleep(seconds):
+            frozen_clock["now"] += timedelta(seconds=seconds)
+
+        with (
+            patch.object(orchestrator, "deploy_raw", deploy_now),
+            patch.object(driver.docker, "from_env", return_value=docker),
+            patch("time.sleep", sleep),
+        ):
+            driver.phase_fresh()
+        out = capsys.readouterr().out
+        assert "FAIL" not in out, out
+        assert "PASS  the volume is gone" in out and docker.volume_map == {} and docker.container_map == {}
+
 
 # ---------------------------------------------------------------------------
 # Round 17: the nonce is read again right before each write and each delete,
@@ -4376,6 +4407,8 @@ class TestTheLastReadBeforeTheDelete:
         with patch.object(FakeContainer, "remove", remove_then_swap):
             result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == [] and result["failed_volumes"] == ["mysterium-data"]
+        # Kept as another client's, which a Remove again cannot change: the dashboard says so.
+        assert result["replaced_volumes"] == ["mysterium-data"]
         assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
         # Not the restore's, so no helper is put back over it, and the restore's record goes.
         assert orchestrator._restore_helper("mysterium") is None
@@ -4394,9 +4427,28 @@ class TestTheLastReadBeforeTheDelete:
 # ---------------------------------------------------------------------------
 
 
+#: The worker's clock in the tests that judge a volume's age: a slow runner
+#: must not age a volume the test made "this second".
+_NOW = datetime(2026, 11, 15, 10, 0, 0, tzinfo=UTC)
+
+
 def _docker_time(seconds_ago: float = 0) -> str:
-    """A CreatedAt as Docker gives it: RFC 3339, to the second."""
-    return (datetime.now(UTC) - timedelta(seconds=seconds_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """A CreatedAt as Docker gives it, ``seconds_ago`` before the frozen clock: RFC 3339, to the second."""
+    return (_NOW - timedelta(seconds=seconds_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@pytest.fixture
+def frozen_clock():
+    """Freeze the clock orchestrator._volume_created reads; ``clock["now"]`` moves it."""
+    clock = {"now": _NOW}
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"] if tz is not None else clock["now"].replace(tzinfo=None)
+
+    with patch.object(orchestrator, "datetime", Frozen):
+        yield clock
 
 
 class TestAReplacementServiceOverAReplacementVolumeIsNotTheRestores:
@@ -4435,7 +4487,7 @@ class TestAVolumeMadeThisSecondBindsNoReview:
         helper.attrs["Mounts"] = [{"Type": "volume", "Name": "mysterium-data", "Destination": "/restore"}]
         docker.container_map[helper.name] = helper
 
-    def test_a_replacement_made_in_the_reviewed_second_is_not_deleted(self, docker):
+    def test_a_replacement_made_in_the_reviewed_second_is_not_deleted(self, docker, frozen_clock):
         self._legacy_record(docker, _docker_time())
         with pytest.raises(orchestrator.CriticalVolumeError) as refusal:
             orchestrator.remove_service("mysterium", delete_volumes=True, only_if_restore_unfinished=True)
@@ -4451,10 +4503,29 @@ class TestAVolumeMadeThisSecondBindsNoReview:
         assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"} and docker.removed == []
         assert orchestrator.restore_marks() == {"mysterium"}
 
-    def test_control_a_volume_made_a_minute_ago_goes(self, docker):
+    def test_control_a_volume_made_a_minute_ago_goes(self, docker, frozen_clock):
         self._legacy_record(docker, _docker_time(60))
         result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == ["mysterium-data"] and docker.volume_map == {}
+
+    def test_the_owners_remove_again_after_the_refusal_reviews_afresh_and_goes(self, docker, frozen_clock):
+        """The "?" refusal never sticks: the dashboard's next Remove starts with a new review, never the old approval."""
+        self._legacy_record(docker, _docker_time())
+        with pytest.raises(orchestrator.CriticalVolumeError) as young:
+            orchestrator.remove_service("mysterium", delete_volumes=True, only_if_restore_unfinished=True)
+        assert young.value.critical_set == "mysterium-data@?"
+        with pytest.raises(orchestrator.CriticalVolumeError, match="last 2 seconds"):
+            orchestrator.remove_service(
+                "mysterium",
+                delete_volumes=True,
+                only_if_restore_unfinished=True,
+                allow_delete_critical=True,
+                approved_critical=young.value.critical_set,
+            )
+        frozen_clock["now"] += timedelta(seconds=3)
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and docker.volume_map == {}
+        assert orchestrator.restore_marks() == set()
 
 
 class TestTheDeleteHoldsNoWorkerWideLock:

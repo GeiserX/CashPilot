@@ -91,6 +91,24 @@ const cancel = (text) => !text.startsWith('These volumes');
 const cancelled = await run('removeService', ['mysterium', 7, 'box-a'], box(null), {yes: cancel});
 check('a cancelled review sends no override', !cancelled.some(overridden), JSON.stringify(cancelled));
 
+// --- what the toast says about a volume that stays -------------------------
+// One another client replaced since the review is kept for good: telling the
+// owner to Remove again sends them after a row that is gone.
+const removedWith = (extra) => (path) => {
+  if (path.includes('allow_delete_critical=true')) return {status: 'removed', deleted_volumes: [], ...extra};
+  throw refusal('critical_volume', {critical_set: REVIEWED, blocked: BLOCKED});
+};
+const toastOf = (events) => events.filter((e) => e.kind === 'toast').map((e) => e.text).join('\n');
+const replacedToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a'],
+  removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: ['mysterium-data']})));
+check('a replaced volume is not sent back to Remove again', !replacedToast.includes('Try Remove again'), replacedToast);
+check('a replaced volume is named as another client\'s, kept by the box',
+  replacedToast.includes('another client replaced its volume mysterium-data'), replacedToast);
+const failedToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a'],
+  removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: []})));
+check('control: a volume Docker would not delete still says Remove again',
+  failedToast.includes('mysterium-data could not be deleted and stays. Try Remove again.'), failedToast);
+
 if (bad) {
   console.error(`\n${bad} check(s) failed`);
   process.exit(1);
