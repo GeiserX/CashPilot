@@ -4987,15 +4987,8 @@ def _forget_checked_copies(worker_id: int, slug: str) -> None:
         _IDENTITIES_CHECKED[worker_id] = {k for k in _IDENTITIES_CHECKED[worker_id] if k[0] != slug}
 
 
-#: How long the ids of a deploy the worker never answered stay claimed while no
-#: heartbeat shows them running. The worker pulls the image before it touches
-#: the running container, so a heartbeat during the pull still shows the old
-#: ids. A worker creates nothing past constants.DEPLOY_DEADLINE_SECONDS (1 h)
-#: from the request, and Docker's timeouts end what follows within minutes, so
-#: by the time this runs out the deploy is over: what a heartbeat shows then is
-#: what runs. A worker from before that deadline has none, and says so by not
-#: listing the ``deploy_deadline`` feature: its holds never run out this way.
-PENDING_IDENTITY_SECONDS = 6 * 3600
+#: How long an unanswered deploy's ids stay claimed with no proof (database.PENDING_IDENTITY_SECONDS).
+PENDING_IDENTITY_SECONDS = database.PENDING_IDENTITY_SECONDS
 
 
 async def _record_pending_identities(slug: str, worker_id: int, envs: Mapping[int, Any]) -> None:
@@ -10694,12 +10687,21 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
         "readable": bool(row.get("value")),
         "source": row.get("source") or "deploy",
         "status": row.get("status") or "active",
-        # A deploy the worker never answered: the owner may forget its hold.
+        # A deploy the worker never answered: the owner may forget its hold
+        # once its deploy can no longer land (database.delete_identity).
         "pending": pending is not None,
+        "forgettable": _identity_forgettable(row, pending is not None),
         "first_seen": row.get("first_seen"),
         "last_seen": row.get("last_seen"),
         "retired_at": row.get("retired_at"),
     }
+
+
+def _identity_forgettable(row: dict[str, Any], pending: bool) -> bool:
+    """Whether database.delete_identity would delete ``row``: what the Forget button reads."""
+    if row.get("status") == "retired" or row.get("kind") == "node":
+        return True
+    return pending and float(row.get("age") or 0) >= PENDING_IDENTITY_SECONDS
 
 
 async def _identity_context() -> tuple[dict[int, str], dict[str, dict[str, str]]]:
@@ -10736,15 +10738,22 @@ async def api_identity_reveal(request: Request, identity_id: int) -> dict[str, s
 
 @app.delete("/api/identities/{identity_id}")
 async def api_identity_forget(request: Request, identity_id: int) -> dict[str, str]:
-    """Forget one retired device id, one a node reported, or an unconfirmed deploy's hold.
+    """Forget one retired device id, one a node reported, or an unconfirmed deploy's hold past its time.
 
-    One a box is known to run with cannot be forgotten.
+    One a box is known to run with cannot be forgotten, nor a hold whose deploy may still land.
     """
     user = _require_owner_session(request)
     row = await database.get_identity(identity_id)
     if not row:
         raise HTTPException(status_code=404, detail="No such device id")
     if not await database.delete_identity(identity_id):
+        if database.pending_copy_number(str(row.get("instance") or "")) is not None:
+            hours = PENDING_IDENTITY_SECONDS // 3600
+            raise HTTPException(
+                status_code=409,
+                detail=f"The worker did not confirm this deploy, so the box may still start with this id. "
+                f"You can forget it {hours} h after the deploy.",
+            )
         raise HTTPException(status_code=409, detail="A box still runs with this id; remove the service there first")
     await _audit(
         "identity_forget",

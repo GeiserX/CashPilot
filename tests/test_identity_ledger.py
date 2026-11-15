@@ -3102,3 +3102,82 @@ class TestARawCopyWhoseRepairTheRecordRefused:
         assert moved and _active() == {}
         _heartbeat("box-a", {2: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
         assert _active() == {("earnapp", wid, "2", "EARNAPP_UUID"): UUID_A}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, seventeenth round: a fresh unconfirmed hold cannot be
+# forgotten while its deploy may still land, and a retry that refreshes a hold
+# during a heartbeat's settle keeps it
+# ---------------------------------------------------------------------------
+
+
+class TestForgettingAnUnconfirmedHold:
+    """The owner's Forget on a ``u`` row opens only once the deploy cannot still land."""
+
+    _timed_out = staticmethod(TestADeployTheWorkerDidNotAnswer._timed_out)
+    _age_pending = staticmethod(TestADeployTheWorkerDidNotAnswer._age_pending)
+
+    def _held(self):
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        assert error.status_code == 504
+        row = next(r for r in _rows() if r["value"] == UUID_A and r["status"] == "active")
+        return wid, row
+
+    @staticmethod
+    def _view(row_id):
+        return next(r for r in _call(OWNER, "GET", "/api/identities").json() if r["id"] == row_id)
+
+    def test_a_fresh_hold_cannot_be_forgotten(self, db):
+        """Right after the 504 the pull may still finish: Forget would let a second box take the id unasked."""
+        wid, row = self._held()
+        view = self._view(row["id"])
+        assert view["pending"] is True and view["forgettable"] is False
+        assert not asyncio.run(database.delete_identity(row["id"]))
+        response = _call(OWNER, "DELETE", f"/api/identities/{row['id']}")
+        assert response.status_code == 409 and "may still start" in response.json()["detail"]
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+
+    def test_once_its_time_is_up_the_owner_may_forget_it(self, db):
+        """The positive control: past the hold's time, the same row can be forgotten."""
+        _, row = self._held()
+        self._age_pending()
+        assert self._view(row["id"])["forgettable"] is True
+        assert _call(OWNER, "DELETE", f"/api/identities/{row['id']}").status_code == 200
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+
+    def test_a_retired_or_running_row_reads_as_it_did(self, db):
+        """forgettable matches what delete_identity accepts on the other rows too."""
+        _, held = self._held()
+        running = next(r for r in _rows() if r["value"] == UUID_B and r["status"] == "active")
+        assert self._view(running["id"])["forgettable"] is False
+        asyncio.run(database.remove_deployment("earnapp", worker_id=running["worker_id"]))
+        assert self._view(running["id"])["forgettable"] is True
+        assert self._view(held["id"])["forgettable"] is False
+
+    def test_a_retry_that_refreshes_the_hold_during_the_settle_keeps_it(self, db):
+        """The hold's time is up; while a heartbeat settles it, a second 504 of the same id holds it again."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        self._age_pending()
+        real = database.active_identity_values
+        raced = []
+
+        async def read_then_retried(slug, worker_id):
+            found = await real(slug, worker_id)
+            if not raced:
+                raced.append(True)
+                await main._record_pending_identities("earnapp", wid, {1: {"EARNAPP_UUID": UUID_A}})
+            return found
+
+        with patch.object(main.database, "active_identity_values", read_then_retried):
+            _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert raced and asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        # The positive control: once the retry's own time is up, the same heartbeat retires it.
+        self._age_pending()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []

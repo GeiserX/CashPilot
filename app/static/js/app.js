@@ -4644,16 +4644,20 @@ const CP = (() => {
         ? `<button class="btn btn-ghost btn-sm" data-action="revealIdentity" data-a1="${id}">Show</button>
            <button class="btn btn-ghost btn-sm" data-action="copyIdentity" data-a1="${id}">Copy</button>`
         : '<span class="muted">Unreadable: the encryption key changed</span>';
-      // An unconfirmed deploy's hold too: it may never be proven or run out on its own.
-      const forget = r.status === 'retired' || r.kind === 'node' || r.pending
-        ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}">Forget</button>` : '';
+      // An unconfirmed deploy's hold only once the server says its deploy can
+      // no longer land (r.forgettable): before that the box may still start it.
+      const held = r.pending && r.status !== 'retired';
+      const forget = r.forgettable
+        ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}"${held ? ' data-a2="pending"' : ''}>Forget</button>` : '';
+      const unconfirmed = held && !r.forgettable
+        ? '<div class="credential-health-hint">The worker did not confirm this deploy, so the box may still start with this id. You can forget it 6 h after the deploy.</div>' : '';
       return `
         <div class="credential-health-item identity-row" data-identity="${id}">
           <div>
             <div class="credential-health-name">${escapeHtml(r.service)} <span class="optional">${escapeHtml(r.label)}</span></div>
             <div class="credential-health-detail"><code class="identity-value" id="identity-value-${id}">${escapeHtml(r.masked)}</code>
               · ${escapeHtml(where)} · ${escapeHtml(state)}</div>
-            ${reported}
+            ${reported}${unconfirmed}
           </div>
           <div class="credential-health-actions">${buttons}${forget}</div>
         </div>`;
@@ -4695,8 +4699,12 @@ const CP = (() => {
     }
   }
 
-  async function forgetIdentity(id) {
-    if (!window.confirm('Forget this device id? CashPilot will not be able to show it or offer it again.')) return;
+  async function forgetIdentity(id, kind) {
+    const text = kind === 'pending'
+      ? 'Forget this device id? The worker never confirmed this deploy, so the box may still start with it. '
+        + 'CashPilot will then not warn you before another box uses the same id.'
+      : 'Forget this device id? CashPilot will not be able to show it or offer it again.';
+    if (!window.confirm(text)) return;
     try {
       await api(`/api/identities/${encodeURIComponent(id)}`, { method: 'DELETE' });
       loadIdentities();

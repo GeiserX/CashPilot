@@ -53,10 +53,10 @@ check('anyone else gets no button', viewer.identityPickButton(svc, {key: 'U', pe
 // --- the list --------------------------------------------------------------
 const rows = [
   {id: 1, service: 'EarnApp', label: 'Node UUID', masked: '...1234', worker: 'box-a', copy: '', status: 'active', source: 'deploy', readable: true},
-  {id: 2, service: 'EarnApp', label: 'Node UUID', masked: '...9999', worker: 'box-b', copy: 'copy 2', status: 'retired', source: 'deploy', readable: true},
-  {id: 3, service: 'Mysterium', label: 'Node identity', masked: '...beef', worker: 'box-c', copy: '', status: 'active', source: 'node', kind: 'node', readable: true},
-  {id: 4, service: 'X', label: '<img src=x onerror=alert(1)>', masked: '...', worker: '<b>w</b>', copy: '', status: 'retired', source: 'deploy', readable: false},
-  {id: 5, service: 'EarnApp', label: 'Node UUID', masked: '...5555', worker: 'box-a', copy: 'deploy not confirmed', status: 'active', source: 'deploy', pending: true, readable: true},
+  {id: 2, service: 'EarnApp', label: 'Node UUID', masked: '...9999', worker: 'box-b', copy: 'copy 2', status: 'retired', source: 'deploy', forgettable: true, readable: true},
+  {id: 3, service: 'Mysterium', label: 'Node identity', masked: '...beef', worker: 'box-c', copy: '', status: 'active', source: 'node', kind: 'node', forgettable: true, readable: true},
+  {id: 4, service: 'X', label: '<img src=x onerror=alert(1)>', masked: '...', worker: '<b>w</b>', copy: '', status: 'retired', source: 'deploy', forgettable: true, readable: false},
+  {id: 5, service: 'EarnApp', label: 'Node UUID', masked: '...5555', worker: 'box-a', copy: 'deploy not confirmed', status: 'active', source: 'deploy', pending: true, forgettable: true, readable: true},
 ];
 const html = owner.identityRowsHtml(rows);
 check('masked values are shown', html.includes('...1234') && html.includes('...9999'), html);
@@ -65,11 +65,38 @@ check('only removed, node-reported or unconfirmed ids can be forgotten', (html.m
   && !html.includes('data-action="forgetIdentity" data-a1="1"')
   && html.includes('data-action="forgetIdentity" data-a1="3"')
   && html.includes('data-action="forgetIdentity" data-a1="5"'), html);
+check('an unconfirmed hold past its time is forgotten with the hold\'s warning',
+  html.includes('data-action="forgetIdentity" data-a1="5" data-a2="pending"') && !html.includes('data-a1="2" data-a2'), html);
+// A fresh hold: the deploy may still land, so no Forget, and the row says why.
+const fresh = owner.identityRowsHtml([{...rows[4], id: 6, forgettable: false}]);
+check('a fresh unconfirmed hold offers no Forget', !fresh.includes('forgetIdentity'), fresh);
+check('a fresh unconfirmed hold says the box may still start it', fresh.includes('may still start with this id'), fresh);
+const removedHold = owner.identityRowsHtml([{...rows[4], id: 9, status: 'retired', forgettable: true}]);
+check('a retired hold is forgotten like any removed id', removedHold.includes('data-a1="9">Forget')
+  && !removedHold.includes('may still start'), removedHold);
 check('a node-reported id says so', html.includes('Reported by the node itself'), html);
 check('markup in a label stays text', !html.includes('<img') && html.includes('&lt;img'), html);
 check('markup in a worker name stays text', !html.includes('<b>w</b>'), html);
 check('an unreadable value offers no Show', !html.includes('data-a1="4">Show'), html);
 check('an empty list says what fills it', owner.identityRowsHtml([]).includes('No device ids yet'), owner.identityRowsHtml([]));
+
+// --- the Forget confirm -----------------------------------------------------
+// A hold's Forget names the risk the shared-id 409 names: the box may still
+// start the id, and then nothing warns before a second box takes it.
+const forgetFn = slice('async function forgetIdentity(', "// The deploy form's");
+async function forget(kind) {
+  const texts = [];
+  const window = {confirm: (text) => { texts.push(text); return false; }};
+  const run = new Function('window', 'api', 'loadIdentities', 'toast', `${forgetFn}; return forgetIdentity;`)(
+    window, async () => {}, () => {}, () => {});
+  await run(5, kind);
+  return texts[0] || '';
+}
+let text = await forget('pending');
+check('a hold\'s Forget warns the box may still start it', text.includes('may still start with it')
+  && text.includes('another box'), text);
+text = await forget(undefined);
+check('a removed id\'s Forget keeps its own text', !text.includes('may still start') && text.includes('offer it again'), text);
 
 // --- the reuse offer -------------------------------------------------------
 const offers = owner.identityOffersHtml('earnapp', 'EARNAPP_UUID', [

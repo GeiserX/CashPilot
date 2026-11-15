@@ -5085,6 +5085,17 @@ def _wanted_identities(keys: Mapping[str, str], values: Mapping[str, Mapping[str
 #: other ids while the first is unconfirmed. Beside the copy's own row, not in it.
 PENDING_COPY_PREFIX = "u"
 
+#: How long the ids of a deploy the worker never answered stay claimed while no
+#: heartbeat shows them running. The worker pulls the image before it touches
+#: the running container, so a heartbeat during the pull still shows the old
+#: ids. A worker creates nothing past constants.DEPLOY_DEADLINE_SECONDS (1 h)
+#: from the request, and Docker's timeouts end what follows within minutes, so
+#: by the time this runs out the deploy is over: what a heartbeat shows then is
+#: what runs. A worker from before that deadline has none, and says so by not
+#: listing the ``deploy_deadline`` feature: its holds never run out this way.
+#: Until this runs out the owner cannot forget a hold either (delete_identity).
+PENDING_IDENTITY_SECONDS = 6 * 3600
+
 
 def pending_copy_number(instance: str) -> int | None:
     """The copy an unconfirmed-ids ledger copy (``u<n>`` or ``u<n>.<k>``) is for; None for any other."""
@@ -5186,7 +5197,9 @@ async def settle_pending_identities(
                 for row in await _active_identity_rows(db, slug, worker_id)
                 if row["instance"] == instance
             }
-            if keys and held and held == dict(env):
+            # Retiring one whose time is up: a retry of the same ids that timed
+            # out since the caller read its age refreshed it, and holds it again.
+            if keys and held and held == dict(env) and (runs or await _pending_aged(db, slug, worker_id, instance)):
                 await _record_identities_locked(
                     db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
                 )
@@ -5194,6 +5207,17 @@ async def settle_pending_identities(
         except BaseException:
             await db.rollback()
             raise
+
+
+async def _pending_aged(db: Any, slug: str, worker_id: int, instance: str) -> bool:
+    """Whether every active row of unconfirmed ledger copy ``instance`` is older than PENDING_IDENTITY_SECONDS."""
+    cursor = await db.execute(
+        "SELECT COUNT(*) FROM device_identities WHERE slug = ? AND worker_id = ? AND instance = ? "
+        "AND kind = 'env' AND status = 'active' AND last_seen > datetime('now', ?)",
+        (slug, worker_id, instance, f"-{PENDING_IDENTITY_SECONDS} seconds"),
+    )
+    row = await cursor.fetchone()
+    return not (row and row[0])
 
 
 async def _record_identities_locked(
@@ -5371,7 +5395,8 @@ async def list_identities() -> list[dict[str, Any]]:
     try:
         cursor = await db.execute(
             "SELECT id, slug, worker_id, instance, kind, name, value_encrypted, source, status, "
-            "first_seen, last_seen, retired_at FROM device_identities ORDER BY status, slug, worker_id, instance, id DESC"
+            "first_seen, last_seen, retired_at, (julianday('now') - julianday(last_seen)) * 86400 AS age "
+            "FROM device_identities ORDER BY status, slug, worker_id, instance, id DESC"
         )
         rows = [dict(r) for r in await cursor.fetchall()]
     finally:
@@ -5396,15 +5421,17 @@ async def delete_identity(identity_id: int) -> bool:
     its node runs; the next read brings it back if the node still says so. The
     hold of a deploy the worker never answered (``u<n>``) may never be proven
     or run out on its own (a worker with no deploy deadline, a catalog that no
-    longer marks the key), so the owner may end it: they take the risk that the
-    id still runs there, as with confirming a shared id.
+    longer marks the key), so the owner may end it, but only once it is older
+    than PENDING_IDENTITY_SECONDS. Before that the worker may still create the
+    container with it, and no deploy record holds the id to bring it back, so
+    a second box could take it without the shared-id check asking.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "DELETE FROM device_identities WHERE id = ? "
-            f"AND (status = 'retired' OR kind = 'node' OR instance LIKE '{PENDING_COPY_PREFIX}%')",
-            (identity_id,),
+            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node' "
+            f"OR (instance LIKE '{PENDING_COPY_PREFIX}%' AND last_seen <= datetime('now', ?)))",
+            (identity_id, f"-{PENDING_IDENTITY_SECONDS} seconds"),
         )
         await db.commit()
         return (cursor.rowcount or 0) > 0

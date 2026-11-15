@@ -70,7 +70,7 @@ START_SETTLE_SECONDS = 120
 #: the running container is not touched. Docker's own timeouts bound what comes
 #: after the pull (a stop, a create, START_SETTLE_SECONDS), so a deploy is over
 #: a few minutes past this. The UI holds the ids of a deploy the worker never
-#: answered for far longer (main.PENDING_IDENTITY_SECONDS), so a hold that runs
+#: answered for far longer (database.PENDING_IDENTITY_SECONDS), so a hold that runs
 #: out runs out after the deploy ended.
 DEPLOY_DEADLINE_SECONDS = 3600
 
