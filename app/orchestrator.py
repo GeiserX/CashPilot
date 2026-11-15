@@ -3821,16 +3821,20 @@ def remove_service(
                 del _removing[slug]
 
 
-def _restore_owned(slug: str, recorded: dict[str, str | None]) -> list[str]:
-    """The volumes of ``recorded`` (name -> nonce) that are there and still carry the nonce the restore made them with.
+def _restore_owned(slug: str, recorded: dict[str, str | None]) -> tuple[list[str], list[str]]:
+    """The volumes of ``recorded`` (name -> nonce) that are there, as (still the restore's, replaced).
 
-    Docker names a volume and keeps no other identity: once nothing mounts one,
-    any client can remove it and create its own under the name. The nonce is
-    the only proof it is still the restore's; a name with no nonce on record
-    proves nothing. A volume that cannot be read refuses the removal.
+    Still the restore's: it carries the nonce the restore made it with.
+    Replaced: it is there without that nonce, so another client made it under
+    the name. Docker names a volume and keeps no other identity: once nothing
+    mounts one, any client can remove it and create its own under the name.
+    The nonce is the only proof it is still the restore's; a name with no
+    nonce on record proves nothing and is in neither list. A volume that
+    cannot be read refuses the removal.
     """
     client = _get_client() if recorded else None
     owned: list[str] = []
+    replaced: list[str] = []
     for volume, nonce in recorded.items():
         if not nonce:
             continue
@@ -3848,8 +3852,9 @@ def _restore_owned(slug: str, recorded: dict[str, str | None]) -> list[str]:
         if _restore_nonce(found) == nonce:
             owned.append(volume)
         else:
+            replaced.append(volume)
             logger.warning("Volume %s is not the one the restore of %s made: another client replaced it", volume, slug)
-    return owned
+    return owned, replaced
 
 
 def _remove_service(
@@ -3897,8 +3902,11 @@ def _remove_service(
     held = [m["Name"] for m in mounts if m.get("Type") == "volume" and m.get("Name")]
     nonce_on_record = recorded or {}
     owned: set[str] = set()
+    # Volumes the record names that another client replaced: kept, and named in the answer.
+    swapped: list[str] = []
     if unfinished:
-        owned = set(_restore_owned(slug, nonce_on_record))
+        owned_now, swapped = _restore_owned(slug, nonce_on_record)
+        owned = set(owned_now)
         held = sorted({v for v in held if not nonce_on_record.get(v)} | owned)
     try:
         container = _find_container(slug)
@@ -4069,6 +4077,16 @@ def _remove_service(
             except Exception as exc:  # noqa: BLE001 - an APIError or a transport error: the volume stays
                 failed_volumes.append(vol_name)
                 logger.warning("Failed to remove volume %s: %s", vol_name, exc)
+    # A volume the record names that another client had already replaced is
+    # not deleted and not held, but the restore answered that it left it there
+    # and the dashboard held the identity for it: this answer is the last thing
+    # that names it, so it says the box kept it. One the service mounts was
+    # reviewed and handled above with the service's own volumes.
+    for vol_name in swapped:
+        if vol_name not in volume_names:
+            failed_volumes.append(vol_name)
+            replaced.append(vol_name)
+            logger.warning("Kept volume %s: another client replaced the one the restore of %s made", vol_name, slug)
     # The helper had to go first (it mounts the volume), and it is the only mark
     # of a half-written one: a volume of it that stays gets its mark back, so
     # no start or deploy runs on half the data.

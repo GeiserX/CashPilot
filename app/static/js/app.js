@@ -3063,13 +3063,14 @@ const CP = (() => {
       // A volume the box could not delete stays, and stays marked half-written.
       // One another client replaced since the owner's review (or since the
       // restore made it) is that client's: the box keeps it, and Remove again
-      // would not delete it either.
+      // would not delete it either. A leftover row's first Remove can report
+      // one with no review at all, so the text names no confirmation.
       const list = (v) => (Array.isArray(v) ? v : []);
       const replaced = list(result?.replaced_volumes);
       const kept = list(result?.failed_volumes).filter((v) => !replaced.includes(v));
       const notes = [];
       if (kept.length) notes.push(`its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`);
-      if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')} since you confirmed, so the box kept that volume. Check it yourself.`);
+      if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')}, so the box kept that volume. Check it yourself.`);
       if (notes.length) toast(`${slug} removed${where}, but ${notes.join(' And ')}`, 'error');
       else toast(`${slug} removed${where}`, 'success');
       loadServicesTable();

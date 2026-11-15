@@ -4338,6 +4338,89 @@ class TestAVolumeSwappedBeforeItsWriteGetsNoBackup:
         assert orchestrator.restore_marks() == {"mysterium"}
 
 
+class TestTheRemoveAfterASwapNamesTheVolumeItKept:
+    """A restore left a volume another client replaced: the owner's Remove names it as kept, never a plain success.
+
+    The restore answered that it left the volume and that the dashboard holds
+    the identity there. The Remove is the one step that ends that hold, so its
+    answer must name the volume the box kept, or nothing names it any more.
+    """
+
+    TWO_TARGETS = TestTheRestoreSequence.EXTRA_DEPLOY
+    TARGETS = {"/var/lib/mysterium-node": "mysterium-data", "/etc/extra": "mysterium-extra"}
+
+    @staticmethod
+    def _two_archives():
+        extra = state_backup.split_archives(docker_archive("extra", [("extra.conf", "file", 0o644, 0, 0, b"x=1\n")]))
+        return {**_archives(), **extra}
+
+    def test_the_first_remove_after_a_swap_before_the_write_reports_it_replaced(self, docker):
+        real = orchestrator._create_restore_helper
+
+        def prune_and_swap_first(client, image, name, volumes):
+            if "cashpilot-mysterium" in docker.container_map:
+                docker.container_map.pop("cashpilot-mysterium")
+                _swap(docker)
+            return real(client, image, name, volumes)
+
+        with (
+            patch.object(orchestrator, "_create_restore_helper", prune_and_swap_first),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.left == ["mysterium-data"] and orchestrator.restore_marks() == {"mysterium"}
+
+        # The dashboard's leftover-row Remove: a plain DELETE, no review, no password.
+        result = orchestrator.remove_service("mysterium", delete_volumes=True, only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == []
+        assert result["replaced_volumes"] == ["mysterium-data"]
+        # Still read as a partial delete by a caller that reads only failed_volumes.
+        assert result["failed_volumes"] == ["mysterium-data"]
+        assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
+        assert ("volume", "mysterium-data") not in docker.removed
+        # Named once, as another client's, which no Remove can change: the record goes.
+        assert orchestrator.restore_marks() == set()
+
+    def test_the_remove_after_a_second_target_failed_its_write_check_reports_it_replaced(self, docker):
+        real_put = FakeContainer.put_archive
+
+        def put_then_swap_extra(container, path, data):
+            done = real_put(container, path, data)
+            if "mysterium-extra" in docker.volume_map and docker.volume_map["mysterium-extra"].attrs["Labels"].get(
+                orchestrator.LABEL_RESTORE
+            ):
+                _swap(docker, "mysterium-extra")
+            return done
+
+        with (
+            patch.object(orchestrator, "restore_targets", return_value=self.TARGETS),
+            patch.object(FakeContainer, "put_archive", put_then_swap_extra),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", self._two_archives(), self.TWO_TARGETS)
+        # The first target was written and kept; the second failed its write-time re-check.
+        assert set(caught.value.left) >= {"mysterium-data", "mysterium-extra"}
+        assert docker.volume_map["mysterium-data"].files and docker.volume_map["mysterium-extra"].files == {}
+        assert orchestrator.restore_marks() == {"mysterium"}
+
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"]
+        assert result["replaced_volumes"] == ["mysterium-extra"]
+        assert result["failed_volumes"] == ["mysterium-extra"]
+        assert docker.volume_map["mysterium-extra"].attrs["Labels"] == {"theirs": "1"}
+        assert ("volume", "mysterium-extra") not in docker.removed
+        assert orchestrator.restore_marks() == set()
+
+    def test_control_a_remove_with_nothing_replaced_reports_nothing_replaced(self, docker):
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"]
+        assert result["replaced_volumes"] == [] and result["failed_volumes"] == []
+        assert orchestrator.restore_marks() == set()
+
+
 class TestAHelperMountWithoutTheNonceIsNotTheRestores:
     def test_a_volume_swapped_under_the_put_back_helper_survives_the_owners_remove(self, docker):
         docker.corrupt_put = True
@@ -4363,7 +4446,9 @@ class TestAHelperMountWithoutTheNonceIsNotTheRestores:
         assert [b["volume"] for b in refusal.value.blocked] == ["mysterium-extra"]
         assert "mysterium-data" not in refusal.value.critical_set
         result = _owner_removes("mysterium", only_if_restore_unfinished=True)
-        assert result["deleted_volumes"] == ["mysterium-extra"] and result["failed_volumes"] == []
+        assert result["deleted_volumes"] == ["mysterium-extra"]
+        # Kept as another client's, and the answer says so rather than reading as a full delete.
+        assert result["failed_volumes"] == ["mysterium-data"] and result["replaced_volumes"] == ["mysterium-data"]
         assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
         assert ("volume", "mysterium-data") not in docker.removed
 

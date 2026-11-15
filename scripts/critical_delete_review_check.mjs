@@ -104,6 +104,17 @@ const replacedToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a
 check('a replaced volume is not sent back to Remove again', !replacedToast.includes('Try Remove again'), replacedToast);
 check('a replaced volume is named as another client\'s, kept by the box',
   replacedToast.includes('another client replaced its volume mysterium-data'), replacedToast);
+// A leftover row's first Remove is a plain DELETE with no review: a volume the
+// restore left that another client had replaced is named there too, never a
+// plain success.
+const leftoverEvents = await run('removeService', ['mysterium', 7, 'box-a', 'leftover'],
+  () => ({status: 'removed', deleted_volumes: [], failed_volumes: ['mysterium-data'], replaced_volumes: ['mysterium-data']}));
+const leftoverToasts = leftoverEvents.filter((e) => e.kind === 'toast');
+check('a leftover Remove that kept a replaced volume is not a success',
+  leftoverToasts.length === 1 && leftoverToasts[0].type === 'error', JSON.stringify(leftoverToasts));
+check('a leftover Remove names the replaced volume without claiming a review',
+  toastOf(leftoverEvents).includes('another client replaced its volume mysterium-data, so the box kept that volume'),
+  toastOf(leftoverEvents));
 const failedToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a'],
   removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: []})));
 check('control: a volume Docker would not delete still says Remove again',
