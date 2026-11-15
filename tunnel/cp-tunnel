@@ -4,6 +4,12 @@
 # The earner runs in this container's network namespace. This script makes the
 # proxy the only way out of that namespace, in this order:
 #
+#   0. Before anything else, a settings read included: a table that lets no
+#      packet in or out. Docker restarts this container by itself
+#      (unless-stopped), and an earner started into the new run's namespace
+#      finds it closed from this first command on, not only once the
+#      settings are read and the routes are in. Step 1 replaces it in one
+#      transaction.
 #   1. nftables first: the output policy is drop, and the only packets allowed
 #      onto the real interface are the tunnel's own (to the proxy, or marked by
 #      tailscaled). From here on nothing leaks, whatever happens below.
@@ -20,6 +26,27 @@
 # environment or the command line Docker records.
 set -eu
 
+# 0: nothing in or out until the real rules replace this table. /run is a
+# tmpfs, so a new run starts with no /run/ready; it is written only by the
+# probe below, after those rules are loaded and an exit was seen.
+rm -f /run/ready
+cat >/run/cp-tunnel-closed.nft <<'EOF'
+table inet cashpilot
+delete table inet cashpilot
+table inet cashpilot {
+    chain out {
+        type filter hook output priority 0; policy drop;
+    }
+    chain in {
+        type filter hook input priority 0; policy drop;
+    }
+}
+EOF
+nft -f /run/cp-tunnel-closed.nft || {
+    echo "cp-tunnel: could not close the network before reading the settings; refusing to start" >&2
+    exit 1
+}
+
 S=/run/cashpilot-secret
 DNS_TARGET=1.1.1.1
 
@@ -34,7 +61,6 @@ die() {
 
 KIND=$(read_key kind)
 OWN_IP=$(read_key own_ip)
-rm -f /run/ready
 
 # One deadline for the whole way to /run/ready: the worker waits 45 s for it
 # (proxy_tunnel.READY_TIMEOUT). Each step below that can wait gets its own cap

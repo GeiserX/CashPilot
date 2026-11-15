@@ -3434,3 +3434,151 @@ class TestReadinessIsReadUnderTheLock:
         assert restarted["on"] and earner.status == "exited"
         _heartbeat()  # control: once the current run is ready, it starts
         assert earner.status == "running"
+
+
+def _own_ip_read_fails(container):
+    """The recorded own_ip is there, but Docker fails to hand it over (any error but "not there")."""
+    real = container.get_archive
+
+    def get_archive(path):
+        if path.endswith("/own_ip"):
+            raise APIError("500 Server Error: archive read timed out")
+        return real(path)
+
+    container.get_archive = get_archive
+
+
+class TestAnUnreadableOwnIpRefusesTheChange:
+    """Taken for "none recorded", a recorded address that cannot be read was written over with an empty one,
+    and cp-tunnel's leak guard lets any exit through when own_ip is empty, the box's own address too."""
+
+    @pytest.mark.parametrize("password", [PASSWORD, NEW_PASSWORD])
+    def test_a_stopped_tunnel_is_left_as_it_was(self, docker, password):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named(NAME)
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        proxy_tunnel.stop("honeygain", 3)
+        assert tunnel.status == "exited" and tunnel.files["own_ip"] == "198.51.100.7"
+        files, starts = dict(tunnel.files), tunnel.starts
+        _own_ip_read_fails(tunnel)
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not read the address"):
+            proxy_tunnel.start("honeygain", 3, _socks(password=password), None)
+        assert tunnel.files == files and tunnel.starts == starts and tunnel.status == "exited"
+        assert earner.status == "exited" and docker.tunnels() == [tunnel]
+
+    def test_a_running_tunnel_on_new_settings_is_left_as_it_was(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named(NAME)
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        files, starts = dict(tunnel.files), tunnel.starts
+        _own_ip_read_fails(tunnel)
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not read the address"):
+            _deploy("honeygain", _socks(password=NEW_PASSWORD))
+        assert tunnel.files == files and tunnel.starts == starts and tunnel.status == "running"
+        assert docker.named(NAME) is earner and earner.status == "running"
+
+    def test_control_with_no_address_recorded_the_tunnel_starts_without_the_comparison(self, docker):
+        """A first deploy with the address unknown: none recorded, none written, the firewall is the guard."""
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.stop("honeygain", 3)
+        del tunnel.files["own_ip"]  # "not there" (NotFound), never a failed read
+        proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
+        assert tunnel.status == "running" and tunnel.files["own_ip"] == ""
+        assert docker.named(NAME).status == "running"
+
+
+def _tunnel_restarts_on_start(tunnel, earner, *, then_reload_fails=False):
+    """The earner's start races a restart of its tunnel, which Docker does by itself (unless-stopped)."""
+    real_start, real_reload = earner.start, tunnel.reload
+    state = {"started": False}
+
+    def start():
+        tunnel.attrs["State"]["StartedAt"] = "9999-01-01T00:00:00Z"  # a new run of the tunnel
+        state["started"] = True
+        real_start()
+
+    def reload():
+        if then_reload_fails and state["started"]:
+            raise APIError("500 Server Error: read timed out")
+        real_reload()
+
+    earner.start = start
+    tunnel.reload = reload
+    return state
+
+
+class TestAnEarnerNeverStaysInAnUnprovenRun:
+    def test_a_failed_check_after_the_start_stops_the_earner(self, docker):
+        """The tunnel restarted during the start, and the read after it failed: the run is not proven."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner.stop()
+        state = _tunnel_restarts_on_start(tunnel, earner, then_reload_fails=True)
+        proxy_tunnel._start_when_ready(earner, tunnel, "honeygain", ready=True)
+        assert state["started"] and earner.status == "exited"
+
+    def test_a_user_start_that_races_a_tunnel_restart_stops_the_earner(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.stop("honeygain", 3)
+        state = _tunnel_restarts_on_start(tunnel, earner)
+        proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert state["started"] and earner.status == "exited"
+        assert NAME not in proxy_tunnel.held()  # the heartbeat starts it once the run it is in is ready
+
+    def test_a_restart_into_a_tunnel_on_new_settings_that_races_a_restart_stops_the_earner(self, docker):
+        """_restart_members: the tunnel restarted in place for new settings, then once more by itself."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        real_start, real_ready = earner.start, docker.ready
+        new_run = {"on": False}
+
+        def start():  # restart() calls start()
+            tunnel.attrs["State"]["StartedAt"] = "9999-01-01T00:00:00Z"  # its new run has no exit yet
+            new_run["on"] = True
+            real_start()
+
+        earner.start = start
+        with patch.object(docker, "ready", lambda c: not (c is tunnel and new_run["on"]) and real_ready(c)):
+            proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
+        assert tunnel.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", NEW_PASSWORD)
+        assert new_run["on"] and earner.status == "exited"
+
+    @pytest.mark.parametrize("settings_sent", [True, False])
+    def test_control_a_start_on_a_steady_run_starts_the_earner(self, docker, settings_sent):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        proxy_tunnel.stop("honeygain", 3)
+        proxy_tunnel.start("honeygain", 3, _socks() if settings_sent else None, None)
+        assert earner.status == "running"
+
+    def test_the_heartbeat_stops_an_earner_running_in_a_run_not_ready(self, docker):
+        """Started into the tunnel's current run, which never wrote /run/ready: stopped, then started once ready."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.restart()
+        earner.restart()  # joined the new run before anyone proved it
+        with patch.object(docker, "ready", return_value=False):
+            _heartbeat()
+            assert earner.status == "exited" and NAME not in proxy_tunnel.held()
+        _heartbeat()
+        assert earner.status == "running"
+
+    def test_control_the_heartbeat_leaves_an_earner_in_the_old_run(self, docker):
+        """Started before the tunnel's current run, it sits in the old namespace, which has no way out."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.restart()
+        with patch.object(docker, "ready", return_value=False):
+            _heartbeat()
+            assert earner.status == "running" and earner.starts == 1
+        _heartbeat()  # ready: restarted into the new run
+        assert earner.status == "running" and earner.starts == 2

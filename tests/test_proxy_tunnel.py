@@ -929,7 +929,9 @@ class TestPairOps:
                 proxy_tunnel, "_wait_ready", side_effect=lambda c: (order("ready"), {"ip": "93.184.215.14"})[1]
             ),
         ):
-            tunnel.start.side_effect = lambda: order("tunnel")
+            tunnel.start.side_effect = lambda: (order("tunnel"), setattr(tunnel, "status", "running"))
+            # The earner starts only in the run that wrote /run/ready, read again just before it.
+            tunnel.exec_run.return_value = (0, b'{"ip": "93.184.215.14"}')
             earner.start.side_effect = lambda: order("earner")
             out = proxy_tunnel.start("x", 1)
         assert [c.args[0] for c in order.call_args_list] == ["refresh", "tunnel", "ready", "earner"]
@@ -939,6 +941,7 @@ class TestPairOps:
 
     def test_start_restarts_an_earner_still_running_in_the_old_namespace(self):
         earner, tunnel = self._pair()
+        tunnel.exec_run.return_value = (0, b'{"ip": "93.184.215.14"}')
         with (
             patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
             patch.object(proxy_tunnel, "refresh_proxy_ip") as refresh,
@@ -948,6 +951,18 @@ class TestPairOps:
         refresh.assert_not_called()
         earner.restart.assert_called_once()
         earner.start.assert_not_called()
+
+    def test_a_legacy_start_whose_tunnel_has_no_exit_now_starts_no_earner(self):
+        """_wait_ready saw /run/ready, then the tunnel restarted: the run the earner would join is not proven."""
+        earner, tunnel = self._pair(earner_status="exited")
+        tunnel.exec_run.return_value = (1, b"")
+        with (
+            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
+        ):
+            proxy_tunnel.start("x", 1)
+        earner.start.assert_not_called()
+        earner.restart.assert_not_called()
 
     def test_remove_takes_only_our_containers_and_their_volumes(self):
         earner, _ = self._pair()
@@ -1241,6 +1256,93 @@ class TestTheTunnelFirewallFallsBack:
         code, out, err = _run_firewall_step(tmp_path, "refuse")
         assert code != 0 and "RULES_LOADED" not in out
         assert "refusing to start" in err
+
+
+def _run_until_rules_logged(tmp_path: Path) -> tuple[int, list[str], str]:
+    """Run cp-tunnel up to its rules being loaded, logging every settings read, route read and nft load in order."""
+    import shutil
+    import subprocess
+
+    run = tmp_path / "run"
+    secret = run / "cashpilot-secret"
+    secret.mkdir(parents=True)
+    for key, value in {"kind": "socks5", "proxy_ip": "203.0.113.5", "proxy_port": "1080"}.items():
+        (secret / key).write_text(value)
+    events = tmp_path / "events"
+    real_cat = shutil.which("cat")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stubs = {
+        "cat": f'case "$*" in *cashpilot-secret*) echo "read $*" >>{events} ;; esac\nexec {real_cat} "$@"',
+        "ip": f'echo "ip $*" >>{events}\necho "default via 172.17.0.1 dev eth0"',
+        "stat": "echo tmpfs",
+        "nft": f'if [ "$1" = -f ]; then echo "nft-load" >>{events}; {real_cat} "$2" >>{events}; fi',
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    head = _CP_TUNNEL.split("probe_until_ready() {")[0]
+    script = head.replace("/run/", f"{run}/").replace("/run\n", f"{run}\n")
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    return proc.returncode, events.read_text().splitlines() if events.exists() else [], proc.stderr
+
+
+def _first_ruleset(lines: list[str]) -> str:
+    start = lines.index("nft-load") + 1
+    end = next((i for i in range(start, len(lines)) if lines[i] == "nft-load"), len(lines))
+    return "\n".join(lines[start:end])
+
+
+class TestTheTunnelClosesItsNamespaceFirst:
+    """Docker restarts a tunnel by itself (unless-stopped). An earner started into the new run before cp-tunnel
+    had read its settings, set its routes and loaded its rules could send from the box's own address."""
+
+    def test_the_first_thing_loaded_is_a_table_that_lets_nothing_out(self, tmp_path):
+        code, lines, err = _run_until_rules_logged(tmp_path)
+        assert code == 0, err
+        assert lines and lines[0] == "nft-load", f"something ran before the first nft load: {lines[:3]}"
+        first = _first_ruleset(lines)
+        out = first.split("chain out {", 1)[1].split("}", 1)[0]
+        assert "policy drop;" in out and "accept" not in out
+        inbound = first.split("chain in {", 1)[1].split("}", 1)[0]
+        assert "policy drop;" in inbound and "accept" not in inbound
+        # The real rules replace it in one transaction, on the same table.
+        assert "delete table inet cashpilot" in first
+        assert lines.count("nft-load") == 2
+        real = "\n".join(lines[len(lines) - lines[::-1].index("nft-load") :])
+        assert 'oifname "eth0" ip daddr 203.0.113.5 tcp dport 1080 accept' in real
+
+    def test_no_setting_or_route_is_read_before_it(self, tmp_path):
+        _code, lines, _err = _run_until_rules_logged(tmp_path)
+        before = lines[: lines.index("nft-load")]
+        assert not [e for e in before if e.startswith(("read ", "ip "))]
+        # Control: the settings and the routes are read, after it.
+        assert any(e.startswith("read ") for e in lines) and any(e.startswith("ip ") for e in lines)
+
+    def test_ready_is_written_only_after_the_real_rules(self):
+        """/run/ready is written by the probe alone, which starts after the real rules are loaded."""
+        assert _CP_TUNNEL.count("/run/ready.tmp /run/ready") == 1
+        assert _CP_TUNNEL.index("nft -f /run/cp-tunnel-closed.nft") < _CP_TUNNEL.index("KIND=$(read_key kind)")
+        probe = _CP_TUNNEL.index("(probe_until_ready ||")
+        assert _CP_TUNNEL.rindex("load_rules ||") < probe
+
+    def test_a_closing_table_nft_refuses_keeps_the_tunnel_down(self, tmp_path):
+        """Not closed, never started: nothing below may run on an open namespace."""
+        import subprocess
+
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "nft").write_text("#!/bin/sh\nexit 1\n")
+        (bin_dir / "nft").chmod(0o755)
+        (bin_dir / "ip").write_text(f"#!/bin/sh\ntouch {tmp_path}/routes-read\n")
+        (bin_dir / "ip").chmod(0o755)
+        (tmp_path / "run").mkdir()
+        head = _CP_TUNNEL.split("probe_until_ready() {")[0].replace("/run/", f"{tmp_path}/run/")
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        proc = subprocess.run(["sh", "-c", head], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.returncode != 0 and "refusing to start" in proc.stderr
+        assert not (tmp_path / "routes-read").exists()
 
 
 # ---------------------------------------------------------------------------

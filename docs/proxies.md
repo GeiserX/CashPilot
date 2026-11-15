@@ -150,15 +150,18 @@ changes.
 
 The tunnel sets things up in this order:
 
-1. Firewall rules first (nftables, inside its own namespace only). Every
-   outgoing packet is dropped unless it goes into the tunnel, or it is the
-   tunnel's own connection to the proxy (for Tailscale: a packet tailscaled
-   marked as its own). Packets into the tunnel addressed to a private or
-   tailnet range are dropped too, so the earner cannot ask the proxy to
-   connect to the proxy's own LAN by address. The rule checks addresses
-   only. A name the proxy resolves to a private address, or a request sent
-   straight to the proxy's port, is up to the proxy's own rules, so use a
-   proxy that refuses private destinations.
+1. Firewall rules first (nftables, inside its own namespace only). Before
+   the tunnel reads its settings, it drops every packet in or out, so an
+   earner that joins a tunnel Docker has just restarted finds no way out
+   from the tunnel's first command on. Then the real rules replace that in
+   one step: every outgoing packet is dropped unless it goes into the
+   tunnel, or it is the tunnel's own connection to the proxy (for Tailscale:
+   a packet tailscaled marked as its own). Packets into the tunnel addressed
+   to a private or tailnet range are dropped too, so the earner cannot ask
+   the proxy to connect to the proxy's own LAN by address. The rule checks
+   addresses only. A name the proxy resolves to a private address, or a
+   request sent straight to the proxy's port, is up to the proxy's own
+   rules, so use a proxy that refuses private destinations.
 2. Name lookups sent to Docker's resolver are redirected into the tunnel, and
    anything else sent to that resolver is dropped.
 3. The routes and the tunnel process: [tun2proxy](https://github.com/tun2proxy/tun2proxy)

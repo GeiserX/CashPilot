@@ -1303,10 +1303,22 @@ def _carry_own_ip(current: Any, files: dict[str, str]) -> dict[str, str]:
     An empty own_ip means the worker could not tell its address this time. It
     must never replace a known one: cp-tunnel's leak guard lets any exit
     through when own_ip is empty, the box's own address too.
+
+    A recorded address that cannot be read refuses the change before anything
+    is written: taken for "none recorded", it would be written over with the
+    empty one. With none recorded and none known, the tunnel starts without
+    the comparison, as a first deploy does (docs/proxies.md): its firewall
+    still lets nothing out but the tunnel.
     """
     if files.get("own_ip"):
         return files
-    stored = _read_secret_file(current, "own_ip")
+    try:
+        stored = _read_secret_file_or_raise(current, "own_ip")
+    except Exception as exc:  # noqa: BLE001 - any failure but "not there" is unknown
+        raise ProxyTunnelError(
+            f"Could not read the address {current.name} recorded for this box ({redact(str(exc))}), and the worker "
+            "cannot tell its own address now, so the tunnel was left as it was. Try again in a few minutes."
+        ) from None
     return {**files, "own_ip": stored} if stored else files
 
 
@@ -1339,9 +1351,45 @@ def _restart_members(client: Any, tunnel: Any) -> None:
         if str(member.name) in stopped or getattr(member, "status", "") not in _LIVE:
             continue
         try:
-            member.restart(timeout=orchestrator._get_stop_timeout(_labels(member).get(LABEL_SERVICE, "")))
+            _start_in_ready_run(member, tunnel, _labels(member).get(LABEL_SERVICE, ""), restart=True)
         except Exception as exc:  # noqa: BLE001 - the heartbeat tries again
             logger.warning("Could not restart %s into its tunnel: %s", member.name, exc)
+
+
+def _start_in_ready_run(earner: Any, tunnel: Any, slug: str, *, restart: bool = False) -> bool:
+    """Start (or restart) ``earner`` in ``tunnel``'s current run, only when that run is ready. Returns whether it did.
+
+    Ready is read again here, never taken from the caller: Docker restarts a
+    tunnel by itself (unless-stopped), and an earner that joins a new run
+    before its firewall is loaded could send from the box's own address. The
+    run is read before the start and again after it; when it changed, or the
+    second read fails, the earner may be in a run nobody proved, so it is
+    stopped again. The heartbeat starts it once the run it is in is ready.
+    """
+    timeout = orchestrator._get_stop_timeout(slug)
+    tunnel.reload()
+    run = _started_at(tunnel)
+    if tunnel.status != "running" or _read_exit(tunnel) is None:
+        logger.warning("The tunnel of %s is not ready; not starting it", earner.name)
+        return False
+    same = False
+    try:
+        if restart:
+            earner.restart(timeout=timeout)
+        else:
+            earner.start()
+    finally:
+        try:
+            tunnel.reload()
+            same = tunnel.status == "running" and _started_at(tunnel) == run
+        except Exception:  # noqa: BLE001 - a run that cannot be told is not proven
+            same = False
+        if not same:
+            logger.warning(
+                "The tunnel of %s restarted while it started, or could not be read; stopping it", earner.name
+            )
+            earner.stop(timeout=timeout)
+    return same
 
 
 def _moving(client: Any, proxy_id: str) -> list[str]:
@@ -2043,9 +2091,9 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
     earner.reload()
     if earner.status == "running":
         if earner_action(earner, current, True) == "restart":
-            earner.restart(timeout=orchestrator._get_stop_timeout(slug))
+            _start_in_ready_run(earner, current, slug, restart=True)
     else:
-        earner.start()
+        _start_in_ready_run(earner, current, slug)
     return {"exit": exit_info}
 
 
@@ -2058,10 +2106,7 @@ def _start_legacy(slug: str, earner: Any, sidecar: Any, name: str) -> dict[str, 
     exit_info = _wait_ready(sidecar)
     _set_held(name, False, strict=True)
     earner.reload()
-    if earner.status == "running":
-        earner.restart(timeout=orchestrator._get_stop_timeout(slug))
-    else:
-        earner.start()
+    _start_in_ready_run(earner, sidecar, slug, restart=earner.status == "running")
     return {"exit": exit_info}
 
 
@@ -2507,30 +2552,22 @@ def _start_when_ready(earner: Any, sidecar: Any, slug: str, *, ready: bool) -> N
             # read is the current run's). False is never read again into True.
             sidecar.reload()
             ready = _read_exit(sidecar) is not None
-        run = _started_at(sidecar)
         action = earner_action(earner, sidecar, ready)
-        if action == "restart":
-            earner.restart(timeout=orchestrator._get_stop_timeout(slug))
-        elif action == "start":
-            earner.start()
-        else:
-            return
-        sidecar.reload()
-        if sidecar.status != "running" or _started_at(sidecar) != run:
-            # The tunnel restarted between the read and the start: the earner
-            # may have joined a run whose firewall is not loaded yet. Stopped;
-            # the next heartbeat starts it once that run is ready.
-            logger.warning("The tunnel of %s restarted while it started; stopping it", earner.name)
+        if action == "stop":
+            logger.warning("%s runs in a run of its tunnel that has not proved an exit; stopping it", earner.name)
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
             return
-        earner.reload()
-        logger.info("Started %s inside its tunnel, which is ready", earner.name)
+        if action not in ("start", "restart"):
+            return
+        if _start_in_ready_run(earner, sidecar, slug, restart=action == "restart"):
+            earner.reload()
+            logger.info("Started %s inside its tunnel, which is ready", earner.name)
     except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
         logger.warning("Could not start %s inside its tunnel: %s", earner.name, exc)
 
 
 def earner_action(earner: Any, sidecar: Any, ready: bool) -> str | None:
-    """What the heartbeat does to an earner: "restart", "start" or nothing.
+    """What the heartbeat does to an earner: "restart", "start", "stop" or nothing.
 
     Nothing happens until the tunnel is running and has written /run/ready,
     which it does only after its firewall is loaded and an exit through the
@@ -2543,10 +2580,19 @@ def earner_action(earner: Any, sidecar: Any, ready: bool) -> str | None:
     restarted into the new one. An earner that is not running while its
     tunnel is up was stopped by a reboot or by its own crash; one the owner or
     the cap stopped is held (HELD_MARKER), and status() never asks about it.
+
+    A running earner that started in the tunnel's current run while that run
+    has not written /run/ready is stopped: it joined a namespace nobody proved
+    (a start that raced a restart of the tunnel), and it starts again once the
+    run is ready. Started before the run, it sits in the old namespace and is
+    left as it is.
     """
-    if not ready or getattr(sidecar, "status", "") != "running":
+    if getattr(sidecar, "status", "") != "running":
         return None
     status = getattr(earner, "status", "")
+    if not ready:
+        in_this_run = status == "running" and _started_at(earner) >= _started_at(sidecar)
+        return "stop" if in_this_run else None
     if status == "running":
         return "restart" if _started_at(sidecar) > _started_at(earner) else None
     if status in ("exited", "created"):
