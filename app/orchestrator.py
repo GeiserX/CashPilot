@@ -944,7 +944,8 @@ def deploy_raw(
     ``deadline`` (time.monotonic(); by default DEPLOY_DEADLINE_SECONDS from
     now): past it, no new container is created. Up to the volume setup the
     running container is not touched; a deadline passed after that (a slow
-    volume setup or stop) puts the stopped container back and starts it again.
+    volume setup or stop) puts the stopped container back and starts it again
+    (one inside a proxy tunnel's namespace is left to app/proxy_tunnel.py).
 
     ``network_mode="container:<id>"``, ``name`` and ``pulled`` are for
     app/proxy_tunnel.py only (``pulled``: it pulled the image itself, before it
@@ -1128,7 +1129,7 @@ def deploy_raw(
                     old.rename(name)
             _restore_identity(name, identity_before, held_before)
             restored = "The previous container was not replaced and " + _start_again(
-                client, old, replaced_running, gated, name
+                client, old, replaced_running, gated, name, joined=joined
             )
             raise _deploy_failure(exc, restored, slug) from exc
     except NotFound:
@@ -1273,6 +1274,7 @@ def deploy_raw(
             held_before=held_before,
             created=created,
             gated=gated,
+            joined=joined,
         )
         raise _deploy_failure(exc, restored, slug) from exc
     if gated:
@@ -1340,10 +1342,17 @@ def _remove_replaced(replaced: Any | None, name: str, slug: str) -> None:
         logger.warning("Could not remove %s%s after its replacement was created: %s", name, REPLACED_SUFFIX, exc)
 
 
-def _start_again(client: Any, old: Any, was_running: bool, gated: bool, name: str) -> str:
-    """Start the previous container again if it ran, a gated one only behind a complete fence. Says how it is."""
+def _start_again(client: Any, old: Any, was_running: bool, gated: bool, name: str, *, joined: bool = False) -> str:
+    """Start the previous container again if it ran, a gated one only behind a complete fence. Says how it is.
+
+    One inside a proxy tunnel's namespace (``joined``) is never started here:
+    the tunnel may have restarted meanwhile and not loaded its firewall yet.
+    app/proxy_tunnel.py starts it once the tunnel says it is ready.
+    """
     if not was_running:
         return "is stopped as it was."
+    if joined:
+        return "is stopped until its proxy tunnel is ready; the worker starts it then."
     if gated and not predates_fence(old):
         from app import lan_fence
 
@@ -1374,6 +1383,7 @@ def _roll_back(
     held_before: str | None = None,
     created: Any | None = None,
     gated: bool,
+    joined: bool = False,
 ) -> str:
     """Undo a deploy whose new container could not be created or started. Says what was put back.
 
@@ -1423,7 +1433,9 @@ def _roll_back(
         logger.warning("Could not put %s back: %s", name, exc)
         return f"The previous container could not be put back ({exc}); it is kept as {name}{REPLACED_SUFFIX}."
     logger.info("Put the previous %s back after a failed deploy", name)
-    return "The previous container was put back and " + _start_again(client, replaced, was_running, gated, name)
+    return "The previous container was put back and " + _start_again(
+        client, replaced, was_running, gated, name, joined=joined
+    )
 
 
 def _deploy_failure(exc: BaseException, restored: str, slug: str = "") -> ContainerRuntimeError:

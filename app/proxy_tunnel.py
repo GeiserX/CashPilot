@@ -1285,6 +1285,13 @@ def _deploy(
     # old copy is left as it was.
     try:
         orchestrator._refuse_past(deadline, image)
+        try:
+            # Put back on a failure: a stopped copy stays stopped (_put_old_back).
+            was_held = name in held()
+        except OSError as exc:
+            raise ProxyTunnelError(
+                f"Could not read which copies are stopped ({exc}); {name} was left as it was"
+            ) from None
         _set_held(name, False, strict=True)
     except Exception:
         _drop_if_empty(client, tunnel)
@@ -1316,6 +1323,8 @@ def _deploy(
         left = _get(client, name)
         if left is not None and _is_ours(left, slug, proxy_id) and (previous is None or left.id != previous.id):
             _remove_quietly(left, 2)
+        with contextlib.suppress(Exception):
+            _put_old_back(client, name, slug, proxy_id, was_held)
         _drop_if_empty(client, tunnel)
         raise
     # The volumes its image declared went with the old earner when it was
@@ -1333,6 +1342,55 @@ def _deploy(
         with contextlib.suppress(Exception):
             _drop_if_empty(client, _get(client, old_tunnel.id))
     return {"container_id": container_id, "tunnel_id": tunnel.id, "exit": exit_info}
+
+
+def _put_old_back(client: Any, name: str, slug: str, proxy_id: int, was_held: bool) -> None:
+    """After a failed redeploy, the old earner deploy_raw kept: under its name, held if it was, running if it should.
+
+    deploy_raw leaves it aside when the failed container still held the name
+    (removed since), and never starts it itself (see orchestrator._start_again):
+    it is started here only once its tunnel says it is ready, as the heartbeat
+    would. The caller holds the proxy's lock.
+    """
+    if (aside := _get(client, name + orchestrator.REPLACED_SUFFIX)) is not None:
+        _settle_replaced(client, aside)
+    old = _get(client, name)
+    if old is None or not _is_ours(old, slug, proxy_id):
+        return
+    if was_held:
+        # The deploy cleared the stop before it began; a copy the owner stopped stays stopped.
+        _set_held(name, True)
+        return
+    sidecar = _tunnel_of(client, old, slug, proxy_id)
+    if sidecar is not None and _read_exit(sidecar) is not None:
+        _start_when_ready(old, sidecar, slug)
+
+
+def _settle_replaced(client: Any, aside: Any) -> str | None:
+    """An old earner deploy_raw left aside (``<name>-replaced``) with no deploy of its proxy running. What it did.
+
+    A worker that died between the move aside and the new earner, a rename
+    back that failed, or a removal Docker refused leaves one. When its copy
+    holds the name again it is a leftover and goes; when the name is free it
+    is the copy and gets its name back, stopped: the heartbeat starts it once
+    its tunnel is ready, unless it is held. The caller holds the proxy's lock.
+    """
+    labels = _labels(aside)
+    slug, pid = labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, "")
+    aside_name = str(aside.name)
+    name = aside_name.removesuffix(orchestrator.REPLACED_SUFFIX)
+    if not (_is_earner(aside) and pid.isdigit() and name != aside_name and name == earner_name(slug, int(pid))):
+        return None
+    current = _get(client, name)
+    if current is None:
+        aside.rename(name)
+        return f"restored {name}"
+    if _is_ours(current, slug, int(pid)) and _is_earner(current):
+        # As deploy_raw would have removed it once its replacement ran.
+        _remove_quietly(aside, 2, volumes=False)
+        _remove_anonymous_volumes(client, aside)
+        return f"removed {aside_name}"
+    return None
 
 
 _LIVE = ("running", "restarting")
@@ -1519,13 +1577,19 @@ def _remove(slug: str, proxy_id: int, *, drop_shared: bool = True) -> list[str]:
     name = earner_name(slug, proxy_id)
     earner = _get(client, name)
     earner = earner if _is_ours(earner, slug, proxy_id) else None
-    tunnel = _tunnel_of(client, earner, slug, proxy_id)
-    if earner is not None:
-        _remove_quietly(earner, orchestrator._get_stop_timeout(slug))
-        removed.append(earner.name)
+    # And the old earner a redeploy left aside (see _settle_replaced), with the tunnel it lives in.
+    aside = _get(client, name + orchestrator.REPLACED_SUFFIX)
+    aside = aside if _is_ours(aside, slug, proxy_id) and _is_earner(aside) else None
+    tunnels = [_tunnel_of(client, earner, slug, proxy_id)]
+    if aside is not None:
+        tunnels.append(_tunnel_of(client, aside, slug, proxy_id))
+    for container in (earner, aside):
+        if container is not None:
+            _remove_quietly(container, orchestrator._get_stop_timeout(slug))
+            removed.append(container.name)
     # A legacy tunnel of this copy, even when the earner was already moved out.
     legacy = _get(client, tunnel_name(slug, proxy_id))
-    for candidate in {id(t): t for t in (tunnel, legacy) if t is not None}.values():
+    for candidate in {t.id: t for t in (*tunnels, legacy) if t is not None}.values():
         if _is_tunnel(candidate, proxy_id) and not _is_shared(candidate) and _is_ours(candidate, slug, proxy_id):
             _remove_quietly(candidate, SIDECAR_STOP_SECONDS)
             removed.append(candidate.name)
@@ -1725,6 +1789,23 @@ def _finish_stale_staged(client: Any, staged: Any) -> str | None:
         lock.release()
 
 
+def _settle_replaced_unless_busy(client: Any, aside: Any) -> None:
+    """_settle_replaced under the proxy's lock; skipped while a change to that proxy runs (its own aside)."""
+    pid = _labels(aside).get(LABEL_PROXY, "")
+    if not pid.isdigit():
+        return
+    lock = _deploy_lock(int(pid))
+    if not lock.acquire(blocking=False):
+        return
+    try:
+        if done := _settle_replaced(client, aside):
+            logger.info("An old earner a redeploy left aside: %s", done)
+    except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
+        logger.warning("Could not settle %s: %s", aside.name, exc)
+    finally:
+        lock.release()
+
+
 def _drop_empty_shared(client: Any, tunnel: Any) -> None:
     """Remove a shared tunnel with no copy, under its proxy's lock (skipped when held)."""
     pid = _labels(tunnel).get(LABEL_PROXY, "")
@@ -1862,6 +1943,15 @@ def _recover(earner: Any, sidecar: Any, slug: str, proxy_id: str) -> None:
     if lock is not None and not lock.acquire(blocking=False):
         return
     try:
+        _start_when_ready(earner, sidecar, slug)
+    finally:
+        if lock is not None:
+            lock.release()
+
+
+def _start_when_ready(earner: Any, sidecar: Any, slug: str) -> None:
+    """_recover's work, for a caller that holds the proxy's lock and has seen ``sidecar`` ready."""
+    try:
         try:
             if str(earner.name) in held():
                 return
@@ -1880,9 +1970,6 @@ def _recover(earner: Any, sidecar: Any, slug: str, proxy_id: str) -> None:
         logger.info("Started %s inside its tunnel, which is ready", earner.name)
     except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
         logger.warning("Could not start %s inside its tunnel: %s", earner.name, exc)
-    finally:
-        if lock is not None:
-            lock.release()
 
 
 def earner_action(earner: Any, sidecar: Any, ready: bool) -> str | None:
@@ -1933,6 +2020,13 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         with contextlib.suppress(Exception):
             recover_moves()
             found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
+    # An old earner a redeploy left aside, with no deploy of its proxy running:
+    # removed beside its replacement, or the copy again when the name is free.
+    if any(str(getattr(c, "name", "")).endswith(orchestrator.REPLACED_SUFFIX) and _is_earner(c) for c in found):
+        for aside in [c for c in found if str(getattr(c, "name", "")).endswith(orchestrator.REPLACED_SUFFIX)]:
+            _settle_replaced_unless_busy(client, aside)
+        with contextlib.suppress(Exception):
+            found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
     # A staged tunnel past any change's timeout: one copies live in (staged or
     # aside ones included) is a change to finish; an empty one is a leftover
     # holding the proxy login, removed here, since the startup sweep skips those
@@ -1966,8 +2060,9 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         if _labels(container).get(LABEL_ROLE) == ROLE_TUNNEL:
             tunnels[container.id] = container
         elif not str(getattr(container, "name", "")).endswith(orchestrator.REPLACED_SUFFIX):
-            # An old earner deploy_raw keeps aside until its replacement runs (or
-            # a leftover of one) is not the copy: never reported, never started.
+            # An old earner a deploy still running keeps aside until its
+            # replacement runs is not the copy: never reported, never started.
+            # One left by a deploy that ended was settled above.
             earners.append(container)
     pairs: dict[tuple[str, str], tuple[Any | None, Any | None]] = {}
     used: set[str] = set()

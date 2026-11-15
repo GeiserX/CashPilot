@@ -22,7 +22,7 @@ import pytest  # noqa: E402
 
 pytest.importorskip("docker")
 
-from docker.errors import NotFound  # noqa: E402
+from docker.errors import APIError, NotFound  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import orchestrator, proxy_tunnel, worker_api  # noqa: E402
@@ -175,6 +175,49 @@ class TestDeployRawJoined:
         # Docker never starts it on its own (after a reboot it would join the
         # tunnel before the tunnel's firewall is loaded); the worker does.
         assert kwargs["restart_policy"] == {"Name": "no"}
+
+    @pytest.mark.parametrize("joined", [True, False], ids=["joined", "direct-control"])
+    def test_a_failed_replacement_puts_a_joined_earner_back_stopped(self, joined):
+        """Never straight into a tunnel's namespace, which may not have loaded its firewall yet."""
+        client = MagicMock()
+        tunnel = MagicMock(labels={"cashpilot.managed": "true", "cashpilot.role": "tunnel"})
+        old = MagicMock(status="running", labels={"cashpilot.service": "honeygain", "cashpilot.proxy": "3"})
+        old.attrs = {"Mounts": [], "HostConfig": {}}
+        name = "cashpilot-honeygain-p3"
+        names = {"sidecar-id": tunnel, name: old}
+
+        def get(key):
+            if key in names:
+                return names[key]
+            raise NotFound("none")
+
+        def rename(to):
+            names.pop(next(k for k, v in names.items() if v is old))
+            names[to] = old
+
+        old.rename.side_effect = rename
+        client.containers.get.side_effect = get
+        client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/app/run"], "Cmd": []}}
+        client.containers.run.side_effect = APIError("500 Server Error: create failed")
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "container_network", return_value=None),
+            patch.object(orchestrator, "container_dns", return_value=None),
+            patch.object(orchestrator, "_ensure_volumes"),
+            pytest.raises(orchestrator.ContainerRuntimeError) as err,
+        ):
+            orchestrator.deploy_raw(
+                slug="honeygain",
+                image="honeygain/honeygain:1",
+                network_mode="container:sidecar-id" if joined else None,
+                name=name,
+            )
+        assert names.get(name) is old
+        if joined:
+            old.start.assert_not_called()
+            assert "until its proxy tunnel is ready" in str(err.value)
+        else:
+            old.start.assert_called_once()
 
     def test_a_normal_container_keeps_its_restart_policy(self):
         client = MagicMock()

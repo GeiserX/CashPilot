@@ -225,7 +225,8 @@ def _fake_deploy_raw(docker: FakeDocker):
 
     Past the deadline before anything changes, nothing does. Otherwise the old
     one is stopped and moved aside until the new one runs; a deadline passed
-    meanwhile (a slow stop) or a failed create puts it back, running if it ran.
+    meanwhile (a slow stop) or a failed create puts it back, stopped: an earner
+    inside a tunnel's namespace is never started there (orchestrator._start_again).
     """
 
     def deploy_raw(*, slug, image, env, network_mode, labels, name, deadline=None, **_kw):
@@ -254,7 +255,7 @@ def _fake_deploy_raw(docker: FakeDocker):
         except Exception:
             if old is not None:
                 old.rename(name)
-                if was_running:
+                if was_running and not network_mode.startswith("container:"):
                     old.start()
             raise
         if old is not None:
@@ -462,6 +463,82 @@ class TestOneTunnelPerProxy:
             _deploy("honeygain")
         assert docker.tunnels() == [legacy] and legacy.status == "running"
         assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_a_failed_redeploy_starts_the_old_earner_only_once_its_tunnel_is_ready(self, docker):
+        """A tunnel Docker restarted meanwhile may not have loaded its firewall yet: the earner waits for /run/ready."""
+        legacy = _legacy_pair(docker, "honeygain", proxy=_socks())
+        earner = docker.named("cashpilot-honeygain-p3")
+        real_create = docker.create
+
+        def refuse_the_earner(**kw):
+            if kw["name"] == "cashpilot-honeygain-p3":
+                # The legacy tunnel restarted and has not written /run/ready yet.
+                legacy.files["proxy_auth"] = "restarting"
+                docker.broken_auth.add("restarting")
+                raise APIError("500 Server Error: create failed")
+            return real_create(**kw)
+
+        with patch.object(docker, "create", side_effect=refuse_the_earner), pytest.raises(APIError):
+            _deploy("honeygain")
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "exited"
+        proxy_tunnel.status()
+        assert earner.status == "exited"
+        # Ready again: the heartbeat starts it.
+        docker.broken_auth.discard("restarting")
+        proxy_tunnel.status()
+        assert earner.status == "running"
+
+    def test_a_failed_redeploy_of_a_stopped_copy_keeps_it_stopped(self, docker):
+        """The deploy clears the stop before it begins; a failure puts it back, so the heartbeat never starts it."""
+        _deploy("honeygain")
+        assert proxy_tunnel.stop("honeygain", 3) is True
+        earner = docker.named("cashpilot-honeygain-p3")
+        real_create = docker.create
+
+        def refuse_the_earner(**kw):
+            if kw["name"] == "cashpilot-honeygain-p3":
+                raise APIError("500 Server Error: create failed")
+            return real_create(**kw)
+
+        with patch.object(docker, "create", side_effect=refuse_the_earner), pytest.raises(APIError):
+            _deploy("honeygain")
+        assert "cashpilot-honeygain-p3" in proxy_tunnel.held()
+        proxy_tunnel.status()
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "exited"
+
+    def test_control_a_failed_redeploy_of_a_running_copy_runs_it_again(self, docker):
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        real_create = docker.create
+
+        def refuse_the_earner(**kw):
+            if kw["name"] == "cashpilot-honeygain-p3":
+                raise APIError("500 Server Error: create failed")
+            return real_create(**kw)
+
+        with patch.object(docker, "create", side_effect=refuse_the_earner), pytest.raises(APIError):
+            _deploy("honeygain")
+        assert "cashpilot-honeygain-p3" not in proxy_tunnel.held()
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_a_failed_redeploy_that_left_the_old_earner_aside_puts_it_back(self, docker):
+        """deploy_raw keeps it aside when the failed container still holds the name; that one goes, so it comes back."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+
+        def failed_and_left(*, slug, image, env, network_mode, labels, name, **_kw):
+            earner.stop()
+            earner.rename(f"{name}{orchestrator.REPLACED_SUFFIX}")
+            docker.create(image=image, name=name, labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"})
+            raise orchestrator.ContainerRuntimeError("start failed; the previous container is kept as -replaced")
+
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=failed_and_left),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+        assert docker.named("cashpilot-honeygain-p3-replaced") is None
 
     def test_a_tunnel_that_cannot_start_costs_the_running_copies_nothing(self, docker):
         _deploy("honeygain")
@@ -1922,3 +1999,59 @@ class TestADirectEarnerWithATunnelsLabelsIsNotOne:
         assert proxy_tunnel.migrate_legacy() == []
         assert docker.tunnels() == [planted]
         assert docker.named("cashpilot-tunnel-p3") is None
+
+
+# ---------------------------------------------------------------------------
+# An old earner a redeploy left aside (<name>-replaced)
+# ---------------------------------------------------------------------------
+
+
+def _left_aside(docker):
+    """What a worker that died between deploy_raw's move aside and the new earner leaves."""
+    _deploy("honeygain")
+    earner = docker.named("cashpilot-honeygain-p3")
+    earner.stop()
+    earner.rename(f"cashpilot-honeygain-p3{orchestrator.REPLACED_SUFFIX}")
+    return earner
+
+
+class TestAnOldEarnerLeftAside:
+    def test_removing_the_copy_removes_it_and_its_tunnel(self, docker):
+        """Not left holding the proxy login (a live tailnet device) with no copy the owner can see."""
+        aside = _left_aside(docker)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        removed = proxy_tunnel.remove("honeygain", 3)
+        assert aside.name in removed and tunnel.name in removed
+        assert docker.by_id == {}
+
+    def test_the_heartbeat_gives_it_back_its_name_and_starts_it(self, docker):
+        """The deploy never finished: the old copy is the copy, and runs again once its tunnel is ready."""
+        aside = _left_aside(docker)
+        (entry,) = proxy_tunnel.status()
+        assert aside.name == "cashpilot-honeygain-p3" and aside.status == "running"
+        assert entry["name"] == "cashpilot-honeygain-p3" and entry["container_id"] == aside.short_id
+
+    def test_the_heartbeat_keeps_a_held_one_stopped(self, docker):
+        aside = _left_aside(docker)
+        proxy_tunnel._set_held("cashpilot-honeygain-p3", True)
+        (entry,) = proxy_tunnel.status()
+        assert aside.name == "cashpilot-honeygain-p3" and aside.status == "exited" and entry["held"] is True
+
+    def test_the_heartbeat_removes_one_beside_its_replacement(self, docker):
+        """A removal Docker refused after the new earner ran: a leftover only, and the tunnel can empty again."""
+        aside = _left_aside(docker)
+        _deploy("honeygain")
+        new = docker.named("cashpilot-honeygain-p3")
+        assert aside.id in docker.by_id and new.status == "running"
+        (entry,) = proxy_tunnel.status()
+        assert aside.id not in docker.by_id
+        assert entry["container_id"] == new.short_id
+
+    def test_while_a_deploy_of_its_proxy_runs_it_is_neither_reported_nor_started(self, docker):
+        """Its own deploy is replacing it: it is not the copy."""
+        aside = _left_aside(docker)
+        lock = proxy_tunnel._deploy_lock(3)
+        with lock:
+            entries = proxy_tunnel.status()
+        assert entries == []
+        assert aside.name.endswith(orchestrator.REPLACED_SUFFIX) and aside.status == "exited"
