@@ -4946,6 +4946,9 @@ const CP = (() => {
     // Out of the page as soon as it is sent; the server keeps it nowhere either.
     if (pass) pass.value = '';
     const out = document.getElementById('restore-preview');
+    // The file this restore is for: if the owner checks another one while it
+    // runs, its success must not wipe that newer preview and file choice.
+    const seq = restoreCheckSeq;
     // One click, one restore: a second one while the worker works could put
     // the file on a second box (the server refuses it too).
     const button = document.querySelector('[data-action="submitRestore"]');
@@ -4955,9 +4958,11 @@ const CP = (() => {
       const res = await api('/api/restore', { method: 'POST', body });
       toast(`${res.service} restored on ${res.worker}: ${res.files} files checked`
         + (res.started ? ', started.' : '. It starts once the LAN fence is confirmed.'), 'success');
-      if (out) out.innerHTML = '';
-      const input = document.getElementById('restore-file');
-      if (input) input.value = '';
+      if (seq === restoreCheckSeq) {
+        if (out) out.innerHTML = '';
+        const input = document.getElementById('restore-file');
+        if (input) input.value = '';
+      }
       loadIdentities();
     } catch (err) {
       toast(err.message, 'error');

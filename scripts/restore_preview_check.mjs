@@ -219,6 +219,45 @@ check('a slower answer for an earlier file leaves the newer preview',
 html = await chooseTwo(false);
 check('answers in order show the newer file', html.includes('data-a1="second-upload"'), html);
 
+// --- a restore that finishes after the owner checked another file ------------
+// Its success clears the preview and the file input only if no newer file was
+// checked meanwhile; otherwise it would wipe the newer file's preview.
+const submitSrc = slice('function submitRestore(', '// Exported for the harness');
+async function restoreThenCheck(checkAnother) {
+  const input = {files: [{name: 'first.cpbackup'}], value: 'first.cpbackup'};
+  const out = {innerHTML: ''};
+  const ids = {'restore-file': input, 'restore-preview': out};
+  const document = {getElementById: (id) => ids[id] || null, querySelector: () => null};
+  const fetches = [];
+  const fetch = () => new Promise((resolve) => fetches.push(resolve));
+  let finish;
+  const api = () => new Promise((resolve) => { finish = resolve; });
+  const {checkRestoreFile, submitRestore} = new Function('document', 'fetch', 'api', 'toast', 'loadIdentities',
+    `${escape}\n${stamp}\n${preview}\nasync ${checkSrc}\nasync ${submitSrc}\n`
+    + 'return {checkRestoreFile, submitRestore};')(document, fetch, api, () => {}, () => {});
+  const reply = (id) => ({ok: true, status: 200, json: async () => ({...base, upload_id: id})});
+  const firstCheck = checkRestoreFile();
+  fetches[0](reply('first-upload'));
+  await firstCheck;
+  const restoring = submitRestore('first-upload');
+  if (checkAnother) {
+    input.files = [{name: 'second.cpbackup'}];
+    input.value = 'second.cpbackup';
+    const secondCheck = checkRestoreFile();
+    fetches[1](reply('second-upload'));
+    await secondCheck;
+  }
+  finish({service: 'Mysterium', worker: 'box-a', files: 3, started: true});
+  await restoring;
+  return {html: out.innerHTML, value: input.value};
+}
+let after = await restoreThenCheck(true);
+check('a restore that finishes after a newer file was checked keeps that preview',
+  after.html.includes('data-a1="second-upload"') && after.value === 'second.cpbackup', after);
+after = await restoreThenCheck(false);
+check('control: a restore with no newer file clears the preview and the file',
+  after.html === '' && after.value === '', after);
+
 if (bad) {
   console.error(`\n${bad} check(s) failed`);
   process.exit(1);
