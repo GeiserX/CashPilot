@@ -2713,6 +2713,8 @@ async def lifespan(app: FastAPI):
     catalog.register_sighup()
     # Deployments from before the identity ledger (issue #740) show in it too.
     await _backfill_identities()
+    # Backup files uploaded for a restore before this start: none can be used now.
+    _restore_sweep()
 
     def _on_job_event(event):
         logger.error("Scheduler job %s failed or missed", event.job_id, exc_info=getattr(event, "exception", None))
@@ -2852,6 +2854,17 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=15,
         id="exchange_rates",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    # A backup file uploaded for a restore and then left goes within
+    # RESTORE_UPLOAD_TTL plus this interval, with no request to trigger it.
+    scheduler.add_job(
+        _run_restore_sweep,
+        "interval",
+        minutes=5,
+        id="restore_sweep",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -6009,6 +6022,7 @@ async def _proxy_to_worker(
     params: dict[str, str] | None = None,
     timeout: float = 30,
     marked: bool = False,
+    allow_plain_http: bool = True,
 ) -> dict[str, Any]:
     """Proxy one request to a worker's REST API and return its parsed JSON.
 
@@ -6018,9 +6032,21 @@ async def _proxy_to_worker(
     landing; the caller owns the timeout (deploy needs 60s, the rest 30s) and any
     query params (the logs line clamp, remove's delete_volumes). ``marked`` is
     for a route that marks every answer of its own (the restore), see below.
+    ``allow_plain_http=False`` refuses to send to an http:// worker: decided on
+    the URL this call sends to, not one read earlier (the restore's passphrase).
     """
     worker = await database.get_worker(worker_id)
     url, headers = await _get_verified_worker_url(worker)
+    if not allow_plain_http and urllib.parse.urlparse(url).scheme.lower() != "https":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "restore_plain_http",
+                "message": f"{worker.get('name') or 'This worker'} is reached over plain HTTP now, so the "
+                "passphrase would cross your network unencrypted. Nothing was sent. Tick the box that accepts "
+                "this, or give that worker an HTTPS address.",
+            },
+        )
     # An https worker named by hostname is reached at its pinned IP. httpx takes
     # SNI and the certificate check from the URL's host, so without this the
     # handshake names the IP and every call to the worker fails. The name is
@@ -6225,6 +6251,8 @@ async def _proxy_worker_restore(
         json=body,
         timeout=_deploy_timeout(slug) + 120,
         marked=True,
+        # The owner's yes to plain HTTP, checked against the URL the passphrase goes to.
+        allow_plain_http=restore.get("allow_plain_http") is True,
     )
     # The worker restored it: whatever fails after this, the restore happened.
     restore["answered"] = True
@@ -11065,6 +11093,11 @@ def _restore_sweep() -> None:
                 os.remove(path)
 
 
+async def _run_restore_sweep() -> None:
+    """_restore_sweep on the event loop, where the upload and restore routes change what it reads."""
+    _restore_sweep()
+
+
 def _restore_service(slug: Any) -> tuple[dict[str, Any], dict[str, str]]:
     """The catalog service a backup file is for, and its critical target -> volume map. 400 otherwise."""
     svc = catalog.get_service(slug) if isinstance(slug, str) else None
@@ -11391,7 +11424,12 @@ async def _restore_upload(
         # and until then it reports no container. While the row is 'pending'
         # a restore of this node on any other box is refused.
         pending = await database.record_backup(slug, worker_id, sha, "pending", entry.get("origin"))
-        restore = {"sha256": sha, "bundle_b64": base64.b64encode(bundle).decode("ascii"), "passphrase": passphrase}
+        restore = {
+            "sha256": sha,
+            "bundle_b64": base64.b64encode(bundle).decode("ascii"),
+            "passphrase": passphrase,
+            "allow_plain_http": body.get("allow_plain_http") is True,
+        }
         del bundle, passphrase
         try:
             result = await _deploy(

@@ -2284,6 +2284,8 @@ class TestLifespanScheduler:
                         "activity_hourly",
                         # Device registrations the provider asked to retry later.
                         "retry_device_links",
+                        # Backup files uploaded for a restore and then left.
+                        "restore_sweep",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():

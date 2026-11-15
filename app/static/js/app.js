@@ -4901,12 +4901,18 @@ const CP = (() => {
       </div>`;
   }
 
+  // Which file check is the newest: a slower answer for a file chosen before
+  // must not replace the preview of the one chosen after it.
+  let restoreCheckSeq = 0;
+
   async function checkRestoreFile() {
     const input = document.getElementById('restore-file');
     const out = document.getElementById('restore-preview');
     const file = input && input.files && input.files[0];
     if (!file || !out) return;
+    const seq = ++restoreCheckSeq;
     out.innerHTML = '<p class="loading-line">Checking the file...</p>';
+    let html;
     try {
       // The raw file as the body: never JSON, never base64 in the page.
       const res = await fetch('/api/restore/upload', {
@@ -4918,10 +4924,11 @@ const CP = (() => {
         if (detail && typeof detail === 'object') detail = detail.message;
         throw new Error(detail || `Error ${res.status}`);
       }
-      out.innerHTML = restorePreviewHtml(data);
+      html = restorePreviewHtml(data);
     } catch (err) {
-      out.innerHTML = `<p class="text-fail">${escapeHtml(err.message)}</p>`;
+      html = `<p class="text-fail">${escapeHtml(err.message)}</p>`;
     }
+    if (seq === restoreCheckSeq) out.innerHTML = html;
   }
 
   async function submitRestore(uploadId) {

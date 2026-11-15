@@ -189,6 +189,36 @@ check('a list that is not an array is ignored',
   leftover([{id: 3, name: 'c', system_info: {restore_unfinished: 'xmysteriumx'}}]) === '');
 check('a viewer gets the row but no button', !/<button/.test(leftover([boxB], [], false)));
 
+// --- two files chosen one after the other ------------------------------------
+// The answer for the first file can arrive after the second's: the preview
+// must stay the second file's, or Restore would send the first file's upload.
+const checkSrc = slice('function checkRestoreFile(', 'async function submitRestore(');
+async function chooseTwo(firstAnswersLast) {
+  const input = {files: [null]};
+  const out = {innerHTML: ''};
+  const document = {getElementById: (id) => (id === 'restore-file' ? input : id === 'restore-preview' ? out : null)};
+  const answers = [];
+  const fetch = () => new Promise((resolve) => answers.push(resolve));
+  const {checkRestoreFile} = new Function('document', 'fetch',
+    `${escape}\n${stamp}\n${preview}\nasync ${checkSrc}\nreturn {checkRestoreFile};`)(document, fetch);
+  const reply = (id) => ({ok: true, status: 200, json: async () => ({...base, upload_id: id})});
+  input.files = [{name: 'first.cpbackup'}];
+  const first = checkRestoreFile();
+  input.files = [{name: 'second.cpbackup'}];
+  const second = checkRestoreFile();
+  const order = firstAnswersLast ? [1, 0] : [0, 1];
+  for (const i of order) {
+    answers[i](reply(i === 0 ? 'first-upload' : 'second-upload'));
+    await (i === 0 ? first : second);
+  }
+  return out.innerHTML;
+}
+html = await chooseTwo(true);
+check('a slower answer for an earlier file leaves the newer preview',
+  html.includes('data-a1="second-upload"') && !html.includes('first-upload'), html);
+html = await chooseTwo(false);
+check('answers in order show the newer file', html.includes('data-a1="second-upload"'), html);
+
 if (bad) {
   console.error(`\n${bad} check(s) failed`);
   process.exit(1);

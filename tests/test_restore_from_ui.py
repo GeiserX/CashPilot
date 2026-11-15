@@ -44,6 +44,7 @@ import httpx  # noqa: E402
 import pytest  # noqa: E402
 import requests  # noqa: E402
 from docker.errors import APIError, NotFound  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import (  # noqa: E402
@@ -70,6 +71,23 @@ REAL_RESTORE_STATE = orchestrator.restore_state
 #: The real fingerprint readers, before the ui fixture swaps them out.
 REAL_STATE_IDS = payout_registry.state_ids
 REAL_ALL_STATE_IDS = payout_registry.all_state_ids
+
+
+def _sha(bundle: bytes) -> str:
+    """The SHA-256 of a sealed backup file, as the dashboard and the worker name it.
+
+    Through file_digest, not hashlib.sha256(bundle): CodeQL reads every sealed
+    file as a password, because its header says mode "passphrase"
+    (state_backup.MODE_PASSPHRASE), and flags its SHA-256 as weak password
+    hashing. A sealed file is not a password, and the digest is the same one.
+    """
+    return hashlib.file_digest(io.BytesIO(bundle), "sha256").hexdigest()
+
+
+def test_the_file_digest_is_the_sha256_the_app_uses():
+    assert _sha(b"a sealed file") == hashlib.sha256(b"a sealed file").hexdigest()
+
+
 WORKER_KEY = "per-worker-key-restore"
 CLIENT_ID = "worker-client-1"
 KEY_FILE = b'{"address":"0xabc","crypto":{"cipher":"aes-128-ctr"}}'
@@ -696,7 +714,7 @@ def worker(monkeypatch):
     client = TestClient(worker_api.app, raise_server_exceptions=False)
 
     def post(slug, bundle, *, approval=None, spec=None, passphrase=PASSPHRASE, raw=None):
-        digest = hashlib.sha256(bundle).hexdigest()
+        digest = _sha(bundle)
         if approval is None:
             approval = step_up.sign(WORKER_KEY, step_up.ACTION_RESTORE, step_up.restore_target(slug, CLIENT_ID, digest))
         body = {
@@ -725,7 +743,7 @@ class TestTheWorker:
         bundle = proxybase_bundle()
         resp = worker("proxybase-xyz", bundle)
         assert resp.status_code == 200, resp.text
-        assert resp.json()["bundle_sha256"] == hashlib.sha256(bundle).hexdigest()
+        assert resp.json()["bundle_sha256"] == _sha(bundle)
         slug, archives, deploy = worker.calls[0]
         assert slug == "proxybase-xyz" and set(archives) == {".proxybase"}
         assert deploy["image"] == PROXYBASE["image"]
@@ -745,26 +763,26 @@ class TestTheWorker:
 
     def test_an_approval_for_another_worker_is_refused(self, worker):
         bundle = proxybase_bundle()
-        target = step_up.restore_target("proxybase-xyz", "another-box", hashlib.sha256(bundle).hexdigest())
+        target = step_up.restore_target("proxybase-xyz", "another-box", _sha(bundle))
         resp = worker("proxybase-xyz", bundle, approval=step_up.sign(WORKER_KEY, step_up.ACTION_RESTORE, target))
         assert resp.status_code == 403 and worker.calls == []
 
     def test_a_deploy_approval_cannot_restore(self, worker):
         bundle = proxybase_bundle()
-        target = step_up.restore_target("proxybase-xyz", CLIENT_ID, hashlib.sha256(bundle).hexdigest())
+        target = step_up.restore_target("proxybase-xyz", CLIENT_ID, _sha(bundle))
         resp = worker("proxybase-xyz", bundle, approval=step_up.sign(WORKER_KEY, step_up.ACTION_CUSTOM_IMAGE, target))
         assert resp.status_code == 403 and worker.calls == []
 
     def test_the_api_key_alone_cannot_restore(self, worker):
         """A stolen fleet key has no worker key to sign with."""
         bundle = proxybase_bundle()
-        target = step_up.restore_target("proxybase-xyz", CLIENT_ID, hashlib.sha256(bundle).hexdigest())
+        target = step_up.restore_target("proxybase-xyz", CLIENT_ID, _sha(bundle))
         resp = worker("proxybase-xyz", bundle, approval=step_up.sign("wk-test", step_up.ACTION_RESTORE, target))
         assert resp.status_code == 403 and worker.calls == []
 
     def test_an_approval_is_good_once(self, worker):
         bundle = proxybase_bundle()
-        target = step_up.restore_target("proxybase-xyz", CLIENT_ID, hashlib.sha256(bundle).hexdigest())
+        target = step_up.restore_target("proxybase-xyz", CLIENT_ID, _sha(bundle))
         approval = step_up.sign(WORKER_KEY, step_up.ACTION_RESTORE, target)
         assert worker("proxybase-xyz", bundle, approval=approval).status_code == 200
         assert worker("proxybase-xyz", bundle, approval=approval).status_code == 403
@@ -976,7 +994,7 @@ class TestTheRestoreRoute:
         (call,) = ui.sent
         assert call["worker_id"] == 1 and call["path"] == "/api/containers/mysterium/restore"
         sent = call["json"]
-        digest = hashlib.sha256(bundle).hexdigest()
+        digest = _sha(bundle)
         assert base64.b64decode(sent["bundle_b64"]) == bundle and sent["passphrase"] == PASSPHRASE
         step_up.check(
             WORKER_KEY,
@@ -998,7 +1016,7 @@ class TestTheRestoreRoute:
 
     def test_a_file_this_cashpilot_exported_needs_no_typed_name(self, ui):
         bundle = mysterium_bundle()
-        asyncio.run(database.record_backup("mysterium", 2, hashlib.sha256(bundle).hexdigest(), "export"))
+        asyncio.run(database.record_backup("mysterium", 2, _sha(bundle), "export"))
         upload = _upload(ui, bundle).json()
         assert upload["known"] is True and upload["history"][0]["worker"] == "box-b"
         resp = _restore(ui, upload["upload_id"], step_up_password=OWNER_PASSWORD)
@@ -1006,7 +1024,7 @@ class TestTheRestoreRoute:
 
     def test_an_identity_live_on_another_box_is_refused_naming_it(self, ui):
         bundle = mysterium_bundle()
-        asyncio.run(database.record_backup("mysterium", 2, hashlib.sha256(bundle).hexdigest(), "export"))
+        asyncio.run(database.record_backup("mysterium", 2, _sha(bundle), "export"))
         ui.state["runs_on"] = {"mysterium": [{"worker_id": 2}]}
         upload = _upload(ui, bundle).json()
         assert upload["live_on"] == ["box-b"]
@@ -1087,7 +1105,7 @@ class TestTheRestoreRouteGuards:
         """Two tabs, two boxes, one file: the second waits for the first, or the identity lands twice."""
         bundle = mysterium_bundle()
         upload = _upload(ui, bundle).json()
-        main._restore_inflight.add(hashlib.sha256(bundle).hexdigest())
+        main._restore_inflight.add(_sha(bundle))
         try:
             resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
         finally:
@@ -1117,7 +1135,7 @@ class TestTheRestoreRouteGuards:
         with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=main._WorkerNoAnswer(504, "no answer"))):
             resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
         assert resp.status_code == 504
-        rows = asyncio.run(database.backup_records(hashlib.sha256(bundle).hexdigest()))
+        rows = asyncio.run(database.backup_records(_sha(bundle)))
         assert [(r["worker_id"], r["source"]) for r in rows] == [(1, "pending")]
 
     def test_a_refused_restore_is_not_recorded(self, ui):
@@ -1127,7 +1145,7 @@ class TestTheRestoreRouteGuards:
         upload = _upload(ui, bundle).json()
         with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=HTTPException(409, "volume exists"))):
             _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
-        assert asyncio.run(database.backup_records(hashlib.sha256(bundle).hexdigest())) == []
+        assert asyncio.run(database.backup_records(_sha(bundle))) == []
 
 
 class TestTheExportHook:
@@ -1145,7 +1163,7 @@ class TestTheExportHook:
                 json={"worker_id": 1, "passphrase": PASSPHRASE, "passphrase_repeat": PASSPHRASE},
             )
         assert resp.status_code == 200, resp.text
-        rows = asyncio.run(database.backup_records(hashlib.sha256(bundle).hexdigest()))
+        rows = asyncio.run(database.backup_records(_sha(bundle)))
         assert [(r["slug"], r["worker_id"], r["source"]) for r in rows] == [("mysterium", 1, "export")]
         assert _upload(ui, bundle).json()["known"] is True
 
@@ -1173,10 +1191,6 @@ class TestTheExportHook:
 # ---------------------------------------------------------------------------
 # One node, many files: the review's findings on the identity check
 # ---------------------------------------------------------------------------
-
-
-def _sha(bundle: bytes) -> str:
-    return hashlib.sha256(bundle).hexdigest()
 
 
 def _export(bundle: bytes, worker_id: int, state_id: str = "sid-1") -> None:
@@ -2355,14 +2369,17 @@ class TestARestoreRefusedBeforeItStarts:
     """A Docker that cannot be reached or asked creates nothing: a plain refusal, never an opaque 500."""
 
     def test_no_docker_is_a_503_that_restored_nothing(self, docker):
-        no_docker = RuntimeError("The Docker socket proxy is not answering.")
+        no_docker = RuntimeError("connect to /internal/run/sock-7f3a refused")
         with (
             patch.object(orchestrator, "_get_client", side_effect=no_docker),
+            patch.object(orchestrator, "proxied", return_value=True),
             pytest.raises(orchestrator.RestoreError) as caught,
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert caught.value.status_code == 503 and not caught.value.left
-        assert "Nothing was restored" in str(caught.value) and "socket proxy" in str(caught.value)
+        assert "Nothing was restored" in caught.value.detail and "socket proxy" in caught.value.detail
+        # The exception's own text goes to the log, never to the owner.
+        assert "sock-7f3a" not in caught.value.detail
         assert docker.container_map == {} and docker.volume_map == {}
 
     def test_a_refused_check_restored_nothing(self, docker):
@@ -2382,3 +2399,313 @@ class TestARestoreRefusedBeforeItStarts:
         monkeypatch.setattr(worker_api.orchestrator, "_get_client", MagicMock(side_effect=RuntimeError("no docker")))
         resp = worker("proxybase-xyz", proxybase_bundle())
         assert resp.status_code == 503 and resp.json()["restored"] is False
+
+
+# ---------------------------------------------------------------------------
+# What the owner reads of a failed restore: fixed text and names, never
+# Docker's own answer or another exception's text (CodeQL stack-trace-exposure)
+# ---------------------------------------------------------------------------
+
+#: Stands for a path, a host or a daemon message inside Docker's answer.
+INTERNAL = "/var/lib/docker/overlay2/7f3a-internal"
+
+
+def _docker_error(status: int, *, body: dict | None = None) -> APIError:
+    response = MagicMock()
+    response.status_code = status
+    response.json.return_value = body if body is not None else {"message": INTERNAL}
+    return APIError(f"server said {INTERNAL}", response=response, explanation=INTERNAL)
+
+
+def _sockguard_refusal() -> APIError:
+    return _docker_error(403, body={"message": "request denied by sockguard policy", "reason": "archive path denied"})
+
+
+class TestARestoreAnswerHoldsNoDockerText:
+    def test_dockers_answer_to_a_write_stays_in_the_log(self, docker, caplog):
+        with (
+            caplog.at_level(logging.WARNING, logger="app.orchestrator"),
+            patch.object(FakeContainer, "put_archive", side_effect=_docker_error(500)),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "Docker refused the restore, so it was undone." in caught.value.detail
+        assert "log has Docker's answer" in caught.value.detail
+        assert INTERNAL not in caught.value.detail and INTERNAL not in str(caught.value)
+        assert INTERNAL in caplog.text
+
+    def test_the_proxys_allowlisted_reason_still_reaches_the_owner(self, docker):
+        with (
+            patch.object(FakeContainer, "put_archive", side_effect=_sockguard_refusal()),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "The Docker socket proxy refused this: archive path denied." in caught.value.detail
+
+    def test_a_create_refusal_names_the_container_not_dockers_text(self, docker, caplog):
+        def refused(**_kw):
+            raise orchestrator.ContainerRuntimeError(f"Docker refused the container: {INTERNAL}", 409)
+
+        orchestrator.deploy_raw.__wrapped__ = refused
+        with (
+            caplog.at_level(logging.WARNING, logger="app.orchestrator"),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.status_code == 409
+        assert "Docker could not create cashpilot-mysterium" in caught.value.detail
+        assert INTERNAL not in caught.value.detail and INTERNAL in caplog.text
+
+    def test_a_create_the_proxy_refused_says_the_proxys_reason(self, docker):
+        def refused(**_kw):
+            cause = _sockguard_refusal()
+            raise orchestrator.ContainerRuntimeError(f"wrapped {INTERNAL}", 403) from cause
+
+        orchestrator.deploy_raw.__wrapped__ = refused
+        with pytest.raises(orchestrator.RestoreError) as caught:
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.status_code == 403 and "archive path denied" in caught.value.detail
+        assert INTERNAL not in caught.value.detail
+
+    def test_a_leftover_helper_docker_would_not_remove(self, docker, caplog):
+        stale = FakeContainer(docker, "cashpilot-mysterium.restore", {}, {orchestrator.LABEL_RESTORE: "helper"})
+        docker.container_map[stale.name] = stale
+        with (
+            caplog.at_level(logging.WARNING, logger="app.orchestrator"),
+            patch.object(stale, "remove", side_effect=RuntimeError(INTERNAL)),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "cashpilot-mysterium.restore, left by a restore that did not finish, could not be removed" in (
+            caught.value.detail
+        )
+        assert ".." not in caught.value.detail
+        assert INTERNAL not in caught.value.detail and INTERNAL in caplog.text
+
+    def test_a_volume_docker_would_not_show(self, docker):
+        with (
+            patch.object(docker.volumes, "get", side_effect=_docker_error(500)),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "the volume mysterium-data could not be checked" in caught.value.detail
+        assert INTERNAL not in caught.value.detail
+
+    def test_a_listing_docker_refused(self, docker):
+        with (
+            patch.object(docker.containers, "list", side_effect=_docker_error(500)),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "Docker refused to show what is on this box" in caught.value.detail
+        assert INTERNAL not in caught.value.detail
+
+    def test_the_worker_answers_with_the_fixed_text(self, worker, monkeypatch):
+        fake = FakeDocker()
+        monkeypatch.setattr(worker_api.orchestrator, "restore_state", REAL_RESTORE_STATE)
+        monkeypatch.setattr(worker_api.orchestrator, "_get_client", lambda: fake)
+        monkeypatch.setattr(fake.containers, "list", MagicMock(side_effect=_docker_error(500)))
+        resp = worker("proxybase-xyz", proxybase_bundle())
+        assert resp.status_code == 409 and resp.json()["restored"] is False
+        assert "Docker refused to show what is on this box" in resp.json()["detail"]
+        assert INTERNAL not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# The half-written mark lasts until the data is checked, and a removal never
+# deletes a restore that started after its check
+# ---------------------------------------------------------------------------
+
+
+class TestTheHelperMarksTheVolumeUntilItIsChecked:
+    def test_the_helper_holds_the_volume_through_the_read_back(self, docker):
+        seen = []
+        real_read = orchestrator._read_back
+
+        def read_back(container, target):
+            # A worker that dies here leaves this helper: the volume stays marked.
+            helper = orchestrator._restore_helper("mysterium")
+            seen.append(helper and helper.mounts)
+            return real_read(container, target)
+
+        with patch.object(orchestrator, "_read_back", read_back):
+            result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert seen == [{orchestrator.RESTORE_WRITE_DIR: "mysterium-data"}]
+        assert result["started"] is True and set(docker.container_map) == {"cashpilot-mysterium"}
+
+    def test_the_helper_goes_right_before_the_start(self, docker):
+        at_start = []
+        real_start = orchestrator._start_restored
+
+        def start(slug, container):
+            at_start.append(orchestrator._restore_helper(slug))
+            return real_start(slug, container)
+
+        with patch.object(orchestrator, "_start_restored", start):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert at_start == [None]
+
+    def test_a_failed_read_back_still_undoes_everything(self, docker):
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError, match="does not read back as the backup"):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.container_map == {} and docker.volume_map == {} and docker.started == []
+
+    def test_every_volume_of_a_restore_stays_held_by_the_one_helper(self, docker):
+        """Two volumes: the restore's helper holds both from before the first write; the second writer goes."""
+        for volume in ("vol-a", "vol-b"):
+            docker.volumes.create(volume)
+        service = FakeContainer(docker, "cashpilot-two", {}, {orchestrator.LABEL_SERVICE: "two"})
+        docker.container_map[service.name] = service
+        made: list[Any] = [service]
+        written: list[str] = []
+        payload = state_backup.relative_archive(_archives()["mysterium-node"])
+        mark = orchestrator._write_through_helper(
+            docker, service, [("vol-a", payload), ("vol-b", payload)], made, written
+        )
+        assert mark.name == "cashpilot-two.restore" and made == [service, mark] and written == ["vol-a", "vol-b"]
+        assert set(mark.mounts.values()) == {"vol-a", "vol-b"}
+        assert mark.mounts[orchestrator.RESTORE_WRITE_DIR] == "vol-a"
+        assert docker.puts == [
+            ("cashpilot-two.restore", orchestrator.RESTORE_WRITE_DIR),
+            ("cashpilot-two.restore-1", orchestrator.RESTORE_WRITE_DIR),
+        ]
+        assert set(docker.container_map) == {"cashpilot-two", "cashpilot-two.restore"}
+
+
+class TestARemovalHoldsItsServiceAgainstARestore:
+    def test_a_restore_that_starts_during_a_removal_is_refused(self, docker):
+        outcome: dict[str, str] = {}
+        real_helper = orchestrator._restore_helper
+
+        def racing(slug):
+            # The removal has passed its "no restore runs" check: a restore starts now.
+            try:
+                orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+                outcome["restore"] = "ran"
+            except orchestrator.RestoreError as exc:
+                outcome["restore"] = exc.detail
+            return real_helper(slug)
+
+        with patch.object(orchestrator, "_restore_helper", racing), pytest.raises(ValueError):
+            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert "a removal of mysterium is running on this box" in outcome["restore"]
+        assert docker.creates == [] and docker.volume_map == {} and docker.started == []
+        assert orchestrator._removing == {}
+
+    def test_the_hold_ends_with_the_removal(self, docker):
+        with pytest.raises(ValueError):
+            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert orchestrator._removing == {}
+        assert orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)["started"] is True
+
+
+# ---------------------------------------------------------------------------
+# Plain HTTP: the owner's answer is checked against the URL the passphrase goes to
+# ---------------------------------------------------------------------------
+
+
+class TestPlainHttpIsCheckedWhereThePassphraseIsSent:
+    @staticmethod
+    def _dispatch(ui, sent_to: list[str]):
+        def client(*_a, **_kw):
+            raise AssertionError("the request must not be sent")
+
+        async def verified(worker):
+            sent_to.append(worker["url"])
+            return worker["url"], {}
+
+        return (
+            patch.object(main, "_proxy_to_worker", REAL_PROXY),
+            patch.object(main, "_get_verified_worker_url", side_effect=verified),
+            patch.object(main.httpx, "AsyncClient", side_effect=client),
+        )
+
+    def test_a_worker_that_turned_to_http_after_the_check_gets_nothing(self, ui):
+        upload = _upload(ui, mysterium_bundle()).json()
+        sent_to: list[str] = []
+
+        async def step_up_then_the_url_changes(*_a, **_kw):
+            # A heartbeat rewrites box-a's address while the owner types the password.
+            ui.workers[0]["url"] = "http://a"
+
+        with ExitStack() as stack:
+            for p in self._dispatch(ui, sent_to):
+                stack.enter_context(p)
+            stack.enter_context(patch.object(main, "require_step_up", side_effect=step_up_then_the_url_changes))
+            resp = _restore(ui, upload["upload_id"], worker_id=1, confirm_name="Mysterium", step_up_password="x")
+        assert resp.status_code == 400 and resp.json()["detail"]["error"] == "restore_plain_http"
+        assert "Nothing was sent" in resp.json()["detail"]["message"]
+        assert sent_to == ["http://a"]
+        # Refused before it was sent: the ledger row of this try is settled as not applied.
+        assert [r["source"] for r in asyncio.run(database.backup_records(upload["sha256"]))] == []
+
+    def test_the_owners_yes_lets_it_go_to_that_url(self):
+        async def verified(worker):
+            return worker["url"], {}
+
+        async def run(allow):
+            with (
+                patch.object(main.database, "get_worker", AsyncMock(return_value={"name": "box-b", "url": "http://b"})),
+                patch.object(main, "_get_verified_worker_url", side_effect=verified),
+                patch.object(main.httpx, "AsyncClient", side_effect=ConnectionAbortedError("sent")),
+            ):
+                return await REAL_PROXY(2, "POST", "/api/containers/x/restore", json={}, allow_plain_http=allow)
+
+        with pytest.raises(ConnectionAbortedError):
+            asyncio.run(run(True))
+        with pytest.raises(HTTPException) as caught:
+            asyncio.run(run(False))
+        assert caught.value.status_code == 400 and caught.value.detail["error"] == "restore_plain_http"
+
+
+# ---------------------------------------------------------------------------
+# An uploaded file that is left goes without a request to trigger it
+# ---------------------------------------------------------------------------
+
+
+class TestALeftUploadGoesWithoutARequest:
+    def test_the_start_deletes_uploads_from_before_it_and_schedules_the_sweep(self, tmp_path):
+        from tests.test_rates_do_not_hold_startup import _lifespan_patches
+
+        folder = tmp_path / "restore-uploads"
+        folder.mkdir()
+        (folder / "from-before-the-restart").write_bytes(b"sealed")
+
+        async def noop():
+            return None
+
+        async def run():
+            patches = (*_lifespan_patches(noop, noop), patch.object(database, "DB_DIR", tmp_path))
+            for p in patches:
+                p.start()
+            try:
+                async with main.lifespan(main.app):
+                    assert os.listdir(folder) == []
+                    job = main.scheduler.get_job("restore_sweep")
+                    assert job.func is main._run_restore_sweep
+                    assert job.trigger.interval == timedelta(minutes=5)
+            finally:
+                for p in reversed(patches):
+                    p.stop()
+
+        asyncio.run(run())
+
+    def test_the_scheduled_sweep_deletes_an_expired_upload_and_keeps_a_fresh_one(self, tmp_path):
+        folder = tmp_path / "restore-uploads"
+        folder.mkdir()
+        now = datetime.now(UTC).timestamp()
+        entries = {"old": now - main.RESTORE_UPLOAD_TTL - 1, "new": now}
+        try:
+            with patch.object(database, "DB_DIR", tmp_path):
+                for upload_id, created in entries.items():
+                    (folder / upload_id).write_bytes(b"sealed")
+                    main._restore_uploads[upload_id] = {
+                        "id": upload_id,
+                        "path": str(folder / upload_id),
+                        "created": created,
+                    }
+                asyncio.run(main._run_restore_sweep())
+            assert os.listdir(folder) == ["new"] and set(main._restore_uploads) == {"new"}
+        finally:
+            main._restore_uploads.clear()

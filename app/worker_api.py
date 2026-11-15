@@ -2495,13 +2495,15 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
         result = await asyncio.to_thread(orchestrator.restore_state, slug, archives, deploy)
     except orchestrator.RestoreError as exc:
         logger.warning("Restore of %s refused or undone: %s", slug, exc)
+        # exc.detail, never str(exc): the message RestoreError was built with,
+        # fixed text and names only (Docker's own answer stays in the log).
         if exc.left:
             # The undo could not remove these: the restored data may still be
             # on the box, so the UI keeps holding the identity there.
-            return JSONResponse(status_code=exc.status_code, content={"detail": str(exc), "left": exc.left})
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "left": exc.left})
         # "restored": false tells the UI this is the worker's own answer, so a
         # 503 here is not a gateway's: nothing of this restore is on the box.
-        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc), "restored": False})
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "restored": False})
     await asyncio.to_thread(lan_fence.refresh_outside)
     return {"status": "restored", "bundle_sha256": digest, **result}
 
