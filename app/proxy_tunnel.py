@@ -1075,6 +1075,8 @@ def _ensure_tunnel(
                 f"be running. Try again in a few minutes."
             )
         _remove_quietly(leftover, SIDECAR_STOP_SECONDS)
+    if current is not None:
+        files = _carry_own_ip(current, files)
     new, exit_info = start_sidecar(
         client,
         staged,
@@ -1217,6 +1219,7 @@ def _in_place(
     """
     current.reload()
     running = current.status == "running"
+    files = _carry_own_ip(current, files)
     # The container's log spans every setting it ever ran on (it is restarted
     # in place), so the old credentials are redacted from errors too.
     if old := _read_secret_file(current, "auth_key"):
@@ -1225,7 +1228,8 @@ def _in_place(
         secrets = [*secrets, *_auth_secrets(old)]
     # The digest leaves own_ip out, but the leak guard reads it when the tunnel
     # starts: a new address restarts the tunnel as a settings change does. An
-    # empty one (the worker could not tell its address) is no news.
+    # empty one (the worker could not tell its address) is no news, and
+    # _carry_own_ip kept the recorded one in the files written below.
     same = _read_secret_file(current, "settings") == files["settings"] and (
         not files.get("own_ip") or _read_secret_file(current, "own_ip") == files["own_ip"]
     )
@@ -1291,6 +1295,19 @@ def _in_place(
         raise ProxyTunnelError(redact(str(exc), secrets), exc.status_code) from None
     _restart_members(client, current)
     return current, exit_info
+
+
+def _carry_own_ip(current: Any, files: dict[str, str]) -> dict[str, str]:
+    """``files``, with the own_ip ``current`` has when they carry none.
+
+    An empty own_ip means the worker could not tell its address this time. It
+    must never replace a known one: cp-tunnel's leak guard lets any exit
+    through when own_ip is empty, the box's own address too.
+    """
+    if files.get("own_ip"):
+        return files
+    stored = _read_secret_file(current, "own_ip")
+    return {**files, "own_ip": stored} if stored else files
 
 
 def _prove(
@@ -1971,7 +1988,8 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
             # that tunnel takes the settings and starts in place, and the earner
             # starts there, never recreated, which would lose its writable layer.
             # In place rewrites every file (own_ip too, which the leak guard
-            # reads) and redacts the old and new credentials from its errors.
+            # reads; an unknown one keeps the recorded address) and redacts the
+            # old and new credentials from its errors.
             # The tunnel gets its name back once that name is free; a deploy
             # replaces both.
             files, secrets = _tunnel_settings(proxy, own_ip, shared_label(proxy_id, key))
@@ -2489,12 +2507,21 @@ def _start_when_ready(earner: Any, sidecar: Any, slug: str, *, ready: bool) -> N
             # read is the current run's). False is never read again into True.
             sidecar.reload()
             ready = _read_exit(sidecar) is not None
+        run = _started_at(sidecar)
         action = earner_action(earner, sidecar, ready)
         if action == "restart":
             earner.restart(timeout=orchestrator._get_stop_timeout(slug))
         elif action == "start":
             earner.start()
         else:
+            return
+        sidecar.reload()
+        if sidecar.status != "running" or _started_at(sidecar) != run:
+            # The tunnel restarted between the read and the start: the earner
+            # may have joined a run whose firewall is not loaded yet. Stopped;
+            # the next heartbeat starts it once that run is ready.
+            logger.warning("The tunnel of %s restarted while it started; stopping it", earner.name)
+            earner.stop(timeout=orchestrator._get_stop_timeout(slug))
             return
         earner.reload()
         logger.info("Started %s inside its tunnel, which is ready", earner.name)

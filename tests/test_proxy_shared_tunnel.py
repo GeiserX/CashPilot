@@ -2675,6 +2675,30 @@ class TestAFailureThatCannotBeRecorded:
         assert listed.starts == starts and listed.status == "exited"
         assert earner.name.endswith(orchestrator.REPLACED_SUFFIX)
 
+    def test_an_earner_whose_tunnel_restarts_during_its_start_is_stopped_again(self, docker):
+        """The read said ready, then the tunnel restarted before the start: its new run may have no firewall yet."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner.stop()
+        real_start = earner.start
+
+        def start():
+            tunnel.attrs["State"]["StartedAt"] = "9999-01-01T00:00:00Z"  # a new run of the tunnel
+            real_start()
+
+        earner.start = start
+        proxy_tunnel._start_when_ready(earner, tunnel, "honeygain", ready=True)
+        assert earner.status == "exited"
+
+    def test_control_an_earner_whose_tunnel_stays_on_its_run_is_started(self, docker):
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner.stop()
+        proxy_tunnel._start_when_ready(earner, tunnel, "honeygain", ready=True)
+        assert earner.status == "running"
+
     def test_an_unreadable_failure_record_removes_no_earner(self, docker, tmp_path):
         """Not known whether a deploy failed: nothing is started, and nothing is removed for it."""
         _deploy("honeygain")
@@ -3287,6 +3311,44 @@ class TestAnOwnIpChangeRestartsTheTunnel:
         assert earner.attrs["State"]["StartedAt"] > tunnel.attrs["State"]["StartedAt"]
         proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")  # the same address again: no restart
         assert tunnel.starts == starts + 1
+
+    # An address the worker could not tell this time ('' in the files) never
+    # replaces a known one: cp-tunnel's leak guard lets any exit through when
+    # own_ip is empty, the box's own address too.
+
+    @pytest.mark.parametrize("password", [PASSWORD, NEW_PASSWORD])
+    def test_a_stopped_retired_tunnel_keeps_its_own_ip_when_the_address_is_unknown(self, docker, password):
+        earner, old_tunnel = TestARecoveredSharedCopyIsNeverRecreated._stopped_in_retired_tunnel(docker)
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        proxy_tunnel.stop("honeygain", 3)
+        old_tunnel.stop()
+        proxy_tunnel.start("honeygain", 3, _socks(password=password), None)
+        assert old_tunnel.files["own_ip"] == "198.51.100.7"
+        assert old_tunnel.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", password)
+        assert docker.named(NAME) is earner and earner.status == "running"
+
+    @pytest.mark.parametrize("stopped", [True, False])
+    def test_the_shared_tunnel_keeps_its_own_ip_on_a_settings_change_with_the_address_unknown(self, docker, stopped):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        if stopped:
+            proxy_tunnel.stop("honeygain", 3)
+            tunnel.stop()
+        proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
+        assert docker.named("cashpilot-tunnel-p3") is tunnel and tunnel.status == "running"
+        assert tunnel.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", NEW_PASSWORD)
+        assert tunnel.files["own_ip"] == "198.51.100.7"
+
+    def test_a_tunnel_replaced_for_a_new_image_keeps_its_own_ip_when_the_address_is_unknown(self, docker):
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+            _deploy("honeygain")  # own_ip None
+        new = docker.named("cashpilot-tunnel-p3")
+        assert new.id != old.id and new.attrs["Config"]["Image"] == NEW_IMAGE
+        assert new.files["own_ip"] == "198.51.100.7"
 
 
 class TestAnOldEarnerDockerIsStillRemoving:
