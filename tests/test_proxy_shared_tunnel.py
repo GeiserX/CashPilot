@@ -1680,9 +1680,10 @@ class TestThirdReview:
 
 
 class TestFourthReview:
-    def test_a_folder_that_cannot_be_flushed_fails_the_start_and_a_retry_flushes_it(self, docker):
+    def test_a_folder_that_cannot_be_flushed_is_reported_by_the_start_and_a_retry_flushes_it(self, docker):
         """The marker's rename is on disk only once its folder is flushed: a start acknowledged before that could
-        come back stopped after a power cut. And a retry that finds the marker already saying so flushes it."""
+        come back stopped after a power cut, so the start says so (the copy runs: the marker already says it should).
+        And a retry that finds the marker already saying so flushes it."""
         _deploy("honeygain")
         proxy_tunnel.stop("honeygain", 3)
         real = os.fsync
@@ -1697,10 +1698,10 @@ class TestFourthReview:
 
         with (
             patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, True)),
-            pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not record"),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="was started, but .*Could not record"),
         ):
             proxy_tunnel.start("honeygain", 3, _socks(), None)
-        assert docker.named(NAME).status == "exited"
+        assert docker.named(NAME).status == "running"
         folders.clear()
         with patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, False)):
             proxy_tunnel.start("honeygain", 3, _socks(), None)
@@ -4133,18 +4134,24 @@ class TestAnOlderWorkersTunnelReplacementFollowups:
             proxy_tunnel.start("honeygain", 3, None, None)
         assert docker.named(NAME).status == "exited"
 
-    def test_a_moved_copy_keeps_its_devices(self, docker):
+    def test_a_copy_with_a_host_device_is_never_carried_into_a_tunnel(self, docker):
+        """The worker API gives a proxied copy no host devices (_validate_proxied). The move carried every device
+        Docker recorded into the new tunnel's namespace, so a copy that got one some other way kept it there."""
         _deploy("honeygain")
         old = docker.named("cashpilot-tunnel-p3")
         _made_by_an_older_worker(old)
-        docker.named(NAME).attrs["HostConfig"]["Devices"] = [
-            {"PathOnHost": "/dev/net/tun", "PathInContainer": "/dev/net/tun", "CgroupPermissions": "rwm"},
+        earner = docker.named(NAME)
+        earner.attrs["HostConfig"]["Devices"] = [
             {"PathOnHost": "/dev/dri/renderD128", "PathInContainer": "/dev/dri/card0", "CgroupPermissions": "r"},
         ]
         _heartbeat()
-        clone = docker.named(NAME)
-        assert clone.attrs["HostConfig"]["NetworkMode"] != f"container:{old.id}" and clone.status == "running"
-        assert clone.kw["devices"] == ["/dev/net/tun:/dev/net/tun:rwm", "/dev/dri/renderD128:/dev/dri/card0:r"]
+        assert docker.named(NAME) is earner and earner.status == "running"
+        assert earner.attrs["HostConfig"]["NetworkMode"] == f"container:{old.id}"
+        assert docker.tunnels() == [old]
+        assert sorted(c.name for c in docker.by_id.values()) == ["cashpilot-honeygain-p3", "cashpilot-tunnel-p3"]
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="host devices"):
+            proxy_tunnel._clone_into(docker, earner, old)
+        assert docker.named(NAME + proxy_tunnel.STAGED_SUFFIX) is None and earner.status == "running"
 
     def test_the_heartbeat_replacement_bounds_its_image_pull(self, docker):
         _deploy("honeygain")
@@ -4434,3 +4441,95 @@ class TestRoundThreeFollowups:
         assert took < 2, took
         assert not proxy_tunnel._deploy_lock(4).locked()
         assert docker.named("cashpilot-earnfm-p4").status == "exited"
+
+
+class TestRoundFourFollowups:
+    @pytest.mark.parametrize("path", ["current UI", "older UI", "legacy pair"])
+    def test_a_start_that_replaces_an_older_tunnel_gives_up_on_a_pull_that_never_returns(self, docker, path):
+        """A start that replaced an older worker's tunnel pulled the image with no deadline, holding the proxy's
+        lock: every Stop through that proxy, the traffic cap's too, waited for as long as the pull hung."""
+        if path == "legacy pair":
+            tunnel = _legacy_pair(docker, "honeygain", proxy=_socks())
+        else:
+            _deploy("honeygain")
+            tunnel = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(tunnel)
+        proxy_tunnel.stop("honeygain", 3)
+        release = threading.Event()
+        pulls = []
+
+        def pull(image):
+            pulls.append(image)
+            release.wait(3)  # never returns within the test's bound
+
+        try:
+            with (
+                patch.object(docker, "pull", side_effect=pull),
+                patch.object(proxy_tunnel, "REPLACE_PULL_SECONDS", 0.2),
+                pytest.raises(orchestrator.ContainerRuntimeError),
+            ):
+                began = time.monotonic()
+                try:
+                    proxy_tunnel.start("honeygain", 3, _socks() if path == "current UI" else None, None)
+                finally:
+                    took = time.monotonic() - began
+        finally:
+            release.set()
+        assert pulls, "the start never replaced the tunnel"
+        assert took < 2, took
+        assert not proxy_tunnel._deploy_lock(3).locked()
+        assert docker.named(NAME).status == "exited" and proxy_tunnel.held() == {NAME}
+
+    @pytest.mark.parametrize("pair", ["shared", "legacy"])
+    def test_a_start_whose_record_cannot_be_flushed_starts_the_copy_and_says_so(self, docker, pair):
+        """The start reported a failure once the marker already said the copy runs, and left the earner down:
+        the next heartbeat started it, so the owner (or the cap) was told the opposite of what happened."""
+        if pair == "legacy":
+            _legacy_pair(docker, "honeygain")
+        else:
+            _deploy("honeygain")
+        proxy_tunnel.stop("honeygain", 3)
+        assert docker.named(NAME).status == "exited"
+        with _folder_fsync(errno.EIO), pytest.raises(proxy_tunnel.ProxyTunnelError, match="was started, but"):
+            proxy_tunnel.start("honeygain", 3, _socks() if pair == "shared" else None, None)
+        assert proxy_tunnel.held() == set()
+        assert docker.named(NAME).status == "running"
+        _heartbeat()
+        assert docker.named(NAME).status == "running"
+
+    def test_a_copy_whose_move_out_of_an_older_tunnel_fails_keeps_running_there(self, docker):
+        """The member stopped before its clone took the name. A rename that failed then put it back in its
+        own tunnel, where nothing starts an earner (an older worker's): a copy that was earning stayed down."""
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        earner = docker.named(NAME)
+        real_create = docker.create
+        failed = []
+
+        def create(**kw):
+            c = real_create(**kw)
+            if kw["name"] == NAME + proxy_tunnel.STAGED_SUFFIX:
+                real_rename = c.rename
+
+                def rename(name):
+                    if name == NAME and not failed:
+                        failed.append(name)
+                        raise APIError("500 Server Error: rename failed")
+                    real_rename(name)
+
+                c.rename = rename
+            return c
+
+        with patch.object(docker, "create", side_effect=create):
+            _heartbeat()
+            _heartbeat()
+        assert failed, "the move never reached the clone's rename"
+        assert docker.named(NAME) is earner and earner.status == "running"
+        assert earner.attrs["HostConfig"]["NetworkMode"] == f"container:{old.id}"
+        proxy_tunnel._replace_failed.clear()  # control: the next try, minutes later, moves it
+        _heartbeat()
+        (new,) = docker.tunnels()
+        clone = docker.named(NAME)
+        assert new.id != old.id and clone.status == "running"
+        assert clone.attrs["HostConfig"]["NetworkMode"] == f"container:{new.id}"

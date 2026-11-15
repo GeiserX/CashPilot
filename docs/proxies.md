@@ -248,12 +248,17 @@ through its proxy, or by the first heartbeat while a copy in it should run.
 The heartbeat does this in the background, so a slow replacement never
 delays the heartbeat itself. The new tunnel, on the same settings and the
 current tunnel image, proves its exit first. Then each copy is recreated
-inside it under its own name, with its settings, its volumes and its
-devices, and starts again only once the new tunnel is ready. Recreating a
+inside it under its own name, with its settings and its volumes, and starts
+again only once the new tunnel is ready. Host devices are never carried: a
+proxied copy gets none, so a copy that has one was not made by CashPilot, and
+its move is refused with the copy left as it was. Recreating a
 copy loses its writable layer, as moving a legacy pair does, so a provider
 that keeps its device id there sees a new device once. No earner starts in
-the old tunnel meanwhile. If one copy cannot move, the copies already moved
-keep running in the new tunnel, and the worker tries to finish the move again
+the old tunnel meanwhile. Each copy stops only once its new container holds
+its name. If one copy cannot move, the copies already moved keep running in
+the new tunnel, and the copy that failed keeps running in the old one; only
+when its new container could not start, after it stopped, does it stay
+stopped until the next try. The worker tries to finish the move again
 about five minutes later. That is a retry, not a promise: while Docker keeps
 refusing (a container it cannot create, a full disk), the move stays half
 done and the worker log says why, so fix the cause and the next try finishes
