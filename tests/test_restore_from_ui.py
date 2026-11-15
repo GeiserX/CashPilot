@@ -30,6 +30,7 @@ import hashlib
 import io
 import logging
 import os
+import posixpath
 import re
 import tarfile
 from contextlib import ExitStack, asynccontextmanager
@@ -340,18 +341,23 @@ class FakeContainer:
         self.docker.puts.append((self.name, path))
         if self.docker.corrupt_put:
             data = data.replace(KEY_FILE, KEY_FILE[:-1] + b"!")
+        into = posixpath.normpath(path)
+        mounts = {posixpath.normpath(t): t for t in self.mounts}
         with tarfile.open(fileobj=io.BytesIO(data)) as tar:
             for member in tar:
                 body = tar.extractfile(member).read() if member.isfile() else None
-                full = f"{path.rstrip('/')}/{member.name}".rstrip("/")
-                # The mount the entry lands in, the deepest one: the folder written into is
-                # never one (Docker skips its "." entry), as in the real helper.
-                target = max((t for t in self.mounts if full == t or full.startswith(t + "/")), key=len)
-                volume = self._volume(target)
+                full = posixpath.normpath(f"{into}/{member.name}")
+                if full == into:
+                    # Docker skips an entry for the folder written into ("." or "./"): that
+                    # folder keeps the owner and mode it had, even when a volume is mounted there.
+                    continue
+                # The mount the entry lands in, the deepest one.
+                target = max((t for t in mounts if full == t or full.startswith(t + "/")), key=len)
+                volume = self._volume(mounts[target])
                 below = full[len(target) + 1 :]
                 if member.islnk():
                     # Docker resolves a hard link's target from the folder written into.
-                    member.linkname = f"{path.rstrip('/')}/{member.linkname}"[len(target) + 1 :]
+                    member.linkname = posixpath.normpath(f"{into}/{member.linkname}")[len(target) + 1 :]
                 if not below:
                     # Docker applies a folder entry's owner and mode to the folder that exists.
                     volume.root = (member.mode & 0o777, member.uid, member.gid)
