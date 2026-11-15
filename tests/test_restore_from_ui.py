@@ -30,9 +30,11 @@ import hashlib
 import io
 import logging
 import os
+import re
 import tarfile
 from contextlib import ExitStack, asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -63,6 +65,8 @@ REAL_PROXY = main._proxy_to_worker
 REAL_RESOLVE = main._resolve_worker_id
 #: The real deploy_raw with its guard, before the docker fixture swaps it out.
 REAL_DEPLOY_RAW = orchestrator.deploy_raw
+#: The real restore, before the worker fixture swaps it out.
+REAL_RESTORE_STATE = orchestrator.restore_state
 #: The real fingerprint readers, before the ui fixture swaps them out.
 REAL_STATE_IDS = payout_registry.state_ids
 REAL_ALL_STATE_IDS = payout_registry.all_state_ids
@@ -2339,3 +2343,42 @@ class TestARestoreOnTheIdentityLedger:
         view = next(r for r in ui.get("/api/identities").json() if r["id"] == row_id)
         assert view["kind"] == "backup" and view["forgettable"] is True
         assert asyncio.run(database.delete_identity(row_id)) is True
+
+
+def test_the_backup_file_selector_has_a_label():
+    """A screen reader names the file input by its label, not by the paragraph above it."""
+    html = (Path(__file__).resolve().parent.parent / "app" / "templates" / "settings.html").read_text()
+    assert re.search(r'<label[^>]*\bfor="restore-file"[^>]*>\s*Backup file\s*</label>', html)
+
+
+class TestARestoreRefusedBeforeItStarts:
+    """A Docker that cannot be reached or asked creates nothing: a plain refusal, never an opaque 500."""
+
+    def test_no_docker_is_a_503_that_restored_nothing(self, docker):
+        no_docker = RuntimeError("The Docker socket proxy is not answering.")
+        with (
+            patch.object(orchestrator, "_get_client", side_effect=no_docker),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.status_code == 503 and not caught.value.left
+        assert "Nothing was restored" in str(caught.value) and "socket proxy" in str(caught.value)
+        assert docker.container_map == {} and docker.volume_map == {}
+
+    def test_a_refused_check_restored_nothing(self, docker):
+        response = requests.Response()
+        response.status_code = 403
+        with (
+            patch.object(docker.containers, "list", side_effect=APIError("forbidden", response=response)),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.status_code == 409 and not caught.value.left
+        assert "Nothing was restored" in str(caught.value)
+        assert docker.container_map == {} and docker.volume_map == {}
+
+    def test_the_worker_answers_it_as_its_own(self, worker, monkeypatch):
+        monkeypatch.setattr(worker_api.orchestrator, "restore_state", REAL_RESTORE_STATE)
+        monkeypatch.setattr(worker_api.orchestrator, "_get_client", MagicMock(side_effect=RuntimeError("no docker")))
+        resp = worker("proxybase-xyz", proxybase_bundle())
+        assert resp.status_code == 503 and resp.json()["restored"] is False

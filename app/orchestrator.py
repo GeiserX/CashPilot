@@ -2944,7 +2944,10 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
 
     gated = fence_gated(slug)
     lock = GATED_DEPLOY_LOCK if gated else contextlib.nullcontext()
-    client = _get_client()
+    try:
+        client = _get_client()
+    except RuntimeError as exc:
+        raise RestoreError(f"Nothing was restored: {exc}", 503) from None
     name = _container_name(slug)
     if not _RESTORE_LOCK.acquire(blocking=False):
         raise RestoreError("Nothing was restored: another restore is running on this box. Try again when it ends.")
@@ -2978,7 +2981,13 @@ def _restore_locked(
     """restore_state's steps, under its locks."""
     from app import state_backup
 
-    if why := _restore_refusal(client, slug, name, targets):
+    try:
+        why = _restore_refusal(client, slug, name, targets)
+    except APIError as exc:
+        # Nothing is made before this check, so nothing needs undoing.
+        refused = proxy_refusal(exc) or " ".join(str(exc.explanation or exc).split())[:300]
+        raise RestoreError(f"Nothing was restored: Docker refused to show what is on this box: {refused}.") from None
+    if why:
         raise RestoreError(f"Nothing was restored: {why}.")
     before = set(_named_volumes(deploy.get("volumes")))
     made: list[str] = []
