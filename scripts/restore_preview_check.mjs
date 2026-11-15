@@ -129,38 +129,59 @@ function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worke
 }
 
 const CRITICAL = '&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true';
-let run = await runRemove({owner: true, answers: [true, true]});
+// An owner is asked first whether the data goes too; false keeps it, as below.
+let run = await runRemove({owner: true, answers: [true, false, true]});
 check('a refused Remove asks the owner about the half-written data',
-  run.asked.length === 2 && /partial restore/.test(run.asked[1]) && /deletes that volume/.test(run.asked[1]), run.asked);
-check('and names the box that refused', /on box-a did not finish/.test(run.asked[1]), run.asked);
+  run.asked.length === 3 && /partial restore/.test(run.asked[2]) && /deletes that volume/.test(run.asked[2]), run.asked);
+check('and names the box that refused', /on box-a did not finish/.test(run.asked[2]), run.asked);
 check('and sends the audited critical delete to that box only', run.sent.length === 2
   && run.sent[0] === 'DELETE /api/services/mysterium'
   && run.sent[1] === `DELETE /api/services/mysterium?worker_id=1${CRITICAL}`, run.sent);
 check('and says it was removed', run.toasts.join() === 'success: mysterium removed', run.toasts);
-run = await runRemove({owner: true, answers: [true, true], failed: ['mysterium-data']});
+run = await runRemove({owner: true, answers: [true, false, true], failed: ['mysterium-data']});
 check('a volume the box could not delete is not reported as removed', run.toasts.length === 1
   && /^error: /.test(run.toasts[0]) && /mysterium-data could not be deleted/.test(run.toasts[0]), run.toasts);
-run = await runRemove({owner: true, answers: [true, true], box: {}});
-check('a refusal that names no box deletes nothing', run.sent.length === 1 && run.asked.length === 1
+run = await runRemove({owner: true, answers: [true, false, true], box: {}});
+check('a refusal that names no box deletes nothing', run.sent.length === 1 && run.asked.length === 2
   && /^error: /.test(run.toasts.join()), run);
-run = await runRemove({owner: true, answers: [true, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}});
-check('Remove from this box asks about that box', /from box-b\?/.test(run.asked[0]) && /on box-b did not finish/.test(run.asked[1]), run.asked);
+run = await runRemove({owner: true, answers: [true, false, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}});
+check('Remove from this box asks about that box', /from box-b\?/.test(run.asked[0]) && /on box-b\?/.test(run.asked[1])
+  && /on box-b did not finish/.test(run.asked[2]), run.asked);
 check('and both requests go to that box', run.sent.join(' | ')
   === `DELETE /api/services/mysterium?worker_id=2 | DELETE /api/services/mysterium?worker_id=2${CRITICAL}`, run.sent);
 check('and the service panel is shown again', run.reopened.join() === 'mysterium', run.reopened);
-run = await runRemove({owner: true, answers: [true, true], args: ['2', 'box-b'], box: {worker_id: 1, worker_name: 'box-a'}});
+run = await runRemove({owner: true, answers: [true, false, true], args: ['2', 'box-b'], box: {worker_id: 1, worker_name: 'box-a'}});
 check('a box-row Remove never deletes on another box', run.sent.every((r) => r.includes('worker_id=2')), run.sent);
-run = await runRemove({owner: true, answers: [true, false]});
+run = await runRemove({owner: true, answers: [true, false, false]});
 check('an owner who says no deletes nothing', run.sent.length === 1 && run.toasts.length === 0, run);
 run = await runRemove({owner: false, answers: [true]});
 check('a writer is not offered the delete', run.sent.length === 1 && run.asked.length === 1
   && /Only the owner/.test(run.toasts.join()), run);
-run = await runRemove({owner: true, answers: [true], refusal: 'something_else'});
-check('any other refusal is shown and not retried', run.sent.length === 1 && run.asked.length === 1
+run = await runRemove({owner: true, answers: [true, false], refusal: 'something_else'});
+check('any other refusal is shown and not retried', run.sent.length === 1 && run.asked.length === 2
   && /^error: /.test(run.toasts.join()), run);
-run = await runRemove({owner: true, answers: [true], refusal: null});
+run = await runRemove({owner: true, answers: [true, false], refusal: null});
 check('a Remove the worker takes asks nothing more', run.sent.length === 1
-  && run.sent[0] === 'DELETE /api/services/mysterium' && run.asked.length === 1, run);
+  && run.sent[0] === 'DELETE /api/services/mysterium' && run.asked.length === 2, run);
+
+// --- Remove with its data, the way to free a box for a restore ---------------
+// The settings page and the backup guide send the owner here: only a yes to
+// the data question sends the audited delete of the volumes, never by default.
+run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b']});
+check('an owner who says yes to the data sends the delete with the data to that box', run.sent.length === 1
+  && run.sent[0] === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true'
+  && /Also delete the data of mysterium on box-b\?/.test(run.asked[1]) && /backup file/.test(run.asked[1]), run);
+run = await runRemove({owner: true, answers: [true, true], refusal: null});
+check('from the service page too', run.sent.join() === 'DELETE /api/services/mysterium?delete_volumes=true&allow_delete_critical=true', run.sent);
+run = await runRemove({owner: true, answers: [true, false], refusal: null});
+check('control: an owner who says no keeps the data', run.sent.join() === 'DELETE /api/services/mysterium', run.sent);
+run = await runRemove({owner: false, answers: [true], refusal: null});
+check('a writer is never asked about the data and never sends its delete', run.asked.length === 1
+  && run.sent.join() === 'DELETE /api/services/mysterium', run);
+const settingsHtml = readFileSync('app/templates/settings.html', 'utf8');
+const guide = readFileSync('docs/backup.md', 'utf8');
+check('the settings page points at that question', /say yes when it asks to delete its data/.test(settingsHtml));
+check('and so does the backup guide', /say yes when it asks to delete its data/.test(guide.replace(/\s+/g, ' ')));
 
 // A catalog service has a Remove on each box's row of its panel, as a custom
 // one does, so a fleet with several boxes online can reach it.
@@ -289,6 +310,80 @@ check('a file picked after the check is not restored under the checked one',
   picked.sent.length === 0 && picked.toasts.length === 1 && /^error: .*Check file again/.test(picked.toasts[0]), picked);
 picked = await restoreAfterPicking(false);
 check('control: the checked file still in the picker restores', picked.sent.join() === 'first-upload', picked);
+
+// --- the preview belongs to one File object -----------------------------------
+// Picking a file drops the preview on screen (the picker's change event), and
+// Restore sends a preview's upload only while the picker holds that very File
+// object: two files can share a name, a size and a date.
+function restoreHarness({hold = false} = {}) {
+  const input = {files: [{name: 'a.cpbackup', size: 10, lastModified: 1}], value: 'a.cpbackup'};
+  const out = {innerHTML: ''};
+  const ids = {'restore-file': input, 'restore-preview': out};
+  const document = {getElementById: (id) => ids[id] || null, querySelector: () => null};
+  const fetches = [];
+  const fetch = () => new Promise((resolve) => fetches.push(resolve));
+  const sent = [];
+  const toasts = [];
+  const finishes = [];
+  const done = {service: 'Mysterium', worker: 'box-a', files: 1, started: true};
+  const api = (path, opts) => {
+    sent.push(opts.body.upload_id);
+    return hold ? new Promise((resolve) => finishes.push(resolve)) : Promise.resolve(done);
+  };
+  const fns = new Function('document', 'fetch', 'api', 'toast', 'loadIdentities',
+    `${escape}\n${stamp}\n${preview}\nasync ${checkSrc}\nasync ${submitSrc}\n`
+    + 'return {checkRestoreFile, submitRestore, restoreFileChanged};')(document, fetch, api, (t, k) => toasts.push(`${k}: ${t}`), () => {});
+  const reply = (id) => ({ok: true, status: 200, json: async () => ({...base, upload_id: id})});
+  const pick = (file) => { input.files = [file]; input.value = file.name; fns.restoreFileChanged(); };
+  return {input, out, fetches, sent, toasts, finishes, reply, pick, done, ...fns};
+}
+let h = restoreHarness();
+let checking = h.checkRestoreFile();
+h.fetches[0](h.reply('a-upload'));
+await checking;
+h.input.files = [{name: 'a.cpbackup', size: 10, lastModified: 1}];
+await h.submitRestore('a-upload');
+check('another file with the same name, size and date is not restored under the checked one',
+  h.sent.length === 0 && /Check file again/.test(h.toasts.join()), h);
+
+h = restoreHarness();
+checking = h.checkRestoreFile();
+h.pick({name: 'b.cpbackup', size: 12, lastModified: 2});
+h.fetches[0](h.reply('a-upload'));
+await checking;
+check('a file picked while the check runs gets no preview of the old one', h.out.innerHTML === '', h.out.innerHTML);
+await h.submitRestore('a-upload');
+check('and Restore refuses until the new one is checked', h.sent.length === 0 && /Check file again/.test(h.toasts.join()), h);
+
+h = restoreHarness();
+checking = h.checkRestoreFile();
+h.fetches[0](h.reply('a-upload'));
+await checking;
+h.pick({name: 'a.cpbackup', size: 10, lastModified: 1});
+check('picking a file drops the preview on screen', h.out.innerHTML === '', h.out.innerHTML);
+
+h = restoreHarness({hold: true});
+checking = h.checkRestoreFile();
+h.fetches[0](h.reply('a-upload'));
+await checking;
+let restoring = h.submitRestore('a-upload');
+h.pick({name: 'b.cpbackup', size: 12, lastModified: 2});
+h.finishes[0](h.done);
+await restoring;
+check('a file picked after the restore was sent, never checked, stays in the picker',
+  h.sent.join() === 'a-upload' && h.input.value === 'b.cpbackup' && h.input.files[0].name === 'b.cpbackup', h.input);
+
+h = restoreHarness({hold: true});
+checking = h.checkRestoreFile();
+h.fetches[0](h.reply('a-upload'));
+await checking;
+restoring = h.submitRestore('a-upload');
+h.finishes[0](h.done);
+await restoring;
+check('control: the same file still in the picker is cleared with its preview',
+  h.input.value === '' && h.out.innerHTML === '', {value: h.input.value, html: h.out.innerHTML});
+check('the settings page wires the picker to drop the preview',
+  /getElementById\('restore-file'\)[\s\S]{0,80}addEventListener\('change', restoreFileChanged\)/.test(src));
 
 if (bad) {
   console.error(`\n${bad} check(s) failed`);

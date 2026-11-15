@@ -2977,10 +2977,17 @@ const CP = (() => {
     const where = pinned ? ` from ${boxName || `worker #${workerId}`}` : '';
     if (!confirm(`Remove ${slug}${where}? This will stop and delete the container.`)) return;
     const box = (id) => `?worker_id=${encodeURIComponent(id)}`;
+    // Its data goes only when the owner says so, never by default: the same
+    // owner-only, audited delete a custom service's Remove offers. It is the
+    // way to free the box for a restore of a backup.
+    const params = pinned ? [`worker_id=${encodeURIComponent(workerId)}`] : [];
+    if (_isOwner && confirm(`Also delete the data of ${slug}${pinned ? ` on ${boxName || `worker #${workerId}`}` : ''}? A node identity or wallet in it is gone for good unless you have its backup file. Cancel keeps the data for a later deploy.`)) {
+      params.push('delete_volumes=true', 'allow_delete_critical=true');
+    }
     try {
       let result;
       try {
-        result = await api(`/api/services/${slug}${pinned ? box(workerId) : ''}`, { method: 'DELETE' });
+        result = await api(`/api/services/${slug}${params.length ? `?${params.join('&')}` : ''}`, { method: 'DELETE' });
       } catch (err) {
         // A restore that did not finish left a half-written data volume, and
         // the worker keeps it marked until it goes. The way out is the same
@@ -5040,12 +5047,19 @@ const CP = (() => {
   // Which file check is the newest: a slower answer for a file chosen before
   // must not replace the preview of the one chosen after it.
   let restoreCheckSeq = 0;
-  // The file behind the preview on screen: Restore sends that preview's
-  // upload, so it goes only while the picker still holds that same file.
+  // The File object behind the preview on screen: Restore sends that
+  // preview's upload, so it goes only while the picker still holds that very
+  // object. Two files can share a name, a size and a date.
   let previewedFile = null;
 
-  function sameFile(a, b) {
-    return !!(a && b && a.name === b.name && a.size === b.size && a.lastModified === b.lastModified);
+  // A file picked in the picker: the preview on screen is of another one, so
+  // it goes, and a check or a restore of the old file still running no longer
+  // writes the page or clears the picker.
+  function restoreFileChanged() {
+    restoreCheckSeq++;
+    previewedFile = null;
+    const out = document.getElementById('restore-preview');
+    if (out) out.innerHTML = '';
   }
 
   async function checkRestoreFile() {
@@ -5082,7 +5096,8 @@ const CP = (() => {
 
   async function submitRestore(uploadId) {
     const picker = document.getElementById('restore-file');
-    if (!sameFile(picker && picker.files && picker.files[0], previewedFile)) {
+    const sent = picker && picker.files && picker.files[0];
+    if (!previewedFile || sent !== previewedFile) {
       toast('The file chosen now is not the one checked. Press Check file again before you restore.', 'error');
       return;
     }
@@ -5112,10 +5127,12 @@ const CP = (() => {
       const res = await api('/api/restore', { method: 'POST', body });
       toast(`${res.service} restored on ${res.worker}: ${res.files} files checked`
         + (res.started ? ', started.' : '. It starts once the LAN fence is confirmed.'), 'success');
-      if (seq === restoreCheckSeq) {
+      // Only while the picker still holds the file sent and nothing was
+      // checked or picked since: a newer choice keeps its file and preview.
+      const input = document.getElementById('restore-file');
+      if (seq === restoreCheckSeq && input && input.files && input.files[0] === sent) {
         if (out) out.innerHTML = '';
-        const input = document.getElementById('restore-file');
-        if (input) input.value = '';
+        input.value = '';
         previewedFile = null;
       }
       loadIdentities();
@@ -6046,12 +6063,15 @@ const CP = (() => {
         loadCatalog();
         initCatalogFilters();
         break;
-      case 'settings':
+      case 'settings': {
         loadSettings();
+        const restoreFile = document.getElementById('restore-file');
+        if (restoreFile) restoreFile.addEventListener('change', restoreFileChanged);
         // Auto-open collector section if ?highlight= param present
         const hl = new URLSearchParams(window.location.search).get('highlight');
         if (hl) setTimeout(() => openCollectorSection(hl), 300);
         break;
+      }
     }
   });
 

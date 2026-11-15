@@ -104,9 +104,9 @@ identity sits on a named Docker volume. The rules:
 
 - **It only creates.** The box must not have the service in any state, and
   its identity volume must not exist. The restore never writes over anything.
-  To replace a running identity, take its backup first, remove the service from
-  the dashboard, delete its data volume on the box with `docker volume rm`, then
-  restore.
+  To replace a running identity, take its backup first, then remove the service
+  from that box on the dashboard and say yes when it asks to delete its data
+  (the owner only). Then restore.
 - **Passphrase files only.** A file sealed to a key is refused before anything
   secret is asked for: its private key never goes through the dashboard. Use
   the command line steps below for it.

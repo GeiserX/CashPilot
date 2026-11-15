@@ -2613,7 +2613,7 @@ async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[s
     """
     _verify_api_key(request)
     try:
-        payload, targets = await asyncio.to_thread(orchestrator.read_critical_state, slug)
+        payload, targets, fingerprint = await asyncio.to_thread(orchestrator.read_critical_state, slug)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except orchestrator.ContainerRuntimeError as exc:
@@ -2639,15 +2639,10 @@ async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[s
         # deliberately contain neither the passphrase nor any state.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    try:
-        # Which state this bundle holds, so the UI can tell when it no longer
-        # matches what runs. Unknown is fine: the UI falls back to a time limit.
-        # The heartbeat's "state_backup" feature tells the UI this field exists.
-        fingerprint = await asyncio.to_thread(orchestrator.critical_state_id, slug)
-    except Exception as exc:  # noqa: BLE001 - the bundle is still good
-        logger.info("Could not fingerprint %s's state after a backup: %s", slug, exc)
-        fingerprint = None
-
+    # "state_id" says which state this bundle holds, so the UI can tell when it
+    # no longer matches what runs; read_critical_state took it from the volume
+    # the archive came from. Unknown is fine: the UI falls back to a time limit.
+    # The heartbeat's "state_backup" feature tells the UI this field exists.
     return {
         "slug": slug,
         "targets": targets,
@@ -2677,7 +2672,7 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
         raise HTTPException(status_code=400, detail="That file is not a CashPilot backup bundle")
 
     try:
-        payload, _targets = await asyncio.to_thread(orchestrator.read_critical_state, slug)
+        payload, _targets, _state = await asyncio.to_thread(orchestrator.read_critical_state, slug)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except orchestrator.ContainerRuntimeError as exc:
@@ -2766,6 +2761,20 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
             detail=f"A restore runs {slug} exactly as this worker's catalog does, and this one differs: "
             f"{'; '.join(found)}. Nothing was restored.",
         )
+    # The deviations above compare mount targets only: a spec that mounts
+    # another volume at a critical folder, or none, would pass them and fail
+    # only after the restore made its volume. Refused here, before anything.
+    mounted = {
+        orchestrator._norm_mount(str((m or {}).get("bind") or "")): str(source)
+        for source, m in (spec.volumes or {}).items()
+    }
+    for target, volume in sorted((orchestrator.restore_targets(slug) or {}).items()):
+        if mounted.get(orchestrator._norm_mount(target)) != volume:
+            raise HTTPException(
+                status_code=400,
+                detail=f"A restore writes {target} into the volume {volume}, as this worker's catalog runs {slug}, "
+                "and this deploy spec does not mount it there. Nothing was restored.",
+            )
     try:
         bundle = base64.b64decode(bundle_b64, validate=True)
     except (ValueError, TypeError):

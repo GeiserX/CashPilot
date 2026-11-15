@@ -539,7 +539,7 @@ def _fake_volume_bundle(**secret) -> bytes:
         patch.object(orchestrator, "_critical_volume_targets", return_value={t: "x" for t in archives}),
         patch.object(orchestrator, "_find_container", return_value=container),
     ):
-        payload, targets = orchestrator.read_critical_state("fake")
+        payload, targets, _state = orchestrator.read_critical_state("fake")
     return sb.seal(payload, metadata={"slug": "fake", "worker": "w", "targets": targets}, **secret)
 
 

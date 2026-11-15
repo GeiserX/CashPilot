@@ -11733,6 +11733,9 @@ RESTORE_UPLOAD_MAX = 65 * 1024 * 1024
 RESTORE_UPLOAD_TTL = 15 * 60
 #: Files waiting at once, for the whole installation.
 RESTORE_UPLOAD_MAX_PENDING = 4
+#: The longest wait for the next piece of an upload. A connection that stalls
+#: (a laptop asleep mid-upload) would otherwise hold its slot until a restart.
+RESTORE_UPLOAD_IDLE = 60
 #: The longest header a bundle may declare; the real one is a few hundred bytes.
 _RESTORE_HEADER_MAX = 64 * 1024
 
@@ -11924,6 +11927,25 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+class _RestoreStream:
+    """request.stream(), with a deadline on each piece: a stalled upload ends with 408 and gives its slot back."""
+
+    def __init__(self, request: Request) -> None:
+        self._chunks = request.stream().__aiter__()
+
+    def __aiter__(self) -> _RestoreStream:
+        return self
+
+    async def __anext__(self) -> bytes:
+        try:
+            async with asyncio.timeout(RESTORE_UPLOAD_IDLE):
+                return await anext(self._chunks)
+        except TimeoutError:
+            raise HTTPException(
+                status_code=408, detail="The file stopped arriving, so it was not kept. Check the file again."
+            ) from None
+
+
 @app.post("/api/restore/upload")
 async def api_restore_upload(request: Request) -> dict[str, Any]:
     """Take a .cpbackup file (the raw request body) and say what restoring it would do. Owner, signed in, only.
@@ -11953,7 +11975,7 @@ async def api_restore_upload(request: Request) -> dict[str, Any]:
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "wb") as fh:
-            async for chunk in request.stream():
+            async for chunk in _RestoreStream(request):
                 size += len(chunk)
                 if size > RESTORE_UPLOAD_MAX:
                     raise HTTPException(status_code=413, detail="This file is larger than any backup CashPilot makes.")
