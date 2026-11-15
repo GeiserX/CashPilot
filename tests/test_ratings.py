@@ -525,6 +525,7 @@ class TestApi:
             _owner(),
             patch("app.main.catalog.get_services", return_value=svcs),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         ):
             data = client.get("/api/services/available").json()
@@ -536,6 +537,7 @@ class TestApi:
             _owner(),
             patch("app.main.catalog.get_service", return_value=svc),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.get_custom_images", new_callable=AsyncMock, return_value={}),
         ):
@@ -550,6 +552,7 @@ class TestApi:
             patch("app.main.catalog.get_service", return_value=None),
             patch("app.main._custom_service", new_callable=AsyncMock, return_value=custom),
             patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]),
+            patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
             patch("app.main.database.get_custom_images", new_callable=AsyncMock, return_value={}),
         ):

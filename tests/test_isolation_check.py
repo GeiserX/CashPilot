@@ -428,6 +428,7 @@ class TestPlacementAndDns:
         # deployed its tunnel comes before every ordinary earner.
         tunnel = _earner("cashpilot-tunnel-honeygain-p1")
         tunnel.labels = {"cashpilot.managed": "true", "cashpilot.role": "tunnel", "cashpilot.proxy": "1"}
+        tunnel.attrs["Config"] = {"Image": "drumsergio/cashpilot-tunnel:1.64.0"}
         plain = _earner("cashpilot-honeygain")
         plain.labels = {"cashpilot.managed": "true", "cashpilot.service": "honeygain"}
         assert isolation_check._pick_earner([tunnel, plain], "cashpilot-isolated") is plain

@@ -2427,7 +2427,7 @@ class TestADeployTheWorkerDidNotAnswer:
     def test_a_connection_lost_mid_request_counts_as_no_answer(self, db):
         """A reset after the request was sent (httpx.ReadError): the worker may still deploy it."""
         lost = self._proxy_failure(httpx.ReadError("connection reset"))
-        assert lost.status_code == 503 and main._outcome_unknown(lost)
+        assert lost.status_code == 504 and main._outcome_unknown(lost)
         _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=self._timed_out, fail_exc=lost)
         error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
         assert error.status_code == 409 and sent == []

@@ -47,15 +47,15 @@ let deployAnswer = {};
 let answers = [];
 const api = async (...args) => { requests.push(args); return answers.shift() ?? deployAnswer; };
 const shownLinks = [];
-// _imageChoice and _instancesFor read the form's Advanced box and Instances
-// box; undefined is "unchanged", so the request body is the env alone.
-// _confirmDeviceRenames asks before a redeploy renames a provider device;
-// renameAnswer is what the user clicks.
+// _imageChoice, _instancesFor and _routeChoice read the form's Advanced box,
+// Instances box and Route box; undefined is "unchanged", so the request body is
+// the env alone. _confirmDeviceRenames asks before a redeploy renames a
+// provider device; renameAnswer is what the user clicks.
 let renameAnswer = false;
-const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState', '_imageChoice', '_instancesFor', '_showDeviceLink', '_confirmDeviceRenames',
+const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState', '_imageChoice', '_instancesFor', '_showDeviceLink', '_routeChoice', '_confirmDeviceRenames',
   `${grab('_deployToWorkers')}\nreturn _deployToWorkers;`)(document, api, () => { toasts++; },
   async () => { preflights++; return true; }, { deployed: [] }, () => undefined, () => undefined,
-  (slug, statusEl, links) => shownLinks.push(links), async () => renameAnswer);
+  (slug, statusEl, links) => shownLinks.push(links), () => undefined, async () => renameAnswer);
 const input = (key, value, { valid, required }) => ({ value, required, pattern: '[a-f0-9-]+',
   dataset: { key }, style: {}, checkValidity: () => valid, reportValidity: () => { reports++; } });
 

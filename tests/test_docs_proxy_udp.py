@@ -23,8 +23,12 @@ UDP_PROMISE = re.compile(
 
 def _socks_egress_rule() -> str:
     branch = TUNNEL.read_text(encoding="utf-8").split("socks5 | http)", 1)[1].split("tailscale)", 1)[0]
-    rules = [line.strip() for line in branch.splitlines() if line.strip().startswith("EGRESS_RULE=")]
-    assert len(rules) == 1, "expected one EGRESS_RULE in the socks5 | http branch of cp-tunnel"
+    rules = [line.strip() for line in branch.splitlines() if line.strip().startswith("PROXY_RULE=")]
+    assert len(rules) == 1, "expected one PROXY_RULE in the socks5 | http branch of cp-tunnel"
+    # Every way out to the proxy is built on it: the cgroup rules and the plain one.
+    for line in branch.splitlines():
+        if "accept" in line and "oifname" not in line:
+            assert "$PROXY_RULE" in line, line
     return rules[0]
 
 

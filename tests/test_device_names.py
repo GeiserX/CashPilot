@@ -540,6 +540,17 @@ class TestACopyThatKeptItsOldNameCanBeRenamedLater:
         assert copies[0]["rename_pending"] == 1, "it is still on the old name, so it is still offered"
         assert resp.json()["kept_from_previous_deployment"][0].startswith("proxied copy p4: stopped")
 
+    def test_the_routed_copy_is_never_rebuilt_as_a_copy(self, client):
+        """Routed through p4, the copy IS the service: a routed redeploy renames it from its own ids."""
+        routed = {**self._renamed(), "route": {"proxy_id": 4}}
+        copies = [_copy(4, rename_pending=1), _copy(9, rename_pending=1)]
+        resp = _renames(client, {"env": {}}, [_proxied_worker(self.RUNNING)], recorded=routed, copies=copies)
+        assert resp.json()["copies"] == ["proxied copy p9"]
+        _, _, calls = _rename_with_copies(
+            client, copies, self.RUNNING, path="/api/deploy/iproyal/device-names/copies", recorded=routed
+        )
+        assert [c[2] for c in calls] == ["/api/proxied/iproyal/9/deploy"]
+
     def test_the_retry_is_for_the_owner_only(self, client):
         resp, _ = _post(client, "/api/deploy/iproyal/device-names/copies", {}, [_worker(1, "cid-a")], role="writer")
         assert resp.status_code == 403
@@ -586,7 +597,8 @@ const env = {
   document: { getElementById: () => null, querySelectorAll: () => [] },
   console: { warn() {} },
   toast(text, kind) { toasts.push({ text, kind }); }, _showDeviceLink() {}, _imageChoice: () => undefined, _instancesFor: () => undefined,
-  _confirmPreflight: async () => true, wizardState: { deployed: [] },
+  _confirmPreflight: async () => true, wizardState: { deployed: [] }, _routeChoice: () => undefined,
+  runsOn: (w, slug) => (w.containers || []).some(c => c.slug === slug),
   escapeHtml: (t) => String(t), loadServicesTable() {}, openServiceDetail() {}, _showDeviceLink() {},
   _detailWorkers: scenario.detailWorkers || [],
 };

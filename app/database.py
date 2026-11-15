@@ -2234,33 +2234,72 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
     """
     db = await _get_db()
     try:
-        # The device ids it ran with stay in the identity ledger as retired, so
-        # removing a service no longer forgets them (issue #740).
-        await _retire_identities(db, slug, worker_id)
-        gone = True
-        if worker_id is None:
-            # Gone everywhere: each box's record goes with it, or those records
-            # would go on claiming the service is deployed on those boxes.
-            await db.execute("DELETE FROM deployment_specs WHERE slug = ?", (slug,))
-            await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
-        else:
-            await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
-            if await _deployed_on_another_worker(db, slug, worker_id):
-                gone = False
-                # The fleet row stays for the other boxes, but the container it
-                # names may be this box's: it no longer runs there, so the row
-                # must stop counting as this box's record (_legacy_deployment_spec),
-                # or the ids just retired read as still running and come back.
-                legacy = await _legacy_deployment_spec(db, slug)
-                if legacy and legacy[0] == worker_id:
-                    await db.execute("UPDATE deployments SET container_id = '' WHERE slug = ?", (slug,))
-            else:
-                await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
-        if gone:
-            await _record_removed(db, slug)
+        await _forget_deployment(db, slug, worker_id)
         await db.commit()
     finally:
         await db.close()
+
+
+async def _forget_deployment(db: Any, slug: str, worker_id: int | None) -> None:
+    # The device ids it ran with stay in the identity ledger as retired, so
+    # removing a service no longer forgets them (issue #740).
+    await _retire_identities(db, slug, worker_id)
+    gone = True
+    if worker_id is None:
+        # Gone everywhere: each box's record goes with it, or those records
+        # would go on claiming the service is deployed on those boxes.
+        await db.execute("DELETE FROM deployment_specs WHERE slug = ?", (slug,))
+        await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+    else:
+        await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
+        if await _deployed_on_another_worker(db, slug, worker_id):
+            gone = False
+            # The fleet row stays for the other boxes, but the container it
+            # names may be this box's: it no longer runs there, so the row
+            # must stop counting as this box's record (_legacy_deployment_spec),
+            # or the ids just retired read as still running and come back.
+            legacy = await _legacy_deployment_spec(db, slug)
+            if legacy and legacy[0] == worker_id:
+                await db.execute("UPDATE deployments SET container_id = '' WHERE slug = ?", (slug,))
+        else:
+            await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+    if gone:
+        await _record_removed(db, slug)
+
+
+async def remove_unkept_routed_deployment(slug: str, worker_id: int) -> None:
+    """Forget a service routed at deploy on ``worker_id`` once nothing there keeps its record.
+
+    Its copy through its route keeps it, and so does any copy of it whose
+    removal is still pending. Own connection and BEGIN IMMEDIATE: the route
+    read, the copy check and the delete are one step, so a removal and a new
+    deploy through another proxy cannot land between them and lose the new
+    deployment's record.
+    """
+    from app.proxies import route_of
+
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id)
+            )
+            row = await cursor.fetchone()
+            route = route_of(_decode_spec(row["spec_encrypted"] or "", slug)) if row else None
+            if route is not None:
+                cursor = await db.execute(
+                    "SELECT 1 FROM proxied_copies WHERE worker_id = ? AND slug = ? "
+                    "AND (proxy_id = ? OR removing_since IS NOT NULL) LIMIT 1",
+                    (worker_id, slug, route),
+                )
+                if await cursor.fetchone() is None:
+                    await _forget_deployment(db, slug, worker_id)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
 
 
 async def list_deployment_placements() -> list[dict[str, Any]]:
@@ -2275,6 +2314,25 @@ async def list_deployment_placements() -> list[dict[str, Any]]:
         return [dict(r) for r in await cursor.fetchall()]
     finally:
         await db.close()
+
+
+async def list_worker_specs(slug: str | None = None) -> list[dict[str, Any]]:
+    """Every per-worker deploy record, of ``slug`` or of every service, decoded: slug, worker_id, spec (or None)."""
+    db = await _get_db()
+    try:
+        query = "SELECT slug, worker_id, spec_encrypted FROM deployment_specs"
+        cursor = await (
+            db.execute(f"{query} WHERE slug = ? ORDER BY worker_id", (slug,))
+            if slug is not None
+            else db.execute(f"{query} ORDER BY slug, worker_id")
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+    return [
+        {"slug": r["slug"], "worker_id": r["worker_id"], "spec": _decode_spec(r["spec_encrypted"] or "", r["slug"])}
+        for r in rows
+    ]
 
 
 async def forget_deployment(slug: str) -> None:

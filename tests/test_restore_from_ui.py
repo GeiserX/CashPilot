@@ -54,6 +54,7 @@ from app import (  # noqa: E402
     main,
     orchestrator,
     payout_registry,
+    route_gate,
     socket_policy,
     state_backup,
     step_up,
@@ -1081,6 +1082,24 @@ class TestTheRestoreRouteGuards:
         (row,) = [e for e in asyncio.run(database.get_audit_events()) if e["outcome"] == "restored"]
         assert "plain HTTP" in row["detail"]
 
+    def test_a_service_routed_on_that_box_is_refused_before_the_worker(self, ui):
+        """A restored container runs from the box's own IP, which a route there forbids.
+
+        Its deployment record refuses it here; the worker's route check (TestARestoreAndTheRoute) is the backstop.
+        """
+        upload = _upload(ui, mysterium_bundle()).json()
+        routed = {"image": "x", "env": {}, "route": {"proxy_id": 3}}
+        with patch.object(
+            main.database,
+            "get_deployment_spec",
+            AsyncMock(side_effect=lambda slug, worker_id=None: routed if worker_id == 1 else None),
+        ):
+            resp = _restore(
+                ui, upload["upload_id"], worker_id=1, confirm_name="Mysterium", step_up_password=OWNER_PASSWORD
+            )
+        assert resp.status_code == 409 and "already runs" in _detail(resp)
+        assert not [s for s in ui.sent if s["path"].endswith("/restore")]
+
     def test_an_unknown_file_from_a_box_that_runs_the_service_is_refused(self, ui):
         """A file made before the ledger: its header names box-a, and box-a runs Mysterium now."""
         ui.state["runs_on"] = {"mysterium": [{"worker_id": 1}]}
@@ -1827,6 +1846,74 @@ class TestARestoreAndADeployOfOneService:
             orchestrator._holds_gated_lock(deploy)(slug="mysterium")
         assert docker.creates == [] and docker.volume_map == {}
         assert orchestrator._deploying == {}
+
+
+class TestARestoreAndTheRoute:
+    """A restored container runs from this box's own IP: the deploy's route rule holds it too."""
+
+    def test_the_real_deploy_raw_decorators_do_not_refuse_the_restore_itself(self, docker):
+        """restore_state calls the undecorated deploy_raw: both decorators wrap it now.
+
+        Wrapped the way the real one is, a call one decorator deep reaches the
+        restore check of _holds_gated_lock, which refuses every restore.
+        """
+        stacked = orchestrator._holds_route_lock(orchestrator._holds_gated_lock(docker.deploy_raw))
+        with patch.object(orchestrator, "deploy_raw", stacked):
+            result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert result["started"] is True and docker.started == ["cashpilot-mysterium"]
+
+    def test_a_proxied_only_box_refuses_the_restore_and_nothing_is_made(self, docker, monkeypatch):
+        monkeypatch.setenv(route_gate.PROXIED_ONLY_ENV, "1")
+        with pytest.raises(orchestrator.RestoreError, match="Nothing was restored: This worker runs") as exc:
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert exc.value.status_code == 403
+        assert docker.volume_map == {} and docker.creates == [] and docker.started == []
+        assert orchestrator._restoring == set()
+
+    def test_a_service_routed_here_refuses_the_restore_and_nothing_is_made(self, docker):
+        with (
+            patch.object(route_gate, "routed", return_value={"mysterium": 3}),
+            pytest.raises(orchestrator.RestoreError, match="runs through a proxy on this worker") as exc,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert exc.value.status_code == 403
+        assert docker.volume_map == {} and docker.creates == [] and docker.started == []
+
+    def test_control_a_service_routed_elsewhere_restores(self, docker):
+        with patch.object(route_gate, "routed", return_value={"storj": 3}):
+            result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert result["started"] is True
+
+    def test_the_route_lock_is_held_from_the_check_to_the_start(self, docker):
+        """No routed deploy can mark the route while the restore writes, and start it from the box's IP."""
+        import threading
+
+        held: list[bool] = []
+        real_start = FakeContainer.start
+
+        def other_thread_gets_lock() -> bool:
+            got: list[bool] = []
+
+            def take():
+                lock = route_gate.deploying("mysterium")
+                ok = lock.acquire(timeout=0.2)
+                if ok:
+                    lock.release()
+                got.append(ok)
+
+            t = threading.Thread(target=take)
+            t.start()
+            t.join()
+            return got[0]
+
+        def start(self):
+            held.append(not other_thread_gets_lock())
+            return real_start(self)
+
+        with patch.object(FakeContainer, "start", start):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert held == [True]
+        assert other_thread_gets_lock() is True
 
 
 class TestTheRestoreSafetyBranches:
