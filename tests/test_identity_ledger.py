@@ -2373,8 +2373,13 @@ class TestADeployTheWorkerDidNotAnswer:
         # The pull ends and the new container runs: the attempted id is the copy's now, the old one retired.
         _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
         _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
-        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+        assert _active()[("earnapp", wid, "1", "EARNAPP_UUID")] == UUID_A
         assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_B) in _retired()
+        # The hold stays until the deploy is over: the worker never answered it.
+        assert _active()[("earnapp", wid, "u1", "EARNAPP_UUID")] == UUID_A
+        self._age_pending()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
         error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
         assert error.status_code == 409 and sent == []
 
@@ -2882,9 +2887,13 @@ class TestAWorkerWithNoDeployDeadline:
         assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
 
     def test_its_proof_still_settles_the_hold(self, db):
+        """The proof makes the id the copy's; the hold stays, as this worker may still be pulling."""
         wid = self._held_on_an_old_worker()
         _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True, deadline=False)
-        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+        assert _active() == {
+            ("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A,
+            ("earnapp", wid, "u1", "EARNAPP_UUID"): UUID_A,
+        }
 
     def test_a_worker_with_the_deadline_lets_go(self, db):
         """The positive control, and the same box once it runs this release."""
@@ -3116,7 +3125,7 @@ class TestASettleThatARedeployOvertook:
             "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
         )
         _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
-        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+        assert _active()[("earnapp", wid, "1", "EARNAPP_UUID")] == UUID_A
 
 
 class TestARawCopyWhoseRepairTheRecordRefused:
@@ -3321,7 +3330,7 @@ class TestTheAnswerEndsOnlyItsOwnHold:
     """EarnApp on a box with a record of UUID_B; deploy A is in flight when a heartbeat proves it."""
 
     def test_a_second_deploy_that_reuses_the_name_keeps_its_hold(self, db):
-        """A's hold u1 is made row 1, deploy B then writes its own u1, and A's answer must not end B's."""
+        """A's hold u1 is made row 1 and stays, deploy B then writes u1.2, and A's answer must not end B's."""
         wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
         second = []
 
@@ -3335,7 +3344,7 @@ class TestTheAnswerEndsOnlyItsOwnHold:
 
         with patch.object(main, "_proxy_worker_deploy", hop):
             assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
-        assert second == [("u1", {"EARNAPP_UUID": UUID_C})]
+        assert second == [("u1.2", {"EARNAPP_UUID": UUID_C})]
         assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_C, except_worker=2)) == [wid]
         error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_C}, 2)
         assert error.status_code == 409 and sent == []
@@ -3482,7 +3491,10 @@ class TestAStaleHeartbeatAfterAConfirmedReplacement:
             assert error.status_code == 504
             # The 504 came after the worker's wait: the hold is older than anything saved after it.
             with sqlite3.connect(database.DB_PATH) as conn:
-                conn.execute("UPDATE device_identities SET last_seen = datetime('now', '-120 seconds')")
+                conn.execute(
+                    "UPDATE device_identities SET first_seen = datetime('now', '-120 seconds'), "
+                    "last_seen = datetime('now', '-120 seconds')"
+                )
             # The worker lands box-2 and builds a heartbeat; before it arrives the replacement is confirmed.
             rig = {**self.HG, "HONEYGAIN_DEVICE_NAME": "rig"}
             assert _deploy("honeygain", rig, wid, instances=2, running={1, 2})[0] is None
@@ -3500,11 +3512,127 @@ class TestAStaleHeartbeatAfterAConfirmedReplacement:
         assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box-2")) == []
         assert _active()[(self.COPY_2[0], wid, *self.COPY_2[1:])] == "rig-2"
 
-    def test_a_later_heartbeat_that_still_proves_it_makes_it_the_row(self, db):
-        """The positive control: the copy really runs box-2 after the replacement, so the next proof settles it."""
+    def test_heartbeats_that_still_prove_it_keep_it_held(self, db):
+        """Each heartbeat refreshes the hold, but none makes the replaced id the row: it stays held beside rig-2."""
         wid = self._replaced()
         runs_old = {1: {"HONEYGAIN_DEVICE_NAME": "rig"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}
         _heartbeat("box-a", runs_old, listed=True)
         _heartbeat("box-a", runs_old, listed=True)
-        assert _active()[(self.COPY_2[0], wid, *self.COPY_2[1:])] == "box-2"
-        assert ("honeygain", wid, "u2", "HONEYGAIN_DEVICE_NAME") not in _active()
+        assert _active()[(self.COPY_2[0], wid, *self.COPY_2[1:])] == "rig-2"
+        assert _active()[("honeygain", wid, "u2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
+        assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box-2")) == [wid]
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, twenty-second round: a refreshed hold is no newer than the
+# deploy that replaced it, and a confirmed retry of the same ids ends its hold
+# ---------------------------------------------------------------------------
+
+
+def _shift(sql_table, column, seconds):
+    with sqlite3.connect(database.DB_PATH) as conn:
+        conn.execute(f"UPDATE {sql_table} SET {column} = datetime('now', ?)", (f"{seconds} seconds",))
+
+
+class TestARefreshedHoldDuringAReplacement:
+    """EarnApp copy 1 on box-a: deploy A gets no answer, then replacement C saves its record before its row."""
+
+    def test_the_refresh_does_not_make_the_replaced_hold_win(self, db):
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        error, _ = _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
+        )
+        assert error.status_code == 504
+        _shift("device_identities", "first_seen", -120)
+        _shift("device_identities", "last_seen", -120)
+        # Replacement C is confirmed: its record is saved a minute after the hold, its row not yet.
+        asyncio.run(
+            database.save_deployment(
+                slug="earnapp", container_id="c", spec={"env": {"EARNAPP_UUID": UUID_C}}, worker_id=wid
+            )
+        )
+        _shift("deployment_specs", "deployed_at", -60)
+        # A heartbeat built before the replacement proves A: the hold stays, refreshed to now.
+        asyncio.run(database.settle_pending_identities("earnapp", wid, "u1", {"EARNAPP_UUID": UUID_A}, runs=True))
+        assert _active()[("earnapp", wid, "u1", "EARNAPP_UUID")] == UUID_A
+        # The replacement writes its row, then a second stale heartbeat proves A again.
+        asyncio.run(database.record_identities("earnapp", wid, {"1": {"EARNAPP_UUID": UUID_C}}, scope="given"))
+        asyncio.run(database.settle_pending_identities("earnapp", wid, "u1", {"EARNAPP_UUID": UUID_A}, runs=True))
+        assert _active()[("earnapp", wid, "1", "EARNAPP_UUID")] == UUID_C
+        assert _active()[("earnapp", wid, "u1", "EARNAPP_UUID")] == UUID_A
+
+    def test_an_unanswered_deploy_after_the_record_is_still_promoted(self, db):
+        """The positive control: the record is older than the hold, so the proof makes A the row."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        _shift("deployment_specs", "deployed_at", -60)
+        _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
+        )
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active()[("earnapp", wid, "1", "EARNAPP_UUID")] == UUID_A
+
+    def test_a_confirmed_retry_of_the_same_ids_ends_the_hold_once_the_deploy_is_over(self, db):
+        """A times out, the same A is redeployed and confirmed: its proof settles the first attempt's hold."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
+        )
+        _shift("device_identities", "first_seen", -120)
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        assert _active()[("earnapp", wid, "u1", "EARNAPP_UUID")] == UUID_A
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active()[("earnapp", wid, "u1", "EARNAPP_UUID")] == UUID_A
+        # Only the hold ages: the retry's record stays newer than the hold's first write.
+        _shift("device_identities", "last_seen", -(main.PENDING_IDENTITY_SECONDS + 60))
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, twenty-third round: a heartbeat that proves a hold keeps the
+# hold, so a removal while the deploy is unanswered still leaves its id in use
+# ---------------------------------------------------------------------------
+
+
+class TestAProvedHoldThroughARemoval:
+    """EarnApp on box-a runs UUID_B and is redeployed with the same UUID_B; a heartbeat proves it."""
+
+    def test_an_unanswered_redeploy_keeps_its_id_in_use_after_a_removal(self, db):
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        error, _ = _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_B}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
+        )
+        assert error.status_code == 504
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        _remove("earnapp", wid)
+        # The worker may still create the container with UUID_B.
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_B)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, 2)
+        assert error.status_code == 409 and sent == []
+        # The positive control: once the deploy is over and nothing runs it, the id is free.
+        TestADeployTheWorkerDidNotAnswer._age_pending()
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_B)) == []
+
+    def test_a_removal_during_the_pull_keeps_it_until_the_answer(self, db):
+        """The heartbeat proves the hold during the pull, the owner removes the service, then the answer lands."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        in_use = []
+
+        async def hop(worker_id, slug, spec, **kwargs):
+            await database.settle_pending_identities(slug, worker_id, "u1", {"EARNAPP_UUID": UUID_B}, runs=True)
+            answer = {"status": "removed", "container": f"cashpilot-{slug}"}
+            with (
+                patch.object(main, "_require_writer", lambda r: OWNER),
+                patch.object(main, "_proxy_worker_command", AsyncMock(return_value=answer)),
+            ):
+                await main._svc_remove(_request(), slug, worker_id, False)
+            in_use.append(await database.identity_in_use(slug, "EARNAPP_UUID", UUID_B))
+            return {"container_id": "c1"}
+
+        with patch.object(main, "_proxy_worker_deploy", hop):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid)[0] is None
+        assert in_use == [[wid]]
+        # Answered: the hold ended, and only the copy's row is left.
+        mine = [(r["instance"], r["status"], r["value"]) for r in _rows() if r["worker_id"] == wid]
+        assert mine == [("1", "active", UUID_B)]

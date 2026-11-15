@@ -5020,8 +5020,9 @@ async def _reserve_pending_identities(
     of a deploy whose earlier copies were already sent). A second unanswered
     deploy with other ids is held beside the first, not over it. The worker's
     answer ends the hold this created (_release_pending_identities); with none,
-    _settle_pending_identities makes it the copy's row once a heartbeat proves
-    it, or retires it once PENDING_IDENTITY_SECONDS pass with no proof.
+    _settle_pending_identities makes its ids the copy's row once a heartbeat
+    proves them, keeping the hold until PENDING_IDENTITY_SECONDS pass, or
+    retires it once they pass with no proof.
     """
     if not isinstance(env, Mapping):
         return None
@@ -5055,13 +5056,16 @@ async def _settle_pending_identities(worker_id: int, containers: Any, *, complet
     """Confirm or drop the unconfirmed ids of a deploy the worker did not answer (_reserve_pending_identities).
 
     A copy this heartbeat lists with their digest runs them: they become its
-    row. Past PENDING_IDENTITY_SECONDS, a full list retires them when it shows
-    the copy gone, or running the ids its active row records; a copy listed
+    row, and the hold stays beside it until the worker answers or, past
+    PENDING_IDENTITY_SECONDS, the deploy is over: a removal keeps the hold and
+    the deploy may still land after it. Past that time, a full list retires
+    them when it shows the copy gone, or running the ids its active row
+    records; a copy listed
     with no digest, twice, or with one that proves neither proves nothing, so
     the hold stays. Only from a worker that ends every deploy by its deadline
     (``deadline``, its ``deploy_deadline`` feature). One without it may still be
-    pulling hours later, so its holds stay until proven, until it runs a release
-    with the deadline (the restart ended the old process's deploy), until the
+    pulling hours later, so its holds stay until it runs a release with the
+    deadline (the restart ended the old process's deploy), until the
     owner forgets the id (database.delete_identity), or until the box is
     deleted. A copy still showing its old ids proves nothing before that:
     the worker may still be pulling. Read on every heartbeat (one indexed
@@ -5076,13 +5080,14 @@ async def _settle_pending_identities(worker_id: int, containers: Any, *, complet
             svc = catalog.get_service(slug)
             digest = _copy_digests(containers, slug).get(copy)
             runs = _digest_proves(svc, env, digest, keys)
-            expired = complete and deadline and entry["age"] >= PENDING_IDENTITY_SECONDS
+            over = deadline and entry["age"] >= PENDING_IDENTITY_SECONDS
+            expired = complete and over
             if expired and not runs and copy in _listed_copies(containers, slug):
                 # Listed: retired only when it proves the ids the copy's row records.
                 active = await database.active_identity_values(slug, worker_id)
                 expired = _digest_proves(svc, active.get(str(copy)), digest, keys)
             if runs or expired:
-                await database.settle_pending_identities(slug, worker_id, entry["instance"], env, runs=runs)
+                await database.settle_pending_identities(slug, worker_id, entry["instance"], env, runs=runs, over=over)
                 _forget_checked_copies(worker_id, slug)
     except Exception:  # noqa: BLE001
         logger.warning("Could not settle the unconfirmed device ids on worker %s", worker_id, exc_info=True)

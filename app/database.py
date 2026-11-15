@@ -5151,11 +5151,11 @@ async def release_pending_identities(slug: str, worker_id: int, instance: str, e
     """End the hold ``instance`` that hold_pending_identities created for ``env``, once the worker answered its deploy.
 
     Its rows are deleted, not retired: an answered deploy leaves no unconfirmed
-    row behind, so a refused id is not listed or offered for reuse as if it ran.
-    Only while ``instance`` still holds exactly those ids, read and deleted in
-    one step: a heartbeat may have made the hold the copy's row already, and a
-    second deploy to the same copy then reuses the name for its own ids, which
-    this answer must not end.
+    row behind, so a refused id is not listed or offered for reuse as if it ran,
+    and one a heartbeat already made the copy's row leaves only that row. Only
+    while ``instance`` still holds exactly those ids, read and deleted in one
+    step: once the hold has ended another way, a second deploy to the same copy
+    may reuse the name for its own ids, which this answer must not end.
     """
     keys = _identity_keys(slug)
     ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
@@ -5203,22 +5203,28 @@ async def pending_identities(worker_id: int) -> list[dict[str, Any]]:
 
 
 async def settle_pending_identities(
-    slug: str, worker_id: int, instance: str, env: Mapping[str, str], *, runs: bool
+    slug: str, worker_id: int, instance: str, env: Mapping[str, str], *, runs: bool, over: bool = False
 ) -> None:
-    """End one attempt's unconfirmed ids (ledger copy ``instance``), while they are still ``env``.
+    """Settle one attempt's unconfirmed ids (ledger copy ``instance``), while they are still ``env``.
 
     ``runs`` (a heartbeat proved the copy runs them): they become the copy's own
     row, which retires what it ran before, while the worker still has a deploy
-    record of ``slug``; the hold's rows are deleted, as an answer deletes them,
-    so a deploy proved while in flight leaves no unconfirmed row behind. With
+    record of ``slug``. The hold stays beside that row: a removal keeps holds
+    and retires the row, and the unanswered deploy may still land after it, so
+    only the worker's answer (release_pending_identities) ends the hold, or
+    ``over`` (the worker's deploy deadline passed since the hold was last
+    written, so the deploy is over and the row alone says what runs). With
     none (a removal, or a first deploy that never got one) the hold stays and
     is refreshed instead: a heartbeat built before a removal proves a container
     the removal stopped, and a copy row with no record is one nothing retires.
-    The same when the record was saved after the hold was last written: a
+    The same when the record was saved after the hold was first written: a
     deploy confirmed since then replaced the copy, and a heartbeat built before
-    it must not put the replaced ids back over the newer row. The refresh makes
-    the hold newer than that record, so the next heartbeat that still proves
-    the ids (the copy really runs them) makes them the row.
+    it must not put the replaced ids back over the newer row. No refresh moves
+    that time, so the hold stays held while heartbeats prove it and runs out
+    once they stop: both ids stay reserved meanwhile. A hold whose ids the
+    copy's own row already holds (a retry of the same ids the worker then
+    confirmed) settles as proven, since nothing it replaces is newer: it is
+    not refreshed, so ``over`` ends it.
     The hold ends once its time is up with no heartbeat proving it. Otherwise
     they are retired and the copy's row stays as it is. Another attempt on the
     same copy stays held: the worker may still land it. A deploy or a removal
@@ -5233,12 +5239,14 @@ async def settle_pending_identities(
         db.row_factory = aiosqlite.Row
         await db.execute("BEGIN IMMEDIATE")
         try:
-            rows = [r for r in await _active_identity_rows(db, slug, worker_id) if r["instance"] == instance]
+            active = await _active_identity_rows(db, slug, worker_id)
+            rows = [r for r in active if r["instance"] == instance]
             held = {row["name"]: decrypt_value(row["value_encrypted"]) for row in rows}
+            copy_row = {r["name"]: decrypt_value(r["value_encrypted"]) for r in active if r["instance"] == str(copy)}
             promote = (
                 runs
                 and bool(await _deploy_records(db, slug, worker_id))
-                and not await _record_after_hold(db, slug, worker_id, instance)
+                and (copy_row == held or not await _record_after_hold(db, slug, worker_id, instance))
             )
             values: dict[str, Mapping[str, Any]] = {instance: {}}
             if promote:
@@ -5251,7 +5259,7 @@ async def settle_pending_identities(
                 await _record_identities_locked(
                     db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
                 )
-                if promote:
+                if promote and over and await _pending_aged(db, slug, worker_id, instance):
                     await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
             await db.commit()
         except BaseException:
@@ -5260,17 +5268,20 @@ async def settle_pending_identities(
 
 
 async def _record_after_hold(db: Any, slug: str, worker_id: int, instance: str) -> bool:
-    """Whether the worker's deploy record of ``slug`` was saved after unconfirmed ledger copy ``instance`` was last written.
+    """Whether the worker's deploy record of ``slug`` was saved after unconfirmed ledger copy ``instance`` was first written.
 
     The record is saved once a deploy's first copy is confirmed, and an
     unanswered copy 1 never saves one, so a record newer than the hold is a
-    later deploy the worker confirmed. Both times are datetime('now'), whole seconds: a
-    hold the worker never answered was written before a wait that ran out, so
-    a record saved after it lands seconds later, not in the same second.
+    later deploy the worker confirmed. first_seen, never last_seen: every
+    heartbeat and every retry of the same ids refreshes last_seen, which would
+    make a replaced hold look newer than the deploy that replaced it. Both
+    times are datetime('now'), whole seconds: a hold the worker never answered
+    was written before a wait that ran out, so a record saved after it lands
+    seconds later, not in the same second.
     """
     cursor = await db.execute(
         "SELECT 1 FROM deployment_specs WHERE slug = ? AND worker_id = ? AND deployed_at > "
-        "(SELECT MAX(last_seen) FROM device_identities WHERE slug = ? AND worker_id = ? AND instance = ? "
+        "(SELECT MIN(first_seen) FROM device_identities WHERE slug = ? AND worker_id = ? AND instance = ? "
         "AND kind = 'env' AND status = 'active')",
         (slug, worker_id, slug, worker_id, instance),
     )
