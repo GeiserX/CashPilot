@@ -4850,19 +4850,23 @@ async def _deploy_routed(
                 timeout=180,
             )
         except HTTPException as exc:
-            if not (_outcome_unknown(exc) or _worker_error(exc) == "routed_copy_may_exist"):
-                # The worker said no: its earner does not run, so its ids are not held.
-                await _release_pending_identities(slug, worker_id, held)
-            if not redeploy and (exc.status_code == 504 or _worker_error(exc) == "routed_copy_may_exist"):
+            if _outcome_unknown(exc) or _worker_error(exc) == "routed_copy_may_exist":
                 # The worker may still finish it, or found the earner of a new
-                # routed copy still there after the failure: both records stay, so
-                # the service is listed and capped, its route is kept, and it can
+                # routed copy still there after the failure. The copy record
+                # stays whether or not it was there before, so the earner stays
+                # capped and listed, and a removal's cleanup keeps the deployment
+                # record it may run under (remove_unkept_routed_deployment). A new
+                # deployment gets its record too, so its route is kept and it can
                 # be stopped or removed. A redeploy keeps the record it had, after
                 # a timeout too: the earner may be the old one, on the old settings.
-                await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
-            elif not had_record and _worker_error(exc) != "routed_copy_may_exist":
-                # The copy record of an earner that may still run stays, so it stays capped.
-                await database.delete_proxied_copy(proxy_id, worker_id, slug)
+                if not redeploy:
+                    await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
+            else:
+                # The worker said no: its earner does not run, so its ids are not
+                # held, and a copy record this deploy added goes again.
+                await _release_pending_identities(slug, worker_id, held)
+                if not had_record:
+                    await database.delete_proxied_copy(proxy_id, worker_id, slug)
             raise
         container_id = str(result.get("container_id") or "remote")
         await database.save_deployment(slug=slug, container_id=container_id, spec=record, worker_id=worker_id)

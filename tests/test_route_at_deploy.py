@@ -2907,3 +2907,38 @@ class TestARoutedDeployKeepsTheIdentityLedger:
         mine = {(1, "1", "UUID"): PR_UUID, (1, "1", "DEVICE_NAME"): "box-proxyrack"}
         # Proven: the ids become copy 1's row, the hold stays beside it until the deadline.
         assert rows == ({**held, **mine} if routed else held)
+
+
+class TestAnUncertainRoutedRedeployKeepsItsCopyRecord:
+    """A routed redeploy whose copy record was already gone (a removal still pending elsewhere kept the deployment)."""
+
+    @pytest.mark.parametrize(
+        ("answer", "kept"),
+        [
+            (HTTPException(status_code=504, detail="the worker did not answer in time"), True),
+            (HTTPException(status_code=409, detail={"error": "routed_copy_may_exist", "message": "x"}), True),
+            # Control: the worker said no, so nothing runs through the proxy for it.
+            (HTTPException(status_code=409, detail="Docker refused the container"), False),
+        ],
+        ids=["no-answer", "copy-may-exist", "refused"],
+    )
+    def test_the_new_copy_record_stays_while_the_worker_may_still_create_it(self, db, answer, kept):
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            before = await database.get_deployment_spec("honeygain", worker_id=1)
+            # The copy record went while the deployment record stayed: a redeploy
+            # (its record routes it through this proxy) with no copy record.
+            await database.delete_proxied_copy(pid, 1, "honeygain")
+            ui.worker_reply = lambda method, path, body: answer if path.endswith("/deploy") else {}
+            with pytest.raises(HTTPException):
+                await ui.deploy(main.DeployRequest(env={**ENV, "HONEYGAIN_PASSWORD": "new"}))
+            copies = [c["slug"] for c in await database.list_proxied_copies(pid) if c["worker_id"] == 1]
+            return before, copies, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        before, copies, record = _run(go)
+        assert copies == (["honeygain"] if kept else [])
+        # The settings that may never run are not recorded: the record it had stays.
+        assert record == before
