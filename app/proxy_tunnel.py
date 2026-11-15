@@ -208,9 +208,16 @@ def _aside_is_copy(holder: Any, aside: Any) -> bool:
     """Whether the old earner ``aside`` is still the copy beside ``holder``, which holds its name.
 
     So when the holder is a failed replacement, or when the redeploy that
-    moved ``aside`` never recorded how it ended (KEPT_MARKER). Raises OSError
-    when a marker cannot be read."""
-    return _failed_replacement(holder) or str(getattr(aside, "id", "")) in _read_names(KEPT_MARKER)
+    moved ``aside`` never recorded how it ended (KEPT_MARKER) and ``aside``
+    can still run. Raises OSError when a marker cannot be read."""
+    if _failed_replacement(holder):
+        return True
+    return not _going(aside) and str(getattr(aside, "id", "")) in _read_names(KEPT_MARKER)
+
+
+def _going(container: Any | None) -> bool:
+    """Gone, or past return: Docker never starts or renames a container it is removing or left dead."""
+    return container is None or getattr(container, "status", "") in ("removing", "dead")
 
 
 def _new_key(name: str, container_id: str) -> str:
@@ -1051,8 +1058,11 @@ def _ensure_tunnel(
         try:
             return _in_place(client, current, proxy, own_ip, files, secrets, deadline=deadline)
         except _Broken as exc:
+            # Not refused for a retired name in the way, as below: the tunnel is
+            # down now and Docker cannot start it, so its earners run again only
+            # recreated in a new tunnel (a start would recreate them too).
             logger.warning("The tunnel of proxy %s cannot start in place (%s); replacing it", proxy_id, exc)
-    if current is not None:
+    elif current is not None:
         _refuse_foreign_retired_name(client, current, final, keep, proxy_id, slug)
     # Left by a deploy that died midway, on this name only if it is ours. A young
     # one can belong to a deploy another worker on this daemon is running.
@@ -1213,7 +1223,13 @@ def _in_place(
         secrets = [*secrets, old]
     if old := _read_secret_file(current, "proxy_auth"):
         secrets = [*secrets, *_auth_secrets(old)]
-    if running and _read_secret_file(current, "settings") == files["settings"]:
+    # The digest leaves own_ip out, but the leak guard reads it when the tunnel
+    # starts: a new address restarts the tunnel as a settings change does. An
+    # empty one (the worker could not tell its address) is no news.
+    same = _read_secret_file(current, "settings") == files["settings"] and (
+        not files.get("own_ip") or _read_secret_file(current, "own_ip") == files["own_ip"]
+    )
+    if running and same:
         with contextlib.suppress(ProxyTunnelError):
             return current, _wait_ready(current)
         logger.warning("The tunnel %s runs but has no exit; restarting it", current.name)
@@ -1593,14 +1609,15 @@ def _deploy(
         # tunnel restore: the old earner aside stays the copy through KEPT_MARKER.
         # On a redeploy the new earner goes only while the old one is still
         # here to be put back: once deploy_raw has removed it (a commit that
-        # failed after), the new one is the only copy left. Not known: kept.
+        # failed after), or while Docker is removing it, the new one is the
+        # only copy left. Not known: kept.
         try:
             left = _get(client, name)
             if (
                 left is not None
                 and _is_ours(left, slug, proxy_id)
                 and (previous is None or left.id != previous.id)
-                and (first or _get(client, str(previous.id)) is not None)
+                and (first or not _going(_get(client, str(previous.id))))
             ):
                 _set_failed(str(left.id), True)
                 with contextlib.suppress(Exception):
@@ -1693,9 +1710,11 @@ def _commit(client: Any, name: str, previous: Any | None, *, clear_new: bool) ->
         _remove_quietly(aside, 2, volumes=False)
     except Exception as exc:  # noqa: BLE001 - reported, and the deploy undone
         # A removal can take effect and still error (a timed-out DELETE): one
-        # gone after all is a success, never a failure reported over the new copy.
+        # gone after all, or one Docker is still removing (it can never run or
+        # be put back again), is a success, never a failure reported over the
+        # new copy, which is then the only one left.
         with contextlib.suppress(Exception):
-            if _get(client, str(previous.id)) is None:
+            if _going(_get(client, str(previous.id))):
                 return
         raise ProxyTunnelError(
             f"{name} was not replaced: the worker could not record on disk that the deploy went through, and "
@@ -2464,6 +2483,12 @@ def _start_when_ready(earner: Any, sidecar: Any, slug: str, *, ready: bool) -> N
             _set_new(str(earner.name), False)
             _set_new(_new_key(str(earner.name), str(earner.id)), False)
             return
+        if ready:
+            # Read again under the lock: what the caller saw may describe a run
+            # of the tunnel that has ended since (/run is a tmpfs, so a fresh
+            # read is the current run's). False is never read again into True.
+            sidecar.reload()
+            ready = _read_exit(sidecar) is not None
         action = earner_action(earner, sidecar, ready)
         if action == "restart":
             earner.restart(timeout=orchestrator._get_stop_timeout(slug))

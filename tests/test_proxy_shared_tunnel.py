@@ -676,6 +676,8 @@ class TestOneTunnelPerProxy:
         _deploy("honeygain")
         _deploy("earnfm")
         tunnel = docker.named("cashpilot-tunnel-p3")
+        # The box's address is a setting too (the leak guard reads it): recorded first.
+        proxy_tunnel.start("honeygain", 3, _socks(), "192.0.2.1")
         starts = tunnel.starts
         proxy_tunnel.start("honeygain", 3, _socks(), "192.0.2.1")
         assert docker.named("cashpilot-tunnel-p3") is tunnel and tunnel.starts == starts
@@ -3235,3 +3237,138 @@ class TestAForeignContainerOnTheRetiredName:
             _deploy("honeygain")
         (tunnel,) = docker.tunnels()
         assert tunnel.attrs["Config"]["Image"] == NEW_IMAGE and old.id not in docker.by_id
+
+
+def _running_in_retired_tunnel(docker):
+    """honeygain running in its old tunnel under the retired name, earnapp in the new tunnel under the name."""
+    _deploy("honeygain")
+    earner = docker.named(NAME)
+    old_tunnel = docker.named("cashpilot-tunnel-p3")
+    stub, _made, refused = _failing_redeploy(docker, earner)
+    with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=stub),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        _deploy("earnapp")
+    refused["on"] = False
+    _heartbeat()
+    assert old_tunnel.name == "cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX
+    assert docker.named(NAME) is earner and earner.status == "running" and old_tunnel.status == "running"
+    return earner, old_tunnel
+
+
+class TestAnOwnIpChangeRestartsTheTunnel:
+    """own_ip is outside the settings digest, but the leak guard reads it when the tunnel starts."""
+
+    def test_a_running_retired_tunnel_takes_a_new_own_ip_on_the_same_settings(self, docker):
+        earner, old_tunnel = _running_in_retired_tunnel(docker)
+        assert old_tunnel.files["own_ip"] == ""
+        starts = old_tunnel.starts
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        assert old_tunnel.files["own_ip"] == "198.51.100.7" and old_tunnel.starts == starts + 1
+        assert docker.named(NAME) is earner and earner.status == "running"
+        # Restarted into the tunnel's new run, never recreated.
+        assert earner.attrs["State"]["StartedAt"] > old_tunnel.attrs["State"]["StartedAt"]
+        assert _member_ids(docker, old_tunnel) == [NAME] and old_tunnel.status == "running"
+
+    def test_the_shared_tunnel_of_a_running_copy_takes_a_new_own_ip_on_the_same_settings(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named(NAME)
+        starts = tunnel.starts
+        proxy_tunnel.start("honeygain", 3, _socks(), None)  # control: no address known is no change
+        assert tunnel.starts == starts and tunnel.files["own_ip"] == ""
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        assert docker.named("cashpilot-tunnel-p3") is tunnel and tunnel.status == "running"
+        assert tunnel.files["own_ip"] == "198.51.100.7" and tunnel.starts == starts + 1
+        assert docker.named(NAME) is earner and earner.status == "running"
+        assert earner.attrs["State"]["StartedAt"] > tunnel.attrs["State"]["StartedAt"]
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")  # the same address again: no restart
+        assert tunnel.starts == starts + 1
+
+
+class TestAnOldEarnerDockerIsStillRemoving:
+    @pytest.mark.parametrize("end", ["gone", "dead"])
+    def test_the_new_earner_stays_the_copy(self, docker, end):
+        """The commit's DELETE times out while Docker is removing the old earner, and the record cannot go."""
+        _deploy("honeygain")
+        old = docker.named(NAME)
+        real_remove, real_rename, real_start = old.remove, old.rename, old.start
+        calls = {"n": 0}
+
+        def remove(force=False, v=False):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise APIError("500 Server Error: removal failed")  # deploy_raw's own removal
+            if old.status == "removing":
+                raise APIError("409 Client Error: removal of container is already in progress")
+            if old.status == "dead":
+                return real_remove(force=force, v=v)
+            old.status = "removing"
+            raise APIError("500 Server Error: read timed out")
+
+        def refused_while_removing(real):
+            def call(*args):
+                if old.status in ("removing", "dead"):
+                    raise APIError("409 Client Error: container is dead or marked for removal")
+                return real(*args)
+
+            return call
+
+        old.remove, old.rename, old.start = (
+            remove,
+            refused_while_removing(real_rename),
+            refused_while_removing(real_start),
+        )
+        with _clearing_fails("KEPT_MARKER"):
+            result = _deploy("honeygain")
+            new = docker.named(NAME)
+            assert result["container_id"] == new.id != old.id and new.status == "running"
+            assert old.status == "removing"
+            if end == "gone":
+                del docker.by_id[old.id]  # the daemon finishes the removal
+            else:
+                old.status = "dead"  # the daemon's removal failed: it can never run again
+            _heartbeat()
+        assert docker.named(NAME) is new and new.status == "running"
+
+
+class TestABrokenTunnelWithTheRetiredNameTaken:
+    def test_a_redeploy_still_goes_through_on_a_new_tunnel(self, docker):
+        """Docker cannot start the stopped tunnel again: refusing would leave the copy offline for nothing."""
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        docker.create(name="cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX, labels={}, image="x")
+        docker.broken.add(tunnel.id)  # it runs, but Docker can no longer write to or start it
+        result = _deploy("honeygain", _socks(password=NEW_PASSWORD))
+        current = docker.named("cashpilot-tunnel-p3")
+        assert current.id != tunnel.id and current.status == "running" and result["tunnel_id"] == current.id
+        assert current.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", NEW_PASSWORD)
+        assert _member_ids(docker, current) == [NAME] and docker.named(NAME).status == "running"
+
+
+class TestReadinessIsReadUnderTheLock:
+    def test_a_tunnel_that_restarted_after_the_heartbeat_read_it_starts_nothing(self, docker):
+        """The heartbeat saw /run/ready; the tunnel restarted before recovery took the lock and has no exit yet."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner.status = "exited"
+        real_recover, real_ready = proxy_tunnel._recover, docker.ready
+        restarted = {"on": False}
+
+        def recover(*args, **kwargs):
+            tunnel.restart()
+            restarted["on"] = True
+            return real_recover(*args, **kwargs)
+
+        with (
+            patch.object(docker, "ready", lambda c: not restarted["on"] and real_ready(c)),
+            patch.object(proxy_tunnel, "_recover", side_effect=recover),
+        ):
+            _heartbeat()
+        assert restarted["on"] and earner.status == "exited"
+        _heartbeat()  # control: once the current run is ready, it starts
+        assert earner.status == "running"
