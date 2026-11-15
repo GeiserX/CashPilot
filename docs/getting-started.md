@@ -219,14 +219,14 @@ See [what the proxy refuses](security-defaults.md#docker-socket-proxy).
 
 **Step 1: remove dangling images.** A dangling image has no tag and no
 container uses it, running or stopped. An update over a moving tag such as
-`2.4`, `latest` or a digest leaves exactly these behind:
+`X.Y` (a series such as the one the compose files pin), `latest` or a digest leaves exactly these behind:
 
 ```bash
 docker image prune
 ```
 
 This also deletes the image you ran before an update over a moving tag: once
-the new `2.4` image arrives, the old one has no tag. To keep a way back, write
+the new image for that series arrives, the old one has no tag. To keep a way back, write
 down the exact version before you update (the foot of the sidebar shows it), so
 you can pull `drumsergio/cashpilot:<X.Y.Z>` again. Or pin the compose file to
 an exact `X.Y.Z` tag; then the old image keeps its tag and step 2 applies.
