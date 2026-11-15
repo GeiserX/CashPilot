@@ -704,6 +704,9 @@ async def _send_heartbeat() -> None:
     features = (
         ["instances", "isolation_check", "state_backup", "activity", "proxy_tunnel"] if docker_ok else ["instances"]
     )
+    # Every deploy this worker runs ends by DEPLOY_DEADLINE_SECONDS, so the UI
+    # may let go of the ids of one it got no answer for (main._settle_pending_identities).
+    features.append("deploy_deadline")
     # None, not an empty list, when they could not be read: the UI alerts on a
     # copy this list leaves out, and "could not look" must not read as "gone".
     proxied: list[dict[str, Any]] | None = []

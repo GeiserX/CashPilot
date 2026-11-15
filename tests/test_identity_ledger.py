@@ -901,13 +901,16 @@ def _no_checked_copies():
     getattr(main, "_IDENTITIES_LISTED", {}).clear()
 
 
-def _heartbeat(name, copies, *, slug="honeygain", containers=None, listed=None):
+def _heartbeat(name, copies, *, slug="honeygain", containers=None, listed=None, deadline=True):
     """Send box ``name``'s heartbeat through the real route, listing ``copies`` of ``slug`` (see _entries).
 
     ``containers``: the raw list instead. ``listed``: the worker's ``containers_listed``.
+    ``deadline``: the worker lists the ``deploy_deadline`` feature, as this release does.
     """
     containers = _entries(slug, copies) if containers is None else containers
     info = {} if listed is None else {"containers_listed": listed}
+    if deadline:
+        info["features"] = ["deploy_deadline"]
     body = main.WorkerHeartbeat(name=name, client_id=f"client-{name}", containers=containers, system_info=info)
     with (
         patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
@@ -2790,3 +2793,193 @@ class TestARetirementTheRecordRefused:
                 "earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}, scope="given", if_record={"env": {}}
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, seventeenth round: a removal keeps an unanswered deploy's id
+# held, a worker with no deploy deadline keeps it held past its time, an extra
+# copy's derived id is checked too, and the settle and raw-copy guards are pinned
+# ---------------------------------------------------------------------------
+
+
+class TestAnUnansweredDeployThenARemoval:
+    """A removal does not stop a deploy the worker is still pulling: its id stays held."""
+
+    _timed_out = staticmethod(TestADeployTheWorkerDidNotAnswer._timed_out)
+    _age_pending = staticmethod(TestADeployTheWorkerDidNotAnswer._age_pending)
+
+    def _timed_out_then_removed(self):
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        assert error.status_code == 504
+        _remove("earnapp", wid)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        return wid
+
+    def test_a_container_that_lands_after_the_removal_keeps_its_id_in_use(self, db):
+        wid = self._timed_out_then_removed()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+
+    def test_one_that_never_lands_is_freed_once_its_time_is_up(self, db):
+        """The positive control: the hold still ends, and the owner may forget the id then."""
+        self._timed_out_then_removed()
+        self._age_pending()
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        row = next(r for r in _rows() if r["value"] == UUID_A)
+        assert asyncio.run(database.delete_identity(row["id"]))
+
+    def test_deleting_the_box_still_retires_it(self, db):
+        """delete_worker retires every row of the box, the held one too (issue #740)."""
+        wid = self._timed_out_then_removed()
+        asyncio.run(database.delete_worker(wid))
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+
+
+class TestAWorkerWithNoDeployDeadline:
+    """A worker from before the deploy deadline may still be pulling after the hold's time."""
+
+    _timed_out = staticmethod(TestADeployTheWorkerDidNotAnswer._timed_out)
+    _age_pending = staticmethod(TestADeployTheWorkerDidNotAnswer._age_pending)
+
+    def _held_on_an_old_worker(self):
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        assert error.status_code == 504
+        self._age_pending()
+        return wid
+
+    def test_its_full_old_id_list_after_the_time_keeps_the_hold(self, db):
+        wid = self._held_on_an_old_worker()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True, deadline=False)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+
+    def test_a_list_with_no_digest_from_before_this_release_keeps_it_too(self, db):
+        wid = self._held_on_an_old_worker()
+        _heartbeat("box-a", {1: None}, slug="earnapp", deadline=False)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+
+    def test_its_proof_still_settles_the_hold(self, db):
+        wid = self._held_on_an_old_worker()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True, deadline=False)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+    def test_a_worker_with_the_deadline_lets_go(self, db):
+        """The positive control, and the same box once it runs this release."""
+        wid = self._held_on_an_old_worker()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True, deadline=False)
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_B}
+
+    def test_the_worker_lists_the_feature(self):
+        """What the UI reads: this release's heartbeat lists deploy_deadline."""
+        from app import worker_api
+
+        resp = MagicMock()
+        resp.json = MagicMock(return_value={"status": "ok"})
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=resp)
+        with (
+            patch.object(worker_api, "UI_URL", "http://ui:8080"),
+            patch.object(worker_api.orchestrator, "get_status", return_value=[]),
+            patch.object(worker_api.orchestrator, "status_listed", return_value=True),
+            patch.object(worker_api.orchestrator, "docker_available", return_value=False),
+            patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+            patch.object(worker_api.httpx, "AsyncClient", return_value=client),
+        ):
+            asyncio.run(worker_api._send_heartbeat())
+        assert "deploy_deadline" in client.post.await_args.kwargs["json"]["system_info"]["features"]
+
+
+class TestAnExtraCopysDerivedId:
+    """Copy 2 runs an id derived from copy 1's; another box may already run that one."""
+
+    UUID = "ab" * 32
+
+    def _derived(self, n):
+        docker_conf = catalog.get_service("proxyrack")["docker"]
+        return main._instance_spec({"env": {"UUID": self.UUID}}, n, docker_conf)["env"]["UUID"]
+
+    def test_it_is_asked_first(self, db):
+        derived = self._derived(2)
+        assert derived != self.UUID
+        assert _deploy("proxyrack", {"UUID": derived}, 2)[0] is None
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, sent = _deploy("proxyrack", {"UUID": self.UUID}, 1, instances=2)
+        assert error.status_code == 409 and error.detail["error"] == "identity_in_use"
+        assert derived not in str(error.detail) and sent == []
+
+    def test_one_copy_or_the_owners_yes_deploys(self, db):
+        """The positive controls: copy 1 alone is free, and the owner may confirm the shared copy."""
+        assert _deploy("proxyrack", {"UUID": self._derived(2)}, 2)[0] is None
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("proxyrack", {"UUID": self.UUID}, 1, instances=1)[0] is None
+            assert _deploy("proxyrack", {"UUID": self.UUID}, 1, instances=2, allow=True)[0] is None
+
+
+class TestASettleThatARedeployOvertook:
+    """A heartbeat reads the held id, a redeploy with another id lands, then the heartbeat's settle runs."""
+
+    def test_the_settle_writes_nothing_over_the_redeploy(self, db):
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
+        )
+        real = database.pending_identities
+        raced = []
+
+        async def read_then_redeployed(worker_id):
+            found = await real(worker_id)
+            if found and not raced:
+                raced.append(True)
+                await database.record_identities("earnapp", wid, {"1": {"EARNAPP_UUID": UUID_C}}, scope="copies")
+            return found
+
+        with patch.object(main.database, "pending_identities", read_then_redeployed):
+            _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert raced
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_C}
+
+    def test_with_the_hold_in_place_it_writes(self, db):
+        """The positive control: the same heartbeat, no redeploy, makes the held id the copy's."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
+        )
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+
+
+class TestARawCopyWhoseRepairTheRecordRefused:
+    """A raw deploy of copy 2 lost its ledger write; the heartbeat's repair is refused once, then retried."""
+
+    def test_the_next_heartbeat_writes_it(self, db):
+        wid = _worker()
+        spec = {"env": {"EARNAPP_UUID": UUID_A}, "instance": 2}
+        asyncio.run(database.save_deployment(slug="earnapp", container_id="c", spec=spec, worker_id=wid))
+        real = database.get_deployment_spec
+        moved = []
+
+        async def read_then_redeployed(slug, worker_id=None):
+            found = await real(slug, worker_id=worker_id)
+            if not moved and found is not None:
+                moved.append(True)
+                await database.save_deployment(
+                    slug=slug, container_id="c2", spec={**found, "redeployed": True}, worker_id=worker_id
+                )
+            return found
+
+        with patch.object(main.database, "get_deployment_spec", read_then_redeployed):
+            _heartbeat("box-a", {2: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert moved and _active() == {}
+        _heartbeat("box-a", {2: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active() == {("earnapp", wid, "2", "EARNAPP_UUID"): UUID_A}

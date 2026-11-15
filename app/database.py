@@ -5270,7 +5270,10 @@ async def _retire_identity_rows(
     """Retire the active rows of ``slug`` (on ``worker_id``, or everywhere when None).
 
     The on-box copies by default, the proxied copies with ``proxied``, or just
-    the copies named in ``instances``.
+    the copies named in ``instances``. The default leaves the unconfirmed ids
+    of a deploy the worker never answered (``u<n>``) held: a removal does not
+    stop that deploy, which may still create its container, so only
+    main._settle_pending_identities ends them (delete_worker retires them too).
     """
     sql = "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE slug = ? AND status = 'active'"
     args: list[Any] = [slug]
@@ -5286,7 +5289,7 @@ async def _retire_identity_rows(
     elif proxied:
         sql += " AND instance LIKE 'p%'"
     else:
-        sql += " AND instance NOT LIKE 'p%'"
+        sql += f" AND instance NOT LIKE 'p%' AND instance NOT LIKE '{PENDING_COPY_PREFIX}%'"
     await db.execute(sql, args)
 
 

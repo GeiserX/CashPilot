@@ -4395,6 +4395,10 @@ async def _deploy(
     async with _device_id_claim(slug, svc, {} if body.allow_shared_identity else merged_env):
         if not body.allow_shared_identity:
             await _refuse_shared_device_ids(slug, svc, merged_env, worker_id)
+            # Each extra copy runs an id derived from the first's, which another
+            # box may already run as its own.
+            for n in range(2, instances + 1):
+                await _refuse_shared_device_ids(slug, svc, _instance_spec(spec, n, docker_conf)["env"], worker_id)
 
         # A service that keeps a wallet or node identity runs as the catalog says,
         # or with the owner's password now, not just a session: whatever runs in its
@@ -4970,7 +4974,8 @@ def _forget_checked_copies(worker_id: int, slug: str) -> None:
 #: ids. A worker creates nothing past constants.DEPLOY_DEADLINE_SECONDS (1 h)
 #: from the request, and Docker's timeouts end what follows within minutes, so
 #: by the time this runs out the deploy is over: what a heartbeat shows then is
-#: what runs. (A worker from before that deadline has none.)
+#: what runs. A worker from before that deadline has none, and says so by not
+#: listing the ``deploy_deadline`` feature: its holds never run out this way.
 PENDING_IDENTITY_SECONDS = 6 * 3600
 
 
@@ -4993,12 +4998,16 @@ async def _record_pending_identities(slug: str, worker_id: int, envs: Mapping[in
             logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
 
 
-async def _settle_pending_identities(worker_id: int, containers: Any, *, complete: bool) -> None:
+async def _settle_pending_identities(worker_id: int, containers: Any, *, complete: bool, deadline: bool) -> None:
     """Confirm or drop the unconfirmed ids of a deploy the worker did not answer (_record_pending_identities).
 
     A copy this heartbeat lists with their digest runs them: they become its
     row. Past PENDING_IDENTITY_SECONDS, a full list that does not show them
-    retires them. A copy still showing its old ids proves nothing before that:
+    retires them, but only from a worker that ends every deploy by its deadline
+    (``deadline``, its ``deploy_deadline`` feature). One without it may still be
+    pulling hours later, so its holds stay until proven, until it runs a release
+    with the deadline (the restart ended the old process's deploy), or until the
+    box is deleted. A copy still showing its old ids proves nothing before that:
     the worker may still be pulling. Read on every heartbeat (one indexed
     SELECT), never cached: a deploy that times out during the read must still
     be settled by the next one. Bookkeeping: never raises.
@@ -5013,14 +5022,16 @@ async def _settle_pending_identities(worker_id: int, containers: Any, *, complet
             runs = bool(svc and digest) and any(
                 hmac.compare_digest(catalog.identity_digest(svc, env, k) or "", digest or "") for k in keys
             )
-            if runs or (complete and entry["age"] >= PENDING_IDENTITY_SECONDS):
+            if runs or (complete and deadline and entry["age"] >= PENDING_IDENTITY_SECONDS):
                 await database.settle_pending_identities(slug, worker_id, entry["instance"], env, runs=runs)
                 _forget_checked_copies(worker_id, slug)
     except Exception:  # noqa: BLE001
         logger.warning("Could not settle the unconfirmed device ids on worker %s", worker_id, exc_info=True)
 
 
-async def _reconcile_running_identities(worker_id: int, containers: Any, *, complete: bool = True) -> None:
+async def _reconcile_running_identities(
+    worker_id: int, containers: Any, *, complete: bool = True, deadline: bool = False
+) -> None:
     """Make the ledger match the ids a heartbeat proves each copy runs.
 
     A copy whose ledger write failed at deploy still runs, so its box reports
@@ -5036,7 +5047,7 @@ async def _reconcile_running_identities(worker_id: int, containers: Any, *, comp
     copy the list leaves out may still run. One indexed read per service on a
     container not seen before, and a write only on a proven miss.
     """
-    await _settle_pending_identities(worker_id, containers, complete=complete)
+    await _settle_pending_identities(worker_id, containers, complete=complete, deadline=deadline)
     listed: set[tuple[str, int, str, str]] = set()
     present: set[tuple[str, int]] = set()
     for entry in containers if isinstance(containers, list) else []:
@@ -10043,7 +10054,9 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         info = body.system_info if isinstance(body.system_info, dict) else {}
         flag = info.get("containers_listed")
         complete = flag is True or (flag is None and bool(body.containers))
-        await _reconcile_running_identities(worker_id, body.containers, complete=complete)
+        features = info.get("features")
+        deadline = isinstance(features, list) and "deploy_deadline" in features
+        await _reconcile_running_identities(worker_id, body.containers, complete=complete, deadline=deadline)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not check the device ids of worker %s: %s", worker_id, type(exc).__name__)
     # Activity: the switch is read on every heartbeat, because the reply is
