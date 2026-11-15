@@ -4091,10 +4091,13 @@ def _remove_service(
     # of a half-written one: a volume of it that stays gets its mark back, so
     # no start or deploy runs on half the data.
     stayed = [v for v in held if v in failed_volumes and v not in not_ours] if helper_gone else []
+    # What a helper mounts once this removal ends: a Remove again reaches only those.
+    marked = set(held) if helper is not None and not helper_gone else set()
     if stayed:
         try:
             image = (getattr(helper, "attrs", None) or {}).get("Image") or helper.image.id
             _create_restore_helper(_get_client(), image, helper.name, stayed)
+            marked = set(stayed)
         except Exception as exc:  # noqa: BLE001 - said in the log; the volume is reported as not deleted
             logger.error(
                 "The half-written volume(s) %s stay, and their restore mark could not be put back: %s",
@@ -4103,17 +4106,18 @@ def _remove_service(
             )
     # A name the record keeps no nonce for (a record from an older worker)
     # proves nothing, so the record holds it until it is confirmed gone: one
-    # this removal tried to delete and could not stays named as not deleted;
-    # one nothing here mounts (its helper is lost) is read now. One that is
-    # there cannot be told from another client's volume, so the box neither
-    # deletes it nor drops the hold, and names it for the owner to check.
+    # this removal tried to delete and could not, and that a helper still
+    # mounts, stays named as not deleted, for a Remove again to try; one
+    # nothing here mounts (its helper is lost, now or before) is read now. One
+    # that is there cannot be told from another client's volume, so the box
+    # neither deletes it nor drops the hold, and names it for the owner to check.
     unconfirmed: list[str] = []
     unverified: list[str] = []
     for vol_name, nonce in nonce_on_record.items():
         if nonce or vol_name in deleted_volumes:
             continue
         unconfirmed.append(vol_name)
-        if vol_name in volume_names:
+        if vol_name in volume_names and (vol_name in marked or vol_name in replaced):
             continue
         try:
             _get_client().volumes.get(vol_name)
@@ -4123,7 +4127,8 @@ def _remove_service(
         except Exception as exc:  # noqa: BLE001 - unknown, so it is kept and the record stays
             logger.warning("Could not read the volume %s a restore of %s may have written: %s", vol_name, slug, exc)
         unverified.append(vol_name)
-        failed_volumes.append(vol_name)
+        if vol_name not in failed_volumes:
+            failed_volumes.append(vol_name)
         logger.warning(
             "Kept volume %s: the record of the restore of %s that did not finish names it with nothing that proves "
             "it is the restore's, so the service stays held until it is gone",

@@ -2254,6 +2254,30 @@ class TestTheUploadFolder:
         seen = self._upload_then_wait(ui, monkeypatch, held=True)
         assert len(seen[0]) == 1 and seen[1] == seen[0] and seen[2] == []
 
+    def test_a_sweep_while_the_restore_is_past_its_step_up_spares_the_file(self, ui):
+        upload = _upload(ui, mysterium_bundle()).json()
+        real = main.require_step_up
+
+        async def step_up_then_a_sweep(*args, **kwargs):
+            await real(*args, **kwargs)
+            # The TTL passes and the scheduler's sweep, or another upload, runs
+            # before the restore opens the file.
+            main._restore_uploads[upload["upload_id"]]["created"] -= main.RESTORE_UPLOAD_TTL + 1
+            main._restore_sweep()
+
+        with patch.object(main, "require_step_up", side_effect=step_up_then_a_sweep):
+            resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 200, resp.text
+        assert len(ui.sent) == 1 and _uploads_on_disk(ui) == [] and main._restore_uploads == {}
+
+    def test_a_sweep_after_a_refused_restore_deletes_the_expired_file(self, ui):
+        upload = _upload(ui, mysterium_bundle()).json()
+        resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium")
+        assert resp.status_code == 403 and _uploads_on_disk(ui) != []
+        main._restore_uploads[upload["upload_id"]]["created"] -= main.RESTORE_UPLOAD_TTL + 1
+        main._restore_sweep()
+        assert _uploads_on_disk(ui) == [] and main._restore_uploads == {}
+
     def test_a_file_changed_on_disk_after_the_upload_is_not_sent(self, ui):
         upload = _upload(ui, mysterium_bundle()).json()
         (name,) = _uploads_on_disk(ui)
@@ -3242,6 +3266,7 @@ class TestALeftUploadGoesWithoutARequest:
                     main._restore_uploads[upload_id] = {
                         "id": upload_id,
                         "path": str(folder / upload_id),
+                        "sha256": upload_id,
                         "created": created,
                     }
                 asyncio.run(main._run_restore_sweep())
@@ -4734,6 +4759,20 @@ class TestALegacyRecordWhoseHelperIsLost:
         assert result["failed_volumes"] == ["mysterium-data"] and docker.container_map == {}
         assert orchestrator.restore_marks() == {"mysterium"}
         return result
+
+    def test_the_first_answer_already_names_the_volume_to_clean_up(self, docker):
+        """With its helper lost, no Remove can delete it again: the first answer must not send the owner back."""
+        result = self._first_remove_loses_the_helper(docker)
+        assert result["unverified_volumes"] == ["mysterium-data"] and result["failed_volumes"] == ["mysterium-data"]
+
+    def test_control_a_helper_that_comes_back_lets_remove_try_again(self, docker):
+        TestAVolumeMadeThisSecondBindsNoReview()._legacy_record(docker, "2026-11-14T10:00:00Z")
+        with patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")):
+            result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["failed_volumes"] == ["mysterium-data"] and result["unverified_volumes"] == []
+        assert "cashpilot-mysterium.restore" in docker.container_map
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and orchestrator.restore_marks() == set()
 
     def test_the_retry_keeps_the_hold_and_names_the_volume_to_clean_up(self, docker):
         self._first_remove_loses_the_helper(docker)

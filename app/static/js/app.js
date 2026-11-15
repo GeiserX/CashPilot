@@ -3075,7 +3075,7 @@ const CP = (() => {
       const notes = [];
       if (kept.length) notes.push(`its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`);
       if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')}, so the box kept that volume. Check it yourself.`);
-      if (unverified.length) notes.push(`the box cannot tell whether its volume ${unverified.join(', ')} holds the partial restore, so it kept that volume and the service stays held. Check it yourself: delete it if it holds the partial restore, then Remove again.`);
+      if (unverified.length) notes.push(`the box cannot tell whether its volume ${unverified.join(', ')} holds the partial restore, so it kept that volume, and the service stays held until that volume is gone. No Remove deletes it: check it yourself, copy out anything you want to keep, delete it, then Remove again.`);
       if (notes.length) toast(`${slug} removed${where}, but ${notes.join(' And ')}`, 'error');
       else toast(`${slug} removed${where}`, 'success');
       loadServicesTable();

@@ -128,6 +128,10 @@ check('an unverified volume is not sent back to Remove again alone',
 check('an unverified volume is named for the owner to check and delete',
   unverifiedToast.includes('cannot tell whether its volume mysterium-data holds the partial restore')
     && unverifiedToast.includes('service stays held'), unverifiedToast);
+// Keeping the volume keeps the hold: the toast says so, not only "delete it if".
+check('an unverified volume\'s toast says the hold ends only once the volume is gone',
+  unverifiedToast.includes('stays held until that volume is gone')
+    && !unverifiedToast.includes('delete it if it holds the partial restore'), unverifiedToast);
 
 if (bad) {
   console.error(`\n${bad} check(s) failed`);

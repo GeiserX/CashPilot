@@ -11836,9 +11836,16 @@ def _restore_forget(upload_id: str) -> None:
 
 
 def _restore_sweep() -> None:
-    """Delete expired uploads, and any file in the folder this process does not know (one from before a restart)."""
+    """Delete expired uploads, and any file in the folder this process does not know (one from before a restart).
+
+    An upload a restore is sending now stays, as in _restore_expire: that
+    restore deletes it once it used it, and the next sweep or the upload's
+    timer deletes one it refused.
+    """
     now = time.time()
     for upload_id, entry in list(_restore_uploads.items()):
+        if entry["sha256"] in _restore_inflight:
+            continue
         if now - entry["created"] > RESTORE_UPLOAD_TTL or not os.path.exists(entry["path"]):
             _restore_forget(upload_id)
     known = {entry["path"] for entry in _restore_uploads.values()} | _restore_receiving

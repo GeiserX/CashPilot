@@ -182,9 +182,10 @@ identity sits on a named Docker volume. The rules:
   volume to close that gap would make every delete you confirm impossible.
   A record from an older CashPilot names the volume without the label. When
   the box can no longer tell whether such a volume is the restore's, it keeps
-  the volume and keeps the service held, and the answer names the volume:
-  check it, delete it yourself if it holds the partial restore, then press
-  Remove again. The delete goes to that box only, only while that partial
+  the volume and keeps the service held, and the answer names the volume.
+  The hold ends only once that volume is gone, and no Remove deletes it:
+  check it, copy out anything you want to keep, delete it yourself, then
+  press Remove again. The delete goes to that box only, only while that partial
   restore is still there, and the audit log records it. Then restore again.
 - **Nothing kept.** The file waits in a private folder under the data folder
   for at most 15 minutes. It is deleted once the restore runs, or when those
