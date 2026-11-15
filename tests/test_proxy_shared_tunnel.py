@@ -2668,7 +2668,7 @@ class TestAFailureThatCannotBeRecorded:
             labels={**earner.labels},
         )
         starts = listed.starts
-        proxy_tunnel._start_when_ready(listed, tunnel, "honeygain")
+        proxy_tunnel._start_when_ready(listed, tunnel, "honeygain", ready=True)
         # The fake's start acts on the model it is called on, as docker-py's acts on the container's id.
         assert listed.starts == starts and listed.status == "exited"
         assert earner.name.endswith(orchestrator.REPLACED_SUFFIX)
@@ -2682,7 +2682,7 @@ class TestAFailureThatCannotBeRecorded:
         unreadable = tmp_path / "failed-dir"
         unreadable.mkdir()  # reading a folder raises IsADirectoryError, an OSError
         with patch.object(proxy_tunnel, "FAILED_MARKER", str(unreadable)):
-            proxy_tunnel._start_when_ready(earner, tunnel, "honeygain")
+            proxy_tunnel._start_when_ready(earner, tunnel, "honeygain", ready=True)
         assert earner.id in docker.by_id and earner.status == "exited"
 
     def test_a_failed_first_deploy_whose_failure_cannot_be_recorded_is_never_started(self, docker, tmp_path):
@@ -3003,3 +3003,141 @@ class TestADeployReportedDoneStaysDone:
         assert result["container_id"] == new.id and new.status == "running" and old.id not in docker.by_id
         _heartbeat()
         assert docker.named(NAME) is new and new.status == "running"
+
+
+class TestAnEarnerNeverStartsInATunnelNotReady:
+    @pytest.mark.parametrize("marker", ["FAILED_MARKER", "NEW_MARKER"])
+    def test_a_marker_read_that_fails_once_starts_nothing(self, docker, marker):
+        """After a reboot: the tunnel runs but has not written /run/ready, and one read of a record fails."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        earner.status = "exited"  # Docker does not start a proxied earner after a reboot
+        real_read = proxy_tunnel._read_names
+        left = {"n": 1}
+
+        def read(path):
+            if path == getattr(proxy_tunnel, marker) and left["n"]:
+                left["n"] -= 1
+                raise OSError(24, "Too many open files")
+            return real_read(path)
+
+        with patch.object(docker, "ready", return_value=False):
+            _heartbeat()  # control: no read error, nothing starts
+            assert earner.status == "exited"
+            with patch.object(proxy_tunnel, "_read_names", side_effect=read):
+                _heartbeat()
+            assert left["n"] == 0 and earner.status == "exited"
+        _heartbeat()
+        assert earner.status == "running"
+
+
+class TestAStaleFirstDeployRecord:
+    @staticmethod
+    def _dead_first_deploy(docker):
+        """A first deploy the worker died in after its earner started: NAME stays recorded in NEW_MARKER."""
+        _deploy("earnapp")
+        real = orchestrator.deploy_raw.side_effect
+
+        def dies_after_the_start(**kw):
+            real(**kw)
+            raise _WorkerDied
+
+        with patch.object(orchestrator, "deploy_raw", side_effect=dies_after_the_start), pytest.raises(_WorkerDied):
+            _deploy("honeygain")
+        assert NAME in proxy_tunnel._read_names(proxy_tunnel.NEW_MARKER)
+        return docker.named(NAME)
+
+    def test_a_redeploy_whose_record_cannot_be_cleared_never_loses_its_replacement(self, docker):
+        """The record named the copy, not the replacement: the replacement stays, and nothing removes it later."""
+        left = self._dead_first_deploy(docker)
+        real_raw = orchestrator.deploy_raw.side_effect
+        with _clearing_fails("NEW_MARKER") as clearing:
+            clearing["on"] = False
+
+            def raw(**kw):
+                result = real_raw(**kw)
+                clearing["on"] = True  # the predecessor is gone; now no record can be cleared
+                return result
+
+            with patch.object(orchestrator, "deploy_raw", side_effect=raw):
+                result = _deploy("honeygain")
+            new = docker.named(NAME)
+            assert new is not None and result["container_id"] == new.id and left.id not in docker.by_id
+            _heartbeat()
+            assert docker.named(NAME) is new and new.status == "running"
+        _heartbeat()
+        assert docker.named(NAME) is new and new.status == "running"
+
+    def test_control_a_failed_redeploy_still_takes_the_dead_first_deploys_earner_for_no_copy(self, docker):
+        """Bound to that earner, the record still says it is not the copy once a failed redeploy puts it back."""
+        left = self._dead_first_deploy(docker)
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=orchestrator.ContainerRuntimeError("no start")),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        assert left.id not in docker.by_id and docker.named(NAME) is None  # put back, then removed, never started
+        _heartbeat()
+        assert docker.named(NAME) is None
+
+    def test_a_record_the_disk_will_not_bind_refuses_the_redeploy_before_anything_changes(self, docker):
+        left = self._dead_first_deploy(docker)
+        with _clearing_fails("NEW_MARKER"), pytest.raises(proxy_tunnel.ProxyTunnelError, match="left as it was"):
+            _deploy("honeygain")
+        assert docker.named(NAME) is left
+        assert proxy_tunnel._read_names(proxy_tunnel.NEW_MARKER) == {NAME}
+
+
+class TestARetiredTunnelIsOnlyEverItsOwn:
+    def test_no_slug_names_a_tunnel_another_tunnels_retired_name_could_take(self):
+        """Slugs are [a-z0-9-]: a suffix with any other character is never a routed service's own tunnel."""
+        assert set(proxy_tunnel.RETIRED_SUFFIX) - set("abcdefghijklmnopqrstuvwxyz0123456789-")
+
+    def test_a_redeploy_never_moves_its_earner_for_a_service_whose_slug_ends_in_old(self, docker):
+        """honeygain's old tunnel is kept aside; honeygain-old's own tunnel is never touched or taken for it."""
+        with patch.object(proxy_tunnel.route_gate, "routed", return_value={"honeygain": 3, "honeygain-old": 3}):
+            _deploy("honeygain-old")
+            other = docker.named("cashpilot-tunnel-p3-honeygain-old")
+            other_earner = docker.named("cashpilot-honeygain-old-p3")
+            _deploy("honeygain")
+            earner = docker.named(NAME)
+            own = docker.named("cashpilot-tunnel-p3-honeygain")
+            with (
+                patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}),
+                patch.object(orchestrator, "deploy_raw", side_effect=_WorkerDied),
+                pytest.raises(_WorkerDied),
+            ):
+                _deploy("honeygain")
+        assert docker.named(NAME) is earner and _member_ids(docker, own) == [NAME]
+        assert own.name == "cashpilot-tunnel-p3-honeygain" + proxy_tunnel.RETIRED_SUFFIX
+        assert docker.named("cashpilot-tunnel-p3-honeygain-old") is other and other.status == "running"
+        assert _member_ids(docker, other) == ["cashpilot-honeygain-old-p3"] and other_earner.status == "running"
+
+
+class TestARecoveredSharedCopyIsNeverRecreated:
+    def test_a_start_runs_it_in_its_retired_tunnel_while_another_copy_holds_the_name(self, docker):
+        """The new tunnel took another copy before the failed one went: the old earner starts where it is."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        old_tunnel = docker.named("cashpilot-tunnel-p3")
+        stub, made, refused = _failing_redeploy(docker, earner)
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+            with (
+                patch.object(orchestrator, "deploy_raw", side_effect=stub),
+                pytest.raises(orchestrator.ContainerRuntimeError),
+            ):
+                _deploy("honeygain")
+            _deploy("earnapp")
+        new_tunnel = docker.named("cashpilot-tunnel-p3")
+        assert new_tunnel.id != old_tunnel.id and "cashpilot-earnapp-p3" in _member_ids(docker, new_tunnel)
+        refused["on"] = False
+        _heartbeat()
+        (failed,) = made
+        assert failed.id not in docker.by_id and docker.named(NAME) is earner
+        assert old_tunnel.name == "cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX
+        proxy_tunnel.stop("honeygain", 3)
+        assert earner.status == "exited"
+        proxy_tunnel.start("honeygain", 3, _socks())
+        assert docker.named(NAME) is earner and earner.status == "running"
+        assert _member_ids(docker, old_tunnel) == [NAME] and old_tunnel.status == "running"
+        assert _member_ids(docker, new_tunnel) == ["cashpilot-earnapp-p3"]

@@ -4775,15 +4775,14 @@ async def _check_route(
     name = svc.get("name") or slug
     if why := proxies.refusal(svc):
         raise HTTPException(status_code=400, detail=why)
-    if f"-{slug}".endswith(("-next", "-moving", "-old")):
+    if f"-{slug}".endswith(("-next", "-moving")):
         # Its own tunnel would be cashpilot-tunnel-p<id>-<slug>, which reads as a
-        # staged, aside or retired tunnel (proxy_tunnel.STAGED_SUFFIX,
-        # MOVING_SUFFIX, RETIRED_SUFFIX) and could be removed or taken under it.
-        # New slugs never end so (custom_services.make_slug, catalog._validate);
-        # a custom service added before that can.
+        # staged or aside tunnel (proxy_tunnel.STAGED_SUFFIX, MOVING_SUFFIX) and
+        # could be removed under it. New slugs never end so (custom_services.
+        # make_slug, catalog._validate); a custom service added before that can.
         raise HTTPException(
             status_code=400,
-            detail=f"{name} has an id ending in '-next', '-moving' or '-old', which proxy tunnels use for their own "
+            detail=f"{name} has an id ending in '-next' or '-moving', which proxy tunnels use for their own "
             "names, so it cannot be deployed through a proxy. Add it again as a new custom service and route that.",
         )
     if instances != 1:
@@ -5339,16 +5338,23 @@ def _copy_digests(containers: Any, slug: str) -> dict[int, str]:
 
     A copy listed twice with two digests (a redeploy keeps the old container
     aside under the same copy until the new one runs) proves neither: left out.
+    So is one also listed without a digest (a direct copy read before its
+    removal beside the routed earner that replaces it, which reports none): that
+    listing proves nothing, so the other digest may not be the copy's.
     """
     digests: dict[int, str] = {}
     twice: set[int] = set()
     for entry in containers if isinstance(containers, list) else []:
-        if isinstance(entry, dict) and entry.get("slug") == slug and isinstance(entry.get("identity_digest"), str):
-            n = _copy_number(entry)
-            if n is not None and n >= 1 and entry["identity_digest"]:
-                if digests.get(n, entry["identity_digest"]) != entry["identity_digest"]:
-                    twice.add(n)
-                digests[n] = entry["identity_digest"]
+        if not isinstance(entry, dict) or entry.get("slug") != slug:
+            continue
+        n = _copy_number(entry)
+        if n is None or n < 1:
+            continue
+        digest = entry.get("identity_digest")
+        if not isinstance(digest, str) or not digest or digests.get(n, digest) != digest:
+            twice.add(n)
+        else:
+            digests[n] = digest
     return {n: d for n, d in digests.items() if n not in twice}
 
 

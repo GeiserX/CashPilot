@@ -81,7 +81,7 @@ def make_slug(name: str, taken: set[str] | frozenset[str]) -> str:
     ``custom-foo-2`` would share its container name with copy 2 of
     ``custom-foo``, and a deploy of one would replace the other. "Foo 2" becomes
     ``custom-foo2``, and a second "Foo" becomes ``custom-foo-v2``. Nor in
-    ``-next``, ``-moving`` or ``-old``, for the reason catalog._validate refuses them:
+    ``-next`` or ``-moving``, for the reason catalog._validate refuses them:
     "Foo Next" becomes ``custom-foonext``, and a bare "Next" (which
     ``SLUG_PREFIX`` would give its dash back) becomes ``custom-servicenext``;
     a bare "2" becomes ``custom-service2`` for the same reason.
@@ -91,8 +91,8 @@ def make_slug(name: str, taken: set[str] | frozenset[str]) -> str:
     a deleted service left behind.
     """
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-") or "service"
-    base = re.sub(r"-(\d+|next|moving|old)$", r"\1", base)
-    if re.fullmatch(r"\d+|next|moving|old", base):
+    base = re.sub(r"-(\d+|next|moving)$", r"\1", base)
+    if re.fullmatch(r"\d+|next|moving", base):
         base = f"service{base}"
     slug = f"{SLUG_PREFIX}{base}"
     n = 2
