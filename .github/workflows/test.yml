@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A green run takes 11 to 16 minutes. On 2026-11-14 a hung test held runners
+    # until GitHub's six-hour default and queued every other PR behind them.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -119,6 +122,17 @@ jobs:
       # must each get their own answer, and closing one must not cancel the next.
       - name: Step-up prompt queue
         run: node scripts/step_up_prompt_check.mjs
+
+      # A service routed through a proxy from its deploy is reported as a
+      # proxied copy: it must still count as running on its box, and the Route
+      # choice must reach the deploy request.
+      - name: Route at deploy
+        run: node scripts/route_choice_check.mjs
+
+      # Device ids reach the page masked, a node-reported one says so, and a
+      # deploy that would put one id on a second box asks once and never loops.
+      - name: Device ids
+        run: node scripts/identity_view_check.mjs
 
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the

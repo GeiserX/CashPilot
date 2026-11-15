@@ -52,11 +52,12 @@ from app import (
     orchestrator,
     payout_read,
     proxy_tunnel,
+    route_gate,
     state_backup,
     step_up,
     version,
 )
-from app.constants import MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
+from app.constants import DEPLOY_DEADLINE_SECONDS, MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -312,6 +313,10 @@ activity.WORKER_ID = CLIENT_ID
 def _active_key() -> str:
     """The key we authenticate with: our own once enrolled, else the shared key."""
     return _worker_key or API_KEY
+
+
+# The heartbeat's identity_digest is keyed with the same key, which the UI holds too.
+orchestrator.identity_digest_key = _active_key
 
 
 # ---------------------------------------------------------------------------
@@ -681,8 +686,10 @@ async def _send_heartbeat() -> None:
     global _consecutive_heartbeat_failures, _link_hint_logged, _last_heartbeat_ok
 
     containers = []
+    listed = False
     try:
         containers = await asyncio.to_thread(orchestrator.get_status)
+        listed = orchestrator.status_listed()
     except Exception as exc:
         logger.warning("Failed to get container status for heartbeat: %s", exc)
 
@@ -698,6 +705,9 @@ async def _send_heartbeat() -> None:
     features = (
         ["instances", "isolation_check", "state_backup", "activity", "proxy_tunnel"] if docker_ok else ["instances"]
     )
+    # Every deploy this worker runs ends by DEPLOY_DEADLINE_SECONDS, so the UI
+    # may let go of the ids of one it got no answer for (main._settle_pending_identities).
+    features.append("deploy_deadline")
     # None, not an empty list, when they could not be read: the UI alerts on a
     # copy this list leaves out, and "could not look" must not read as "gone".
     proxied: list[dict[str, Any]] | None = []
@@ -707,6 +717,8 @@ async def _send_heartbeat() -> None:
         except Exception as exc:  # noqa: BLE001 - one missed reading, not a missed heartbeat
             logger.warning("Failed to read proxied copies for heartbeat: %s", exc)
             proxied = None
+    if proxied:
+        _mark_routed(proxied)
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -717,6 +729,10 @@ async def _send_heartbeat() -> None:
             "arch": platform.machine(),
             "hostname": socket.gethostname(),
             "docker_available": docker_ok,
+            # False when "containers" is not the whole list (Docker would not
+            # list them, or one could not be read): the UI then retires no
+            # device id of a copy the list leaves out.
+            "containers_listed": listed,
             # So the UI can tell an operator when the two halves are different
             # releases. An older worker sends nothing here, which reads as
             # unknown rather than as a mismatch (CashPilot-l6c).
@@ -741,6 +757,9 @@ async def _send_heartbeat() -> None:
             # Kept out of "containers": they are on another exit IP and are not
             # copies of the service, so nothing that counts copies may see them.
             "proxied": proxied,
+            # Set by the operator (app/route_gate.py): no earner runs from this
+            # box's own IP, so the UI offers only routed deploys here.
+            "proxied_only": route_gate.proxied_only(),
         },
     }
     if docker_ok:
@@ -750,6 +769,9 @@ async def _send_heartbeat() -> None:
         # Starts a fence_gated service (Mysterium) only behind a confirmed fence,
         # on the bridge, with its port range and several WebUI addresses.
         payload["system_info"]["features"].append("fence_gated")
+        # Deploys a service through a proxy from its first start, and keeps it
+        # off this box's own IP until the owner confirms otherwise (route_gate).
+        payload["system_info"]["features"].append("route_at_deploy")
         # Takes "only_if_running" on a proxied copy deploy, so the UI can rebuild
         # a running copy without starting one the owner stopped meanwhile.
         payload["system_info"]["features"].append("proxied_if_running")
@@ -870,6 +892,22 @@ async def _send_heartbeat() -> None:
         _log_link_failure_hint(exc)
 
 
+def _mark_routed(entries: list[dict[str, Any]]) -> None:
+    """Flag the proxied entries that are a routed service, not a copy beside a direct one.
+
+    The UI counts those as the service running on this box (app/placement.py)
+    and shows them on the dashboard; a copy keeps its own list on the Proxies page.
+    """
+    try:
+        lock = route_gate.routed()
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not read which services are routed: %s", exc)
+        return
+    for entry in entries:
+        if lock.get(str(entry.get("slug"))) == entry.get("proxy_id"):
+            entry["routed"] = True
+
+
 async def _heartbeat_loop() -> None:
     """Send heartbeats to the UI at regular intervals.
 
@@ -936,11 +974,20 @@ _guard_task: asyncio.Task | None = None
 
 
 async def _guard_once() -> None:
-    """One pass of the fence guard (lan_fence.guard). Never raises."""
+    """One pass of the fence guard (lan_fence.guard), then of the proxied-only one. Never raises."""
     try:
         await asyncio.wait_for(asyncio.to_thread(lan_fence.guard), FENCE_STARTUP_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
         logger.warning("Fence guard pass did not finish: %s", _reason(exc))
+    await _hold_direct_earners()
+
+
+async def _hold_direct_earners() -> None:
+    """On a CASHPILOT_PROXIED_ONLY worker, stop any earner running from the box's own IP. Never raises."""
+    try:
+        await asyncio.to_thread(orchestrator.hold_direct_earners)
+    except Exception as exc:  # noqa: BLE001 - the next guard pass tries again
+        logger.warning("Could not check for earners outside a tunnel: %s", _reason(exc))
 
 
 async def _guard_loop() -> None:
@@ -948,6 +995,18 @@ async def _guard_loop() -> None:
     while True:
         await asyncio.sleep(lan_fence.GUARD_SECONDS)
         await _guard_once()
+
+
+async def _hold_loop() -> None:
+    """Every GUARD_SECONDS: the proxied-only hold alone, for a worker that started without Docker.
+
+    A pass runs only once Docker answers: without it there is no earner to
+    hold, and each pass would log the same failure forever.
+    """
+    while True:
+        await asyncio.sleep(lan_fence.GUARD_SECONDS)
+        if await asyncio.to_thread(orchestrator.docker_available):
+            await _hold_direct_earners()
 
 
 def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
@@ -1089,6 +1148,10 @@ async def lifespan(app: FastAPI):
     # (docs/isolation.md). The public IP is looked up first (bounded by
     # _EGRESS_TOTAL_TIMEOUT), so the first table drops it unless that lookup fails.
     if docker_mode == "direct":
+        # First of all: Docker starts a direct earner again after a reboot, and on
+        # a CASHPILOT_PROXIED_ONLY worker each second it runs is traffic from this
+        # box's own IP (app/route_gate.py).
+        await _hold_direct_earners()
         lan_fence.set_egress_ip(await _detect_egress_ip())
     await _check_fence(startup=True)
     _fence_task = asyncio.create_task(_fence_loop())
@@ -1097,6 +1160,11 @@ async def lifespan(app: FastAPI):
         # policy, so after a reboot this is what starts it, and only now.
         await _guard_once()
         _guard_task = asyncio.create_task(_guard_loop())
+    elif route_gate.proxied_only():
+        # Docker can come up after this worker, and start the direct earners
+        # again: on a proxied-only worker they are held all the same.
+        await _hold_direct_earners()
+        _guard_task = asyncio.create_task(_hold_loop())
     if docker_mode == "direct":
         # A proxied copy this worker was moving into another tunnel when it
         # stopped: finished or put back before anything else looks at it.
@@ -1300,6 +1368,10 @@ class DeploySpec(BaseModel):
     # exact spec on this service (app/step_up.py). Needed only to run a service
     # with critical volumes other than as the catalog says.
     approval: str | None = None
+    # The UI's signed note that the owner confirmed, with their password, running
+    # a service routed through a proxy on this worker from the worker's own IP
+    # instead (app/route_gate.py, step_up.ACTION_LEAVE_ROUTE).
+    route_approval: str | None = None
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -1633,6 +1705,24 @@ def _validate_critical_spec(spec: DeploySpec, slug: str) -> None:
         ) from None
 
 
+def _validate_route_approval(spec: DeploySpec, slug: str) -> bool:
+    """Whether this deploy carries the owner's checked approval to leave a route.
+
+    Only the UI holds this worker's key, and it signs the approval only after
+    the owner re-entered their password (step_up.ACTION_LEAVE_ROUTE). Without
+    one, route_gate.check refuses a routed service from the box's own IP.
+    """
+    if not spec.route_approval:
+        return False
+    try:
+        step_up.check(_worker_key, spec.route_approval, step_up.ACTION_LEAVE_ROUTE, slug)
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was deployed."}
+        ) from None
+    return True
+
+
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
     _validate_instance(spec.instance)
@@ -1777,6 +1867,10 @@ class ProxySpec(BaseModel):
 class ProxiedDeploySpec(BaseModel):
     earner: DeploySpec
     proxy: ProxySpec
+    # The service itself, routed at deploy, not a copy beside a direct one:
+    # recorded on this worker so it is never started from the box's own IP
+    # without the owner's password (app/route_gate.py).
+    routed: bool = False
     # Replace the copy only while it runs and the owner has not stopped it:
     # a rebuild the UI makes on its own (a device rename) must never start it.
     only_if_running: bool = False
@@ -1864,10 +1958,141 @@ def _proxy_http_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="The proxied copy operation failed")
 
 
+def _deploy_routed(
+    slug: str,
+    proxy_id: int,
+    earner: dict[str, Any],
+    proxy: dict[str, Any],
+    own_ip: str | None,
+    only_if_running: bool = False,
+    deadline: float | None = None,
+) -> dict[str, Any]:
+    """Deploy the routed copy of ``slug``, holding route_gate.deploying from its mark to its end.
+
+    A direct deploy of the same service waits for it, and it for a direct
+    deploy, so neither can create its earner after the other checked; and
+    the route put back after a failure is the one this deploy found.
+
+    ``deadline`` is the request's (api_proxied_deploy): past it, the route is
+    not moved and no earner is created (proxy_tunnel.deploy).
+    """
+    if deadline is None:
+        deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
+    with route_gate.deploying(slug):
+        # The wait for the lock has no bound of its own.
+        try:
+            orchestrator._refuse_past(deadline, str(earner.get("image") or slug))
+        except orchestrator.ContainerRuntimeError as exc:
+            raise _proxy_http_error(exc) from None
+        # A routed copy through another proxy stays when this one is made
+        # (proxy_tunnel._deploy replaces only its own proxy's), and the mark
+        # moved here would hide it from the next switch to direct. Every copy
+        # deploy and start of this service holds the same lock from its mark
+        # read to its earner, so this list is complete.
+        try:
+            elsewhere = [
+                name
+                for pid, name in proxy_tunnel.routed_copies(slug, route_gate.routed().get(slug))
+                if pid != int(proxy_id)
+            ]
+        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not list the proxied copies of {slug} on this worker ({exc}); nothing changed",
+            ) from None
+        if elsewhere:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{slug} already runs through another proxy on this worker ({', '.join(elsewhere)}). "
+                "Remove it first, then deploy it through this one; nothing changed",
+            )
+        # Recorded before the earner exists, so no deploy path can start this
+        # service from the box's own IP while the routed one is being made.
+        try:
+            before = route_gate.mark(slug, proxy_id)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not record the route of {slug} on this worker ({exc}); nothing changed",
+            ) from None
+        # The routed copy beside a direct container of the same account would
+        # show the provider one device on both the box's IP and the proxy's.
+        try:
+            direct = [c.name for c in orchestrator.service_instances(slug)]
+        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+            route_gate.release(slug, before)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not list the containers of {slug} on this worker ({exc}); nothing changed",
+            ) from None
+        if direct:
+            route_gate.release(slug, before)
+            raise HTTPException(
+                status_code=409,
+                detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
+                "then deploy it with a route; nothing changed",
+            )
+        try:
+            # In a tunnel of its own: the mark now names this proxy (proxy_tunnel.deploy).
+            return proxy_tunnel.deploy(
+                slug, proxy_id, earner, proxy, own_ip, only_if_running=only_if_running, deadline=deadline
+            )
+        except Exception as exc:  # noqa: BLE001 - mapped to a status below
+            error = _proxy_http_error(exc)
+            # A deploy can fail after its earner exists (a start whose answer
+            # was lost, a cleanup that failed too). Released then, the route
+            # would let a direct deploy run the same account from this box's
+            # own IP beside it without the owner's password. The previous
+            # route goes back otherwise: no copy was made while the mark named
+            # this proxy, since every copy waits for this lock.
+            try:
+                left = [name for pid, name in proxy_tunnel.routed_copies(slug, proxy_id) if pid == int(proxy_id)]
+            except Exception as look:  # noqa: BLE001 - not knowing is not "none"
+                left = [f"unknown ({proxy_tunnel.redact(str(look))[:120]})"]
+            if not left:
+                route_gate.release(slug, before)
+            else:
+                # A code the UI reads, as after a timeout: it keeps the copy and
+                # the routed deployment records, so the earner stays capped and listed.
+                error.detail = {
+                    "error": "routed_copy_may_exist",
+                    "message": f"{error.detail}. {slug} stays routed through proxy {proxy_id} on this worker, "
+                    f"because its routed copy may still exist: {', '.join(left)}",
+                }
+            raise error from None
+
+
+#: How many deploys of each copy, by (slug, proxy id), this worker is running,
+#: counted from the request's arrival to its answer. The UI stops waiting after
+#: 180 s and lets a removal of the copy through, but the deploy goes on here (a
+#: routed one may still be waiting on route_gate.deploying); a removal that ran
+#: first would leave the earner it makes running with no record in the UI.
+_copy_deploys: dict[tuple[str, int], int] = {}
+#: How many deploys of each copy ever started here. A removal compares it before
+#: and after, so a deploy that started and ended inside it is not missed.
+_copy_starts: dict[tuple[str, int], int] = {}
+
+
 @app.post("/api/proxied/{slug}/{proxy_id}/deploy")
 async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
     """Run a copy of ``slug`` whose only way out is the given proxy (docs/proxies.md)."""
     _verify_api_key(request)
+    # Counted from now, as a direct deploy's is (api_deploy_container): the UI
+    # holds the ids of a copy deploy it got no answer for, and the hold must
+    # outlast it, however long this one waits for locks or a tunnel pull.
+    deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
+    key = (slug, int(proxy_id))
+    _copy_deploys[key] = _copy_deploys.get(key, 0) + 1
+    _copy_starts[key] = _copy_starts.get(key, 0) + 1
+    try:
+        return await _proxied_deploy(slug, proxy_id, spec, deadline)
+    finally:
+        _copy_deploys[key] -= 1
+        if not _copy_deploys[key]:
+            del _copy_deploys[key]
+
+
+async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec, deadline: float) -> dict[str, Any]:
     await asyncio.to_thread(_validate_proxied, slug, spec)
     own_ip = await _own_egress_ip()
     earner = {
@@ -1879,18 +2104,24 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
         "labels": spec.earner.labels,
         "resources": spec.earner.resources,
     }
-    try:
+    if not spec.routed:
+        try:
+            result = await asyncio.to_thread(
+                proxy_tunnel.deploy,
+                slug,
+                proxy_id,
+                earner,
+                spec.proxy.plain(),
+                own_ip,
+                only_if_running=spec.only_if_running,
+                deadline=deadline,
+            )
+        except Exception as exc:  # noqa: BLE001 - mapped to a status below
+            raise _proxy_http_error(exc) from None
+    else:
         result = await asyncio.to_thread(
-            proxy_tunnel.deploy,
-            slug,
-            proxy_id,
-            earner,
-            spec.proxy.plain(),
-            own_ip,
-            only_if_running=spec.only_if_running,
+            _deploy_routed, slug, proxy_id, earner, spec.proxy.plain(), own_ip, spec.only_if_running, deadline
         )
-    except Exception as exc:  # noqa: BLE001 - mapped to a status below
-        raise _proxy_http_error(exc) from None
     return {"status": "deployed", **result}
 
 
@@ -1924,9 +2155,28 @@ async def api_proxied_start(
     return {"status": "started", **result}
 
 
+@app.get("/api/proxied/{slug}/{proxy_id}/logs")
+async def api_proxied_logs(request: Request, slug: str, proxy_id: int, lines: int = 50) -> dict[str, Any]:
+    """The log tail of a proxied copy's earner, as /api/containers/{slug}/logs gives a service's."""
+    _verify_api_key(request)
+    try:
+        logs = await asyncio.to_thread(proxy_tunnel.logs, slug, proxy_id, max(1, min(lines, 1000)))
+    except Exception as exc:  # noqa: BLE001
+        raise _proxy_http_error(exc) from None
+    return {"logs": logs}
+
+
 @app.delete("/api/proxied/{slug}/{proxy_id}")
 async def api_proxied_remove(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
     _verify_api_key(request)
+    if _copy_deploys.get((slug, int(proxy_id))):
+        # 503 keeps the removal pending in the UI, which asks again with each
+        # heartbeat (main._resume_copy_removals) and then removes what it made.
+        raise HTTPException(
+            status_code=503,
+            detail=f"A deploy of {slug} through proxy {proxy_id} is still running on this worker; "
+            "the removal waits for it",
+        )
     try:
         removed = await asyncio.to_thread(proxy_tunnel.remove, slug, proxy_id)
     except Exception as exc:  # noqa: BLE001
@@ -1966,6 +2216,9 @@ async def api_worker_status(request: Request) -> dict[str, Any]:
         "client_id": CLIENT_ID,
         "docker_available": await asyncio.to_thread(orchestrator.docker_available),
         "ui_connected": _ui_connected,
+        # Read now, not from the last heartbeat: the UI asks before it removes
+        # a routed copy to run the service from this box's own IP.
+        "proxied_only": route_gate.proxied_only(),
         "container_count": len(containers),
         "running_count": sum(1 for c in containers if c.get("status") == "running"),
     }
@@ -1981,10 +2234,59 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+def _refuse_beside_routed_copy(slug: str) -> None:
+    """Refuse leaving the route while the routed copy of ``slug`` still exists.
+
+    The UI removes that copy before it sends the direct deploy, but a routed
+    redeploy that ran in between puts it back; deployed direct beside it, the
+    same account would run from the box's own IP and from the proxy's.
+    """
+    try:
+        proxy_id = route_gate.routed().get(slug)
+        copy = proxy_tunnel.copy_name(slug, proxy_id) if proxy_id is not None else None
+        # Through any proxy, not only the marked one: a routed copy through an
+        # earlier proxy keeps running when the mark moves to a later one.
+        found = [(proxy_id, copy)] if copy else proxy_tunnel.routed_copies(slug, proxy_id)[:1]
+    except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not check whether {slug} still runs through a proxy on this worker ({exc}); nothing changed",
+        ) from None
+    if found:
+        pid, name = found[0]
+        raise HTTPException(
+            status_code=409,
+            detail=f"{slug} still runs through proxy {pid} on this worker ({name}). Remove that copy first, "
+            "then deploy it direct; nothing changed",
+        )
+
+
+def _deploy_direct(**kwargs: Any) -> str:
+    """orchestrator.deploy_raw, and with an approval to leave the route, forget the route in the same lock.
+
+    Checked and forgotten under route_gate.deploying, the lock every route
+    change and every copy of the service holds: no routed deploy that started
+    after this one loses its route, and no copy is built by a route forgotten
+    right after it was read.
+    """
+    slug = kwargs["slug"]
+    with route_gate.deploying(slug):
+        if not kwargs.get("leave_route"):
+            return orchestrator.deploy_raw(**kwargs)
+        _refuse_beside_routed_copy(slug)
+        container_id = orchestrator.deploy_raw(**kwargs)
+        # It runs from this box's own IP now, as the owner confirmed.
+        route_gate.release(slug)
+        return container_id
+
+
 @app.post("/api/containers/{slug}/deploy")
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
+    # Counted from now, not from when a thread is free: the UI's hold on the ids
+    # of a deploy it got no answer for must outlast it (constants.DEPLOY_DEADLINE_SECONDS).
+    deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     # Threaded like every other Docker touch in this file: _validate_runtime
     # inside does a live daemon round-trip (available_runtimes has no cache and
     # no timeout), and unthreaded it blocked the WHOLE event loop on a wedged
@@ -1994,10 +2296,12 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     await asyncio.to_thread(_validate_deploy_spec, spec, slug)
     # Last of the checks: it spends the approval, which a refusal above must not.
     await asyncio.to_thread(_validate_critical_spec, spec, slug)
+    leave_route = await asyncio.to_thread(_validate_route_approval, spec, slug)
     kept_mounts: list[dict[str, str]] = []
+    replaced: dict[str, str] = {}
     try:
         container_id = await asyncio.to_thread(
-            orchestrator.deploy_raw,
+            _deploy_direct,
             slug=slug,
             image=spec.image,
             env=spec.env,
@@ -2017,11 +2321,18 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
+            leave_route=leave_route,
+            replaced_identity=replaced,
+            deadline=deadline,
         )
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
             response["kept_mounts"] = kept_mounts
+        # The ids the replaced container ran, for the UI's ledger (a replacement
+        # is a removal of the old container).
+        if digest := replaced.get("identity_digest"):
+            response["replaced_identity_digest"] = digest
         return response
     except orchestrator.ContainerNetworkError as exc:
         # The operator's own setting, and the message says how to fix it; a bare
@@ -2031,9 +2342,14 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # Structured, so the UI can show it and write it to its audit table.
         logger.warning("Deploy of %s refused: %s", slug, exc)
         raise HTTPException(status_code=403, detail={"error": "critical_volume_mount", "message": str(exc)}) from None
+    except route_gate.RouteRefused as exc:
+        # Raised before the running container was touched (orchestrator.deploy_raw).
+        logger.warning("Deploy of %s refused: %s", slug, exc)
+        raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
     except orchestrator.ContainerRuntimeError as exc:
-        # Same shape as the network setting, also raised before the old container
-        # was touched; 503 when the daemon could not be asked at all.
+        # Same shape as the network setting; 503 when the daemon could not be
+        # asked at all. Mostly raised before the old container was touched; a
+        # deadline passed after its stop puts it back and starts it again.
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except APIError as exc:
         refusal = orchestrator.proxy_refusal(exc)
@@ -2048,6 +2364,8 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         logger.warning("Deploy of %s refused by Docker: %s", slug, exc)
         reason = " ".join(str(exc.explanation or exc).split())[:300]
         raise HTTPException(status_code=409, detail=f"Docker refused the container: {reason}") from None
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")
@@ -2060,6 +2378,10 @@ async def api_restart_container(request: Request, slug: str, instance: int = 1) 
     try:
         await asyncio.to_thread(orchestrator.restart_service, slug, instance)
         return {"status": "restarted"}
+    except route_gate.RouteRefused as exc:
+        # The deploy's rule: not from this box's own IP (app/route_gate.py).
+        logger.warning("Restart of %s refused: %s", slug, exc)
+        raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
@@ -2086,6 +2408,10 @@ async def api_start_container(request: Request, slug: str, instance: int = 1) ->
     try:
         await asyncio.to_thread(orchestrator.start_service, slug, instance)
         return {"status": "started"}
+    except route_gate.RouteRefused as exc:
+        # The deploy's rule: not from this box's own IP (app/route_gate.py).
+        logger.warning("Start of %s refused: %s", slug, exc)
+        raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
@@ -2100,6 +2426,12 @@ async def api_remove_container(
     allow_delete_critical: bool = False,
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    # Copy deploys running when the removal starts, and how many had started.
+    # One may finish inside remove_all, after it listed the copies, or start
+    # and finish inside it, so the set read afterwards alone would miss the
+    # earner it made.
+    deploying = {pid for s, pid in list(_copy_deploys) if s == slug}
+    started = {pid: n for (s, pid), n in list(_copy_starts.items()) if s == slug}
     try:
         result = await asyncio.to_thread(
             orchestrator.remove_service,
@@ -2107,6 +2439,13 @@ async def api_remove_container(
             delete_volumes=delete_volumes,
             allow_delete_critical=allow_delete_critical,
         )
+        # Read before they go: the UI keeps the ids the copies ran with.
+        try:
+            digests = await asyncio.to_thread(orchestrator.copy_identity_digests, slug)
+        except Exception:  # noqa: BLE001 - bookkeeping never blocks a removal
+            digests = {}
+        if digests:
+            result["identity_digests"] = digests
         extras = await asyncio.to_thread(orchestrator.remove_extra_instances, slug)
         if extras:
             result["extra_instances"] = extras
@@ -2120,6 +2459,17 @@ async def api_remove_container(
             # The UI keeps the copies' records when this is set, so a copy that
             # survived stays listed and can be removed again.
             result["proxied_error"] = proxy_tunnel.redact(str(exc))[:300]
+        # remove_all sees only copies that exist. One whose deploy ran during
+        # the removal (the UI gave up on it after 180 s) may be made after it
+        # listed them, so the UI must keep the copies' records, as
+        # api_proxied_remove holds them.
+        deploying |= {pid for s, pid in list(_copy_deploys) if s == slug}
+        deploying |= {pid for (s, pid), n in list(_copy_starts.items()) if s == slug and n != started.get(pid)}
+        if held := sorted(deploying):
+            result.setdefault(
+                "proxied_error",
+                f"A deploy of {slug} through proxy {', '.join(map(str, held))} ran during this removal on this worker",
+            )
         if proxied:
             result["proxied"] = proxied
         await asyncio.to_thread(lan_fence.refresh_outside)

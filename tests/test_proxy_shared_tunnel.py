@@ -1778,3 +1778,41 @@ class TestAStuckTunnelChangeIsReported:
         docker.broken_auth.add("u1:dead@")
         staged.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         assert not [e for e in _heartbeat() if "tunnel_change" in e]
+
+
+class TestADirectEarnerWithATunnelsLabelsIsNotOne:
+    """Before deploy_raw refused a tunnel's name (and, before ed3afa9, kept the
+    service label a caller gave it), a direct deploy of slug tunnel-p3 could make
+    cashpilot-tunnel-p3 with every label of a shared tunnel and an image of its
+    caller's choosing. deploy_raw's own version label it cannot lose, and no
+    tunnel carries it: such a container never gets a proxy login or an earner."""
+
+    @pytest.mark.parametrize("slug", [None, "honeygain"])
+    def test_it_gets_no_proxy_login(self, docker, slug):
+        labels = {
+            LABEL_MANAGED: "true",
+            LABEL_ROLE: "tunnel",
+            LABEL_SERVICE: proxy_tunnel.SHARED_SLUG,
+            LABEL_PROXY: "3",
+            "cashpilot.deployed-by": "worker",
+            "cashpilot.version": "1",
+        }
+        if slug:
+            labels[proxy_tunnel.LABEL_TUNNEL_FOR] = slug
+        planted = docker.create(name=proxy_tunnel.shared_tunnel_name(3, slug), image=IMAGE, labels=labels)
+        planted.start()
+        assert not proxy_tunnel._is_tunnel_for(planted, 3, slug)
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="did not create"):
+            proxy_tunnel._ensure_tunnel(docker, 3, _socks(), None, slug=slug)
+        assert planted.files == {}
+        # Control: the same container without deploy_raw's label is a tunnel, and gets the login.
+        del planted.labels["cashpilot.version"]
+        proxy_tunnel._ensure_tunnel(docker, 3, _socks(), None, slug=slug)
+        assert planted.files["proxy_auth"] == "u1:s3cr3t-p%40ss@"
+
+    def test_a_migration_reads_no_settings_from_it_and_moves_nothing_into_it(self, docker):
+        planted = _legacy_pair(docker, "honeygain")
+        planted.labels["cashpilot.version"] = "1"
+        assert proxy_tunnel.migrate_legacy() == []
+        assert docker.tunnels() == [planted]
+        assert docker.named("cashpilot-tunnel-p3") is None

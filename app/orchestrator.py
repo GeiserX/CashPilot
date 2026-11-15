@@ -11,6 +11,7 @@ import collections
 import contextlib
 import functools
 import hashlib
+import inspect
 import ipaddress
 import logging
 import os
@@ -35,20 +36,23 @@ if "stop_timeout" not in docker.models.containers.RUN_CREATE_KWARGS:
     docker.models.containers.RUN_CREATE_KWARGS.append("stop_timeout")
 
 try:
-    from app.catalog import critical_volume_targets, get_service, get_services
+    from app.catalog import critical_volume_targets, get_service, get_services, identity_digest, identity_keys
 except ImportError:
     # Defensive fallback if the catalog module isn't importable in some context.
     # (The worker image does ship catalog.py + services/, so this normally no-ops.)
     get_service = None  # type: ignore[assignment]
     get_services = None  # type: ignore[assignment]
     critical_volume_targets = None  # type: ignore[assignment]
+    identity_digest = None  # type: ignore[assignment]
+    identity_keys = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
-from app import socket_policy, version  # noqa: E402
+from app import route_gate, socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
+    DEPLOY_DEADLINE_SECONDS,
     LABEL_CATEGORY,
     LABEL_DEPLOYED_BY,
     LABEL_INSTANCE,
@@ -58,7 +62,9 @@ from app.constants import (  # noqa: E402
     LABEL_SERVICE,
     LABEL_STATE_CREATED,
     LABEL_VERSION,
+    ROLE_TUNNEL,
     START_SETTLE_SECONDS,
+    TUNNEL_PREFIX,
     drift_warnings_enabled,
 )
 
@@ -68,6 +74,8 @@ _docker_available: bool | None = None
 # In-memory status cache — populated by health check, served instantly to UI
 _status_cache: list[dict[str, Any]] = []
 _status_cache_time: float = 0.0
+# Whether the last get_status listed every managed container (status_listed).
+_status_listed = False
 
 
 def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
@@ -486,12 +494,22 @@ def is_proxied(container: Any) -> bool:
     Neither is "copy N" of its service. A proxied copy carries no instance
     label, so without this check _instance_of() reads it as copy 1, and
     stopping or removing copy 1 could hit it instead.
+
+    Judged by what the container is, not by its labels alone: a copy runs in
+    another container's network namespace and a tunnel has a tunnel's name
+    (is_tunnel_sidecar).
+    A direct earner made before deploy_raw stripped those labels may carry
+    them, and it must still count as the service's own container wherever
+    that keeps it off this box's IP (the routed deploy's refusal beside a
+    direct one, the LAN fence).
     """
     try:
         labels = container.labels
         if not isinstance(labels, dict):
             return False
-        return bool(labels.get(LABEL_PROXY) or labels.get(LABEL_ROLE))
+        if is_tunnel_sidecar(container):
+            return True
+        return bool(labels.get(LABEL_PROXY)) and _network_mode(container).startswith("container:")
     except Exception:  # noqa: BLE001 - an unreadable container is handled by the caller's own guard
         return False
 
@@ -816,6 +834,46 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
 GATED_DEPLOY_LOCK = threading.Lock()
 
 
+def _past_deadline(image: str) -> ContainerRuntimeError:
+    return ContainerRuntimeError(
+        f"The deploy of {image} ran past its {DEPLOY_DEADLINE_SECONDS // 60}-minute limit, so it was abandoned "
+        "before its container was created. Try again."
+    )
+
+
+def _refuse_past(deadline: float, image: str) -> None:
+    """Abandon a deploy at its deadline, before its container is created."""
+    if time.monotonic() >= deadline:
+        raise _past_deadline(image)
+
+
+def _pull_until(client: Any, image: str, deadline: float) -> APIError | None:
+    """Pull ``image``, waiting no later than ``deadline``; the registry's refusal, if it refused.
+
+    docker-py's pull has no overall deadline, only one per read, so a slow pull
+    could run for hours. It runs in its own thread: past the deadline the deploy
+    is abandoned (_refuse_past) and the pull may finish on its own, which only
+    leaves an image behind.
+    """
+    outcome: dict[str, BaseException] = {}
+
+    def pull() -> None:
+        try:
+            client.images.pull(image)
+        except BaseException as exc:  # noqa: BLE001 - handed to the deploy below
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=pull, name=f"pull {image}", daemon=True)
+    worker.start()
+    worker.join(max(0.0, deadline - time.monotonic()))
+    if worker.is_alive():
+        raise _past_deadline(image)
+    error = outcome.get("error")
+    if error is None or isinstance(error, APIError):
+        return error
+    raise error
+
+
 def _holds_gated_lock(fn: Any) -> Any:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -828,6 +886,26 @@ def _holds_gated_lock(fn: Any) -> Any:
     return wrapper
 
 
+def _holds_route_lock(fn: Any) -> Any:
+    """A direct deploy holds route_gate.deploying from its check to its container's start.
+
+    An earner joined to a tunnel does not: the routed deploy that creates it
+    already holds the lock, from another call.
+    """
+    params = inspect.signature(fn)
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        bound = params.bind_partial(*args, **kwargs).arguments
+        if str(bound.get("network_mode") or "").startswith("container:"):
+            return fn(*args, **kwargs)
+        with route_gate.deploying(str(bound.get("slug", ""))):
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+@_holds_route_lock
 @_holds_gated_lock
 def deploy_raw(
     slug: str,
@@ -849,6 +927,10 @@ def deploy_raw(
     keep_targets: set[str] | None = None,
     instance: int = 1,
     name: str | None = None,
+    leave_route: bool = False,
+    replaced_identity: dict[str, str] | None = None,
+    deadline: float | None = None,
+    pulled: bool = False,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -856,10 +938,18 @@ def deploy_raw(
     ``_keep_live_mounts``. ``moved_mounts`` names the targets the operator
     relocated on purpose this deploy; ``keep_targets`` limits keeping to the
     targets the caller vouches for; ``kept_mounts``, when given, is filled with
-    what was kept so the caller can report it.
+    what was kept so the caller can report it. ``replaced_identity``, when
+    given, gets the ``identity_digest`` of the container being replaced, read
+    before it goes, so the UI can keep the ids it ran (identity ledger).
+    ``deadline`` (time.monotonic(); by default DEPLOY_DEADLINE_SECONDS from
+    now): past it, no new container is created. Up to the volume setup the
+    running container is not touched; a deadline passed after that (a slow
+    volume setup or stop) puts the stopped container back and starts it again.
 
-    ``network_mode="container:<id>"`` and ``name`` are for app/proxy_tunnel.py
-    only: the worker API refuses a container: network mode from any caller.
+    ``network_mode="container:<id>"``, ``name`` and ``pulled`` are for
+    app/proxy_tunnel.py only (``pulled``: it pulled the image itself, before it
+    removed the running copy, so the deadline cannot pass in a second pull).
+    The worker API refuses a container: network mode from any caller.
     A container that joins another's namespace gets no ports, resolvers or
     hostname of its own, because Docker refuses them there.
 
@@ -867,10 +957,24 @@ def deploy_raw(
     ``resources`` (mem_limit / mem_reservation / oom_score_adj / cpu_shares)
     makes the container's cgroup limits durable across recreates. Returns the
     container ID.
+
+    Every earner this worker creates passes here, so this is where a service
+    routed through a proxy, or a proxied-only worker, refuses to run from the
+    box's own IP (route_gate.check). ``leave_route`` is set only by the worker
+    API, after it checked the owner's password approval for that switch.
     """
+    if deadline is None:
+        deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     client = _get_client()
     name = name or _container_name(slug, instance)
+    if name.startswith(TUNNEL_PREFIX):
+        # Only a tunnel is named so, and is_tunnel_sidecar trusts the name: an
+        # earner under it would run from this box's own IP as if it were one.
+        raise ContainerRuntimeError(f"{name} is a proxy tunnel's name, so {slug} cannot run under it; nothing changed.")
     joined = (network_mode or "").startswith("container:")
+    # First, before anything is pulled or replaced: a refused earner costs the
+    # running one nothing.
+    route_gate.check(slug, network_mode, client, leave_route=leave_route)
     gated = fence_gated(slug)
 
     # Decided before the old container is touched: a network or runtime that
@@ -895,13 +999,12 @@ def deploy_raw(
     # or a typo'd image must not cost the running container. And once the image
     # is here, what it would run as PID 1 is known, so an image that cannot run
     # under this worker's hardening is refused now, not left to loop.
-    logger.info("Pulling image %s", image)
-    pull_error: APIError | None = None
-    try:
-        client.images.pull(image)
-    except APIError as exc:
-        pull_error = exc
-        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+    pull_error = None
+    if not pulled:
+        logger.info("Pulling image %s", image)
+        pull_error = _pull_until(client, image, deadline)
+    if pull_error is not None:
+        logger.warning("Failed to pull image %s: %s (trying local)", image, pull_error)
     try:
         image_config = client.images.get(image).attrs.get("Config") or {}
     except DockerException as exc:
@@ -913,6 +1016,7 @@ def deploy_raw(
         ) from None
     entrypoint = _get_entrypoint(slug)
     _refuse_init_image(image, image_config, entrypoint, command)
+    _refuse_past(deadline, image)
 
     # Replace any existing container with the same name. It is stopped and
     # moved aside, not removed, until its replacement runs: Docker can still
@@ -938,6 +1042,8 @@ def deploy_raw(
             )
         if problem := _aside_taken(client, old, name, slug):
             raise ContainerRuntimeError(problem)
+        if replaced_identity is not None:
+            replaced_identity.update(_identity_entry(old, slug))
         volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
         if kept:
             # A kept mount is the old container's own: one made before this
@@ -1041,6 +1147,12 @@ def deploy_raw(
         # never the caller's to change.
         all_labels[LABEL_SERVICE] = slug
         all_labels[LABEL_MANAGED] = "true"
+        if not joined:
+            # What is_proxied skips a copy or a tunnel by: a direct earner
+            # carrying them would hide from the routed deploy's own-IP check
+            # and from the proxied-only hold.
+            all_labels.pop(LABEL_PROXY, None)
+            all_labels.pop(LABEL_ROLE, None)
     if instance > 1:
         all_labels[LABEL_INSTANCE] = str(instance)
 
@@ -1115,6 +1227,9 @@ def deploy_raw(
     created = None
     began = time.monotonic()
     try:
+        # Again here: the volumes and the old container's stop come after the
+        # check above, and can take long. Past it, the old one is put back.
+        _refuse_past(deadline, image)
         try:
             container = (
                 client.containers.create(**run_kwargs) if gated else client.containers.run(detach=True, **run_kwargs)
@@ -1680,9 +1795,26 @@ def stop_service(slug: str, instance: int = 1) -> None:
     logger.info("Stopped container %s", container.name)
 
 
+def _network_mode(container: Any) -> str:
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    return str(host.get("NetworkMode") or "")
+
+
+def _require_route(container: Any, slug: str) -> None:
+    """Refuse Start or Restart of a container that would run from this box's own IP when it must not.
+
+    The same rule as a deploy (route_gate.check): a worker set to
+    CASHPILOT_PROXIED_ONLY, or a service routed through a proxy here. A
+    container created before either was set is held to it all the same.
+    """
+    route_gate.check(slug, _network_mode(container), _get_client())
+
+
 def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
     container = _find_container(slug, instance)
+    _require_route(container, slug)
     if _gated_container(slug, container):
         _require_startable(container, slug)
         _mark_stopped(container.name, False)
@@ -2509,13 +2641,15 @@ def remove_instance(slug: str, instance: int) -> dict[str, Any]:
     if instance <= 1:
         raise ValueError("The first instance is removed with the service, not on its own")
     container = _find_container(slug, instance)
+    # Read before it goes: the UI keeps the ids this copy ran with (identity ledger).
+    identity = _identity_entry(container, slug)
     try:
         container.stop(timeout=_get_stop_timeout(slug))
     except APIError as exc:
         logger.warning("Could not stop %s cleanly before removing it: %s", container.name, exc)
     _remove_container(container, slug)
     logger.info("Removed container %s", container.name)
-    return {"container": container.name}
+    return {"container": container.name, **identity}
 
 
 def remove_extra_instances(slug: str) -> list[str]:
@@ -2619,11 +2753,85 @@ def remove_service(slug: str, delete_volumes: bool = False, allow_delete_critica
 def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
     container = _find_container(slug, instance)
+    _require_route(container, slug)
     if _gated_container(slug, container):
         _require_startable(container, slug)
         _mark_stopped(container.name, False)
     container.start()
     logger.info("Started container %s", container.name)
+
+
+def is_tunnel_sidecar(container: Any) -> bool:
+    """A proxy tunnel (app/proxy_tunnel.py): labelled one, named as one, and never made by deploy_raw.
+
+    A tunnel reaches its proxy from the box's own IP; that is its job. The
+    label alone is not enough: a direct deploy once kept any label it was
+    given (DeploySpec.labels), and any image it was given, so an earner made
+    then can carry both. deploy_raw now refuses a name that starts with
+    TUNNEL_PREFIX, which only proxy_tunnel gives its tunnels, but before that
+    a direct deploy of a slug such as ``tunnel-p3`` took one. What no earner
+    can lose is the LABEL_VERSION key: deploy_raw has set it on every
+    container it made, a caller's labels could only change its value, and
+    proxy_tunnel never sets it on a tunnel. The image does not count either
+    way: a tunnel keeps running the image it was made from after
+    CASHPILOT_TUNNEL_IMAGE changes.
+    """
+    labels = getattr(container, "labels", None)
+    if not isinstance(labels, dict) or labels.get(LABEL_ROLE) != ROLE_TUNNEL or LABEL_VERSION in labels:
+        return False
+    return str(getattr(container, "name", "") or "").startswith(TUNNEL_PREFIX)
+
+
+def direct_problem(container: Any) -> str | None:
+    """Why a running earner must stop on a worker set to CASHPILOT_PROXIED_ONLY, or None.
+
+    Only the operator's switch: a service routed here and then deployed direct
+    with the owner's password runs direct for a moment before its route is
+    released, so the route lock is left to the deploy, Start and Restart.
+
+    Decided by the container's network, never by a proxied copy's labels: a
+    copy runs only inside a tunnel's namespace (route_gate.check), and a
+    direct earner made before deploy_raw stripped those labels may carry them.
+    """
+    if not route_gate.proxied_only():
+        return None
+    labels = getattr(container, "labels", None)
+    labels = labels if isinstance(labels, dict) else {}
+    if labels.get(LABEL_MANAGED) != "true" or not labels.get(LABEL_SERVICE) or is_tunnel_sidecar(container):
+        return None
+    try:
+        route_gate.check(str(labels[LABEL_SERVICE]), _network_mode(container), _get_client(), leave_route=True)
+    except route_gate.RouteRefused as exc:
+        return str(exc)
+    return None
+
+
+def hold_direct_earners() -> list[str]:
+    """Stop every earner running from this box's own IP on a CASHPILOT_PROXIED_ONLY worker.
+
+    A deploy, a Start and a Restart refuse one already (route_gate.check), but
+    an earner made before the switch was set keeps running, and Docker starts
+    it again after a reboot (its restart policy is unless-stopped). The worker
+    runs this at its start and on every guard pass. A stop by the worker counts
+    as a manual stop for Docker, so the restart policy does not bring it back.
+    Returns the names it stopped.
+    """
+    if not route_gate.proxied_only():
+        return []
+    client = _get_client()
+    stopped: list[str] = []
+    for container in client.containers.list(filters={"label": f"{LABEL_MANAGED}=true"}):
+        problem = direct_problem(container)
+        if not problem:
+            continue
+        slug = str((container.labels or {}).get(LABEL_SERVICE) or "")
+        logger.warning("Stopping %s: %s", container.name, problem)
+        try:
+            container.stop(timeout=_get_stop_timeout(slug))
+            stopped.append(container.name)
+        except Exception as exc:  # noqa: BLE001 - the next pass tries again
+            logger.warning("Could not stop %s: %s", container.name, exc)
+    return stopped
 
 
 # ---------------------------------------------------------------------------
@@ -3414,6 +3622,59 @@ def _advertised_address(container: Any, slug: str) -> str | None:
     return None
 
 
+# What keys identity_digest: the worker's active API key, set by worker_api.
+# Unset (the UI process, a test) means no digest at all.
+identity_digest_key: Any = None
+
+# Container id -> the identity values it runs with. A container's env never
+# changes, so each is inspected once; the cap only bounds a long uptime. The
+# digest is made per call, so it follows the key when the worker enrols.
+_identity_values: dict[str, dict[str, str]] = {}
+
+
+def _identity_entry(container: Any, slug: str) -> dict[str, str]:
+    """``identity_digest``: a keyed hash of the device ids this container runs with.
+
+    The UI writes a copy's ledger row only when this matches what its deploy
+    record derives (catalog.identity_digest), so a copy still running an older
+    id is never given a newer one. Only for a service with identity keys, and
+    never the ids themselves: they let whoever holds them claim the device.
+    """
+    if get_service is None or identity_digest is None or identity_keys is None or identity_digest_key is None:
+        return {}
+    try:
+        service = get_service(slug)
+        key = identity_digest_key()
+    except Exception:
+        return {}
+    cid = str(getattr(container, "id", "") or "")
+    if not service or not cid or not key:
+        return {}
+    if cid not in _identity_values:
+        names = identity_keys(service)
+        if not names:
+            return {}
+        try:
+            env_list = (container.client.api.inspect_container(cid).get("Config") or {}).get("Env") or []
+        except Exception:
+            return {}
+        env = dict(e.split("=", 1) for e in env_list if isinstance(e, str) and "=" in e)
+        if len(_identity_values) > 1024:
+            _identity_values.clear()
+        _identity_values[cid] = {name: env.get(name, "") for name in names}
+    digest = identity_digest(service, _identity_values[cid], key)
+    return {"identity_digest": digest} if digest else {}
+
+
+def copy_identity_digests(slug: str) -> dict[str, str]:
+    """The digest of every copy of ``slug`` on this worker, by copy number, before a removal."""
+    digests: dict[str, str] = {}
+    for container in service_instances(slug):
+        if digest := _identity_entry(container, slug).get("identity_digest"):
+            digests[str(_instance_of(container))] = digest
+    return digests
+
+
 def get_status() -> list[dict[str, Any]]:
     """Return live status of all known containers (labeled + image-matched).
 
@@ -3422,8 +3683,9 @@ def get_status() -> list[dict[str, Any]]:
     than a plain list. Use get_status_cached() for page loads; this is for
     background refresh.
     """
-    global _status_cache, _status_cache_time
+    global _status_cache, _status_cache_time, _status_listed
 
+    _status_listed = False
     try:
         client = _get_client()
     except RuntimeError:
@@ -3454,6 +3716,7 @@ def get_status() -> list[dict[str, Any]]:
     seen_ids.update(c.id for c in labeled if is_proxied(c))
     labeled = [c for c in labeled if not is_proxied(c)]
     labeled_stats = _collect_stats_bulk(list(labeled))
+    listed = True
     for c in labeled:
         try:
             seen_ids.add(c.id)
@@ -3476,6 +3739,7 @@ def get_status() -> list[dict[str, Any]]:
                 "instance": _instance_of(c),
                 **_shape_entry(c),
                 **_stop_facts(c),
+                **_identity_entry(c, slug),
                 **_state_id_entry(c, slug, client),
                 **_fatal_entry(c, slug),
                 **_held_entry(c),
@@ -3486,6 +3750,7 @@ def get_status() -> list[dict[str, Any]]:
                 entry["advertised_address"] = advertised
             results.append(entry)
         except Exception as exc:
+            listed = False
             logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Image-matched containers (deployed externally)
@@ -3548,8 +3813,18 @@ def get_status() -> list[dict[str, Any]]:
     # Update the cache
     _status_cache = results
     _status_cache_time = time.monotonic()
+    _status_listed = listed
 
     return results
+
+
+def status_listed() -> bool:
+    """Whether the last get_status listed every managed container.
+
+    get_status answers an empty list when Docker would not list them, and
+    skips a container it could not read. Neither means those copies are gone.
+    """
+    return _status_listed
 
 
 def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:

@@ -35,6 +35,7 @@ docker:
       secret: true
       description: "Log in at <a href=\"https://app.traffmonetizer.io\">app.traffmonetizer.io</a>, press F12 → Application → Local Storage → click <code>https://app.traffmonetizer.io</code> → copy the <code>authToken</code> value (about 54 characters, digits, a <code>|</code>, then letters and digits)"
     - key: TRAFFMONETIZER_DEVICE_NAME
+      identifier: true
       label: "Device name"
       required: false
       secret: false

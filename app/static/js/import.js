@@ -177,7 +177,8 @@
     let ok = 0;
     for (const wid of ids) {
       try {
-        const res = await CP.api(`/api/import/drafts/${encodeURIComponent(slug)}/deploy?worker_id=${encodeURIComponent(wid)}`, { method: 'POST' });
+        // A body, so the shared device id question and the password prompt can resend it with the answer.
+        const res = await CP.api(`/api/import/drafts/${encodeURIComponent(slug)}/deploy?worker_id=${encodeURIComponent(wid)}`, { method: 'POST', body: {} });
         ok++;
         const link = res && res.device_link;
         // Registered means CashPilot already added the device to the account.

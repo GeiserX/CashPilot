@@ -29,6 +29,7 @@ docker:
       secret: true
       description: "Log in at <a href=\"https://peer.proxybase.org/dashboard\">peer.proxybase.org/dashboard</a> → copy your Access Token (shown in the Docker command on the setup page)"
     - key: NAME
+      identifier: true
       label: "Device Name"
       required: true
       secret: false

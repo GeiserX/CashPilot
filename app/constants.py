@@ -32,6 +32,10 @@ PROXIED_FORBIDDEN_CAPS = frozenset({"NET_ADMIN", "NET_RAW", "SYS_ADMIN", "ALL"})
 # not a recommendation: on one connection most providers pay for one.
 MAX_INSTANCES = 10
 CONTAINER_PREFIX = "cashpilot-"
+# Every tunnel app/proxy_tunnel.py makes is named with this, and no earner may
+# be (orchestrator.deploy_raw refuses one), so the name tells a tunnel apart
+# from an earner that kept a tunnel's labels or runs a look-alike image.
+TUNNEL_PREFIX = f"{CONTAINER_PREFIX}tunnel-"
 
 # Catalog statuses that must never be deployed or exported: the service is
 # gone, broken, or dropped, and producing a runnable artifact for it points
@@ -64,6 +68,15 @@ EPHEMERAL_PORTS = (32768, 60999)
 #: on: a node publishing 1,000 UDP ports took about 51 s to start. The UI adds
 #: it to its own wait for the worker's deploy answer.
 START_SETTLE_SECONDS = 120
+
+#: The latest a worker still creates a deploy's container, counted from when
+#: the deploy request reached it. A pull still running then is abandoned, and
+#: the running container is not touched. Docker's own timeouts bound what comes
+#: after the pull (a stop, a create, START_SETTLE_SECONDS), so a deploy is over
+#: a few minutes past this. The UI holds the ids of a deploy the worker never
+#: answered for far longer (database.PENDING_IDENTITY_SECONDS), so a hold that runs
+#: out runs out after the deploy ended.
+DEPLOY_DEADLINE_SECONDS = 3600
 
 
 def drift_warnings_enabled() -> bool:

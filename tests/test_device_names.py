@@ -390,6 +390,29 @@ class TestARenameReachesProxiedCopies:
         assert all(c[3]["only_if_running"] is True for c in calls), "the worker must not start a stopped copy"
         assert "kept_from_previous_deployment" not in resp.json()
 
+    def test_the_identity_ledger_follows_each_rebuilt_copy(self, client):
+        """Each rebuilt copy's new name goes in the ledger, which retires its old one (issue #740)."""
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+        record = AsyncMock()
+        with patch("app.main.database.record_identities", record):
+            _, _, calls = _rename_with_copies(client, [_copy(4)], entries)
+        written = [c for c in record.await_args_list if "p4" in c.args[2]]
+        assert written, "the rebuilt copy's new name never reached the ledger"
+        assert written[-1].args[2]["p4"]["DEVICE_NAME"] == calls[0][3]["earner"]["env"]["DEVICE_NAME"]
+        assert written[-1].kwargs["scope"] == "given"
+
+    def test_the_identity_ledger_write_is_under_the_copys_lock(self, client):
+        entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "running"}]
+        held: list[bool] = []
+
+        async def record(slug, worker_id, values, **kwargs):
+            if "p4" in values:
+                held.append(main._proxy_copy_lock(4, worker_id, slug).locked())
+
+        with patch("app.main.database.record_identities", side_effect=record):
+            _rename_with_copies(client, [_copy(4)], entries)
+        assert held == [True]
+
     def test_a_copy_that_exited_without_a_stop_is_not_started_by_the_rename(self, client):
         entries = [{"proxy_id": 4, "slug": "iproyal", "held": False, "status": "exited"}]
         resp, _, calls = _rename_with_copies(client, [_copy(4)], entries)
@@ -517,6 +540,17 @@ class TestACopyThatKeptItsOldNameCanBeRenamedLater:
         assert copies[0]["rename_pending"] == 1, "it is still on the old name, so it is still offered"
         assert resp.json()["kept_from_previous_deployment"][0].startswith("proxied copy p4: stopped")
 
+    def test_the_routed_copy_is_never_rebuilt_as_a_copy(self, client):
+        """Routed through p4, the copy IS the service: a routed redeploy renames it from its own ids."""
+        routed = {**self._renamed(), "route": {"proxy_id": 4}}
+        copies = [_copy(4, rename_pending=1), _copy(9, rename_pending=1)]
+        resp = _renames(client, {"env": {}}, [_proxied_worker(self.RUNNING)], recorded=routed, copies=copies)
+        assert resp.json()["copies"] == ["proxied copy p9"]
+        _, _, calls = _rename_with_copies(
+            client, copies, self.RUNNING, path="/api/deploy/iproyal/device-names/copies", recorded=routed
+        )
+        assert [c[2] for c in calls] == ["/api/proxied/iproyal/9/deploy"]
+
     def test_the_retry_is_for_the_owner_only(self, client):
         resp, _ = _post(client, "/api/deploy/iproyal/device-names/copies", {}, [_worker(1, "cid-a")], role="writer")
         assert resp.status_code == 403
@@ -563,7 +597,8 @@ const env = {
   document: { getElementById: () => null, querySelectorAll: () => [] },
   console: { warn() {} },
   toast(text, kind) { toasts.push({ text, kind }); }, _showDeviceLink() {}, _imageChoice: () => undefined, _instancesFor: () => undefined,
-  _confirmPreflight: async () => true, wizardState: { deployed: [] },
+  _confirmPreflight: async () => true, wizardState: { deployed: [] }, _routeChoice: () => undefined,
+  runsOn: (w, slug) => (w.containers || []).some(c => c.slug === slug),
   escapeHtml: (t) => String(t), loadServicesTable() {}, openServiceDetail() {}, _showDeviceLink() {},
   _detailWorkers: scenario.detailWorkers || [],
 };
