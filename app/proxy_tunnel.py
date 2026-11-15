@@ -201,8 +201,12 @@ class _NotFlushed(OSError):
 def _sync_folder(path: str) -> None:
     """Flush the folder of the marker at ``path``, so its last rename survives a power cut. Raises _NotFlushed."""
     folder_path = os.path.dirname(path) or "."
-    folder = os.open(folder_path, os.O_RDONLY)
+    folder = None
     try:
+        # Opened inside the mapping too: the rename is already done, so a folder
+        # that cannot be opened (EMFILE) is one that was not flushed, never a
+        # write that failed (a stop goes ahead on _NotFlushed, see _stop).
+        folder = os.open(folder_path, os.O_RDONLY)
         os.fsync(folder)
     except OSError as exc:
         if exc.errno not in _NO_FOLDER_FLUSH:
@@ -213,7 +217,8 @@ def _sync_folder(path: str) -> None:
                 "The filesystem of %s cannot flush a folder (%s); markers are written without it", folder_path, exc
             )
     finally:
-        os.close(folder)
+        if folder is not None:
+            os.close(folder)
 
 
 def _flush_unchanged(path: str) -> None:
@@ -1079,10 +1084,10 @@ def _move_members(client: Any, old: Any, new: Any) -> None:
         raise
 
 
-def _shared_ready(client: Any, proxy_id: int) -> tuple[Any, dict[str, Any]] | None:
-    """The proxy's shared tunnel when it runs and has written /run/ready."""
-    current = _get(client, shared_tunnel_name(proxy_id))
-    if not _is_tunnel_for(current, proxy_id, None) or getattr(current, "status", "") != "running":
+def _shared_ready(client: Any, proxy_id: int, key: str | None = None) -> tuple[Any, dict[str, Any]] | None:
+    """The proxy's shared tunnel (with ``key``, that routed service's own) when it runs and has written /run/ready."""
+    current = _get(client, shared_tunnel_name(proxy_id, key))
+    if not _is_tunnel_for(current, proxy_id, key) or getattr(current, "status", "") != "running":
         return None
     exit_info = _read_exit(current)
     return (current, exit_info) if exit_info is not None else None
@@ -1505,6 +1510,14 @@ def _start_in_ready_run(earner: Any, tunnel: Any, slug: str, *, restart: bool = 
         return False
     if tunnel.status != "running" or _read_exit(tunnel) is None:
         logger.warning("The tunnel of %s is not ready; not starting it", earner.name)
+        return False
+    aside = _get(orchestrator._get_client(), f"{earner.name}{MOVING_SUFFIX}")
+    if aside is not None and getattr(aside, "status", "") in _LIVE:
+        # A worker died in a move after the clone took the name but before the
+        # old container stopped (_clone_into): the aside one is still the copy,
+        # and two of one copy would show the provider one device twice.
+        # recover_moves removes it once the move is settled; the clone starts then.
+        logger.warning("%s is still running aside from a move a worker died in; not starting it", earner.name)
         return False
     same = False
     try:
@@ -2144,7 +2157,16 @@ def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip:
     deploy does: a copy whose tunnel is gone is rebuilt by the route it reads.
     """
     with route_gate.deploying(slug), _deploy_lock(proxy_id):
-        return _start(slug, proxy_id, proxy, own_ip)
+        try:
+            return _start(slug, proxy_id, proxy, own_ip)
+        except orchestrator.PastDeadline:
+            # Only a start's tunnel image pull has a deadline here (_pull_deadline):
+            # not the deploy limit the error names, nor a setting to fix.
+            raise ProxyTunnelError(
+                f"{earner_name(slug, proxy_id)} was not started: the tunnel image took longer than "
+                f"{REPLACE_PULL_SECONDS} seconds to pull. Docker finishes the pull on its own; try again in a minute.",
+                503,
+            ) from None
 
 
 def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str | None) -> dict[str, Any]:
@@ -2302,8 +2324,8 @@ def _started_or_raise(earner: Any, tunnel: Any, slug: str, *, restart: bool = Fa
     if not _start_in_ready_run(earner, tunnel, slug, restart=restart):
         raise ProxyTunnelError(
             f"{earner.name} was not started: its tunnel was not ready, restarted or could not be read just as it "
-            "started, or an older worker made it and it is replaced first. It stays marked to run, so the heartbeat "
-            "starts it once its tunnel is ready."
+            "started, an older worker made it and it is replaced first, or its old container still runs aside from "
+            "a move a worker died in. It stays marked to run, so the heartbeat starts it once that is settled."
         )
 
 
@@ -2312,8 +2334,8 @@ def _start_legacy(slug: str, earner: Any, sidecar: Any, name: str) -> dict[str, 
 
     Its tunnel has Docker's restart policy, so no earner starts in it
     (_start_in_ready_run): it is started for its settings, and the pair moves
-    into the proxy's shared tunnel first (_migrate_proxy), where the earner
-    starts."""
+    into the proxy's shared tunnel first (a routed service's into its own,
+    _migrate_proxy), where the earner starts."""
     client = orchestrator._get_client()
     sidecar.reload()
     if sidecar.status != "running":
@@ -2668,8 +2690,26 @@ def migrate_legacy() -> list[str]:
 
 
 def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any], *, deadline: float | None = None) -> list[str]:
-    """Move the legacy pairs ``tunnels`` of the proxy into its shared tunnel. ``deadline`` bounds the image pull."""
-    ready = _shared_ready(client, proxy_id)
+    """Move the legacy pairs ``tunnels`` of the proxy into its shared tunnel. ``deadline`` bounds the image pull.
+
+    A routed service's pair moves into that service's own tunnel through the
+    proxy instead, as a start with settings does: a routed earner never joins
+    the shared tunnel (_routed_here)."""
+    groups: dict[str | None, list[Any]] = {}
+    for tunnel in tunnels:
+        slug = _labels(tunnel).get(LABEL_SERVICE, "")
+        groups.setdefault(slug if _routed_here(slug, proxy_id) else None, []).append(tunnel)
+    moved: list[str] = []
+    for key, group in groups.items():
+        moved += _migrate_into(client, proxy_id, group, key, deadline=deadline)
+    return moved
+
+
+def _migrate_into(
+    client: Any, proxy_id: int, tunnels: list[Any], key: str | None, *, deadline: float | None = None
+) -> list[str]:
+    """Move the legacy pairs ``tunnels`` into the proxy's shared tunnel, or with ``key`` that routed service's own."""
+    ready = _shared_ready(client, proxy_id, key)
     if ready is not None and _restarts_by_itself(ready[0]):
         # An older worker's shared tunnel: no copy starts in it, so it is
         # replaced first, once its own copies are settled; else the pairs wait.
@@ -2687,9 +2727,11 @@ def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any], *, deadline: 
         sources.sort(key=_started_at, reverse=True)
         files = _read_all_files(sources[0])
         if files.get("kind") == "tailscale":
-            files["hostname"] = _ts_hostname(shared_label(proxy_id))
+            files["hostname"] = _ts_hostname(shared_label(proxy_id, key))
         files = _with_digest(files)
-        ready = _ensure_tunnel(client, proxy_id, None, files.get("own_ip") or None, files=files, deadline=deadline)
+        ready = _ensure_tunnel(
+            client, proxy_id, None, files.get("own_ip") or None, files=files, slug=key, deadline=deadline
+        )
     shared, _ = ready
     moved: list[str] = []
     for tunnel in tunnels:
@@ -2713,7 +2755,11 @@ def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any], *, deadline: 
             _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
     if moved:
         logger.info(
-            "Moved %d cop%s of proxy %s into one shared tunnel", len(moved), "y" if len(moved) == 1 else "ies", proxy_id
+            "Moved %d cop%s of proxy %s into %s",
+            len(moved),
+            "y" if len(moved) == 1 else "ies",
+            proxy_id,
+            shared_tunnel_name(proxy_id, key),
         )
     return moved
 

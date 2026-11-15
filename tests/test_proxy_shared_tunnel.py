@@ -4466,7 +4466,7 @@ class TestRoundFourFollowups:
             with (
                 patch.object(docker, "pull", side_effect=pull),
                 patch.object(proxy_tunnel, "REPLACE_PULL_SECONDS", 0.2),
-                pytest.raises(orchestrator.ContainerRuntimeError),
+                pytest.raises(proxy_tunnel.ProxyTunnelError) as caught,
             ):
                 began = time.monotonic()
                 try:
@@ -4475,6 +4475,10 @@ class TestRoundFourFollowups:
                     took = time.monotonic() - began
         finally:
             release.set()
+        # A transient pull, never "a deploy past its 60-minute limit" nor a 409 setting to fix.
+        assert caught.value.status_code == 503
+        assert "tunnel image took longer than 0.2 seconds to pull" in str(caught.value)
+        assert "limit" not in str(caught.value)
         assert pulls, "the start never replaced the tunnel"
         assert took < 2, took
         assert not proxy_tunnel._deploy_lock(3).locked()
@@ -4533,3 +4537,89 @@ class TestRoundFourFollowups:
         clone = docker.named(NAME)
         assert new.id != old.id and clone.status == "running"
         assert clone.attrs["HostConfig"]["NetworkMode"] == f"container:{new.id}"
+
+
+def _running(docker):
+    return sorted(
+        c.name for c in docker.by_id.values() if c.status == "running" and c.labels.get(LABEL_ROLE) != "tunnel"
+    )
+
+
+class TestRoundFiveFollowups:
+    def test_a_worker_that_dies_while_a_moved_copy_stops_never_leaves_two_running(self, docker):
+        """The member now stops only once its clone holds the name. A worker that died in that stop left the old
+        container running aside and the clone stopped under the name; the heartbeat started the clone while the
+        young clone kept recover_moves away, so one device earned twice until the aside one was removed."""
+        _legacy_pair(docker, "honeygain", proxy=_socks())
+        earner = docker.named(NAME)
+
+        def killed(timeout=None):
+            raise SystemExit("worker killed")
+
+        earner.stop = killed
+        with pytest.raises(SystemExit):
+            proxy_tunnel.migrate_legacy()
+        del earner.stop
+        clone = docker.named(NAME)
+        assert earner.name == NAME + proxy_tunnel.MOVING_SUFFIX and earner.status == "running"
+        assert clone is not earner and clone.status != "running"
+        clone.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")  # a worker just restarted
+        _heartbeat()
+        _heartbeat()
+        assert _running(docker) == [NAME + proxy_tunnel.MOVING_SUFFIX]
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="still runs aside"):
+            proxy_tunnel.start("honeygain", 3, None, None)  # the owner's Start waits for the same
+        assert _running(docker) == [NAME + proxy_tunnel.MOVING_SUFFIX]
+        clone.attrs["Created"] = (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+        _heartbeat()  # the move is settled: the aside one goes, and the clone is the copy
+        _heartbeat()
+        assert _running(docker) == [NAME] and docker.named(NAME) is clone
+        assert docker.named(NAME + proxy_tunnel.MOVING_SUFFIX) is None
+
+    def test_a_stop_whose_data_folder_cannot_be_opened_still_stops_the_copy(self, docker):
+        """The folder was opened outside the flush's error mapping: an open that failed after the rename (EMFILE)
+        raised a plain error, so the stop skipped the halt and the copy kept running while the marker said stopped."""
+        _deploy("honeygain")
+        real = os.open
+
+        def open_(path, flags, *args, **kwargs):
+            if os.path.isdir(path):
+                raise OSError(errno.EMFILE, os.strerror(errno.EMFILE))
+            return real(path, flags, *args, **kwargs)
+
+        with (
+            patch.object(proxy_tunnel.os, "open", side_effect=open_),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="was stopped, but"),
+        ):
+            proxy_tunnel.stop("honeygain", 3)
+        assert proxy_tunnel.held() == {NAME}
+        assert docker.named(NAME).status == "exited"
+
+    @pytest.mark.parametrize("how", ["start without settings", "worker start", "heartbeat"])
+    def test_a_routed_legacy_pair_moves_into_its_own_tunnel_never_the_shared_one(self, docker, how):
+        """A start with no settings (an older UI), the worker start and the heartbeat moved a routed service's legacy
+        pair into the proxy's shared tunnel, beside every other service's earner; a start with settings keeps a
+        routed service in a tunnel of its own."""
+        _deploy("earnapp")  # another service's copy, in the proxy's shared tunnel
+        legacy = _legacy_pair(docker, "honeygain", proxy=_socks())
+        _made_by_an_older_worker(legacy)
+        if how == "start without settings":
+            proxy_tunnel.stop("honeygain", 3)
+        elif how == "heartbeat":
+            docker.named(NAME).stop()  # not held: the heartbeat starts it, so it moves first
+        with patch.object(proxy_tunnel.route_gate, "routed", return_value={"honeygain": 3}):
+            if how == "start without settings":
+                proxy_tunnel.start("honeygain", 3, None, None)
+            elif how == "worker start":
+                assert proxy_tunnel.migrate_legacy() == [NAME]
+            else:
+                _heartbeat()
+                _heartbeat()
+        own = docker.named(proxy_tunnel.shared_tunnel_name(3, "honeygain"))
+        shared = docker.named(proxy_tunnel.shared_tunnel_name(3))
+        assert own is not None and own.labels.get(proxy_tunnel.LABEL_TUNNEL_FOR) == "honeygain"
+        earner = docker.named(NAME)
+        assert earner.attrs["HostConfig"]["NetworkMode"] == f"container:{own.id}"
+        assert _member_ids(docker, shared) == ["cashpilot-earnapp-p3"]
+        assert docker.named(proxy_tunnel.tunnel_name("honeygain", 3)) is None
+        assert earner.status == "running" and own.status == "running"

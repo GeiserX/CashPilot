@@ -834,8 +834,12 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
 GATED_DEPLOY_LOCK = threading.Lock()
 
 
+class PastDeadline(ContainerRuntimeError):
+    """A deploy (or a pull bounded by a deadline) that was abandoned at its deadline (_past_deadline)."""
+
+
 def _past_deadline(image: str) -> ContainerRuntimeError:
-    return ContainerRuntimeError(
+    return PastDeadline(
         f"The deploy of {image} ran past its {DEPLOY_DEADLINE_SECONDS // 60}-minute limit, so it was abandoned "
         "before its container was created. Try again."
     )

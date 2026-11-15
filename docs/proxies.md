@@ -255,7 +255,8 @@ its move is refused with the copy left as it was. Recreating a
 copy loses its writable layer, as moving a legacy pair does, so a provider
 that keeps its device id there sees a new device once. No earner starts in
 the old tunnel meanwhile. Each copy stops only once its new container holds
-its name. If one copy cannot move, the copies already moved keep running in
+its name, and a new container never starts while the old one still runs
+(as after a worker that died mid-move, until the move is settled). If one copy cannot move, the copies already moved keep running in
 the new tunnel, and the copy that failed keeps running in the old one; only
 when its new container could not start, after it stopped, does it stay
 stopped until the next try. The worker tries to finish the move again
@@ -275,8 +276,10 @@ as they are. After that, the heartbeat leaves a running pair where it is: an
 older worker wrote no stop down, so only Docker knows whether its owner
 stopped it. When the copy must start (after its own crash, or a start from a
 UI that sends no settings), the pair moves into the shared tunnel first, and
-the earner starts there. Either move recreates the copy, so a provider that
-keeps its device id inside the container sees a new device once.
+the earner starts there. A routed service's pair moves into that service's
+own tunnel through the proxy instead, never the shared one. Either move
+recreates the copy, so a provider that keeps its device id inside the
+container sees a new device once.
 
 What this cannot cover: someone who starts a tunnel container by hand
 (`docker start`), or a second CashPilot worker on the same Docker daemon,
