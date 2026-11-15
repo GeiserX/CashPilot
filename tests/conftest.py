@@ -249,6 +249,30 @@ def _reset_process_wide_caches():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _tunnel_replacement_in_place(request):
+    """The heartbeat's tunnel replacement runs in place, not in its own thread.
+
+    proxy_tunnel.status() starts it in the background, so a slow try never holds
+    the heartbeat up. A thread a test leaves running would outlive the patches
+    that test made (its fake Docker, its markers) and reach whatever the next
+    test patched, or a real daemon. Tests marked ``real_background_replacement``
+    get the real thread.
+    """
+    if request.node.get_closest_marker("real_background_replacement"):
+        yield
+        return
+    try:
+        from app import proxy_tunnel
+    except Exception:  # noqa: BLE001 - a suite run without docker-py never reaches it
+        yield
+        return
+    from unittest.mock import patch
+
+    with patch.object(proxy_tunnel, "_in_background", lambda work: work()):
+        yield
+
+
 @pytest.fixture(scope="session")
 def _real_catalog_slugs():
     from app import catalog

@@ -2,7 +2,9 @@
 
 Opt-in, because it needs a daemon and pulls alpine's nftables package:
 ``CASHPILOT_REAL_DOCKER=1 uv run pytest tests/test_proxy_tunnel_real_docker.py``. Everything it makes is
-named ``cpgrd-<random>-*`` and removed at the end, the image too.
+named ``cpgrd-<random>-*`` or carries the label ``cpgrd.lab=cpgrd-<random>`` (the worker's own tunnels, whose
+names it chooses), and only that is removed at the end, the images too. Its proxy id is random as well, and it
+refuses to run on a daemon where a container already uses that id, so it never touches another copy.
 
 The tunnel here is a stand-in that keeps what matters of cp-tunnel: Docker gives its namespace an interface and a
 default route before its first command, so it is open for OPEN_SECONDS (the moment before cp-tunnel's drop-all
@@ -46,7 +48,10 @@ IMAGE = f"{PREFIX}-nft:1"
 TUNNEL_IMAGE = f"{PREFIX}-tun:1"
 ALPINE = "alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f"
 SOCAT = "alpine/socat:1.8.0.3"
-PROXY_ID = 4242
+#: Every container and network the lab makes carries this label with PREFIX: the cleanup removes those only.
+LAB_LABEL = "cpgrd.lab"
+LAB = {LAB_LABEL: PREFIX}
+PROXY_ID = random.randint(10**8, 10**9)
 OPEN_SECONDS = 0.5
 
 TUNNEL_SH = f"""
@@ -86,6 +91,7 @@ class Lab:
             cap_add=["NET_ADMIN"],
             tmpfs={"/run": "size=1m"},
             restart_policy={"Name": policy},
+            labels=LAB,
             detach=True,
         )
 
@@ -97,17 +103,16 @@ class Lab:
             network_mode=network_mode,
             environment={"SINK": self.sink_ip, "ARM": arm},
             restart_policy={"Name": "no"},
+            labels=LAB,
         )
 
 
 def _remove_everything(client) -> None:
-    made = client.containers.list(all=True, filters={"name": PREFIX})
-    # The worker names a proxy's tunnel itself (cashpilot-tunnel-p<id>): found by the lab's proxy id.
-    made += client.containers.list(all=True, filters={"label": [f"{LABEL_PROXY}={PROXY_ID}", f"{LABEL_MANAGED}=true"]})
-    for c in made:
+    """What this run made, by its own label only: never a container another run or a real worker owns."""
+    for c in client.containers.list(all=True, filters={"label": f"{LAB_LABEL}={PREFIX}"}):
         with contextlib.suppress(Exception):
             c.remove(force=True, v=True)
-    for n in client.networks.list(names=[f"{PREFIX}-net"]):
+    for n in client.networks.list(filters={"label": f"{LAB_LABEL}={PREFIX}"}):
         with contextlib.suppress(Exception):
             n.remove()
     for image in (TUNNEL_IMAGE, IMAGE):
@@ -132,13 +137,15 @@ def _build_tunnel_image(client) -> None:
 @pytest.fixture(scope="module")
 def lab():
     client = docker.from_env()
+    if client.containers.list(all=True, filters={"label": f"{LABEL_PROXY}={PROXY_ID}"}):
+        pytest.skip(f"a container on this daemon already uses proxy id {PROXY_ID}")
     try:
         dockerfile = f"FROM {ALPINE}\nRUN apk add --no-cache nftables\n"
         client.images.build(fileobj=io.BytesIO(dockerfile.encode()), tag=IMAGE, rm=True)
         _build_tunnel_image(client)
-        network = client.networks.create(f"{PREFIX}-net", driver="bridge")
+        network = client.networks.create(f"{PREFIX}-net", driver="bridge", labels=LAB)
         sink = client.containers.run(
-            SOCAT, ["-u", "UDP-RECV:9999", "-"], name=f"{PREFIX}-sink", network=network.name, detach=True
+            SOCAT, ["-u", "UDP-RECV:9999", "-"], name=f"{PREFIX}-sink", network=network.name, labels=LAB, detach=True
         )
         sink.reload()
         yield Lab(client, network, sink, sink.attrs["NetworkSettings"]["Networks"][network.name]["IPAddress"])
@@ -252,12 +259,21 @@ def test_no_earner_ever_joins_a_run_that_has_not_proved_its_exit(lab):
     assert stats["leaks"] == 0, stats
 
 
-def test_control_with_dockers_restart_policy_the_same_race_leaks(lab):
+def test_control_with_dockers_restart_policy_the_same_race_leaks(lab, monkeypatch):
     """unless-stopped, as tunnels had before: Docker starts a new run by itself inside the start, the earner
-    joins it before its table is in, and sends from the box. The check after the start stops it, too late."""
+    joins it before its table is in, and sends from the box. The check after the start stops it, too late. The
+    worker refuses to start an earner in such a tunnel (the next test); here that refusal is taken away."""
+    monkeypatch.setattr(proxy_tunnel, "_restarts_by_itself", lambda _c: False)
     stats = _race(lab, "restarting", "unless-stopped", 4, wait_for_restart=5.0, background=False)
     print(stats)
     assert stats["raced"] >= 1 and stats["leaks"] > 0, stats
+
+
+def test_no_earner_start_reaches_docker_in_a_tunnel_with_a_restart_policy(lab):
+    """A legacy pair's tunnel, or a shared one an older worker made: the earner is never started in it."""
+    stats = _race(lab, "policy", "unless-stopped", 4, wait_for_restart=5.0, background=False)
+    print(stats)
+    assert stats["started"] == 0 and stats["raced"] == 0 and stats["leaks"] == 0, stats
 
 
 def _ready_pair(lab: Lab, arm: str):
@@ -334,6 +350,14 @@ def test_an_older_workers_tunnel_is_replaced_and_its_copy_runs_only_in_the_new_p
     monkeypatch.setenv("CASHPILOT_TUNNEL_IMAGE", TUNNEL_IMAGE)
     monkeypatch.setattr(orchestrator, "container_network", lambda _mode: lab.network.name)
     monkeypatch.setattr(orchestrator, "container_dns", lambda _network: None)
+    real_kwargs = proxy_tunnel.sidecar_kwargs
+
+    def labelled_kwargs(*a, **kw):
+        made = real_kwargs(*a, **kw)
+        return {**made, "labels": {**made["labels"], **LAB}}
+
+    # The worker names its tunnels itself: the lab's label is how the cleanup finds them.
+    monkeypatch.setattr(proxy_tunnel, "sidecar_kwargs", labelled_kwargs)
     final = proxy_tunnel.shared_tunnel_name(PROXY_ID)
     kwargs = proxy_tunnel.sidecar_kwargs(final, proxy_tunnel.SHARED_SLUG, PROXY_ID, lab.network.name, "tunnel-p")
     kwargs.pop("detach")
@@ -355,7 +379,7 @@ def test_an_older_workers_tunnel_is_replaced_and_its_copy_runs_only_in_the_new_p
         name=f"{PREFIX}-migrated-earner",
         network_mode=f"container:{old.id}",
         environment={"SINK": lab.sink_ip, "ARM": "migrated"},
-        labels={LABEL_MANAGED: "true", LABEL_PROXY: str(PROXY_ID), LABEL_SERVICE: "x"},
+        labels={LABEL_MANAGED: "true", LABEL_PROXY: str(PROXY_ID), LABEL_SERVICE: "x", **LAB},
         restart_policy={"Name": "no"},
     )
     with proxy_tunnel._deploy_lock(PROXY_ID):

@@ -108,4 +108,5 @@ markers = [
     "real_state_backups: use the real database.get_state_backups instead of the empty default",
     "real_gated_mode: keep the rule that a fence-gated service runs only in on or operator isolation mode",
     "live: hits a real provider API; needs credentials; excluded from normal runs",
+    "real_background_replacement: run proxy_tunnel's heartbeat tunnel replacement in its own thread, as the worker does",
 ]

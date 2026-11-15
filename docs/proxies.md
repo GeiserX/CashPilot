@@ -245,16 +245,23 @@ worker cannot take it away: the socket proxy refuses a container update on
 purpose (see [security defaults](security-defaults.md)). So a shared tunnel
 that still has the policy is replaced once, by the first deploy or start
 through its proxy, or by the first heartbeat while a copy in it should run.
-The new tunnel, on the same settings and the current tunnel image, proves its
-exit first. Then each copy is recreated inside it under its own name, with
-its settings and its volumes, and starts again only once the new tunnel is
-ready. Recreating a copy loses its writable layer, as moving a legacy pair
-does, so a provider that keeps its device id there sees a new device once. No
-earner starts in the old tunnel meanwhile. A copy still in a legacy
-one-tunnel-per-copy pair keeps Docker's restart until its next start moves
-it into the shared tunnel: an older worker wrote no stop down, so only Docker
-knows whether its owner stopped it. Until then, its earner's start relies on
-the check after the start, as below.
+The heartbeat does this in the background, so a slow replacement never
+delays the heartbeat itself. The new tunnel, on the same settings and the
+current tunnel image, proves its exit first. Then each copy is recreated
+inside it under its own name, with its settings, its volumes and its
+devices, and starts again only once the new tunnel is ready. Recreating a
+copy loses its writable layer, as moving a legacy pair does, so a provider
+that keeps its device id there sees a new device once. No earner starts in
+the old tunnel meanwhile. If one copy cannot move, the copies already moved
+keep running in the new tunnel, and the worker finishes the move about five
+minutes later. A copy left in such a tunnel by a redeploy that did not
+finish (`cashpilot-tunnel-p<id>.old`) moves into the proxy's current tunnel.
+
+A copy still in a legacy one-tunnel-per-copy pair never starts in its old
+tunnel either. While it runs, it stays where it is: an older worker wrote no
+stop down, so only Docker knows whether its owner stopped it. When it must
+start (after its own crash, or a start from a UI that sends no settings),
+the pair moves into the shared tunnel first, and the earner starts there.
 
 What this cannot cover: someone who starts a tunnel container by hand
 (`docker start`), or a second CashPilot worker on the same Docker daemon,
@@ -263,7 +270,8 @@ earner that joined the new run, but packets it sent before that check have
 left. The tests in `tests/test_proxy_tunnel_real_docker.py` show the rest on
 a real daemon: a tunnel killed while an earner starts many times over, with
 no packet leaving outside a proved run, and the same test with Docker's
-restart policy back on must see packets leave.
+restart policy back on, and the worker's refusal to start an earner in such
+a tunnel taken away, must see packets leave.
 
 Every leak check is first run against a namespace opened on purpose (the
 firewall table deleted and a default route put back) and must see the leak
@@ -335,9 +343,12 @@ hardening of both containers and everything you set up. What changes:
 - **Copies are recreated as rarely as possible.** A copy keeps whatever its
   provider wrote inside the container (several write a device id there), and a
   recreated container starts without it, so the provider sees a new device. An
-  edit and a reboot never recreate a copy, and a worker update does so only
-  once: the first update from a worker that gave its tunnels a restart policy
-  (see [It fails closed](#it-fails-closed)). The tunnel keeps
+  edit or a reboot by itself never recreates a copy. A worker update does so
+  once, on the first update from a worker that gave its tunnels a restart
+  policy (see [It fails closed](#it-fails-closed)): the first heartbeat,
+  start or deploy that finds such a tunnel replaces it and recreates its
+  copies. That can be the first heartbeat after a reboot, or the start that
+  carries an edit, when the tunnel was not replaced before. The tunnel keeps
   the image it was created with until it is replaced, which happens only when
   you redeploy the only copy in it, when Docker can no longer start it at
   all, or once when an older worker made it with a restart policy. In the

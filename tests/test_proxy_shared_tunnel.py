@@ -17,6 +17,7 @@ import io
 import itertools
 import json
 import os
+import stat
 import tarfile
 import threading
 import time
@@ -1678,22 +1679,32 @@ class TestThirdReview:
 
 
 class TestFourthReview:
-    def test_a_folder_that_cannot_be_flushed_still_records_the_start(self, docker):
+    def test_a_folder_that_cannot_be_flushed_fails_the_start_and_a_retry_flushes_it(self, docker):
+        """The marker's rename is on disk only once its folder is flushed: a start acknowledged before that could
+        come back stopped after a power cut. And a retry that finds the marker already saying so flushes it."""
         _deploy("honeygain")
         proxy_tunnel.stop("honeygain", 3)
         real = os.fsync
-        calls = []
+        folders = []
 
-        def folder_fails(fd):
-            calls.append(fd)
-            if len(calls) % 2 == 0:  # the second fsync of each write is the folder's
-                raise OSError("EIO")
+        def fsync(fd, fail):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                folders.append(fd)
+                if fail:
+                    raise OSError("EIO")
             return real(fd)
 
-        with patch.object(proxy_tunnel.os, "fsync", side_effect=folder_fails):
+        with (
+            patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, True)),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not record"),
+        ):
             proxy_tunnel.start("honeygain", 3, _socks(), None)
-        assert proxy_tunnel.held() == set()
-        assert docker.named("cashpilot-honeygain-p3").status == "running"
+        assert docker.named(NAME).status == "exited"
+        folders.clear()
+        with patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, False)):
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert folders, "the retry found the marker already saying so and never flushed its folder"
+        assert proxy_tunnel.held() == set() and docker.named(NAME).status == "running"
 
     def test_an_edit_whose_tunnel_does_not_stop_changes_nothing(self, docker):
         _deploy("honeygain")
@@ -4028,3 +4039,252 @@ class TestAReadyFileNotReadStopsNothing:
         with patch.object(docker, "ready", return_value=False):  # cat /run/ready exits 1
             proxy_tunnel._start_when_ready(earner, tunnel, "honeygain", ready=False)
         assert earner.status == "exited"
+
+
+def _fail_create(docker, name):
+    """Docker refuses to create the container ``name`` (a clone in the way, a timed-out create)."""
+    real = docker.create
+
+    def create(**kw):
+        if kw["name"] == name:
+            raise APIError("500 Server Error: create timed out")
+        return real(**kw)
+
+    return patch.object(docker, "create", side_effect=create)
+
+
+def _older_tunnel_retired_beside_a_current_one(docker):
+    """honeygain in an older worker's tunnel kept under the retired name (a redeploy that did not finish), while
+    earnfm holds the name in a tunnel this worker made, so the old one cannot get its name back."""
+    _deploy("honeygain")
+    _deploy("earnfm")
+    old = docker.named("cashpilot-tunnel-p3")
+    old.rename("cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX)
+    current, _ = proxy_tunnel.start_sidecar(
+        docker, "cashpilot-tunnel-p3", proxy_tunnel.SHARED_SLUG, 3, _socks(), None, label=proxy_tunnel.shared_label(3)
+    )
+    proxy_tunnel._clone_into(docker, docker.named("cashpilot-earnfm-p3"), current)
+    _made_by_an_older_worker(old)
+    return old, current
+
+
+class TestAnOlderWorkersTunnelReplacementFollowups:
+    def test_copies_moved_before_a_failure_stay_running_in_the_new_tunnel_never_recreated_twice(self, docker):
+        """Moved back into the older tunnel, where no earner starts, each copy was recreated a second time and left
+        stopped, and the heartbeat did it again every five minutes while the other copy's fault lasted."""
+        _deploy("honeygain")
+        _deploy("earnfm")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        earnfm = docker.named("cashpilot-earnfm-p3")
+        with _fail_create(docker, "cashpilot-earnfm-p3" + proxy_tunnel.STAGED_SUFFIX):
+            _heartbeat()
+            staged = docker.named("cashpilot-tunnel-p3" + proxy_tunnel.STAGED_SUFFIX)
+            moved = docker.named(NAME)
+            assert staged is not None and moved.status == "running"
+            assert moved.attrs["HostConfig"]["NetworkMode"] == f"container:{staged.id}"
+            assert docker.named("cashpilot-earnfm-p3") is earnfm and earnfm.status == "running"
+            assert earnfm.attrs["HostConfig"]["NetworkMode"] == f"container:{old.id}"
+            _heartbeat()  # the next beat recreates nothing
+            assert docker.named(NAME) is moved and moved.status == "running"
+        staged.attrs["Created"] = (datetime.now(UTC) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        _heartbeat()  # the change is finished once it is stale, with the fault gone
+        (tunnel,) = docker.tunnels()
+        assert tunnel.id == staged.id and tunnel.name == "cashpilot-tunnel-p3"
+        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", NAME]
+        assert docker.named(NAME) is moved and docker.named("cashpilot-earnfm-p3").status == "running"
+
+    @pytest.mark.parametrize("settings", ["current UI", "older UI"])
+    def test_a_start_of_a_copy_in_a_retired_older_tunnel_moves_it_into_the_tunnel_under_the_name(
+        self, docker, settings
+    ):
+        """The older-UI start read readiness from the tunnel under the name while the earner joined the retired
+        one, which may sit in a run nobody proved; the current-UI start restarted the retired one in place and then
+        refused to start the earner in it, for good."""
+        old, current = _older_tunnel_retired_beside_a_current_one(docker)
+        files = dict(current.files)
+        docker.named(NAME).stop()  # its own crash
+        real_ready = docker.ready
+        with patch.object(docker, "ready", lambda c: c is not old and real_ready(c)):  # restarted, not proved yet
+            proxy_tunnel.start("honeygain", 3, _socks() if settings == "current UI" else None, None)
+        earner = docker.named(NAME)
+        assert earner.status == "running"
+        assert earner.attrs["HostConfig"]["NetworkMode"] == f"container:{current.id}"
+        assert docker.tunnels() == [current] and current.files == files
+
+    def test_the_heartbeat_moves_a_copy_out_of_a_retired_older_tunnel(self, docker):
+        old, current = _older_tunnel_retired_beside_a_current_one(docker)
+        docker.named(NAME).stop()  # its own crash: the heartbeat should start it again
+        _heartbeat()
+        _heartbeat()
+        earner = docker.named(NAME)
+        assert earner.status == "running"
+        assert earner.attrs["HostConfig"]["NetworkMode"] == f"container:{current.id}"
+        assert docker.tunnels() == [current]
+
+    def test_a_start_refuses_an_earner_that_is_not_in_the_tunnel_proved_ready(self, docker):
+        old, current = _older_tunnel_retired_beside_a_current_one(docker)
+        docker.named(NAME).stop()
+        with (
+            patch.object(proxy_tunnel, "_replace_restarting", return_value=(current, EXIT)),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="not in the tunnel that was proved ready"),
+        ):
+            proxy_tunnel.start("honeygain", 3, None, None)
+        assert docker.named(NAME).status == "exited"
+
+    def test_a_moved_copy_keeps_its_devices(self, docker):
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        docker.named(NAME).attrs["HostConfig"]["Devices"] = [
+            {"PathOnHost": "/dev/net/tun", "PathInContainer": "/dev/net/tun", "CgroupPermissions": "rwm"},
+            {"PathOnHost": "/dev/dri/renderD128", "PathInContainer": "/dev/dri/card0", "CgroupPermissions": "r"},
+        ]
+        _heartbeat()
+        clone = docker.named(NAME)
+        assert clone.attrs["HostConfig"]["NetworkMode"] != f"container:{old.id}" and clone.status == "running"
+        assert clone.kw["devices"] == ["/dev/net/tun:/dev/net/tun:rwm", "/dev/dri/renderD128:/dev/dri/card0:r"]
+
+    def test_the_heartbeat_replacement_bounds_its_image_pull(self, docker):
+        _deploy("honeygain")
+        _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+        real = proxy_tunnel.start_sidecar
+        deadlines = []
+
+        def start_sidecar(*a, **kw):
+            deadlines.append(kw.get("deadline"))
+            return real(*a, **kw)
+
+        with patch.object(proxy_tunnel, "start_sidecar", side_effect=start_sidecar):
+            began = time.monotonic()
+            _heartbeat()
+        assert deadlines and deadlines[0] is not None
+        assert deadlines[0] <= began + proxy_tunnel.REPLACE_PULL_SECONDS + 1
+
+    @pytest.mark.real_background_replacement
+    def test_the_heartbeat_is_never_held_up_by_a_replacement(self, docker):
+        """One try waits for an image pull, the new tunnel's exit and each copy's stop: minutes, past the UI's
+        offline threshold, when the heartbeat ran it in place."""
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        real = proxy_tunnel.start_sidecar
+        go, tries = threading.Event(), []
+
+        def slow_start_sidecar(*a, **kw):
+            tries.append(a[1])
+            go.wait(5)
+            return real(*a, **kw)
+
+        with patch.object(proxy_tunnel, "start_sidecar", side_effect=slow_start_sidecar):
+            began = time.monotonic()
+            report = _heartbeat()
+            _heartbeat()  # no second try while one runs
+            took = time.monotonic() - began
+            go.set()
+            assert took < 2, took
+            for _ in range(500):
+                if not proxy_tunnel._replacing.locked():
+                    break
+                _real_sleep(0.01)
+        assert [e["name"] for e in report] == [NAME]
+        assert tries == ["cashpilot-tunnel-p3" + proxy_tunnel.STAGED_SUFFIX]
+        (new,) = docker.tunnels()
+        assert new.id != old.id and docker.named(NAME).status == "running"
+
+    def test_a_reading_that_waits_for_a_change_moving_copies_gives_up_and_the_heartbeat_goes_out(self, docker):
+        _deploy("honeygain")
+        outcome = {}
+
+        def read():
+            try:
+                outcome["report"] = _heartbeat()
+            except proxy_tunnel.ProxyTunnelError as exc:
+                outcome["error"] = str(exc)
+
+        with patch.object(proxy_tunnel, "STATUS_SWAP_WAIT", 0.05), proxy_tunnel._swap_lock:
+            reader = threading.Thread(target=read, daemon=True)
+            reader.start()
+            reader.join(3)
+            assert not reader.is_alive()
+        assert "moving copies" in outcome["error"]
+        assert [e["name"] for e in _heartbeat()] == [NAME]  # control: free again, read again
+
+
+class TestALegacyPairNeverStartsInATunnelThatRestartsByItself:
+    """A legacy pair's tunnel keeps Docker's restart policy: an earner started in it could join a run Docker started
+    between the ready read and the start, and the check after the start stops it only after it sent."""
+
+    def test_the_heartbeat_moves_a_pair_whose_copy_must_start_into_the_shared_tunnel(self, docker):
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
+        _made_by_an_older_worker(legacy)
+        earner = docker.named("cashpilot-earnfm-p4")
+        earner.stop()  # its own crash
+        starts = earner.starts
+        _heartbeat()
+        _heartbeat()
+        assert earner.starts == starts  # never started where it was
+        (shared,) = docker.tunnels()
+        assert shared.name == "cashpilot-tunnel-p4" and shared.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
+        clone = docker.named("cashpilot-earnfm-p4")
+        assert clone.attrs["HostConfig"]["NetworkMode"] == f"container:{shared.id}" and clone.status == "running"
+
+    def test_a_start_from_an_older_ui_moves_the_pair_into_the_shared_tunnel_first(self, docker):
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
+        _made_by_an_older_worker(legacy)
+        proxy_tunnel.stop("earnfm", 4)
+        earner = docker.named("cashpilot-earnfm-p4")
+        starts = earner.starts
+        proxy_tunnel.start("earnfm", 4, None, None)
+        assert earner.starts == starts
+        (shared,) = docker.tunnels()
+        clone = docker.named("cashpilot-earnfm-p4")
+        assert clone.attrs["HostConfig"]["NetworkMode"] == f"container:{shared.id}" and clone.status == "running"
+        assert proxy_tunnel.held() == set()
+
+    def test_no_earner_start_reaches_docker_in_such_a_tunnel(self, docker):
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
+        _made_by_an_older_worker(legacy)
+        earner = docker.named("cashpilot-earnfm-p4")
+        earner.stop()
+
+        def start():
+            raise AssertionError("started in a tunnel Docker restarts on its own")
+
+        earner.start = earner.restart = start
+        with proxy_tunnel._deploy_lock(4):
+            assert proxy_tunnel._start_in_ready_run(earner, legacy, "earnfm") is False
+
+    def test_control_a_running_pair_is_left_where_it_is(self, docker):
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
+        _made_by_an_older_worker(legacy)
+        earner = docker.named("cashpilot-earnfm-p4")
+        _heartbeat()
+        assert docker.tunnels() == [legacy] and docker.named("cashpilot-earnfm-p4") is earner
+
+
+class TestTheGuaranteesThatHadNoTest:
+    def test_an_older_tunnel_that_is_down_is_never_started_as_it_is_while_its_replacement_fails(self, docker):
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        old.stop()
+        starts = old.starts
+        with patch.object(proxy_tunnel, "start_sidecar", side_effect=proxy_tunnel.ProxyTunnelError("no exit")):
+            _heartbeat()
+        with patch.object(proxy_tunnel, "_start_down_tunnel", wraps=proxy_tunnel._start_down_tunnel) as spy:
+            _heartbeat()  # the replacement waits a few minutes for its next try
+        spy.assert_not_called()
+        proxy_tunnel._start_down_tunnel(old, "3", NAME)
+        assert old.status == "exited" and old.starts == starts
+
+    def test_legacy_pairs_move_into_the_replacement_of_an_older_shared_tunnel_that_is_ready(self, docker):
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        _legacy_pair(docker, "earnfm", proxy=_socks())
+        assert sorted(proxy_tunnel.migrate_legacy()) == ["cashpilot-earnfm-p3"]
+        (shared,) = docker.tunnels()
+        assert shared.id != old.id and shared.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
+        assert _member_ids(docker, shared) == ["cashpilot-earnfm-p3", NAME]
+        assert {docker.named(n).status for n in ("cashpilot-earnfm-p3", NAME)} == {"running"}
