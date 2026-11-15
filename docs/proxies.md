@@ -151,10 +151,8 @@ changes.
 The tunnel sets things up in this order:
 
 1. Firewall rules first (nftables, inside its own namespace only). Before
-   the tunnel reads its settings, it drops every packet in or out, so an
-   earner that joins a tunnel Docker has just restarted finds no way out
-   from the tunnel's first command on. Then the real rules replace that in
-   one step: every outgoing packet is dropped unless it goes into the
+   the tunnel reads its settings, it drops every packet in or out. Then the
+   real rules replace that in one step: every outgoing packet is dropped unless it goes into the
    tunnel, or it is the tunnel's own connection to the proxy (for Tailscale:
    a packet tailscaled marked as its own). Packets into the tunnel addressed
    to a private or tailnet range are dropped too, so the earner cannot ask
@@ -171,11 +169,16 @@ The tunnel sets things up in this order:
    one that is not the box's own. Otherwise the copy is refused and the tunnel
    removed. When the worker cannot tell its own IP (the lookup failed, or
    `CASHPILOT_EGRESS_DETECT=off`), the tunnel keeps the IP it recorded
-   before. With none recorded (a first deploy, or a tunnel that replaced one
-   Docker could no longer read), nothing compares the exit with the box's
-   own IP: the firewall forces traffic through the proxy, but it cannot see
-   a proxy whose exit is your own IP. A later start that knows the IP
-   restarts the tunnel with the check. A copy added through a proxy whose
+   before, and a new tunnel that replaces it (a new tunnel image) carries
+   it over. If that IP cannot be read, the start or deploy is refused and
+   the old tunnel kept, so try again in a few minutes. One exception: a
+   tunnel Docker can no longer start or read, on a worker with
+   `CASHPILOT_EGRESS_DETECT=off`, is replaced with no IP to compare, since
+   no later try would ever know it. With none recorded (that case, or a
+   first deploy), nothing compares the exit with the box's own IP: the
+   firewall forces traffic through the proxy, but it cannot see a proxy
+   whose exit is your own IP. A later start that knows the IP restarts the
+   tunnel with the check. A copy added through a proxy whose
    tunnel already runs on the same settings skips all four steps: its
    earner is created inside the running tunnel, and no other copy is
    touched.
@@ -216,14 +219,39 @@ SOCKS5 and HTTP, each with and without a password:
 earners in one tunnel, and drives the worker's own code with 1 and 7 copies;
 see [One tunnel per proxy](#one-tunnel-per-proxy).
 
-After a reboot or a Docker restart, Docker starts the tunnel but never the
-earners: a container that shares another's namespace could join it before the
-tunnel's firewall is loaded. The worker starts the earners on its next
-heartbeat, once the tunnel has written its ready file, which happens only
-after the firewall is in and an exit through the tunnel was seen. The same
-happens when an earner itself crashes. A copy you stopped, or the traffic cap
+Docker never starts a tunnel or an earner on its own: neither has a restart
+policy. When Docker starts a container, its namespace already has an
+interface and a default route before the container's first command runs, so
+an earner that joined a tunnel Docker had just restarted could send from your
+own IP before the drop-all table is in. So only the worker starts a tunnel,
+and every start of a tunnel or an earner through a proxy holds that proxy's
+lock. An earner starts only after the worker has read the tunnel's ready
+file in that same lock, which the tunnel writes only after its firewall is in
+and an exit through it was seen. Nothing can start a new tunnel run between
+that read and the earner's start, so no earner ever joins a run that has not
+proved its exit. The worker still reads the tunnel's run again after each
+start, and stops the earner if it changed.
+
+After a reboot, a Docker restart or a crash of the tunnel process, the
+worker's next heartbeat starts the tunnel again when a copy in it should run,
+and the heartbeat after it starts the earners, once the ready file is there.
+That is up to a minute more than Docker's own restart took. The same happens
+when an earner itself crashes. A copy you stopped, or the traffic cap
 stopped, stays stopped: the worker writes each stop down in its data folder
-(`.proxied_held`), because the tunnel keeps running for the other copies.
+(`.proxied_held`), because the tunnel keeps running for the other copies. A
+tunnel made by an older worker loses its restart policy on the first
+heartbeat. A copy still in a legacy one-tunnel-per-copy pair keeps Docker's
+restart until its next start moves it into the shared tunnel: an older
+worker wrote no stop down, so only Docker knows whether its owner stopped it.
+
+What this cannot cover: someone who starts a tunnel container by hand
+(`docker start`), or a second CashPilot worker on the same Docker daemon,
+which does not share the lock. The check after the start then stops an
+earner that joined the new run, but packets it sent before that check have
+left. The tests in `tests/test_proxy_tunnel_real_docker.py` show the rest on
+a real daemon: a tunnel killed while an earner starts many times over, with
+no packet leaving outside a proved run, and the same test with Docker's
+restart policy back on must see packets leave.
 
 Every leak check is first run against a namespace opened on purpose (the
 firewall table deleted and a default route put back) and must see the leak
@@ -506,9 +534,8 @@ settings into it and starts it. If it is running for other copies, the worker
 tests the new settings in a throwaway tunnel, then writes them into the running
 one and restarts it with its copies (see
 [One tunnel per proxy](#one-tunnel-per-proxy)). To apply an edit now, press
-**Stop**, then **Start** on one copy on each box. A restart that Docker does on
-its own, after a reboot or a Docker restart, uses the settings of the last
-start.
+**Stop**, then **Start** on one copy on each box. A restart the heartbeat does,
+after a reboot or a Docker restart, uses the settings of the last start.
 
 This needs a worker at least as new as the UI; an older worker only looks the
 host name up again, and a copy on it keeps the rest until you remove it and run

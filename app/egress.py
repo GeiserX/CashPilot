@@ -40,6 +40,7 @@ this to fail, and the reason it ships as-is.
 from __future__ import annotations
 
 import ipaddress
+import os
 from typing import Any
 
 # What kind of connection the worker sits on. UNKNOWN is the default and is
@@ -106,6 +107,11 @@ _TRANSLATION_PREFIXES = tuple(
         "fec0::/10",  # deprecated site-local — a LAN address Python calls global
     )
 )
+
+
+def detection_off() -> bool:
+    """Whether ``CASHPILOT_EGRESS_DETECT`` turns the worker's own-IP lookup off, so its address is never known."""
+    return os.getenv("CASHPILOT_EGRESS_DETECT", "").strip().lower() in {"0", "off", "false", "no"}
 
 
 def public_ip(value: Any) -> str | None:

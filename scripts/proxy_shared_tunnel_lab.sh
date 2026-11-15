@@ -36,8 +36,8 @@
 #
 # Part 4, what must never cost a copy (needs DOCKERD_RESTART, a command that
 # restarts the Docker daemon the lab talks to):
-#   r.  a daemon restart with 3 copies, one stopped by its owner: the tunnel
-#       comes back ready by itself, the heartbeat starts the other two, the
+#   r.  a daemon restart with 3 copies, one stopped by its owner: the first
+#       heartbeat starts the tunnel, the next starts the other two, the
 #       stopped one stays stopped, and a start of it works. With PREV_SRC (a
 #       tree whose tunnel's settings volume is a bind with no source) the same
 #       check must fail: that is the control that shows it can;
@@ -526,8 +526,8 @@ restart_daemon() {
     local i
     for i in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
     docker info >/dev/null 2>&1 || return 1
-    # The lab's control server and exit node have no restart policy; the
-    # tunnel (unless-stopped) is what Docker brings back on its own.
+    # Nothing here has a restart policy: the lab brings back its control
+    # server and exit node, and the worker's heartbeat brings back the tunnel.
     docker start "$P-hs" "$P-exit" >/dev/null
 }
 # Waits up to 90 s for the proxy's tunnel to run and write /run/ready.
@@ -551,7 +551,9 @@ restart_case() { # src
     drive "$src" deploy 3 >"$WORK/r.log" 2>&1 || { echo "setup: deploy failed: $(tail -2 "$WORK/r.log")"; return 2; }
     drive "$src" stop labearner1 >/dev/null 2>&1 || { echo "setup: stop failed"; return 2; }
     restart_daemon || { echo "setup: the daemon restart command failed or the daemon did not come back"; return 2; }
-    if tunnel_ready; then echo "tunnel back and ready by itself"; else echo "tunnel: $(state_of cashpilot-tunnel-p3)"; ok=1; fi
+    # Docker starts no tunnel by itself: the first heartbeat does.
+    drive "$src" heartbeat >/dev/null 2>&1 || true
+    if tunnel_ready; then echo "tunnel back and ready after one heartbeat"; else echo "tunnel: $(state_of cashpilot-tunnel-p3)"; ok=1; fi
     drive "$src" heartbeat >/dev/null 2>&1 || true
     sleep 3
     local r

@@ -77,6 +77,7 @@ class FakeContainer:
                 "CapAdd": kw.get("cap_add"),
                 "SecurityOpt": kw.get("security_opt"),
                 "Memory": kw.get("mem_limit") or 0,
+                "RestartPolicy": dict(kw.get("restart_policy") or {"Name": "no"}),
             },
             "Mounts": [
                 {"Type": "volume", "Name": n, "Destination": d["bind"], "RW": d["mode"] == "rw"}
@@ -121,6 +122,11 @@ class FakeContainer:
     def restart(self, timeout=None):
         self.stop()
         self.start()
+
+    def update(self, restart_policy=None, **_kw):
+        self._alive()
+        if restart_policy is not None:
+            self.attrs["HostConfig"]["RestartPolicy"] = dict(restart_policy)
 
     def remove(self, force=False, v=False):
         self._alive()
@@ -907,14 +913,14 @@ class TestHeartbeat:
             _deploy(slug)
         proxy_tunnel.stop("repocket", 3)
         tunnel = docker.named("cashpilot-tunnel-p3")
-        # A reboot: everything down, then Docker starts the tunnel (unless-stopped)
-        # and no earner (restart policy "no").
+        # A reboot: everything down, and Docker starts nothing (restart policy
+        # "no" on the tunnel too): the heartbeat starts the tunnel, then the copies.
         for c in docker.by_id.values():
             c.status = "exited"
         docker.broken_auth.add(tunnel.files["proxy_auth"])  # not ready yet
-        tunnel.start()
         with patch.object(orchestrator, "_collect_stats_bulk", return_value={}):
             proxy_tunnel.status()
+            assert tunnel.status == "running"
             assert {docker.named(f"cashpilot-{s}-p3").status for s in ("honeygain", "earnfm")} == {"exited"}
             docker.broken_auth.clear()
             proxy_tunnel.status()
@@ -1134,6 +1140,14 @@ def _break_tunnel(docker, tunnel):
     docker.unreadable.add(tunnel.id)
 
 
+@pytest.fixture
+def detection_off(monkeypatch):
+    """A worker that never knows its own address (CASHPILOT_EGRESS_DETECT=off): only then does a broken tunnel,
+    whose recorded address Docker cannot read either, get replaced with none to compare (_carry_own_ip)."""
+    monkeypatch.setenv("CASHPILOT_EGRESS_DETECT", "off")
+
+
+@pytest.mark.usefixtures("detection_off")
 class TestBrokenTunnel:
     def test_the_secret_volume_is_a_mount_not_a_bind_with_no_source(self, docker):
         kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-p3", proxy_tunnel.SHARED_SLUG, 3, None, "tunnel-p3")
@@ -1195,6 +1209,7 @@ def _rename_fails_for(name, exc):
     return patch.object(FakeContainer, "rename", rename)
 
 
+@pytest.mark.usefixtures("detection_off")
 class TestMoves:
     def test_a_worker_that_dies_mid_move_loses_no_copy(self, docker):
         _three_copies_on_a_broken_tunnel(docker)
@@ -1988,7 +2003,7 @@ class TestAStuckTunnelChangeIsReported:
             _heartbeat()
 
     def test_after_a_reboot_the_copies_go_back_into_the_working_tunnel(self, docker):
-        """Docker restarts both tunnels (unless-stopped) but no copy (restart policy no)."""
+        """Both tunnels up again after a reboot (an older worker's restart policy), no copy (restart policy no)."""
         current, staged = self._half_done(docker, auth="u1:dead@")
         docker.broken_auth.add("u1:dead@")
         for c in docker.by_id.values():
@@ -3502,6 +3517,7 @@ class TestABrokenTunnelIsReplacedWithTheAddressUnknown:
     recorded address could be read left the tunnel and its copies down for good when the worker cannot tell its
     own address (CASHPILOT_EGRESS_DETECT=off)."""
 
+    @pytest.mark.usefixtures("detection_off")
     @pytest.mark.parametrize("recorded", ["198.51.100.7", ""])
     def test_a_start_replaces_it_and_starts_its_copies(self, docker, recorded):
         _deploy("honeygain")
@@ -3527,9 +3543,161 @@ class TestABrokenTunnelIsReplacedWithTheAddressUnknown:
         (tunnel,) = docker.tunnels()
         assert tunnel.id != old.id and tunnel.files["own_ip"] == "198.51.100.9"
 
+    def test_with_detection_on_a_lookup_that_failed_refuses_until_a_try_knows_the_address(self, docker):
+        """The lookup failed this time (its failure is cached a while): a later start knows the address."""
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        old.files["own_ip"] = "198.51.100.7"
+        _break_tunnel(docker, old)
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not read the address"):
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert docker.tunnels() == [old] and docker.named(NAME).attrs["HostConfig"]["NetworkMode"].endswith(old.id)
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        (tunnel,) = docker.tunnels()
+        assert tunnel.id != old.id and tunnel.files["own_ip"] == "198.51.100.7"
+        assert docker.named(NAME).status == "running"
+
+
+class TestAHealthyTunnelIsNeverReplacedWithoutItsAddress:
+    """A new tunnel image replaces a healthy tunnel (upgrade). One failed read of its recorded own_ip gave the new
+    tunnel none, and cp-tunnel's leak guard then lets any exit through, the box's own address too; the old tunnel,
+    which held the address, was removed."""
+
+    @pytest.mark.parametrize("detection", ["on", "off"])
+    def test_an_upgrade_is_refused_and_the_old_tunnel_kept(self, docker, monkeypatch, detection):
+        if detection == "off":
+            monkeypatch.setenv("CASHPILOT_EGRESS_DETECT", "off")
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named(NAME)
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        _own_ip_read_fails(tunnel)
+        with (
+            patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not read the address"),
+        ):
+            _deploy("honeygain")
+        assert docker.tunnels() == [tunnel] and tunnel.status == "running"
+        assert tunnel.files["own_ip"] == "198.51.100.7" and tunnel.attrs["Config"]["Image"] == IMAGE
+        assert docker.named(NAME) is earner and earner.status == "running"
+
+    def test_control_the_upgrade_goes_through_once_the_address_reads(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.start("honeygain", 3, _socks(), "198.51.100.7")
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+            _deploy("honeygain")
+        (new,) = docker.tunnels()
+        assert new.id != tunnel.id and new.files["own_ip"] == "198.51.100.7"
+
+
+class TestNoTunnelRestartsByItself:
+    """A run Docker starts on its own has its interface and default route before cp-tunnel's first command loads
+    the drop-all table, so an earner starting into it then sends from the box's own address. No tunnel has a
+    restart policy now; the worker starts one only under the proxy's lock, which every earner start holds."""
+
+    def test_a_shared_tunnel_has_no_restart_policy(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        assert tunnel.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
+
+    def test_the_heartbeat_takes_the_policy_away_from_an_older_shared_tunnel_only(self, docker):
+        _deploy("honeygain")
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        for c in (tunnel, legacy):
+            c.attrs["HostConfig"]["RestartPolicy"] = {"Name": "unless-stopped"}
+        _heartbeat()
+        assert tunnel.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
+        # A legacy pair's stop by an older worker left no marker: Docker keeps deciding it.
+        assert legacy.attrs["HostConfig"]["RestartPolicy"] == {"Name": "unless-stopped"}
+
+    def test_a_tunnel_that_went_down_is_started_by_the_heartbeat_and_its_copies_once_it_is_ready(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named(NAME)
+        tunnel.stop()  # its tunnel process died; Docker does not start it again
+        assert earner.status == "running"  # in a namespace with no interface left
+        with patch.object(docker, "ready", return_value=False):
+            _heartbeat()
+            assert tunnel.status == "running" and earner.starts == 1  # nothing joins the run yet
+        _heartbeat()
+        assert earner.status == "running" and earner.starts == 2
+        assert earner.attrs["State"]["StartedAt"] > tunnel.attrs["State"]["StartedAt"]
+
+    def test_control_a_tunnel_whose_copies_are_all_held_stays_down(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        proxy_tunnel.stop("honeygain", 3)
+        tunnel.stop()
+        _heartbeat()
+        assert tunnel.status == "exited" and docker.named(NAME).status == "exited"
+
+    def test_a_tunnel_start_waits_for_the_proxys_lock(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.stop()
+        with proxy_tunnel._deploy_lock(3):
+            _heartbeat()
+            assert tunnel.status == "exited"
+        _heartbeat()
+        assert tunnel.status == "running"
+
+
+class TestEveryEarnerStartReadsTheRun:
+    """_clone_into and _put_back started an earner with a bare start(), with no look at the run it joined."""
+
+    def test_a_clone_is_not_started_in_a_run_that_restarted_before_it(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        old = docker.named("cashpilot-tunnel-p3")
+        docker.broken.add(old.id)  # it runs, but Docker can no longer write to or start it: replaced
+        real_create, real_ready = docker.create, docker.ready
+        restarted = {"on": False}
+
+        def create(**kw):
+            c = real_create(**kw)
+            if kw["name"].endswith(proxy_tunnel.STAGED_SUFFIX) and kw["labels"].get(LABEL_ROLE) != "tunnel":
+                real_rename = c.rename
+
+                def rename(name):
+                    real_rename(name)
+                    if not restarted["on"]:
+                        # The new tunnel restarts just before the first clone would start.
+                        docker.by_id[kw["network_mode"].removeprefix("container:")].restart()
+                        restarted["on"] = True
+
+                c.rename = rename
+            return c
+
+        with (
+            patch.object(docker, "create", side_effect=create),
+            patch.object(docker, "ready", lambda c: not restarted["on"] and real_ready(c)),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="was not started"),
+        ):
+            proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
+        (tunnel,) = docker.tunnels()
+        assert restarted["on"] and tunnel.id != old.id
+        assert _member_ids(docker, tunnel) == ["cashpilot-earnfm-p3", NAME]
+        assert {docker.named(n).status for n in ("cashpilot-earnfm-p3", NAME)} == {"created"}
+        _heartbeat()  # control: the run is ready now
+        assert {docker.named(n).status for n in ("cashpilot-earnfm-p3", NAME)} == {"running"}
+
+    @pytest.mark.parametrize("ready", [False, True])
+    def test_a_copy_put_back_starts_only_in_a_ready_run(self, docker, ready):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named(NAME)
+        earner.stop()
+        earner.rename(NAME + proxy_tunnel.MOVING_SUFFIX)
+        with patch.object(docker, "ready", return_value=ready):
+            proxy_tunnel._put_back(docker, earner, NAME, True)
+        assert earner.name == NAME and tunnel.status == "running"
+        assert earner.status == ("running" if ready else "exited")
+
 
 def _tunnel_restarts_on_start(tunnel, earner, *, then_reload_fails=False):
-    """The earner's start races a restart of its tunnel, which Docker does by itself (unless-stopped)."""
+    """The earner's start races a restart of its tunnel (by hand: Docker starts none by itself)."""
     real_start, real_reload = earner.start, tunnel.reload
     state = {"started": False}
 
@@ -3565,7 +3733,8 @@ class TestAnEarnerNeverStaysInAnUnprovenRun:
         tunnel = docker.named("cashpilot-tunnel-p3")
         proxy_tunnel.stop("honeygain", 3)
         state = _tunnel_restarts_on_start(tunnel, earner)
-        proxy_tunnel.start("honeygain", 3, _socks(), None)
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="was not started"):
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
         assert state["started"] and earner.status == "exited"
         assert NAME not in proxy_tunnel.held()  # the heartbeat starts it once the run it is in is ready
 
@@ -3583,7 +3752,10 @@ class TestAnEarnerNeverStaysInAnUnprovenRun:
             real_start()
 
         earner.start = start
-        with patch.object(docker, "ready", lambda c: not (c is tunnel and new_run["on"]) and real_ready(c)):
+        with (
+            patch.object(docker, "ready", lambda c: not (c is tunnel and new_run["on"]) and real_ready(c)),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="was not started"),
+        ):
             proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), None)
         assert tunnel.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", NEW_PASSWORD)
         assert new_run["on"] and earner.status == "exited"

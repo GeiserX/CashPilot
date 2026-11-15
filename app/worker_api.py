@@ -525,7 +525,7 @@ async def _detect_egress_ip() -> str | None:
     """
     global _egress_cache
 
-    if os.getenv("CASHPILOT_EGRESS_DETECT", "").strip().lower() in {"0", "off", "false", "no"}:
+    if egress.detection_off():
         return None
 
     cached, fetched_at = _egress_cache

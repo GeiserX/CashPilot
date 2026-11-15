@@ -953,12 +953,14 @@ class TestPairOps:
         earner.start.assert_not_called()
 
     def test_a_legacy_start_whose_tunnel_has_no_exit_now_starts_no_earner(self):
-        """_wait_ready saw /run/ready, then the tunnel restarted: the run the earner would join is not proven."""
+        """_wait_ready saw /run/ready, then the tunnel restarted: the run the earner would join is not proven.
+        The start says so instead of answering as if the copy started."""
         earner, tunnel = self._pair(earner_status="exited")
         tunnel.exec_run.return_value = (1, b"")
         with (
             patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
             patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="was not started"),
         ):
             proxy_tunnel.start("x", 1)
         earner.start.assert_not_called()
@@ -1032,12 +1034,13 @@ class TestReviewFollowUps:
             with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
                 assert proxy_tunnel.stop("x", 1) is expected
 
-    def test_a_test_tunnel_does_not_restart_with_docker(self):
+    def test_no_tunnel_restarts_with_docker(self):
+        """A tunnel Docker starts on its own has a namespace open before cp-tunnel's first command (sidecar_kwargs)."""
         with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": "drumsergio/cashpilot-tunnel:1.64.0"}):
             test_kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-test-ab", proxy_tunnel.TEST_SLUG, None, None, "t")
-            copy_kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-x-p1", "x", 1, None, "x-p1")
+            copy_kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-p1", proxy_tunnel.SHARED_SLUG, 1, None, "p1")
         assert test_kw["restart_policy"] == {"Name": "no"}
-        assert copy_kw["restart_policy"] == {"Name": "unless-stopped"}
+        assert copy_kw["restart_policy"] == {"Name": "no"}
 
     def test_leftover_test_tunnels_are_swept_and_copies_are_not(self):
         leftover = _container("cashpilot-tunnel-test-ab", proxy_tunnel.TEST_SLUG, role="tunnel")
@@ -1295,8 +1298,8 @@ def _first_ruleset(lines: list[str]) -> str:
 
 
 class TestTheTunnelClosesItsNamespaceFirst:
-    """Docker restarts a tunnel by itself (unless-stopped). An earner started into the new run before cp-tunnel
-    had read its settings, set its routes and loaded its rules could send from the box's own address."""
+    """A tunnel run started by hand (Docker starts none by itself any more): an earner started into it before
+    cp-tunnel had read its settings, set its routes and loaded its rules could send from the box's own address."""
 
     def test_the_first_thing_loaded_is_a_table_that_lets_nothing_out(self, tmp_path):
         code, lines, err = _run_until_rules_logged(tmp_path)
