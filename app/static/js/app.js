@@ -1886,7 +1886,110 @@ const CP = (() => {
   // One rule for "this box runs it", shared by the wizard's node list and the
   // catalog's Add link, so the two cannot disagree.
   function runsOn(worker, slug) {
-    return (worker.containers || []).some((c) => c.slug === slug);
+    return workerCopies(worker, slug).length > 0;
+  }
+
+  // The copies of a service on one box: its containers, and a service routed
+  // through a proxy from its deploy, which runs only as a proxied copy and so
+  // is reported apart (app/route_gate.py). That copy carries its route.
+  function workerCopies(worker, slug) {
+    const copies = (worker.containers || []).filter((c) => c.slug === slug);
+    const proxied = (worker.system_info || {}).proxied;
+    for (const e of Array.isArray(proxied) ? proxied : []) {
+      if (e && e.routed === true && e.slug === slug) {
+        copies.push({
+          slug, status: e.status || 'unknown', instance: 1,
+          route: { proxy_id: e.proxy_id, exit_ip: e.exit_ip, exit_country: e.exit_country },
+        });
+      }
+    }
+    return copies;
+  }
+
+  // "via proxy 203.0.113.9 (DE)" for a routed copy; empty for a direct one.
+  function routeBadge(container) {
+    const r = container && container.route;
+    if (!r) return '';
+    const where = [r.exit_ip, r.exit_country ? `(${r.exit_country})` : ''].filter(Boolean).join(' ');
+    return `<span class="badge badge-routed" title="Runs through one of your proxies, never from this box's own IP">via proxy${where ? ` ${escapeHtml(where)}` : ''}</span>`;
+  }
+
+  // The deploy form's Route box: the box's own IP, or one of the owner's
+  // proxies. Filled once the proxy list arrives (owner only). A service the
+  // catalog cannot route says why instead. Where it is recorded as routed
+  // (svc.routes, what a deploy with no route keeps), the first choice keeps
+  // that route and Direct is its own choice, which leaves the route with the
+  // owner's password.
+  function routeChoiceSection(svc) {
+    const slug = escapeHtml(svc.slug);
+    if (svc.route_refusal) {
+      return `<div class="form-hint route-hint">Route: this box's own IP. ${escapeHtml(svc.route_refusal)}</div>`;
+    }
+    const routed = Object.values(svc.routes || {}).some(Boolean);
+    const choices = routed
+      ? `<option value="">Keep the route each box has (a new box: its own IP)</option>
+          <option value="0">Direct: the box's own IP</option>`
+      : '<option value="">Direct: the box\'s own IP</option>';
+    return `
+      <div class="form-group route-choice">
+        <label class="form-label" for="route-select-${slug}">Route</label>
+        <select class="form-input" id="route-select-${slug}" data-slug="${slug}">
+          ${choices}
+        </select>
+        <div class="form-hint">A route through one of your proxies applies from the first start, so the service never
+          runs from the box's own IP. It hides that IP from the service's traffic, not from the provider's website or
+          your earnings login. One box per route.</div>
+      </div>`;
+  }
+
+  // The Route box of ``slug`` inside ``root``, the form that owns it. The setup
+  // wizard and the service page both render one for the same service, and the
+  // wizard's stays in the DOM when it is hidden, so a document-wide lookup by
+  // id can return the other form's box.
+  function _routeSelect(root, slug) {
+    return (root && root.querySelector(`select[id="route-select-${slug}"]`)) || null;
+  }
+
+  async function loadRouteChoices(slug, root) {
+    const select = _routeSelect(root, slug);
+    if (!select || !_isOwner) return;
+    select.addEventListener('change', () => _routeSwitchBoxes(select));
+    try {
+      const data = await api('/api/proxies');
+      for (const p of (data && data.proxies) || []) {
+        const opt = document.createElement('option');
+        opt.value = String(p.id);
+        const exit = [p.last_exit_ip, p.last_country ? `(${p.last_country})` : ''].filter(Boolean).join(' ');
+        opt.textContent = `Through ${p.name || `proxy ${p.id}`}${exit ? `, exit ${exit}` : ''}`;
+        select.appendChild(opt);
+      }
+    } catch (err) {
+      select.title = `Could not load your proxies: ${err.message}`;
+    }
+  }
+
+  // A box where the service already runs routed is ticked and locked, as any
+  // deployed box: a plain redeploy keeps its route. Choosing Direct unlocks it,
+  // unticked, so it can leave the route by ticking it; anything else locks it
+  // again. Another proxy keeps it locked: the server refuses moving a route to
+  // another proxy (main._check_route), so the owner removes it first.
+  function _routeSwitchBoxes(select) {
+    const scope = (select.closest && select.closest('.route-choice') || {}).parentElement || document;
+    const switching = select.value === '0';
+    for (const cb of scope.querySelectorAll(`input[data-routed="1"][data-slug="${select.dataset.slug}"]`)) {
+      cb.disabled = !switching;
+      cb.checked = !switching;
+    }
+  }
+
+  // The proxy id to send as "route", 0 for Direct chosen to leave a route, or
+  // undefined: the server then keeps the route a box already has, and a new
+  // deploy runs from the box's own IP.
+  function _routeChoice(root, slug) {
+    const select = _routeSelect(root, slug);
+    if (select && select.value === '0') return 0;
+    const id = select ? parseInt(select.value, 10) : NaN;
+    return Number.isInteger(id) && id > 0 ? id : undefined;
   }
 
   function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
@@ -1896,9 +1999,12 @@ const CP = (() => {
     // copies one worker may run (the setup wizard's list has no such answer).
     const maxInstances = svc.max_instances;
     for (const w of onlineWorkers) {
-      const copies = (w.containers || []).filter((c) => c.slug === svc.slug).length;
-      const deployed = runsOn(w, svc.slug);
-      if (!deployed) allDeployed = false;
+      const copies = workerCopies(w, svc.slug).length;
+      const deployed = copies > 0;
+      const proxiedOnly = (w.system_info || {}).proxied_only === true;
+      // It can still leave its route here (_routeSwitchBoxes), so the form stays.
+      const routed = deployed && Boolean((svc.routes || {})[w.id]);
+      if (!deployed || routed) allDeployed = false;
       let instancesBox = '';
       if (maxInstances) {
         const capable = ((w.system_info || {}).features || []).includes('instances');
@@ -1912,8 +2018,9 @@ const CP = (() => {
       }
       rows += `
       <label class="worker-pick">
-        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}" ${deployed ? 'disabled checked' : ''}>
+        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : ''}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
+        ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
         ${deployed
           ? '<span class="badge badge-deployed">Deployed</span>'
           : '<span class="badge badge-available">Available</span>'}
@@ -3246,6 +3353,7 @@ const CP = (() => {
       const selected = services.filter(s => wizardState.selectedServices.includes(s.slug));
       container.innerHTML = selected.map(svc => renderServiceSetupForm(svc, workers)).join('');
       loadDeployRisk();
+      for (const svc of selected) loadRouteChoices(svc.slug, container);
     } catch (err) {
       container.innerHTML = '<p class="empty-state-text">Could not load service details.</p>';
     }
@@ -3379,6 +3487,7 @@ const CP = (() => {
         <div class="setup-workers">
           <div class="form-label">Deploy to</div>
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
+          ${svc.custom ? '' : routeChoiceSection(svc)}
         </div>
         <div class="setup-deploy">
           <button class="btn btn-primary" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>
@@ -3500,8 +3609,11 @@ const CP = (() => {
     );
   }
 
-  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false } = {}) {
+  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false, routeRoot = null } = {}) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
+    // Read once, before anything waits: a Route box changed while the first
+    // box deploys must not send another route (or none) to the next one.
+    const route = _routeChoice(routeRoot, slug);
     if (workerIds.length === 0) {
       toast('Select at least one worker node', 'warning');
       if (statusEl) statusEl.textContent = 'Select at least one node.';
@@ -3570,6 +3682,7 @@ const CP = (() => {
         if (image !== undefined) body.image = image;
         const instances = _instancesFor(slug, wid);
         if (instances !== undefined) body.instances = instances;
+        if (route !== undefined) body.route = route;
         const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
         ok++;
         if (res && res.device_link && res.device_link.id) links.set(res.device_link.id, res.device_link);
@@ -3657,7 +3770,14 @@ const CP = (() => {
     // the final screen having deployed nothing — and an empty `deployed` list
     // then looks identical to every deploy having failed.
     wizardState.deployAttempted = true;
-    await _deployToWorkers(slug, _selectedWorkerIds(`.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`));
+    const picked = `.setup-deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`;
+    const fresh = _selectedWorkerIds(`${picked}:not([data-routed])`);
+    // A routed box ticked to change its route reuses its recorded credentials.
+    const switching = _selectedWorkerIds(`${picked}[data-routed]`);
+    await _deployToWorkers(slug, [...fresh, ...switching], {
+      rescaleOnly: fresh.length === 0 && switching.length > 0,
+      routeRoot: document.getElementById('wizard-setup-forms'),
+    });
   }
 
   // -----------------------------------------------------------
@@ -3856,6 +3976,7 @@ const CP = (() => {
       // holds up the rest of the modal.
       loadPayoutProgress();
       loadDeployRisk();
+      loadRouteChoices(svc.slug, body);
       loadDeviceRenames(slug);
     } catch (err) {
       if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
@@ -3871,7 +3992,7 @@ const CP = (() => {
     const catalogImage = (svc.docker && svc.docker.image) || '';
     const chosen = Object.values(svc.custom_images || {});
     const common = chosen.length && chosen.every(i => i === chosen[0]) ? chosen[0] : '';
-    const running = (workers || []).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === svc.slug));
+    const running = (workers || []).filter(w => w.status === 'online' && runsOn(w, svc.slug));
     const name = escapeHtml(svc.name);
     return `
       <details class="image-choice"${chosen.length ? ' open' : ''}>
@@ -3993,7 +4114,8 @@ const CP = (() => {
   async function redeployWithValues(slug, workerId) {
     // The form is folded away under the boxes list; open it so a missing value shows.
     document.querySelectorAll('details.sd-more').forEach(d => { d.open = true; });
-    if (await _deployToWorkers(slug, [parseInt(workerId)])) openServiceDetail(slug);
+    const routeRoot = document.getElementById('service-detail-body');
+    if (await _deployToWorkers(slug, [parseInt(workerId)], { routeRoot })) openServiceDetail(slug);
   }
 
   async function redeployOnWorker(slug, workerId) {
@@ -4020,7 +4142,7 @@ const CP = (() => {
     const statusEl = document.getElementById(`image-status-${slug}`);
     if (!input) return;
     const image = input.value.trim();
-    const workers = (await api('/api/workers')).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug));
+    const workers = (await api('/api/workers')).filter(w => w.status === 'online' && runsOn(w, slug));
     if (!workers.length) { toast('No running instances to redeploy', 'warning'); return; }
     const what = image || 'the catalog image';
     if (!window.confirm(`Redeploy ${slug} on ${workers.map(w => w.name).join(', ')} with ${what}?`)) return;
@@ -4160,6 +4282,7 @@ const CP = (() => {
           <div class="form-label">Deploy to</div>
           <div id="deploy-worker-list">${workerRows}</div>
           ${instancesHint(svc)}
+          ${svc.custom ? '' : routeChoiceSection(svc)}
         </div>
         <div class="sd-actions">
           <button class="btn btn-primary" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
@@ -4175,7 +4298,7 @@ const CP = (() => {
     const onlineWorkers = (workers || []).filter(w => w.status === 'online');
     const instances = [];
     for (const w of onlineWorkers) {
-      const copies = (w.containers || []).filter(c => c.slug === svc.slug)
+      const copies = workerCopies(w, svc.slug)
         .sort((a, b) => (a.instance || 1) - (b.instance || 1));
       for (const container of copies) instances.push({ worker: w, container, several: copies.length > 1 });
     }
@@ -4196,6 +4319,7 @@ const CP = (() => {
           <span class="cell cell-${st}"></span>
           <strong class="sd-inst-box">${escapeHtml(inst.worker.name)}${inst.several ? ` #${inst.container.instance || 1}` : ''}</strong>
           <span class="state state-${st}">${escapeHtml(s)}</span>
+          ${routeBadge(inst.container)}
           ${(svc.custom_images || {})[String(inst.worker.id)] ? `<span class="muted" title="${escapeHtml(svc.custom_images[String(inst.worker.id)])}">custom image</span>` : ''}
           ${_canWrite ? `<div class="sd-inst-actions">
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
@@ -4458,11 +4582,21 @@ const CP = (() => {
   }
 
   async function deployServiceToWorkers(slug) {
-    const fresh = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`);
-    const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id));
-    // Only rescaling nodes that already run the service: their recorded
-    // credentials are reused, so the empty credential boxes are not missing.
-    await _deployToWorkers(slug, [...fresh, ...rescaled], { rescaleOnly: fresh.length === 0 && rescaled.length > 0 });
+    const picked = `.deploy-worker-cb[data-slug="${slug}"]:checked:not(:disabled)`;
+    const fresh = _selectedWorkerIds(`${picked}:not([data-routed])`);
+    // A routed box ticked to leave its route (_routeSwitchBoxes) already runs the service.
+    const switching = _selectedWorkerIds(`${picked}[data-routed]`);
+    // Unlocked by Direct, a routed box leaves its route only by its own tick,
+    // never through a changed Instances count (route 0 would go with it).
+    const switchable = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"][data-routed]:not(:disabled)`);
+    const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id) && !switchable.includes(id));
+    const again = [...switching, ...rescaled];
+    // Only nodes that already run the service: their recorded credentials are
+    // reused, so the empty credential boxes are not missing.
+    await _deployToWorkers(slug, [...fresh, ...again], {
+      rescaleOnly: fresh.length === 0 && again.length > 0,
+      routeRoot: document.getElementById('service-detail-body'),
+    });
   }
 
   // `?instance=` only for copies 2+: the first copy is addressed the way it always was.

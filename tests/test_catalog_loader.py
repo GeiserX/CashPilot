@@ -200,6 +200,13 @@ class TestValidate:
         # The control: the same entry under an ordinary slug, and a slug that only contains the word.
         assert catalog._validate({**self._base(), "slug": "node-custom"}, tmp_path / "t.yml") == []
 
+    def test_validate_rejects_the_tunnel_suffixes(self, tmp_path):
+        """A routed copy's tunnel ends in the slug, so -next and -moving would read as staged or aside."""
+        for slug in ("node-next", "node-moving", "next", "moving"):
+            errors = catalog._validate({**self._base(), "slug": slug}, tmp_path / "t.yml")
+            assert any("reserve" in e for e in errors), slug
+        assert catalog._validate({**self._base(), "slug": "nextnode"}, tmp_path / "t.yml") == []
+
     def test_validate_allows_empty_image_for_non_deployable(self, tmp_path):
         # Extension/app-only services list an empty image and must still load.
         assert catalog._validate({**self._base(), "docker": {"image": ""}}, tmp_path / "t.yml") == []

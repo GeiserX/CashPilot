@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
-from app import constants, custom_services, database, main, orchestrator, worker_api
+from app import constants, custom_services, database, main, orchestrator, proxy_tunnel, worker_api
 
 SECRET = "s3cr3t-Value-9f1c2e"
 
@@ -140,6 +141,22 @@ class TestSlugs:
 
     def test_a_trailing_number_loses_its_dash(self):
         assert custom_services.make_slug("Node 2", set()) == "custom-node2"
+
+    def test_a_tunnel_suffix_loses_its_dash(self):
+        """A routed copy's tunnel ends in the slug: -next or -moving would read as a staged or aside tunnel."""
+        assert custom_services.make_slug("Node Next", set()) == "custom-nodenext"
+        assert custom_services.make_slug("Node Moving", set()) == "custom-nodemoving"
+        assert custom_services.make_slug("Next Node", set()) == "custom-next-node"
+
+    @pytest.mark.parametrize("name", ["Next", "Moving", "next!", "2"])
+    def test_a_bare_tunnel_suffix_or_number_does_not_get_its_dash_back_from_the_prefix(self, name):
+        """SLUG_PREFIX ends in a dash, so a base that is only the word would still end in -next or -moving."""
+        slug = custom_services.make_slug(name, set())
+        assert not re.search(r"-(\d+|next|moving)$", slug), slug
+        assert not proxy_tunnel.shared_tunnel_name(7, slug).endswith(
+            (proxy_tunnel.STAGED_SUFFIX, proxy_tunnel.MOVING_SUFFIX)
+        ), slug
+        assert slug == f"custom-service{name.strip('!').lower()}"
 
     def test_no_slug_shares_a_container_name_with_another_slugs_copy(self):
         """Copy N runs as cashpilot-<slug>-N. A slug ending in -<digits> would be

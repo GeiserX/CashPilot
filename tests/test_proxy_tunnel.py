@@ -10,6 +10,8 @@ import io
 import os
 import re
 import tarfile
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -24,7 +26,14 @@ from docker.errors import NotFound  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import orchestrator, proxy_tunnel, worker_api  # noqa: E402
-from app.constants import LABEL_INSTANCE, LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_SERVICE  # noqa: E402
+from app.constants import (  # noqa: E402
+    DEPLOY_DEADLINE_SECONDS,
+    LABEL_INSTANCE,
+    LABEL_MANAGED,
+    LABEL_PROXY,
+    LABEL_ROLE,
+    LABEL_SERVICE,
+)
 
 PASSWORD = "s3cr3t-p@ss"
 NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
@@ -64,10 +73,24 @@ def _container(name, slug, *, proxy=None, role=None, instance=None, status="runn
 # ---------------------------------------------------------------------------
 
 
+def _copy(name, slug, proxy):
+    """A proxied copy as Docker shows it: inside its tunnel's network namespace."""
+    c = _container(name, slug, proxy=proxy)
+    c.attrs["HostConfig"] = {"NetworkMode": f"container:id-tunnel-p{proxy}"}
+    return c
+
+
+def _sidecar(name, slug, proxy):
+    """A tunnel as Docker shows it: labelled one and running the tunnel image."""
+    c = _container(name, slug, proxy=proxy, role="tunnel")
+    c.attrs["Config"] = {"Image": "drumsergio/cashpilot-tunnel:1.64.0"}
+    return c
+
+
 class TestCopiesAreNotProxied:
     def test_find_container_fallback_skips_a_proxied_copy(self):
-        proxied = _container("cashpilot-honeygain-p3", "honeygain", proxy=3)
-        tunnel = _container("cashpilot-tunnel-honeygain-p3", "honeygain", proxy=3, role="tunnel")
+        proxied = _copy("cashpilot-honeygain-p3", "honeygain", 3)
+        tunnel = _sidecar("cashpilot-tunnel-honeygain-p3", "honeygain", 3)
         client = MagicMock()
         client.containers.get.side_effect = NotFound("gone")
         client.containers.list.return_value = [proxied, tunnel]
@@ -75,7 +98,7 @@ class TestCopiesAreNotProxied:
             orchestrator._find_container("honeygain", 1)
 
     def test_find_container_picks_the_real_first_copy(self):
-        proxied = _container("cashpilot-honeygain-p3", "honeygain", proxy=3)
+        proxied = _copy("cashpilot-honeygain-p3", "honeygain", 3)
         real = _container("cashpilot-honeygain-renamed", "honeygain")
         client = MagicMock()
         client.containers.get.side_effect = NotFound("gone")
@@ -86,8 +109,8 @@ class TestCopiesAreNotProxied:
     def test_service_instances_leaves_out_proxied_copies_and_tunnels(self):
         real = _container("cashpilot-honeygain", "honeygain")
         second = _container("cashpilot-honeygain-2", "honeygain", instance=2)
-        proxied = _container("cashpilot-honeygain-p3", "honeygain", proxy=3)
-        tunnel = _container("cashpilot-tunnel-honeygain-p3", "honeygain", proxy=3, role="tunnel")
+        proxied = _copy("cashpilot-honeygain-p3", "honeygain", 3)
+        tunnel = _sidecar("cashpilot-tunnel-honeygain-p3", "honeygain", 3)
         client = MagicMock()
         client.containers.list.return_value = [proxied, second, tunnel, real]
         with patch.object(orchestrator, "_get_client", return_value=client):
@@ -95,8 +118,8 @@ class TestCopiesAreNotProxied:
 
     def test_status_light_reports_neither_the_copy_nor_its_tunnel(self):
         real = _container("cashpilot-honeygain", "honeygain")
-        proxied = _container("cashpilot-honeygain-p3", "honeygain", proxy=3)
-        tunnel = _container("cashpilot-tunnel-honeygain-p3", "honeygain", proxy=3, role="tunnel")
+        proxied = _copy("cashpilot-honeygain-p3", "honeygain", 3)
+        tunnel = _sidecar("cashpilot-tunnel-honeygain-p3", "honeygain", 3)
         client = MagicMock()
         client.containers.list.side_effect = lambda **kw: (
             [real, proxied, tunnel] if kw.get("filters") else [real, proxied, tunnel]
@@ -117,7 +140,15 @@ class TestCopiesAreNotProxied:
 class TestDeployRawJoined:
     def test_joined_container_gets_no_ports_hostname_dns_or_network(self):
         client = MagicMock()
-        client.containers.get.side_effect = NotFound("none")
+        tunnel = MagicMock(labels={"cashpilot.managed": "true", "cashpilot.role": "tunnel"})
+
+        def get(key):
+            # The tunnel it joins exists; no container holds the earner's name yet.
+            if key == "sidecar-id":
+                return tunnel
+            raise NotFound("none")
+
+        client.containers.get.side_effect = get
         client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/app/run"], "Cmd": []}}
         client.containers.run.return_value = MagicMock(id="earner-id", short_id="earner")
         with (
@@ -222,6 +253,26 @@ class TestSidecar:
         # Started only after the settings were in place.
         order = [c[0] for c in created.method_calls if c[0] in ("put_archive", "start")]
         assert order == ["put_archive", "start"]
+
+    def test_a_deploy_deadline_bounds_the_tunnel_image_pull(self):
+        # docker-py's pull has no overall timeout; a deploy's tunnel must not wait past its deadline.
+        client = MagicMock()
+        release = threading.Event()
+        client.images.pull.side_effect = lambda image: release.wait(10)
+        began = time.monotonic()
+        try:
+            with (
+                patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": "drumsergio/cashpilot-tunnel:1.64.0"}),
+                patch.object(orchestrator, "container_network", return_value=None),
+                pytest.raises(orchestrator.ContainerRuntimeError),
+            ):
+                proxy_tunnel.start_sidecar(
+                    client, "cashpilot-tunnel-x-p1", "x", 1, _socks(), None, deadline=time.monotonic() + 0.3
+                )
+        finally:
+            release.set()
+        assert time.monotonic() - began < 5
+        client.containers.create.assert_not_called()
 
     def test_a_failed_tunnel_is_removed_and_its_error_carries_no_password(self):
         client = MagicMock()
@@ -452,6 +503,7 @@ class TestOrder:
 
     def test_status_reports_the_tunnels_traffic_and_exit(self):
         earner = _container("cashpilot-x-p1", "x", proxy=1)
+        earner.attrs["Config"] = {"Image": "x/x:1.2"}
         tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
         tunnel.exec_run.return_value = (0, b'{"ip":"93.184.215.14","country":"DE"}')
         client = MagicMock()
@@ -462,6 +514,8 @@ class TestOrder:
         ):
             (entry,) = proxy_tunnel.status()
         assert entry["slug"] == "x" and entry["proxy_id"] == 1
+        # What the earner runs, so the UI can say a routed service's image is outdated.
+        assert entry["image"] == "x/x:1.2"
         assert (entry["net_rx_bytes"], entry["net_tx_bytes"]) == (1000, 200)
         assert entry["exit_ip"] == "93.184.215.14" and entry["exit_country"] == "DE"
 
@@ -546,7 +600,9 @@ class TestWorkerApi:
         assert (slug, proxy_id, own_ip) == ("honeygain", 3, "192.0.2.1")
         assert proxy["password"] == PASSWORD and earner["env"] == {"A": "b"}
         assert PASSWORD not in resp.text
-        assert deploy.call_args.kwargs == {"only_if_running": False}
+        kwargs = deploy.call_args.kwargs
+        assert kwargs.pop("deadline") > time.monotonic() + DEPLOY_DEADLINE_SECONDS - 60
+        assert kwargs == {"only_if_running": False}
 
     def test_deploy_passes_only_if_running_through(self):
         body = {"earner": {"image": "honeygain/honeygain:1"}, "proxy": _socks(), "only_if_running": True}
@@ -558,7 +614,9 @@ class TestWorkerApi:
         ):
             resp = _api().post("/api/proxied/honeygain/3/deploy", json=body, headers=AUTH)
         assert resp.status_code == 200, resp.text
-        assert deploy.call_args.kwargs == {"only_if_running": True}
+        kwargs = deploy.call_args.kwargs
+        assert kwargs.pop("deadline") > time.monotonic() + DEPLOY_DEADLINE_SECONDS - 60
+        assert kwargs == {"only_if_running": True}
 
     def test_proxy_test_refuses_a_private_exit(self):
         with (
@@ -998,6 +1056,9 @@ class TestReviewFollowUps:
 # ---------------------------------------------------------------------------
 
 _CP_TUNNEL = (Path(__file__).resolve().parent.parent / "tunnel" / "cp-tunnel").read_text()
+_CP_PROBE = Path(__file__).resolve().parent.parent / "tunnel" / "cp-probe"
+#: For a test of one step on its own: every step gets its full cap, as before the deadline is near.
+_NO_DEADLINE = 'cap() { echo "$1"; }\n'
 
 
 def _logout_seconds() -> int:
@@ -1057,3 +1118,428 @@ class TestATunnelLogsOutOfTheTailnetWhenStopped:
         with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
             proxy_tunnel.remove("x", 1)
         assert self._stop_timeout(tunnel) > _logout_seconds()
+
+
+# ---------------------------------------------------------------------------
+# cp-tunnel's firewall: the older rule when nft refuses the cgroup one
+# ---------------------------------------------------------------------------
+
+
+def _run_firewall_step(tmp_path: Path, nft_mode: str) -> tuple[int, str, str]:
+    """Run cp-tunnel up to its rules being loaded, with stub ip, stat, nft and curl.
+
+    ``nft_mode``: ``match`` (the cgroup rule loads and counts the probe),
+    ``no-cgroup`` (nft refuses any rule set naming cgroupv2), ``refuse`` (it
+    refuses every rule set).
+    """
+    import subprocess
+
+    run = tmp_path / "run"
+    secret = run / "cashpilot-secret"
+    secret.mkdir(parents=True)
+    for key, value in {"kind": "socks5", "proxy_ip": "203.0.113.5", "proxy_port": "1080"}.items():
+        (secret / key).write_text(value)
+    (tmp_path / "cgroup").write_text("0::/docker/abc\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stubs = {
+        "ip": 'echo "default via 172.17.0.1 dev eth0"',
+        "stat": "echo cgroup2fs",
+        "curl": "exit 0",
+        "nft": f"""
+loaded={run}/loaded.nft
+if [ "$1" = -f ]; then
+    case {nft_mode} in
+    refuse) echo "nft: refused" >&2; exit 1 ;;
+    no-cgroup) if grep -q cgroupv2 "$2"; then echo "nft: no cgroupv2" >&2; exit 1; fi ;;
+    esac
+    cp "$2" "$loaded"
+    exit 0
+fi
+if [ {nft_mode} = match ]; then sed 's/counter/counter packets 1 bytes 60/' "$loaded"; else cat "$loaded"; fi
+""",
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    head = _CP_TUNNEL.split("probe_until_ready() {")[0]
+    assert "load_rules" in head
+    script = (
+        head.replace("/run/", f"{run}/")
+        .replace("/run\n", f"{run}\n")
+        .replace("/proc/self/cgroup", str(tmp_path / "cgroup"))
+    )
+    script += f'\necho RULES_LOADED\ncat "{run}/loaded.nft"\n'
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+class TestTheTunnelFirewallFallsBack:
+    def test_a_kernel_that_matches_gets_the_cgroup_rule(self, tmp_path):
+        code, out, _err = _run_firewall_step(tmp_path, "match")
+        assert code == 0 and "RULES_LOADED" in out
+        assert "socket cgroupv2" in out
+
+    def test_an_nft_that_refuses_the_cgroup_rule_gets_the_older_rule(self, tmp_path):
+        code, out, err = _run_firewall_step(tmp_path, "no-cgroup")
+        assert code == 0, err
+        assert "socket cgroupv2" not in out
+        assert 'oifname "eth0" ip daddr 203.0.113.5 tcp dport 1080 accept' in out
+        assert "policy drop" in out
+        assert "can reach the proxy directly too" in err
+
+    def test_an_nft_that_refuses_every_rule_keeps_the_tunnel_down(self, tmp_path):
+        code, out, err = _run_firewall_step(tmp_path, "refuse")
+        assert code != 0 and "RULES_LOADED" not in out
+        assert "refusing to start" in err
+
+
+# ---------------------------------------------------------------------------
+# cp-tunnel: when names go back to the proxy (--dns virtual)
+# ---------------------------------------------------------------------------
+
+
+def _proxy_refuses_dns(tmp_path: Path, scheme: str, first_rc: int, out: str, rc: int) -> bool:
+    """Run cp-tunnel's proxy_refuses_dns with a stub curl.
+
+    The stub answers the first request (the proxy carries a connection) with
+    ``first_rc``, and the request to port 53 by printing ``out`` (what its
+    ``-w`` asks for) and exiting ``rc``. The values are what curl 8 gives:
+    checked against a SOCKS5 proxy that refuses (97, pretransfer 0), stalls the
+    CONNECT (28, pretransfer 0), connects and then hears nothing (28,
+    pretransfer > 0), or connects and is closed (56, pretransfer > 0).
+    """
+    import subprocess
+
+    start = _CP_TUNNEL.index("    proxy_refuses_dns() {")
+    body = _CP_TUNNEL[start : _CP_TUNNEL.index("\n    }\n", start) + len("\n    }\n")]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "curl").write_text(
+        '#!/bin/sh\ncase "$*" in *:53/*) printf %s "$STUB_OUT"; exit "$STUB_RC" ;; esac\nexit "$STUB_FIRST"\n'
+    )
+    (bin_dir / "curl").chmod(0o755)
+    script = (
+        f'read_key() {{ case "$1" in proxy_scheme) echo {scheme} ;; *) echo ;; esac; }}\n'
+        f"{_NO_DEADLINE}PROXY_IP=203.0.113.5 PROXY_PORT=1080 DNS_TARGET=1.1.1.1\n"
+        f"{body}\nproxy_refuses_dns\n"
+    )
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "STUB_FIRST": str(first_rc),
+        "STUB_OUT": out,
+        "STUB_RC": str(rc),
+    }
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    return proc.returncode == 0
+
+
+class TestTheTunnelFallsBackToProxyDns:
+    @pytest.mark.parametrize(
+        ("scheme", "out", "rc"),
+        [
+            ("socks5", "0.000000", 97),  # refused
+            ("socks5", "0.000000", 28),  # the CONNECT to port 53 stalls past 6 s
+            ("http", "403", 56),  # refused
+            ("http", "000", 28),  # no answer to the CONNECT within 6 s
+            ("http", "000", 52),  # closed without an answer
+        ],
+    )
+    def test_a_working_proxy_that_will_not_open_port_53(self, tmp_path, scheme, out, rc):
+        assert _proxy_refuses_dns(tmp_path, scheme, 0, out, rc)
+
+    @pytest.mark.parametrize(
+        ("scheme", "out", "rc"),
+        [
+            ("socks5", "0.005044", 28),  # connected; the resolver ignores the HTTP request
+            ("socks5", "0.008344", 56),  # connected; the resolver closes
+            ("http", "200", 52),
+            ("http", "200", 28),
+        ],
+    )
+    def test_control_a_proxy_that_opens_port_53_keeps_dns_over_tcp(self, tmp_path, scheme, out, rc):
+        assert not _proxy_refuses_dns(tmp_path, scheme, 0, out, rc)
+
+    @pytest.mark.parametrize("scheme", ["socks5", "http"])
+    def test_control_a_proxy_that_is_down_never_switches(self, tmp_path, scheme):
+        assert not _proxy_refuses_dns(tmp_path, scheme, 7, "0.000000" if scheme == "socks5" else "000", 28)
+
+
+def _dns_rounds(tmp_path: Path, resolves: str, step: int) -> list[str]:
+    """Run cp-tunnel's wait for DNS before the probe, with stub getent, date and a proxy that allows port 53.
+
+    ``resolves``: the names the resolver answers. The stub clock moves ``step``
+    seconds each time it is read. Returns the names asked, in order.
+    """
+    import subprocess
+
+    start = _CP_TUNNEL.index("    start_tun2proxy over-tcp\n") + len("    start_tun2proxy over-tcp\n")
+    loop = _CP_TUNNEL[start : _CP_TUNNEL.index("\n    done\n", start) + len("\n    done\n")]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    asked = tmp_path / "asked"
+    clock = tmp_path / "clock"
+    clock.write_text("0")
+    stubs = {
+        "getent": f'echo "$2" >>{asked}\ncase " $STUB_RESOLVES " in *" $2 "*) exit 0 ;; esac\nexit 2',
+        "date": f"t=$(cat {clock})\necho $((t + {step})) >{clock}\necho $t",
+        "timeout": 'shift\nexec "$@"',
+        "sleep": "exit 0",
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    script = f"{_NO_DEADLINE}proxy_refuses_dns() {{ return 1; }}\n/bin/sleep 30 &\nTPID=$!\n{loop}kill $TPID\n"
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB_RESOLVES": resolves}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    return asked.read_text().split() if asked.exists() else []
+
+
+def _dns_mode_after_wait(tmp_path: Path, blocked: str, **stubs_over: str) -> list[str]:
+    """Run cp-tunnel's wait with its real proxy_refuses_dns, against an HTTP proxy that refuses port 53.
+
+    No name resolves (over-tcp DNS needs port 53). ``blocked``: the names the
+    proxy will not carry. ``stubs_over`` replaces stub commands by name. Returns
+    the DNS modes tun2proxy was started again with; the clock reading at each
+    restart is written to ``tmp_path / "switched"``.
+    """
+    import subprocess
+
+    start = _CP_TUNNEL.index("    proxy_refuses_dns() {")
+    body = _CP_TUNNEL[start : _CP_TUNNEL.index("\n    }\n", start) + len("\n    }\n")]
+    begin = _CP_TUNNEL.index("    start_tun2proxy over-tcp\n") + len("    start_tun2proxy over-tcp\n")
+    loop = _CP_TUNNEL[begin : _CP_TUNNEL.index("\n    done\n", begin) + len("\n    done\n")]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    clock = tmp_path / "clock"
+    clock.write_text("0")
+    modes = tmp_path / "modes"
+    stubs = {
+        "getent": "exit 2",
+        "date": f"t=$(cat {clock})\necho $((t + 1)) >{clock}\necho $t",
+        "timeout": 'shift\nexec "$@"',
+        "sleep": "exit 0",
+        "ip": "exit 0",
+        "curl": 'case "$*" in *:53/*) printf 403; exit 56 ;; esac\n'
+        'for n in $STUB_BLOCKED; do case "$*" in *"https://$n/"*) exit 7 ;; esac; done\nexit 0',
+        **stubs_over,
+    }
+    for name, stub in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{stub}\n")
+        (bin_dir / name).chmod(0o755)
+    script = (
+        'read_key() { case "$1" in proxy_scheme) echo http ;; *) echo ;; esac; }\n'
+        f"{_NO_DEADLINE}PROXY_IP=203.0.113.5 PROXY_PORT=3128 DNS_TARGET=1.1.1.1\n"
+        f'start_tun2proxy() {{ echo "$1" >>{modes}; date +%s >>{tmp_path / "switched"}; /bin/sleep 30 & TPID=$!; }}\n'
+        f"{body}\n/bin/sleep 30 &\nTPID=$!\n{loop}kill $TPID\n"
+    )
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB_BLOCKED": blocked}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    return modes.read_text().split() if modes.exists() else []
+
+
+class TestTheTunnelFallsBackOnAnyProbeEndpoint:
+    def test_a_proxy_that_blocks_one_endpoint_still_gets_proxy_dns(self, tmp_path):
+        """It refuses port 53 and api.ipify.org: the same round asks through it for the other two, and works."""
+        assert _dns_mode_after_wait(tmp_path, "api.ipify.org") == ["virtual"]
+
+    def test_stalls_on_two_endpoints_and_on_port_53_still_reach_the_third_in_time(self, tmp_path):
+        """Each stall costs its 6 s. Asked one per round, icanhazip.com came in a round the 15 s bound never started.
+
+        The clock runs five times real time, so the 6 s stalls are 1.2 s sleeps.
+        """
+        import time
+
+        stall = "/bin/sleep 1.2; printf 000; exit 28"
+        modes = _dns_mode_after_wait(
+            tmp_path,
+            "",
+            # Perl, not Python: pytest-cov hooks every Python child, which made the clock itself slow.
+            date=f"exec perl -MTime::HiRes=time -e 'printf \"%d\\n\", (time - {time.time()}) * 5'",
+            getent="/bin/sleep 1.2; exit 2",
+            curl=f'case "$*" in *:53/*|*https://api.ipify.org/*|*https://ifconfig.me/*) {stall} ;; esac\nexit 0',
+            sleep="/bin/sleep 0.2",
+        )
+        assert modes == ["virtual"]
+        # One round of three 6 s stalls, so the exit probe keeps most of the worker's 45 s wait.
+        assert int((tmp_path / "switched").read_text()) < 30
+
+    def test_control_a_proxy_that_carries_nothing_keeps_dns_over_tcp(self, tmp_path):
+        assert _dns_mode_after_wait(tmp_path, "api.ipify.org ifconfig.me icanhazip.com") == []
+
+
+def _ready_at_worst_case(tmp_path: Path) -> tuple[int | None, list[str]]:
+    """Run cp-tunnel from its deadline to /run/ready, with the real cp-probe, against the slowest working proxy.
+
+    An HTTP proxy that refuses port 53, so names are not resolved until the
+    switch: the first round's lookup stalls its 6 s, the liveness requests
+    stall their 6 s (asked at once, so one stub stall stands for them), and the
+    port 53 check stalls its 6 s. Then the probe: the first two endpoints stall
+    their 8 s, the third answers in 4 s, and the country lookup stalls its 8 s.
+    Every stall lasts what its timeout allows, on a stub clock that a stall
+    moves on. Returns the clock when /run/ready was written (None if never)
+    and the DNS modes started.
+    """
+    import subprocess
+
+    def part(start_marker: str, end_marker: str) -> str:
+        start = _CP_TUNNEL.index(start_marker)
+        return _CP_TUNNEL[start : _CP_TUNNEL.index(end_marker, start) + len(end_marker)]
+
+    deadline = part("DEADLINE=", "\n}\n")
+    ready = tmp_path / "ready"
+    probe = part("probe_until_ready() {", "\n}\n").replace("/run/ready", str(ready))
+    refuses = part("    proxy_refuses_dns() {", "\n    }\n")
+    begin = _CP_TUNNEL.index("    start_tun2proxy over-tcp\n") + len("    start_tun2proxy over-tcp\n")
+    loop = _CP_TUNNEL[begin : _CP_TUNNEL.index("\n    done\n", begin) + len("\n    done\n")]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    clock = tmp_path / "clock"
+    clock.write_text("0")
+    modes = tmp_path / "modes"
+    nap = f"nap() {{ echo $(($(cat {clock}) + $1)) >{clock}; }}\n"
+    stubs = {
+        "date": f"cat {clock}",
+        "timeout": 'export STUB_LIMIT="$1"\nshift\nexec "$@"',
+        "getent": f'{nap}nap "$STUB_LIMIT"\nexit 2',
+        "sleep": f'{nap}nap "$1"',
+        "curl": nap + 'm=\nprev=\nfor a in "$@"; do case "$prev" in -m | --max-time) m=$a ;; esac; prev=$a; done\n'
+        'case "$*" in\n'
+        '*" -x "*https://icanhazip.com/* | *" -x "*https://ifconfig.me/*) exit 0 ;;\n'
+        '*"https://icanhazip.com") if [ "$m" -ge 4 ]; then nap 4; echo 203.0.113.7; exit 0; fi ;;\n'
+        "esac\n"
+        # A stall writes nothing but what -w asks for: no answer to the CONNECT.
+        'nap "$m"\ncase "$*" in *:53/*) printf 000 ;; esac\nexit 28',
+    }
+    for name, stub in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{stub}\n")
+        (bin_dir / name).chmod(0o755)
+    (bin_dir / "cp-probe").write_text(_CP_PROBE.read_text())
+    (bin_dir / "cp-probe").chmod(0o755)
+    script = (
+        'read_key() { case "$1" in proxy_scheme) echo http ;; *) echo ;; esac; }\n'
+        "PROXY_IP=203.0.113.5 PROXY_PORT=3128 DNS_TARGET=1.1.1.1 OWN_IP=198.51.100.1\n"
+        f"{deadline}{probe}"
+        f'start_tun2proxy() {{ echo "$1" >>{modes}; /bin/sleep 30 & TPID=$!; }}\n'
+        f"{refuses}\n/bin/sleep 30 &\nTPID=$!\n{loop}"
+        f"probe_until_ready && date +%s >{tmp_path / 'ready_at'}\n"
+        "kill $TPID\n"
+    )
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    at = tmp_path / "ready_at"
+    return (int(at.read_text()) if at.exists() else None), (modes.read_text().split() if modes.exists() else [])
+
+
+class TestTheWholeWayToReadyFitsTheWorkersWait:
+    def test_the_slowest_working_proxy_is_ready_before_45_seconds(self, tmp_path):
+        """Each step alone fits; added up they took 46 s, past the worker's 45 s (proxy_tunnel.READY_TIMEOUT)."""
+        ready_at, modes = _ready_at_worst_case(tmp_path)
+        assert modes == ["virtual"]  # the worst case: names only after the switch
+        assert ready_at is not None and ready_at < proxy_tunnel.READY_TIMEOUT
+        assert '"ip":"203.0.113.7"' in (tmp_path / "ready").read_text()
+
+
+def _stub_clock_bin(tmp_path: Path, curl_cases: str) -> tuple[Path, Path]:
+    """Stub date, sleep and curl on a clock that a wait moves on; ``curl_cases`` is a case body on the URL ($*)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    clock = tmp_path / "clock"
+    clock.write_text("0")
+    nap = f"nap() {{ echo $(($(cat {clock}) + $1)) >{clock}; }}\n"
+    stubs = {
+        "date": f"cat {clock}",
+        "sleep": f'{nap}nap "$1"',
+        "curl": nap + 'm=\nprev=\nfor a in "$@"; do case "$prev" in -m | --max-time) m=$a ;; esac; prev=$a; done\n'
+        f'now=$(cat {clock})\ncase "$*" in\n{curl_cases}esac\n'
+        # Anything else stalls for all the time it is given.
+        'nap "$m"\nexit 28',
+    }
+    for name, stub in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{stub}\n")
+        (bin_dir / name).chmod(0o755)
+    (bin_dir / "cp-probe").write_text(_CP_PROBE.read_text())
+    (bin_dir / "cp-probe").chmod(0o755)
+    return bin_dir, clock
+
+
+class TestTheProbeNeverRunsPastTheWorkersWait:
+    """The worker reads /run/ready for 45 s, 5 s past cp-tunnel's 40 s deadline.
+    A step started in those 5 s used to get its full cap again, and the country
+    lookup its 8 s, so an exit IP found there was written after the worker had
+    given up on a proxy that works."""
+
+    @pytest.mark.parametrize("start", range(30, 43))
+    def test_an_answer_found_before_the_wait_ends_is_printed_before_it(self, tmp_path, start):
+        """api.ipify.org stalls, ifconfig.me answers in 1 s, the country stalls."""
+        import subprocess
+
+        bin_dir, clock = _stub_clock_bin(
+            tmp_path, '*https://ifconfig.me/ip*) if [ "$m" -ge 1 ]; then nap 1; echo 203.0.113.7; exit 0; fi ;;\n'
+        )
+        clock.write_text(str(start))
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CP_DEADLINE": "40"}
+        proc = subprocess.run(["sh", str(bin_dir / "cp-probe")], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 0, proc.stderr
+        assert '"ip":"203.0.113.7"' in proc.stdout
+        assert int(clock.read_text()) < proxy_tunnel.READY_TIMEOUT
+
+    def test_control_after_the_wait_the_country_gets_its_full_time(self, tmp_path):
+        """Nobody waits any more: the country lookup gets its 8 s and labels the answer."""
+        import subprocess
+
+        bin_dir, clock = _stub_clock_bin(
+            tmp_path,
+            "*https://api.ipify.org*) echo 203.0.113.7; exit 0 ;;\n"
+            '*ipinfo.io*) if [ "$m" -ge 8 ]; then echo ES; exit 0; fi ;;\n',
+        )
+        clock.write_text("46")
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CP_DEADLINE": "40"}
+        proc = subprocess.run(["sh", str(bin_dir / "cp-probe")], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.stdout.strip() == '{"ip":"203.0.113.7","country":"ES"}'
+
+    def test_a_second_attempt_after_the_deadline_is_ready_inside_the_wait(self, tmp_path):
+        """Attempt 1 fails on all three endpoints (8 + 8 + 4 s) and ends at the deadline;
+        attempt 2 starts at 41, api.ipify.org answers in 1 s and the country stalls."""
+        import subprocess
+
+        start = _CP_TUNNEL.index("DEADLINE=")
+        deadline = _CP_TUNNEL[start : _CP_TUNNEL.index("\n}\n", start) + 3]
+        start = _CP_TUNNEL.index("probe_until_ready() {")
+        ready = tmp_path / "ready"
+        probe = _CP_TUNNEL[start : _CP_TUNNEL.index("\n}\n", start) + 3].replace("/run/ready", str(ready))
+        bin_dir, clock = _stub_clock_bin(
+            tmp_path, '*https://api.ipify.org*) if [ "$now" -ge 41 ]; then nap 1; echo 203.0.113.7; exit 0; fi ;;\n'
+        )
+        script = f"OWN_IP=198.51.100.1\n{deadline}echo 20 >{clock}\n{probe}probe_until_ready\n"
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 0, proc.stderr
+        assert '"ip":"203.0.113.7"' in ready.read_text()
+        assert int(clock.read_text()) < proxy_tunnel.READY_TIMEOUT
+
+    def test_both_scripts_count_until_the_workers_wait_ends(self):
+        """cp-tunnel's deadline plus the grace both caps keep after it is the worker's 45 s."""
+        margin = re.search(r"^DEADLINE=\$\(\(\$\(date \+%s\) \+ (\d+)\)\)$", _CP_TUNNEL, re.M)
+        assert margin
+        for text in (_CP_TUNNEL, _CP_PROBE.read_text()):
+            grace = re.findall(r'\[ "\$left" -lt -(\d+) \]', text)
+            assert grace and {int(g) for g in grace} == {int(proxy_tunnel.READY_TIMEOUT) - int(margin.group(1))}
+
+
+class TestTheTunnelWaitsForDnsInsideTheReadyBudget:
+    def test_another_probe_endpoint_that_resolves_ends_the_wait(self, tmp_path):
+        """A resolver that fails api.ipify.org only: cp-probe reaches ifconfig.me, so the wait stops there."""
+        assert _dns_rounds(tmp_path, "ifconfig.me icanhazip.com", step=1) == ["api.ipify.org", "ifconfig.me"]
+
+    def test_no_round_starts_after_15_seconds(self, tmp_path):
+        """No name resolves and each round takes about 4 s: the probe still starts inside the worker's 45 s."""
+        assert _dns_rounds(tmp_path, "", step=4) == ["api.ipify.org", "ifconfig.me", "icanhazip.com"]
+
+    def test_control_a_resolver_that_answers_ends_the_wait_at_once(self, tmp_path):
+        assert _dns_rounds(tmp_path, "api.ipify.org ifconfig.me icanhazip.com", step=1) == ["api.ipify.org"]

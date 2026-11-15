@@ -70,6 +70,8 @@ COPY app/state_backup.py ./app/
 # Checks the UI's signed password confirmation before an image other than the
 # catalog's runs on a service's wallet or identity volume.
 COPY app/step_up.py ./app/
+# Which earners may run from the box's own IP (CASHPILOT_PROXIED_ONLY, routed services).
+COPY app/route_gate.py ./app/
 # worker_api imports this to report which release it is; without it the worker
 # crashes on import. The two tests that caught the omission compare this list
 # against worker_api's actual imports.

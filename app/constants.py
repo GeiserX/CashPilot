@@ -32,6 +32,10 @@ PROXIED_FORBIDDEN_CAPS = frozenset({"NET_ADMIN", "NET_RAW", "SYS_ADMIN", "ALL"})
 # not a recommendation: on one connection most providers pay for one.
 MAX_INSTANCES = 10
 CONTAINER_PREFIX = "cashpilot-"
+# Every tunnel app/proxy_tunnel.py makes is named with this, and no earner may
+# be (orchestrator.deploy_raw refuses one), so the name tells a tunnel apart
+# from an earner that kept a tunnel's labels or runs a look-alike image.
+TUNNEL_PREFIX = f"{CONTAINER_PREFIX}tunnel-"
 
 # Catalog statuses that must never be deployed or exported: the service is
 # gone, broken, or dropped, and producing a runnable artifact for it points
