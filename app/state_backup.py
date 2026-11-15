@@ -498,14 +498,17 @@ def _below_top(name: str) -> str:
     return _clean(name).partition("/")[2]
 
 
-def relative_archive(archive: bytes) -> bytes:
-    """One archive from :func:`split_archives`, renamed to sit inside its folder.
+def relative_archive(archive: bytes, into: str) -> bytes:
+    """One archive from :func:`split_archives`, renamed to sit under the folder ``into``.
 
     split_archives keeps Docker's layout, each entry under the folder's own name
-    (``mysterium-node/keystore/...``). A restore writes into the folder itself,
-    so the first component goes, and with it the folder's own entry: Docker does
-    not apply it to a folder that exists, and the folder is the volume's root.
-    Hard links are renamed the same way. Only names change.
+    (``mysterium-node/keystore/...``). A restore writes into a folder of the
+    helper where the volume is mounted as ``into``, so the first component
+    becomes ``into``, the folder's own entry included: Docker applies that
+    entry's owner and mode to the folder that exists, which is the volume's
+    root. It would skip the entry as ``.`` (the folder it writes into), so the
+    root would keep the image's owner and mode. Hard links are renamed the same
+    way. Only names change.
 
     Each entry is a new TarInfo with the fields split_archives keeps. Renaming
     the one read in is not enough: a name over 100 bytes or not ASCII arrives
@@ -516,28 +519,37 @@ def relative_archive(archive: bytes) -> bytes:
     import io
     import tarfile
 
+    def renamed(path: str) -> str:
+        below = _below_top(path)
+        return f"{into}/{below}" if below else into
+
     out = io.BytesIO()
     with (
         tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as src,
         tarfile.open(fileobj=out, mode="w", format=tarfile.PAX_FORMAT) as dst,
     ):
         for member in src:
-            name = _below_top(member.name)
-            if not name:
+            if not _below_top(member.name) and not member.isdir():
+                # The root is the volume's mount point: only a folder entry may
+                # name it. The read-back then refuses the restore (not a folder).
                 continue
             data = src.extractfile(member).read() if member.isfile() else None  # type: ignore[union-attr]
-            clean = tarfile.TarInfo(name)
+            clean = tarfile.TarInfo(renamed(member.name))
             clean.type, clean.mode, clean.uid, clean.gid = member.type, member.mode, member.uid, member.gid
             clean.mtime, clean.size = member.mtime, member.size
-            clean.linkname = _below_top(member.linkname) if member.islnk() else member.linkname
+            clean.linkname = renamed(member.linkname) if member.islnk() else member.linkname
             dst.addfile(clean, io.BytesIO(data) if data is not None else None)
     return out.getvalue()
+
+
+#: The folder's own entry in a tree_manifest: its owner and mode, which a service needs as much as its files'.
+ROOT = "."
 
 
 def tree_manifest(archive: bytes, *, max_bytes: int = MAX_ARCHIVE_BYTES) -> dict[str, tuple[Any, ...]]:
     """What a folder holds, as ``path -> (type, mode, uid, gid, content)``, from Docker's archive of it.
 
-    ``path`` is below the folder (the folder's own entry is left out), ``content``
+    ``path`` is below the folder, and ROOT for the folder's own entry; ``content``
     is a file's SHA-256 or a link's target. Modification times are not compared:
     they say nothing about whether the restore is the backup. Used twice by a
     restore, on what it meant to write and on what Docker reads back, so a file
@@ -552,9 +564,7 @@ def tree_manifest(archive: bytes, *, max_bytes: int = MAX_ARCHIVE_BYTES) -> dict
     try:
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as src:
             for member in src:
-                path = _below_top(member.name)
-                if not path:
-                    continue
+                path = _below_top(member.name) or ROOT
                 if member.isfile():
                     total += member.size
                     if total > max_bytes:
@@ -581,7 +591,8 @@ def manifest_differences(expected: dict[str, tuple[Any, ...]], found: dict[str, 
     A folder the image already had at that path (Docker copies the image's
     folders into a new volume when the container is created) may stay when the
     backup does not name it: it is empty or its files are listed on their own.
-    Every file, link and owner must match exactly.
+    Every file, link and owner must match exactly, the folder's own owner and
+    mode (ROOT) included when the backup has them.
     """
     lines: list[str] = []
     for path in sorted(set(expected) | set(found)):
@@ -590,6 +601,8 @@ def manifest_differences(expected: dict[str, tuple[Any, ...]], found: dict[str, 
             continue
         if want is None and got is not None and got[0] == "dir":
             continue
+        if path == ROOT:
+            path = "the folder itself"
         if want is None:
             lines.append(f"{path}: not in the backup")
         elif got is None:

@@ -1831,8 +1831,9 @@ class TestTheGuardNeverStartsAHalfWrittenRestore:
 
     @pytest.mark.parametrize("record", ["FAILED_MARKER", "RESTORE_MARKER"])
     def test_a_record_it_cannot_read_starts_no_node(self, markers, monkeypatch, record):
-        Path(orchestrator.FAILED_MARKER).write_text("cashpilot-mysterium\n", encoding="utf-8")
-        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+        # The readable record names another node, so only the unread one holds this one.
+        Path(orchestrator.FAILED_MARKER).write_text("cashpilot-other\n", encoding="utf-8")
+        Path(orchestrator.RESTORE_MARKER).write_text("other other-data\n", encoding="utf-8")
         _unreadable(monkeypatch, getattr(orchestrator, record))
         node = _node(status="created")
         held, _ = _guard([node])
@@ -1845,6 +1846,24 @@ class TestTheGuardNeverStartsAHalfWrittenRestore:
         node = _node()
         _guard([node])
         node.stop.assert_not_called()
+
+    def test_failed_marks_still_stop_a_running_node_when_the_restore_record_is_unreadable(self, markers, monkeypatch):
+        Path(orchestrator.FAILED_MARKER).write_text("cashpilot-mysterium\n", encoding="utf-8")
+        Path(orchestrator.RESTORE_MARKER).write_text("", encoding="utf-8")
+        _unreadable(monkeypatch, orchestrator.RESTORE_MARKER)
+        node = _node()
+        held, _ = _guard([node])
+        node.stop.assert_called_once()
+        assert held["cashpilot-mysterium"] == lan_fence.FAILED_DEPLOY
+
+    def test_the_restore_record_still_stops_a_running_node_when_failed_marks_are_unreadable(self, markers, monkeypatch):
+        Path(orchestrator.FAILED_MARKER).write_text("", encoding="utf-8")
+        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+        _unreadable(monkeypatch, orchestrator.FAILED_MARKER)
+        node = _node()
+        held, _ = _guard([node])
+        node.stop.assert_called_once()
+        assert held["cashpilot-mysterium"] == lan_fence.RESTORE_UNFINISHED
 
     def test_a_restore_that_did_not_finish_holds_its_node(self, markers):
         Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")

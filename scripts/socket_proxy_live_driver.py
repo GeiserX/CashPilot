@@ -397,8 +397,8 @@ def phase_migrated() -> None:
         return
     check("restart it through the proxy", lambda: orchestrator.restart_service(slug))
 
-    def back_up() -> tuple[bytes, str, list[str]]:
-        data, source = orchestrator.read_critical_state(slug)
+    def back_up() -> tuple[bytes, list[str], list[str]]:
+        data, source, _state_id = orchestrator.read_critical_state(slug)
         # Opened here, so an empty or broken archive fails this check, not the next.
         with tarfile.open(fileobj=io.BytesIO(data)) as tar:
             names = tar.getnames()

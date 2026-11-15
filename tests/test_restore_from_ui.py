@@ -99,16 +99,19 @@ KEY_FILE = b'{"address":"0xabc","crypto":{"cipher":"aes-128-ctr"}}'
 # ---------------------------------------------------------------------------
 
 
-def docker_archive(folder: str, entries: list[tuple[str, str, int, int, int, bytes | str]]) -> bytes:
+def docker_archive(
+    folder: str, entries: list[tuple[str, str, int, int, int, bytes | str]], root: tuple[int, int, int] = (0o755, 0, 0)
+) -> bytes:
     """A tar shaped like Docker's GET archive of ``/.../folder``.
 
     ``entries``: (path below the folder, type 'dir'/'file'/'symlink'/'hardlink', mode, uid, gid, data or link
-    target; a hard link's target is a path below the folder).
+    target; a hard link's target is a path below the folder). ``root``: the folder's own (mode, uid, gid).
     """
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tar:
         top = tarfile.TarInfo(folder)
-        top.type, top.mode, top.mtime = tarfile.DIRTYPE, 0o755, 1_700_000_000
+        top.type, top.mtime = tarfile.DIRTYPE, 1_700_000_000
+        top.mode, top.uid, top.gid = root
         tar.addfile(top)
         for path, kind, mode, uid, gid, data in entries:
             info = tarfile.TarInfo(f"{folder}/{path}")
@@ -192,19 +195,44 @@ class TestTheComparison:
     def _manifest(self, tree):
         return state_backup.tree_manifest(docker_archive("mysterium-node", tree))
 
-    def test_the_relative_archive_writes_inside_the_folder(self):
+    def test_the_relative_archive_writes_under_the_folder_it_is_given(self):
         archive = state_backup.split_archives(docker_archive("mysterium-node", MYSTERIUM_TREE))["mysterium-node"]
-        with tarfile.open(fileobj=io.BytesIO(state_backup.relative_archive(archive))) as tar:
+        with tarfile.open(fileobj=io.BytesIO(state_backup.relative_archive(archive, "volume"))) as tar:
             names = tar.getnames()
-        assert names == ["keystore", "keystore/UTC--2024-01-01--abc", "keystore/current", "myst.db"]
+        # The folder's own entry stays, renamed: it carries the root's owner and mode.
+        assert names == [
+            "volume",
+            "volume/keystore",
+            "volume/keystore/UTC--2024-01-01--abc",
+            "volume/keystore/current",
+            "volume/myst.db",
+        ]
+
+    def test_a_root_that_is_not_a_folder_is_never_written_over_the_mount(self):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            top = tarfile.TarInfo("mysterium-node")
+            top.type, top.linkname = tarfile.SYMTYPE, "elsewhere"
+            tar.addfile(top)
+        with tarfile.open(fileobj=io.BytesIO(state_backup.relative_archive(buf.getvalue(), "volume"))) as tar:
+            assert tar.getnames() == []
+        want = state_backup.tree_manifest(buf.getvalue())
+        found = state_backup.tree_manifest(docker_archive("mysterium-node", []))
+        assert state_backup.manifest_differences(want, found) == ["the folder itself: a dir, not a symlink"]
 
     def test_long_and_non_ascii_names_are_renamed_in_full(self):
         """split_archives writes these names as PAX records, which tarfile writes back in preference to the name."""
         archive = state_backup.split_archives(docker_archive("mysterium-node", LONG_NAME_TREE))["mysterium-node"]
-        with tarfile.open(fileobj=io.BytesIO(state_backup.relative_archive(archive))) as tar:
+        with tarfile.open(fileobj=io.BytesIO(state_backup.relative_archive(archive, "volume"))) as tar:
             members = {m.name: m for m in tar}
-        assert sorted(members) == ["keystore", f"keystore/{KEYSTORE_NAME}", "keystore/clé-ñ", "keystore/linked"]
-        assert members["keystore/linked"].linkname == f"keystore/{KEYSTORE_NAME}"
+        assert sorted(members) == [
+            "volume",
+            "volume/keystore",
+            f"volume/keystore/{KEYSTORE_NAME}",
+            "volume/keystore/clé-ñ",
+            "volume/keystore/linked",
+        ]
+        assert members["volume/keystore/linked"].linkname == f"volume/keystore/{KEYSTORE_NAME}"
 
     def test_a_real_mysterium_keystore_name_restores(self, docker):
         """'mysterium-node/keystore/UTC--<time>--<address>' is 101 bytes: one past a plain tar name."""
@@ -245,6 +273,13 @@ class TestTheComparison:
         diff = state_backup.manifest_differences(self._manifest(MYSTERIUM_TREE), self._manifest(changed))
         assert diff == ["myst.db: missing", "planted: not in the backup"]
 
+    def test_the_folders_own_owner_and_mode_is_compared(self):
+        """A service that cannot write its own folder fails after a restore that said it worked."""
+        want = state_backup.tree_manifest(docker_archive("mysterium-node", MYSTERIUM_TREE, (0o700, 1000, 1000)))
+        got = state_backup.tree_manifest(docker_archive("mysterium-node", MYSTERIUM_TREE, (0o755, 0, 0)))
+        assert want[state_backup.ROOT] == ("dir", 0o700, 1000, 1000, "")
+        assert state_backup.manifest_differences(want, got) == ["the folder itself: owner or permissions differ"]
+
     def test_an_empty_folder_the_image_brought_is_not(self):
         """Docker copies the image's folders into a new volume at create; ProxyBase's wallet/ is one."""
         changed = [*MYSTERIUM_TREE, ("wallet", "dir", 0o755, 1000, 1000, b"")]
@@ -261,6 +296,8 @@ class FakeVolume:
         self.docker, self.name = docker, name
         self.attrs = {"Name": name, "Labels": dict(labels)}
         self.files: dict[str, tuple[tarfile.TarInfo, bytes | None]] = {}
+        # The root's (mode, uid, gid): Docker gives a new volume the image folder's.
+        self.root = (0o755, 0, 0)
 
     def remove(self, force=False):
         # Docker refuses to remove a volume a container mounts, force or not.
@@ -303,11 +340,23 @@ class FakeContainer:
         self.docker.puts.append((self.name, path))
         if self.docker.corrupt_put:
             data = data.replace(KEY_FILE, KEY_FILE[:-1] + b"!")
-        volume = self._volume(path)
         with tarfile.open(fileobj=io.BytesIO(data)) as tar:
             for member in tar:
                 body = tar.extractfile(member).read() if member.isfile() else None
-                volume.files[member.name] = (member, body)
+                full = f"{path.rstrip('/')}/{member.name}".rstrip("/")
+                # The mount the entry lands in, the deepest one: the folder written into is
+                # never one (Docker skips its "." entry), as in the real helper.
+                target = max((t for t in self.mounts if full == t or full.startswith(t + "/")), key=len)
+                volume = self._volume(target)
+                below = full[len(target) + 1 :]
+                if member.islnk():
+                    # Docker resolves a hard link's target from the folder written into.
+                    member.linkname = f"{path.rstrip('/')}/{member.linkname}"[len(target) + 1 :]
+                if not below:
+                    # Docker applies a folder entry's owner and mode to the folder that exists.
+                    volume.root = (member.mode & 0o777, member.uid, member.gid)
+                else:
+                    volume.files[below] = (member, body)
         return True
 
     def get_archive(self, path):
@@ -316,7 +365,8 @@ class FakeContainer:
         folder = path.rstrip("/").rsplit("/", 1)[-1]
         with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tar:
             top = tarfile.TarInfo(folder)
-            top.type, top.mode = tarfile.DIRTYPE, 0o755
+            top.type = tarfile.DIRTYPE
+            top.mode, top.uid, top.gid = volume.root
             tar.addfile(top)
             for name, (member, body) in sorted(volume.files.items()):
                 copy = tarfile.TarInfo(f"{folder}/{name}")
@@ -405,6 +455,9 @@ class FakeDocker:
         return self.container_map[name].id
 
 
+#: Where a helper mounts the volume it writes: one level below the folder the proxy lets it write into.
+WRITE_MOUNT = f"{orchestrator.RESTORE_WRITE_DIR}/{orchestrator.RESTORE_ROOT}"
+
 MYSTERIUM_DEPLOY = {
     "image": catalog.get_service("mysterium")["docker"]["image"],
     "volumes": {"mysterium-data": {"bind": "/var/lib/mysterium-node", "mode": "rw"}},
@@ -446,8 +499,8 @@ def docker():
         yield fake
 
 
-def _archives(tree=None):
-    return state_backup.split_archives(docker_archive("mysterium-node", tree or MYSTERIUM_TREE))
+def _archives(tree=None, root=(0o755, 0, 0)):
+    return state_backup.split_archives(docker_archive("mysterium-node", tree or MYSTERIUM_TREE, root))
 
 
 class TestTheRestoreSequence:
@@ -475,9 +528,7 @@ class TestTheRestoreSequence:
         helper = next(c for c in docker.creates if c["name"].endswith(".restore"))
         assert helper["network_mode"] == "none" and helper["cap_drop"] == ["ALL"]
         assert "no-new-privileges:true" in helper["security_opt"]
-        assert {m["Target"]: m["Source"] for m in helper["mounts"]} == {
-            orchestrator.RESTORE_WRITE_DIR: "mysterium-data"
-        }
+        assert {m["Target"]: m["Source"] for m in helper["mounts"]} == {WRITE_MOUNT: "mysterium-data"}
         assert "cashpilot-mysterium.restore" not in docker.started
         assert ("container", "cashpilot-mysterium.restore") in docker.removed
 
@@ -521,6 +572,68 @@ class TestTheRestoreSequence:
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert docker.volume_map["mysterium-data"] is hidden and docker.puts == []
+
+    def test_the_folders_own_owner_and_mode_come_back_as_the_backup_had_them(self, docker):
+        result = orchestrator.restore_state("mysterium", _archives(root=(0o700, 1000, 1000)), MYSTERIUM_DEPLOY)
+        assert result["started"] is True
+        assert docker.volume_map["mysterium-data"].root == (0o700, 1000, 1000)
+
+    def test_a_folder_that_does_not_read_back_with_its_owner_and_mode_undoes_the_restore(self, docker):
+        """As Docker does with a "." entry for the folder written into: the root keeps the image's owner and mode."""
+        real_put = FakeContainer.put_archive
+
+        def root_skipped(self, path, data):
+            out = io.BytesIO()
+            with tarfile.open(fileobj=io.BytesIO(data)) as src, tarfile.open(fileobj=out, mode="w") as dst:
+                for member in src:
+                    if member.name != orchestrator.RESTORE_ROOT:
+                        dst.addfile(member, src.extractfile(member) if member.isfile() else None)
+            return real_put(self, path, out.getvalue())
+
+        with (
+            patch.object(FakeContainer, "put_archive", root_skipped),
+            pytest.raises(orchestrator.RestoreError, match="the folder itself: owner or permissions differ"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(root=(0o700, 1000, 1000)), MYSTERIUM_DEPLOY)
+        assert docker.started == [] and docker.container_map == {} and docker.volume_map == {}
+
+    EXTRA_DEPLOY = {
+        **MYSTERIUM_DEPLOY,
+        "volumes": {**MYSTERIUM_DEPLOY["volumes"], "mysterium-extra": {"bind": "/etc/extra", "mode": "rw"}},
+    }
+
+    def test_another_volume_another_client_made_after_the_check_is_never_removed(self, docker):
+        """Absent at the check is not made by this restore: one created first by someone else stays."""
+        real_exists = orchestrator._volume_exists
+
+        def raced(client, volume):
+            found = real_exists(client, volume)
+            if volume == "mysterium-extra":
+                docker.volumes.create("mysterium-extra", labels={"theirs": "1"})
+            return found
+
+        docker.corrupt_put = True
+        with (
+            patch.object(orchestrator, "_volume_exists", side_effect=raced),
+            pytest.raises(orchestrator.RestoreError, match="does not read back"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
+        assert docker.volume_map["mysterium-extra"].attrs["Labels"] == {"theirs": "1"}
+        assert ("volume", "mysterium-extra") not in docker.removed
+        assert "mysterium-data" not in docker.volume_map
+
+    def test_control_another_volume_this_restore_made_is_removed_on_failure(self, docker):
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError, match="does not read back"):
+            orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
+        assert docker.volume_map == {}
+
+    def test_control_another_volume_that_was_there_is_kept(self, docker):
+        docker.volumes.create("mysterium-extra", labels={"theirs": "1"})
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError, match="does not read back"):
+            orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
+        assert set(docker.volume_map) == {"mysterium-extra"}
 
     def test_a_read_back_that_differs_undoes_everything(self, docker):
         docker.corrupt_put = True
@@ -2208,9 +2321,7 @@ class TestStartAndRemoveAroundARestore:
         with patch.object(FakeVolume, "remove", side_effect=APIError("daemon timeout", response=response)):
             result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
         assert result["failed_volumes"] == ["mysterium-data"] and "mysterium-data" in docker.volume_map
-        assert docker.container_map["cashpilot-mysterium.restore"].mounts == {
-            orchestrator.RESTORE_WRITE_DIR: "mysterium-data"
-        }
+        assert docker.container_map["cashpilot-mysterium.restore"].mounts == {WRITE_MOUNT: "mysterium-data"}
         assert orchestrator._restore_helper("mysterium") is not None
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             self._deploy(docker)
@@ -2788,7 +2899,7 @@ class TestTheHelperMarksTheVolumeUntilItIsChecked:
 
         with patch.object(orchestrator, "_read_back", read_back):
             result = orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert seen == [{orchestrator.RESTORE_WRITE_DIR: "mysterium-data"}]
+        assert seen == [{WRITE_MOUNT: "mysterium-data"}]
         assert result["started"] is True and set(docker.container_map) == {"cashpilot-mysterium"}
 
     def test_the_helper_goes_right_before_the_start(self, docker):
@@ -2817,13 +2928,13 @@ class TestTheHelperMarksTheVolumeUntilItIsChecked:
         docker.container_map[service.name] = service
         made: list[Any] = [service]
         written: list[str] = []
-        payload = state_backup.relative_archive(_archives()["mysterium-node"])
+        payload = state_backup.relative_archive(_archives()["mysterium-node"], orchestrator.RESTORE_ROOT)
         mark = orchestrator._write_through_helper(
             docker, service, [("vol-a", payload), ("vol-b", payload)], made, written
         )
         assert mark.name == "cashpilot-two.restore" and made == [service, mark] and written == ["vol-a", "vol-b"]
         assert set(mark.mounts.values()) == {"vol-a", "vol-b"}
-        assert mark.mounts[orchestrator.RESTORE_WRITE_DIR] == "vol-a"
+        assert mark.mounts[WRITE_MOUNT] == "vol-a"
         assert docker.puts == [
             ("cashpilot-two.restore", orchestrator.RESTORE_WRITE_DIR),
             ("cashpilot-two.restore-1", orchestrator.RESTORE_WRITE_DIR),

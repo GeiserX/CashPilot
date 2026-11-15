@@ -1326,11 +1326,21 @@ HOLDS_UNREAD = (
 
 
 def _start_holds(orch: Any) -> tuple[set[str], set[str], str | None]:
-    """The names a failed deploy holds, the slugs an unfinished restore holds, and HOLDS_UNREAD when either cannot be read."""
+    """The names a failed deploy holds, the slugs an unfinished restore holds, and HOLDS_UNREAD when either cannot be read.
+
+    Each record is read on its own: one that cannot be read never drops what
+    the other says, so a running node either record holds is still stopped.
+    """
+    unread: str | None = None
     try:
-        return orch.deploy_failed(), orch.restore_marks(), None
-    except (orch.FailedMarksUnreadable, orch.RestoreRecordUnreadable):
-        return set(), set(), HOLDS_UNREAD
+        failed = orch.deploy_failed()
+    except orch.FailedMarksUnreadable:
+        failed, unread = set(), HOLDS_UNREAD
+    try:
+        restoring = orch.restore_marks()
+    except orch.RestoreRecordUnreadable:
+        restoring, unread = set(), HOLDS_UNREAD
+    return failed, restoring, unread
 
 
 #: A start the guard could not read back: stopped, but tried again next pass.

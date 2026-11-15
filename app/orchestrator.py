@@ -2800,9 +2800,14 @@ def read_critical_state(slug: str) -> tuple[bytes, list[str], str | None]:
 # not have: it could already create a container on any volume it owns.
 # ---------------------------------------------------------------------------
 
-#: Where the helper mounts the volume being restored. The socket proxy allows
-#: archive writes into this folder only (app/socket_policy.py container_archive).
+#: Where the helper writes. The socket proxy allows archive writes into this
+#: folder only (app/socket_policy.py container_archive).
 RESTORE_WRITE_DIR = "/run/cashpilot-secret"
+#: The folder in RESTORE_WRITE_DIR where the helper mounts the volume being
+#: restored. One level down, so the archive names the volume's root by this
+#: name and Docker gives it the backup's owner and mode: an entry for the
+#: folder written into itself (".") is skipped, which left the image's.
+RESTORE_ROOT = "volume"
 #: Suffix of the helper's name. A dot, so no service's container name can match.
 RESTORE_HELPER_SUFFIX = ".restore"
 #: Where the helper mounts the other volumes of a restore, which it only holds
@@ -3108,12 +3113,17 @@ def _refuse_mid_restore(slug: str, what: str) -> None:
         )
 
 
-def _create_restore_volume(client: Any, volume: str) -> None:
-    """Create ``volume`` new, or raise RestoreError when Docker handed back one that was there."""
+def _created_new(client: Any, volume: str) -> bool:
+    """Create ``volume`` with a fresh nonce: True when Docker made it new, False when it handed back one that was there."""
     nonce = secrets.token_hex(16)
     created = client.volumes.create(name=volume, labels={LABEL_RESTORE: nonce})
     labels = (getattr(created, "attrs", None) or {}).get("Labels") or {}
-    if labels.get(LABEL_RESTORE) != nonce:
+    return labels.get(LABEL_RESTORE) == nonce
+
+
+def _create_restore_volume(client: Any, volume: str) -> None:
+    """Create ``volume`` new, or raise RestoreError when Docker handed back one that was there."""
+    if not _created_new(client, volume):
         # Docker returns the existing volume for a name that exists. One the
         # proxy hid from the check above is still somebody's data.
         raise RestoreError(f"the volume {volume} already existed (it was hidden from this worker), so it was not used")
@@ -3194,11 +3204,11 @@ def _read_back(container: Any, target: str) -> bytes:
 def _create_restore_helper(client: Any, image: str, name: str, volumes: list[str]) -> Any:
     """A created, never started container mounting ``volumes``: nothing to run, no network, no capabilities.
 
-    The first is at RESTORE_WRITE_DIR, where a write goes; any other is only held, under RESTORE_HOLD_DIR.
+    The first is at RESTORE_ROOT in RESTORE_WRITE_DIR, where a write goes; any other is only held, under RESTORE_HOLD_DIR.
     """
     from docker.types import Mount
 
-    mounts = [Mount(RESTORE_WRITE_DIR, volumes[0], type="volume")]
+    mounts = [Mount(f"{RESTORE_WRITE_DIR}/{RESTORE_ROOT}", volumes[0], type="volume")]
     mounts += [Mount(f"{RESTORE_HOLD_DIR}/{n}", v, type="volume") for n, v in enumerate(volumes[1:], 1)]
     return client.containers.create(
         image=image,
@@ -3260,7 +3270,8 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
     starting it (deploy_raw, so every deploy check applies); write each archive
     into its volume through a helper that never starts (_write_through_helper);
     read each folder back from the restored container and compare every file,
-    link, owner and permission with the backup; start. Any failure removes the container
+    link, owner and permission with the backup, the folder's own owner and
+    permissions included (the write sets them); start. Any failure removes the container
     and every volume this call made. A fence-gated service holds
     GATED_DEPLOY_LOCK throughout, and is marked failed on disk before it is
     created until its data reads back right, so the guard never starts it
@@ -3280,7 +3291,7 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
         have = ", ".join(sorted(archives)) or "nothing"
         raise RestoreError(f"this backup holds {have}, but {slug} keeps {want}. It is not a backup of {slug}.", 400)
     expected = {by_folder[f]: state_backup.tree_manifest(data) for f, data in archives.items()}
-    payloads = {by_folder[f]: state_backup.relative_archive(data) for f, data in archives.items()}
+    payloads = {by_folder[f]: state_backup.relative_archive(data, RESTORE_ROOT) for f, data in archives.items()}
 
     gated = fence_gated(slug)
     lock = GATED_DEPLOY_LOCK if gated else contextlib.nullcontext()
@@ -3379,10 +3390,13 @@ def _restore_locked(
         for volume in targets.values():
             _create_restore_volume(client, volume)
             made.append(volume)
-        # The other volumes the service mounts (Anyone's config) are made
-        # by deploy_raw if missing; those it makes are removed on failure too.
-        existing = {v for v in before - set(made) if _volume_exists(client, v)}
-        made.extend(sorted(before - set(made) - existing))
+        # The other volumes the service mounts (Anyone's config): this restore
+        # creates the missing ones itself, so the undo removes only a volume it
+        # proved it made (its nonce came back). One another client made first,
+        # after the check, is used as a deploy would use it, and never removed.
+        for volume in sorted(before - set(made)):
+            if not _volume_exists(client, volume) and _created_new(client, volume):
+                made.append(volume)
         # The undecorated deploy_raw: this call already holds every lock its
         # decorators take, and their restore check would refuse this restore.
         container = client.containers.get(inspect.unwrap(deploy_raw)(slug=slug, **deploy, start=False))

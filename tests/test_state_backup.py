@@ -651,3 +651,39 @@ class TestAnUnusableKeyIsRejectedNotCrashed:
         recipient = X25519PrivateKey.generate()
         bundle = state_backup.seal(b"payload", recipient_public_key=recipient.public_key().public_bytes_raw().hex())
         assert state_backup.open_bundle(bundle, recipient_private_key=recipient.private_bytes_raw().hex()) == b"payload"
+
+
+class TestTheLiveDriverBacksUpWithTheCurrentReturn:
+    """scripts/socket_proxy_live_driver.py calls read_critical_state on a real worker; its unpacking must match."""
+
+    def test_the_migrated_phase_backs_up_and_checks_the_archive(self, capsys):
+        import importlib.util
+        import io
+        import pathlib
+        import tarfile
+        from unittest.mock import MagicMock, patch
+
+        from app import orchestrator
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            info = tarfile.TarInfo("var/lib/mysterium-node/keystore/UTC--node-key")
+            info.size = len(PAYLOAD)
+            tar.addfile(info, io.BytesIO(PAYLOAD))
+        path = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "socket_proxy_live_driver.py"
+        spec = importlib.util.spec_from_file_location("socket_proxy_live_driver", path)
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        with (
+            patch.object(orchestrator, "_find_container", return_value=MagicMock(id="old")),
+            patch.object(orchestrator, "restart_service"),
+            patch.object(
+                orchestrator, "read_critical_state", return_value=(buf.getvalue(), ["/var/lib/mysterium-node"], "s1")
+            ),
+            patch.object(orchestrator, "deploy_raw", return_value="new"),
+        ):
+            driver.phase_migrated()
+        out = capsys.readouterr().out
+        assert "FAIL" not in out, out
+        assert "PASS  the backup holds the node's keystore" in out
+        assert driver.FAILS == 0
