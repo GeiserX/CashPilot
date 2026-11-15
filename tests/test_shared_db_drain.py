@@ -47,10 +47,23 @@ def test_a_connection_whose_thread_died_is_drained_in_seconds(tmp_path):
     assert not conn._thread.is_alive()
     assert conn._running
 
-    drain = threading.Thread(target=close_shared_conns, args=([conn],), daemon=True)
+    # The warning filter above hides thread exceptions, so the drain's own
+    # error is caught here and raised again: a drain that crashes is not one
+    # that got through.
+    errors: list[BaseException] = []
+
+    def run_drain() -> None:
+        try:
+            close_shared_conns([conn])
+        except BaseException as exc:
+            errors.append(exc)
+
+    drain = threading.Thread(target=run_drain, daemon=True)
     drain.start()
     drain.join(timeout=20)
     assert not drain.is_alive(), "the drain waited on a connection whose thread is dead; CI would hang here"
+    if errors:
+        raise errors[0]
 
 
 def test_control_a_healthy_connection_is_closed_for_real(tmp_path):
