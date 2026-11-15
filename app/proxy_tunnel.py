@@ -1030,12 +1030,7 @@ def _ensure_tunnel(
     (_restore_retired).
     """
     label = shared_label(proxy_id, slug)
-    if files is None:
-        try:
-            files = secret_files(proxy or {}, own_ip, label)
-        except ProxyTunnelError as exc:
-            raise ProxyTunnelError(redact(str(exc), _secret_values(proxy or {})), exc.status_code) from None
-    secrets = [*_secret_values(proxy or {}), files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
+    files, secrets = _tunnel_settings(proxy, own_ip, label, files)
     image = tunnel_image()
     final = shared_tunnel_name(proxy_id, slug)
     staged = final + STAGED_SUFFIX
@@ -1057,6 +1052,8 @@ def _ensure_tunnel(
             return _in_place(client, current, proxy, own_ip, files, secrets, deadline=deadline)
         except _Broken as exc:
             logger.warning("The tunnel of proxy %s cannot start in place (%s); replacing it", proxy_id, exc)
+    if current is not None:
+        _refuse_foreign_retired_name(client, current, final, keep, proxy_id, slug)
     # Left by a deploy that died midway, on this name only if it is ours. A young
     # one can belong to a deploy another worker on this daemon is running.
     if (leftover := _get(client, staged)) is not None:
@@ -1099,6 +1096,39 @@ def _ensure_tunnel(
                 current.rename(final)
         raise
     return new, exit_info
+
+
+def _tunnel_settings(
+    proxy: dict[str, Any] | None, own_ip: str | None, label: str, files: dict[str, str] | None = None
+) -> tuple[dict[str, str], list[str]]:
+    """The files a tunnel gets for ``proxy`` (or ``files``, already read), and every secret value to redact."""
+    if files is None:
+        try:
+            files = secret_files(proxy or {}, own_ip, label)
+        except ProxyTunnelError as exc:
+            raise ProxyTunnelError(redact(str(exc), _secret_values(proxy or {})), exc.status_code) from None
+    secrets = [*_secret_values(proxy or {}), files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
+    return files, secrets
+
+
+def _refuse_foreign_retired_name(
+    client: Any, current: Any, final: str, keep: str | None, proxy_id: int, slug: str | None
+) -> None:
+    """Refuse, before anything changes, a replacement whose only earner ``keep`` cannot be kept aside.
+
+    That happens when a container CashPilot did not make holds the retired
+    name: _keep_aside could not rename the tunnel there, so the earner the
+    caller replaces would be recreated in the new tunnel and lose its
+    writable layer before the deploy can fail."""
+    members = _members(client, current)
+    if keep is None or not members or any(str(m.name) != keep for m in members):
+        return
+    in_way = _get(client, final + RETIRED_SUFFIX)
+    if in_way is not None and not _is_tunnel_for(in_way, proxy_id, slug):
+        raise ProxyTunnelError(
+            f"A container named {in_way.name} that CashPilot did not create is in the way, so {keep} and its "
+            f"tunnel were left as they were. Remove or rename that container and deploy again."
+        )
 
 
 def _keep_aside(client: Any, current: Any, final: str, keep: str | None, proxy_id: int, slug: str | None) -> bool:
@@ -1662,6 +1692,11 @@ def _commit(client: Any, name: str, previous: Any | None, *, clear_new: bool) ->
     try:
         _remove_quietly(aside, 2, volumes=False)
     except Exception as exc:  # noqa: BLE001 - reported, and the deploy undone
+        # A removal can take effect and still error (a timed-out DELETE): one
+        # gone after all is a success, never a failure reported over the new copy.
+        with contextlib.suppress(Exception):
+            if _get(client, str(previous.id)) is None:
+                return
         raise ProxyTunnelError(
             f"{name} was not replaced: the worker could not record on disk that the deploy went through, and "
             f"Docker would not remove the previous copy ({redact(str(exc))}). The previous copy is kept."
@@ -1907,25 +1942,28 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
     if proxy is not None:
         # A routed service keeps its own tunnel; anything else is a shared copy.
         key = _own_key(tunnel) if _is_shared(tunnel) else (slug if _routed_here(slug, proxy_id) else None)
-        shared, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, slug=key)
-        # An earner a failed redeploy left in its old tunnel under the retired
-        # name, which _ensure_tunnel could not give back (another copy holds
-        # the name): it starts there, as the heartbeat starts it, and is never
-        # recreated, which would lose its writable layer. The tunnel gets its
-        # name back once that name is free (_reclaim_retired); a deploy replaces both.
-        retired = _get(client, shared_tunnel_name(proxy_id, key) + RETIRED_SUFFIX)
+        final = shared_tunnel_name(proxy_id, key)
+        _reclaim_retired(client, proxy_id, key, final)
+        retired = _get(client, final + RETIRED_SUFFIX)
         held_in = _get(client, name)
-        if (
-            _is_tunnel_for(retired, proxy_id, key)
-            and retired.id != shared.id
-            and held_in is not None
-            and _tunnel_id_of(held_in) == retired.id
-        ):
-            retired.reload()
-            if retired.status != "running":
-                refresh_proxy_ip(retired)
-                retired.start()
-            shared, exit_info = retired, _wait_ready(retired)
+        if _is_tunnel_for(retired, proxy_id, key) and held_in is not None and _tunnel_id_of(held_in) == retired.id:
+            # An earner a failed redeploy left in its old tunnel under the retired
+            # name, which could not get its name back (another copy holds it):
+            # that tunnel takes the settings and starts in place, and the earner
+            # starts there, never recreated, which would lose its writable layer.
+            # In place rewrites every file (own_ip too, which the leak guard
+            # reads) and redacts the old and new credentials from its errors.
+            # The tunnel gets its name back once that name is free; a deploy
+            # replaces both.
+            files, secrets = _tunnel_settings(proxy, own_ip, shared_label(proxy_id, key))
+            try:
+                shared, exit_info = _in_place(client, retired, proxy, own_ip, files, secrets)
+            except _Broken as exc:
+                raise ProxyTunnelError(
+                    f"Docker could not start {retired.name} ({exc}), so {name} was not started"
+                ) from None
+        else:
+            shared, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, slug=key)
     else:
         if tunnel is None:
             raise ProxyTunnelError(

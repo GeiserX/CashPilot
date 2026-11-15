@@ -3141,3 +3141,97 @@ class TestARecoveredSharedCopyIsNeverRecreated:
         assert docker.named(NAME) is earner and earner.status == "running"
         assert _member_ids(docker, old_tunnel) == [NAME] and old_tunnel.status == "running"
         assert _member_ids(docker, new_tunnel) == ["cashpilot-earnapp-p3"]
+
+    @staticmethod
+    def _stopped_in_retired_tunnel(docker):
+        """honeygain stopped in its old tunnel under the retired name, earnapp in the new tunnel under the name."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        old_tunnel = docker.named("cashpilot-tunnel-p3")
+        stub, _made, refused = _failing_redeploy(docker, earner)
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+            with (
+                patch.object(orchestrator, "deploy_raw", side_effect=stub),
+                pytest.raises(orchestrator.ContainerRuntimeError),
+            ):
+                _deploy("honeygain")
+            _deploy("earnapp")
+        refused["on"] = False
+        _heartbeat()
+        proxy_tunnel.stop("honeygain", 3)
+        assert old_tunnel.name == "cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX
+        assert old_tunnel.status == "exited" and docker.named(NAME) is earner
+        return earner, old_tunnel
+
+    def test_a_start_after_a_password_change_runs_it_on_the_new_settings_and_own_ip(self, docker):
+        """The retired tunnel takes the settings the owner sent and the box's current address, in place."""
+        earner, old_tunnel = self._stopped_in_retired_tunnel(docker)
+        proxy_tunnel.start("honeygain", 3, _socks(password=NEW_PASSWORD), "198.51.100.7")
+        assert old_tunnel.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", NEW_PASSWORD)
+        assert old_tunnel.files["own_ip"] == "198.51.100.7"
+        assert docker.named(NAME) is earner and earner.status == "running"
+        assert _member_ids(docker, old_tunnel) == [NAME] and old_tunnel.status == "running"
+
+    @pytest.mark.parametrize("password", [PASSWORD, NEW_PASSWORD])
+    def test_a_failed_start_keeps_the_old_password_out_of_the_error(self, docker, password):
+        """Its log holds the old password; the error the UI shows never does, whether or not it changed."""
+        earner, old_tunnel = self._stopped_in_retired_tunnel(docker)
+        real_ready = docker.ready
+        docker.ready = lambda c: c.id != old_tunnel.id and real_ready(c)  # only its own tunnel finds no exit
+        old_tunnel.logs = lambda tail=5: f"tun2proxy: auth u1 {PASSWORD} refused".encode()
+        with pytest.raises(proxy_tunnel.ProxyTunnelError) as caught:
+            proxy_tunnel.start("honeygain", 3, _socks(password=password))
+        assert "refused" in str(caught.value) and PASSWORD not in str(caught.value)
+        assert earner.status == "exited" and old_tunnel.status == "exited"
+
+
+class TestAnOldEarnerRemovedDespiteAnError:
+    def test_a_removal_that_took_effect_but_errored_is_a_success(self, docker):
+        """deploy_raw could not remove the old earner and the record cannot go; the commit's DELETE times out after it worked."""
+        _deploy("honeygain")
+        old = docker.named(NAME)
+        real_remove = old.remove
+        calls = {"n": 0}
+
+        def remove(force=False, v=False):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise APIError("500 Server Error: removal failed")
+            real_remove(force=force, v=v)
+            raise APIError("500 Server Error: read timed out")
+
+        old.remove = remove
+        with _clearing_fails("KEPT_MARKER"):
+            result = _deploy("honeygain")
+            new = docker.named(NAME)
+            assert result["container_id"] == new.id != old.id and new.status == "running"
+            assert old.id not in docker.by_id
+            _heartbeat()
+        assert docker.named(NAME) is new and new.status == "running"
+
+
+class TestAForeignContainerOnTheRetiredName:
+    def test_a_redeploy_on_a_new_tunnel_image_is_refused_before_anything_changes(self, docker):
+        """The old tunnel cannot be kept aside, so the earner would be recreated: nothing is touched instead."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        foreign = docker.create(name="cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX, labels={}, image="x")
+        before = set(docker.by_id)
+        with (
+            patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match=r"cashpilot-tunnel-p3\.old"),
+        ):
+            _deploy("honeygain")
+        assert set(docker.by_id) == before
+        assert docker.named(NAME) is earner and earner.status == "running"
+        assert docker.named("cashpilot-tunnel-p3") is tunnel and tunnel.status == "running"
+        assert _member_ids(docker, tunnel) == [NAME] and foreign.name.endswith(".old")
+
+    def test_control_without_it_the_redeploy_takes_the_new_image(self, docker):
+        _deploy("honeygain")
+        old = docker.named(NAME)
+        with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}):
+            _deploy("honeygain")
+        (tunnel,) = docker.tunnels()
+        assert tunnel.attrs["Config"]["Image"] == NEW_IMAGE and old.id not in docker.by_id
