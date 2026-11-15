@@ -1412,6 +1412,93 @@ class TestTheWholeWayToReadyFitsTheWorkersWait:
         assert '"ip":"203.0.113.7"' in (tmp_path / "ready").read_text()
 
 
+def _stub_clock_bin(tmp_path: Path, curl_cases: str) -> tuple[Path, Path]:
+    """Stub date, sleep and curl on a clock that a wait moves on; ``curl_cases`` is a case body on the URL ($*)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    clock = tmp_path / "clock"
+    clock.write_text("0")
+    nap = f"nap() {{ echo $(($(cat {clock}) + $1)) >{clock}; }}\n"
+    stubs = {
+        "date": f"cat {clock}",
+        "sleep": f'{nap}nap "$1"',
+        "curl": nap + 'm=\nprev=\nfor a in "$@"; do case "$prev" in -m | --max-time) m=$a ;; esac; prev=$a; done\n'
+        f'now=$(cat {clock})\ncase "$*" in\n{curl_cases}esac\n'
+        # Anything else stalls for all the time it is given.
+        'nap "$m"\nexit 28',
+    }
+    for name, stub in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{stub}\n")
+        (bin_dir / name).chmod(0o755)
+    (bin_dir / "cp-probe").write_text(_CP_PROBE.read_text())
+    (bin_dir / "cp-probe").chmod(0o755)
+    return bin_dir, clock
+
+
+class TestTheProbeNeverRunsPastTheWorkersWait:
+    """The worker reads /run/ready for 45 s, 5 s past cp-tunnel's 40 s deadline.
+    A step started in those 5 s used to get its full cap again, and the country
+    lookup its 8 s, so an exit IP found there was written after the worker had
+    given up on a proxy that works."""
+
+    @pytest.mark.parametrize("start", range(30, 43))
+    def test_an_answer_found_before_the_wait_ends_is_printed_before_it(self, tmp_path, start):
+        """api.ipify.org stalls, ifconfig.me answers in 1 s, the country stalls."""
+        import subprocess
+
+        bin_dir, clock = _stub_clock_bin(
+            tmp_path, '*https://ifconfig.me/ip*) if [ "$m" -ge 1 ]; then nap 1; echo 203.0.113.7; exit 0; fi ;;\n'
+        )
+        clock.write_text(str(start))
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CP_DEADLINE": "40"}
+        proc = subprocess.run(["sh", str(bin_dir / "cp-probe")], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 0, proc.stderr
+        assert '"ip":"203.0.113.7"' in proc.stdout
+        assert int(clock.read_text()) < proxy_tunnel.READY_TIMEOUT
+
+    def test_control_after_the_wait_the_country_gets_its_full_time(self, tmp_path):
+        """Nobody waits any more: the country lookup gets its 8 s and labels the answer."""
+        import subprocess
+
+        bin_dir, clock = _stub_clock_bin(
+            tmp_path,
+            "*https://api.ipify.org*) echo 203.0.113.7; exit 0 ;;\n"
+            '*ipinfo.io*) if [ "$m" -ge 8 ]; then echo ES; exit 0; fi ;;\n',
+        )
+        clock.write_text("46")
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CP_DEADLINE": "40"}
+        proc = subprocess.run(["sh", str(bin_dir / "cp-probe")], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.stdout.strip() == '{"ip":"203.0.113.7","country":"ES"}'
+
+    def test_a_second_attempt_after_the_deadline_is_ready_inside_the_wait(self, tmp_path):
+        """Attempt 1 fails on all three endpoints (8 + 8 + 4 s) and ends at the deadline;
+        attempt 2 starts at 41, api.ipify.org answers in 1 s and the country stalls."""
+        import subprocess
+
+        start = _CP_TUNNEL.index("DEADLINE=")
+        deadline = _CP_TUNNEL[start : _CP_TUNNEL.index("\n}\n", start) + 3]
+        start = _CP_TUNNEL.index("probe_until_ready() {")
+        ready = tmp_path / "ready"
+        probe = _CP_TUNNEL[start : _CP_TUNNEL.index("\n}\n", start) + 3].replace("/run/ready", str(ready))
+        bin_dir, clock = _stub_clock_bin(
+            tmp_path, '*https://api.ipify.org*) if [ "$now" -ge 41 ]; then nap 1; echo 203.0.113.7; exit 0; fi ;;\n'
+        )
+        script = f"OWN_IP=198.51.100.1\n{deadline}echo 20 >{clock}\n{probe}probe_until_ready\n"
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.returncode == 0, proc.stderr
+        assert '"ip":"203.0.113.7"' in ready.read_text()
+        assert int(clock.read_text()) < proxy_tunnel.READY_TIMEOUT
+
+    def test_both_scripts_count_until_the_workers_wait_ends(self):
+        """cp-tunnel's deadline plus the grace both caps keep after it is the worker's 45 s."""
+        margin = re.search(r"^DEADLINE=\$\(\(\$\(date \+%s\) \+ (\d+)\)\)$", _CP_TUNNEL, re.M)
+        assert margin
+        for text in (_CP_TUNNEL, _CP_PROBE.read_text()):
+            grace = re.findall(r'\[ "\$left" -lt -(\d+) \]', text)
+            assert grace and {int(g) for g in grace} == {int(proxy_tunnel.READY_TIMEOUT) - int(margin.group(1))}
+
+
 class TestTheTunnelWaitsForDnsInsideTheReadyBudget:
     def test_another_probe_endpoint_that_resolves_ends_the_wait(self, tmp_path):
         """A resolver that fails api.ipify.org only: cp-probe reaches ifconfig.me, so the wait stops there."""

@@ -6,12 +6,14 @@
 # CP_DEADLINE (set by cp-tunnel): the epoch second by which the worker reads
 # the answer. Until then each request gets its cap or the time left, whichever
 # is less, and at least 1 s; the country, which only labels the answer, is
-# skipped with under 2 s left. Past it nobody waits: full time again.
+# skipped with under 2 s left. The worker waits 5 s past the deadline, so those
+# 5 s count too: 1 s per request, no country. Only after them does nobody
+# wait, and every request gets its full time again.
 set -u
 
 cap() {
     left=$((${CP_DEADLINE:-0} - $(date +%s)))
-    if [ -z "${CP_DEADLINE:-}" ] || [ "$left" -lt 0 ] || [ "$left" -ge "$1" ]; then
+    if [ -z "${CP_DEADLINE:-}" ] || [ "$left" -lt -5 ] || [ "$left" -ge "$1" ]; then
         echo "$1"
     elif [ "$left" -lt 1 ]; then echo 1; else echo "$left"; fi
 }

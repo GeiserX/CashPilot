@@ -40,12 +40,14 @@ rm -f /run/ready
 # (proxy_tunnel.READY_TIMEOUT). Each step below that can wait gets its own cap
 # or the time left, whichever is less, and at least 1 s (cap); cp-probe does
 # the same (CP_DEADLINE). So slow steps add up to the deadline, never past it.
-# Once it has passed the worker no longer waits, and the steps get their full
-# time again: the heartbeat still reads a tunnel that gets ready later.
+# The 5 s between the deadline and the worker's 45 s still count: there each
+# step gets 1 s. Only once the worker has stopped waiting (more than 5 s past
+# the deadline) do the steps get their full time again: the heartbeat still
+# reads a tunnel that gets ready later.
 DEADLINE=$(($(date +%s) + 40))
 cap() {
     left=$((DEADLINE - $(date +%s)))
-    if [ "$left" -lt 0 ] || [ "$left" -ge "$1" ]; then echo "$1"; elif [ "$left" -lt 1 ]; then echo 1; else echo "$left"; fi
+    if [ "$left" -lt -5 ] || [ "$left" -ge "$1" ]; then echo "$1"; elif [ "$left" -lt 1 ]; then echo 1; else echo "$left"; fi
 }
 
 DEV=$(ip -4 route show default | awk '{print $5; exit}')
