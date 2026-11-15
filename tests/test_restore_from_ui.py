@@ -296,7 +296,13 @@ class TestTheComparison:
 class FakeVolume:
     def __init__(self, docker: FakeDocker, name: str, labels: dict[str, str]):
         self.docker, self.name = docker, name
-        self.attrs = {"Name": name, "Labels": dict(labels)}
+        # Docker gives each volume the time it made it: a volume made again under the name reads another.
+        docker.made += 1
+        self.attrs = {
+            "Name": name,
+            "Labels": dict(labels),
+            "CreatedAt": f"2026-11-14T10:{docker.made // 60:02d}:{docker.made % 60:02d}Z",
+        }
         self.files: dict[str, tuple[tarfile.TarInfo, bytes | None]] = {}
         # The root's (mode, uid, gid): Docker gives a new volume the image folder's.
         self.root = (0o755, 0, 0)
@@ -430,6 +436,7 @@ class FakeContainers:
 class FakeDocker:
     def __init__(self):
         self.volume_map: dict[str, FakeVolume] = {}
+        self.made = 0
         self.container_map: dict[str, FakeContainer] = {}
         self.volumes = FakeVolumes(self)
         self.containers = FakeContainers(self)
@@ -491,6 +498,34 @@ def _marker_io(monkeypatch, path: str, error: OSError, mode: str | None = None) 
         return real_open(file, *args, **kwargs)
 
     monkeypatch.setattr(orchestrator, "open", fake_open, raising=False)
+
+
+def _assert_kept_and_held(docker: FakeDocker, *volumes: str, slug: str = "mysterium") -> None:
+    """What a failed restore's undo leaves: no volume deleted, the ones it made kept, its record holding the slug.
+
+    Docker deletes a volume by name only, so the undo cannot prove at the
+    delete that a volume is still the one it made, and never deletes one.
+    """
+    assert not [r for r in docker.removed if r[0] == "volume"]
+    assert set(volumes) <= set(docker.volume_map)
+    assert slug in orchestrator.restore_marks()
+    assert set(volumes) <= set(orchestrator._restore_mark_volumes(slug))
+
+
+def _owner_removes(slug: str, **kwargs: Any) -> dict[str, Any]:
+    """Remove ``slug`` with its data as the dashboard's owner does.
+
+    The box first names the critical volumes it finds (a CriticalVolumeError
+    with their critical_set), the owner reviews exactly those, and the delete
+    goes with that set: never the override alone.
+    """
+    try:
+        return orchestrator.remove_service(slug, delete_volumes=True, **kwargs)
+    except orchestrator.CriticalVolumeError as refusal:
+        reviewed = refusal.critical_set
+    return orchestrator.remove_service(
+        slug, delete_volumes=True, allow_delete_critical=True, approved_critical=reviewed, **kwargs
+    )
 
 
 @pytest.fixture
@@ -602,7 +637,8 @@ class TestTheRestoreSequence:
             pytest.raises(orchestrator.RestoreError, match="the folder itself: owner or permissions differ"),
         ):
             orchestrator.restore_state("mysterium", _archives(root=(0o700, 1000, 1000)), MYSTERIUM_DEPLOY)
-        assert docker.started == [] and docker.container_map == {} and docker.volume_map == {}
+        assert docker.started == [] and "cashpilot-mysterium" not in docker.container_map
+        _assert_kept_and_held(docker, "mysterium-data")
 
     EXTRA_DEPLOY = {
         **MYSTERIUM_DEPLOY,
@@ -627,35 +663,43 @@ class TestTheRestoreSequence:
             orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
         assert docker.volume_map["mysterium-extra"].attrs["Labels"] == {"theirs": "1"}
         assert ("volume", "mysterium-extra") not in docker.removed
-        assert "mysterium-data" not in docker.volume_map
+        # Not this restore's, so not named as what it left or holds.
+        assert "mysterium-extra" not in orchestrator._restore_mark_volumes("mysterium")
+        _assert_kept_and_held(docker, "mysterium-data")
 
-    def test_control_another_volume_this_restore_made_is_removed_on_failure(self, docker):
+    def test_control_another_volume_this_restore_made_is_kept_and_held_on_failure(self, docker):
         docker.corrupt_put = True
-        with pytest.raises(orchestrator.RestoreError, match="does not read back"):
+        with pytest.raises(orchestrator.RestoreError, match="does not read back") as caught:
             orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
-        assert docker.volume_map == {}
+        _assert_kept_and_held(docker, "mysterium-data", "mysterium-extra")
+        assert "mysterium-extra" in orchestrator._restore_mark_volumes("mysterium")
+        assert set(caught.value.left) == {"mysterium-data", "mysterium-extra"}
 
     def test_control_another_volume_that_was_there_is_kept(self, docker):
         docker.volumes.create("mysterium-extra", labels={"theirs": "1"})
         docker.corrupt_put = True
         with pytest.raises(orchestrator.RestoreError, match="does not read back"):
             orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
-        assert set(docker.volume_map) == {"mysterium-extra"}
+        assert set(docker.volume_map) == {"mysterium-data", "mysterium-extra"}
+        assert "mysterium-extra" not in orchestrator._restore_mark_volumes("mysterium")
 
-    def test_a_read_back_that_differs_undoes_everything(self, docker):
+    def test_a_read_back_that_differs_undoes_everything_but_the_volume(self, docker):
         docker.corrupt_put = True
-        with pytest.raises(orchestrator.RestoreError, match="does not read back as the backup.*removed"):
+        with pytest.raises(
+            orchestrator.RestoreError, match="does not read back as the backup.*removed.*mysterium-data.*stays held"
+        ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert docker.started == []
-        assert docker.container_map == {} and docker.volume_map == {}
+        assert docker.started == [] and "cashpilot-mysterium" not in docker.container_map
+        _assert_kept_and_held(docker, "mysterium-data")
 
-    def test_a_docker_failure_mid_write_undoes_everything(self, docker):
+    def test_a_docker_failure_mid_write_undoes_everything_but_the_volume(self, docker):
         with (
             patch.object(FakeContainer, "put_archive", side_effect=RuntimeError("boom")),
             pytest.raises(orchestrator.RestoreError, match="undone"),
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert docker.container_map == {} and docker.volume_map == {} and docker.started == []
+        assert "cashpilot-mysterium" not in docker.container_map and docker.started == []
+        _assert_kept_and_held(docker, "mysterium-data")
 
     def test_a_backup_of_other_folders_is_refused(self, docker):
         other = state_backup.split_archives(docker_archive("proxybase", MYSTERIUM_TREE))
@@ -779,19 +823,19 @@ class TestAFenceGatedRestore:
         assert gated.container_map[self.NAME].status == "created"
         assert self.NAME in orchestrator._failed_on_disk()
 
-    def test_a_failed_restore_that_removed_everything_leaves_no_hold(self, gated):
-        gated.corrupt_put = True
-        with pytest.raises(orchestrator.RestoreError):
+    def test_a_failed_restore_that_made_nothing_leaves_no_hold(self, gated):
+        with (
+            patch.object(orchestrator, "_create_restore_volume", side_effect=orchestrator.RestoreError("refused")),
+            pytest.raises(orchestrator.RestoreError),
+        ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert gated.container_map == {} and self.NAME not in orchestrator.deploy_failed()
+        assert gated.container_map == {} and gated.volume_map == {}
+        assert self.NAME not in orchestrator.deploy_failed() and "mysterium" not in orchestrator.restore_marks()
 
-    def test_a_written_volume_the_undo_could_not_remove_stays_held(self, gated):
+    def test_a_written_volume_the_undo_keeps_stays_held(self, gated):
         """The name is free, but the unchecked volume stayed: the failed mark must not be lifted."""
         gated.corrupt_put = True
-        with (
-            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
-            pytest.raises(orchestrator.RestoreError, match="by hand"),
-        ):
+        with pytest.raises(orchestrator.RestoreError, match="stays held"):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert self.NAME not in gated.container_map and "mysterium-data" in gated.volume_map
         assert self.NAME in orchestrator._failed_on_disk()
@@ -2023,7 +2067,8 @@ class TestTheWorkerChecksTheCriticalDeleteApproval:
             delete_volumes=True,
             allow_delete_critical=True,
             only_if_restore_unfinished=False,
-            approved_critical=None,
+            # The approval named no reviewed set, so the removal deletes no critical volume.
+            approved_critical="",
         )
 
     @pytest.mark.parametrize("query", ["?delete_volumes=true", "?allow_delete_critical=true", ""])
@@ -2218,7 +2263,8 @@ class TestTheRestoreSafetyBranches:
             pytest.raises(orchestrator.RestoreError, match="started before the restore finished"),
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert docker.container_map == {} and docker.volume_map == {} and docker.started == []
+        assert "cashpilot-mysterium" not in docker.container_map and docker.started == []
+        _assert_kept_and_held(docker, "mysterium-data")
 
     def test_a_volume_the_proxy_will_not_show_counts_as_there(self, docker):
         response = requests.Response()
@@ -2257,8 +2303,9 @@ class TestTheRestoreSafetyBranches:
         with patch.object(FakeContainer, "remove", remove), pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert tries.count("cashpilot-mysterium.restore") == 2
-        assert docker.container_map == {} and docker.volume_map == {}
-        assert caught.value.left == []
+        assert "cashpilot-mysterium" not in docker.container_map
+        _assert_kept_and_held(docker, "mysterium-data")
+        assert caught.value.left == ["mysterium-data"]
 
 
 class TestStartAndRemoveAroundARestore:
@@ -2320,7 +2367,7 @@ class TestStartAndRemoveAroundARestore:
 
     def test_remove_clears_the_leftover_helper_so_the_volume_goes(self, docker):
         self._service(docker, helper=True)
-        result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        result = _owner_removes("mysterium")
         assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
         assert docker.container_map == {} and docker.volume_map == {}
 
@@ -2330,7 +2377,7 @@ class TestStartAndRemoveAroundARestore:
         response = requests.Response()
         response.status_code = 500
         with patch.object(FakeVolume, "remove", side_effect=APIError("daemon timeout", response=response)):
-            result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            result = _owner_removes("mysterium")
         assert result["failed_volumes"] == ["mysterium-data"] and "mysterium-data" in docker.volume_map
         assert docker.container_map["cashpilot-mysterium.restore"].mounts == {WRITE_MOUNT: "mysterium-data"}
         assert orchestrator._restore_helper("mysterium") is not None
@@ -2344,7 +2391,7 @@ class TestStartAndRemoveAroundARestore:
         with pytest.raises(orchestrator.CriticalVolumeError):
             orchestrator.remove_service("mysterium", delete_volumes=True)
         assert "cashpilot-mysterium.restore" in docker.container_map and "mysterium-data" in docker.volume_map
-        result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        result = _owner_removes("mysterium")
         assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
         assert docker.container_map == {} and docker.volume_map == {}
         with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
@@ -2365,7 +2412,7 @@ class TestStartAndRemoveAroundARestore:
         """A transport error is not an APIError; the half-written volume that stays must keep its mark."""
         self._service(docker, helper=True)
         with patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")):
-            result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            result = _owner_removes("mysterium")
         assert result["failed_volumes"] == ["mysterium-data"] and "mysterium-data" in docker.volume_map
         assert orchestrator._restore_helper("mysterium") is not None
         # A restore tried next on this box keeps the mark it put back.
@@ -2401,29 +2448,28 @@ class TestStartAndRemoveAroundARestore:
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             self._deploy(docker)
 
-    def test_an_undo_whose_volume_delete_times_out_keeps_the_mark(self, docker):
-        """The data did not read back, and the undo's volume delete timed out: the unchecked volume stays marked."""
+    def test_an_undo_keeps_the_unchecked_volume_marked(self, docker):
+        """The data did not read back: the undo keeps the unchecked volume, marked."""
         docker.corrupt_put = True
-        with (
-            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
-            pytest.raises(orchestrator.RestoreError, match="by hand"),
-        ):
+        with pytest.raises(orchestrator.RestoreError, match="stays held"):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert "cashpilot-mysterium" not in docker.container_map and "mysterium-data" in docker.volume_map
         assert orchestrator._restore_helper("mysterium") is not None
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             self._deploy(docker)
 
-    def test_an_undo_that_removes_everything_leaves_no_mark(self, docker):
-        docker.corrupt_put = True
-        with pytest.raises(orchestrator.RestoreError):
+    def test_an_undo_that_made_nothing_leaves_no_mark(self, docker):
+        with (
+            patch.object(orchestrator, "_create_restore_volume", side_effect=orchestrator.RestoreError("refused")),
+            pytest.raises(orchestrator.RestoreError),
+        ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert docker.container_map == {} and docker.volume_map == {}
-        assert orchestrator._restore_helper("mysterium") is None
+        assert orchestrator._restore_helper("mysterium") is None and "mysterium" not in orchestrator.restore_marks()
 
     def test_remove_with_no_container_and_no_helper_is_still_not_found(self, docker):
         with pytest.raises(ValueError):
-            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            _owner_removes("mysterium")
 
     def _deploy(self, docker):
         """The real deploy_raw, as the worker's deploy route calls it. The fake has no image, so
@@ -2482,7 +2528,7 @@ class TestStartAndRemoveAroundARestore:
 
         def put(self, path, data):
             try:
-                orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+                _owner_removes("mysterium")
             except orchestrator.ContainerRuntimeError as exc:
                 seen.append(exc)
             return real_put(self, path, data)
@@ -2536,7 +2582,7 @@ class TestStartAndRemoveAroundARestore:
 
 
 class TestABoxWithOnlyAPartialRestore:
-    """An undo or a Remove whose volume delete failed leaves the helper and the volume, and no container.
+    """An undo (it keeps every volume it made) or a Remove whose volume delete failed leaves the helper and the volume.
 
     The box lists no container of the service, so the heartbeat names the slug
     and the dashboard draws that box's Remove from this box from it.
@@ -2621,9 +2667,15 @@ class TestABoxWithOnlyAPartialRestore:
         headers = {"Authorization": f"Bearer {WORKER_KEY}"}
         resp = worker.client.delete("/api/containers/mysterium", headers=headers)
         assert resp.status_code == 409 and resp.json()["detail"]["error"] == "restore_unfinished"
+        # The owner's yes to the partial restore: the box first names what it finds critical.
+        retry = "/api/containers/mysterium?delete_volumes=true&only_if_restore_unfinished=true"
+        resp = worker.client.delete(retry, headers=headers)
+        assert resp.status_code == 409 and resp.json()["detail"]["error"] == "critical_volume"
+        reviewed = resp.json()["detail"]["critical_set"]
+        assert reviewed.startswith("mysterium-data@2026-")
         resp = worker.client.delete(
-            "/api/containers/mysterium?delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true",
-            headers={**headers, **_delete_approval()},
+            f"{retry}&allow_delete_critical=true&critical_set={urllib.parse.quote(reviewed, safe='')}",
+            headers={**headers, **_bound_delete_approval(reviewed)},
         )
         assert resp.status_code == 200, resp.text
         assert docker.container_map == {} and docker.volume_map == {}
@@ -2636,18 +2688,14 @@ class TestTheDeleteOfAPartialRestoreIsTiedToIt:
     def test_a_restore_that_succeeded_meanwhile_is_not_deleted(self, docker):
         TestStartAndRemoveAroundARestore()._service(docker)  # the box runs a verified node now, no helper
         with pytest.raises(orchestrator.RestoreClearedError) as caught:
-            orchestrator.remove_service(
-                "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
-            )
+            _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert caught.value.status_code == 409
         assert "cashpilot-mysterium" in docker.container_map and "mysterium-data" in docker.volume_map
         assert docker.removed == []
 
     def test_the_partial_restore_itself_is_deleted(self, docker):
         TestStartAndRemoveAroundARestore()._service(docker, helper=True)
-        result = orchestrator.remove_service(
-            "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
-        )
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == ["mysterium-data"]
         assert docker.container_map == {} and docker.volume_map == {}
 
@@ -2925,11 +2973,14 @@ class TestTheHelperMarksTheVolumeUntilItIsChecked:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert at_start == [None]
 
-    def test_a_failed_read_back_still_undoes_everything(self, docker):
+    def test_a_failed_read_back_still_undoes_everything_but_the_volume(self, docker):
         docker.corrupt_put = True
         with pytest.raises(orchestrator.RestoreError, match="does not read back as the backup"):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert docker.container_map == {} and docker.volume_map == {} and docker.started == []
+        assert "cashpilot-mysterium" not in docker.container_map and docker.started == []
+        # The written volume keeps its helper, the mark of a half-written volume.
+        assert orchestrator._restore_helper("mysterium") is not None
+        _assert_kept_and_held(docker, "mysterium-data")
 
     def test_every_volume_of_a_restore_stays_held_by_the_one_helper(self, docker):
         """Two volumes: the restore's helper holds both from before the first write; the second writer goes."""
@@ -2968,14 +3019,14 @@ class TestARemovalHoldsItsServiceAgainstARestore:
             return real_helper(slug)
 
         with patch.object(orchestrator, "_restore_helper", racing), pytest.raises(ValueError):
-            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            _owner_removes("mysterium")
         assert "a removal of mysterium is running on this box" in outcome["restore"]
         assert docker.creates == [] and docker.volume_map == {} and docker.started == []
         assert orchestrator._removing == {}
 
     def test_the_hold_ends_with_the_removal(self, docker):
         with pytest.raises(ValueError):
-            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            _owner_removes("mysterium")
         assert orchestrator._removing == {}
         assert orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)["started"] is True
 
@@ -3114,7 +3165,7 @@ class TestAServiceNotFenceGatedStaysHeldAfterACrash:
 
         with (
             patch.object(orchestrator, "_write_through_helper", die),
-            patch.object(orchestrator, "_restore_cleanup", lambda *a, **k: []),
+            patch.object(orchestrator, "_restore_cleanup", lambda *a, **k: ([], [])),
             pytest.raises(SystemExit),
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
@@ -3144,9 +3195,7 @@ class TestAServiceNotFenceGatedStaysHeldAfterACrash:
 
     def test_its_remove_with_data_ends_the_hold(self, docker):
         self._died_after_the_create(docker)
-        result = orchestrator.remove_service(
-            "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
-        )
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
         assert docker.container_map == {} and docker.volume_map == {}
         assert orchestrator.unfinished_restores() == []
@@ -3182,7 +3231,7 @@ class TestAHoldThatOutlivesALostHelper:
             patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
             patch.object(orchestrator, "_create_restore_helper", side_effect=RuntimeError("daemon gone")),
         ):
-            result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            result = _owner_removes("mysterium")
         assert result["failed_volumes"] == ["mysterium-data"] and docker.container_map == {}
         assert orchestrator._restore_helper("mysterium") is None
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
@@ -3201,9 +3250,8 @@ class TestAHoldThatOutlivesALostHelper:
             return real(client, image, name, volumes)
 
         with (
-            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
             patch.object(orchestrator, "_create_restore_helper", helper),
-            pytest.raises(orchestrator.RestoreError, match="by hand"),
+            pytest.raises(orchestrator.RestoreError, match="stays held"),
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert len(calls) == 2 and docker.container_map == {} and "mysterium-data" in docker.volume_map
@@ -3253,14 +3301,14 @@ class TestADeployDuringARemoval:
             return real_remove(container, force)
 
         with patch.object(FakeContainer, "remove", remove):
-            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            _owner_removes("mysterium")
         assert len(seen) == 1 and seen[0].status_code == 409, seen
         assert "removal of mysterium is running" in str(seen[0])
         docker.images.pull.assert_not_called()
 
     def test_control_a_deploy_after_the_removal_goes_on(self, docker):
         TestStartAndRemoveAroundARestore()._service(docker)
-        orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        _owner_removes("mysterium")
         with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
             TestStartAndRemoveAroundARestore()._deploy(docker)
 
@@ -3271,7 +3319,7 @@ class TestARemovalDuringADeployOrAStart:
     @staticmethod
     def _remove(seen: list[Exception]) -> None:
         try:
-            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            _owner_removes("mysterium")
         except orchestrator.ContainerRuntimeError as exc:
             seen.append(exc)
 
@@ -3319,7 +3367,7 @@ class TestARemovalDuringADeployOrAStart:
 
     def test_control_with_no_holder_the_removal_goes_on(self, docker):
         TestStartAndRemoveAroundARestore()._service(docker)
-        orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        _owner_removes("mysterium")
         assert "cashpilot-mysterium" not in docker.container_map
         assert "mysterium-data" not in docker.volume_map
 
@@ -3401,7 +3449,7 @@ class TestARecordThatCannotBeReadHoldsEverything:
         TestStartAndRemoveAroundARestore()._service(docker)
         self._unreadable(monkeypatch)
         with pytest.raises(orchestrator.ContainerRuntimeError, match="nothing was removed"):
-            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            _owner_removes("mysterium")
         assert "cashpilot-mysterium" in docker.container_map and "mysterium-data" in docker.volume_map
 
     def test_a_restore_is_refused_and_nothing_is_made(self, docker, monkeypatch):
@@ -3436,18 +3484,14 @@ class TestTheRecordNamesTheVolumesItsRestoreWrote:
         assert Path(orchestrator.RESTORE_MARKER).read_text(encoding="utf-8") == "mysterium mysterium-data\n"
         del docker.container_map["cashpilot-mysterium"]
         with patch.object(orchestrator, "restore_targets", return_value=None):
-            result = orchestrator.remove_service(
-                "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
-            )
+            result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == ["mysterium-data"] and docker.volume_map == {}
         assert orchestrator.restore_marks() == set()
 
     def test_a_record_that_names_no_volume_is_never_cleared_on_nothing(self, docker):
         Path(orchestrator.RESTORE_MARKER).write_text("mysterium\n", encoding="utf-8")
         with patch.object(orchestrator, "restore_targets", return_value=None):
-            result = orchestrator.remove_service(
-                "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
-            )
+            result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == []
         assert orchestrator.restore_marks() == {"mysterium"}
 
@@ -3464,7 +3508,8 @@ class TestARestoreWhoseEndCannotBeRecorded:
             pytest.raises(orchestrator.RestoreError, match="could not record that the restore of mysterium finished"),
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert docker.started == [] and docker.container_map == {} and docker.volume_map == {}
+        assert docker.started == [] and "cashpilot-mysterium" not in docker.container_map
+        _assert_kept_and_held(docker, "mysterium-data")
 
 
 class TestAWrittenVolumeAnotherContainerMounts:
@@ -3488,7 +3533,7 @@ class TestAWrittenVolumeAnotherContainerMounts:
         assert orchestrator.restore_marks() == {"mysterium"}
         assert orchestrator._restore_helper("mysterium") is not None
 
-    def test_control_an_unwritten_volume_another_deploy_took_is_kept_and_not_left(self, docker):
+    def test_control_an_unwritten_volume_another_deploy_took_is_kept_and_named(self, docker):
         def taken(**_kw):
             docker.volumes.create("mysterium-data")
             theirs = FakeContainer(docker, "cashpilot-mysterium", {"/var/lib/mysterium-node": "mysterium-data"})
@@ -3498,10 +3543,10 @@ class TestAWrittenVolumeAnotherContainerMounts:
         orchestrator.deploy_raw.__wrapped__ = taken
         with pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        # The volume is not left, but a container under the name mounts the volume
-        # this restore made and no check read: the record holds it, as the gated
-        # branch's mark does, and left names that container so the dashboard does too.
-        assert caught.value.left == ["cashpilot-mysterium"] and "mysterium-data" in docker.volume_map
+        # The volume this restore made stays (the undo deletes none), and a container
+        # under the name mounts it with no check read: the record holds both, as the
+        # gated branch's mark does, and left names them so the dashboard does too.
+        assert caught.value.left == ["mysterium-data", "cashpilot-mysterium"] and "mysterium-data" in docker.volume_map
         assert orchestrator.restore_marks() == {"mysterium"}
 
 
@@ -3529,9 +3574,9 @@ class TestAnUndoThatLeavesAnUncheckedContainer:
             TestStartAndRemoveAroundARestore()._deploy(docker)
         assert docker.started == []
 
-    def test_control_an_undo_that_removed_everything_ends_the_hold(self, docker):
+    def test_control_an_undo_that_made_nothing_ends_the_hold(self, docker):
         with (
-            patch.object(orchestrator, "_create_restore_helper", side_effect=RuntimeError("create refused")),
+            patch.object(orchestrator, "_create_restore_volume", side_effect=orchestrator.RestoreError("refused")),
             pytest.raises(orchestrator.RestoreError) as caught,
         ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
@@ -3545,7 +3590,7 @@ class TestARemovalPersistsTheHoldBeforeTheHelperGoes:
             patch.object(orchestrator, "_mark_restore_unfinished", return_value=False),
             pytest.raises(orchestrator.ContainerRuntimeError, match="nothing was removed") as caught,
         ):
-            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            _owner_removes("mysterium")
         assert caught.value.status_code == 503
         assert {"cashpilot-mysterium", "cashpilot-mysterium.restore"} <= set(docker.container_map)
         assert "mysterium-data" in docker.volume_map and docker.removed == []
@@ -3556,7 +3601,7 @@ class TestARemovalPersistsTheHoldBeforeTheHelperGoes:
             patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
             patch.object(orchestrator, "_create_restore_helper", side_effect=RuntimeError("daemon gone")),
         ):
-            result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            result = _owner_removes("mysterium")
         assert result["failed_volumes"] == ["mysterium-data"] and orchestrator._restore_helper("mysterium") is None
         orchestrator._RESTORE_MARK_UNWRITTEN.clear()
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
@@ -3567,7 +3612,7 @@ class TestARemovalPersistsTheHoldBeforeTheHelperGoes:
         TestStartAndRemoveAroundARestore()._service(docker, helper=True)
         _record_unwritable(monkeypatch)
         with pytest.raises(orchestrator.ContainerRuntimeError, match="nothing was removed") as caught:
-            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+            _owner_removes("mysterium")
         assert caught.value.status_code == 503 and docker.removed == []
         orchestrator._RESTORE_MARK_UNWRITTEN.clear()
         assert orchestrator.restore_marks() == set()
@@ -3659,11 +3704,21 @@ def _record_unwritable(monkeypatch, when=lambda: True) -> None:
 class TestAClearTheDiskDidNotTakeKeepsTheHold:
     """A clear that did not reach the disk lifts nothing: after a restart the file would hold a fresh node."""
 
+    @staticmethod
+    def _refused_before_any_volume(failed: list[bool]):
+        """An undo with nothing to keep: the first volume's create is refused, so its clear runs."""
+
+        def refuse(*_a):
+            failed.append(True)
+            raise orchestrator.RestoreError("refused")
+
+        return patch.object(orchestrator, "_create_restore_volume", refuse)
+
     def test_the_undo_keeps_holding_the_slug_in_this_process(self, docker, monkeypatch):
-        docker.corrupt_put = True
-        # The hold goes on disk; only the clear, once data was written, cannot.
-        _record_unwritable(monkeypatch, lambda: bool(docker.puts))
-        with pytest.raises(orchestrator.RestoreError) as caught:
+        failed: list[bool] = []
+        # The hold goes on disk; only the clear, once the create failed, cannot.
+        _record_unwritable(monkeypatch, lambda: bool(failed))
+        with self._refused_before_any_volume(failed), pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert caught.value.left == [] and docker.container_map == {} and docker.volume_map == {}
         assert Path(orchestrator.RESTORE_MARKER).read_text(encoding="utf-8") == "mysterium mysterium-data\n"
@@ -3675,15 +3730,12 @@ class TestAClearTheDiskDidNotTakeKeepsTheHold:
         Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
         docker.volumes.create("mysterium-data")
         _record_unwritable(monkeypatch)
-        result = orchestrator.remove_service(
-            "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
-        )
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == ["mysterium-data"]
         assert orchestrator.restore_marks() == {"mysterium"}
 
     def test_control_a_clear_the_disk_took_ends_the_hold(self, docker):
-        docker.corrupt_put = True
-        with pytest.raises(orchestrator.RestoreError):
+        with self._refused_before_any_volume([]), pytest.raises(orchestrator.RestoreError):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert orchestrator.restore_marks() == set() and not Path(orchestrator.RESTORE_MARKER).read_text()
 
@@ -3713,7 +3765,8 @@ class TestALeftoverUnderTheNameHoldsANonGatedRestore:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         # Named in left: the worker answers "left", not "restored": false, so the
         # dashboard keeps holding it as the worker does.
-        assert caught.value.left == ["cashpilot-mysterium"] and "cashpilot-mysterium" in docker.container_map
+        assert caught.value.left == ["mysterium-data", "cashpilot-mysterium"]
+        assert "cashpilot-mysterium" in docker.container_map
         assert orchestrator.restore_marks() == {"mysterium"}
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             orchestrator.start_service("mysterium")
@@ -3748,8 +3801,10 @@ class TestAVolumeReplacedAfterTheRestoreMadeIt:
         with _replace_after_creation(docker, "mysterium-extra"), pytest.raises(orchestrator.RestoreError):
             orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
         assert docker.volume_map["mysterium-extra"].attrs["Labels"] == {"theirs": "1"}
-        assert ("volume", "mysterium-extra") not in docker.removed
-        assert "mysterium-data" not in docker.volume_map and docker.started == []
+        assert ("volume", "mysterium-extra") not in docker.removed and docker.started == []
+        # Not this restore's any more: not named as what it left, and not held for a delete.
+        assert "mysterium-extra" not in orchestrator._restore_mark_volumes("mysterium")
+        _assert_kept_and_held(docker, "mysterium-data")
 
     def test_the_data_volume_replaced_before_the_mount_is_never_written_or_removed(self, docker):
         with (
@@ -3762,11 +3817,12 @@ class TestAVolumeReplacedAfterTheRestoreMadeIt:
         assert docker.puts == [] and docker.started == [] and docker.container_map == {}
         assert caught.value.left == []
 
-    def test_control_a_volume_still_carrying_its_nonce_is_removed(self, docker):
+    def test_control_a_volume_still_carrying_its_nonce_is_kept_and_held(self, docker):
         docker.corrupt_put = True
-        with pytest.raises(orchestrator.RestoreError):
+        with pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
-        assert docker.volume_map == {}
+        _assert_kept_and_held(docker, "mysterium-data", "mysterium-extra")
+        assert set(caught.value.left) == {"mysterium-data", "mysterium-extra"}
 
 
 class TestAContainerLeftUnderTheNameIsReported:
@@ -3780,12 +3836,14 @@ class TestAContainerLeftUnderTheNameIsReported:
         resp = worker("proxybase-xyz", proxybase_bundle())
         body = resp.json()
         assert resp.status_code >= 400 and "cashpilot-proxybase-xyz" in docker.container_map
-        assert body.get("left") == ["cashpilot-proxybase-xyz"] and "restored" not in body, body
+        assert body.get("left") == ["proxybase-data", "cashpilot-proxybase-xyz"] and "restored" not in body, body
         assert orchestrator.restore_marks() == {"proxybase-xyz"}
 
-    def test_control_an_undo_that_removed_everything_says_nothing_was_restored(self, docker):
-        docker.corrupt_put = True
-        with pytest.raises(orchestrator.RestoreError) as caught:
+    def test_control_an_undo_that_made_nothing_says_nothing_was_restored(self, docker):
+        with (
+            patch.object(orchestrator, "_create_restore_volume", side_effect=orchestrator.RestoreError("refused")),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
         assert caught.value.left == [] and orchestrator.restore_marks() == set()
 
@@ -3919,3 +3977,165 @@ class TestTheDashboardCarriesTheReviewedSet:
             }
         }
         assert main._safe_worker_detail(answer)["critical_set"] == self.REVIEWED
+
+
+# ---------------------------------------------------------------------------
+# Round 16: no critical delete without the owner's reviewed set, a held volume
+# is critical wherever it is mounted, and the undo never deletes a volume
+# ---------------------------------------------------------------------------
+
+
+class TestNoCriticalDeleteWithoutTheReviewedSet:
+    AUTH = {"Authorization": f"Bearer {WORKER_KEY}"}
+
+    @pytest.fixture
+    def box(self, docker, worker, monkeypatch):
+        """A partial restore left under the name: its container mounts the identity volume, its helper too."""
+        monkeypatch.setattr(worker_api.orchestrator, "remove_extra_instances", lambda slug: [])
+        monkeypatch.setattr(worker_api.orchestrator, "copy_identity_digests", lambda slug: {})
+        monkeypatch.setattr(worker_api.proxy_tunnel, "remove_all", lambda slug: [])
+        monkeypatch.setattr(worker_api.lan_fence, "refresh_outside", lambda: None)
+        TestStartAndRemoveAroundARestore()._service(docker, helper=True)
+        return docker
+
+    def test_the_partial_restore_retry_without_a_set_deletes_nothing(self, box, worker):
+        """The override and the owner's password alone: nobody listed the identity volume to them."""
+        url = "/api/containers/mysterium?delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true"
+        resp = worker.client.delete(url, headers={**self.AUTH, **_delete_approval()})
+        detail = resp.json()["detail"]
+        assert resp.status_code == 409 and detail["error"] == "critical_volume", resp.text
+        # The set the owner then reviews, the volume with the time Docker made it.
+        assert detail["critical_set"].startswith("mysterium-data@2026-")
+        assert box.removed == [] and "mysterium-data" in box.volume_map
+
+    def test_control_the_retry_with_the_reviewed_set_deletes_it(self, box, worker):
+        url = "/api/containers/mysterium?delete_volumes=true&only_if_restore_unfinished=true"
+        reviewed = worker.client.delete(url, headers=self.AUTH).json()["detail"]["critical_set"]
+        resp = worker.client.delete(
+            f"{url}&allow_delete_critical=true&critical_set={urllib.parse.quote(reviewed, safe='')}",
+            headers={**self.AUTH, **_bound_delete_approval(reviewed)},
+        )
+        assert resp.status_code == 200, resp.text
+        assert box.volume_map == {} and box.container_map == {}
+
+
+class TestAHeldVolumeIsCriticalWhereverItIsMounted:
+    """The catalog may no longer list the target a partial restore's container mounts its volume at."""
+
+    def _leftover_at_an_old_target(self, docker):
+        container = TestStartAndRemoveAroundARestore()._service(docker)
+        container.mounts = {"/var/lib/old-node": "mysterium-data"}
+        container.attrs["Mounts"] = [{"Type": "volume", "Name": "mysterium-data", "Destination": "/var/lib/old-node"}]
+        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+
+    def test_its_delete_is_refused_without_the_override(self, docker):
+        self._leftover_at_an_old_target(docker)
+        with pytest.raises(orchestrator.CriticalVolumeError) as caught:
+            orchestrator.remove_service("mysterium", delete_volumes=True)
+        assert [b["volume"] for b in caught.value.blocked] == ["mysterium-data"]
+        assert docker.removed == [] and "cashpilot-mysterium" in docker.container_map
+
+    def test_control_the_owners_reviewed_delete_removes_it(self, docker):
+        self._leftover_at_an_old_target(docker)
+        result = _owner_removes("mysterium")
+        assert result["deleted_volumes"] == ["mysterium-data"] and docker.volume_map == {}
+        assert orchestrator.restore_marks() == set()
+
+
+class TestATimeDockerDoesNotGiveBindsNothing:
+    def test_a_set_reviewed_and_confirmed_without_a_time_deletes_nothing(self, docker):
+        """Both reads failed: "name@" on both sides would match a volume made again under the name."""
+        TestStartAndRemoveAroundARestore()._service(docker)
+        del docker.volume_map["mysterium-data"].attrs["CreatedAt"]
+        with pytest.raises(orchestrator.CriticalVolumeError) as review:
+            orchestrator.remove_service("mysterium", delete_volumes=True)
+        assert review.value.critical_set == "mysterium-data@?"
+        for confirmed in ("mysterium-data@?", "mysterium-data@"):
+            with pytest.raises(orchestrator.CriticalVolumeError, match="did not say when it made"):
+                orchestrator.remove_service(
+                    "mysterium", delete_volumes=True, allow_delete_critical=True, approved_critical=confirmed
+                )
+        assert docker.removed == [] and "cashpilot-mysterium" in docker.container_map
+
+    def test_a_recorded_volume_that_is_gone_still_lets_the_record_go(self, docker):
+        """Gone is known, not unknown: the owner's delete ends a record whose volume no longer exists."""
+        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+        with pytest.raises(orchestrator.CriticalVolumeError) as review:
+            orchestrator.remove_service("mysterium", delete_volumes=True, only_if_restore_unfinished=True)
+        assert review.value.critical_set == "mysterium-data@"
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and orchestrator.restore_marks() == set()
+
+    def test_a_volume_made_under_a_gone_name_since_the_review_is_not_deleted(self, docker):
+        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+        with pytest.raises(orchestrator.CriticalVolumeError) as review:
+            orchestrator.remove_service("mysterium", delete_volumes=True)
+        docker.volumes.create("mysterium-data", labels={"theirs": "1"})
+        with pytest.raises(orchestrator.CriticalVolumeError, match="changed since"):
+            orchestrator.remove_service(
+                "mysterium",
+                delete_volumes=True,
+                allow_delete_critical=True,
+                approved_critical=review.value.critical_set,
+            )
+        assert "mysterium-data" in docker.volume_map and docker.removed == []
+
+
+class TestAVolumeMadeAgainBeforeItsDeleteIsKept:
+    def test_a_volume_replaced_after_the_container_went_is_not_deleted(self, docker):
+        """The check passed; then the container freed the volume and another client made its own under the name."""
+        TestStartAndRemoveAroundARestore()._service(docker)
+        real_remove = FakeContainer.remove
+
+        def remove_then_replace(container, force=False):
+            real_remove(container, force)
+            if container.name == "cashpilot-mysterium":
+                docker.volume_map.pop("mysterium-data")
+                docker.volumes.create("mysterium-data", labels={"theirs": "1"})
+
+        with patch.object(FakeContainer, "remove", remove_then_replace):
+            result = _owner_removes("mysterium")
+        assert result["failed_volumes"] == ["mysterium-data"] and result["deleted_volumes"] == []
+        assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
+
+
+class TestTheUndoNeverDeletesAVolume:
+    def test_a_volume_swapped_right_after_its_nonce_is_read_survives(self, docker):
+        """Docker deletes by name: a check, then a delete, takes whatever another client put under it between."""
+        docker.corrupt_put = True
+        real_get = FakeVolumes.get
+
+        def get_then_swap(volumes, name):
+            found = real_get(volumes, name)
+            undoing = docker.puts and "cashpilot-mysterium" not in docker.container_map
+            if undoing and name == "mysterium-data" and "theirs" not in found.attrs["Labels"]:
+                docker.volume_map.pop(name)
+                docker.volumes.create(name, labels={"theirs": "1"})
+            return found
+
+        with patch.object(FakeVolumes, "get", get_then_swap), pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.volume_map["mysterium-data"].attrs["Labels"] == {"theirs": "1"}
+        assert ("volume", "mysterium-data") not in docker.removed
+        # Its owner unknown, so the slug stays held for the owner's reviewed delete.
+        assert orchestrator.restore_marks() == {"mysterium"}
+
+
+class TestANameDockerCannotReadIsNotSaidToHoldAContainer:
+    def test_the_note_says_it_could_not_read_it(self, docker):
+        docker.corrupt_put = True
+        real_get = FakeContainers.get
+        response = requests.Response()
+        response.status_code = 500
+
+        def get(containers, name):
+            if docker.puts and name == "cashpilot-mysterium":
+                raise APIError("proxy error", response=response)
+            return real_get(containers, name)
+
+        with patch.object(FakeContainers, "get", get), pytest.raises(orchestrator.RestoreError) as caught:
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert "could not read whether a container holds the name cashpilot-mysterium" in str(caught.value)
+        assert "is on this box now" not in str(caught.value)
+        # Not known is still held.
+        assert "cashpilot-mysterium" in caught.value.left and orchestrator.restore_marks() == {"mysterium"}

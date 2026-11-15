@@ -91,14 +91,37 @@ class TestRemoveGuard:
     def test_explicit_override_allows_the_delete(self):
         container = _container([_volume_mount("storj-identity", "/app/identity")])
         client = MagicMock()
+        client.volumes.get.return_value.attrs = {"CreatedAt": "2026-11-01T00:00:00Z"}
         with (
             patch.object(orchestrator, "_find_container", return_value=container),
             patch.object(orchestrator, "_get_client", return_value=client),
         ):
-            result = orchestrator.remove_service("storj", delete_volumes=True, allow_delete_critical=True)
+            result = orchestrator.remove_service(
+                "storj",
+                delete_volumes=True,
+                allow_delete_critical=True,
+                approved_critical="storj-identity@2026-11-01T00:00:00Z",
+            )
 
         container.remove.assert_called_once()
         assert result["deleted_volumes"] == ["storj-identity"]
+
+    def test_an_override_that_reviewed_no_set_deletes_no_critical_volume(self):
+        """The override alone is not the owner's review: a critical volume nobody listed to them stays."""
+        container = _container([_volume_mount("storj-identity", "/app/identity")])
+        client = MagicMock()
+        client.volumes.get.return_value.attrs = {"CreatedAt": "2026-11-01T00:00:00Z"}
+        with (
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.CriticalVolumeError) as caught,
+        ):
+            orchestrator.remove_service("storj", delete_volumes=True, allow_delete_critical=True)
+
+        container.remove.assert_not_called()
+        client.volumes.get.return_value.remove.assert_not_called()
+        # The refusal names the set the owner then reviews.
+        assert caught.value.critical_set == "storj-identity@2026-11-01T00:00:00Z"
 
     def test_non_critical_volume_is_unaffected(self):
         container = _container([_volume_mount("honeygain-data", "/data")])
@@ -226,7 +249,8 @@ class TestWorkerEndpoint:
             delete_volumes=True,
             allow_delete_critical=True,
             only_if_restore_unfinished=False,
-            approved_critical=None,
+            # No set named: the approval reviewed none, so it deletes no critical volume.
+            approved_critical="",
         )
 
 

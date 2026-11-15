@@ -2970,6 +2970,24 @@ const CP = (() => {
     }
   }
 
+  // The critical volumes a box's refusal named, each with the time Docker made
+  // it (its critical_set reads "name@time,..."), shown to the owner before the
+  // password. Their yes returns that set as a query parameter, which the
+  // approval binds: the box deletes those or nothing, never a volume mounted or
+  // made again since. Null when the owner cancels.
+  function confirmCriticalVolumes(slug, place, refusal) {
+    const reviewed = String(refusal?.critical_set || '');
+    const made = new Map(reviewed.split(',').filter(Boolean).map((entry) => {
+      const at = entry.lastIndexOf('@');
+      return at < 0 ? [entry, ''] : [entry.slice(0, at), entry.slice(at + 1)];
+    }));
+    const when = (at) => (at === '' ? 'not on the box now' : at === '?' || at == null ? 'made at a time Docker did not give' : `made ${at}`);
+    const lines = (Array.isArray(refusal?.blocked) ? refusal.blocked : []).map((b) =>
+      `- ${b.volume}, ${when(made.get(b.volume))}: ${b.holds}`);
+    if (!confirm(`These volumes of ${slug} on ${place} hold data that cannot be made again: a node identity, a wallet or a partial restore.\n\n${lines.join('\n')}\n\nDelete exactly these? This cannot be undone.`)) return null;
+    return `critical_set=${encodeURIComponent(reviewed)}`;
+  }
+
   // Remove a service. From a box's row (workerId, boxName) it goes to that box
   // only; from the service page it goes to the one online box, and never
   // takes the data with it. A row a restore that did not finish left
@@ -3007,7 +3025,8 @@ const CP = (() => {
         // refusal reported, and the approval binds them: the box deletes
         // those or nothing, never one mounted since.
         if (withData && err.code === 'critical_volume') {
-          const reviewed = `critical_set=${encodeURIComponent(err.refusal.critical_set || '')}`;
+          const reviewed = confirmCriticalVolumes(slug, boxName || `worker #${workerId}`, err.refusal);
+          if (!reviewed) return;
           return removed(await api(path([...params, 'allow_delete_critical=true', reviewed]), { method: 'DELETE', body: {} }));
         }
         // A restore that did not finish left a half-written data volume, and
@@ -3022,8 +3041,18 @@ const CP = (() => {
         const name = err.refusal.worker_name || boxName || `worker #${refused}`;
         if (!confirm(`A restore of ${slug} on ${name} did not finish, so its data volume there holds a partial restore. Remove now deletes that volume on ${name}, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
         // Only while that partial restore is still there: one restored since,
-        // in another tab, is not what the owner agreed to delete.
-        result = await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true`, { method: 'DELETE', body: {} });
+        // in another tab, is not what the owner agreed to delete. The box first
+        // names the volumes it finds critical (the partial restore's always),
+        // the owner reviews exactly those, and the approval binds them.
+        const retry = `/api/services/${slug}${box(refused)}&delete_volumes=true&only_if_restore_unfinished=true`;
+        try {
+          result = await api(retry, { method: 'DELETE' });
+        } catch (again) {
+          if (again.code !== 'critical_volume') throw again;
+          const reviewed = confirmCriticalVolumes(slug, name, again.refusal);
+          if (!reviewed) return;
+          result = await api(`${retry}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
+        }
       }
       removed(result);
     } catch (err) {
@@ -4652,18 +4681,26 @@ const CP = (() => {
   // Removing a custom container from a box. Its data volume stays unless the
   // owner asks for it to go too: the worker cannot judge whether a volume of
   // a service its catalog does not know is irreplaceable, so it only deletes
-  // one with allow_delete_critical, which is owner-only on the server too and
-  // asks for the owner's password (api() shows the prompt).
+  // one with allow_delete_critical and the set of volumes it named, which is
+  // owner-only on the server too and asks for the owner's password (api()
+  // shows the prompt) after the owner reviewed that set.
   async function removeCustomFromBox(slug, workerId, boxName) {
     if (!window.confirm(`Remove ${slug} from ${boxName}? Its container is stopped and deleted.`)) return;
     let query = `?worker_id=${encodeURIComponent(workerId)}`;
-    const opts = { method: 'DELETE' };
-    if (_isOwner && window.confirm(`Also delete its data volume on ${boxName}? This cannot be undone. Cancel keeps the data for a later deploy.`)) {
-      query += '&delete_volumes=true&allow_delete_critical=true';
-      opts.body = {};
-    }
+    const withData = _isOwner && window.confirm(`Also delete its data volume on ${boxName}? This cannot be undone. Cancel keeps the data for a later deploy.`);
+    if (withData) query += '&delete_volumes=true';
+    const path = `/api/services/${encodeURIComponent(slug)}${query}`;
     try {
-      await api(`/api/services/${encodeURIComponent(slug)}${query}`, opts);
+      try {
+        await api(path, { method: 'DELETE' });
+      } catch (err) {
+        // The box names the volumes it cannot judge (its catalog does not know
+        // this service): the owner reviews exactly those, then the password.
+        if (!withData || err.code !== 'critical_volume') throw err;
+        const reviewed = confirmCriticalVolumes(slug, boxName, err.refusal);
+        if (!reviewed) return;
+        await api(`${path}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
+      }
       toast(`${slug} removed from ${boxName}`, 'success');
     } catch (err) {
       toast(`Remove failed: ${err.message}`, 'error');

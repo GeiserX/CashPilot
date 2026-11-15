@@ -103,10 +103,12 @@ check('no tag from the data reaches the page',
 // --- Remove after a restore that did not finish ------------------------------
 // The real api() and removeService(), against a stub worker. The worker keeps a
 // half-written volume marked, so a plain Remove is refused with
-// restore_unfinished; the owner is asked, plainly, to delete that data, and
-// only then is the remove sent again as the audited critical delete.
+// restore_unfinished; the owner is asked, plainly, to delete that data, the
+// box names the critical volumes, the owner confirms exactly those, and only
+// then is the remove sent again as the audited critical delete with that set.
 const apiSrc = slice('async function api(', '// One prompt at a time');
-const removeSrc = slice('async function removeService(', '// Log viewer');
+const confirmSrc = slice('function confirmCriticalVolumes(', 'async function removeService(');
+const removeSrc = confirmSrc + slice('async function removeService(', '// Log viewer');
 // With stepUp the stub server is the real one's rule: a delete of critical
 // data without the owner's password is answered step_up_required, and api()
 // asks for it (askStepUp answers `password`). With critical the stub worker's
@@ -125,7 +127,8 @@ function stubServer({refusal, box, failed, stepUp, critical, sent, bodies}) {
       return {ok: false, status: 403, json: async () => ({detail: {error: 'step_up_required', message: 'Enter your password.'}})};
     }
     if (critical && path.includes('delete_volumes=true') && !path.includes('allow_delete_critical=true')) {
-      return {ok: false, status: 409, json: async () => ({detail: {error: 'critical_volume', message: 'mysterium-data holds the node identity.', critical_set: REVIEWED}})};
+      const blocked = [{volume: 'mysterium-data', target: '/var/lib/mysterium-node', holds: 'the node identity'}];
+      return {ok: false, status: 409, json: async () => ({detail: {error: 'critical_volume', message: 'mysterium-data holds the node identity.', critical_set: REVIEWED, blocked}})};
     }
     reached++;
     const ok = reached > 1 || !refusal;
@@ -152,27 +155,36 @@ function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worke
   return removeService('mysterium', ...args).then(() => ({sent, bodies, asked, prompted, toasts, reopened}));
 }
 
-const CRITICAL = '&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true';
+// The partial restore's delete: first to learn what the box finds critical, then with the reviewed set.
+const RETRY = '&delete_volumes=true&only_if_restore_unfinished=true';
+const CRITICAL = `${RETRY}&allow_delete_critical=true${BOUND}`;
+// The owner's review of the critical volumes the box named, before the password.
+const REVIEW = /mysterium-data, made 2026-11-01T10:00:00\+01:00: the node identity[\s\S]*Delete exactly these\?/;
 // From the service page no box is named, so the data question is not asked.
-let run = await runRemove({owner: true, answers: [true, true]});
+let run = await runRemove({owner: true, answers: [true, true, true]});
 check('a refused Remove asks the owner about the half-written data',
-  run.asked.length === 2 && /partial restore/.test(run.asked[1]) && /deletes that volume/.test(run.asked[1]), run.asked);
+  run.asked.length === 3 && /partial restore/.test(run.asked[1]) && /deletes that volume/.test(run.asked[1]), run.asked);
 check('and names the box that refused', /on box-a did not finish/.test(run.asked[1]), run.asked);
-check('and sends the audited critical delete to that box only', run.sent.length === 2
+check('and shows the volumes the box named, with when each was made, before the password', REVIEW.test(run.asked[2]), run.asked);
+check('and sends the audited critical delete to that box only', run.sent.length === 3
   && run.sent[0] === 'DELETE /api/services/mysterium'
-  && run.sent[1] === `DELETE /api/services/mysterium?worker_id=1${CRITICAL}`, run.sent);
+  && run.sent[1] === `DELETE /api/services/mysterium?worker_id=1${RETRY}`
+  && run.sent[2] === `DELETE /api/services/mysterium?worker_id=1${CRITICAL}`, run.sent);
 check('and says it was removed', run.toasts.join() === 'success: mysterium removed', run.toasts);
-run = await runRemove({owner: true, answers: [true, true], failed: ['mysterium-data']});
+run = await runRemove({owner: true, answers: [true, true, false]});
+check('an owner who cancels the review of those volumes deletes nothing', run.sent.length === 2
+  && !run.sent.some((r) => r.includes('allow_delete_critical')) && run.toasts.length === 0, run);
+run = await runRemove({owner: true, answers: [true, true, true], failed: ['mysterium-data']});
 check('a volume the box could not delete is not reported as removed', run.toasts.length === 1
   && /^error: /.test(run.toasts[0]) && /mysterium-data could not be deleted/.test(run.toasts[0]), run.toasts);
 run = await runRemove({owner: true, answers: [true, true], box: {}});
 check('a refusal that names no box deletes nothing', run.sent.length === 1 && run.asked.length === 1
   && /^error: /.test(run.toasts.join()), run);
-run = await runRemove({owner: true, answers: [true, false, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}});
+run = await runRemove({owner: true, answers: [true, false, true, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}});
 check('Remove from this box asks about that box', /from box-b\?/.test(run.asked[0]) && /on box-b\?/.test(run.asked[1])
-  && /on box-b did not finish/.test(run.asked[2]), run.asked);
-check('and both requests go to that box', run.sent.join(' | ')
-  === `DELETE /api/services/mysterium?worker_id=2 | DELETE /api/services/mysterium?worker_id=2${CRITICAL}`, run.sent);
+  && /on box-b did not finish/.test(run.asked[2]) && /of mysterium on box-b hold/.test(run.asked[3]), run.asked);
+check('and every request goes to that box', run.sent.join(' | ')
+  === `DELETE /api/services/mysterium?worker_id=2 | DELETE /api/services/mysterium?worker_id=2${RETRY} | DELETE /api/services/mysterium?worker_id=2${CRITICAL}`, run.sent);
 check('and the service panel is shown again', run.reopened.join() === 'mysterium', run.reopened);
 run = await runRemove({owner: true, answers: [true, false, true], args: ['2', 'box-b'], box: {worker_id: 1, worker_name: 'box-a'}});
 check('a box-row Remove never deletes on another box', run.sent.every((r) => r.includes('worker_id=2')), run.sent);
@@ -191,12 +203,12 @@ check('a Remove the worker takes asks nothing more', run.sent.length === 1
 // --- Remove with its data, the way to free a box for a restore ---------------
 // The settings page and the backup guide send the owner here: only a yes to
 // the data question sends the audited delete of the volumes, never by default.
-run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b']});
+run = await runRemove({owner: true, answers: [true, true, true], refusal: null, args: ['2', 'box-b']});
 check('an owner who says yes to the data sends the delete with the data to that box, then the critical one it refused',
   run.sent.join(' | ') === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true'
   + ` | DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true${BOUND}`
   && /Also delete the data of mysterium on box-b\?/.test(run.asked[1]) && /backup file/.test(run.asked[1])
-  && run.toasts.join() === 'success: mysterium removed from box-b', run);
+  && REVIEW.test(run.asked[2]) && run.toasts.join() === 'success: mysterium removed from box-b', run);
 // The box's own catalog decides what is critical: data it holds no identity
 // in goes on the first delete, with no override and so no password.
 run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, critical: false});
@@ -212,11 +224,11 @@ run = await runRemove({owner: true, answers: [true, false], refusal: null, args:
 check('control: an owner who says no keeps the data', run.sent.join() === 'DELETE /api/services/mysterium?worker_id=2', run.sent);
 // A row a partial restore left: a restore that finished since, in another
 // tab, must not be deleted on this yes, so its first delete carries the flag.
-run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b', 'leftover']});
+run = await runRemove({owner: true, answers: [true, true, true], refusal: null, args: ['2', 'box-b', 'leftover']});
 check('a partial-restore row deletes only while that partial restore is there', run.sent.length === 2
   && run.sent.every((r) => r.includes('&only_if_restore_unfinished=true'))
   && run.sent[1] === `DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&only_if_restore_unfinished=true&allow_delete_critical=true${BOUND}`, run.sent);
-run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b']});
+run = await runRemove({owner: true, answers: [true, true, true], refusal: null, args: ['2', 'box-b']});
 check('control: a box row with a container sends its data delete without that flag',
   run.sent.every((r) => !r.includes('only_if_restore_unfinished')), run.sent);
 run = await runRemove({owner: false, answers: [true], refusal: null});
@@ -241,42 +253,44 @@ check('control: a writer on a box row with a container sends no flag',
 // --- Deleting a node identity asks for the owner's password -----------------
 // The server answers step_up_required for a delete of critical data without
 // it; api() asks once and sends the same delete again with the password.
-run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, password: 'pw'});
+run = await runRemove({owner: true, answers: [true, true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, password: 'pw'});
 check('the critical data delete asks for the password and sends it with the same delete', run.prompted.length === 1
   && run.sent.length === 3 && run.sent[1] === run.sent[2]
   && run.sent[2] === `DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true${BOUND}`
   && run.bodies[2] && run.bodies[2].step_up_password === 'pw' && run.toasts.join() === 'success: mysterium removed from box-b', JSON.stringify(run));
-run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, password: null});
+run = await runRemove({owner: true, answers: [true, true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, password: null});
 check('cancelling the password deletes nothing and says why', run.prompted.length === 1 && run.sent.length === 2
   && /^error: Enter your password/.test(run.toasts.join()), run);
-run = await runRemove({owner: true, answers: [true, false, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}, stepUp: true, password: 'pw'});
+run = await runRemove({owner: true, answers: [true, false, true, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}, stepUp: true, password: 'pw'});
 check('the delete of a partial restore asks for the password too', run.prompted.length === 1
-  && run.sent.join(' | ') === `DELETE /api/services/mysterium?worker_id=2 | DELETE /api/services/mysterium?worker_id=2${CRITICAL} | DELETE /api/services/mysterium?worker_id=2${CRITICAL}`
-  && run.bodies[2].step_up_password === 'pw', run);
+  && run.sent.join(' | ') === `DELETE /api/services/mysterium?worker_id=2 | DELETE /api/services/mysterium?worker_id=2${RETRY} | DELETE /api/services/mysterium?worker_id=2${CRITICAL} | DELETE /api/services/mysterium?worker_id=2${CRITICAL}`
+  && run.bodies[3].step_up_password === 'pw', run);
 run = await runRemove({owner: true, answers: [true, false], refusal: null, args: ['2', 'box-b'], stepUp: true, password: 'pw'});
 check('control: a removal that keeps the data asks no password', run.prompted.length === 0
   && run.sent.join() === 'DELETE /api/services/mysterium?worker_id=2', run);
 
-// A custom service's Remove can delete its data too: the same password.
-const customSrc = slice('async function removeCustomFromBox(', 'async function deployServiceToWorkers(');
+// A custom service's Remove can delete its data too: the box's catalog does
+// not know it, so it names the volume, the owner reviews it, then the password.
+const customSrc = confirmSrc + slice('async function removeCustomFromBox(', 'async function deployServiceToWorkers(');
 async function runCustomRemove({answers, password}) {
   const sent = [];
   const bodies = [];
   const prompted = [];
   const toasts = [];
-  const fetch = stubServer({refusal: null, box: {}, failed: [], stepUp: true, sent, bodies});
+  const fetch = stubServer({refusal: null, box: {}, failed: [], stepUp: true, critical: true, sent, bodies});
   const confirm = (text) => answers.shift();
   const {removeCustomFromBox} = new Function(
-    'fetch', 'toast', 'openServiceDetail', '_isOwner', 'window', 'askStepUp',
+    'fetch', 'toast', 'openServiceDetail', '_isOwner', 'window', 'askStepUp', 'confirm',
     `${apiSrc}\n${customSrc}\nreturn {removeCustomFromBox};`,
   )(fetch, (text, kind) => toasts.push(`${kind}: ${text}`), () => {}, true, {confirm},
-    async (text) => { prompted.push(text); return password; });
+    async (text) => { prompted.push(text); return password; }, confirm);
   await removeCustomFromBox('mine', 3, 'box-c');
   return {sent, bodies, prompted, toasts};
 }
-run = await runCustomRemove({answers: [true, true], password: 'pw'});
-check('a custom service\'s data delete asks for the password', run.prompted.length === 1 && run.sent.length === 2
-  && run.bodies[1].step_up_password === 'pw' && /^success: /.test(run.toasts.join()), run);
+run = await runCustomRemove({answers: [true, true, true], password: 'pw'});
+check('a custom service\'s data delete asks for the password', run.prompted.length === 1 && run.sent.length === 3
+  && run.sent[2] === `DELETE /api/services/mine?worker_id=3&delete_volumes=true&allow_delete_critical=true${BOUND}`
+  && run.bodies[2].step_up_password === 'pw' && /^success: /.test(run.toasts.join()), run);
 run = await runCustomRemove({answers: [true, false], password: 'pw'});
 check('control: a custom removal that keeps the data asks no password', run.prompted.length === 0
   && run.sent.join() === 'DELETE /api/services/mine?worker_id=3', run);

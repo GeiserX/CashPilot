@@ -141,6 +141,12 @@ jobs:
       - name: Restore preview
         run: node scripts/restore_preview_check.mjs
 
+      # A delete of a node identity, a wallet or a partial restore shows the
+      # exact volumes the box named, with when Docker made each, before the
+      # password, and sends that set: the box deletes those or nothing.
+      - name: Critical delete review
+        run: node scripts/critical_delete_review_check.mjs
+
       # The only check here that needs a real browser, because it measures a
       # property of the RENDERED page. A button's label colour is decided by the
       # cascade, so `.modal-body a` (0,1,1) silently outranked `.btn-success`

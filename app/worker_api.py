@@ -2470,9 +2470,12 @@ async def api_remove_container(
     critical_set: str | None = None,
 ) -> dict[str, Any]:
     _verify_api_key(request)
-    approved = critical_set if delete_volumes and allow_delete_critical else None
+    approved = None
     if delete_volumes and allow_delete_critical:
-        _check_critical_delete_approval(request, slug, approved)
+        _check_critical_delete_approval(request, slug, critical_set)
+        # A delete that names no reviewed set reviewed none: it removes no
+        # critical volume (orchestrator.remove_service refuses and names them).
+        approved = critical_set or ""
     # Copy deploys running when the removal starts, and how many had started.
     # One may finish inside remove_all, after it listed the copies, or start
     # and finish inside it, so the set read afterwards alone would miss the

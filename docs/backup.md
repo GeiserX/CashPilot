@@ -139,18 +139,22 @@ identity sits on a named Docker volume. The rules:
   starting it, writes the backup into its new volume, reads the folder back
   from the container and compares every file, link, owner and permission. Only
   then does the container start (Mysterium only behind a confirmed LAN fence).
-  On any failure, the container and the volumes the restore made are removed.
-  A Mysterium the restore made and could not remove is held stopped, so the
-  LAN fence guard never starts data that did not check out. While a restore
-  runs, and after a restore that stopped mid-write (a worker restart, or an
-  undo that could not remove all it made), Start, Restart, Deploy and Restore
-  refuse the service. Open the service on the dashboard and press **Remove
-  from this box** next to that box. A box that kept only the half-written
-  volume has no container to show, so it is listed under **A restore did not
-  finish**. The dashboard says its data volume there holds a partial restore
-  and asks you, the owner, to delete it with the container, with your
-  password. The delete goes to that box only, only while that partial restore
-  is still there, and the audit log records it. Then restore again.
+  On any failure, the containers the restore made are removed. The volumes it
+  made stay: Docker deletes a volume by name only, so the worker cannot prove
+  at the delete that the volume is still the one it made, and it never
+  deletes one on its own. A Mysterium the restore made and could not remove is
+  held stopped, so the LAN fence guard never starts data that did not check
+  out. While a restore runs, and after a restore that failed or stopped
+  mid-write (a worker restart), Start, Restart, Deploy and Restore refuse the
+  service. Open the service on the dashboard and press **Remove from this
+  box** next to that box. A box that kept only the restore's volume has no
+  container to show, so it is listed under **A restore did not finish**. The
+  dashboard says its data volume there holds a partial restore, then lists
+  each volume the box would delete, with the time Docker made it. You, the
+  owner, confirm exactly those, with your password. The box deletes those or
+  nothing: a volume made again under the same name since reads another time
+  and stays. The delete goes to that box only, only while that partial
+  restore is still there, and the audit log records it. Then restore again.
 - **Nothing kept.** The file waits in a private folder under the data folder
   for at most 15 minutes and is deleted once the restore runs. The passphrase
   goes to the worker in that one request and is never stored or logged.
