@@ -1,4 +1,3 @@
-import asyncio
 import contextlib
 import os
 import tempfile
@@ -137,13 +136,7 @@ def _reset_shared_db():
     or a closed loop) must never leak across tests. After each test we close
     any surviving connections and clear the cache so the next test binds fresh.
 
-    Trap: a connection opened on a loop that has since closed never finishes
-    closing here, because aiosqlite answers through that dead loop, and the
-    whole run hangs (on Linux CI, rarely on macOS). The usual cause is a test
-    that enters the real ``lifespan`` with ``connect_shared`` mocked: every
-    startup task it spawns that touches the DB (``_run_data_retention``,
-    ``_run_vacuum``, ...) must be stubbed there too. A timeout does not help,
-    since aiosqlite's cancel path awaits the same dead future.
+    Closed on their own threads, with no event loop: see ``close_shared_conns``.
     """
     yield
 
@@ -152,17 +145,29 @@ def _reset_shared_db():
     database._forget_health_scores()
     conns = list(database._shared_conns.values())
     database._shared_conns.clear()
-    if not conns:
-        return
+    close_shared_conns(conns)
 
-    async def _drain():
-        for conn in conns:
-            with contextlib.suppress(Exception):
-                await conn.close()
 
-    # No usable loop (e.g. one is already running) — best-effort cleanup.
-    with contextlib.suppress(RuntimeError):
-        asyncio.run(_drain())
+def close_shared_conns(conns, wait: float = 5.0) -> None:
+    """Close each aiosqlite connection on its own thread, and never wait forever.
+
+    The trap this avoids hung CI for six hours a run (2026-11-14). A test that
+    calls a route under ``asyncio.run`` leaves a fire-and-forget task behind
+    (``_deploy`` spawns ``_run_collection``). ``asyncio.run`` cancels it while
+    its query is still on the connection's thread, then closes the loop. The
+    query finishes, aiosqlite hands the answer to that closed loop, gets
+    "Event loop is closed", and its worker thread dies. The connection still
+    looks open, so ``await conn.close()`` on a new loop queued work no thread
+    would ever run and waited for it forever. A timeout around it does not
+    help: aiosqlite's own cleanup awaits a second future from the same dead
+    thread.
+
+    ``stop()`` closes the sqlite connection on that thread and needs no loop,
+    and ``join`` with a limit returns at once when the thread is already gone.
+    """
+    for conn in conns:
+        conn.stop()
+        conn._thread.join(timeout=wait)
 
 
 @pytest.fixture(autouse=True)
