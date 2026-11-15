@@ -717,8 +717,7 @@ async def _send_heartbeat() -> None:
         except Exception as exc:  # noqa: BLE001 - one missed reading, not a missed heartbeat
             logger.warning("Failed to read proxied copies for heartbeat: %s", exc)
             proxied = None
-    if proxied:
-        _mark_routed(proxied)
+    routes_read = _mark_routed(proxied) if proxied else True
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -757,6 +756,10 @@ async def _send_heartbeat() -> None:
             # Kept out of "containers": they are on another exit IP and are not
             # copies of the service, so nothing that counts copies may see them.
             "proxied": proxied,
+            # False when the routes could not be read: no entry above says
+            # routed, so the list shows no routed service's copy 1, which
+            # may still run (main.api_worker_heartbeat).
+            "routes_read": routes_read,
             # Set by the operator (app/route_gate.py): no earner runs from this
             # box's own IP, so the UI offers only routed deploys here.
             "proxied_only": route_gate.proxied_only(),
@@ -892,20 +895,22 @@ async def _send_heartbeat() -> None:
         _log_link_failure_hint(exc)
 
 
-def _mark_routed(entries: list[dict[str, Any]]) -> None:
+def _mark_routed(entries: list[dict[str, Any]]) -> bool:
     """Flag the proxied entries that are a routed service, not a copy beside a direct one.
 
     The UI counts those as the service running on this box (app/placement.py)
     and shows them on the dashboard; a copy keeps its own list on the Proxies page.
+    False when the routes could not be read, so nothing is flagged.
     """
     try:
         lock = route_gate.routed()
     except (OSError, ValueError) as exc:
         logger.warning("Could not read which services are routed: %s", exc)
-        return
+        return False
     for entry in entries:
         if lock.get(str(entry.get("slug"))) == entry.get("proxy_id"):
             entry["routed"] = True
+    return True
 
 
 async def _heartbeat_loop() -> None:

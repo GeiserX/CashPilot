@@ -1059,14 +1059,41 @@ class TestTheHeartbeat:
             {"slug": "honeygain", "proxy_id": 4},
             {"slug": "traffmonetizer", "proxy_id": 3},
         ]
-        worker_api._mark_routed(entries)
+        assert worker_api._mark_routed(entries) is True
         assert [e.get("routed") for e in entries] == [True, None, None]
 
     def test_an_unreadable_marker_flags_nothing(self, marker):
         marker.write_text("{")
         entries = [{"slug": "honeygain", "proxy_id": 3}]
-        worker_api._mark_routed(entries)
+        # Said, so the UI does not read the list as whole (main.api_worker_heartbeat).
+        assert worker_api._mark_routed(entries) is False
         assert "routed" not in entries[0]
+
+    @pytest.mark.parametrize("readable", [False, True], ids=["unreadable", "readable-control"])
+    def test_the_worker_says_whether_it_read_its_routes(self, marker, readable):
+        if readable:
+            route_gate.mark("honeygain", 3)
+        else:
+            marker.write_text("{")
+        resp = MagicMock()
+        resp.json = MagicMock(return_value={"status": "ok"})
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=resp)
+        with (
+            patch.object(worker_api, "UI_URL", "http://ui:8080"),
+            patch.object(worker_api.orchestrator, "get_status", return_value=[]),
+            patch.object(worker_api.orchestrator, "status_listed", return_value=True),
+            patch.object(worker_api.orchestrator, "docker_available", return_value=True),
+            patch.object(worker_api.proxy_tunnel, "status", return_value=[{"slug": "honeygain", "proxy_id": 3}]),
+            patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+            patch.object(worker_api.httpx, "AsyncClient", return_value=client),
+        ):
+            asyncio.run(worker_api._send_heartbeat())
+        info = client.post.await_args.kwargs["json"]["system_info"]
+        assert info["routes_read"] is readable
+        assert info["proxied"][0].get("routed") is (True if readable else None)
 
 
 # ---------------------------------------------------------------------------
@@ -2955,20 +2982,33 @@ class TestARoutedDeployKeepsTheIdentityLedger:
         assert rows == ({**held, **mine} if routed else held)
 
     @pytest.mark.parametrize(
-        ("proxied", "held"),
+        ("proxied", "held", "routes_read"),
         [
             # Listed with no digest: it may still run its ids, so they stay held.
-            ([{"routed": True, "status": "running", "container_id": "e1"}], True),
+            ([{"routed": True, "status": "running", "container_id": "e1"}], True, None),
             # The box could not read its proxied copies: nothing says copy 1 is gone.
-            (None, True),
+            (None, True, None),
+            # The box could not read which copies are routed, so none says routed.
+            ([{"status": "running", "container_id": "e1"}], True, False),
+            # Control: the same list from a box that read its routes shows copy 1 gone.
+            ([{"status": "running", "container_id": "e1"}], False, True),
             # Control: a full list that leaves it out shows it gone, so the hold ends.
-            ([], False),
+            ([], False, None),
             # Control: its tunnel is listed with no earner beside it, so nothing runs the ids.
-            ([{"routed": True, "status": "missing", "container_id": ""}], False),
+            ([{"routed": True, "status": "missing", "container_id": ""}], False, None),
         ],
-        ids=["no-digest", "unreadable-list", "gone-control", "missing-earner-control"],
+        ids=[
+            "no-digest",
+            "unreadable-list",
+            "unreadable-routes",
+            "routes-read-control",
+            "gone-control",
+            "missing-earner-control",
+        ],
     )
-    def test_a_routed_copy_without_proof_keeps_its_hold_past_the_deadline(self, db, monkeypatch, proxied, held):
+    def test_a_routed_copy_without_proof_keeps_its_hold_past_the_deadline(
+        self, db, monkeypatch, proxied, held, routes_read
+    ):
         monkeypatch.setattr(main, "PENDING_IDENTITY_SECONDS", 0)
         monkeypatch.setattr(database, "PENDING_IDENTITY_SECONDS", 0)
         ui = _Ui()
@@ -2982,11 +3022,14 @@ class TestARoutedDeployKeepsTheIdentityLedger:
             with pytest.raises(HTTPException):
                 await self._deploy(ui, main.DeployRequest(env=PR_ENV, route=pid))
             entries = None if proxied is None else [{"slug": "proxyrack", "proxy_id": pid, **e} for e in proxied]
+            info = {"containers_listed": True, "features": ["deploy_deadline"], "proxied": entries}
+            if routes_read is not None:
+                info["routes_read"] = routes_read
             body = main.WorkerHeartbeat(
                 name="box",
                 client_id="client-a",
                 containers=[{"slug": "other", "instance": 1, "container_id": "o1"}],
-                system_info={"containers_listed": True, "features": ["deploy_deadline"], "proxied": entries},
+                system_info=info,
             )
             with (
                 patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),

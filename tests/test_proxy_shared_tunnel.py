@@ -540,6 +540,76 @@ class TestOneTunnelPerProxy:
         assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
         assert docker.named("cashpilot-honeygain-p3-replaced") is None
 
+    def test_a_failed_redeploy_of_a_stopped_copy_keeps_it_stopped_when_the_rename_back_fails(self, docker):
+        """The stop is recorded again before anything else is tried, so a failed step cannot skip it."""
+        _deploy("honeygain")
+        assert proxy_tunnel.stop("honeygain", 3) is True
+        earner = docker.named("cashpilot-honeygain-p3")
+        real_create, real_rename = docker.create, earner.rename
+        refusals = iter(range(2))  # deploy_raw's rename back, then _put_old_back's
+
+        def refuse_the_earner(**kw):
+            if kw["name"] == "cashpilot-honeygain-p3":
+                raise APIError("500 Server Error: create failed")
+            return real_create(**kw)
+
+        def flaky_rename(to):
+            if to == "cashpilot-honeygain-p3" and next(refusals, None) is not None:
+                raise APIError("500 Server Error: rename failed")
+            real_rename(to)
+
+        earner.rename = flaky_rename
+        with patch.object(docker, "create", side_effect=refuse_the_earner), pytest.raises(APIError):
+            _deploy("honeygain")
+        assert earner.name.endswith(orchestrator.REPLACED_SUFFIX)
+        assert "cashpilot-honeygain-p3" in proxy_tunnel.held()
+        # The heartbeat gives it its name back, and leaves it stopped.
+        proxy_tunnel.status()
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "exited"
+
+    def test_a_failed_replacement_docker_will_not_remove_never_replaces_the_copy(self, docker):
+        """deploy_raw keeps the old earner aside for this: it comes back, the container that failed never runs."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        refused = {"on": True}
+        made = []
+
+        def failed_and_stuck(*, slug, image, env, network_mode, labels, name, **_kw):
+            earner.stop()
+            earner.rename(f"{name}{orchestrator.REPLACED_SUFFIX}")
+            new = docker.create(
+                image=image,
+                name=name,
+                network_mode=network_mode,
+                labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
+            )
+            real_remove = new.remove
+
+            def stuck_remove(force=False, v=False):
+                if refused["on"]:
+                    raise APIError("409 Client Error: removal of container is already in progress")
+                real_remove(force=force, v=v)
+
+            new.remove = stuck_remove
+            made.append(new)
+            raise orchestrator.ContainerRuntimeError("start failed; the previous container is kept as -replaced")
+
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=failed_and_stuck),
+            pytest.raises(orchestrator.ContainerRuntimeError),  # the deploy's own error, not the refused removal
+        ):
+            _deploy("honeygain")
+        (new,) = made
+        # While Docker refuses, neither is lost and the failed one is never started.
+        proxy_tunnel.status()
+        assert earner.id in docker.by_id and earner.status == "exited"
+        assert new.status == "created"
+        # Once it can, the failed one goes and the old earner is the copy again.
+        refused["on"] = False
+        proxy_tunnel.status()
+        assert new.id not in docker.by_id
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
     def test_a_tunnel_that_cannot_start_costs_the_running_copies_nothing(self, docker):
         _deploy("honeygain")
         old = docker.named("cashpilot-tunnel-p3")

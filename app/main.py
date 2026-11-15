@@ -10776,6 +10776,9 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         # service, whose copy 1 may still run: the list is not whole.
         if "proxied" in info and info["proxied"] is None:
             complete = False
+        # Nor one that could not read which of them are routed services.
+        if info.get("routes_read") is False:
+            complete = False
         features = info.get("features")
         deadline = isinstance(features, list) and "deploy_deadline" in features
         await _reconcile_running_identities(

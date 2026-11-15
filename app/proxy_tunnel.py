@@ -1319,10 +1319,14 @@ def _deploy(
     except Exception:
         # docker-py's run leaves the container created when only its start
         # fails; the heartbeat would start it later, outside the owner's view.
-        # Never the old earner deploy_raw put back.
+        # Never the old earner deploy_raw put back. A removal Docker refuses
+        # neither hides the deploy's own error nor skips the put back:
+        # _settle_replaced tries it again, and _start_when_ready never starts a
+        # container that never ran while the old earner is aside.
         left = _get(client, name)
         if left is not None and _is_ours(left, slug, proxy_id) and (previous is None or left.id != previous.id):
-            _remove_quietly(left, 2)
+            with contextlib.suppress(Exception):
+                _remove_quietly(left, 2)
         with contextlib.suppress(Exception):
             _put_old_back(client, name, slug, proxy_id, was_held)
         _drop_if_empty(client, tunnel)
@@ -1352,14 +1356,17 @@ def _put_old_back(client: Any, name: str, slug: str, proxy_id: int, was_held: bo
     it is started here only once its tunnel says it is ready, as the heartbeat
     would. The caller holds the proxy's lock.
     """
+    if was_held:
+        # The deploy cleared the stop before it began; a copy the owner stopped
+        # stays stopped. First, so no step below that fails can skip it: the
+        # heartbeat would then give the old earner its name back and start it.
+        _set_held(name, True)
     if (aside := _get(client, name + orchestrator.REPLACED_SUFFIX)) is not None:
         _settle_replaced(client, aside)
+    if was_held:
+        return
     old = _get(client, name)
     if old is None or not _is_ours(old, slug, proxy_id):
-        return
-    if was_held:
-        # The deploy cleared the stop before it began; a copy the owner stopped stays stopped.
-        _set_held(name, True)
         return
     sidecar = _tunnel_of(client, old, slug, proxy_id)
     if sidecar is not None and _read_exit(sidecar) is not None:
@@ -1371,9 +1378,11 @@ def _settle_replaced(client: Any, aside: Any) -> str | None:
 
     A worker that died between the move aside and the new earner, a rename
     back that failed, or a removal Docker refused leaves one. When its copy
-    holds the name again it is a leftover and goes; when the name is free it
-    is the copy and gets its name back, stopped: the heartbeat starts it once
-    its tunnel is ready, unless it is held. The caller holds the proxy's lock.
+    holds the name again it is a leftover and goes; when the name is free, or
+    held by a replacement that never ran (a failed deploy whose container
+    Docker would not remove), it is the copy and gets its name back, stopped:
+    the heartbeat starts it once its tunnel is ready, unless it is held. The
+    caller holds the proxy's lock.
     """
     labels = _labels(aside)
     slug, pid = labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, "")
@@ -1385,12 +1394,23 @@ def _settle_replaced(client: Any, aside: Any) -> str | None:
     if current is None:
         aside.rename(name)
         return f"restored {name}"
+    if _is_ours(current, slug, int(pid)) and _is_earner(current) and _never_ran(current):
+        # deploy_raw keeps the old one aside for exactly this: the failed one
+        # goes first (a refusal raises, and both stay as they are).
+        _remove_quietly(current, 2)
+        aside.rename(name)
+        return f"restored {name}"
     if _is_ours(current, slug, int(pid)) and _is_earner(current):
         # As deploy_raw would have removed it once its replacement ran.
         _remove_quietly(aside, 2, volumes=False)
         _remove_anonymous_volumes(client, aside)
         return f"removed {aside_name}"
     return None
+
+
+def _never_ran(container: Any) -> bool:
+    """Created and never started: Docker keeps a container in "created" only until its first start."""
+    return getattr(container, "status", "") == "created"
 
 
 _LIVE = ("running", "restarting")
@@ -1959,6 +1979,12 @@ def _start_when_ready(earner: Any, sidecar: Any, slug: str) -> None:
             logger.warning("Could not read which copies are stopped (%s); starting none", exc)
             return
         earner.reload()
+        aside = f"{earner.name}{orchestrator.REPLACED_SUFFIX}"
+        if _never_ran(earner) and _get(orchestrator._get_client(), aside) is not None:
+            # A failed replacement Docker would not remove: the old earner aside
+            # is the copy, and _settle_replaced gives it the name back.
+            logger.warning("Not starting %s: it never ran and the copy it replaced is still aside", earner.name)
+            return
         action = earner_action(earner, sidecar, True)
         if action == "restart":
             earner.restart(timeout=orchestrator._get_stop_timeout(slug))
