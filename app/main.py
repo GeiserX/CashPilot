@@ -11599,9 +11599,13 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
 
 def _identity_forgettable(row: dict[str, Any], pending: bool) -> bool:
     """Whether database.delete_identity would delete ``row``: what the Forget button reads."""
-    if row.get("status") == "retired" or row.get("kind") in ("node", "backup"):
+    if row.get("status") == "retired" or row.get("kind") == "node":
         return True
-    return pending and float(row.get("age") or 0) >= PENDING_IDENTITY_SECONDS
+    if row.get("kind") == "backup" and row.get("source") != "pending":
+        return True
+    # A deploy's or a restore's hold the worker never answered: once it can no longer land.
+    held = pending or row.get("kind") == "backup"
+    return held and float(row.get("age") or 0) >= PENDING_IDENTITY_SECONDS
 
 
 async def _identity_context() -> tuple[dict[int, str], dict[str, dict[str, str]]]:
@@ -11647,8 +11651,14 @@ async def api_identity_forget(request: Request, identity_id: int) -> dict[str, s
     if not row:
         raise HTTPException(status_code=404, detail="No such device id")
     if not await database.delete_identity(identity_id):
+        hours = PENDING_IDENTITY_SECONDS // 3600
+        if row.get("kind") == "backup" and row.get("source") == "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="The worker did not answer this restore, so it may still finish and start this node there. "
+                f"You can forget it {hours} h after the restore.",
+            )
         if database.pending_copy_number(str(row.get("instance") or "")) is not None:
-            hours = PENDING_IDENTITY_SECONDS // 3600
             raise HTTPException(
                 status_code=409,
                 detail=f"The worker did not confirm this deploy, so the box may still start with this id. "
@@ -11925,7 +11935,11 @@ async def api_restore_upload(request: Request) -> dict[str, Any]:
     """
     user = _require_owner_session(request)
     _restore_sweep()
-    if len(_restore_uploads) >= RESTORE_UPLOAD_MAX_PENDING:
+    # Files still streaming in hold a slot too: each can keep RESTORE_UPLOAD_MAX
+    # on disk. No await between this check and the add to _restore_receiving
+    # below, nor between its release and the add to _restore_uploads, so on
+    # the one event loop the count is never passed.
+    if len(_restore_uploads) + len(_restore_receiving) >= RESTORE_UPLOAD_MAX_PENDING:
         raise HTTPException(status_code=429, detail="Too many backup files are waiting. Try again in a few minutes.")
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > RESTORE_UPLOAD_MAX:

@@ -903,40 +903,76 @@ def _pull_until(client: Any, image: str, deadline: float) -> APIError | None:
 #: created container would start a node on a half-written volume. Each refuses
 #: while the other runs; restore_state calls deploy_raw.__wrapped__, which
 #: skips this. ``_removing`` counts remove_service calls per slug: a restore
-#: refuses while one runs, so the helper and volumes a removal read and
-#: deletes are never those of a restore that started after its check.
+#: and a deploy refuse while one runs, so the helper and volumes a removal read
+#: and deletes are never those of a restore that started after its check, and
+#: no deploy starts on a volume it is about to delete. ``_operating`` counts the
+#: start, restart and export calls per slug (_holds_slug): a restore refuses
+#: while one runs, so none of them meets the container a restore created.
+#: Each registers before its own check and holds the slug to its last Docker
+#: action.
 _SLUG_WORK_LOCK = threading.Lock()
 _restoring: set[str] = set()
 _deploying: dict[str, int] = {}
 _removing: dict[str, int] = {}
+_operating: dict[str, int] = {}
+
+
+def _release_slug(registry: dict[str, int], slug: str) -> None:
+    with _SLUG_WORK_LOCK:
+        registry[slug] -= 1
+        if not registry[slug]:
+            del registry[slug]
+
+
+def _claim_slug(registry: dict[str, int], slug: str, what: str) -> None:
+    """Count one more call in ``registry`` for ``slug``, or raise 409 while a restore or a removal of it runs."""
+    with _SLUG_WORK_LOCK:
+        if slug in _restoring:
+            raise ContainerRuntimeError(
+                f"A restore of {slug} is running on this box, so {what}. Try again when it ends.", 409
+            )
+        if _removing.get(slug):
+            raise ContainerRuntimeError(
+                f"A removal of {slug} is running on this box, so {what}. Try again when it ends.", 409
+            )
+        registry[slug] = registry.get(slug, 0) + 1
+
+
+def _holds_slug(what: str) -> Any:
+    """Start, restart and export hold their slug from their check to their last Docker action."""
+
+    def decorate(fn: Any) -> Any:
+        @functools.wraps(fn)
+        def wrapper(slug: str, *args: Any, **kwargs: Any) -> Any:
+            _claim_slug(_operating, slug, f"it was not {what}")
+            try:
+                return fn(slug, *args, **kwargs)
+            finally:
+                _release_slug(_operating, slug)
+
+        return wrapper
+
+    return decorate
 
 
 def _holds_gated_lock(fn: Any) -> Any:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         slug = str(kwargs.get("slug", args[0] if args else ""))
-        if kwargs.get("start", True):
-            # A restore that died mid-write left its helper and a half-written
-            # volume, which this deploy would keep and start; _restoring is empty
-            # after a worker restart, so only the helper on disk tells.
-            _refuse_mid_restore(slug, "deployed")
-        with _SLUG_WORK_LOCK:
-            if slug in _restoring:
-                raise ContainerRuntimeError(
-                    f"A restore of {slug} is running on this box, so nothing was deployed. Try again when it ends.",
-                    409,
-                )
-            _deploying[slug] = _deploying.get(slug, 0) + 1
+        _claim_slug(_deploying, slug, "nothing was deployed")
         try:
+            if kwargs.get("start", True):
+                # A restore that did not finish left a half-written volume, which
+                # this deploy would keep and start; _restoring is empty after a
+                # worker restart, so only its record on disk tells. Checked once
+                # this deploy holds the slug, so no restore ends half-way between.
+                _refuse_mid_restore(slug, "deployed")
             if not fence_gated(slug):
                 return fn(*args, **kwargs)
             with GATED_DEPLOY_LOCK:
                 return fn(*args, **kwargs)
         finally:
-            with _SLUG_WORK_LOCK:
-                _deploying[slug] -= 1
-                if not _deploying[slug]:
-                    del _deploying[slug]
+            _release_slug(_deploying, slug)
 
     return wrapper
 
@@ -1881,6 +1917,7 @@ def _require_route(container: Any, slug: str) -> None:
     route_gate.check(slug, _network_mode(container), _get_client())
 
 
+@_holds_slug("started")
 def restart_service(slug: str, instance: int = 1) -> None:
     """Restart the container for a service."""
     _refuse_mid_restore(slug, "started")
@@ -2612,6 +2649,7 @@ def critical_state_id(slug: str) -> str | None:
     return state_id(_find_container(slug), _critical_volume_targets(slug))
 
 
+@_holds_slug("read for a backup")
 def read_critical_state(slug: str) -> tuple[bytes, list[str]]:
     """Read a service's irreplaceable state as a deterministic tar archive.
 
@@ -2734,6 +2772,61 @@ RESTORE_HOLD_DIR = "/run/cashpilot-restore-held"
 #: was left by a worker that died mid-restore, so it is removed, not refused.
 _RESTORE_LOCK = threading.Lock()
 
+#: Slugs whose restore did not finish, one per line: written before a restore
+#: makes anything, removed once its data read back as the backup, or once a
+#: removal or the restore's own undo confirmed every volume it wrote is gone.
+#: It outlives the worker and the helper both (a crash before the helper
+#: exists, a helper Docker would not create again), so _refuse_mid_restore
+#: holds a service no failed mark covers (ProxyBase, Anyone).
+RESTORE_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".restore_unfinished")
+#: A mark the file could not lose, by slug: lifted in this process only, as
+#: _FAILED_UNWRITTEN does. After a worker restart the file holds it again.
+_RESTORE_MARK_UNWRITTEN: dict[str, bool] = {}
+_RESTORE_MARK_LOCK = threading.Lock()
+
+
+def _restore_marks_on_disk() -> set[str]:
+    try:
+        with open(RESTORE_MARKER, encoding="utf-8") as fh:
+            return {line.strip() for line in fh if line.strip()}
+    except OSError:
+        return set()
+
+
+def restore_marks() -> set[str]:
+    """The slugs a restore that did not finish holds, as recorded on disk."""
+    with _RESTORE_MARK_LOCK:
+        names = _restore_marks_on_disk()
+        for slug, held in _RESTORE_MARK_UNWRITTEN.items():
+            names = names | {slug} if held else names - {slug}
+    return names
+
+
+def _mark_restore_unfinished(slug: str, held: bool) -> bool:
+    """Record on disk whether a restore of ``slug`` did not finish. True when the file says so now."""
+    with _RESTORE_MARK_LOCK:
+        names = _restore_marks_on_disk()
+        if (slug in names) == held:
+            _RESTORE_MARK_UNWRITTEN.pop(slug, None)
+            return True
+        names = names | {slug} if held else names - {slug}
+        try:
+            os.makedirs(os.path.dirname(RESTORE_MARKER) or ".", exist_ok=True)
+            temp = f"{RESTORE_MARKER}.tmp"
+            with open(temp, "w", encoding="utf-8") as fh:
+                fh.write("".join(f"{n}\n" for n in sorted(names)))
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(temp, RESTORE_MARKER)
+            _RESTORE_MARK_UNWRITTEN.pop(slug, None)
+            return True
+        except OSError as exc:
+            _RESTORE_MARK_UNWRITTEN[slug] = held
+            logger.warning(
+                "Could not record that a restore of %s %s: %s", slug, "did not finish" if held else "ended", exc
+            )
+            return False
+
 
 class RestoreError(ContainerRuntimeError):
     """A restore that was refused or undone. The message is safe to show and names no secret.
@@ -2818,6 +2911,15 @@ def _restore_refusal(client: Any, slug: str, name: str, volumes: dict[str, str])
             logger.warning("Removed %s, left by a restore that did not finish", candidate)
             continue
         return f"a container named {candidate} already exists on this box"
+    if slug in restore_marks():
+        # Its helper is gone (above) but the record stays: a restore that did
+        # not finish, whose volume may be half-written, unless none is here.
+        held = [v for v in volumes.values() if _volume_exists(client, v)]
+        if held:
+            return (
+                f"a restore of {slug} did not finish, so the volume {held[0]} may be half-written. "
+                "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore"
+            )
     for volume in volumes.values():
         try:
             client.volumes.get(volume)
@@ -2852,7 +2954,7 @@ def _restore_helper(slug: str) -> Any | None:
 
 
 def unfinished_restores() -> list[str]:
-    """The slugs on this box that a restore that did not finish left a helper for, sorted.
+    """The slugs on this box that a restore that did not finish left a helper or a record for, sorted.
 
     The heartbeat sends them, because such a box may hold only the half-written
     volume and its helper: no container of the service is listed, so without
@@ -2862,7 +2964,9 @@ def unfinished_restores() -> list[str]:
     found = _get_client().containers.list(all=True, filters={"label": f"{LABEL_RESTORE}=helper"})
     with _SLUG_WORK_LOCK:
         running = set(_restoring)
-    slugs = set()
+    # A restore's record on disk names it too: one that died before its helper
+    # existed, or whose helper Docker would not create again.
+    slugs = restore_marks() - running
     for container in found:
         name = str(getattr(container, "name", "") or "")
         if name.startswith(CONTAINER_PREFIX) and name.endswith(RESTORE_HELPER_SUFFIX):
@@ -2876,7 +2980,9 @@ def _refuse_mid_restore(slug: str, what: str) -> None:
     """Raise unless ``slug`` may start: no restore of it runs, and none left a half-written volume.
 
     A fence-gated service is also held by its failed mark on disk; this covers
-    the others (ProxyBase, Anyone), which nothing else marks.
+    the others (ProxyBase, Anyone), which nothing else marks: the restore's
+    record on disk (restore_marks), and its helper, which a worker from before
+    that record leaves alone.
     """
     with _SLUG_WORK_LOCK:
         running = slug in _restoring
@@ -2884,7 +2990,7 @@ def _refuse_mid_restore(slug: str, what: str) -> None:
         raise ContainerRuntimeError(
             f"A restore of {slug} is running on this box, so it was not {what}. Try again when it ends.", 409
         )
-    if _restore_helper(slug) is not None:
+    if slug in restore_marks() or _restore_helper(slug) is not None:
         raise ContainerRuntimeError(
             f"A restore of {slug} did not finish, so its data may be half-written and it was not {what}. "
             "Remove the service with its data (Remove from this box, in the service's dashboard panel, offers it), then restore the backup again.",
@@ -3085,6 +3191,11 @@ def restore_state(slug: str, archives: dict[str, bytes], deploy: dict[str, Any])
                 raise RestoreError(
                     f"Nothing was restored: a removal of {slug} is running on this box. Try again when it ends."
                 )
+            if _operating.get(slug):
+                raise RestoreError(
+                    f"Nothing was restored: a start, restart or backup of {slug} is running on this box. "
+                    "Try again when it ends."
+                )
             _restoring.add(slug)
         try:
             # The route lock a direct deploy holds (route_gate.deploying), from
@@ -3138,6 +3249,13 @@ def _restore_locked(
     failed_before = name in deploy_failed()
     files = 0
     try:
+        # On disk before anything is made, until the data reads back: a worker
+        # that dies midway, before or after its helper exists, leaves a slug
+        # nothing starts, deploys or exports (_refuse_mid_restore).
+        if not _mark_restore_unfinished(slug, True):
+            raise RestoreError(
+                f"the worker could not record that a restore of {slug} is under way, so nothing was made"
+            )
         if gated:
             # On disk before the container exists: a worker that dies before the
             # read-back leaves a node the guard never starts (lan_fence.guard).
@@ -3169,13 +3287,17 @@ def _restore_locked(
         container.reload()
         if container.status != "created":
             raise RestoreError(f"{name} started before the restore finished, so it was undone")
-        # Every volume read back as the backup: its half-written mark goes now, right before the start.
+        # Every volume read back as the backup: its half-written marks go now, right before the start.
+        _mark_restore_unfinished(slug, False)
         with contextlib.suppress(NotFound):
             mark.remove(force=True)
         containers.remove(mark)
         started = _start_restored(slug, container)
     except BaseException as exc:
         left = _restore_cleanup(client, containers, made, written)
+        # A written volume that stayed keeps the record, whether or not its
+        # helper could be put back; with none, nothing half-written is left.
+        _mark_restore_unfinished(slug, any(v in left for v in written))
         if gated:
             # Any container left under the name stays held (ours that could not
             # be removed, or one deploy_raw's roll-back left), and so does a
@@ -3345,13 +3467,16 @@ def _remove_service(
 ) -> dict[str, Any]:
     """remove_service's steps, while it holds its slug against a restore."""
     helper = _restore_helper(slug)
-    if only_if_restore_unfinished and helper is None:
+    # A restore that did not finish: its helper, or its record on disk alone
+    # (it died before the helper existed, or the helper could not come back).
+    unfinished = helper is not None or slug in restore_marks()
+    if only_if_restore_unfinished and not unfinished:
         raise RestoreClearedError(
             f"No restore of {slug} that did not finish is on this box now, so nothing was removed. "
             "Open the service again to see what runs there.",
             409,
         )
-    if not delete_volumes and helper is not None:
+    if not delete_volumes and unfinished:
         # The helper is the only mark of a half-written volume: removing it
         # while the volume stays would let the next deploy start on half the data.
         raise RestoreUnfinishedError(
@@ -3359,18 +3484,21 @@ def _remove_service(
             "removed. Remove the service with its data, then restore the backup again.",
             409,
         )
-    # The volumes the helper holds: those a restore that did not finish wrote into.
+    # The volumes the helper holds: those a restore that did not finish wrote
+    # into. With no helper, the ones a restore of this service writes.
     mounts = (getattr(helper, "attrs", None) or {}).get("Mounts") or [] if helper is not None else []
     held = [m["Name"] for m in mounts if m.get("Type") == "volume" and m.get("Name")]
+    if unfinished and helper is None:
+        held = sorted(set((restore_targets(slug) or {}).values()))
     try:
         container = _find_container(slug)
     except ValueError:
-        if helper is None:
+        if not unfinished:
             raise
         # The restore's undo removed the service but not its helper. Removing
         # it with its data is the only way the box takes this service again.
         container = None
-    name = container.name if container is not None else helper.name
+    name = container.name if container is not None else _container_name(slug) + RESTORE_HELPER_SUFFIX
 
     volume_names: list[str] = []
     if container is None:
@@ -3423,6 +3551,10 @@ def _remove_service(
         if blocked and not allow_delete_critical:
             raise CriticalVolumeError(slug, blocked)
 
+    if helper is not None and not _mark_restore_unfinished(slug, True):
+        # A helper from a worker that kept no record: the record goes on disk
+        # before the helper goes, so it holds the volume if the helper cannot come back.
+        logger.warning("Removing the helper a restore of %s left with no record on disk to hold its volume", slug)
     if container is not None:
         container.remove(force=True)
         logger.info("Removed container %s", name)
@@ -3466,6 +3598,9 @@ def _remove_service(
                 ", ".join(stayed),
                 exc,
             )
+    # The record goes only once every volume it holds is confirmed gone.
+    if unfinished and set(held) <= set(deleted_volumes):
+        _mark_restore_unfinished(slug, False)
 
     return {
         "container": name,
@@ -3474,6 +3609,7 @@ def _remove_service(
     }
 
 
+@_holds_slug("started")
 def start_service(slug: str, instance: int = 1) -> None:
     """Start a stopped container for a service."""
     _refuse_mid_restore(slug, "started")

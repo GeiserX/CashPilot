@@ -258,6 +258,38 @@ after = await restoreThenCheck(false);
 check('control: a restore with no newer file clears the preview and the file',
   after.html === '' && after.value === '', after);
 
+// --- another file chosen after the check, without checking it ---------------
+// The preview and its Restore button still hold the checked file's upload: a
+// Restore then would send that file while the picker shows another one.
+async function restoreAfterPicking(pickAnother) {
+  const input = {files: [{name: 'first.cpbackup', size: 10, lastModified: 1}], value: 'first.cpbackup'};
+  const out = {innerHTML: ''};
+  const ids = {'restore-file': input, 'restore-preview': out};
+  const document = {getElementById: (id) => ids[id] || null, querySelector: () => null};
+  const fetches = [];
+  const fetch = () => new Promise((resolve) => fetches.push(resolve));
+  const sent = [];
+  const toasts = [];
+  const api = async (path, opts) => { sent.push(opts.body.upload_id); return {service: 'Mysterium', worker: 'box-a', files: 1, started: true}; };
+  const {checkRestoreFile, submitRestore} = new Function('document', 'fetch', 'api', 'toast', 'loadIdentities',
+    `${escape}\n${stamp}\n${preview}\nasync ${checkSrc}\nasync ${submitSrc}\n`
+    + 'return {checkRestoreFile, submitRestore};')(document, fetch, api, (t, k) => toasts.push(`${k}: ${t}`), () => {});
+  const firstCheck = checkRestoreFile();
+  fetches[0]({ok: true, status: 200, json: async () => ({...base, upload_id: 'first-upload'})});
+  await firstCheck;
+  if (pickAnother) {
+    input.files = [{name: 'second.cpbackup', size: 12, lastModified: 2}];
+    input.value = 'second.cpbackup';
+  }
+  await submitRestore('first-upload');
+  return {sent, toasts};
+}
+let picked = await restoreAfterPicking(true);
+check('a file picked after the check is not restored under the checked one',
+  picked.sent.length === 0 && picked.toasts.length === 1 && /^error: .*Check file again/.test(picked.toasts[0]), picked);
+picked = await restoreAfterPicking(false);
+check('control: the checked file still in the picker restores', picked.sent.join() === 'first-upload', picked);
+
 if (bad) {
   console.error(`\n${bad} check(s) failed`);
   process.exit(1);

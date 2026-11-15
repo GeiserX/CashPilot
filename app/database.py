@@ -5565,8 +5565,10 @@ async def delete_identity(identity_id: int) -> bool:
     An active row CashPilot deployed with is never deleted: the shared-id check
     reads it. A node-reported row is only shown, so the owner may drop it while
     its node runs; the next read brings it back if the node still says so. A
-    backup row records a file, never an id a copy runs with. The
-    hold of a deploy the worker never answered (``u<n>``) may never be proven
+    backup row records a file, never an id a copy runs with; one still
+    'pending' is the hold of a restore the worker never answered, which may
+    still finish (settle_backup then needs the row), so it waits as long as a
+    deploy's hold. The hold of a deploy the worker never answered (``u<n>``) may never be proven
     or run out on its own (a worker with no deploy deadline, a catalog that no
     longer marks the key), so the owner may end it, but only once it is older
     than PENDING_IDENTITY_SECONDS. Before that the worker may still create the
@@ -5576,8 +5578,9 @@ async def delete_identity(identity_id: int) -> bool:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind IN ('node', 'backup') "
-            f"OR (instance LIKE '{PENDING_COPY_PREFIX}%' AND last_seen <= datetime('now', ?)))",
+            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node' "
+            "OR (kind = 'backup' AND COALESCE(source, '') != 'pending') "
+            f"OR ((instance LIKE '{PENDING_COPY_PREFIX}%' OR kind = 'backup') AND last_seen <= datetime('now', ?)))",
             (identity_id, f"-{PENDING_IDENTITY_SECONDS} seconds"),
         )
         await db.commit()

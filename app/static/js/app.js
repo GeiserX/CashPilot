@@ -4844,7 +4844,9 @@ const CP = (() => {
       const forget = r.forgettable
         ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}"${held ? ' data-a2="pending"' : ''}>Forget</button>` : '';
       const unconfirmed = held && !r.forgettable
-        ? '<div class="credential-health-hint">The worker did not confirm this deploy, so the box may still start with this id. You can forget it 6 h after the deploy.</div>' : '';
+        ? '<div class="credential-health-hint">The worker did not confirm this deploy, so the box may still start with this id. You can forget it 6 h after the deploy.</div>'
+        : (backup && r.source === 'pending' && !r.forgettable
+          ? '<div class="credential-health-hint">The worker did not answer this restore, so it may still finish and start this node there. You can forget it 6 h after the restore.</div>' : '');
       return `
         <div class="credential-health-item identity-row" data-identity="${id}">
           <div>
@@ -5038,6 +5040,13 @@ const CP = (() => {
   // Which file check is the newest: a slower answer for a file chosen before
   // must not replace the preview of the one chosen after it.
   let restoreCheckSeq = 0;
+  // The file behind the preview on screen: Restore sends that preview's
+  // upload, so it goes only while the picker still holds that same file.
+  let previewedFile = null;
+
+  function sameFile(a, b) {
+    return !!(a && b && a.name === b.name && a.size === b.size && a.lastModified === b.lastModified);
+  }
 
   async function checkRestoreFile() {
     const input = document.getElementById('restore-file');
@@ -5045,8 +5054,10 @@ const CP = (() => {
     const file = input && input.files && input.files[0];
     if (!file || !out) return;
     const seq = ++restoreCheckSeq;
+    previewedFile = null;
     out.innerHTML = '<p class="loading-line">Checking the file...</p>';
     let html;
+    let checked = null;
     try {
       // The raw file as the body: never JSON, never base64 in the page.
       const res = await fetch('/api/restore/upload', {
@@ -5059,13 +5070,22 @@ const CP = (() => {
         throw new Error(detail || `Error ${res.status}`);
       }
       html = restorePreviewHtml(data);
+      checked = file;
     } catch (err) {
       html = `<p class="text-fail">${escapeHtml(err.message)}</p>`;
     }
-    if (seq === restoreCheckSeq) out.innerHTML = html;
+    if (seq === restoreCheckSeq) {
+      out.innerHTML = html;
+      previewedFile = checked;
+    }
   }
 
   async function submitRestore(uploadId) {
+    const picker = document.getElementById('restore-file');
+    if (!sameFile(picker && picker.files && picker.files[0], previewedFile)) {
+      toast('The file chosen now is not the one checked. Press Check file again before you restore.', 'error');
+      return;
+    }
     const pass = document.getElementById('restore-passphrase');
     const worker = document.getElementById('restore-worker');
     const confirmBox = document.getElementById('restore-confirm');
@@ -5096,6 +5116,7 @@ const CP = (() => {
         if (out) out.innerHTML = '';
         const input = document.getElementById('restore-file');
         if (input) input.value = '';
+        previewedFile = null;
       }
       loadIdentities();
     } catch (err) {

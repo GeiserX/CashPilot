@@ -393,8 +393,15 @@ class FakeDocker:
             mounts[mount["bind"]] = source
         name = f"cashpilot-{slug}"
         self.container_map[name] = FakeContainer(
-            self, name, mounts, {orchestrator.LABEL_SERVICE: slug}, "sha256:catalog-image"
+            self,
+            name,
+            mounts,
+            {orchestrator.LABEL_MANAGED: "true", orchestrator.LABEL_SERVICE: slug},
+            "sha256:catalog-image",
         )
+        self.container_map[name].attrs["Mounts"] = [
+            {"Type": "volume", "Name": source, "Destination": target} for target, source in mounts.items()
+        ]
         return self.container_map[name].id
 
 
@@ -402,6 +409,13 @@ MYSTERIUM_DEPLOY = {
     "image": catalog.get_service("mysterium")["docker"]["image"],
     "volumes": {"mysterium-data": {"bind": "/var/lib/mysterium-node", "mode": "rw"}},
 }
+
+
+@pytest.fixture(autouse=True)
+def _restore_marks_on_tmp(tmp_path, monkeypatch):
+    """Each test gets its own unfinished-restore record on disk, as a box has one in /data."""
+    monkeypatch.setattr(orchestrator, "RESTORE_MARKER", str(tmp_path / "restore-unfinished"), raising=False)
+    monkeypatch.setattr(orchestrator, "_RESTORE_MARK_UNWRITTEN", {}, raising=False)
 
 
 @pytest.fixture
@@ -2796,3 +2810,231 @@ class TestALeftUploadGoesWithoutARequest:
             assert os.listdir(folder) == ["new"] and set(main._restore_uploads) == {"new"}
         finally:
             main._restore_uploads.clear()
+
+
+# ---------------------------------------------------------------------------
+# Round 9: what holds a slug, and what survives a worker that died
+# ---------------------------------------------------------------------------
+
+
+class TestAServiceNotFenceGatedStaysHeldAfterACrash:
+    """ProxyBase and Anyone have no failed mark of their own: the restore's record on disk holds them."""
+
+    def _died_after_the_create(self, docker):
+        """The worker is killed after the service container exists and before any helper.
+
+        A killed worker runs no undo: Docker keeps what it made, and the disk
+        keeps what it held at that instant, which is put back after the call.
+        """
+        marker = Path(orchestrator.RESTORE_MARKER)
+        disk: dict[str, bytes | None] = {}
+
+        def die(*_a, **_kw):
+            disk["at_death"] = marker.read_bytes() if marker.exists() else None
+            raise SystemExit("worker killed")
+
+        with (
+            patch.object(orchestrator, "_write_through_helper", die),
+            patch.object(orchestrator, "_restore_cleanup", lambda *a, **k: []),
+            pytest.raises(SystemExit),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        if disk["at_death"] is None:
+            marker.unlink(missing_ok=True)
+        else:
+            marker.write_bytes(disk["at_death"])
+        assert (
+            "cashpilot-mysterium" in docker.container_map and "cashpilot-mysterium.restore" not in docker.container_map
+        )
+        # A worker restart empties what the process held; only the disk is left.
+        orchestrator._RESTORE_MARK_UNWRITTEN.clear()
+        assert orchestrator._restoring == set()
+
+    @pytest.mark.parametrize("command", ["start_service", "restart_service", "read_critical_state"])
+    def test_a_crash_before_the_helper_never_starts_or_reads_it(self, docker, command):
+        self._died_after_the_create(docker)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish") as caught:
+            getattr(orchestrator, command)("mysterium")
+        assert caught.value.status_code == 409 and docker.started == []
+
+    def test_a_crash_before_the_helper_is_never_redeployed(self, docker):
+        self._died_after_the_create(docker)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            TestStartAndRemoveAroundARestore()._deploy(docker)
+        assert orchestrator.unfinished_restores() == ["mysterium"]
+
+    def test_its_remove_with_data_ends_the_hold(self, docker):
+        self._died_after_the_create(docker)
+        result = orchestrator.remove_service(
+            "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
+        )
+        assert result["deleted_volumes"] == ["mysterium-data"] and result["failed_volumes"] == []
+        assert docker.container_map == {} and docker.volume_map == {}
+        assert orchestrator.unfinished_restores() == []
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
+            TestStartAndRemoveAroundARestore()._deploy(docker)
+
+    def test_a_restore_that_finished_leaves_no_hold(self, docker):
+        """The control: a restore that read back right holds nothing once it ends."""
+        orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert orchestrator.unfinished_restores() == []
+        orchestrator._refuse_mid_restore("mysterium", "started")
+
+    def test_a_record_that_cannot_be_written_makes_nothing(self, docker, tmp_path, monkeypatch):
+        (tmp_path / "a-file").write_text("")
+        monkeypatch.setattr(orchestrator, "RESTORE_MARKER", str(tmp_path / "a-file" / "restore-unfinished"))
+        with pytest.raises(orchestrator.RestoreError, match="could not record"):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert docker.creates == [] and docker.volume_map == {} and docker.container_map == {}
+
+    def test_a_record_whose_volume_is_there_refuses_the_next_restore(self, docker):
+        self._died_after_the_create(docker)
+        del docker.container_map["cashpilot-mysterium"]
+        with pytest.raises(orchestrator.RestoreError, match="did not finish"):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert orchestrator.unfinished_restores() == ["mysterium"]
+
+
+class TestAHoldThatOutlivesALostHelper:
+    """The helper had to go before the volume; when the volume stays and the helper cannot come back."""
+
+    def test_a_remove_whose_volume_and_helper_both_fail_still_holds_it(self, docker):
+        TestStartAndRemoveAroundARestore()._service(docker, helper=True)
+        with (
+            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
+            patch.object(orchestrator, "_create_restore_helper", side_effect=RuntimeError("daemon gone")),
+        ):
+            result = orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert result["failed_volumes"] == ["mysterium-data"] and docker.container_map == {}
+        assert orchestrator._restore_helper("mysterium") is None
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            TestStartAndRemoveAroundARestore()._deploy(docker)
+        assert orchestrator.unfinished_restores() == ["mysterium"]
+
+    def test_an_undo_whose_volume_and_helper_both_fail_still_holds_it(self, docker):
+        docker.corrupt_put = True
+        real = orchestrator._create_restore_helper
+        calls: list[str] = []
+
+        def helper(client, image, name, volumes):
+            calls.append(name)
+            if len(calls) > 1:
+                raise RuntimeError("daemon gone")
+            return real(client, image, name, volumes)
+
+        with (
+            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
+            patch.object(orchestrator, "_create_restore_helper", helper),
+            pytest.raises(orchestrator.RestoreError, match="by hand"),
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert len(calls) == 2 and docker.container_map == {} and "mysterium-data" in docker.volume_map
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            TestStartAndRemoveAroundARestore()._deploy(docker)
+        assert orchestrator.unfinished_restores() == ["mysterium"]
+
+
+class TestStartRestartAndExportHoldTheirService:
+    """Each holds its slug from its check to its last Docker action, so no restore starts in between."""
+
+    @pytest.mark.parametrize("command", ["start_service", "restart_service", "read_critical_state"])
+    def test_a_restore_that_starts_between_the_check_and_the_container_is_refused(self, docker, command):
+        outcome: dict[str, str] = {}
+        real_find = orchestrator._find_container
+
+        def racing(slug, *args, **kwargs):
+            try:
+                orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+                outcome["restore"] = "ran"
+            except orchestrator.RestoreError as exc:
+                outcome["restore"] = exc.detail
+            return real_find(slug, *args, **kwargs)
+
+        with patch.object(orchestrator, "_find_container", racing), pytest.raises(ValueError):
+            getattr(orchestrator, command)("mysterium")
+        assert "is running on this box" in outcome["restore"] and outcome["restore"].startswith("Nothing was restored")
+        assert docker.creates == [] and docker.volume_map == {} and docker.started == []
+
+    def test_the_hold_ends_with_the_command(self, docker):
+        with pytest.raises(ValueError):
+            orchestrator.start_service("mysterium")
+        assert orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)["started"] is True
+
+
+class TestADeployDuringARemoval:
+    def test_a_deploy_that_starts_during_a_removal_is_refused(self, docker):
+        TestStartAndRemoveAroundARestore()._service(docker)
+        seen: list[Exception] = []
+        real_remove = FakeContainer.remove
+
+        def remove(container, force=False):
+            try:
+                TestStartAndRemoveAroundARestore()._deploy(docker)
+            except orchestrator.ContainerRuntimeError as exc:
+                seen.append(exc)
+            return real_remove(container, force)
+
+        with patch.object(FakeContainer, "remove", remove):
+            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert len(seen) == 1 and seen[0].status_code == 409, seen
+        assert "removal of mysterium is running" in str(seen[0])
+        docker.images.pull.assert_not_called()
+
+    def test_control_a_deploy_after_the_removal_goes_on(self, docker):
+        TestStartAndRemoveAroundARestore()._service(docker)
+        orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
+            TestStartAndRemoveAroundARestore()._deploy(docker)
+
+
+class TestUploadsStillArrivingCountAgainstTheLimit:
+    def test_files_still_streaming_in_take_their_slots(self, ui, monkeypatch):
+        monkeypatch.setattr(
+            main, "_restore_receiving", {f"/nowhere/{n}" for n in range(main.RESTORE_UPLOAD_MAX_PENDING)}
+        )
+        resp = _upload(ui, mysterium_bundle())
+        assert resp.status_code == 429 and _uploads_on_disk(ui) == []
+
+    def test_one_slot_short_still_takes_the_file(self, ui, monkeypatch):
+        monkeypatch.setattr(
+            main, "_restore_receiving", {f"/nowhere/{n}" for n in range(main.RESTORE_UPLOAD_MAX_PENDING - 1)}
+        )
+        assert _upload(ui, mysterium_bundle()).status_code == 200
+
+    def test_a_failed_upload_gives_its_slot_back(self, ui):
+        for _ in range(main.RESTORE_UPLOAD_MAX_PENDING + 1):
+            assert _upload(ui, b"junk").status_code == 400
+        assert main._restore_receiving == set() and _upload(ui, mysterium_bundle()).status_code == 200
+
+
+class TestAPendingRestoreRowIsForgottenOnlyWhenItCanNoLongerLand:
+    """A 'pending' backup row is the hold of a restore whose outcome is not known; it ages like a deploy's hold."""
+
+    @staticmethod
+    def _age(row_id: int) -> None:
+        import sqlite3
+
+        with sqlite3.connect(database.DB_PATH) as conn:
+            conn.execute(
+                "UPDATE device_identities SET last_seen = datetime('now', ?) WHERE id = ?",
+                (f"-{main.PENDING_IDENTITY_SECONDS + 60} seconds", row_id),
+            )
+
+    def test_a_fresh_pending_row_is_not_forgotten(self, ui):
+        row_id = asyncio.run(database.record_backup("mysterium", 1, "c" * 64, "pending"))
+        view = next(r for r in ui.get("/api/identities").json() if r["id"] == row_id)
+        assert view["forgettable"] is False
+        assert asyncio.run(database.delete_identity(row_id)) is False
+        resp = ui.delete(f"/api/identities/{row_id}")
+        assert resp.status_code == 409 and "may still finish" in _detail(resp) and "6 h" in _detail(resp)
+        # The row is still there, so the worker's late answer can still settle it.
+        asyncio.run(database.settle_backup(row_id, True))
+        assert [r["source"] for r in asyncio.run(database.backup_records("c" * 64))] == ["restore"]
+
+    def test_once_its_time_is_up_the_owner_may_forget_it(self, ui):
+        row_id = asyncio.run(database.record_backup("mysterium", 1, "d" * 64, "pending"))
+        self._age(row_id)
+        view = next(r for r in ui.get("/api/identities").json() if r["id"] == row_id)
+        assert view["forgettable"] is True
+        assert ui.delete(f"/api/identities/{row_id}").status_code == 200
+        assert asyncio.run(database.backup_records("d" * 64)) == []
