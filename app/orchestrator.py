@@ -4111,9 +4111,12 @@ def _remove_service(
     # nothing here mounts (its helper is lost, now or before) is read now. One
     # that is there cannot be told from another client's volume, so the box
     # neither deletes it nor drops the hold, and names it for the owner to check.
+    # Read from the record as it stands now: a held name it had no entry for
+    # (a helper with no record at all) went on it bare before the helper went.
+    on_record = {**dict.fromkeys(held), **nonce_on_record} if helper is not None else nonce_on_record
     unconfirmed: list[str] = []
     unverified: list[str] = []
-    for vol_name, nonce in nonce_on_record.items():
+    for vol_name, nonce in on_record.items():
         if nonce or vol_name in deleted_volumes:
             continue
         unconfirmed.append(vol_name)

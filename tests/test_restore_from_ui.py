@@ -4765,6 +4765,25 @@ class TestALegacyRecordWhoseHelperIsLost:
         result = self._first_remove_loses_the_helper(docker)
         assert result["unverified_volumes"] == ["mysterium-data"] and result["failed_volumes"] == ["mysterium-data"]
 
+    def test_a_helper_with_no_record_names_the_volume_in_the_first_answer_too(self, docker):
+        """A helper from a worker that kept no record: the hold written before it goes is the volume's only mark."""
+        TestAVolumeMadeThisSecondBindsNoReview()._legacy_record(docker, "2026-11-14T10:00:00Z")
+        Path(orchestrator.RESTORE_MARKER).unlink()
+        with (
+            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
+            patch.object(orchestrator, "_create_restore_helper", side_effect=RuntimeError("daemon gone")),
+        ):
+            result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert docker.container_map == {} and orchestrator.restore_marks() == {"mysterium"}
+        assert result["unverified_volumes"] == ["mysterium-data"] and result["failed_volumes"] == ["mysterium-data"]
+
+    def test_control_a_helper_with_no_record_whose_volume_goes_ends_the_hold(self, docker):
+        TestAVolumeMadeThisSecondBindsNoReview()._legacy_record(docker, "2026-11-14T10:00:00Z")
+        Path(orchestrator.RESTORE_MARKER).unlink()
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["deleted_volumes"] == ["mysterium-data"] and result["unverified_volumes"] == []
+        assert orchestrator.restore_marks() == set()
+
     def test_control_a_helper_that_comes_back_lets_remove_try_again(self, docker):
         TestAVolumeMadeThisSecondBindsNoReview()._legacy_record(docker, "2026-11-14T10:00:00Z")
         with patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")):
