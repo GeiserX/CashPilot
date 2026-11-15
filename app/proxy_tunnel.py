@@ -1264,31 +1264,35 @@ def _deploy(
     ]
     old = _get(client, name)
     old_tunnel = _tunnel_of(client, old if _is_ours(old, slug, proxy_id) else None, slug, proxy_id)
+    # The earner's image is pulled before anything changes, as a direct deploy
+    # pulls before it touches the old container, and before the tunnel: a new
+    # tunnel image recreates this copy's earner in a new tunnel (_ensure_tunnel),
+    # which loses its writable layer. A pull still running at the deadline, or a
+    # tag with no image anywhere, leaves the old copy and its tunnel as they were.
+    image = str(earner["image"])
+    if (refused := orchestrator._pull_until(client, image, deadline)) is not None:
+        logger.warning("Failed to pull image %s: %s (trying local)", image, refused)
+        try:
+            client.images.get(image)
+        except DockerException:
+            raise orchestrator.ContainerRuntimeError(
+                f"{image} is not available on this worker: {refused}. The running copy was not touched."
+            ) from None
     tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others, slug=key, deadline=deadline)
-    # The earner's image is pulled before the old copy goes, as a direct deploy
-    # pulls before it touches the old container: a pull still running at the
-    # deadline, or a tag with no image anywhere, leaves the old copy running.
     # The held mark is cleared before anything changes: deploy_raw starts the
     # earner, and a copy left running while recorded as stopped is never
-    # restarted after a reboot. Past the deadline (a slow tunnel start or
-    # pull), the old copy is left as it was.
-    image = str(earner["image"])
+    # restarted after a reboot. Past the deadline (a slow tunnel start), the
+    # old copy is left as it was.
     try:
-        if (refused := orchestrator._pull_until(client, image, deadline)) is not None:
-            logger.warning("Failed to pull image %s: %s (trying local)", image, refused)
-            try:
-                client.images.get(image)
-            except DockerException:
-                raise orchestrator.ContainerRuntimeError(
-                    f"{image} is not available on this worker: {refused}. The running copy was not touched."
-                ) from None
         orchestrator._refuse_past(deadline, image)
         _set_held(name, False, strict=True)
     except Exception:
         _drop_if_empty(client, tunnel)
         raise
-    with _swap_lock:
-        _remove(slug, proxy_id, drop_shared=False)
+    # The old earner is not removed here: deploy_raw replaces it, keeping it
+    # aside until the new one runs and putting it back if the deadline passes
+    # while it stops or the new one fails. Its legacy tunnel goes only after.
+    previous = _get(client, name)
     try:
         container_id = orchestrator.deploy_raw(
             slug=slug,
@@ -1308,10 +1312,22 @@ def _deploy(
     except Exception:
         # docker-py's run leaves the container created when only its start
         # fails; the heartbeat would start it later, outside the owner's view.
-        if (left := _get(client, name)) is not None and _is_ours(left, slug, proxy_id):
+        # Never the old earner deploy_raw put back.
+        left = _get(client, name)
+        if left is not None and _is_ours(left, slug, proxy_id) and (previous is None or left.id != previous.id):
             _remove_quietly(left, 2)
         _drop_if_empty(client, tunnel)
         raise
+    # The volumes its image declared went with the old earner when it was
+    # removed before its replacement: the new copy starts on fresh ones.
+    if previous is not None and previous.id != container_id and _is_ours(previous, slug, proxy_id):
+        _remove_anonymous_volumes(client, previous)
+    # The old copy's legacy tunnel, now that no earner needs its namespace.
+    legacy = _get(client, tunnel_name(slug, proxy_id))
+    for candidate in {t.id: t for t in (old_tunnel, legacy) if t is not None and t.id != tunnel.id}.values():
+        if _is_tunnel(candidate, proxy_id) and not _is_shared(candidate) and _is_ours(candidate, slug, proxy_id):
+            with _swap_lock:
+                _remove_quietly(candidate, SIDECAR_STOP_SECONDS)
     if old_tunnel is not None and old_tunnel.id != tunnel.id:
         # The shared tunnel this copy left for its own, or the other way round.
         with contextlib.suppress(Exception):
@@ -1320,6 +1336,17 @@ def _deploy(
 
 
 _LIVE = ("running", "restarting")
+_ANONYMOUS_VOLUME = re.compile(r"[0-9a-f]{64}")
+
+
+def _remove_anonymous_volumes(client: Any, container: Any) -> None:
+    """The anonymous volumes a removed ``container`` had, as ``remove(v=True)`` would have taken them."""
+    for mount in (getattr(container, "attrs", None) or {}).get("Mounts") or []:
+        name = str(mount.get("Name") or "")
+        if mount.get("Type") == "volume" and _ANONYMOUS_VOLUME.fullmatch(name):
+            # One still in use or already gone is left: a leftover volume only.
+            with contextlib.suppress(Exception):
+                client.volumes.get(name).remove()
 
 
 def stop(slug: str, proxy_id: int) -> bool:
@@ -1938,7 +1965,9 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
             continue
         if _labels(container).get(LABEL_ROLE) == ROLE_TUNNEL:
             tunnels[container.id] = container
-        else:
+        elif not str(getattr(container, "name", "")).endswith(orchestrator.REPLACED_SUFFIX):
+            # An old earner deploy_raw keeps aside until its replacement runs (or
+            # a leftover of one) is not the copy: never reported, never started.
             earners.append(container)
     pairs: dict[tuple[str, str], tuple[Any | None, Any | None]] = {}
     used: set[str] = set()

@@ -16,6 +16,7 @@ import json
 import os
 import tarfile
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import patch
@@ -37,6 +38,8 @@ EXIT = {"ip": "93.184.215.14", "country": "DE"}
 PASSWORD = "s3cr3t-p@ss"
 NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
 _clock = itertools.count(1)
+# The fixture makes time.sleep a no-op; a test that needs time to pass uses this.
+_real_sleep = time.sleep
 
 
 def _now() -> str:
@@ -218,19 +221,44 @@ def _tailscale(**extra):
 
 
 def _fake_deploy_raw(docker: FakeDocker):
-    def deploy_raw(*, slug, image, env, network_mode, labels, name, **_kw):
+    """orchestrator.deploy_raw's contract: a container under the name is replaced, never lost.
+
+    Past the deadline before anything changes, nothing does. Otherwise the old
+    one is stopped and moved aside until the new one runs; a deadline passed
+    meanwhile (a slow stop) or a failed create puts it back, running if it ran.
+    """
+
+    def deploy_raw(*, slug, image, env, network_mode, labels, name, deadline=None, **_kw):
+        if deadline is not None:
+            orchestrator._refuse_past(deadline, image)
+        old = docker.named(name)
+        was_running = old is not None and old.status == "running"
+        if old is not None:
+            old.stop()
+            old.rename(f"{name}{orchestrator.REPLACED_SUFFIX}")
         all_labels = {**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true", "cashpilot.deployed-by": "worker"}
-        c = docker.create(
-            image=image,
-            name=name,
-            environment=[f"{k}={v}" for k, v in env.items()],
-            labels=all_labels,
-            network_mode=network_mode,
-            cap_drop=["ALL"],
-            security_opt=["no-new-privileges:true"],
-            restart_policy={"Name": "no"},
-        )
-        c.start()
+        try:
+            if deadline is not None:
+                orchestrator._refuse_past(deadline, image)
+            c = docker.create(
+                image=image,
+                name=name,
+                environment=[f"{k}={v}" for k, v in env.items()],
+                labels=all_labels,
+                network_mode=network_mode,
+                cap_drop=["ALL"],
+                security_opt=["no-new-privileges:true"],
+                restart_policy={"Name": "no"},
+            )
+            c.start()
+        except Exception:
+            if old is not None:
+                old.rename(name)
+                if was_running:
+                    old.start()
+            raise
+        if old is not None:
+            old.remove(force=True)
         return c.id
 
     return deploy_raw
@@ -356,6 +384,84 @@ class TestOneTunnelPerProxy:
         (tunnel,) = docker.tunnels()
         assert tunnel.id != old.id and tunnel.kw["image"] == NEW_IMAGE
         assert _member_ids(docker, tunnel) == ["cashpilot-honeygain-p3"]
+
+    def test_an_earner_image_that_cannot_be_pulled_never_replaces_the_tunnel(self, docker):
+        """A new tunnel image is taken by moving the copy into a new tunnel: never for a deploy that cannot finish."""
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner = docker.named("cashpilot-honeygain-p3")
+        with (
+            patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}),
+            patch.object(docker, "pull", side_effect=APIError("manifest for honeygain/honeygain:1 unknown")),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        # The same containers: the copy's writable layer, and its device, are intact.
+        assert docker.tunnels() == [tunnel] and tunnel.status == "running"
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_a_deadline_passed_while_the_old_copy_stops_keeps_it(self, docker):
+        """The old copy stays until its replacement runs, so a slow stop past the deadline puts it back."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        real_stop = earner.stop
+
+        def slow_stop(timeout=None):
+            _real_sleep(1.2)
+            real_stop(timeout)
+
+        earner.stop = slow_stop
+        with pytest.raises(orchestrator.ContainerRuntimeError):
+            proxy_tunnel.deploy(
+                "honeygain",
+                3,
+                {"image": "honeygain/honeygain:1", "env": {"K": "honeygain"}},
+                _socks(),
+                None,
+                deadline=time.monotonic() + 1.0,
+            )
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_a_redeploy_drops_the_volumes_the_old_earners_image_declared(self, docker):
+        """As removing the old earner with its volumes did: the new copy starts on fresh ones, none is left behind."""
+        _deploy("honeygain")
+        anonymous, named = "ab" * 32, "cashpilot-data"
+        docker.named("cashpilot-honeygain-p3").attrs["Mounts"] = [
+            {"Type": "volume", "Name": anonymous, "Destination": "/data", "RW": True},
+            {"Type": "volume", "Name": named, "Destination": "/keep", "RW": True},
+        ]
+        removed = []
+
+        class Volumes:
+            def get(self, name):
+                return type("V", (), {"remove": lambda _self: removed.append(name)})()
+
+        docker.volumes = Volumes()
+        _deploy("honeygain")
+        assert removed == [anonymous]
+
+    def test_a_redeploy_of_a_legacy_pair_moves_it_into_the_shared_tunnel_and_drops_its_own(self, docker):
+        legacy = _legacy_pair(docker, "honeygain", proxy=_socks())
+        _deploy("honeygain")
+        (tunnel,) = docker.tunnels()
+        assert tunnel.id != legacy.id and docker.named(legacy.name) is None
+        assert _member_ids(docker, tunnel) == ["cashpilot-honeygain-p3"]
+        assert docker.named("cashpilot-honeygain-p3").status == "running"
+
+    def test_a_failed_redeploy_of_a_legacy_pair_puts_the_pair_back_running(self, docker):
+        legacy = _legacy_pair(docker, "honeygain", proxy=_socks())
+        earner = docker.named("cashpilot-honeygain-p3")
+        real_create = docker.create
+
+        def refuse_the_earner(**kw):
+            if kw["name"] == "cashpilot-honeygain-p3":
+                raise APIError("500 Server Error: create failed")
+            return real_create(**kw)
+
+        with patch.object(docker, "create", side_effect=refuse_the_earner), pytest.raises(APIError):
+            _deploy("honeygain")
+        assert docker.tunnels() == [legacy] and legacy.status == "running"
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
 
     def test_a_tunnel_that_cannot_start_costs_the_running_copies_nothing(self, docker):
         _deploy("honeygain")

@@ -332,3 +332,18 @@ console.log('Instances: a changed count rescales a routed box on its route, neve
   assert.equal(wizard.children.length + wizard.listeners, 0, 'the hidden wizard box is not touched');
 }
 console.log('Two forms: each deploy and each fill uses the Route box of its own form, read once per deploy.');
+
+// ---- The device-name checks reach a box that runs only the routed service -------
+// A pending copy (p9) beside the routed service (p4) on a box with no direct
+// container gets its rename button only if the check asks about that box.
+{
+  const workers = [
+    { id: 1, status: 'online', containers: [], system_info: { proxied: [{ slug: 'honeygain', proxy_id: 4, routed: true }] } },
+    { id: 2, status: 'online', containers: [{ slug: 'honeygain' }] },
+    { id: 3, status: 'offline', containers: [{ slug: 'honeygain' }] },
+    { id: 5, status: 'online', containers: [], system_info: { proxied: [{ slug: 'honeygain', proxy_id: 4 }] } },
+  ];
+  const { _runningWorkerIds } = fns(['runsOn', 'workerCopies', '_runningWorkerIds'], ['_detailWorkers'], [workers]);
+  assert.deepEqual(_runningWorkerIds('honeygain'), [1, 2], 'a routed-only box is checked for device names');
+}
+console.log('Device names: a box that runs only the routed service is checked too.');

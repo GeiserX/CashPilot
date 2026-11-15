@@ -4036,10 +4036,11 @@ const CP = (() => {
     }
   }
 
-  // The boxes that run `slug` now, from the workers the detail modal loaded.
+  // The boxes that run `slug` now, from the workers the detail modal loaded,
+  // a box that runs it only through its route included.
   function _runningWorkerIds(slug) {
     return (_detailWorkers || [])
-      .filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug))
+      .filter(w => w.status === 'online' && runsOn(w, slug))
       .map(w => w.id);
   }
 

@@ -948,7 +948,7 @@ def deploy_raw(
 
     ``network_mode="container:<id>"``, ``name`` and ``pulled`` are for
     app/proxy_tunnel.py only (``pulled``: it pulled the image itself, before it
-    removed the running copy, so the deadline cannot pass in a second pull).
+    touched the copy's tunnel, so the deadline cannot pass in a second pull).
     The worker API refuses a container: network mode from any caller.
     A container that joins another's namespace gets no ports, resolvers or
     hostname of its own, because Docker refuses them there.

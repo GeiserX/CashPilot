@@ -1040,6 +1040,54 @@ class TestStorageAndRoutes:
         notes, marks = _run(go)
         assert notes == [] and marks == [1], "rebuilt from the older record, so it is still on the old name"
 
+    def test_retrying_a_rename_skips_a_copy_a_routed_deploy_made_the_service_meanwhile(self, db):
+        """The retry picks copy B; a routed deploy through B's proxy lands before the retry takes B's lock.
+
+        B is the service's own routed earner now, built from the service's own
+        ids: rebuilding it as a copy would put the copy's ids over them.
+        """
+        svc = {"slug": "honeygain", "name": "Honeygain", "status": "active", "docker": {"image": "x"}}
+        old = {"image": "x", "env": {"DEVICE": "cashpilot-a"}}
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            pid = created["id"]
+            await database.save_deployment("honeygain", "c1", spec=old, worker_id=7)
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
+            worker = {
+                "id": 7,
+                "status": "online",
+                "system_info": json.dumps(
+                    {
+                        "docker_available": True,
+                        "features": ["proxy_tunnel", "proxied_if_running"],
+                        "proxied": [{"proxy_id": pid, "slug": "honeygain", "held": False, "status": "running"}],
+                    }
+                ),
+            }
+            real_earner = main._proxied_earner
+
+            async def routed_lands(*args, **kwargs):
+                # Before the retry takes the copy's lock: the routed deploy saves its record.
+                routed = {**old, "route": {"proxy_id": pid}}
+                await database.save_deployment("honeygain", "c1", spec=routed, worker_id=7)
+                return await real_earner(*args, **kwargs)
+
+            call = AsyncMock(return_value={"status": "deployed"})
+            with (
+                patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value=worker),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxied_if_running"}),
+                patch.object(main, "_proxied_earner", side_effect=routed_lands),
+                patch.object(main, "_proxy_worker_call", call),
+            ):
+                notes = await main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], old, pending_only=True)
+            return notes, call.await_count
+
+        notes, sent = _run(go)
+        assert sent == 0, "the service's routed earner is never rebuilt as a copy"
+        assert notes == []
+
     def test_the_checked_clear_follows_the_record_the_copy_was_built_from(self, db):
         spec = {"image": "x", "env": {"DEVICE": "cashpilot-a"}}
 

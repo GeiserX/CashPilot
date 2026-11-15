@@ -321,8 +321,11 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                         "status": str(e.get("status") or "unknown"),
                         # A worker older than the field sends none.
                         "image": str(e.get("image") or ""),
-                        "cpu_percent": 0,
-                        "memory_mb": 0,
+                        # Unknown, not idle, until the worker measures it: a 0
+                        # counts as a measured copy in the services table and
+                        # the running-costs card.
+                        "cpu_percent": e.get("cpu_percent"),
+                        "memory_mb": e.get("memory_mb"),
                         "net_rx_bytes": e.get("net_rx_bytes"),
                         "net_tx_bytes": e.get("net_tx_bytes"),
                         "category": "",
@@ -5532,7 +5535,10 @@ def _ledger_containers(containers: Any, info: Mapping[str, Any]) -> Any:
     copy through its route, which the worker lists under ``proxied``, flagged
     ``routed`` (worker_api._mark_routed), with the digest of the ids it runs.
     Its ledger row and its unconfirmed hold are copy 1's (_deploy_routed), so
-    the same digest proof confirms or repairs them as for a direct copy.
+    the same digest proof confirms or repairs them as for a direct copy. One
+    listed with no digest is still listed: it may run its ids, so it proves
+    nothing either way. One whose earner is missing (only its tunnel is left)
+    runs nothing, so it is not listed.
     """
     if not isinstance(containers, list):
         return containers
@@ -5543,14 +5549,13 @@ def _ledger_containers(containers: Any, info: Mapping[str, Any]) -> Any:
             "slug": entry["slug"],
             "instance": 1,
             "container_id": str(entry.get("container_id") or ""),
-            "identity_digest": entry["identity_digest"],
+            "identity_digest": entry.get("identity_digest"),
         }
         for entry in entries
         if isinstance(entry, dict)
         and entry.get("routed") is True
         and isinstance(entry.get("slug"), str)
-        and isinstance(entry.get("identity_digest"), str)
-        and entry["identity_digest"]
+        and entry.get("status") != "missing"
     ]
     return containers + routed if routed else containers
 
@@ -7017,6 +7022,11 @@ async def _refresh_proxied_copies(
                 )
                 if current is None or current.get("removing_since"):
                     raise ValueError("it was removed meanwhile")
+                # A routed deploy through this proxy that finished while this
+                # waited made this copy the service's own earner, named from its
+                # own ids: rebuilt as a copy, it would run the copy's ids instead.
+                if proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == pid:
+                    continue
                 if proxy["state"].get("capped_at") or current.get("stopped_by_cap"):
                     raise ValueError("its proxy reached its traffic cap")
                 await _proxy_worker_call(
@@ -10762,6 +10772,10 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         info = body.system_info if isinstance(body.system_info, dict) else {}
         flag = info.get("containers_listed")
         complete = flag is True or (flag is None and bool(body.containers))
+        # A box that could not read its proxied copies (None) lists no routed
+        # service, whose copy 1 may still run: the list is not whole.
+        if "proxied" in info and info["proxied"] is None:
+            complete = False
         features = info.get("features")
         deadline = isinstance(features, list) and "deploy_deadline" in features
         await _reconcile_running_identities(

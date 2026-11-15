@@ -2071,6 +2071,11 @@ _copy_deploys: dict[tuple[str, int], int] = {}
 #: How many deploys of each copy ever started here. A removal compares it before
 #: and after, so a deploy that started and ended inside it is not missed.
 _copy_starts: dict[tuple[str, int], int] = {}
+#: How many removals of each copy, by (slug, proxy id), are running here. A
+#: deploy of that copy is refused meanwhile: it would wait on the proxy's lock
+#: and make its earner after the removal answered, and the UI then drops the
+#: copy's record, leaving that earner running with none.
+_copy_removals: dict[tuple[str, int], int] = {}
 
 
 @app.post("/api/proxied/{slug}/{proxy_id}/deploy")
@@ -2082,6 +2087,12 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
     # outlast it, however long this one waits for locks or a tunnel pull.
     deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     key = (slug, int(proxy_id))
+    if _copy_removals.get(key):
+        raise HTTPException(
+            status_code=409,
+            detail=f"A removal of {slug} through proxy {proxy_id} is running on this worker; "
+            "deploy it again once it ends",
+        )
     _copy_deploys[key] = _copy_deploys.get(key, 0) + 1
     _copy_starts[key] = _copy_starts.get(key, 0) + 1
     try:
@@ -2169,7 +2180,8 @@ async def api_proxied_logs(request: Request, slug: str, proxy_id: int, lines: in
 @app.delete("/api/proxied/{slug}/{proxy_id}")
 async def api_proxied_remove(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
     _verify_api_key(request)
-    if _copy_deploys.get((slug, int(proxy_id))):
+    key = (slug, int(proxy_id))
+    if _copy_deploys.get(key):
         # 503 keeps the removal pending in the UI, which asks again with each
         # heartbeat (main._resume_copy_removals) and then removes what it made.
         raise HTTPException(
@@ -2177,10 +2189,17 @@ async def api_proxied_remove(request: Request, slug: str, proxy_id: int) -> dict
             detail=f"A deploy of {slug} through proxy {proxy_id} is still running on this worker; "
             "the removal waits for it",
         )
+    # Marked in the same step as the check, with no await between: from here
+    # until the removal ends, a deploy of this copy is refused.
+    _copy_removals[key] = _copy_removals.get(key, 0) + 1
     try:
         removed = await asyncio.to_thread(proxy_tunnel.remove, slug, proxy_id)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
+    finally:
+        _copy_removals[key] -= 1
+        if not _copy_removals[key]:
+            del _copy_removals[key]
     return {"status": "removed", "containers": removed}
 
 
