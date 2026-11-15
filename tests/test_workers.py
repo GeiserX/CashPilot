@@ -484,6 +484,27 @@ class TestHealthCheckVanishedService:
         # Exactly one event (the normal check_ok), never a second "missing" on top.
         assert _batched_events(mock_record) == [("honeygain", "check_ok", "")]
 
+    @pytest.mark.parametrize(
+        "info",
+        [
+            '{"docker_available": true, "routes_read": false}',
+            '{"docker_available": true, "proxied": null}',
+            '{"docker_available": true, "containers_listed": false}',
+        ],
+    )
+    def test_a_heartbeat_that_says_its_lists_are_not_whole_flags_nothing_missing(self, info):
+        """A routed service's copy is left out when the worker could not read its routes: unknown, not down."""
+        workers = [_worker_row(id=1, status="online", containers="[]", system_info=info)]
+        deployments = [{"slug": "honeygain", "status": "running"}]
+        mock_record = AsyncMock()
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=deployments),
+            patch("app.main.database.record_health_events", mock_record),
+        ):
+            _run(_run_health_check())
+        assert all(e[0] != "honeygain" for e in _batched_events(mock_record))
+
 
 class TestHealthCheckPhoneApps:
     """A phone reports its apps three ways: running, stopped, or unknown when it

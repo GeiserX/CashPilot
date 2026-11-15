@@ -471,7 +471,11 @@ async def _run_health_check() -> None:
         # either; counting it as blind did the same to every fleet with one.
         blind = [w for w in online if placement.is_blind(w)]
         _report_blind_workers(blind)
-        if online and not blind:
+        # Nor if one that can see Docker said its lists are not whole: a routed
+        # service's copy is left out of a heartbeat whose routes were not read,
+        # and may still run there.
+        partial = [w for w in online if placement.can_see_docker(w) and _heartbeat_partial(placement.system_info(w))]
+        if online and not blind and not partial:
             deployments = await database.get_deployments()
             for d in deployments:
                 slug = d["slug"]
@@ -486,6 +490,16 @@ async def _run_health_check() -> None:
         await _proxied_copy_check(workers)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
+
+
+def _heartbeat_partial(info: dict[str, Any]) -> bool:
+    """Whether a worker's heartbeat said it could not list everything: its
+    containers, its proxied copies, or which of those are routed services."""
+    return (
+        info.get("containers_listed") is False
+        or ("proxied" in info and info["proxied"] is None)
+        or info.get("routes_read") is False
+    )
 
 
 # The blind workers the last warning named. The health check runs every five
@@ -10773,11 +10787,9 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         flag = info.get("containers_listed")
         complete = flag is True or (flag is None and bool(body.containers))
         # A box that could not read its proxied copies (None) lists no routed
-        # service, whose copy 1 may still run: the list is not whole.
-        if "proxied" in info and info["proxied"] is None:
-            complete = False
-        # Nor one that could not read which of them are routed services.
-        if info.get("routes_read") is False:
+        # service, whose copy 1 may still run: the list is not whole. Nor one
+        # that could not read which of them are routed services.
+        if _heartbeat_partial(info):
             complete = False
         features = info.get("features")
         deadline = isinstance(features, list) and "deploy_deadline" in features
