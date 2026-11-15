@@ -4114,8 +4114,12 @@ const CP = (() => {
   async function redeployWithValues(slug, workerId) {
     // The form is folded away under the boxes list; open it so a missing value shows.
     document.querySelectorAll('details.sd-more').forEach(d => { d.open = true; });
+    // The form shows catalog defaults, not what this box was deployed with, so
+    // a stored value with no default is a blank required box here. The server
+    // checks required values against the box's record and names any still
+    // missing, so the blank boxes are not refused in the browser.
     const routeRoot = document.getElementById('service-detail-body');
-    if (await _deployToWorkers(slug, [parseInt(workerId)], { routeRoot })) openServiceDetail(slug);
+    if (await _deployToWorkers(slug, [parseInt(workerId)], { rescaleOnly: true, routeRoot })) openServiceDetail(slug);
   }
 
   async function redeployOnWorker(slug, workerId) {
