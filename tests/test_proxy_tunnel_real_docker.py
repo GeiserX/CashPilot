@@ -11,6 +11,9 @@ loaded (the kill switch, with no proxy to reach), and only then /run/ready is wr
 datagram to a sink on the bridge every 20 ms. Any datagram the sink gets left a namespace with no firewall in it:
 a leak. The worker's own code starts the earner (proxy_tunnel._start_in_ready_run) and the tunnel
 (proxy_tunnel._start_down_tunnel), under the proxy's lock.
+
+The last test runs the worker's own replacement of a tunnel an older worker made with Docker's unless-stopped
+policy (proxy_tunnel._replace_restarting), on the same stand-in made into a tunnel image.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import contextlib
 import io
 import os
 import random
+import tarfile
 import threading
 import time
 import uuid
@@ -34,9 +38,12 @@ pytestmark = pytest.mark.skipif(
 from docker.errors import APIError  # noqa: E402
 
 from app import orchestrator, proxy_tunnel  # noqa: E402
+from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_SERVICE  # noqa: E402
 
 PREFIX = f"cpgrd-{uuid.uuid4().hex[:8]}"
 IMAGE = f"{PREFIX}-nft:1"
+#: The stand-in as a tunnel image, so the worker's own sidecar_kwargs and start_sidecar can run it.
+TUNNEL_IMAGE = f"{PREFIX}-tun:1"
 ALPINE = "alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f"
 SOCAT = "alpine/socat:1.8.0.3"
 PROXY_ID = 4242
@@ -94,14 +101,32 @@ class Lab:
 
 
 def _remove_everything(client) -> None:
-    for c in client.containers.list(all=True, filters={"name": PREFIX}):
+    made = client.containers.list(all=True, filters={"name": PREFIX})
+    # The worker names a proxy's tunnel itself (cashpilot-tunnel-p<id>): found by the lab's proxy id.
+    made += client.containers.list(all=True, filters={"label": [f"{LABEL_PROXY}={PROXY_ID}", f"{LABEL_MANAGED}=true"]})
+    for c in made:
         with contextlib.suppress(Exception):
             c.remove(force=True, v=True)
     for n in client.networks.list(names=[f"{PREFIX}-net"]):
         with contextlib.suppress(Exception):
             n.remove()
-    with contextlib.suppress(Exception):
-        client.images.remove(IMAGE, force=True)
+    for image in (TUNNEL_IMAGE, IMAGE):
+        with contextlib.suppress(Exception):
+            client.images.remove(image, force=True)
+
+
+def _build_tunnel_image(client) -> None:
+    blob = io.BytesIO()
+    with tarfile.open(fileobj=blob, mode="w") as tar:
+        for name, text in (
+            ("Dockerfile", f'FROM {IMAGE}\nCOPY tunnel.sh /tunnel.sh\nENTRYPOINT ["sh", "/tunnel.sh"]\n'),
+            ("tunnel.sh", TUNNEL_SH),
+        ):
+            info = tarfile.TarInfo(name)
+            info.size = len(text.encode())
+            tar.addfile(info, io.BytesIO(text.encode()))
+    blob.seek(0)
+    client.images.build(fileobj=blob, custom_context=True, tag=TUNNEL_IMAGE, rm=True)
 
 
 @pytest.fixture(scope="module")
@@ -110,6 +135,7 @@ def lab():
     try:
         dockerfile = f"FROM {ALPINE}\nRUN apk add --no-cache nftables\n"
         client.images.build(fileobj=io.BytesIO(dockerfile.encode()), tag=IMAGE, rm=True)
+        _build_tunnel_image(client)
         network = client.networks.create(f"{PREFIX}-net", driver="bridge")
         sink = client.containers.run(
             SOCAT, ["-u", "UDP-RECV:9999", "-"], name=f"{PREFIX}-sink", network=network.name, detach=True
@@ -172,7 +198,7 @@ def _race(lab: Lab, arm: str, policy: str, rounds: int, *, wait_for_restart: flo
     def heartbeat():
         own = docker.from_env().containers.get(tunnel.id)
         while not stop.is_set():
-            proxy_tunnel._start_down_tunnel(own, str(PROXY_ID))
+            proxy_tunnel._start_down_tunnel(own, str(PROXY_ID), earner.name)
             stop.wait(0.05)
 
     def killer():
@@ -286,3 +312,72 @@ def test_a_failed_stop_leaves_the_earner_in_the_run_it_proved(lab):
     real_stop(timeout=1)
     time.sleep(1)
     assert lab.leaks("stop") == 0
+
+
+def _restarted_by_itself(tunnel, run: str, timeout: float = 10) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with contextlib.suppress(Exception):
+            tunnel.reload()
+            if tunnel.status == "running" and proxy_tunnel._started_at(tunnel) != run:
+                return True
+        time.sleep(0.1)
+    return False
+
+
+def test_an_older_workers_tunnel_is_replaced_and_its_copy_runs_only_in_the_new_proved_run(lab, monkeypatch, tmp_path):
+    """A shared tunnel a v2.5.0 worker made (unless-stopped), with a copy running in it. The socket proxy refuses
+    the container update that would take the policy away, so the worker replaces the tunnel: the copy is recreated
+    with its settings in a tunnel Docker never restarts, and starts only once that run proved its exit."""
+    for marker in ("HELD_MARKER", "FAILED_MARKER", "KEPT_MARKER", "NEW_MARKER"):
+        monkeypatch.setattr(proxy_tunnel, marker, str(tmp_path / marker.lower()))
+    monkeypatch.setenv("CASHPILOT_TUNNEL_IMAGE", TUNNEL_IMAGE)
+    monkeypatch.setattr(orchestrator, "container_network", lambda _mode: lab.network.name)
+    monkeypatch.setattr(orchestrator, "container_dns", lambda _network: None)
+    final = proxy_tunnel.shared_tunnel_name(PROXY_ID)
+    kwargs = proxy_tunnel.sidecar_kwargs(final, proxy_tunnel.SHARED_SLUG, PROXY_ID, lab.network.name, "tunnel-p")
+    kwargs.pop("detach")
+    kwargs["restart_policy"] = {"Name": "unless-stopped"}  # what every older worker gave its tunnels
+    old = lab.client.containers.create(**kwargs)
+    proxy = {"kind": "socks5", "host": "203.0.113.9", "port": 1080, "username": "u", "password": "p"}
+    files = proxy_tunnel.secret_files(proxy, "192.0.2.1", proxy_tunnel.shared_label(PROXY_ID))
+    assert old.put_archive(proxy_tunnel.SECRET_DIR, proxy_tunnel._secret_tar(files))
+    old.start()
+    assert _wait_ready(old)
+    # Control: Docker starts a new run of it by itself, outside any lock of the worker's.
+    run = proxy_tunnel._started_at(old)
+    _kill(old)
+    assert _restarted_by_itself(old, run), "the older worker's tunnel did not restart by itself"
+    assert _wait_ready(old)
+    earner = lab.client.containers.create(
+        IMAGE,
+        ["sh", "-c", EARNER_SH],
+        name=f"{PREFIX}-migrated-earner",
+        network_mode=f"container:{old.id}",
+        environment={"SINK": lab.sink_ip, "ARM": "migrated"},
+        labels={LABEL_MANAGED: "true", LABEL_PROXY: str(PROXY_ID), LABEL_SERVICE: "x"},
+        restart_policy={"Name": "no"},
+    )
+    with proxy_tunnel._deploy_lock(PROXY_ID):
+        # No earner starts in it: Docker could start a new run between the ready read and the start.
+        assert proxy_tunnel._start_in_ready_run(earner, old, "x") is False
+        earner.start()  # as an older worker left it: running in a run that proved its exit
+        assert proxy_tunnel._settled_and_wanted(lab.client, old, str(PROXY_ID))
+        new, _ = proxy_tunnel._replace_restarting(lab.client, lab.client.containers.get(old.id))
+    with pytest.raises(docker.errors.NotFound):
+        lab.client.containers.get(old.id)
+    new.reload()
+    assert new.name == final and new.attrs["HostConfig"]["RestartPolicy"]["Name"] == "no"
+    clone = lab.client.containers.get(f"{PREFIX}-migrated-earner")
+    assert clone.id != earner.id and clone.attrs["HostConfig"]["NetworkMode"] == f"container:{new.id}"
+    assert "ARM=migrated" in clone.attrs["Config"]["Env"] and clone.labels[LABEL_SERVICE] == "x"
+    assert clone.status == "running" and proxy_tunnel._started_at(clone) > proxy_tunnel._started_at(new)
+    # The replacement dies: Docker leaves it down, so nothing can join a run nobody proved.
+    run = proxy_tunnel._started_at(new)
+    _kill(new)
+    assert not _restarted_by_itself(new, run, timeout=4)
+    new.reload()
+    assert new.status == "exited"
+    clone.stop(timeout=1)
+    time.sleep(1.5)
+    assert lab.leaks("migrated") == 0

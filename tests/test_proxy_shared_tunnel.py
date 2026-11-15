@@ -123,10 +123,12 @@ class FakeContainer:
         self.stop()
         self.start()
 
-    def update(self, restart_policy=None, **_kw):
+    def update(self, **_kw):
+        # The shipped socket proxy refuses POST /containers/{id}/update on purpose
+        # (docs/security-defaults.md, tests/test_socket_proxy.py).
         self._alive()
-        if restart_policy is not None:
-            self.attrs["HostConfig"]["RestartPolicy"] = dict(restart_policy)
+        self._d.updates.append(self.name)
+        raise APIError("403 Client Error: Forbidden (request denied by socket proxy policy)")
 
     def remove(self, force=False, v=False):
         self._alive()
@@ -185,6 +187,7 @@ class FakeDocker:
         self.broken_auth: set[str] = set()  # proxy_auth values whose tunnel never gets an exit
         self.broken: set[str] = set()  # container ids Docker can no longer write to or start
         self.unreadable: set[str] = set()  # container ids whose files Docker can no longer read
+        self.updates: list[str] = []  # container updates asked for, every one refused
         self.containers = self
         self.images = self
 
@@ -308,6 +311,7 @@ def docker(tmp_path):
         patch.object(proxy_tunnel, "NEW_MARKER", str(tmp_path / ".proxied_new")),
         patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": IMAGE}),
         patch.object(proxy_tunnel.time, "sleep", lambda _s: None),
+        patch.dict(proxy_tunnel._replace_failed, clear=True),
     ):
         yield d
 
@@ -3601,16 +3605,19 @@ class TestNoTunnelRestartsByItself:
         tunnel = docker.named("cashpilot-tunnel-p3")
         assert tunnel.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
 
-    def test_the_heartbeat_takes_the_policy_away_from_an_older_shared_tunnel_only(self, docker):
+    def test_the_heartbeat_replaces_an_older_shared_tunnel_only(self, docker):
         _deploy("honeygain")
         legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
         tunnel = docker.named("cashpilot-tunnel-p3")
         for c in (tunnel, legacy):
-            c.attrs["HostConfig"]["RestartPolicy"] = {"Name": "unless-stopped"}
+            _made_by_an_older_worker(c)
         _heartbeat()
-        assert tunnel.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
+        (new,) = [t for t in docker.tunnels() if t.name == "cashpilot-tunnel-p3"]
+        assert new.id != tunnel.id and new.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
         # A legacy pair's stop by an older worker left no marker: Docker keeps deciding it.
+        assert docker.named(legacy.name) is legacy
         assert legacy.attrs["HostConfig"]["RestartPolicy"] == {"Name": "unless-stopped"}
+        assert docker.updates == []
 
     def test_a_tunnel_that_went_down_is_started_by_the_heartbeat_and_its_copies_once_it_is_ready(self, docker):
         _deploy("honeygain")
@@ -3640,6 +3647,185 @@ class TestNoTunnelRestartsByItself:
         with proxy_tunnel._deploy_lock(3):
             _heartbeat()
             assert tunnel.status == "exited"
+        _heartbeat()
+        assert tunnel.status == "running"
+
+
+def _made_by_an_older_worker(tunnel, image=IMAGE):
+    """What a v2.5.0 worker left: unless-stopped, which the socket proxy will not let the worker take away."""
+    tunnel.attrs["HostConfig"]["RestartPolicy"] = {"Name": "unless-stopped"}
+    tunnel.attrs["Config"]["Image"] = image
+
+
+OLD_IMAGE = "drumsergio/cashpilot-tunnel:2.1.0"
+
+
+class TestAnOlderWorkersTunnelIsReplacedNeverReused:
+    """The worker took the restart policy away with a container update, which the shipped socket proxy refuses on
+    purpose: every tunnel an older worker made kept unless-stopped (and its old image) for good, so Docker could
+    start a new run between the ready read and an earner's start. Such a tunnel is replaced now, and no earner
+    starts in it meanwhile."""
+
+    def _copies(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        old = docker.named("cashpilot-tunnel-p3")
+        # A volume the earner's image declares, where it keeps its device id.
+        honeygain = docker.named(NAME)
+        honeygain.attrs["Mounts"] = [{"Type": "volume", "Name": "hg-data", "Destination": "/data", "RW": True}]
+        proxy_tunnel.stop("earnfm", 3)
+        _made_by_an_older_worker(old, OLD_IMAGE)
+        return old
+
+    def test_the_heartbeat_replaces_it_and_keeps_each_copy_as_it_was(self, docker):
+        old = self._copies(docker)
+        env = {n: list(docker.named(n).attrs["Config"]["Env"]) for n in (NAME, "cashpilot-earnfm-p3")}
+        labels = {n: dict(docker.named(n).labels) for n in (NAME, "cashpilot-earnfm-p3")}
+        _heartbeat()
+        (new,) = docker.tunnels()
+        assert new.id != old.id and new.name == "cashpilot-tunnel-p3"
+        assert new.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"} and new.attrs["Config"]["Image"] == IMAGE
+        assert new.files["proxy_auth"] == old.files["proxy_auth"] and new.files["own_ip"] == old.files["own_ip"]
+        assert _member_ids(docker, new) == ["cashpilot-earnfm-p3", NAME]
+        for n in (NAME, "cashpilot-earnfm-p3"):
+            assert docker.named(n).attrs["Config"]["Env"] == env[n] and docker.named(n).labels == labels[n]
+        assert docker.named(NAME).kw["volumes"] == {"hg-data": {"bind": "/data", "mode": "rw"}}
+        # The running copy started again in the new run, once it was ready; the stopped one stays stopped.
+        assert docker.named(NAME).status == "running"
+        assert docker.named(NAME).attrs["State"]["StartedAt"] > new.attrs["State"]["StartedAt"]
+        assert docker.named("cashpilot-earnfm-p3").status != "running"
+        assert proxy_tunnel.held() == {"cashpilot-earnfm-p3"}
+        assert docker.updates == []
+        _heartbeat()  # done once: the next beat leaves it as it is
+        assert docker.tunnels() == [new]
+
+    def test_a_deploy_before_the_first_heartbeat_replaces_it_first(self, docker):
+        old = self._copies(docker)
+        _deploy("repocket")
+        (new,) = docker.tunnels()
+        assert new.id != old.id and new.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
+        assert _member_ids(docker, new) == ["cashpilot-earnfm-p3", NAME, "cashpilot-repocket-p3"]
+        assert docker.named("cashpilot-repocket-p3").status == "running"
+        assert docker.named(NAME).status == "running" and docker.named("cashpilot-earnfm-p3").status != "running"
+
+    def test_a_redeploy_of_its_only_copy_replaces_it_and_keeps_the_old_one_until_it_runs(self, docker):
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)  # its image is current: only the policy tells it apart
+        _deploy("honeygain")
+        (new,) = docker.tunnels()
+        assert new.id != old.id and new.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
+        assert _member_ids(docker, new) == [NAME] and docker.named(NAME).status == "running"
+
+    @pytest.mark.parametrize("settings", ["current UI", "older UI"])
+    def test_a_start_before_the_first_heartbeat_replaces_it_first(self, docker, settings):
+        old = self._copies(docker)
+        proxy_tunnel.stop("honeygain", 3)
+        assert old.status == "exited"
+        proxy_tunnel.start("earnfm", 3, _socks() if settings == "current UI" else None, None)
+        (new,) = docker.tunnels()
+        assert new.id != old.id and new.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
+        assert docker.named("cashpilot-earnfm-p3").status == "running"
+        assert docker.named("cashpilot-earnfm-p3").attrs["HostConfig"]["NetworkMode"] == f"container:{new.id}"
+        assert docker.named(NAME).status != "running" and proxy_tunnel.held() == {NAME}
+
+    def test_no_earner_starts_in_it_while_it_cannot_be_replaced(self, docker):
+        old = self._copies(docker)
+        earner = docker.named(NAME)
+        earner.stop()  # its own crash: the heartbeat would start it again
+        real_start_sidecar = proxy_tunnel.start_sidecar
+
+        tries = []
+
+        def no_exit(*a, **kw):
+            tries.append(a[1])
+            raise proxy_tunnel.ProxyTunnelError("The tunnel did not reach the internet through the proxy")
+
+        with patch.object(proxy_tunnel, "start_sidecar", no_exit):
+            _heartbeat()
+            _heartbeat()  # a failed try waits a few minutes for the next: the heartbeat is never held up each beat
+        assert tries == ["cashpilot-tunnel-p3-next"]
+        assert docker.tunnels() == [old] and earner.status == "exited" and earner.starts == 1
+        assert proxy_tunnel._start_in_ready_run(earner, old, "honeygain") is False
+        proxy_tunnel._replace_failed.clear()  # those minutes later
+        with patch.object(proxy_tunnel, "start_sidecar", real_start_sidecar):
+            _heartbeat()  # control: once the replacement proves its exit, the copy runs again
+        (new,) = docker.tunnels()
+        assert new.id != old.id and docker.named(NAME).status == "running"
+
+    def test_one_that_is_down_is_replaced_never_started_as_it_is(self, docker):
+        old = self._copies(docker)
+        old.stop()
+        starts = old.starts
+        with proxy_tunnel._deploy_lock(3):
+            _heartbeat()  # the lock is busy: neither replaced nor started
+        assert old.status == "exited" and old.starts == starts
+        _heartbeat()
+        (new,) = docker.tunnels()
+        assert new.id != old.id and new.status == "running"
+        _heartbeat()
+        assert docker.named(NAME).status == "running"
+
+    def test_one_per_beat_so_the_heartbeat_is_late_by_one_at_most(self, docker):
+        old = self._copies(docker)
+        _deploy("honeygain", proxy_id=4)
+        other = docker.named("cashpilot-tunnel-p4")
+        _made_by_an_older_worker(other, OLD_IMAGE)
+        _heartbeat()
+        assert sum(t.id in (old.id, other.id) for t in docker.tunnels()) == 1
+        _heartbeat()
+        assert {t.name for t in docker.tunnels()} == {"cashpilot-tunnel-p3", "cashpilot-tunnel-p4"}
+        assert not {old.id, other.id} & {t.id for t in docker.tunnels()}
+
+    def test_a_running_one_with_no_exit_is_left_as_it_is(self, docker):
+        """A new tunnel on its settings would have none either: no try holds the heartbeat up for nothing."""
+        old = self._copies(docker)
+        with (
+            patch.object(docker, "ready", return_value=False),
+            patch.object(proxy_tunnel, "start_sidecar", side_effect=AssertionError("tried")) as start_sidecar,
+        ):
+            _heartbeat()
+        start_sidecar.assert_not_called()
+        assert docker.tunnels() == [old]
+
+    def test_control_one_whose_copies_are_all_stopped_waits_for_a_start(self, docker):
+        old = self._copies(docker)
+        proxy_tunnel.stop("honeygain", 3)
+        _heartbeat()
+        assert docker.tunnels() == [old] and old.status == "exited"
+
+    def test_one_with_a_copy_a_redeploy_left_aside_waits_until_that_is_settled(self, docker):
+        old = self._copies(docker)
+        aside = docker.named("cashpilot-earnfm-p3")
+        aside.rename("cashpilot-earnfm-p3" + orchestrator.REPLACED_SUFFIX)
+        with patch.object(proxy_tunnel, "_settle_replaced_unless_busy"):
+            _heartbeat()
+        assert old in docker.tunnels() and docker.named(aside.name) is aside
+
+
+class TestAStopIsNeverUndoneByATunnelStart:
+    """_status read the stop markers once, without the proxy's lock, and _start_down_tunnel did not read them
+    again: a Stop between the two left a tunnel running with no copy that should run in it."""
+
+    def test_a_stop_between_the_read_and_the_tunnel_start_wins(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.stop()  # its tunnel process died; the copy should still run
+        real = proxy_tunnel._failed_or_unknown
+
+        def stop_lands_now(earner):
+            proxy_tunnel.stop("honeygain", 3)  # the owner presses Stop right after the heartbeat's read
+            return real(earner)
+
+        with patch.object(proxy_tunnel, "_failed_or_unknown", stop_lands_now):
+            _heartbeat()
+        assert proxy_tunnel.held() == {NAME}
+        assert tunnel.status == "exited" and docker.named(NAME).status == "exited"
+
+    def test_control_with_no_stop_the_tunnel_starts(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        tunnel.stop()
         _heartbeat()
         assert tunnel.status == "running"
 

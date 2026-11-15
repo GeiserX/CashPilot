@@ -220,7 +220,7 @@ earners in one tunnel, and drives the worker's own code with 1 and 7 copies;
 see [One tunnel per proxy](#one-tunnel-per-proxy).
 
 Docker never starts a tunnel or an earner on its own: neither has a restart
-policy. When Docker starts a container, its namespace already has an
+policy (an older worker's tunnel is replaced, see below). When Docker starts a container, its namespace already has an
 interface and a default route before the container's first command runs, so
 an earner that joined a tunnel Docker had just restarted could send from your
 own IP before the drop-all table is in. So only the worker starts a tunnel,
@@ -238,11 +238,23 @@ and the heartbeat after it starts the earners, once the ready file is there.
 That is up to a minute more than Docker's own restart took. The same happens
 when an earner itself crashes. A copy you stopped, or the traffic cap
 stopped, stays stopped: the worker writes each stop down in its data folder
-(`.proxied_held`), because the tunnel keeps running for the other copies. A
-tunnel made by an older worker loses its restart policy on the first
-heartbeat. A copy still in a legacy one-tunnel-per-copy pair keeps Docker's
-restart until its next start moves it into the shared tunnel: an older
-worker wrote no stop down, so only Docker knows whether its owner stopped it.
+(`.proxied_held`), because the tunnel keeps running for the other copies.
+
+Older workers gave every tunnel Docker's `unless-stopped` restart policy. The
+worker cannot take it away: the socket proxy refuses a container update on
+purpose (see [security defaults](security-defaults.md)). So a shared tunnel
+that still has the policy is replaced once, by the first deploy or start
+through its proxy, or by the first heartbeat while a copy in it should run.
+The new tunnel, on the same settings and the current tunnel image, proves its
+exit first. Then each copy is recreated inside it under its own name, with
+its settings and its volumes, and starts again only once the new tunnel is
+ready. Recreating a copy loses its writable layer, as moving a legacy pair
+does, so a provider that keeps its device id there sees a new device once. No
+earner starts in the old tunnel meanwhile. A copy still in a legacy
+one-tunnel-per-copy pair keeps Docker's restart until its next start moves
+it into the shared tunnel: an older worker wrote no stop down, so only Docker
+knows whether its owner stopped it. Until then, its earner's start relies on
+the check after the start, as below.
 
 What this cannot cover: someone who starts a tunnel container by hand
 (`docker start`), or a second CashPilot worker on the same Docker daemon,
@@ -323,10 +335,13 @@ hardening of both containers and everything you set up. What changes:
 - **Copies are recreated as rarely as possible.** A copy keeps whatever its
   provider wrote inside the container (several write a device id there), and a
   recreated container starts without it, so the provider sees a new device. An
-  edit, a worker update and a reboot never recreate a copy. The tunnel keeps
+  edit and a reboot never recreate a copy, and a worker update does so only
+  once: the first update from a worker that gave its tunnels a restart policy
+  (see [It fails closed](#it-fails-closed)). The tunnel keeps
   the image it was created with until it is replaced, which happens only when
-  you redeploy the only copy in it, or when Docker can no longer start it at
-  all. In that last case a new tunnel proves its exit first, then every copy is
+  you redeploy the only copy in it, when Docker can no longer start it at
+  all, or once when an older worker made it with a restart policy. In the
+  last two cases a new tunnel proves its exit first, then every copy is
   recreated inside it (same image, environment, labels and limits, from what
   Docker recorded), because a container's network namespace is fixed when it
   is created.

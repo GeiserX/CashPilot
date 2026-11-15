@@ -6,10 +6,12 @@
 #
 #   0. Before anything else, a settings read included: a table that lets no
 #      packet in or out. The worker starts an earner only once /run/ready is
-#      there, and Docker never starts this container on its own (no restart
-#      policy), but a run started by hand finds the namespace closed from
-#      this first command on, not only once the settings are read and the
-#      routes are in. Step 1 replaces it in one transaction.
+#      there, and Docker never starts a container of this image on its own:
+#      the worker creates it with no restart policy (and replaces a tunnel an
+#      older worker made with one, never reusing it). A run started by hand
+#      still finds the namespace closed from this first command on, not only
+#      once the settings are read and the routes are in. Step 1 replaces it
+#      in one transaction.
 #   1. nftables first: the output policy is drop, and the only packets allowed
 #      onto the real interface are the tunnel's own (to the proxy, or marked by
 #      tailscaled). From here on nothing leaks, whatever happens below.

@@ -566,9 +566,15 @@ def sidecar_kwargs(
     an earner starts only after reading that the run is ready
     (_start_in_ready_run). So no earner ever starts into a run nobody proved.
     The heartbeat starts a tunnel that is down while a copy in it should run
-    (_start_down_tunnel), and its copies once it is ready. It also takes the
-    policy away from a shared tunnel an older worker made; a legacy pair's
-    tunnel keeps it until its next start moves the copy (_status).
+    (_start_down_tunnel), and its copies once it is ready.
+
+    Older workers gave every tunnel ``unless-stopped``, and the worker cannot
+    take it away: the socket proxy refuses a container update on purpose
+    (docs/security-defaults.md). A shared tunnel that still has it is replaced
+    instead, by the first deploy, start or heartbeat that can
+    (_restarts_by_itself), and no earner starts in it until then. A legacy
+    pair's tunnel keeps it until its next start moves the copy; until then its
+    earner's start relies on the check after the start (_start_in_ready_run).
 
     A Test tunnel left behind by a worker that died during the test does not
     come back either: sweep_test_tunnels removes it.
@@ -1044,8 +1050,9 @@ def _ensure_tunnel(
     copies live in; ``upgrade`` (a deploy with no other copy in it) does.
 
     A new tunnel under a staged name, with every earner recreated inside it,
-    is the way only when there is none yet, for an upgrade, or when Docker
-    cannot start this one at all (its container is broken).
+    is the way only when there is none yet, for an upgrade, when Docker
+    cannot start this one at all (its container is broken), or when an older
+    worker made it, so Docker would restart it on its own (_restarts_by_itself).
 
     ``keep`` names the earner the caller replaces itself (a deploy). When it
     is the only one in the tunnel being replaced, it is not recreated: that
@@ -1073,7 +1080,9 @@ def _ensure_tunnel(
         with _swap_lock:
             current = _finish_staged(client, leftover, current, final)
     broken = False
-    if current is not None and (_image_of(current) == image or not upgrade):
+    # An older worker's tunnel, which Docker restarts on its own, is never used
+    # as it is: replaced before any earner starts in it (_restarts_by_itself).
+    if current is not None and not _restarts_by_itself(current) and (_image_of(current) == image or not upgrade):
         try:
             return _in_place(client, current, proxy, own_ip, files, secrets, deadline=deadline)
         except _Broken as exc:
@@ -1406,16 +1415,24 @@ def _start_in_ready_run(earner: Any, tunnel: Any, slug: str, *, restart: bool = 
     deploy's new earner, which deploy_raw starts under that lock right after
     _ensure_tunnel proved the run. Ready is read again here, never taken from
     the caller: an earner that joins a new run before its firewall is loaded
-    could send from the box's own address. Docker never starts a shared
-    tunnel on its own (sidecar_kwargs) and the worker starts one only under
-    that lock, so the run read here is the run the earner joins. The run is
-    read again after the start all the same (a person may start a tunnel by
-    hand): when it changed, or that read fails, the earner is stopped again,
-    and the heartbeat starts it once the run it is in is ready.
+    could send from the box's own address. A shared tunnel this worker made
+    has no restart policy (sidecar_kwargs) and the worker starts one only
+    under that lock, so the run read here is the run the earner joins. A
+    shared tunnel an older worker made still has one, which the worker cannot
+    take away, so nothing is started in it: it is replaced first
+    (_restarts_by_itself), and the earner starts in its replacement. A legacy
+    pair's tunnel keeps its policy, so for it only the check after the start
+    below holds: the run is read again after every start (a person may also
+    start a tunnel by hand), and when it changed, or that read fails, the
+    earner is stopped again, and the heartbeat starts it once the run it is in
+    is ready.
     """
     timeout = orchestrator._get_stop_timeout(slug)
     tunnel.reload()
     run = _started_at(tunnel)
+    if _is_shared(tunnel) and _restarts_by_itself(tunnel):
+        logger.warning("The tunnel of %s restarts by itself (an older worker made it); not starting it", earner.name)
+        return False
     if tunnel.status != "running" or _read_exit(tunnel) is None:
         logger.warning("The tunnel of %s is not ready; not starting it", earner.name)
         return False
@@ -2103,10 +2120,18 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
                 f"and add it again."
             )
         tunnel.reload()
-        if tunnel.status != "running":
-            refresh_proxy_ip(tunnel)
-            tunnel.start()
-        exit_info = _wait_ready(tunnel)
+        if _is_shared(tunnel) and _restarts_by_itself(tunnel):
+            # An older worker's tunnel: replaced on the settings it holds before
+            # the earner starts, which is recreated in the replacement.
+            tunnel, exit_info = _replace_restarting(client, tunnel)
+            earner = _get(client, name)
+            if earner is None:
+                raise ProxyTunnelError(f"{name} disappeared while its tunnel was replaced")
+        else:
+            if tunnel.status != "running":
+                refresh_proxy_ip(tunnel)
+                tunnel.start()
+            exit_info = _wait_ready(tunnel)
     current = shared if proxy is not None else tunnel
     try:
         if proxy is not None:
@@ -2148,8 +2173,9 @@ def _started_or_raise(earner: Any, tunnel: Any, slug: str, *, restart: bool = Fa
     """_start_in_ready_run for a start the owner asked for: one it did not do is an error, never a success."""
     if not _start_in_ready_run(earner, tunnel, slug, restart=restart):
         raise ProxyTunnelError(
-            f"{earner.name} was not started: its tunnel restarted, or could not be read, just as it started. It "
-            "stays marked to run, so the heartbeat starts it once its tunnel is ready."
+            f"{earner.name} was not started: its tunnel was not ready, restarted or could not be read just as it "
+            "started, or an older worker made it and it is replaced first. It stays marked to run, so the heartbeat "
+            "starts it once its tunnel is ready."
         )
 
 
@@ -2484,6 +2510,13 @@ def migrate_legacy() -> list[str]:
 
 def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any]) -> list[str]:
     ready = _shared_ready(client, proxy_id)
+    if ready is not None and _restarts_by_itself(ready[0]):
+        # An older worker's shared tunnel: no copy starts in it, so it is
+        # replaced first, once its own copies are settled; else the pairs wait.
+        if not _settled_and_wanted(client, ready[0], str(proxy_id)):
+            logger.info("Proxy %s's tunnel is replaced first; its other copies move on their next start", proxy_id)
+            return []
+        ready = _replace_restarting(client, ready[0])
     if ready is None:
         sources = [t for t in tunnels if getattr(t, "status", "") == "running" and _read_exit(t) is not None]
         if not sources:
@@ -2686,6 +2719,8 @@ def status(collect_stats: bool = True) -> list[dict[str, Any]]:
     tunnel's eth0. Copies that share a tunnel report the same counters and the
     same tunnel id; the UI's cap counts one tunnel id once (proxies.account).
     """
+    # Before _swap_lock: a replacement takes it to swap the tunnels.
+    _replace_restarting_tunnels()
     with _swap_lock:
         return _status(collect_stats)
 
@@ -2802,26 +2837,27 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         stopped: set[str] | None = held()
     except OSError:
         stopped = None
-    # Docker never starts a shared tunnel on its own (sidecar_kwargs): one an
-    # older worker made loses its restart policy here, and one that is down
-    # while a copy in it should run is started. Its copies start on a later
-    # beat, once it is ready. A copy whose stop marker cannot be read starts
-    # no tunnel. A legacy pair is left to Docker as it was: a stop by an older
-    # worker left no marker, so only Docker knows whether its owner stopped
-    # it, and its next start moves it into a shared tunnel.
-    for tunnel in {t.id: t for _, t in pairs.values() if _is_shared(t)}.values():
-        _drop_restart_policy(tunnel)
+    # Docker never starts a shared tunnel this worker made on its own
+    # (sidecar_kwargs): one that is down while a copy in it should run is
+    # started here, and its copies on a later beat, once it is ready. One an
+    # older worker made was replaced before this, when it could be
+    # (_replace_restarting_tunnels), and is never started as it is. A copy
+    # whose stop marker cannot be read starts no tunnel. A legacy pair is left
+    # to Docker as it was: a stop by an older worker left no marker, so only
+    # Docker knows whether its owner stopped it, and its next start moves it
+    # into a shared tunnel.
     for key, (earner, sidecar) in pairs.items():
         if (
             stopped is not None
             and earner is not None
             and _is_shared(sidecar)
+            and not _restarts_by_itself(sidecar)
             and key not in unproven
             and getattr(sidecar, "status", "") == "exited"
             and str(earner.name) not in stopped
             and not _failed_or_unknown(earner)
         ):
-            _start_down_tunnel(sidecar, key[1])
+            _start_down_tunnel(sidecar, key[1], str(earner.name))
     live = {t.id: t for _, t in pairs.values() if t is not None}
     stats = orchestrator._collect_stats_bulk(list(live.values())) if collect_stats else {}
     exits = {tid: _read_exit(t) for tid, t in live.items()}
@@ -2885,30 +2921,140 @@ def _failed_or_unknown(earner: Any) -> bool:
         return True
 
 
-def _drop_restart_policy(tunnel: Any) -> None:
-    """Take away a restart policy an older worker gave the tunnel (see sidecar_kwargs)."""
-    policy = (((getattr(tunnel, "attrs", None) or {}).get("HostConfig") or {}).get("RestartPolicy") or {}).get("Name")
-    if str(policy or "no") == "no":
-        return
+def _restarts_by_itself(container: Any) -> bool:
+    """Whether Docker starts ``container`` again on its own: the restart policy older workers gave every tunnel.
+
+    The worker cannot take the policy away: the socket proxy refuses a
+    container update on purpose (docs/security-defaults.md). So a shared
+    tunnel that has it is replaced (_replace_restarting), and no earner starts
+    in it meanwhile (_start_in_ready_run)."""
+    policy = (((getattr(container, "attrs", None) or {}).get("HostConfig") or {}).get("RestartPolicy") or {}).get(
+        "Name"
+    )
+    return str(policy or "no") != "no"
+
+
+def _replace_restarting(client: Any, tunnel: Any) -> tuple[Any, dict[str, Any]]:
+    """Replace ``tunnel``, a shared tunnel an older worker made, with one Docker never restarts on its own.
+
+    On the settings it holds, read back as migrate_legacy reads them, with the
+    proxy's address looked up again as a start would. It goes through
+    _ensure_tunnel's staged replacement: the new tunnel proves its exit first,
+    then each copy is recreated in it under its own name, with its settings
+    and the volumes its image declared, and started again only in the new run
+    once that run is ready, and only if it ran. The old tunnel goes; the new one
+    runs the current tunnel image. A failure on the way leaves the old tunnel and
+    its copies as they were.
+    The caller holds the proxy's lock, never _swap_lock."""
+    pid = int(_labels(tunnel).get(LABEL_PROXY, ""))
     try:
-        tunnel.update(restart_policy={"Name": "no"})
-        logger.info("%s no longer restarts by itself; the heartbeat starts it", tunnel.name)
-    except Exception as exc:  # noqa: BLE001 - the next beat tries again
-        logger.warning("Could not take the restart policy away from %s: %s", tunnel.name, redact(str(exc)))
+        files = _read_all_files(tunnel)
+    except Exception as exc:  # noqa: BLE001 - the detail may hold the proxy's secrets
+        raise ProxyTunnelError(f"Could not read the settings of {tunnel.name} ({redact(str(exc))})") from None
+    if host := files.get("proxy_host"):
+        files["proxy_ip"] = resolve_proxy_ip(host)
+    files = _with_digest(files)
+    replaced = _ensure_tunnel(client, pid, None, files.get("own_ip") or None, files=files, slug=_own_key(tunnel))
+    logger.info("Replaced %s, which an older worker made to restart by itself", tunnel.name)
+    return replaced
 
 
-def _start_down_tunnel(tunnel: Any, proxy_id: str) -> None:
-    """Start a tunnel that is down while a copy in it should run, for the heartbeat; never waited for.
+#: Tunnel id -> time.monotonic() of the heartbeat's last failed try to replace it (_replace_restarting_tunnels).
+_replace_failed: dict[str, float] = {}
+
+
+def _replace_restarting_tunnels() -> None:
+    """Replace, for the heartbeat, a shared tunnel an older worker made that a copy in it should run in.
+
+    One try per beat, which can wait for a new tunnel's exit (READY_TIMEOUT),
+    so the heartbeat is never late by more than one; a tunnel whose try failed
+    waits STAGED_STALE_SECONDS for the next, so the others get theirs. Under
+    the proxy's lock (one someone holds means the next beat), and only once
+    its copies are settled: none half moved, aside or left by a deploy that
+    did not finish, since recreating one would lose the record that tells it
+    apart. A running one with no exit is left: a new one on its settings
+    would have none either. One whose copies are all stopped is left for the
+    start that brings one back, which replaces it (_ensure_tunnel)."""
+    try:
+        client = orchestrator._get_client()
+        found = client.containers.list(
+            all=True, filters={"label": [f"{LABEL_MANAGED}=true", f"{LABEL_ROLE}={ROLE_TUNNEL}", LABEL_PROXY]}
+        )
+    except Exception:  # noqa: BLE001 - _status reports a listing that fails
+        return
+    for tunnel in found:
+        pid = _labels(tunnel).get(LABEL_PROXY, "")
+        if (
+            not pid.isdigit()
+            or not _is_shared(tunnel, int(pid))
+            or not _restarts_by_itself(tunnel)
+            or str(tunnel.name) != shared_tunnel_name(int(pid), _own_key(tunnel))
+        ):
+            continue
+        if time.monotonic() - _replace_failed.get(tunnel.id, -STAGED_STALE_SECONDS) < STAGED_STALE_SECONDS:
+            continue
+        lock = _deploy_lock(int(pid))
+        if not lock.acquire(blocking=False):
+            continue
+        try:
+            tunnel.reload()  # read under the lock, not from the listing
+            if not (_restarts_by_itself(tunnel) and _settled_and_wanted(client, tunnel, pid)):
+                continue
+            if tunnel.status == "running" and _read_exit(tunnel) is None:
+                continue
+            try:
+                _replace_restarting(client, tunnel)
+                _replace_failed.pop(tunnel.id, None)
+            except Exception as exc:  # noqa: BLE001 - it stays as it is, and no earner starts in it
+                _replace_failed[tunnel.id] = time.monotonic()
+                text = str(exc) if isinstance(exc, ProxyTunnelError) else redact(str(exc))
+                logger.warning("Could not replace %s, which restarts by itself: %s", tunnel.name, text)
+            return
+        except NotFound:
+            pass
+        except Exception as exc:  # noqa: BLE001 - the next beat looks again
+            logger.warning("Could not look at %s, which restarts by itself: %s", tunnel.name, redact(str(exc)))
+        finally:
+            lock.release()
+
+
+def _settled_and_wanted(client: Any, tunnel: Any, proxy_id: str) -> bool:
+    """Whether every copy in ``tunnel`` is settled and one of them should run. See _replace_restarting_tunnels."""
+    members = _members(client, tunnel)
+    if not members or _moving(client, proxy_id):
+        return False
+    try:
+        stopped = held()
+        if any(
+            str(m.name).endswith((STAGED_SUFFIX, MOVING_SUFFIX, orchestrator.REPLACED_SUFFIX)) or _recorded_failed(m)
+            for m in members
+        ):
+            return False
+    except OSError:
+        return False
+    return any(str(m.name) not in stopped for m in members)
+
+
+def _start_down_tunnel(tunnel: Any, proxy_id: str, name: str) -> None:
+    """Start a tunnel that is down while the copy ``name`` in it should run, for the heartbeat; never waited for.
 
     Under the proxy's lock, as every tunnel and earner start: a lock someone
-    holds means the next beat. Nothing starts its copies here; the heartbeat
-    does once the run says it is ready."""
+    holds means the next beat. The stop marker is read again under that lock,
+    since a stop takes it to record itself: a stop that landed after the
+    caller read the marker is never undone here. Nothing starts its copies
+    here; the heartbeat does once the run says it is ready."""
     lock = _deploy_lock(int(proxy_id)) if str(proxy_id).isdigit() else None
     if lock is None or not lock.acquire(blocking=False):
         return
     try:
+        try:
+            if name in held():
+                return
+        except OSError as exc:
+            logger.warning("Could not read which copies are stopped (%s); not starting %s", exc, tunnel.name)
+            return
         tunnel.reload()
-        if tunnel.status != "exited":
+        if tunnel.status != "exited" or _restarts_by_itself(tunnel):
             return
         refresh_proxy_ip(tunnel)
         tunnel.start()
