@@ -734,6 +734,60 @@ class TestOneDeployOfAServiceAtATime:
         assert route_gate.routed() == {"honeygain": 3}
 
 
+class TestACopyDeployNeverReadsARouteThatIsTakenBack:
+    """A routed deploy takes its mark back only under the tunnel lock a copy deploy reads the mark under.
+
+    Otherwise a copy deploy (routed=false, or a rename rebuild) of the same copy
+    reads the mark, builds its earner in a tunnel of its own, and the mark goes
+    right after: a routed copy that no route covers, so a direct deploy of the
+    same account would need no password.
+    """
+
+    @pytest.mark.parametrize("taken_back", ["failed deploy", "direct container found"])
+    def test_the_copy_deploy_waits_and_then_shares_the_tunnel(self, monkeypatch, taken_back):
+        routed_thread = threading.current_thread()
+        copy_made = threading.Event()
+        copies = []
+
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
+            if threading.current_thread() is routed_thread:
+                raise RuntimeError("tunnel did not start")
+            copies.append(own_tunnel)
+            copy_made.set()
+            return {"container_id": "c"}
+
+        def copy_meanwhile():
+            # The copy deploy comes in while the routed deploy decides to take the mark back.
+            threading.Thread(target=proxy_tunnel.deploy, args=("honeygain", 3, BODY, PROXY, None), daemon=True).start()
+            copy_made.wait(0.5)
+
+        looks = []
+
+        def routed_copies(slug, marked):
+            looks.append(marked)
+            if len(looks) == 2:  # the look after the failure
+                copy_meanwhile()
+            return []
+
+        direct = MagicMock()
+        direct.name = "cashpilot-honeygain"
+
+        def service_instances(slug):
+            if taken_back == "failed deploy":
+                return []
+            copy_meanwhile()
+            return [direct]
+
+        monkeypatch.setattr(proxy_tunnel, "_deploy", tunnel_deploy)
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", routed_copies)
+        monkeypatch.setattr(orchestrator, "service_instances", service_instances)
+        with pytest.raises(HTTPException):
+            worker_api._deploy_routed("honeygain", 3, BODY, PROXY, None)
+        assert copy_made.wait(5)
+        assert route_gate.routed() == {}
+        assert copies == [False]  # in the proxy's shared tunnel, as an unrouted copy
+
+
 class TestAnUnreadableMarker:
     def test_a_start_is_refused_rather_than_put_in_the_shared_tunnel(self, marker):
         """Not knowing whether it is routed is not "not routed" (proxy_tunnel._start picks the tunnel by it)."""

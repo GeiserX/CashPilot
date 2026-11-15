@@ -1984,32 +1984,38 @@ def _deploy_routed(
                 detail=f"{slug} already runs through another proxy on this worker ({', '.join(elsewhere)}). "
                 "Remove it first, then deploy it through this one; nothing changed",
             )
-        # Recorded before the earner exists, so no deploy path can start this
-        # service from the box's own IP while the routed one is being made.
-        try:
-            before = route_gate.mark(slug, proxy_id)
-        except (OSError, ValueError) as exc:
-            raise HTTPException(
-                status_code=503, detail=f"Could not record the route of {slug} on this worker ({exc}); nothing changed"
-            ) from None
-        # Checked after the mark, so a direct deploy cannot slip in between: the
-        # routed copy beside a direct container of the same account would show
-        # the provider one device on both the box's IP and the proxy's.
-        try:
-            direct = [c.name for c in orchestrator.service_instances(slug)]
-        except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
-            route_gate.release(slug, before)
-            raise HTTPException(
-                status_code=503,
-                detail=f"Could not list the containers of {slug} on this worker ({exc}); nothing changed",
-            ) from None
-        if direct:
-            route_gate.release(slug, before)
-            raise HTTPException(
-                status_code=409,
-                detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
-                "then deploy it with a route; nothing changed",
-            )
+        # The mark is moved and taken back only under the tunnel lock a copy
+        # deploy or a start of this copy reads it under (proxy_tunnel.deploy).
+        # One that read a mark taken back right after would build a routed copy
+        # in a tunnel of its own that no route covers.
+        with proxy_tunnel._deploy_lock(proxy_id):
+            # Recorded before the earner exists, so no deploy path can start this
+            # service from the box's own IP while the routed one is being made.
+            try:
+                before = route_gate.mark(slug, proxy_id)
+            except (OSError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Could not record the route of {slug} on this worker ({exc}); nothing changed",
+                ) from None
+            # Checked after the mark, so a direct deploy cannot slip in between: the
+            # routed copy beside a direct container of the same account would show
+            # the provider one device on both the box's IP and the proxy's.
+            try:
+                direct = [c.name for c in orchestrator.service_instances(slug)]
+            except Exception as exc:  # noqa: BLE001 - not knowing is not "none"
+                route_gate.release(slug, before)
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Could not list the containers of {slug} on this worker ({exc}); nothing changed",
+                ) from None
+            if direct:
+                route_gate.release(slug, before)
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{slug} already runs from this worker's own IP ({', '.join(direct)}). Remove it first, "
+                    "then deploy it with a route; nothing changed",
+                )
         try:
             # In a tunnel of its own: the mark now names this proxy (proxy_tunnel.deploy).
             return proxy_tunnel.deploy(slug, proxy_id, earner, proxy, own_ip, only_if_running=only_if_running)
@@ -2018,14 +2024,17 @@ def _deploy_routed(
             # A deploy can fail after its earner exists (a start whose answer
             # was lost, a cleanup that failed too). Released then, the route
             # would let a direct deploy run the same account from this box's
-            # own IP beside it without the owner's password.
-            try:
-                left = [name for pid, name in proxy_tunnel.routed_copies(slug, proxy_id) if pid == int(proxy_id)]
-            except Exception as look:  # noqa: BLE001 - not knowing is not "none"
-                left = [f"unknown ({proxy_tunnel.redact(str(look))[:120]})"]
-            if not left:
-                route_gate.release(slug, before)
-            else:
+            # own IP beside it without the owner's password. Looked for and
+            # released under the tunnel lock, as above: a copy deploy that came
+            # in after the failure is either counted here or sees no mark.
+            with proxy_tunnel._deploy_lock(proxy_id):
+                try:
+                    left = [name for pid, name in proxy_tunnel.routed_copies(slug, proxy_id) if pid == int(proxy_id)]
+                except Exception as look:  # noqa: BLE001 - not knowing is not "none"
+                    left = [f"unknown ({proxy_tunnel.redact(str(look))[:120]})"]
+                if not left:
+                    route_gate.release(slug, before)
+            if left:
                 error.detail = (
                     f"{error.detail}. {slug} stays routed through proxy {proxy_id} on this worker, because its "
                     f"routed copy may still exist: {', '.join(left)}"
