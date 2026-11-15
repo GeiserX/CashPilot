@@ -266,10 +266,17 @@ else
     # filtered then. Only when the proxy works and port 53 does not: a proxy
     # that is down, or one that allows port 53, keeps over-tcp, and the exit
     # probe below decides.
-    i=0
-    while [ "$i" -lt 15 ] && kill -0 "$TPID" 2>/dev/null; do
-        i=$((i + 1))
-        timeout 6 getent hosts api.ipify.org >/dev/null 2>&1 && break
+    # No round starts after 15 s, so the probe gets its turn inside the
+    # worker's 45 s wait for /run/ready (proxy_tunnel.READY_TIMEOUT). Each round
+    # asks for the next of the probe's endpoint names (cp-probe): any one that
+    # resolves is enough, so a resolver that fails one name holds nothing back.
+    end=$(($(date +%s) + 15))
+    set -- api.ipify.org ifconfig.me icanhazip.com
+    while [ "$(date +%s)" -lt "$end" ] && kill -0 "$TPID" 2>/dev/null; do
+        name=$1
+        shift
+        set -- "$@" "$name"
+        timeout 6 getent hosts "$name" >/dev/null 2>&1 && break
         if proxy_refuses_dns; then
             echo "cp-tunnel: the proxy refuses DNS over TCP (port 53), so names are resolved by the proxy instead. A name that points at the proxy's own network then reaches it; allow TCP 53 on the proxy to close that" >&2
             kill "$TPID" 2>/dev/null

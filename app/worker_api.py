@@ -2027,18 +2027,33 @@ def _deploy_routed(
             # own IP beside it without the owner's password. Looked for and
             # released under the tunnel lock, as above: a copy deploy that came
             # in after the failure is either counted here or sees no mark.
+            restore = before if before == int(proxy_id) else None
             with proxy_tunnel._deploy_lock(proxy_id):
                 try:
                     left = [name for pid, name in proxy_tunnel.routed_copies(slug, proxy_id) if pid == int(proxy_id)]
                 except Exception as look:  # noqa: BLE001 - not knowing is not "none"
                     left = [f"unknown ({proxy_tunnel.redact(str(look))[:120]})"]
                 if not left:
-                    route_gate.release(slug, before)
+                    route_gate.release(slug, restore)
+            if not left and restore is None and before is not None:
+                # Another proxy's route goes back under that proxy's lock. A copy
+                # through it found no mark meanwhile and shares its tunnel: no
+                # route is put back over it. No routed one was there (asked above).
+                with proxy_tunnel._deploy_lock(before):
+                    try:
+                        shared = proxy_tunnel.copy_name(slug, before)
+                    except Exception:  # noqa: BLE001 - not knowing keeps the route, and the password
+                        shared = None
+                    if shared is None:
+                        route_gate.release(slug, before)
             if left:
-                error.detail = (
-                    f"{error.detail}. {slug} stays routed through proxy {proxy_id} on this worker, because its "
-                    f"routed copy may still exist: {', '.join(left)}"
-                )
+                # A code the UI reads, as after a timeout: it keeps the copy and
+                # the routed deployment records, so the earner stays capped and listed.
+                error.detail = {
+                    "error": "routed_copy_may_exist",
+                    "message": f"{error.detail}. {slug} stays routed through proxy {proxy_id} on this worker, "
+                    f"because its routed copy may still exist: {', '.join(left)}",
+                }
             raise error from None
 
 
@@ -2244,10 +2259,19 @@ def _deploy_direct(**kwargs: Any) -> str:
     """
     slug = kwargs["slug"]
     with route_gate.deploying(slug):
-        if kwargs.get("leave_route"):
+        if not kwargs.get("leave_route"):
+            return orchestrator.deploy_raw(**kwargs)
+        # Checked and forgotten under the tunnel lock a copy deploy through the
+        # marked proxy reads the mark under (proxy_tunnel.deploy): one in between
+        # would build a copy in a tunnel of its own that no route covers. The
+        # mark holds still here: only a routed deploy moves it, under deploying.
+        try:
+            marked = route_gate.routed().get(slug)
+        except (OSError, ValueError):
+            marked = None  # _refuse_beside_routed_copy reads it again and refuses
+        with proxy_tunnel._deploy_lock(marked) if marked is not None else contextlib.nullcontext():
             _refuse_beside_routed_copy(slug)
-        container_id = orchestrator.deploy_raw(**kwargs)
-        if kwargs.get("leave_route"):
+            container_id = orchestrator.deploy_raw(**kwargs)
             # It runs from this box's own IP now, as the owner confirmed.
             route_gate.release(slug)
         return container_id

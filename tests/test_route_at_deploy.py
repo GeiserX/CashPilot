@@ -521,7 +521,9 @@ class TestTheWorkerProxiedRoutes:
         (copy,) = _copies_on(worker.docker, (3, "honeygain"))
         resp, _ = self._deploy(worker, monkeypatch, True, RuntimeError("the start's answer was lost"))
         assert resp.status_code >= 400
-        assert copy.name in _detail(resp) and "stays routed" in _detail(resp)
+        # A code the UI reads to keep both records (TestAFailedRoutedDeployWhoseEarnerSurvived).
+        assert _detail(resp)["error"] == "routed_copy_may_exist"
+        assert copy.name in _detail(resp)["message"] and "stays routed" in _detail(resp)["message"]
         assert route_gate.routed() == {"honeygain": 3}
         resp = worker("POST", "/api/containers/honeygain/deploy", BODY)
         assert resp.status_code == 403 and _detail(resp)["error"] == "route_locked"
@@ -531,7 +533,8 @@ class TestTheWorkerProxiedRoutes:
         # The look before the mark answers; the one after the failure does not.
         worker.docker.containers.list.side_effect = [[], RuntimeError("docker is down")]
         resp, _ = self._deploy(worker, monkeypatch, True, RuntimeError("tunnel did not start"))
-        assert resp.status_code >= 400 and "stays routed" in _detail(resp)
+        assert resp.status_code >= 400 and _detail(resp)["error"] == "routed_copy_may_exist"
+        assert "stays routed" in _detail(resp)["message"]
         assert route_gate.routed() == {"honeygain": 3}
 
     def test_a_failed_routed_deploy_puts_the_previous_route_back(self, worker, monkeypatch):
@@ -543,6 +546,7 @@ class TestTheWorkerProxiedRoutes:
     def test_a_failed_first_routed_deploy_leaves_no_route(self, worker, monkeypatch):
         resp, _ = self._deploy(worker, monkeypatch, True, RuntimeError("tunnel did not start"))
         assert resp.status_code >= 400
+        assert isinstance(_detail(resp), str)
         assert route_gate.routed() == {}
 
     def test_an_unwritable_marker_deploys_nothing(self, worker, monkeypatch, tmp_path):
@@ -786,6 +790,67 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         assert copy_made.wait(5)
         assert route_gate.routed() == {}
         assert copies == [False]  # in the proxy's shared tunnel, as an unrouted copy
+
+    def test_a_route_put_back_to_another_proxy_never_covers_a_copy_sharing_its_tunnel(self, monkeypatch):
+        """A failed routed deploy through 3 found the route on 2; a copy through 2 that came in meanwhile shares 2's tunnel."""
+        route_gate.mark("honeygain", 2)
+        routed_thread = threading.current_thread()
+        copy_made = threading.Event()
+        copies = []
+
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
+            if threading.current_thread() is routed_thread:
+                raise RuntimeError("tunnel did not start")
+            copies.append(own_tunnel)
+            copy_made.set()
+            return {"container_id": "c"}
+
+        looks = []
+
+        def routed_copies(slug, marked):
+            looks.append(marked)
+            if len(looks) == 2:  # the look after the failure: a copy deploy through 2 comes in
+                threading.Thread(
+                    target=proxy_tunnel.deploy, args=("honeygain", 2, BODY, PROXY, None), daemon=True
+                ).start()
+                copy_made.wait(0.5)
+            return []
+
+        monkeypatch.setattr(proxy_tunnel, "_deploy", tunnel_deploy)
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", routed_copies)
+        monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: "cashpilot-honeygain-p2" if copies else None)
+        monkeypatch.setattr(orchestrator, "service_instances", lambda slug: [])
+        with pytest.raises(HTTPException):
+            worker_api._deploy_routed("honeygain", 3, BODY, PROXY, None)
+        assert copy_made.wait(5)
+        assert copies == [False]  # in 2's shared tunnel, as an unrouted copy
+        assert route_gate.routed() == {}  # so no route through 2 covers it
+
+    def test_a_direct_deploy_leaving_the_route_and_a_copy_deploy_never_interleave(self, monkeypatch):
+        """The mark is checked and forgotten under the tunnel lock: the copy deploy waits, then shares the tunnel."""
+        route_gate.mark("honeygain", 3)
+        copy_made = threading.Event()
+        copies = []
+
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
+            copies.append(own_tunnel)
+            copy_made.set()
+            return {"container_id": "c"}
+
+        def deploy_raw(**kwargs):
+            # A copy deploy through the marked proxy comes in while the direct earner is made.
+            threading.Thread(target=proxy_tunnel.deploy, args=("honeygain", 3, BODY, PROXY, None), daemon=True).start()
+            copy_made.wait(0.5)
+            return "direct-id"
+
+        monkeypatch.setattr(proxy_tunnel, "_deploy", tunnel_deploy)
+        monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
+        monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
+        monkeypatch.setattr(orchestrator, "deploy_raw", deploy_raw)
+        assert worker_api._deploy_direct(slug="honeygain", leave_route=True) == "direct-id"
+        assert copy_made.wait(5)
+        assert route_gate.routed() == {}
+        assert copies == [False]  # never a tunnel of its own that no route covers
 
 
 class TestAnUnreadableMarker:
@@ -1368,6 +1433,58 @@ class TestADroppedConnectionIsNotAFailedDeploy:
         assert proxies.route_of(record) == pid
 
 
+class TestAFailedRoutedDeployWhoseEarnerSurvived:
+    """The worker kept the route because the earner may still run: the UI keeps both records, as after a timeout."""
+
+    @staticmethod
+    def _worker_answering(status, detail):
+        """_proxy_to_worker as it is, against a worker that answers the deploy with ``status`` and ``detail``."""
+        resp = MagicMock(status_code=status, text="")
+        resp.json.return_value = {"detail": detail}
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=resp)
+        return (
+            patch.object(main.httpx, "AsyncClient", return_value=client),
+            patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("http://w:8081", {}))),
+        )
+
+    def _deploy(self, detail):
+        ui = _Ui()
+        hop = ui.hop
+
+        async def go():
+            pid = await ui.proxy()
+            with ExitStack() as stack:
+                for p in self._worker_answering(409, detail):
+                    stack.enter_context(p)
+                real = main._proxy_to_worker
+                stack.enter_context(ui.active())
+                main._proxy_to_worker = lambda wid, m, path, **k: (
+                    real(wid, m, path, **k) if path.endswith("/deploy") else hop(wid, m, path, **k)
+                )
+                with pytest.raises(HTTPException) as err:
+                    await main.api_deploy(_request(), "honeygain", main.DeployRequest(env=ENV, route=pid))
+            copies = [c for c in await database.list_proxied_copies(pid) if c["worker_id"] == 1]
+            return pid, err.value, copies, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        return _run(go)
+
+    def test_both_records_stay_and_the_reason_reaches_the_owner(self, db):
+        message = "Docker refused the container: conflict. honeygain stays routed through proxy 1 on this worker"
+        pid, err, copies, record = self._deploy({"error": "routed_copy_may_exist", "message": message})
+        assert err.status_code == 409
+        assert err.detail == {"error": "routed_copy_may_exist", "message": message}
+        assert [c["slug"] for c in copies] == ["honeygain"]
+        assert proxies.route_of(record) == pid
+
+    def test_control_a_failure_that_left_nothing_drops_the_copy_record(self, db):
+        _, err, copies, record = self._deploy("Docker refused the container: conflict")
+        assert err.status_code == 409
+        assert copies == [] and record is None
+
+
 class TestTheRouteBoxFollowsTheRecord:
     """svc.routes tells the Route box what a deploy with no route does: api_deploy keeps the recorded route."""
 
@@ -1806,6 +1923,49 @@ class TestTheUiManagesARoutedService:
         error = _run(go)
         assert error.status_code == 409 and "already runs through this proxy" in str(error.detail)
         assert ui.calls == []
+
+    def test_a_copy_through_a_proxy_the_service_was_routed_through_meanwhile_is_refused(self, db):
+        """The route is read again under the copy's lock: a routed deploy that finished first keeps its earner."""
+        ui = _Ui()
+        hop = ui.hop
+        routed_asked = asyncio.Event()
+        routed_may_answer = asyncio.Event()
+
+        async def gated(worker_id, method, path, *, json=None, **kwargs):
+            if (json or {}).get("routed"):
+                routed_asked.set()
+                await routed_may_answer.wait()
+            return await hop(worker_id, method, path, json=json, **kwargs)
+
+        async def go():
+            pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env=ENV))
+            with ui.active(), patch.object(main, "_proxy_to_worker", gated):
+                routed = asyncio.create_task(
+                    main.api_deploy(_request(), "honeygain", main.DeployRequest(env=ENV, route=pid))
+                )
+                await routed_asked.wait()
+                ui.calls.clear()
+                # Reads the record before the routed one is saved, then waits for the copy's lock.
+                copy = asyncio.create_task(
+                    main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=1, slug="honeygain"), {})
+                )
+                lock = main._proxy_copy_lock(pid, 1, "honeygain")
+                while not getattr(lock, "_waiters", None):
+                    await asyncio.sleep(0)
+                routed_may_answer.set()
+                await routed
+                with pytest.raises(HTTPException) as exc:
+                    await copy
+            copies = [c for c in await database.list_proxied_copies(pid) if c["worker_id"] == 1]
+            return pid, exc.value, copies, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, error, copies, record = _run(go)
+        assert error.status_code == 409 and "already runs through this proxy" in str(error.detail)
+        # Only the routed deploy reached the worker; its copy record and route stay.
+        assert [p for _, p in ui.paths()] == [f"/api/proxied/honeygain/{pid}/deploy"]
+        assert [c["slug"] for c in copies] == ["honeygain"]
+        assert proxies.route_of(record) == pid
 
     def test_removing_its_copy_on_the_proxies_page_drops_its_record(self, db):
         ui, setup = self._routed(db)

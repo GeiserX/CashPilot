@@ -1229,3 +1229,47 @@ class TestTheTunnelFallsBackToProxyDns:
     @pytest.mark.parametrize("scheme", ["socks5", "http"])
     def test_control_a_proxy_that_is_down_never_switches(self, tmp_path, scheme):
         assert not _proxy_refuses_dns(tmp_path, scheme, 7, "0.000000" if scheme == "socks5" else "000", 28)
+
+
+def _dns_rounds(tmp_path: Path, resolves: str, step: int) -> list[str]:
+    """Run cp-tunnel's wait for DNS before the probe, with stub getent, date and a proxy that allows port 53.
+
+    ``resolves``: the names the resolver answers. The stub clock moves ``step``
+    seconds each time it is read. Returns the names asked, in order.
+    """
+    import subprocess
+
+    start = _CP_TUNNEL.index("    start_tun2proxy over-tcp\n") + len("    start_tun2proxy over-tcp\n")
+    loop = _CP_TUNNEL[start : _CP_TUNNEL.index("\n    done\n", start) + len("\n    done\n")]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    asked = tmp_path / "asked"
+    clock = tmp_path / "clock"
+    clock.write_text("0")
+    stubs = {
+        "getent": f'echo "$2" >>{asked}\ncase " $STUB_RESOLVES " in *" $2 "*) exit 0 ;; esac\nexit 2',
+        "date": f"t=$(cat {clock})\necho $((t + {step})) >{clock}\necho $t",
+        "timeout": 'shift\nexec "$@"',
+        "sleep": "exit 0",
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    script = f"proxy_refuses_dns() {{ return 1; }}\n/bin/sleep 30 &\nTPID=$!\n{loop}kill $TPID\n"
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB_RESOLVES": resolves}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    return asked.read_text().split() if asked.exists() else []
+
+
+class TestTheTunnelWaitsForDnsInsideTheReadyBudget:
+    def test_another_probe_endpoint_that_resolves_ends_the_wait(self, tmp_path):
+        """A resolver that fails api.ipify.org only: cp-probe reaches ifconfig.me, so the wait stops there."""
+        assert _dns_rounds(tmp_path, "ifconfig.me icanhazip.com", step=1) == ["api.ipify.org", "ifconfig.me"]
+
+    def test_no_round_starts_after_15_seconds(self, tmp_path):
+        """No name resolves and each round takes about 4 s: the probe still starts inside the worker's 45 s."""
+        assert _dns_rounds(tmp_path, "", step=4) == ["api.ipify.org", "ifconfig.me", "icanhazip.com"]
+
+    def test_control_a_resolver_that_answers_ends_the_wait_at_once(self, tmp_path):
+        assert _dns_rounds(tmp_path, "api.ipify.org ifconfig.me icanhazip.com", step=1) == ["api.ipify.org"]

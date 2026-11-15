@@ -4728,9 +4728,10 @@ async def _deploy_routed(
                 timeout=180,
             )
         except HTTPException as exc:
-            if exc.status_code == 504:
-                # The worker may still finish it: both records stay, so the service
-                # is listed, its route is kept, and it can be stopped or removed.
+            if exc.status_code == 504 or _worker_error(exc) == "routed_copy_may_exist":
+                # The worker may still finish it, or found its earner still there
+                # after the failure: both records stay, so the service is listed
+                # and capped, its route is kept, and it can be stopped or removed.
                 await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
             elif not had_record:
                 await database.delete_proxied_copy(proxy_id, worker_id, slug)
@@ -5529,6 +5530,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "proxied_only",
         "route_not_tunnel",
         "route_unknown",
+        # A failed routed deploy whose earner may still run (app/worker_api.py).
+        "routed_copy_may_exist",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -5822,6 +5825,8 @@ async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
 
 
 def _mask(text: Any, secrets_: list[str]) -> Any:
+    if isinstance(text, dict):
+        return {key: _mask(value, secrets_) for key, value in text.items()}
     if not isinstance(text, str):
         return text
     for value in sorted(secrets_, key=len, reverse=True):
@@ -6230,6 +6235,12 @@ async def api_add_proxied_copy(
         )
         if not fresh or current is None or current.get("removing_since"):
             raise HTTPException(status_code=409, detail="This copy was removed meanwhile; add it again")
+        # A routed deploy through this proxy that finished while this waited made
+        # this copy its earner, and the copy record is its own now: it stays.
+        if proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == proxy_id:
+            raise HTTPException(
+                status_code=409, detail=f"{svc.get('name') or slug} already runs through this proxy on this worker."
+            )
         if fresh["state"].get("capped_at") or current.get("stopped_by_cap"):
             # Nothing reached the worker: a new copy's record goes, as on a failed deploy.
             if not had_record:
