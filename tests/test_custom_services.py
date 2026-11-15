@@ -146,15 +146,17 @@ class TestSlugs:
         """A routed copy's tunnel ends in the slug: -next or -moving would read as a staged or aside tunnel."""
         assert custom_services.make_slug("Node Next", set()) == "custom-nodenext"
         assert custom_services.make_slug("Node Moving", set()) == "custom-nodemoving"
+        # A redeploy keeps custom-node's old tunnel as ...-custom-node-old: never another service's own tunnel.
+        assert custom_services.make_slug("Node Old", set()) == "custom-nodeold"
         assert custom_services.make_slug("Next Node", set()) == "custom-next-node"
 
-    @pytest.mark.parametrize("name", ["Next", "Moving", "next!", "2"])
+    @pytest.mark.parametrize("name", ["Next", "Moving", "Old", "next!", "2"])
     def test_a_bare_tunnel_suffix_or_number_does_not_get_its_dash_back_from_the_prefix(self, name):
         """SLUG_PREFIX ends in a dash, so a base that is only the word would still end in -next or -moving."""
         slug = custom_services.make_slug(name, set())
-        assert not re.search(r"-(\d+|next|moving)$", slug), slug
+        assert not re.search(r"-(\d+|next|moving|old)$", slug), slug
         assert not proxy_tunnel.shared_tunnel_name(7, slug).endswith(
-            (proxy_tunnel.STAGED_SUFFIX, proxy_tunnel.MOVING_SUFFIX)
+            (proxy_tunnel.STAGED_SUFFIX, proxy_tunnel.MOVING_SUFFIX, proxy_tunnel.RETIRED_SUFFIX)
         ), slug
         assert slug == f"custom-service{name.strip('!').lower()}"
 

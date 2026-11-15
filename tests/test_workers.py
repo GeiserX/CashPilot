@@ -503,7 +503,62 @@ class TestHealthCheckVanishedService:
             patch("app.main.database.record_health_events", mock_record),
         ):
             _run(_run_health_check())
+        # It ran to the end: a health check that stopped early writes nothing either.
+        mock_record.assert_awaited_once()
         assert all(e[0] != "honeygain" for e in _batched_events(mock_record))
+
+    def test_a_partial_heartbeat_names_its_worker_once_per_change(self, caplog):
+        """The gate switches the missing check off for the whole fleet, so it says so, and which worker."""
+        import logging
+
+        partial = _worker_row(
+            id=1,
+            name="alpha",
+            status="online",
+            containers="[]",
+            system_info='{"docker_available": true, "routes_read": false}',
+        )
+        whole = _worker_row(
+            id=1, name="alpha", status="online", containers="[]", system_info='{"docker_available": true}'
+        )
+        deployments = [{"slug": "honeygain", "status": "running"}]
+        with (
+            caplog.at_level(logging.INFO, logger="app.main"),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=deployments),
+            patch("app.main.database.record_health_events", AsyncMock()),
+        ):
+            for rows in ([partial], [partial], [partial], [whole]):
+                with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=rows):
+                    _run(_run_health_check())
+        warned = [r.getMessage() for r in caplog.records if "does not list everything" in r.getMessage()]
+        assert len(warned) == 1 and "alpha" in warned[0]
+        assert len([r for r in caplog.records if "lists everything;" in r.getMessage()]) == 1
+
+    def test_the_statuses_and_the_completeness_come_from_one_read_of_the_workers(self):
+        """A complete heartbeat landing between two reads must not make an older partial list look whole."""
+        partial = [
+            _worker_row(
+                id=1, status="online", containers="[]", system_info='{"docker_available": true, "routes_read": false}'
+            )
+        ]
+        whole = [
+            _worker_row(
+                id=1,
+                status="online",
+                containers='[{"slug":"honeygain","status":"running"}]',
+                system_info='{"docker_available": true}',
+            )
+        ]
+        deployments = [{"slug": "honeygain", "status": "running"}]
+        mock_record = AsyncMock()
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, side_effect=[partial, whole, whole]),
+            patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=deployments),
+            patch("app.main.database.record_health_events", mock_record),
+        ):
+            _run(_run_health_check())
+        mock_record.assert_awaited_once()
+        assert ("honeygain", "check_down", "missing from heartbeat") not in _batched_events(mock_record)
 
 
 class TestHealthCheckPhoneApps:

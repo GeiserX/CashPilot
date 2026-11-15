@@ -10,6 +10,7 @@ scripts/proxy_shared_tunnel_lab.sh.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import copy
 import io
@@ -21,7 +22,7 @@ import threading
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -291,6 +292,7 @@ def docker(tmp_path):
         patch.object(orchestrator, "container_network", return_value=None),
         patch.object(orchestrator, "_get_stop_timeout", return_value=1),
         patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")),
+        patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / ".proxied_failed")),
         patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": IMAGE}),
         patch.object(proxy_tunnel.time, "sleep", lambda _s: None),
     ):
@@ -2142,13 +2144,14 @@ class TestAnOldEarnerLeftAside:
         assert aside.id not in docker.by_id
         assert entry["container_id"] == new.short_id
 
-    def test_while_a_deploy_of_its_proxy_runs_it_is_neither_reported_nor_started(self, docker):
-        """Its own deploy is replacing it: it is not the copy."""
+    def test_while_a_deploy_of_its_proxy_runs_it_is_listed_unproven_and_never_started(self, docker):
+        """Until its replacement runs it is still the copy: listed with no digest, and left to the deploy."""
         aside = _left_aside(docker)
         lock = proxy_tunnel._deploy_lock(3)
-        with lock:
-            entries = proxy_tunnel.status()
-        assert entries == []
+        with lock, patch.object(orchestrator, "_identity_entry", return_value={"identity_digest": "d"}):
+            (entry,) = proxy_tunnel.status()
+        assert entry["name"] == "cashpilot-honeygain-p3" and entry["status"] == "exited"
+        assert "identity_digest" not in entry
         assert aside.name.endswith(orchestrator.REPLACED_SUFFIX) and aside.status == "exited"
 
 
@@ -2356,3 +2359,174 @@ class TestReplacementSafety:
         proxy_tunnel._settle_replaced_unless_busy(docker, stale)
         assert earner.id in docker.by_id and earner.status == "running"
         assert docker.named("cashpilot-honeygain-p3") is earner
+
+
+# ---------------------------------------------------------------------------
+# A failed redeploy's leftovers: the old earner and its old tunnel stay the copy
+# ---------------------------------------------------------------------------
+
+
+def _failing_redeploy(docker, earner, *, state="created"):
+    """deploy_raw as it fails when Docker keeps the failed container: the old earner stays aside.
+
+    ``state`` is what the failed one is left in: "created" (its start was
+    refused) or "exited" (its start got no answer and it exited; _await_start
+    reports a failure). Returns (deploy_raw stub, the failed containers, a
+    switch that lets Docker remove them)."""
+    refused = {"on": True}
+    made: list[FakeContainer] = []
+
+    def deploy_raw(*, slug, image, env, network_mode, labels, name, **_kw):
+        earner.stop()
+        earner.rename(f"{name}{orchestrator.REPLACED_SUFFIX}")
+        failed = docker.create(
+            image=image,
+            name=name,
+            network_mode=network_mode,
+            labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
+        )
+        if state == "exited":
+            failed.start()
+            failed.stop()
+        real_remove = failed.remove
+
+        def stuck_remove(force=False, v=False):
+            if refused["on"]:
+                raise APIError("409 Client Error: removal of container is already in progress")
+            real_remove(force=force, v=v)
+
+        failed.remove = stuck_remove
+        made.append(failed)
+        raise orchestrator.ContainerRuntimeError("did not start; the previous container is kept as -replaced")
+
+    return deploy_raw, made, refused
+
+
+class TestFailedRedeployLeftovers:
+    def test_an_exited_replacement_docker_will_not_remove_never_costs_the_old_earner(self, docker):
+        """A start with no answer that then exited is a failed deploy: the predecessor is kept, then restored."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        stub, made, refused = _failing_redeploy(docker, earner, state="exited")
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=stub),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        (failed,) = made
+        assert earner.id in docker.by_id and earner.name.endswith(orchestrator.REPLACED_SUFFIX)
+        # While Docker keeps it, the heartbeat neither removes the copy aside nor starts the failed one.
+        _heartbeat()
+        assert earner.id in docker.by_id and failed.status == "exited"
+        refused["on"] = False
+        _heartbeat()
+        assert failed.id not in docker.by_id
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+
+    def test_control_a_replacement_that_ran_beside_a_leftover_aside_is_the_copy(self, docker):
+        """A redeploy that went through and could not remove the old earner: the old one goes, as before."""
+        _deploy("honeygain")
+        old = docker.named("cashpilot-honeygain-p3")
+        old.remove = lambda force=False, v=False: (_ for _ in ()).throw(APIError("500 removal failed"))
+        _deploy("honeygain")
+        new = docker.named("cashpilot-honeygain-p3")
+        new.stop()  # it ran, then exited: still the copy
+        del old.remove
+        _heartbeat()
+        assert old.id not in docker.by_id and docker.named("cashpilot-honeygain-p3") is new
+
+    def test_a_worker_that_dies_after_the_tunnel_is_retired_keeps_the_earner_on_the_next_start(self, docker):
+        """The old earner stays in its old tunnel under the retired name: a start gives that tunnel its name back."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        old_tunnel = docker.named("cashpilot-tunnel-p3")
+        with (
+            patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}),
+            patch.object(orchestrator, "deploy_raw", side_effect=_WorkerDied),
+            pytest.raises(_WorkerDied),
+        ):
+            _deploy("honeygain")
+        assert old_tunnel.name == "cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX
+        _heartbeat()
+        assert proxy_tunnel.stop("honeygain", 3) is True
+        proxy_tunnel.start("honeygain", 3, _socks())
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+        assert old_tunnel.name == "cashpilot-tunnel-p3" and _member_ids(docker, old_tunnel) == [
+            "cashpilot-honeygain-p3"
+        ]
+        assert docker.tunnels() == [old_tunnel]
+
+    def test_a_failed_redeploy_on_a_new_tunnel_image_whose_failed_earner_docker_keeps_loses_nothing(self, docker):
+        """The new tunnel still holds the failed earner, so the old one keeps the retired name; a start reclaims it."""
+        _deploy("honeygain")
+        earner = docker.named("cashpilot-honeygain-p3")
+        old_tunnel = docker.named("cashpilot-tunnel-p3")
+        stub, made, refused = _failing_redeploy(docker, earner)
+        with (
+            patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": NEW_IMAGE}),
+            patch.object(orchestrator, "deploy_raw", side_effect=stub),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        (failed,) = made
+        assert old_tunnel.name.endswith(proxy_tunnel.RETIRED_SUFFIX)
+        # A start while Docker still keeps the failed earner starts nothing.
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="Nothing was changed"):
+            proxy_tunnel.start("honeygain", 3, _socks())
+        assert failed.status == "created" and earner.name.endswith(orchestrator.REPLACED_SUFFIX)
+        refused["on"] = False
+        proxy_tunnel.start("honeygain", 3, _socks())
+        assert failed.id not in docker.by_id
+        assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
+        assert old_tunnel.name == "cashpilot-tunnel-p3" and docker.tunnels() == [old_tunnel]
+
+
+def _aside_that_cannot_be_settled(docker):
+    """An old earner aside whose rename back Docker refuses, with its name free."""
+    earner = _left_aside(docker)
+    real_rename = earner.rename
+
+    def refused(new):
+        if new == "cashpilot-honeygain-p3":
+            raise APIError("500 Server Error: rename failed")
+        real_rename(new)
+
+    earner.rename = refused
+    return earner
+
+
+class TestAnAsideTheHeartbeatCannotSettle:
+    def test_it_is_listed_as_the_copy_with_no_digest_and_never_started(self, docker):
+        earner = _aside_that_cannot_be_settled(docker)
+        with patch.object(orchestrator, "_identity_entry", return_value={"identity_digest": "d"}):
+            (entry,) = _heartbeat()
+        assert entry["name"] == "cashpilot-honeygain-p3" and entry["status"] == "exited"
+        assert entry["container_id"] == earner.short_id and "identity_digest" not in entry
+        assert earner.status == "exited"
+
+    def test_control_a_settled_aside_is_listed_with_its_digest(self, docker):
+        earner = _left_aside(docker)
+        with patch.object(orchestrator, "_identity_entry", return_value={"identity_digest": "d"}):
+            (entry,) = _heartbeat()
+        assert entry["name"] == "cashpilot-honeygain-p3" and entry["identity_digest"] == "d"
+        assert earner.status == "running"
+
+    def test_the_ui_keeps_an_expired_hold_while_the_copy_is_aside(self, docker):
+        """Listed with no digest, the copy proves nothing: an unanswered deploy's hold is not let go."""
+        from app import main
+
+        _aside_that_cannot_be_settled(docker)
+        entries = _heartbeat()
+        for entry in entries:
+            entry["routed"] = True  # worker_api._mark_routed, for a routed service
+        containers = main._ledger_containers([], {"proxied": entries})
+        hold = {"slug": "honeygain", "copy": 1, "env": {"K": "new"}, "age": 10**9, "instance": "pending-1"}
+        settle = AsyncMock()
+        with (
+            patch.object(main.database, "pending_identities", AsyncMock(return_value=[hold])),
+            patch.object(main, "_identity_digest_keys", AsyncMock(return_value=["k"])),
+            patch.object(main.database, "active_identity_values", AsyncMock(return_value={"1": {"K": "old"}})),
+            patch.object(main.database, "settle_pending_identities", settle),
+        ):
+            asyncio.run(main._settle_pending_identities(7, containers, complete=True, deadline=True))
+        settle.assert_not_awaited()

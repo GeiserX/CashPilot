@@ -424,7 +424,11 @@ async def _run_health_check() -> None:
     have no container and are excluded since no worker ever reports them.
     """
     try:
-        statuses = await _get_all_worker_containers()
+        # One read of the workers for both the statuses and the completeness
+        # checks below: a heartbeat landing between two reads would pair an
+        # older, partial list with a newer, complete flag.
+        workers = await database.list_workers()
+        statuses = await _get_all_worker_containers(workers)
         # Aggregate: slug -> best status (running wins)
         slug_best: dict[str, str] = {}
         for s in statuses:
@@ -447,7 +451,6 @@ async def _run_health_check() -> None:
             else:
                 events.append((slug, "check_down", status))
 
-        workers = await database.list_workers()
         online = [w for w in workers if w.get("status") == "online"]
         # "Missing from a heartbeat" is only evidence of being DOWN if every
         # online worker could actually look. A worker whose Docker socket became
@@ -470,11 +473,11 @@ async def _run_health_check() -> None:
         # A paired Desktop reports its containers and sends no docker_available
         # either; counting it as blind did the same to every fleet with one.
         blind = [w for w in online if placement.is_blind(w)]
-        _report_blind_workers(blind)
         # Nor if one that can see Docker said its lists are not whole: a routed
         # service's copy is left out of a heartbeat whose routes were not read,
         # and may still run there.
         partial = [w for w in online if placement.can_see_docker(w) and _heartbeat_partial(placement.system_info(w))]
+        _report_blind_workers(blind, partial)
         if online and not blind and not partial:
             deployments = await database.get_deployments()
             for d in deployments:
@@ -502,27 +505,44 @@ def _heartbeat_partial(info: dict[str, Any]) -> bool:
     )
 
 
-# The blind workers the last warning named. The health check runs every five
-# minutes, so warning on each run repeated one fact hundreds of times a day; it
-# now speaks when the set changes and once when every worker can see again.
-_blind_workers_logged: frozenset[str] | None = None
+# The blind and the partial workers the last warning named. The health check
+# runs every five minutes, so warning on each run repeated one fact hundreds of
+# times a day; it now speaks when either set changes and once when every worker
+# sends a whole list again.
+_blind_workers_logged: tuple[frozenset[str], frozenset[str]] | None = None
 
 
-def _report_blind_workers(blind: list[dict[str, Any]]) -> None:
+def _report_blind_workers(blind: list[dict[str, Any]], partial: list[dict[str, Any]]) -> None:
+    """Say, by name, which workers turn the missing-container check off for the whole fleet."""
     global _blind_workers_logged
-    names = frozenset(str(w.get("name") or w.get("id")) for w in blind)
-    if names == (_blind_workers_logged or frozenset()):
+
+    def names_of(workers: list[dict[str, Any]]) -> frozenset[str]:
+        return frozenset(str(w.get("name") or w.get("id")) for w in workers)
+
+    names = (names_of(blind), names_of(partial))
+    if names == (_blind_workers_logged or (frozenset(), frozenset())):
         return
     _blind_workers_logged = names
-    if names:
+    if names[0]:
         logger.warning(
             "Not recording missing-container downtime: %d online worker(s) cannot read Docker (%s). "
             "Their containers may be running; recording them as down would be a guess.",
-            len(names),
-            ", ".join(sorted(names)),
+            len(names[0]),
+            ", ".join(sorted(names[0])),
         )
-    else:
-        logger.info("Every online worker can read Docker again; missing-container downtime is recorded again.")
+    if names[1]:
+        logger.warning(
+            "Not recording missing-container downtime: %d online worker(s) sent a heartbeat that does not list "
+            "everything (%s): their containers, their proxied copies or which of those are routed could not be "
+            "read. A container their list leaves out may be running; recording it as down would be a guess.",
+            len(names[1]),
+            ", ".join(sorted(names[1])),
+        )
+    if not any(names):
+        logger.info(
+            "Every online worker can read Docker again and lists everything; missing-container downtime is "
+            "recorded again."
+        )
 
 
 # How long a managed container may stay exited before it is an alert. Long

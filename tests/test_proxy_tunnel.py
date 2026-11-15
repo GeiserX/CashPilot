@@ -42,8 +42,11 @@ AUTH_KEY = "tskey-auth-kTEST-0123456789"
 
 @pytest.fixture(autouse=True)
 def _own_held_marker(tmp_path):
-    """Each test gets its own record of stopped copies (proxy_tunnel.HELD_MARKER)."""
-    with patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")):
+    """Each test gets its own record of stopped copies and failed replacements (proxy_tunnel.HELD_MARKER)."""
+    with (
+        patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")),
+        patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / ".proxied_failed")),
+    ):
         yield
 
 

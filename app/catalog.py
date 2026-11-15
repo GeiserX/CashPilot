@@ -233,11 +233,13 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         # Its containers would be named as a proxy tunnel (constants.TUNNEL_PREFIX),
         # which the worker refuses to deploy.
         errors.append(f"{path.name}: slug {slug!r} would name its containers as a proxy tunnel")
-    if isinstance(slug, str) and f"-{slug}".endswith(("-next", "-moving")):
+    if isinstance(slug, str) and f"-{slug}".endswith(("-next", "-moving", "-old")):
         # A routed copy's own tunnel is cashpilot-tunnel-p<id>-<slug>; these are
-        # proxy_tunnel.STAGED_SUFFIX and MOVING_SUFFIX, so the tunnel would read as
-        # a staged or aside one and could be removed or hidden from the report.
-        # A bare "next" is the staged name of the proxy's shared tunnel itself.
+        # proxy_tunnel.STAGED_SUFFIX, MOVING_SUFFIX and RETIRED_SUFFIX, so the
+        # tunnel would read as a staged, aside or retired one and could be
+        # removed or hidden from the report, or take the name another service's
+        # tunnel is kept under during a redeploy. A bare "next" is the staged
+        # name of the proxy's shared tunnel itself.
         errors.append(f"{path.name}: slug {slug!r} ends in a suffix the proxy tunnels reserve")
 
     category = data.get("category")
