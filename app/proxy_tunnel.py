@@ -60,7 +60,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote, unquote
 
-from docker.errors import APIError, NotFound
+from docker.errors import APIError, DockerException, NotFound
 from docker.types import Mount
 
 from app import orchestrator, route_gate, version
@@ -1265,13 +1265,26 @@ def _deploy(
     old = _get(client, name)
     old_tunnel = _tunnel_of(client, old if _is_ours(old, slug, proxy_id) else None, slug, proxy_id)
     tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others, slug=key, deadline=deadline)
-    # Cleared before anything changes: deploy_raw starts the earner, and a copy
-    # left running while recorded as stopped is never restarted after a reboot.
-    # Past the deadline (a slow tunnel start), the old copy is left as it was.
+    # The earner's image is pulled before the old copy goes, as a direct deploy
+    # pulls before it touches the old container: a pull still running at the
+    # deadline, or a tag with no image anywhere, leaves the old copy running.
+    # The held mark is cleared before anything changes: deploy_raw starts the
+    # earner, and a copy left running while recorded as stopped is never
+    # restarted after a reboot. Past the deadline (a slow tunnel start or
+    # pull), the old copy is left as it was.
+    image = str(earner["image"])
     try:
-        orchestrator._refuse_past(deadline, str(earner.get("image") or slug))
+        if (refused := orchestrator._pull_until(client, image, deadline)) is not None:
+            logger.warning("Failed to pull image %s: %s (trying local)", image, refused)
+            try:
+                client.images.get(image)
+            except DockerException:
+                raise orchestrator.ContainerRuntimeError(
+                    f"{image} is not available on this worker: {refused}. The running copy was not touched."
+                ) from None
+        orchestrator._refuse_past(deadline, image)
         _set_held(name, False, strict=True)
-    except (ProxyTunnelError, orchestrator.ContainerRuntimeError):
+    except Exception:
         _drop_if_empty(client, tunnel)
         raise
     with _swap_lock:
@@ -1290,6 +1303,7 @@ def _deploy(
             category=(earner.get("labels") or {}).get(LABEL_CATEGORY, "bandwidth"),
             name=name,
             deadline=deadline,
+            pulled=True,
         )
     except Exception:
         # docker-py's run leaves the container created when only its start

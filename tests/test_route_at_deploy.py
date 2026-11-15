@@ -977,6 +977,14 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         )
         assert steps == [("pull", "honeygain/honeygain:1"), "run"]
 
+    def test_an_image_its_caller_pulled_is_not_pulled_again(self, monkeypatch):
+        """proxy_tunnel._deploy pulls before it removes the running copy; a second pull could pass the deadline."""
+        client = self._real_deploy_raw_client(monkeypatch)
+        client.containers.run.return_value = MagicMock(id="cid")
+        assert orchestrator.deploy_raw(slug="honeygain", image="honeygain/honeygain:1", pulled=True) == "cid"
+        client.images.pull.assert_not_called()
+        client.images.get.assert_called_with("honeygain/honeygain:1")
+
     def test_a_failed_pull_when_leaving_the_route_keeps_the_registrys_reason(self, monkeypatch):
         """A typo'd tag and a rate limit read differently; the daemon's "No such image" says neither."""
         route_gate.mark("honeygain", 3)
@@ -3024,3 +3032,54 @@ class TestARoutedDeployEndsByTheDeadlineCountedAtItsArrival:
         assert answer["resp"].status_code == 409, answer["resp"].text
         assert len(pulls) == 1 and worker.deployed == []
         proxy_tunnel._remove.assert_not_called()
+
+    def _deploy_raw_that_pulls(self, worker, monkeypatch, steps):
+        """deploy_raw's own pull, bounded by the deadline as the real one is, unless the caller already pulled."""
+
+        def deploy_raw(**kwargs):
+            if not kwargs.get("pulled"):
+                orchestrator._pull_until(worker.docker, kwargs["image"], kwargs["deadline"])
+            steps.append("earner")
+            worker.deployed.append(kwargs)
+            return "e"
+
+        monkeypatch.setattr(orchestrator, "deploy_raw", deploy_raw)
+        proxy_tunnel._remove.side_effect = lambda *a, **k: steps.append("old copy removed") or []
+
+    def test_an_earner_pull_still_running_at_it_leaves_the_running_copy_alone(self, worker, monkeypatch):
+        """The earner's image is pulled before the old copy goes, as a direct deploy pulls before it replaces."""
+        monkeypatch.setattr(worker_api, "DEPLOY_DEADLINE_SECONDS", 0.3)
+        thread, answer, pulls = self._routed_deploy(worker, monkeypatch)
+        steps = []
+        self._deploy_raw_that_pulls(worker, monkeypatch, steps)
+        worker.docker.images.pull.side_effect = lambda image: time.sleep(0.6)
+        thread.start()
+        thread.join(10)
+        assert answer["resp"].status_code == 409, answer["resp"].text
+        assert "limit" in _detail(answer["resp"])
+        assert steps == [] and worker.deployed == []
+        proxy_tunnel._remove.assert_not_called()
+
+    def test_an_earner_image_that_is_nowhere_leaves_the_running_copy_alone(self, worker, monkeypatch):
+        """A typo'd tag: the registry refuses and no local copy exists, so nothing could replace the old copy."""
+        thread, answer, pulls = self._routed_deploy(worker, monkeypatch)
+        steps = []
+        self._deploy_raw_that_pulls(worker, monkeypatch, steps)
+        worker.docker.images.pull.side_effect = orchestrator.APIError("manifest for honeygain/honeygain:typo unknown")
+        worker.docker.images.get.side_effect = ImageNotFound("No such image")
+        thread.start()
+        thread.join(10)
+        assert answer["resp"].status_code >= 400, answer["resp"].text
+        assert "manifest for honeygain/honeygain:typo unknown" in _detail(answer["resp"])
+        assert steps == [] and worker.deployed == []
+        proxy_tunnel._remove.assert_not_called()
+
+    def test_the_earner_image_is_pulled_once_before_the_old_copy_goes(self, worker, monkeypatch):
+        thread, answer, pulls = self._routed_deploy(worker, monkeypatch)
+        steps = []
+        self._deploy_raw_that_pulls(worker, monkeypatch, steps)
+        worker.docker.images.pull.side_effect = lambda image: steps.append(("pull", image))
+        thread.start()
+        thread.join(10)
+        assert answer["resp"].status_code == 200, answer["resp"].text
+        assert steps == [("pull", BODY["image"]), "old copy removed", "earner"]

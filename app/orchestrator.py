@@ -930,6 +930,7 @@ def deploy_raw(
     leave_route: bool = False,
     replaced_identity: dict[str, str] | None = None,
     deadline: float | None = None,
+    pulled: bool = False,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -945,8 +946,10 @@ def deploy_raw(
     running container is not touched; a deadline passed after that (a slow
     volume setup or stop) puts the stopped container back and starts it again.
 
-    ``network_mode="container:<id>"`` and ``name`` are for app/proxy_tunnel.py
-    only: the worker API refuses a container: network mode from any caller.
+    ``network_mode="container:<id>"``, ``name`` and ``pulled`` are for
+    app/proxy_tunnel.py only (``pulled``: it pulled the image itself, before it
+    removed the running copy, so the deadline cannot pass in a second pull).
+    The worker API refuses a container: network mode from any caller.
     A container that joins another's namespace gets no ports, resolvers or
     hostname of its own, because Docker refuses them there.
 
@@ -996,8 +999,10 @@ def deploy_raw(
     # or a typo'd image must not cost the running container. And once the image
     # is here, what it would run as PID 1 is known, so an image that cannot run
     # under this worker's hardening is refused now, not left to loop.
-    logger.info("Pulling image %s", image)
-    pull_error = _pull_until(client, image, deadline)
+    pull_error = None
+    if not pulled:
+        logger.info("Pulling image %s", image)
+        pull_error = _pull_until(client, image, deadline)
     if pull_error is not None:
         logger.warning("Failed to pull image %s: %s (trying local)", image, pull_error)
     try:
