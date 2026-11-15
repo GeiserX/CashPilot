@@ -1965,14 +1965,25 @@ def _deploy_routed(
     proxy: dict[str, Any],
     own_ip: str | None,
     only_if_running: bool = False,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
     """Deploy the routed copy of ``slug``, holding route_gate.deploying from its mark to its end.
 
     A direct deploy of the same service waits for it, and it for a direct
     deploy, so neither can create its earner after the other checked; and
     the route put back after a failure is the one this deploy found.
+
+    ``deadline`` is the request's (api_proxied_deploy): past it, the route is
+    not moved and no earner is created (proxy_tunnel.deploy).
     """
+    if deadline is None:
+        deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     with route_gate.deploying(slug):
+        # The wait for the lock has no bound of its own.
+        try:
+            orchestrator._refuse_past(deadline, str(earner.get("image") or slug))
+        except orchestrator.ContainerRuntimeError as exc:
+            raise _proxy_http_error(exc) from None
         # A routed copy through another proxy stays when this one is made
         # (proxy_tunnel._deploy replaces only its own proxy's), and the mark
         # moved here would hide it from the next switch to direct. Every copy
@@ -2023,7 +2034,9 @@ def _deploy_routed(
             )
         try:
             # In a tunnel of its own: the mark now names this proxy (proxy_tunnel.deploy).
-            return proxy_tunnel.deploy(slug, proxy_id, earner, proxy, own_ip, only_if_running=only_if_running)
+            return proxy_tunnel.deploy(
+                slug, proxy_id, earner, proxy, own_ip, only_if_running=only_if_running, deadline=deadline
+            )
         except Exception as exc:  # noqa: BLE001 - mapped to a status below
             error = _proxy_http_error(exc)
             # A deploy can fail after its earner exists (a start whose answer
@@ -2064,18 +2077,22 @@ _copy_starts: dict[tuple[str, int], int] = {}
 async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
     """Run a copy of ``slug`` whose only way out is the given proxy (docs/proxies.md)."""
     _verify_api_key(request)
+    # Counted from now, as a direct deploy's is (api_deploy_container): the UI
+    # holds the ids of a copy deploy it got no answer for, and the hold must
+    # outlast it, however long this one waits for locks or a tunnel pull.
+    deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     key = (slug, int(proxy_id))
     _copy_deploys[key] = _copy_deploys.get(key, 0) + 1
     _copy_starts[key] = _copy_starts.get(key, 0) + 1
     try:
-        return await _proxied_deploy(slug, proxy_id, spec)
+        return await _proxied_deploy(slug, proxy_id, spec, deadline)
     finally:
         _copy_deploys[key] -= 1
         if not _copy_deploys[key]:
             del _copy_deploys[key]
 
 
-async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
+async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec, deadline: float) -> dict[str, Any]:
     await asyncio.to_thread(_validate_proxied, slug, spec)
     own_ip = await _own_egress_ip()
     earner = {
@@ -2097,12 +2114,13 @@ async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> 
                 spec.proxy.plain(),
                 own_ip,
                 only_if_running=spec.only_if_running,
+                deadline=deadline,
             )
         except Exception as exc:  # noqa: BLE001 - mapped to a status below
             raise _proxy_http_error(exc) from None
     else:
         result = await asyncio.to_thread(
-            _deploy_routed, slug, proxy_id, earner, spec.proxy.plain(), own_ip, spec.only_if_running
+            _deploy_routed, slug, proxy_id, earner, spec.proxy.plain(), own_ip, spec.only_if_running, deadline
         )
     return {"status": "deployed", **result}
 

@@ -66,6 +66,7 @@ from docker.types import Mount
 from app import orchestrator, route_gate, version
 from app.constants import (
     CONTAINER_PREFIX,
+    DEPLOY_DEADLINE_SECONDS,
     LABEL_CATEGORY,
     LABEL_DEPLOYED_BY,
     LABEL_MANAGED,
@@ -550,12 +551,15 @@ def start_sidecar(
     label: str | None = None,
     files: dict[str, str] | None = None,
     tunnel_for: str | None = None,
+    deadline: float | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Create, provision and start a tunnel, then wait for its exit. Removed on any failure.
 
     ``label`` names the tunnel on the tailnet (``cashpilot-<label>``).
     ``files`` hands over settings already read from another tunnel (the
     migration of a legacy pair), instead of building them from ``proxy``.
+    ``deadline`` (a deploy's, time.monotonic()) bounds the image pull, which
+    has no overall timeout of its own (orchestrator._pull_until).
     """
     network = orchestrator.container_network("bridge")
     if files is None:
@@ -566,10 +570,14 @@ def start_sidecar(
     # inside proxy_auth, so its decoded form is redacted too.
     secrets = [*_secret_values(proxy or {}), files.get("auth_key", ""), *_auth_secrets(files.get("proxy_auth", ""))]
     image = tunnel_image()
-    try:
-        client.images.pull(image)
-    except APIError as exc:
-        logger.warning("Could not pull %s: %s (trying the local copy)", image, exc)
+    if deadline is not None:
+        if (refused := orchestrator._pull_until(client, image, deadline)) is not None:
+            logger.warning("Could not pull %s: %s (trying the local copy)", image, refused)
+    else:
+        try:
+            client.images.pull(image)
+        except APIError as exc:
+            logger.warning("Could not pull %s: %s (trying the local copy)", image, exc)
     kwargs = sidecar_kwargs(name, slug, proxy_id, network, hostname=hostname or _hostname(name), tunnel_for=tunnel_for)
     kwargs.pop("detach")
     container = client.containers.create(**kwargs)
@@ -865,6 +873,7 @@ def _ensure_tunnel(
     files: dict[str, str] | None = None,
     upgrade: bool = False,
     slug: str | None = None,
+    deadline: float | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """The proxy's shared tunnel, running on the given settings and ready; with
     ``slug``, the routed service's own tunnel through the proxy instead.
@@ -914,7 +923,7 @@ def _ensure_tunnel(
             current = _finish_staged(client, leftover, current, final)
     if current is not None and (_image_of(current) == image or not upgrade):
         try:
-            return _in_place(client, current, proxy, own_ip, files, secrets)
+            return _in_place(client, current, proxy, own_ip, files, secrets, deadline=deadline)
         except _Broken as exc:
             logger.warning("The tunnel of proxy %s cannot start in place (%s); replacing it", proxy_id, exc)
     # Left by a deploy that died midway, on this name only if it is ours. A young
@@ -939,6 +948,7 @@ def _ensure_tunnel(
         label=label,
         files=files,
         tunnel_for=slug,
+        deadline=deadline,
     )
     try:
         with _swap_lock:
@@ -964,6 +974,8 @@ def _in_place(
     own_ip: str | None,
     files: dict[str, str],
     secrets: list[str],
+    *,
+    deadline: float | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Bring ``current`` up on ``files`` without replacing the container. See _ensure_tunnel.
 
@@ -984,7 +996,7 @@ def _in_place(
         logger.warning("The tunnel %s runs but has no exit; restarting it", current.name)
         previous = None
     elif running:
-        _prove(client, proxy, own_ip, files)
+        _prove(client, proxy, own_ip, files, deadline=deadline)
         try:
             previous = {key: _read_secret_file_or_raise(current, key) or "" for key in SECRET_KEYS}
             # A first read above may have failed where this one worked.
@@ -1042,13 +1054,20 @@ def _in_place(
     return current, exit_info
 
 
-def _prove(client: Any, proxy: dict[str, Any] | None, own_ip: str | None, files: dict[str, str]) -> None:
+def _prove(
+    client: Any,
+    proxy: dict[str, Any] | None,
+    own_ip: str | None,
+    files: dict[str, str],
+    *,
+    deadline: float | None = None,
+) -> None:
     """Start a throwaway Test tunnel on ``files`` and wait for its exit; it never stays."""
     trial = dict(files)
     if trial.get("kind") == "tailscale":
         trial["hostname"] = _ts_hostname(TEST_SLUG)
     name = f"{TUNNEL_PREFIX}test-{uuid.uuid4().hex[:10]}"
-    sidecar, _ = start_sidecar(client, name, TEST_SLUG, None, proxy, own_ip, files=trial)
+    sidecar, _ = start_sidecar(client, name, TEST_SLUG, None, proxy, own_ip, files=trial, deadline=deadline)
     _remove_quietly(sidecar, SIDECAR_STOP_SECONDS)
 
 
@@ -1158,6 +1177,7 @@ def deploy(
     own_ip: str | None,
     *,
     only_if_running: bool = False,
+    deadline: float | None = None,
 ) -> dict:
     """Deploy (or replace) the proxied copy of ``slug`` through proxy ``proxy_id``.
 
@@ -1181,11 +1201,24 @@ def deploy(
     The service's lock (route_gate.deploying) is held from the mark read to
     the earner, as every route change holds it: a route can never move while
     a copy built by the old one is still being made.
+
+    ``deadline`` (time.monotonic(); by default DEPLOY_DEADLINE_SECONDS from
+    now) is counted by the worker API from the request's arrival, as a direct
+    deploy's is: past it, no earner is created and the running copy is not
+    touched, however long the locks above or the tunnel's pull took. The UI
+    holds the copy's ids for an unanswered deploy only that long and a few
+    hours more (database.PENDING_IDENTITY_SECONDS).
     """
+    if deadline is None:
+        deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     with route_gate.deploying(slug), _deploy_lock(proxy_id):
+        # The waits for both locks have no bound of their own.
+        orchestrator._refuse_past(deadline, str(earner.get("image") or slug))
         if only_if_running:
             _require_running(slug, proxy_id)
-        return _deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=_routed_here(slug, proxy_id))
+        return _deploy(
+            slug, proxy_id, earner, proxy, own_ip, own_tunnel=_routed_here(slug, proxy_id), deadline=deadline
+        )
 
 
 def _require_running(slug: str, proxy_id: int) -> None:
@@ -1207,6 +1240,7 @@ def _deploy(
     own_ip: str | None,
     *,
     own_tunnel: bool = False,
+    deadline: float,
 ) -> dict:
     client = orchestrator._get_client()
     key = slug if own_tunnel else None
@@ -1230,12 +1264,14 @@ def _deploy(
     ]
     old = _get(client, name)
     old_tunnel = _tunnel_of(client, old if _is_ours(old, slug, proxy_id) else None, slug, proxy_id)
-    tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others, slug=key)
+    tunnel, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, upgrade=not others, slug=key, deadline=deadline)
     # Cleared before anything changes: deploy_raw starts the earner, and a copy
     # left running while recorded as stopped is never restarted after a reboot.
+    # Past the deadline (a slow tunnel start), the old copy is left as it was.
     try:
+        orchestrator._refuse_past(deadline, str(earner.get("image") or slug))
         _set_held(name, False, strict=True)
-    except ProxyTunnelError:
+    except (ProxyTunnelError, orchestrator.ContainerRuntimeError):
         _drop_if_empty(client, tunnel)
         raise
     with _swap_lock:
@@ -1253,6 +1289,7 @@ def _deploy(
             resources=earner.get("resources"),
             category=(earner.get("labels") or {}).get(LABEL_CATEGORY, "bandwidth"),
             name=name,
+            deadline=deadline,
         )
     except Exception:
         # docker-py's run leaves the container created when only its start

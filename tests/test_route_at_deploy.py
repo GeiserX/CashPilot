@@ -450,7 +450,7 @@ class TestTheWorkerProxiedRoutes:
         """The real proxy_tunnel.deploy, which picks the tunnel under its lock, with no Docker below it."""
         seen = {}
 
-        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
+        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
             seen["own_tunnel"] = own_tunnel
             seen["marked_first"] = route_gate.routed().get(slug)
             if isinstance(outcome, Exception):
@@ -756,7 +756,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copy_made = threading.Event()
         copies = []
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
             if threading.current_thread() is routed_thread:
                 raise RuntimeError("tunnel did not start")
             copies.append(own_tunnel)
@@ -817,7 +817,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(
             proxy_tunnel,
             "_deploy",
-            lambda slug, pid, earner, proxy, own_ip, *, own_tunnel: make(slug, pid, own_tunnel),
+            lambda slug, pid, earner, proxy, own_ip, *, own_tunnel, deadline: make(slug, pid, own_tunnel),
         )
         # A start of a copy whose tunnel is gone rebuilds it by the route it reads.
         monkeypatch.setattr(
@@ -876,7 +876,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copies = []
         copy_done = threading.Event()
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
             if threading.current_thread() is routed_thread:
                 raise RuntimeError("tunnel did not start")
             copies.append(own_tunnel)
@@ -912,7 +912,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copy_made = threading.Event()
         copies = []
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
             copies.append(own_tunnel)
             copy_made.set()
             return {"container_id": "c"}
@@ -2942,3 +2942,85 @@ class TestAnUncertainRoutedRedeployKeepsItsCopyRecord:
         assert copies == (["honeygain"] if kept else [])
         # The settings that may never run are not recorded: the record it had stays.
         assert record == before
+
+
+class TestARoutedDeployEndsByTheDeadlineCountedAtItsArrival:
+    """The UI holds the ids of a copy deploy it got no answer for (PENDING_IDENTITY_SECONDS).
+
+    The hold only protects them while the worker can still create the earner,
+    so a routed deploy, like a direct one, creates nothing once the deadline
+    counted from the request's arrival has passed, however long it waited for
+    the service's lock, the proxy's lock or the tunnel's image pull.
+    """
+
+    def _routed_deploy(self, worker, monkeypatch, sidecar=None):
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
+        monkeypatch.setattr(proxy_tunnel, "secret_files", lambda *a, **k: {"settings": "s"})
+        monkeypatch.setattr(proxy_tunnel, "tunnel_image", lambda: "drumsergio/cashpilot-tunnel:1.64.0")
+        monkeypatch.setattr(proxy_tunnel, "_remove", MagicMock(return_value=[]))
+        monkeypatch.setattr(proxy_tunnel, "_set_held", lambda *a, **k: None)
+        monkeypatch.setattr(proxy_tunnel, "_members", lambda client, tunnel: [])
+        monkeypatch.setattr(orchestrator, "deploy_raw", lambda **kwargs: worker.deployed.append(kwargs) or "e")
+        pulls = []
+
+        def start_sidecar(client, name, slug, proxy_id, proxy, own_ip, **kwargs):
+            pulls.append(kwargs.get("deadline"))
+            if sidecar:
+                sidecar()
+            return MagicMock(id="tunnel-id", name=name), {"ip": "203.0.113.7"}
+
+        monkeypatch.setattr(proxy_tunnel, "start_sidecar", start_sidecar)
+        body = {"earner": BODY, "proxy": PROXY, "routed": True}
+        answer = {}
+        thread = threading.Thread(
+            target=lambda: answer.update(resp=worker("POST", "/api/proxied/honeygain/3/deploy", body)), daemon=True
+        )
+        return thread, answer, pulls
+
+    def test_the_arrival_deadline_bounds_the_tunnel_pull_and_the_earner(self, worker, monkeypatch):
+        thread, answer, pulls = self._routed_deploy(worker, monkeypatch)
+        arrived = time.monotonic()
+        thread.start()
+        thread.join(10)
+        assert answer["resp"].status_code == 200, answer["resp"].text
+        (earner,) = worker.deployed
+        assert earner["network_mode"] == "container:tunnel-id"
+        # One deadline, from the request's arrival, for the tunnel's pull and the earner.
+        assert pulls == [earner["deadline"]]
+        assert arrived < earner["deadline"] - worker_api.DEPLOY_DEADLINE_SECONDS < time.monotonic()
+
+    def test_a_routed_deploy_that_waited_past_it_for_the_service_lock_changes_nothing(self, worker, monkeypatch):
+        monkeypatch.setattr(worker_api, "DEPLOY_DEADLINE_SECONDS", 0.3)
+        thread, answer, pulls = self._routed_deploy(worker, monkeypatch)
+        with route_gate.deploying("honeygain"):  # another deploy of the service holds it
+            thread.start()
+            time.sleep(0.6)
+        thread.join(10)
+        assert answer["resp"].status_code == 409, answer["resp"].text
+        assert "limit" in _detail(answer["resp"])
+        assert pulls == [] and worker.deployed == []
+        assert route_gate.routed() == {}
+        proxy_tunnel._remove.assert_not_called()
+
+    def test_a_copy_deploy_that_waited_past_it_for_the_proxy_lock_changes_nothing(self, worker, monkeypatch):
+        monkeypatch.setattr(worker_api, "DEPLOY_DEADLINE_SECONDS", 0.3)
+        thread, answer, pulls = self._routed_deploy(worker, monkeypatch)
+        with proxy_tunnel._deploy_lock(3):  # another copy through the proxy holds it
+            thread.start()
+            time.sleep(0.6)
+        thread.join(10)
+        assert answer["resp"].status_code == 409, answer["resp"].text
+        assert pulls == [] and worker.deployed == []
+        # Refused before its earner existed, so the route it moved goes back.
+        assert route_gate.routed() == {}
+        proxy_tunnel._remove.assert_not_called()
+
+    def test_a_tunnel_ready_after_it_leaves_the_running_copy_alone(self, worker, monkeypatch):
+        monkeypatch.setattr(worker_api, "DEPLOY_DEADLINE_SECONDS", 0.3)
+        thread, answer, pulls = self._routed_deploy(worker, monkeypatch, sidecar=lambda: time.sleep(0.6))
+        thread.start()
+        thread.join(10)
+        assert answer["resp"].status_code == 409, answer["resp"].text
+        assert len(pulls) == 1 and worker.deployed == []
+        proxy_tunnel._remove.assert_not_called()

@@ -10,6 +10,8 @@ import io
 import os
 import re
 import tarfile
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -24,7 +26,14 @@ from docker.errors import NotFound  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import orchestrator, proxy_tunnel, worker_api  # noqa: E402
-from app.constants import LABEL_INSTANCE, LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_SERVICE  # noqa: E402
+from app.constants import (  # noqa: E402
+    DEPLOY_DEADLINE_SECONDS,
+    LABEL_INSTANCE,
+    LABEL_MANAGED,
+    LABEL_PROXY,
+    LABEL_ROLE,
+    LABEL_SERVICE,
+)
 
 PASSWORD = "s3cr3t-p@ss"
 NEW_PASSWORD = "n3w-pass"  # ggignore: fake test value, not a credential
@@ -244,6 +253,26 @@ class TestSidecar:
         # Started only after the settings were in place.
         order = [c[0] for c in created.method_calls if c[0] in ("put_archive", "start")]
         assert order == ["put_archive", "start"]
+
+    def test_a_deploy_deadline_bounds_the_tunnel_image_pull(self):
+        # docker-py's pull has no overall timeout; a deploy's tunnel must not wait past its deadline.
+        client = MagicMock()
+        release = threading.Event()
+        client.images.pull.side_effect = lambda image: release.wait(10)
+        began = time.monotonic()
+        try:
+            with (
+                patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": "drumsergio/cashpilot-tunnel:1.64.0"}),
+                patch.object(orchestrator, "container_network", return_value=None),
+                pytest.raises(orchestrator.ContainerRuntimeError),
+            ):
+                proxy_tunnel.start_sidecar(
+                    client, "cashpilot-tunnel-x-p1", "x", 1, _socks(), None, deadline=time.monotonic() + 0.3
+                )
+        finally:
+            release.set()
+        assert time.monotonic() - began < 5
+        client.containers.create.assert_not_called()
 
     def test_a_failed_tunnel_is_removed_and_its_error_carries_no_password(self):
         client = MagicMock()
@@ -571,7 +600,9 @@ class TestWorkerApi:
         assert (slug, proxy_id, own_ip) == ("honeygain", 3, "192.0.2.1")
         assert proxy["password"] == PASSWORD and earner["env"] == {"A": "b"}
         assert PASSWORD not in resp.text
-        assert deploy.call_args.kwargs == {"only_if_running": False}
+        kwargs = deploy.call_args.kwargs
+        assert kwargs.pop("deadline") > time.monotonic() + DEPLOY_DEADLINE_SECONDS - 60
+        assert kwargs == {"only_if_running": False}
 
     def test_deploy_passes_only_if_running_through(self):
         body = {"earner": {"image": "honeygain/honeygain:1"}, "proxy": _socks(), "only_if_running": True}
@@ -583,7 +614,9 @@ class TestWorkerApi:
         ):
             resp = _api().post("/api/proxied/honeygain/3/deploy", json=body, headers=AUTH)
         assert resp.status_code == 200, resp.text
-        assert deploy.call_args.kwargs == {"only_if_running": True}
+        kwargs = deploy.call_args.kwargs
+        assert kwargs.pop("deadline") > time.monotonic() + DEPLOY_DEADLINE_SECONDS - 60
+        assert kwargs == {"only_if_running": True}
 
     def test_proxy_test_refuses_a_private_exit(self):
         with (
