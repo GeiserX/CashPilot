@@ -84,7 +84,9 @@ class TestRemoveGuard:
             orchestrator.remove_service("storj", delete_volumes=True)
 
         container.remove.assert_not_called()
-        client.volumes.get.assert_not_called()
+        # The refusal reads each volume (critical_set names when it was made); it removes none.
+        client.volumes.get.return_value.remove.assert_not_called()
+        client.volumes.remove.assert_not_called()
 
     def test_explicit_override_allows_the_delete(self):
         container = _container([_volume_mount("storj-identity", "/app/identity")])
@@ -220,7 +222,11 @@ class TestWorkerEndpoint:
 
         assert resp.status_code == 200
         mock.assert_called_once_with(
-            "storj", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=False
+            "storj",
+            delete_volumes=True,
+            allow_delete_critical=True,
+            only_if_restore_unfinished=False,
+            approved_critical=None,
         )
 
 

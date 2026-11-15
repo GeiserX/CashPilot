@@ -3003,9 +3003,12 @@ const CP = (() => {
       } catch (err) {
         // The box kept everything: its data holds a node identity or wallet.
         // The owner's yes above was to that; the critical delete asks for the
-        // password, as for a restore.
+        // password, as for a restore. It names the critical volumes this
+        // refusal reported, and the approval binds them: the box deletes
+        // those or nothing, never one mounted since.
         if (withData && err.code === 'critical_volume') {
-          return removed(await api(path([...params, 'allow_delete_critical=true']), { method: 'DELETE', body: {} }));
+          const reviewed = `critical_set=${encodeURIComponent(err.refusal.critical_set || '')}`;
+          return removed(await api(path([...params, 'allow_delete_critical=true', reviewed]), { method: 'DELETE', body: {} }));
         }
         // A restore that did not finish left a half-written data volume, and
         // the worker keeps it marked until it goes. The way out is the same

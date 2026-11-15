@@ -1394,6 +1394,31 @@ class TestARefusedDeployPutsTheOldNodeBack:
         assert docker.get("cashpilot-mysterium") is old
         old.start.assert_called_once()
 
+    @pytest.mark.parametrize("slug", ["mysterium", "honeygain"])
+    def test_a_restores_create_that_failed_leaves_another_clients_stopped_container(self, markers, slug):
+        """A restore creates only (start=False): a create that raised made nothing, so nothing is removed."""
+        name = f"cashpilot-{slug}"
+        theirs = _running_old(name, {"cashpilot.service": slug, "cashpilot.managed": "true"}, status="created")
+        docker = _FakeDocker()
+
+        def conflict(**_kwargs):
+            # Another client took the name after the pre-check, then Docker refused this create.
+            docker.add(theirs)
+            raise _api_error("Conflict. The container name is already in use")
+
+        docker.client.containers.create.side_effect = conflict
+        with pytest.raises(orchestrator.ContainerRuntimeError):
+            _raw_deploy(client=docker.client, slug=slug, start=False)
+        assert docker.get(name) is theirs and not theirs.removed
+
+    def test_control_a_create_and_start_that_failed_still_removes_its_leftover(self, markers):
+        """containers.run creates, then starts: one it left stopped under the name is this deploy's."""
+        docker = _FakeDocker()
+        docker.create_error = _api_error("cannot start: address already in use")
+        with pytest.raises(orchestrator.ContainerRuntimeError):
+            _raw_deploy(client=docker.client, slug="honeygain")
+        assert docker.created.removed
+
     def test_a_node_the_owner_had_stopped_goes_back_stopped(self, markers):
         orchestrator._mark_stopped("cashpilot-mysterium", True)
         old = _running_old(status="exited")

@@ -109,9 +109,17 @@ def restore_target(slug: str, worker_client_id: str, bundle_sha256: str) -> str:
     return f"{slug}|{worker_client_id}|{bundle_sha256}"
 
 
-def delete_target(slug: str, worker_client_id: str) -> str:
-    """The approval target of one delete of critical data: this service, on this worker."""
-    return f"{slug}|{worker_client_id}"
+def delete_target(slug: str, worker_client_id: str, critical_set: str | None = None) -> str:
+    """The approval target of one delete of critical data: this service, on this worker.
+
+    ``critical_set`` is the set of critical volumes the owner reviewed, as the
+    worker's refusal named it (orchestrator.critical_set). With it, the
+    approval covers those volumes and no other: the worker deletes nothing when
+    the critical volumes mounted at the delete differ.
+    """
+    if critical_set is None:
+        return f"{slug}|{worker_client_id}"
+    return f"{slug}|{worker_client_id}|{hashlib.sha256(critical_set.encode()).hexdigest()}"
 
 
 class StepUpError(Exception):

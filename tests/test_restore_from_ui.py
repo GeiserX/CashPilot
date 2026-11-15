@@ -33,6 +33,7 @@ import os
 import posixpath
 import re
 import tarfile
+import urllib.parse
 from contextlib import ExitStack, asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -2018,7 +2019,11 @@ class TestTheWorkerChecksTheCriticalDeleteApproval:
         resp, removed = self._delete(worker, monkeypatch, _delete_approval())
         assert resp.status_code == 200, resp.text
         removed.assert_called_once_with(
-            "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=False
+            "mysterium",
+            delete_volumes=True,
+            allow_delete_critical=True,
+            only_if_restore_unfinished=False,
+            approved_critical=None,
         )
 
     @pytest.mark.parametrize("query", ["?delete_volumes=true", "?allow_delete_critical=true", ""])
@@ -3493,9 +3498,10 @@ class TestAWrittenVolumeAnotherContainerMounts:
         orchestrator.deploy_raw.__wrapped__ = taken
         with pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert caught.value.left == [] and "mysterium-data" in docker.volume_map
-        # Not left, but a container under the name mounts the volume this restore
-        # made and no check read: the record holds it, as the gated branch's mark does.
+        # The volume is not left, but a container under the name mounts the volume
+        # this restore made and no check read: the record holds it, as the gated
+        # branch's mark does, and left names that container so the dashboard does too.
+        assert caught.value.left == ["cashpilot-mysterium"] and "mysterium-data" in docker.volume_map
         assert orchestrator.restore_marks() == {"mysterium"}
 
 
@@ -3705,8 +3711,211 @@ class TestALeftoverUnderTheNameHoldsANonGatedRestore:
         orchestrator.deploy_raw.__wrapped__ = half_made
         with pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert caught.value.left == [] and "cashpilot-mysterium" in docker.container_map
+        # Named in left: the worker answers "left", not "restored": false, so the
+        # dashboard keeps holding it as the worker does.
+        assert caught.value.left == ["cashpilot-mysterium"] and "cashpilot-mysterium" in docker.container_map
         assert orchestrator.restore_marks() == {"mysterium"}
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             orchestrator.start_service("mysterium")
         assert docker.started == []
+
+
+# ---------------------------------------------------------------------------
+# Round 15: a volume this restore made is its own only while its nonce is on
+# it, and a container left under the name is reported, not hidden
+# ---------------------------------------------------------------------------
+
+
+def _replace_after_creation(docker, volume: str):
+    """_created_new, then another client removes ``volume`` (still unused) and creates its own under the name."""
+    real = orchestrator._created_new
+
+    def created_then_replaced(client, name):
+        made = real(client, name)
+        if name == volume:
+            docker.volume_map.pop(name)
+            docker.volumes.create(name, labels={"theirs": "1"})
+        return made
+
+    return patch.object(orchestrator, "_created_new", created_then_replaced)
+
+
+class TestAVolumeReplacedAfterTheRestoreMadeIt:
+    EXTRA_DEPLOY = TestTheRestoreSequence.EXTRA_DEPLOY
+
+    def test_another_volume_replaced_before_the_mount_survives_the_undo(self, docker):
+        docker.corrupt_put = True
+        with _replace_after_creation(docker, "mysterium-extra"), pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
+        assert docker.volume_map["mysterium-extra"].attrs["Labels"] == {"theirs": "1"}
+        assert ("volume", "mysterium-extra") not in docker.removed
+        assert "mysterium-data" not in docker.volume_map and docker.started == []
+
+    def test_the_data_volume_replaced_before_the_mount_is_never_written_or_removed(self, docker):
+        with (
+            _replace_after_creation(docker, "mysterium-data"),
+            pytest.raises(orchestrator.RestoreError, match="mysterium-data") as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        replacement = docker.volume_map["mysterium-data"]
+        assert replacement.attrs["Labels"] == {"theirs": "1"} and replacement.files == {}
+        assert docker.puts == [] and docker.started == [] and docker.container_map == {}
+        assert caught.value.left == []
+
+    def test_control_a_volume_still_carrying_its_nonce_is_removed(self, docker):
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), self.EXTRA_DEPLOY)
+        assert docker.volume_map == {}
+
+
+class TestAContainerLeftUnderTheNameIsReported:
+    def test_the_worker_answers_left_so_the_dashboard_keeps_the_hold(self, docker, worker, monkeypatch):
+        def half_made(**kwargs):
+            docker.deploy_raw(**kwargs)
+            raise orchestrator.ContainerRuntimeError("create timed out; the leftover could not be removed")
+
+        orchestrator.deploy_raw.__wrapped__ = half_made
+        monkeypatch.setattr(worker_api.orchestrator, "restore_state", REAL_RESTORE_STATE)
+        resp = worker("proxybase-xyz", proxybase_bundle())
+        body = resp.json()
+        assert resp.status_code >= 400 and "cashpilot-proxybase-xyz" in docker.container_map
+        assert body.get("left") == ["cashpilot-proxybase-xyz"] and "restored" not in body, body
+        assert orchestrator.restore_marks() == {"proxybase-xyz"}
+
+    def test_control_an_undo_that_removed_everything_says_nothing_was_restored(self, docker):
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError) as caught:
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.left == [] and orchestrator.restore_marks() == set()
+
+
+# ---------------------------------------------------------------------------
+# Round 15: the owner's approval of a critical delete names the volumes they
+# reviewed, and the worker deletes those or nothing
+# ---------------------------------------------------------------------------
+
+
+def _bound_delete_approval(critical_set: str, slug="mysterium"):
+    target = step_up.delete_target(slug, CLIENT_ID, critical_set)
+    return {step_up.APPROVAL_HEADER: step_up.sign(WORKER_KEY, step_up.ACTION_DELETE_CRITICAL, target)}
+
+
+class TestACriticalDeleteIsBoundToTheVolumesTheOwnerReviewed:
+    URL = "/api/containers/mysterium?delete_volumes=true"
+    AUTH = {"Authorization": f"Bearer {WORKER_KEY}"}
+    CREATED = "2026-11-01T10:00:00Z"
+
+    @pytest.fixture
+    def box(self, docker, worker, monkeypatch):
+        """A box that runs mysterium on mysterium-data; the copies and tunnels around a removal are not here."""
+        monkeypatch.setattr(worker_api.orchestrator, "remove_extra_instances", lambda slug: [])
+        monkeypatch.setattr(worker_api.orchestrator, "copy_identity_digests", lambda slug: {})
+        monkeypatch.setattr(worker_api.proxy_tunnel, "remove_all", lambda slug: [])
+        monkeypatch.setattr(worker_api.lan_fence, "refresh_outside", lambda: None)
+        TestStartAndRemoveAroundARestore()._service(docker)
+        docker.volume_map["mysterium-data"].attrs["CreatedAt"] = self.CREATED
+        return docker
+
+    def _review(self, worker):
+        """The first delete, as the dashboard sends it: refused, naming what is critical."""
+        resp = worker.client.delete(self.URL, headers=self.AUTH)
+        detail = resp.json()["detail"]
+        assert resp.status_code == 409 and detail["error"] == "critical_volume", resp.text
+        return detail["critical_set"]
+
+    def _confirm(self, worker, reviewed, *, approved=None, query=None):
+        """The owner's retry: the reviewed set in the query and in the approval the UI signed."""
+        sent = reviewed if query is None else query
+        url = f"{self.URL}&allow_delete_critical=true"
+        if sent is not None:
+            url += f"&critical_set={urllib.parse.quote(sent, safe='')}"
+        approval = _bound_delete_approval(reviewed if approved is None else approved)
+        return worker.client.delete(url, headers={**self.AUTH, **approval})
+
+    def test_the_refusal_names_each_volume_with_when_it_was_made(self, box, worker):
+        assert self._review(worker) == f"mysterium-data@{self.CREATED}"
+
+    def test_the_reviewed_volumes_are_deleted(self, box, worker):
+        resp = self._confirm(worker, self._review(worker))
+        assert resp.status_code == 200, resp.text
+        assert box.container_map == {} and box.volume_map == {}
+
+    def test_another_volume_mounted_since_the_review_is_not_deleted(self, box, worker):
+        reviewed = self._review(worker)
+        # Another tab redeployed the service on a fresh volume before the owner confirmed.
+        box.volumes.create("mysterium-data-2")
+        box.volume_map["mysterium-data-2"].attrs["CreatedAt"] = "2026-11-02T09:00:00Z"
+        container = box.container_map["cashpilot-mysterium"]
+        container.mounts = {"/var/lib/mysterium-node": "mysterium-data-2"}
+        container.attrs["Mounts"] = [
+            {"Type": "volume", "Name": "mysterium-data-2", "Destination": "/var/lib/mysterium-node"}
+        ]
+        resp = self._confirm(worker, reviewed)
+        detail = resp.json()["detail"]
+        assert resp.status_code == 409 and detail["error"] == "critical_volume", resp.text
+        assert "changed since" in detail["message"] and "Nothing was removed" in detail["message"]
+        assert detail["critical_set"] == "mysterium-data-2@2026-11-02T09:00:00Z"
+        assert "cashpilot-mysterium" in box.container_map
+        assert {"mysterium-data", "mysterium-data-2"} <= set(box.volume_map) and box.removed == []
+
+    def test_a_volume_made_again_under_the_same_name_since_the_review_is_not_deleted(self, box, worker):
+        reviewed = self._review(worker)
+        box.volume_map["mysterium-data"].attrs["CreatedAt"] = "2026-11-03T08:00:00Z"
+        resp = self._confirm(worker, reviewed)
+        assert resp.status_code == 409 and resp.json()["detail"]["error"] == "critical_volume"
+        assert "mysterium-data" in box.volume_map and box.removed == []
+
+    def test_an_approval_for_another_set_removes_nothing(self, box, worker):
+        reviewed = self._review(worker)
+        resp = self._confirm(worker, reviewed, approved="mysterium-data@2020-01-01T00:00:00Z")
+        assert resp.status_code == 403 and resp.json()["detail"]["error"] == "step_up_rejected"
+        assert box.removed == []
+
+    def test_a_bound_approval_without_its_set_removes_nothing(self, box, worker):
+        reviewed = self._review(worker)
+        url = f"{self.URL}&allow_delete_critical=true"
+        resp = worker.client.delete(url, headers={**self.AUTH, **_bound_delete_approval(reviewed)})
+        assert resp.status_code == 403 and resp.json()["detail"]["error"] == "step_up_rejected"
+        assert box.removed == []
+
+
+class TestTheDashboardCarriesTheReviewedSet:
+    CRITICAL = "&delete_volumes=true&allow_delete_critical=true"
+    REVIEWED = "mysterium-data@2026-11-01T10:00:00+01:00"
+
+    def _remove(self, ui, query):
+        return TestRemoveAfterARestoreThatDidNotFinish()._remove(
+            ui, query, 200, {"status": "removed", "deleted_volumes": ["mysterium-data"]}, "?worker_id=2"
+        )
+
+    def test_the_set_goes_to_the_worker_and_into_the_approval(self, ui):
+        resp, sent = self._remove(ui, f"{self.CRITICAL}&critical_set={urllib.parse.quote(self.REVIEWED, safe='')}")
+        assert resp.status_code == 200, resp.text
+        assert sent.call_args.kwargs["params"] == {
+            "delete_volumes": "true",
+            "allow_delete_critical": "true",
+            "critical_set": self.REVIEWED,
+        }
+        approval = sent.call_args.kwargs["headers"][step_up.APPROVAL_HEADER]
+        with pytest.raises(step_up.StepUpError, match="another action"):
+            step_up.check(WORKER_KEY, approval, step_up.ACTION_DELETE_CRITICAL, "mysterium|client-b")
+        step_up.check(
+            WORKER_KEY,
+            approval,
+            step_up.ACTION_DELETE_CRITICAL,
+            step_up.delete_target("mysterium", "client-b", self.REVIEWED),
+        )
+
+    def test_the_refusal_forwards_the_set_to_review(self):
+        answer = MagicMock()
+        answer.json.return_value = {
+            "detail": {
+                "error": "critical_volume",
+                "message": "m",
+                "hint": "h",
+                "blocked": [{"volume": "mysterium-data", "target": "/var/lib/mysterium-node", "holds": "x"}],
+                "critical_set": self.REVIEWED,
+            }
+        }
+        assert main._safe_worker_detail(answer)["critical_set"] == self.REVIEWED

@@ -112,6 +112,9 @@ const removeSrc = slice('async function removeService(', '// Log viewer');
 // asks for it (askStepUp answers `password`). With critical the stub worker's
 // catalog marks the data as a node identity: a data delete without
 // allow_delete_critical is refused with critical_volume and removes nothing.
+// The critical volumes the stub worker's refusal names, each with when Docker made it.
+const REVIEWED = 'mysterium-data@2026-11-01T10:00:00+01:00';
+const BOUND = `&critical_set=${encodeURIComponent(REVIEWED)}`;
 function stubServer({refusal, box, failed, stepUp, critical, sent, bodies}) {
   let reached = 0;
   return async (path, config) => {
@@ -122,7 +125,7 @@ function stubServer({refusal, box, failed, stepUp, critical, sent, bodies}) {
       return {ok: false, status: 403, json: async () => ({detail: {error: 'step_up_required', message: 'Enter your password.'}})};
     }
     if (critical && path.includes('delete_volumes=true') && !path.includes('allow_delete_critical=true')) {
-      return {ok: false, status: 409, json: async () => ({detail: {error: 'critical_volume', message: 'mysterium-data holds the node identity.'}})};
+      return {ok: false, status: 409, json: async () => ({detail: {error: 'critical_volume', message: 'mysterium-data holds the node identity.', critical_set: REVIEWED}})};
     }
     reached++;
     const ok = reached > 1 || !refusal;
@@ -191,7 +194,7 @@ check('a Remove the worker takes asks nothing more', run.sent.length === 1
 run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b']});
 check('an owner who says yes to the data sends the delete with the data to that box, then the critical one it refused',
   run.sent.join(' | ') === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true'
-  + ' | DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true'
+  + ` | DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true${BOUND}`
   && /Also delete the data of mysterium on box-b\?/.test(run.asked[1]) && /backup file/.test(run.asked[1])
   && run.toasts.join() === 'success: mysterium removed from box-b', run);
 // The box's own catalog decides what is critical: data it holds no identity
@@ -212,7 +215,7 @@ check('control: an owner who says no keeps the data', run.sent.join() === 'DELET
 run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b', 'leftover']});
 check('a partial-restore row deletes only while that partial restore is there', run.sent.length === 2
   && run.sent.every((r) => r.includes('&only_if_restore_unfinished=true'))
-  && run.sent[1] === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&only_if_restore_unfinished=true&allow_delete_critical=true', run.sent);
+  && run.sent[1] === `DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&only_if_restore_unfinished=true&allow_delete_critical=true${BOUND}`, run.sent);
 run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b']});
 check('control: a box row with a container sends its data delete without that flag',
   run.sent.every((r) => !r.includes('only_if_restore_unfinished')), run.sent);
@@ -241,7 +244,7 @@ check('control: a writer on a box row with a container sends no flag',
 run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, password: 'pw'});
 check('the critical data delete asks for the password and sends it with the same delete', run.prompted.length === 1
   && run.sent.length === 3 && run.sent[1] === run.sent[2]
-  && run.sent[2] === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true'
+  && run.sent[2] === `DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true${BOUND}`
   && run.bodies[2] && run.bodies[2].step_up_password === 'pw' && run.toasts.join() === 'success: mysterium removed from box-b', JSON.stringify(run));
 run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, password: null});
 check('cancelling the password deletes nothing and says why', run.prompted.length === 1 && run.sent.length === 2

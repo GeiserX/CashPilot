@@ -6256,6 +6256,7 @@ async def _svc_remove(
     delete_volumes: bool,
     allow_delete_critical: bool = False,
     only_if_restore_unfinished: bool = False,
+    critical_set: str | None = None,
 ) -> dict[str, Any]:
     _require_writer(request)
     if allow_delete_critical:
@@ -6265,14 +6266,18 @@ async def _svc_remove(
         _require_owner(request)
     worker_id = await _resolve_worker_id(worker_id)
     approval: dict[str, str] | None = None
+    if not (delete_volumes and allow_delete_critical):
+        critical_set = None
     if delete_volumes and allow_delete_critical:
         await _confirm_critical_delete(request, slug, worker_id)
         # The worker checks this too (worker_api._check_critical_delete_approval),
         # so its own key, not the shared fleet key, is what lets the delete go.
+        # critical_set, the volumes the owner reviewed in the worker's refusal,
+        # is in the approval: the worker deletes those or nothing.
         client_id = (await database.get_worker(worker_id) or {}).get("client_id") or ""
         approval = {
             step_up.APPROVAL_HEADER: await _sign_for_worker(
-                worker_id, step_up.ACTION_DELETE_CRITICAL, step_up.delete_target(slug, client_id)
+                worker_id, step_up.ACTION_DELETE_CRITICAL, step_up.delete_target(slug, client_id, critical_set)
             )
         }
     params: dict[str, str] | None = None
@@ -6280,6 +6285,8 @@ async def _svc_remove(
         params = {"delete_volumes": "true"}
         if allow_delete_critical:
             params["allow_delete_critical"] = "true"
+        if critical_set is not None:
+            params["critical_set"] = critical_set
     if only_if_restore_unfinished:
         # The delete the owner agreed to is of a partial restore: the worker
         # refuses it once that restore is gone (a later one may have succeeded).
@@ -6351,9 +6358,10 @@ async def api_remove(
     delete_volumes: bool = False,
     allow_delete_critical: bool = False,
     only_if_restore_unfinished: bool = False,
+    critical_set: str | None = None,
 ) -> dict[str, Any]:
     return await _svc_remove(
-        request, slug, worker_id, delete_volumes, allow_delete_critical, only_if_restore_unfinished
+        request, slug, worker_id, delete_volumes, allow_delete_critical, only_if_restore_unfinished, critical_set
     )
 
 
@@ -6457,6 +6465,8 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
 # and hostnames. Only errors the worker deliberately structures for the operator
 # are passed through, and only the fields we expect.
 _FORWARDABLE_WORKER_ERRORS = {"critical_volume"}
+#: A refusal's critical_set longer than this is cut, so it binds nothing and the worker refuses the delete.
+_CRITICAL_SET_MAX = 4096
 
 
 def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
@@ -6509,10 +6519,13 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     blocked = detail.get("blocked")
     if not isinstance(blocked, list):
         return None
+    reviewed = detail.get("critical_set")
     return {
         "error": detail["error"],
         "message": str(detail.get("message") or ""),
         "hint": str(detail.get("hint") or ""),
+        # The volumes the owner reviews here: their confirm sends it back, bound in the approval.
+        "critical_set": reviewed[:_CRITICAL_SET_MAX] if isinstance(reviewed, str) else "",
         "blocked": [
             {
                 "volume": str(b.get("volume", "")),
@@ -7965,9 +7978,10 @@ async def api_service_remove(
     delete_volumes: bool = False,
     allow_delete_critical: bool = False,
     only_if_restore_unfinished: bool = False,
+    critical_set: str | None = None,
 ) -> dict[str, Any]:
     return await _svc_remove(
-        request, slug, worker_id, delete_volumes, allow_delete_critical, only_if_restore_unfinished
+        request, slug, worker_id, delete_volumes, allow_delete_critical, only_if_restore_unfinished, critical_set
     )
 
 
