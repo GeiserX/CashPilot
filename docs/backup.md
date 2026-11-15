@@ -150,10 +150,14 @@ identity sits on a named Docker volume. The rules:
   again right before each write. If another client replaced the volume while
   the restore wrote, the backup may be in that volume, so the restore reports
   it as left, the dashboard keeps holding the identity there, and the box
-  never deletes that volume: check it yourself. The hold ends when you press
-  **Remove from this box** for that restore. The answer then names that
-  volume as one another client replaced, which the box kept, and never shows
-  the removal as a plain success. A Mysterium the restore made and could not remove is
+  never deletes that volume: check it yourself. **Remove from this box** for
+  that restore clears the box's record of the unfinished restore. The answer
+  then names that volume as one another client replaced, which the box kept,
+  and never shows the removal as a plain success. That Remove does not end
+  the dashboard's hold on the identity on that box: as for a restore that gave
+  no answer, the hold stays until a retry there succeeds, or until you forget
+  the row in the Device ids list, which you can do 6 hours after the restore.
+  A Mysterium the restore made and could not remove is
   held stopped, so the LAN fence guard never starts data that did not check
   out. While a restore runs, and after a restore that failed or stopped
   mid-write (a worker restart), Start, Restart, Deploy and Restore refuse the

@@ -2149,6 +2149,28 @@ class TestARestoreTheWorkerUndid:
         assert [r["source"] for r in asyncio.run(database.backup_records(_sha(bundle)))] == ["export", "pending"]
         assert _upload(ui, bundle).json()["live_on"] == ["box-a"]
 
+    def test_remove_of_a_volume_another_client_replaced_keeps_the_hold(self, ui):
+        """Remove clears the box's mark of the restore, never the dashboard's hold, and docs/backup.md says so."""
+        bundle = mysterium_bundle()
+        _export(bundle, 2)
+        left = {"detail": "Another client replaced mysterium-data while the restore wrote it.", "left": ["x"]}
+        assert self._answer(ui, bundle, 409, left).status_code == 409
+        removed = {
+            "container": "cashpilot-mysterium",
+            "deleted_volumes": [],
+            "failed_volumes": ["mysterium-data"],
+            "replaced_volumes": ["mysterium-data"],
+        }
+        resp, _sent = TestRemoveAfterARestoreThatDidNotFinish()._remove(
+            ui, "&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true", 200, removed
+        )
+        assert resp.status_code == 200, resp.text
+        assert [r["source"] for r in asyncio.run(database.backup_records(_sha(bundle)))] == ["export", "pending"]
+        assert _upload(ui, bundle).json()["live_on"] == ["box-a"]
+        doc = " ".join((Path(__file__).resolve().parents[1] / "docs" / "backup.md").read_text("utf-8").split())
+        assert "The hold ends when you press" not in doc
+        assert "That Remove does not end the dashboard's hold on the identity on that box" in doc
+
 
 class TestTheUploadFolder:
     def test_a_sweep_from_another_request_spares_an_upload_still_arriving(self, ui):
