@@ -4769,6 +4769,11 @@ const CP = (() => {
     const field = `${slug}\n${key}`;
     const turn = (_identityChoice[field] || 0) + 1;
     _identityChoice[field] = turn;
+    const inputs = () => [...document.querySelectorAll('input[data-slug][data-key]')]
+      .filter(input => input.dataset.slug === slug && input.dataset.key === key);
+    // What each field held at the click: one the owner typed into while the
+    // reveal was out keeps what they typed.
+    const before = new Map(inputs().map(input => [input, input.value]));
     let value;
     try {
       value = await _revealIdentity(id);
@@ -4777,8 +4782,8 @@ const CP = (() => {
       return;
     }
     if (!value || _identityChoice[field] !== turn) return;
-    document.querySelectorAll('input[data-slug][data-key]').forEach(input => {
-      if (input.dataset.slug === slug && input.dataset.key === key) input.value = value;
+    inputs().forEach(input => {
+      if (before.has(input) && before.get(input) === input.value) input.value = value;
     });
     _identityPicks(slug, key).forEach(el => { el.innerHTML = ''; });
   }

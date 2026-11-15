@@ -2457,10 +2457,14 @@ class TestADeployTheWorkerDidNotAnswer:
 
     @staticmethod
     def _age_pending():
-        """The unconfirmed rows' wait runs out."""
+        """The unconfirmed rows' wait runs out. The deploy records age with them, so a record saved before a hold stays older."""
         with sqlite3.connect(database.DB_PATH) as conn:
             conn.execute(
                 "UPDATE device_identities SET last_seen = datetime('now', ?) WHERE status = 'active'",
+                (f"-{main.PENDING_IDENTITY_SECONDS + 60} seconds",),
+            )
+            conn.execute(
+                "UPDATE deployment_specs SET deployed_at = datetime(deployed_at, ?)",
                 (f"-{main.PENDING_IDENTITY_SECONDS + 60} seconds",),
             )
 
@@ -3453,3 +3457,54 @@ class TestAnExtraCopyWhoseStartEventFails:
             _deploy("honeygain", hg, 1, instances=2, events=AsyncMock(side_effect=copy_two_locked))
         assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box-2")) == []
         assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box")) == [1]
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, twenty-first round: a heartbeat built before a confirmed
+# replacement does not make the replaced attempt's hold the copy's row
+# ---------------------------------------------------------------------------
+
+
+class TestAStaleHeartbeatAfterAConfirmedReplacement:
+    """Honeygain copy 2's deploy of box-2 gets no answer; a replacement to rig-2 is then confirmed."""
+
+    HG = TestACopyWhoseWriteFailed.HG
+    COPY_2 = ("honeygain", "2", "HONEYGAIN_DEVICE_NAME")
+
+    @staticmethod
+    def _copy_two_timed_out(method, path, json):
+        return path.endswith("/deploy") and (json or {}).get("instance") == 2
+
+    def _replaced(self):
+        wid = _worker(running=[("honeygain", [1])])
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, _ = _deploy("honeygain", self.HG, wid, instances=2, fail=self._copy_two_timed_out, fail_status=504)
+            assert error.status_code == 504
+            # The 504 came after the worker's wait: the hold is older than anything saved after it.
+            with sqlite3.connect(database.DB_PATH) as conn:
+                conn.execute("UPDATE device_identities SET last_seen = datetime('now', '-120 seconds')")
+            # The worker lands box-2 and builds a heartbeat; before it arrives the replacement is confirmed.
+            rig = {**self.HG, "HONEYGAIN_DEVICE_NAME": "rig"}
+            assert _deploy("honeygain", rig, wid, instances=2, running={1, 2})[0] is None
+        assert _active()[(self.COPY_2[0], wid, *self.COPY_2[1:])] == "rig-2"
+        return wid
+
+    def test_the_stale_heartbeat_keeps_the_newer_row(self, db):
+        wid = self._replaced()
+        _heartbeat("box-a", {1: {"HONEYGAIN_DEVICE_NAME": "rig"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}, listed=True)
+        assert _active()[(self.COPY_2[0], wid, *self.COPY_2[1:])] == "rig-2"
+        # box-2 stays held, unconfirmed: the worker may still run it.
+        assert _active()[("honeygain", wid, "u2", "HONEYGAIN_DEVICE_NAME")] == "box-2"
+        TestADeployTheWorkerDidNotAnswer._age_pending()
+        _heartbeat("box-a", {1: {"HONEYGAIN_DEVICE_NAME": "rig"}, 2: {"HONEYGAIN_DEVICE_NAME": "rig-2"}}, listed=True)
+        assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box-2")) == []
+        assert _active()[(self.COPY_2[0], wid, *self.COPY_2[1:])] == "rig-2"
+
+    def test_a_later_heartbeat_that_still_proves_it_makes_it_the_row(self, db):
+        """The positive control: the copy really runs box-2 after the replacement, so the next proof settles it."""
+        wid = self._replaced()
+        runs_old = {1: {"HONEYGAIN_DEVICE_NAME": "rig"}, 2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}
+        _heartbeat("box-a", runs_old, listed=True)
+        _heartbeat("box-a", runs_old, listed=True)
+        assert _active()[(self.COPY_2[0], wid, *self.COPY_2[1:])] == "box-2"
+        assert ("honeygain", wid, "u2", "HONEYGAIN_DEVICE_NAME") not in _active()

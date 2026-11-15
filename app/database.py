@@ -5214,6 +5214,11 @@ async def settle_pending_identities(
     none (a removal, or a first deploy that never got one) the hold stays and
     is refreshed instead: a heartbeat built before a removal proves a container
     the removal stopped, and a copy row with no record is one nothing retires.
+    The same when the record was saved after the hold was last written: a
+    deploy confirmed since then replaced the copy, and a heartbeat built before
+    it must not put the replaced ids back over the newer row. The refresh makes
+    the hold newer than that record, so the next heartbeat that still proves
+    the ids (the copy really runs them) makes them the row.
     The hold ends once its time is up with no heartbeat proving it. Otherwise
     they are retired and the copy's row stays as it is. Another attempt on the
     same copy stays held: the worker may still land it. A deploy or a removal
@@ -5230,7 +5235,11 @@ async def settle_pending_identities(
         try:
             rows = [r for r in await _active_identity_rows(db, slug, worker_id) if r["instance"] == instance]
             held = {row["name"]: decrypt_value(row["value_encrypted"]) for row in rows}
-            promote = runs and bool(await _deploy_records(db, slug, worker_id))
+            promote = (
+                runs
+                and bool(await _deploy_records(db, slug, worker_id))
+                and not await _record_after_hold(db, slug, worker_id, instance)
+            )
             values: dict[str, Mapping[str, Any]] = {instance: {}}
             if promote:
                 values = {str(copy): env}
@@ -5248,6 +5257,24 @@ async def settle_pending_identities(
         except BaseException:
             await db.rollback()
             raise
+
+
+async def _record_after_hold(db: Any, slug: str, worker_id: int, instance: str) -> bool:
+    """Whether the worker's deploy record of ``slug`` was saved after unconfirmed ledger copy ``instance`` was last written.
+
+    The record is saved once a deploy's first copy is confirmed, and an
+    unanswered copy 1 never saves one, so a record newer than the hold is a
+    later deploy the worker confirmed. Both times are datetime('now'), whole seconds: a
+    hold the worker never answered was written before a wait that ran out, so
+    a record saved after it lands seconds later, not in the same second.
+    """
+    cursor = await db.execute(
+        "SELECT 1 FROM deployment_specs WHERE slug = ? AND worker_id = ? AND deployed_at > "
+        "(SELECT MAX(last_seen) FROM device_identities WHERE slug = ? AND worker_id = ? AND instance = ? "
+        "AND kind = 'env' AND status = 'active')",
+        (slug, worker_id, slug, worker_id, instance),
+    )
+    return await cursor.fetchone() is not None
 
 
 async def _pending_aged(db: Any, slug: str, worker_id: int, instance: str) -> bool:

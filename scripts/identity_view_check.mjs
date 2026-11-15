@@ -190,6 +190,19 @@ const useFn = slice('function _identityTargetWorker(', '// Exported for the harn
   pending[7]('id-of-7');
   await first;
   check('a reveal that answers after a later Use leaves the later id', input.value === 'id-of-8', input.value);
+
+  // The owner types another id while the reveal is out: what they typed stays.
+  const third = useIdentity('earnapp', 'EARNAPP_UUID', 9, '');
+  input.value = 'typed-by-owner';
+  pending[9]('id-of-9');
+  await third;
+  check('a reveal that answers after the owner typed leaves what they typed', input.value === 'typed-by-owner', input.value);
+
+  // The positive control: an untouched field takes the revealed id.
+  const fourth = useIdentity('earnapp', 'EARNAPP_UUID', 10, '');
+  pending[10]('id-of-10');
+  await fourth;
+  check('a reveal into an untouched field fills it', input.value === 'id-of-10', input.value);
 }
 
 // --- the Settings list loads even when /api/config fails ----------------------
