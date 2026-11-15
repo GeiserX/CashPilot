@@ -708,6 +708,10 @@ class TestApiDeploy:
             patch("app.main._proxy_worker_deploy", side_effect=capture),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            # No ledger table here; the hold written before the worker call is
+            # tested in test_identity_ledger, and a failed one refuses the deploy.
+            patch("app.main.database.hold_pending_identities", new_callable=AsyncMock, return_value="u1"),
+            patch("app.main.database.release_pending_identities", new_callable=AsyncMock),
         ):
             resp = client.post(
                 "/api/deploy/proxybase",

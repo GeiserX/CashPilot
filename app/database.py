@@ -5105,17 +5105,20 @@ def pending_copy_number(instance: str) -> int | None:
     return int(n) if n.isdigit() else None
 
 
-async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Mapping[str, Any]) -> None:
-    """Hold the ids a deploy of copy ``copy`` sent and the worker did not answer, unconfirmed.
+async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Mapping[str, Any]) -> str | None:
+    """Hold the ids a deploy of copy ``copy`` is about to send, unconfirmed, until the worker answers.
 
     Each attempt with other ids gets its own ledger copy, so a second
     unanswered deploy never drops the first one's ids: the worker may still
-    land either. The same ids again refresh their row.
+    land either. The same ids again refresh their row. Returns the ledger copy
+    this call created, which release_pending_identities ends once the worker
+    answered; None when it created none (no ids, or an earlier attempt that the
+    worker never answered holds them, which an answer to this one must not end).
     """
     keys = _identity_keys(slug)
     ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
     if not ids:
-        return
+        return None
     DB_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
         db.row_factory = aiosqlite.Row
@@ -5126,6 +5129,7 @@ async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Map
                 if pending_copy_number(str(row["instance"])) == int(copy):
                     held.setdefault(str(row["instance"]), {})[row["name"]] = decrypt_value(row["value_encrypted"])
             instance = next((i for i, have in held.items() if have == ids), None)
+            created = instance is None
             if instance is None:
                 instance, attempt = f"{PENDING_COPY_PREFIX}{int(copy)}", 1
                 while instance in held:
@@ -5136,6 +5140,35 @@ async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Map
                 db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
             )
             await _retire_if_worker_gone(db, slug, worker_id)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    return instance if created else None
+
+
+async def release_pending_identities(slug: str, worker_id: int, instance: str, env: Mapping[str, Any]) -> None:
+    """End the hold ``instance`` that hold_pending_identities created for ``env``, once the worker answered its deploy.
+
+    Its rows are deleted, not retired: an answered deploy leaves no unconfirmed
+    row behind, so a refused id is not listed or offered for reuse as if it ran.
+    Only while ``instance`` still holds exactly those ids, read and deleted in
+    one step: a heartbeat may have made the hold the copy's row already, and a
+    second deploy to the same copy then reuses the name for its own ids, which
+    this answer must not end.
+    """
+    keys = _identity_keys(slug)
+    ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
+    if not ids:
+        return
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            rows = [r for r in await _active_identity_rows(db, slug, worker_id) if r["instance"] == instance]
+            if {r["name"]: decrypt_value(r["value_encrypted"]) for r in rows} == ids:
+                await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
             await db.commit()
         except BaseException:
             await db.rollback()
@@ -5175,18 +5208,19 @@ async def settle_pending_identities(
     """End one attempt's unconfirmed ids (ledger copy ``instance``), while they are still ``env``.
 
     ``runs`` (a heartbeat proved the copy runs them): they become the copy's own
-    row, which retires what it ran before. Otherwise they are retired and the
-    copy's row stays as it is. Another attempt on the same copy stays held: the
-    worker may still land it. A deploy or a removal that settled them first
-    leaves nothing to do.
+    row, which retires what it ran before, while the worker still has a deploy
+    record of ``slug``. With none (a removal, or a first deploy that never got
+    one) the hold stays and is refreshed instead: a heartbeat built before a
+    removal proves a container the removal stopped, and a copy row with no
+    record is one nothing retires. The hold ends once its time is up with no
+    heartbeat proving it. Otherwise they are retired and the copy's row stays
+    as it is. Another attempt on the same copy stays held: the worker may still
+    land it. A deploy or a removal that settled them first leaves nothing to do.
     """
     keys = _identity_keys(slug)
     copy = pending_copy_number(instance)
     if copy is None:
         return
-    values: dict[str, Mapping[str, Any]] = {instance: {}}
-    if runs:
-        values[str(copy)] = env
     DB_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
         db.row_factory = aiosqlite.Row
@@ -5197,6 +5231,11 @@ async def settle_pending_identities(
                 for row in await _active_identity_rows(db, slug, worker_id)
                 if row["instance"] == instance
             }
+            values: dict[str, Mapping[str, Any]] = {instance: {}}
+            if runs and await _deploy_records(db, slug, worker_id):
+                values[str(copy)] = env
+            elif runs:
+                values[instance] = env
             # Retiring one whose time is up: a retry of the same ids that timed
             # out since the caller read its age refreshed it, and holds it again.
             if keys and held and held == dict(env) and (runs or await _pending_aged(db, slug, worker_id, instance)):
@@ -5296,8 +5335,9 @@ async def _retire_identity_rows(
     The on-box copies by default, the proxied copies with ``proxied``, or just
     the copies named in ``instances``. The default leaves the unconfirmed ids
     of a deploy the worker never answered (``u<n>``) held: a removal does not
-    stop that deploy, which may still create its container, so only
-    main._settle_pending_identities ends them (delete_worker retires them too).
+    stop that deploy, which may still create its container, so only the
+    worker's answer (release_pending_identities) or main._settle_pending_identities
+    ends them (delete_worker retires them too).
     """
     sql = "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE slug = ? AND status = 'active'"
     args: list[Any] = [slug]

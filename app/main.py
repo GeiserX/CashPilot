@@ -4416,14 +4416,15 @@ async def _deploy(
         )
         # Passed only when set, so the plain call keeps its three-argument shape.
         signed: dict[str, Any] = {"approve": True} if approve else {}
+        held = await _reserve_pending_identities(slug, worker_id, 1, spec.get("env"))
         try:
             result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, slug, worker_id)
-            if _outcome_unknown(exc):
-                # The worker may still finish it: the ids count as running here
-                # before the claim goes, so a deploy waiting on it is asked first.
-                await _record_pending_identities(slug, worker_id, {1: spec.get("env")})
+            if not _outcome_unknown(exc):
+                # The worker answered no. With no answer it may still finish
+                # it, so the hold stays and a deploy waiting on it is asked first.
+                await _release_pending_identities(slug, worker_id, held)
             raise
         container_id = result.get("container_id", "remote")
         # Reported, deliberately NOT recorded. The worker reads the running container
@@ -4456,6 +4457,10 @@ async def _deploy(
         # once its own deploy succeeded, and one being dropped is retired once its
         # removal did, so a failure halfway never marks an id that is not running.
         await _record_deploy_identities(slug, worker_id, spec, [1], docker_conf, scope="given")
+        # Answered: the hold ends whether or not that row was written. The deploy
+        # record holds copy 1's ids, and the heartbeats repair a missing row
+        # (_record_unrecorded_copies); a hold left here would outlive a removal.
+        await _release_pending_identities(slug, worker_id, held)
         # Each copy's start is recorded as its deploy is attempted: one that fails
         # must not leave an older stop as its latest action, which would hide its
         # crash, and a copy the deploy never reaches keeps the stop it had.
@@ -4465,17 +4470,20 @@ async def _deploy(
         # The extra copies, after the save: if one fails, the next redeploy still
         # knows how many this worker should run and tries again.
         for n in range(2, instances + 1):
+            # Before its start: a copy whose hold cannot be written is never sent.
+            held = await _reserve_pending_identities(slug, worker_id, n, copy_envs[n - 1], copy_note=n)
             await database.record_health_event(
                 slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
             )
             try:
                 answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
             except HTTPException as exc:
-                if _outcome_unknown(exc):
-                    await _record_pending_identities(slug, worker_id, {n: copy_envs[n - 1]})
+                if not _outcome_unknown(exc):
+                    await _release_pending_identities(slug, worker_id, held)
                 raise
             await _record_replaced_copy(slug, worker_id, recorded, old_prior, n, answer, docker_conf)
             await _record_deploy_identities(slug, worker_id, spec, [n], docker_conf, scope="given")
+            await _release_pending_identities(slug, worker_id, held)
     deleted: set[int] = set()
     for n in sorted(c for c in running_copies if c > instances):
         removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
@@ -4991,27 +4999,53 @@ def _forget_checked_copies(worker_id: int, slug: str) -> None:
 PENDING_IDENTITY_SECONDS = database.PENDING_IDENTITY_SECONDS
 
 
-async def _record_pending_identities(slug: str, worker_id: int, envs: Mapping[int, Any]) -> None:
-    """A deploy the worker did not answer: hold the ids it sent as in use on that box, unconfirmed.
+async def _reserve_pending_identities(
+    slug: str, worker_id: int, copy: int, env: Any, *, copy_note: int | None = None
+) -> tuple[str, Mapping[str, Any]] | None:
+    """Before a deploy of copy ``copy`` goes to the worker: hold the ids it sends as in use on that box, unconfirmed.
 
     Beside the copy's own row (``u<copy>``, database.PENDING_COPY_PREFIX), not
-    in it: until a heartbeat shows the new ids, the old container may be what
-    still runs, so both ids count as in use there. A second unanswered deploy
-    with other ids is held beside the first, not over it. _settle_pending_identities
-    makes them the copy's row once a heartbeat proves them, or retires them
-    once PENDING_IDENTITY_SECONDS pass with no proof. Bookkeeping: never raises.
+    in it: a worker that never answers may still land it, and until a heartbeat
+    shows the new ids the old container may be what still runs, so both count
+    as in use there. Written first, so the hold is in the ledger before the
+    worker can start anything, across a UI restart too: a write that fails
+    refuses the deploy before the worker sees it (``copy_note``: the extra copy
+    of a deploy whose earlier copies were already sent). A second unanswered
+    deploy with other ids is held beside the first, not over it. The worker's
+    answer ends the hold this created (_release_pending_identities); with none,
+    _settle_pending_identities makes it the copy's row once a heartbeat proves
+    it, or retires it once PENDING_IDENTITY_SECONDS pass with no proof.
     """
-    for n, env in envs.items():
-        if not isinstance(env, Mapping):
-            continue
-        try:
-            await database.hold_pending_identities(slug, worker_id, n, env)
-        except Exception:  # noqa: BLE001
-            logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
+    if not isinstance(env, Mapping):
+        return None
+    try:
+        instance = await database.hold_pending_identities(slug, worker_id, copy, env)
+    except Exception as exc:
+        logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
+        what = f"copy {copy_note} and the copies after it were not deployed" if copy_note else "nothing was deployed"
+        raise HTTPException(
+            status_code=503, detail=f"The device ids this deploy sends could not be recorded, so {what}"
+        ) from exc
+    return (instance, dict(env)) if instance else None
+
+
+async def _release_pending_identities(slug: str, worker_id: int, held: tuple[str, Mapping[str, Any]] | None) -> None:
+    """The worker answered a deploy: end the hold _reserve_pending_identities created for it.
+
+    Called after a refusal, or once the worker confirmed the deploy. Bookkeeping:
+    never raises; a hold that stays is settled by the heartbeats as an
+    unanswered one is.
+    """
+    if held is None:
+        return
+    try:
+        await database.release_pending_identities(slug, worker_id, *held)
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not end the held device ids of %s on worker %s", slug, worker_id, exc_info=True)
 
 
 async def _settle_pending_identities(worker_id: int, containers: Any, *, complete: bool, deadline: bool) -> None:
-    """Confirm or drop the unconfirmed ids of a deploy the worker did not answer (_record_pending_identities).
+    """Confirm or drop the unconfirmed ids of a deploy the worker did not answer (_reserve_pending_identities).
 
     A copy this heartbeat lists with their digest runs them: they become its
     row. Past PENDING_IDENTITY_SECONDS, a full list retires them when it shows
@@ -10462,14 +10496,15 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
                 recorded = await database.get_deployment_spec(body.slug, worker_id=worker_id)
                 if image != (recorded or {}).get("image"):
                     await _step_up_critical(request, body.slug, raw_svc, image, body.step_up_password, device_id=True)
+        # As /api/deploy's: held before the worker can start it.
+        copy = _copy_number(body.spec)
+        held = await _reserve_pending_identities(body.slug, worker_id, copy if copy and copy > 0 else 1, raw_env)
         try:
             result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, body.slug, worker_id)
-            if _outcome_unknown(exc) and isinstance(raw_env, dict):
-                # As /api/deploy's: the worker may still finish it.
-                copy = _copy_number(body.spec)
-                await _record_pending_identities(body.slug, worker_id, {copy if copy and copy > 0 else 1: raw_env})
+            if not _outcome_unknown(exc):
+                await _release_pending_identities(body.slug, worker_id, held)
             raise
     elif body.command in ("stop", "restart", "start"):
         result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/{body.command}")
@@ -10527,6 +10562,9 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             )
         except Exception:  # noqa: BLE001 - bookkeeping never fails a deploy that happened
             logger.exception("Could not record the device ids of %s on worker %s", slug, worker_id)
+        # Answered, so the hold ends whether or not that row was written: the
+        # deploy record holds the ids, and the heartbeats repair a missing row.
+        await _release_pending_identities(slug, worker_id, held)
         await database.record_health_event(
             slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=copy or 1
         )

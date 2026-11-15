@@ -374,6 +374,7 @@ def _deploy(
     user=OWNER,
     image=None,
     password=None,
+    events=None,
 ):
     """Deploy through the route.
 
@@ -406,7 +407,7 @@ def _deploy(
             patch.object(main, "_worker_features", AsyncMock(return_value={"instances"})),
             patch.object(main, "_worker_instances", AsyncMock(return_value=set(running))),
             patch.object(main, "_register_device", AsyncMock(return_value=True)),
-            patch.object(main.database, "record_health_event", AsyncMock()),
+            patch.object(main.database, "record_health_event", events or AsyncMock()),
             patch.object(main, "_spawn", lambda coro: coro.close()),
             patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
         ):
@@ -2141,14 +2142,18 @@ class TestAHeartbeatThatOutlivesItsRecord:
         wid = _worker()
         _deploy_losing_the_write("earnapp", {"EARNAPP_UUID": UUID_A}, wid)
         real = database.get_deployment_spec
+        raced = []
 
         async def read_then_removed(slug, worker_id=None):
             spec = await real(slug, worker_id=worker_id)
+            raced.append(True)
             await database.remove_deployment(slug, worker_id=worker_id)
             return spec
 
         with patch.object(main.database, "get_deployment_spec", read_then_removed):
             asyncio.run(main._reconcile_running_identities(wid, _entries("earnapp", {1: {"EARNAPP_UUID": UUID_A}})))
+        # The race ran: the answered deploy left no hold for the heartbeat to settle first.
+        assert raced
         assert _active() == {}
         assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_A) in _retired()
 
@@ -2399,13 +2404,20 @@ class TestADeployTheWorkerDidNotAnswer:
         row = next(r for r in _rows() if r["value"] == UUID_A)
         assert asyncio.run(database.delete_identity(row["id"]))
 
-    def test_a_late_landing_before_its_time_is_up_is_recorded(self, db):
-        """The same first deploy, but the container comes up an hour later."""
+    def test_a_late_landing_keeps_its_id_held(self, db):
+        """The same first deploy, but the container comes up an hour later.
+
+        No deploy record was saved, so the hold is not made a copy row nothing
+        would retire: each heartbeat that proves it refreshes it instead.
+        """
         wid = _worker()
         _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
         _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        self._age_pending()
         _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
-        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_A}
+        assert _active() == {("earnapp", wid, "u1", "EARNAPP_UUID"): UUID_A}
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
 
     def test_a_connection_lost_mid_request_counts_as_no_answer(self, db):
         """A reset after the request was sent (httpx.ReadError): the worker may still deploy it."""
@@ -2609,7 +2621,7 @@ class TestUnconfirmedIdsAcrossRacesAndRetries:
             found = await real(worker_id)
             if not raced:
                 raced.append(True)
-                await main._record_pending_identities("earnapp", wid, {1: {"EARNAPP_UUID": UUID_A}})
+                await main._reserve_pending_identities("earnapp", wid, 1, {"EARNAPP_UUID": UUID_A})
             return found
 
         with patch.object(main.database, "pending_identities", read_then_timed_out):
@@ -3046,27 +3058,52 @@ class TestAnExtraCopysDerivedId:
 
 
 class TestASettleThatARedeployOvertook:
-    """A heartbeat reads the held id, a redeploy with another id lands, then the heartbeat's settle runs."""
+    """A heartbeat built before a removal proves the held id after the removal stopped its container."""
 
-    def test_the_settle_writes_nothing_over_the_redeploy(self, db):
+    _timed_out = staticmethod(TestADeployTheWorkerDidNotAnswer._timed_out)
+    _age_pending = staticmethod(TestADeployTheWorkerDidNotAnswer._age_pending)
+    COPY_1 = ("earnapp", "1", "EARNAPP_UUID")
+
+    def _held(self):
         wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
-        _deploy(
-            "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
-        )
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=self._timed_out, fail_status=504)
+        assert error.status_code == 504
+        return wid
+
+    def _freed_once_its_time_is_up(self, wid):
+        """No copy row was made from the stale proof, and the hold still ends."""
+        assert (self.COPY_1[0], wid, *self.COPY_1[1:]) not in _active()
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == [wid]
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        self._age_pending()
+        _heartbeat("box-a", {}, slug="earnapp", listed=True)
+        assert _active() == {}
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)[0] is None
+
+    def test_a_removal_between_the_read_and_the_settle_makes_no_copy_row(self, db):
+        wid = self._held()
         real = database.pending_identities
         raced = []
 
-        async def read_then_redeployed(worker_id):
+        async def read_then_removed(worker_id):
             found = await real(worker_id)
             if found and not raced:
                 raced.append(True)
-                await database.record_identities("earnapp", wid, {"1": {"EARNAPP_UUID": UUID_C}}, scope="copies")
+                await database.remove_deployment("earnapp", worker_id=wid)
             return found
 
-        with patch.object(main.database, "pending_identities", read_then_redeployed):
+        with patch.object(main.database, "pending_identities", read_then_removed):
             _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
         assert raced
-        assert _active() == {("earnapp", wid, "1", "EARNAPP_UUID"): UUID_C}
+        self._freed_once_its_time_is_up(wid)
+
+    def test_a_stale_heartbeat_after_the_removal_makes_no_copy_row(self, db):
+        """The same through the remove route: the heartbeat was built before it and arrives after."""
+        wid = self._held()
+        _remove("earnapp", wid)
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        self._freed_once_its_time_is_up(wid)
 
     def test_with_the_hold_in_place_it_writes(self, db):
         """The positive control: the same heartbeat, no redeploy, makes the held id the copy's."""
@@ -3171,7 +3208,7 @@ class TestForgettingAnUnconfirmedHold:
             found = await real(slug, worker_id)
             if not raced:
                 raced.append(True)
-                await main._record_pending_identities("earnapp", wid, {1: {"EARNAPP_UUID": UUID_A}})
+                await main._reserve_pending_identities("earnapp", wid, 1, {"EARNAPP_UUID": UUID_A})
             return found
 
         with patch.object(main.database, "active_identity_values", read_then_retried):
@@ -3181,3 +3218,186 @@ class TestForgettingAnUnconfirmedHold:
         self._age_pending()
         _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
         assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, eighteenth round: a deploy's ids are held before the worker
+# sees it, so a hold that cannot be written refuses the deploy instead of
+# leaving an unanswered one unheld
+# ---------------------------------------------------------------------------
+
+
+class TestTheHoldIsWrittenBeforeTheWorkerCall:
+    """A failed hold write must not leave a deploy the worker may still finish with its id free."""
+
+    @staticmethod
+    def _hold_fails():
+        return patch.object(main.database, "hold_pending_identities", AsyncMock(side_effect=sqlite3.OperationalError))
+
+    @staticmethod
+    def _raw_timed_out(worker_id, hold_fails):
+        """A raw deploy of UUID_A whose worker never answers; returns (error, whether the worker was reached)."""
+        reached = []
+
+        async def hop(*args, **kwargs):
+            reached.append(True)
+            raise HTTPException(status_code=504, detail="worker timed out")
+
+        async def run():
+            with (
+                patch.object(main, "_require_owner", lambda r: OWNER),
+                patch.object(main, "_proxy_to_worker", hop),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                body = main.WorkerCommand(command="deploy", slug="earnapp", spec={"env": {"EARNAPP_UUID": UUID_A}})
+                try:
+                    await main.api_worker_command(_request(), worker_id, body)
+                except HTTPException as exc:
+                    return exc, bool(reached)
+                return None, bool(reached)
+
+        if hold_fails:
+            with TestTheHoldIsWrittenBeforeTheWorkerCall._hold_fails():
+                return asyncio.run(run())
+        return asyncio.run(run())
+
+    def test_the_deploy_route_refuses_before_the_worker_call(self, db):
+        reached = []
+
+        def timed_out(method, path, json):
+            reached.append(True)
+            return path.endswith("/deploy")
+
+        with self._hold_fails():
+            error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=timed_out, fail_status=504)
+        assert error.status_code == 503 and reached == []
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)[0] is None
+
+    def test_the_raw_route_refuses_before_the_worker_call(self, db):
+        error, reached = self._raw_timed_out(1, hold_fails=True)
+        assert error.status_code == 503 and not reached
+        assert _raw_deploy({"EARNAPP_UUID": UUID_A}, 2)[0] is None
+
+    def test_the_raw_route_holds_it_when_the_write_works(self, db):
+        """The positive control: the same unanswered raw deploy with a working write keeps its id held."""
+        error, reached = self._raw_timed_out(1, hold_fails=False)
+        assert error.status_code == 504 and reached
+        error, hop = _raw_deploy({"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409
+        hop.assert_not_awaited()
+
+    def test_the_id_is_held_while_the_worker_deploys(self, db):
+        """In the ledger before the call, so a UI restart during it leaves the id held."""
+        during = []
+
+        def look(method, path, json):
+            # sqlite3 directly: this runs inside the deploy's event loop.
+            with sqlite3.connect(database.DB_PATH) as conn:
+                during.append(
+                    conn.execute(
+                        "SELECT slug, worker_id, instance, name FROM device_identities WHERE status = 'active'"
+                    ).fetchall()
+                )
+            return False
+
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=look)[0] is None
+        assert during == [[("earnapp", 1, "u1", "EARNAPP_UUID")]]
+        assert _active() == {("earnapp", 1, "1", "EARNAPP_UUID"): UUID_A}
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, nineteenth round: the worker's answer ends only the hold its
+# own deploy wrote, leaves no row behind, and ends it even when the copy's row
+# could not be written
+# ---------------------------------------------------------------------------
+
+
+class TestTheAnswerEndsOnlyItsOwnHold:
+    """EarnApp on a box with a record of UUID_B; deploy A is in flight when a heartbeat proves it."""
+
+    def test_a_second_deploy_that_reuses_the_name_keeps_its_hold(self, db):
+        """A's hold u1 is made row 1, deploy B then writes its own u1, and A's answer must not end B's."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        second = []
+
+        async def hop(worker_id, slug, spec, **kwargs):
+            if not second:
+                # The heartbeat proves A while its deploy is in flight...
+                await database.settle_pending_identities(slug, worker_id, "u1", {"EARNAPP_UUID": UUID_A}, runs=True)
+                # ...and deploy B of UUID_C to the same box reaches its own hold, then gets no answer.
+                second.append(await main._reserve_pending_identities(slug, worker_id, 1, {"EARNAPP_UUID": UUID_C}))
+            return {"container_id": "c1"}
+
+        with patch.object(main, "_proxy_worker_deploy", hop):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        assert second == [("u1", {"EARNAPP_UUID": UUID_C})]
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_C, except_worker=2)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_C}, 2)
+        assert error.status_code == 409 and sent == []
+
+    def test_its_own_hold_still_ends(self, db):
+        """The positive control: the hold B wrote ends with B's own answer."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        held = asyncio.run(main._reserve_pending_identities("earnapp", wid, 1, {"EARNAPP_UUID": UUID_C}))
+        asyncio.run(main._release_pending_identities("earnapp", wid, held))
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_C, except_worker=2)) == []
+
+
+class TestAnAnsweredDeployLeavesNoHoldRow:
+    def test_a_refused_deploy_leaves_no_row_to_reuse(self, db):
+        """A definite no: the id never ran, so it is neither listed nor offered again."""
+        error, _ = _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_A}, 1, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=409
+        )
+        assert error.status_code == 409
+        assert _rows() == []
+
+    def test_a_deploy_that_landed_leaves_only_its_copy_row(self, db):
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)[0] is None
+        assert [(r["instance"], r["status"]) for r in _rows()] == [("1", "active")]
+
+
+class TestAConfirmedDeployWhoseRowWasNotWritten:
+    """The worker said yes, the ledger write failed: no hold outlives the copy's removal."""
+
+    def test_a_scale_down_frees_the_extra_copys_id(self, db):
+        wid = _worker(running=[("honeygain", [1, 2])])
+        TestACopyWhoseWriteFailed()._deploy_losing_copy_two(wid)
+        hg = TestACopyWhoseWriteFailed.HG
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            error, sent = _deploy(
+                "honeygain", hg, wid, instances=1, running={1, 2}, ran={2: {"HONEYGAIN_DEVICE_NAME": "box-2"}}
+            )
+        assert error is None and any(s["path"].endswith("/instances/2") for s in sent)
+        assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box-2")) == []
+        assert _deploy("honeygain", {**hg, "HONEYGAIN_DEVICE_NAME": "box-2"}, 2)[0] is None
+
+    def test_a_removal_frees_it_on_a_worker_with_no_deadline(self, db):
+        wid = _worker()
+        _deploy_losing_the_write("earnapp", {"EARNAPP_UUID": UUID_A}, wid)
+        _remove("earnapp", wid)
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)[0] is None
+
+
+class TestAnExtraCopyWhoseHoldCannotBeWritten:
+    def test_it_is_never_sent_and_gets_no_start(self, db):
+        hg = TestACopyWhoseWriteFailed.HG
+        real = database.hold_pending_identities
+        events = AsyncMock()
+
+        async def copy_two_fails(slug, worker_id, copy, env):
+            if copy == 2:
+                raise sqlite3.OperationalError("database is locked")
+            return await real(slug, worker_id, copy, env)
+
+        with (
+            patch.object(main, "scaling_limit", lambda svc: (3, "")),
+            patch.object(main.database, "hold_pending_identities", copy_two_fails),
+        ):
+            error, sent = _deploy("honeygain", hg, 1, instances=2, events=events)
+        assert error.status_code == 503 and "copy 2" in error.detail and "nothing was deployed" not in error.detail
+        assert [(s["json"] or {}).get("instance", 1) for s in sent] == [1]
+        started = [c.kwargs.get("instance") for c in events.await_args_list if c.args[1] == "start"]
+        assert started == [1]

@@ -2055,8 +2055,9 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         logger.warning("Deploy of %s refused: %s", slug, exc)
         raise HTTPException(status_code=403, detail={"error": "critical_volume_mount", "message": str(exc)}) from None
     except orchestrator.ContainerRuntimeError as exc:
-        # Same shape as the network setting, also raised before the old container
-        # was touched; 503 when the daemon could not be asked at all.
+        # Same shape as the network setting; 503 when the daemon could not be
+        # asked at all. Mostly raised before the old container was touched; a
+        # deadline passed after its stop puts it back and starts it again.
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except APIError as exc:
         refusal = orchestrator.proxy_refusal(exc)

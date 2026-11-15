@@ -161,6 +161,55 @@ class TestTheDeployDeadline:
         old.stop.assert_not_called()
         client.containers.run.assert_not_called()
 
+    @pytest.mark.parametrize("replacing", [False, True])
+    def test_a_deadline_that_passes_while_the_volumes_are_made_creates_nothing(self, replacing):
+        """Many named volumes, each slow: the deploy is past its deadline before the container is created.
+
+        The volume setup moves the worker's clock two hours on instead of
+        sleeping, so a slow runner cannot pass the deadline at an earlier check.
+        """
+        import time
+        import types
+
+        skew = [0.0]
+        clock = types.SimpleNamespace(**{k: getattr(time, k) for k in dir(time) if not k.startswith("_")})
+        clock.monotonic = lambda: time.monotonic() + skew[0]
+
+        def slow_volumes(*_a):
+            skew[0] = 7200.0
+
+        old = MagicMock(status="running", labels={orchestrator.LABEL_SERVICE: "earnapp"}) if replacing else None
+        client = _client({"Entrypoint": ["entrypoint"]}, old=old)
+        if replacing:
+            names = {"cashpilot-earnapp": old}
+
+            def get(name):
+                if name not in names:
+                    raise orchestrator.NotFound(name)
+                return names[name]
+
+            def rename(new):
+                names.pop(next(n for n, c in names.items() if c is old))
+                names[new] = old
+
+            client.containers.get.side_effect = get
+            old.rename.side_effect = rename
+        with (
+            patch.object(orchestrator, "time", clock),
+            patch.object(orchestrator, "_ensure_volumes", slow_volumes),
+            patch.object(orchestrator, "_instance_of", lambda c: 1),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="abandoned"),
+        ):
+            _deploy(client, deadline=time.monotonic() + 3600)
+        assert skew[0], "the volume setup ran"
+        client.containers.run.assert_not_called()
+        client.containers.create.assert_not_called()
+        if replacing:
+            # Stopped and moved aside before the check, so it is put back and started again.
+            old.stop.assert_called()
+            old.start.assert_called()
+            assert names == {"cashpilot-earnapp": old}
+
     def test_a_pull_error_inside_the_deadline_still_falls_back_to_a_local_copy(self):
         """The positive control: the deadline changes nothing for a deploy that keeps to it."""
         client = _client({"Entrypoint": ["entrypoint"]})

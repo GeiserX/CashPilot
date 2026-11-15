@@ -823,13 +823,13 @@ GATED_DEPLOY_LOCK = threading.Lock()
 
 def _past_deadline(image: str) -> ContainerRuntimeError:
     return ContainerRuntimeError(
-        f"The deploy of {image} ran past its {DEPLOY_DEADLINE_SECONDS // 60}-minute limit, so it was abandoned: "
-        "nothing was created and the running container was not touched. Try again."
+        f"The deploy of {image} ran past its {DEPLOY_DEADLINE_SECONDS // 60}-minute limit, so it was abandoned "
+        "before its container was created. Try again."
     )
 
 
 def _refuse_past(deadline: float, image: str) -> None:
-    """Abandon a deploy at its deadline, before anything is created or replaced."""
+    """Abandon a deploy at its deadline, before its container is created."""
     if time.monotonic() >= deadline:
         raise _past_deadline(image)
 
@@ -907,7 +907,9 @@ def deploy_raw(
     given, gets the ``identity_digest`` of the container being replaced, read
     before it goes, so the UI can keep the ids it ran (identity ledger).
     ``deadline`` (time.monotonic(); by default DEPLOY_DEADLINE_SECONDS from
-    now): past it, nothing is created and the running container is not touched.
+    now): past it, no new container is created. Up to the volume setup the
+    running container is not touched; a deadline passed after that (a slow
+    volume setup or stop) puts the stopped container back and starts it again.
 
     ``network_mode="container:<id>"`` and ``name`` are for app/proxy_tunnel.py
     only: the worker API refuses a container: network mode from any caller.
@@ -1168,6 +1170,9 @@ def deploy_raw(
     created = None
     began = time.monotonic()
     try:
+        # Again here: the volumes and the old container's stop come after the
+        # check above, and can take long. Past it, the old one is put back.
+        _refuse_past(deadline, image)
         try:
             container = (
                 client.containers.create(**run_kwargs) if gated else client.containers.run(detach=True, **run_kwargs)
