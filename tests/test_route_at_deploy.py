@@ -606,8 +606,8 @@ class TestTheWorkerProxiedRoutes:
         assert route_gate.routed() == {"honeygain": 2}
 
     def test_a_refused_routed_deploy_never_moves_the_mark_a_start_could_read(self, worker, monkeypatch):
-        """proxy_tunnel._start does not hold route_gate.deploying. A start of the copy through 2 that read a
-        mark moved to 3 for a moment would rebuild it, tunnel gone, in proxy 2's shared tunnel."""
+        """A start of the copy through 2 that read a mark moved to 3 for a moment would rebuild it, tunnel
+        gone, in proxy 2's shared tunnel."""
         route_gate.mark("honeygain", 2)
         _copies_on(worker.docker, (2, "honeygain"))
         _tunnel_gone(worker.docker, "t2")
@@ -739,7 +739,7 @@ class TestOneDeployOfAServiceAtATime:
 
 
 class TestACopyDeployNeverReadsARouteThatIsTakenBack:
-    """A routed deploy takes its mark back only under the tunnel lock a copy deploy reads the mark under.
+    """Every route change and every copy of a service hold its lock (route_gate.deploying).
 
     Otherwise a copy deploy (routed=false, or a rename rebuild) of the same copy
     reads the mark, builds its earner in a tunnel of its own, and the mark goes
@@ -791,63 +791,65 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         assert route_gate.routed() == {}
         assert copies == [False]  # in the proxy's shared tunnel, as an unrouted copy
 
-    @staticmethod
-    def _failed_routed_deploy_after_a_copy_through_2(monkeypatch, *, when):
-        """A routed deploy through 3 fails with the route on 2; a copy deploy through 2 runs at ``when``.
+    @pytest.mark.parametrize("entry", ["deploy", "start"])
+    def test_a_route_move_waits_for_an_unfinished_copy_through_the_old_proxy(self, monkeypatch, entry):
+        """A copy of the routed service through 2 read the route and has not made its earner yet.
 
-        "deploying": while proxy 3's tunnel is being made, so the mark names 3.
-        "first look": at the look before the mark moves, so the mark still names 2.
+        A routed deploy through 3 that succeeded meanwhile would leave two routed
+        copies of one account, and the next direct deploy a third. Every copy
+        creation holds the service's lock from its route read to its earner, so
+        the move waits, then sees the copy through 2 and refuses.
         """
         route_gate.mark("honeygain", 2)
-        routed_thread = threading.current_thread()
-        copies = []
+        inside, go = threading.Event(), threading.Event()
+        earners = []  # (proxy id, in a tunnel of its own)
 
-        def copy_through_2():
-            # Its own thread: it takes proxy 2's lock, as a copy deploy from the UI does.
-            t = threading.Thread(target=proxy_tunnel.deploy, args=("honeygain", 2, BODY, PROXY, None), daemon=True)
-            t.start()
-            t.join(5)
+        def make(slug, proxy_id, own_tunnel):
+            if proxy_id == 2:
+                inside.set()
+                assert go.wait(5)
+            earners.append((proxy_id, own_tunnel))
+            return {"container_id": f"e{proxy_id}", "exit": {}}
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel):
-            if threading.current_thread() is routed_thread:
-                if when == "deploying":
-                    copy_through_2()
-                raise RuntimeError("tunnel did not start")
-            copies.append(own_tunnel)
-            return {"container_id": "c"}
-
-        looks = []
-
-        def routed_copies(slug, marked):
-            looks.append(marked)
-            if len(looks) == 1 and when == "first look":
-                copy_through_2()
-                return []  # asked before the copy existed
-            # A copy through 2 in a tunnel of its own is a routed copy.
-            return [(2, "cashpilot-honeygain-p2")] if copies and copies[0] else []
-
-        monkeypatch.setattr(proxy_tunnel, "_deploy", tunnel_deploy)
-        monkeypatch.setattr(proxy_tunnel, "routed_copies", routed_copies)
-        monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: "cashpilot-honeygain-p2" if copies else None)
+        monkeypatch.setattr(
+            proxy_tunnel,
+            "_deploy",
+            lambda slug, pid, earner, proxy, own_ip, *, own_tunnel: make(slug, pid, own_tunnel),
+        )
+        # A start of a copy whose tunnel is gone rebuilds it by the route it reads.
+        monkeypatch.setattr(
+            proxy_tunnel,
+            "_start",
+            lambda slug, pid, proxy, own_ip: make(slug, pid, proxy_tunnel._routed_here(slug, pid)),
+        )
+        monkeypatch.setattr(
+            proxy_tunnel,
+            "routed_copies",
+            lambda slug, marked: [(pid, f"cashpilot-{slug}-p{pid}") for pid, own in earners if own],
+        )
         monkeypatch.setattr(orchestrator, "service_instances", lambda slug: [])
-        with pytest.raises(HTTPException):
-            worker_api._deploy_routed("honeygain", 3, BODY, PROXY, None)
-        return copies
+        if entry == "deploy":
+            copy = threading.Thread(target=proxy_tunnel.deploy, args=("honeygain", 2, BODY, PROXY, None), daemon=True)
+        else:
+            copy = threading.Thread(target=proxy_tunnel.start, args=("honeygain", 2, PROXY, None), daemon=True)
+        copy.start()
+        assert inside.wait(5)  # it read the route on 2; its earner is not made yet
+        moved = {}
 
-    def test_a_route_put_back_to_another_proxy_never_covers_a_copy_sharing_its_tunnel(self, monkeypatch):
-        """The copy through 2 came in while the mark named 3, so it shares 2's tunnel: the mark stays on 3."""
-        copies = self._failed_routed_deploy_after_a_copy_through_2(monkeypatch, when="deploying")
-        assert copies == [False]  # in 2's shared tunnel, as an unrouted copy
-        assert route_gate.routed() == {"honeygain": 3}  # no route through 2 covers it
-        # Never empty: a direct deploy of the same account still needs the password.
-        with pytest.raises(route_gate.RouteRefused) as err:
-            route_gate.check("honeygain", None, _client_with())
-        assert err.value.error == "route_locked"
+        def move():
+            try:
+                moved["result"] = worker_api._deploy_routed("honeygain", 3, BODY, PROXY, None)
+            except HTTPException as exc:
+                moved["error"] = exc
 
-    def test_a_copy_through_the_other_proxy_built_under_its_route_gets_the_route_back(self, monkeypatch):
-        """The copy through 2 came in while the mark still named 2, so it has a tunnel of its own: 2 goes back."""
-        copies = self._failed_routed_deploy_after_a_copy_through_2(monkeypatch, when="first look")
-        assert copies == [True]
+        mover = threading.Thread(target=move, daemon=True)
+        mover.start()
+        mover.join(0.3)
+        go.set()
+        copy.join(5)
+        mover.join(5)
+        assert earners == [(2, True)]  # never a second routed copy through 3
+        assert moved.get("error") is not None and moved["error"].status_code == 409
         assert route_gate.routed() == {"honeygain": 2}
 
     def test_control_with_no_copy_through_the_other_proxy_its_route_goes_back(self, monkeypatch):
@@ -865,7 +867,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         assert route_gate.routed() == {"honeygain": 2}
 
     def test_a_copy_deploy_through_the_old_proxy_waits_for_the_failure_path_decision(self, monkeypatch):
-        """Proxy 2's lock is held from the look to the change: the copy reads the mark only once 2 is back."""
+        """The copy reads the mark only once the failed deploy put 2 back."""
         route_gate.mark("honeygain", 2)
         routed_thread = threading.current_thread()
         copies = []
@@ -902,7 +904,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         assert copies == [True]  # built under the route put back, in a tunnel of its own
 
     def test_a_direct_deploy_leaving_the_route_and_a_copy_deploy_never_interleave(self, monkeypatch):
-        """The mark is checked and forgotten under the tunnel lock: the copy deploy waits, then shares the tunnel."""
+        """The mark is checked and forgotten under the service's lock: the copy deploy waits, then shares the tunnel."""
         route_gate.mark("honeygain", 3)
         copy_made = threading.Event()
         copies = []
@@ -927,14 +929,15 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         assert route_gate.routed() == {}
         assert copies == [False]  # never a tunnel of its own that no route covers
 
-    def test_a_direct_deploy_leaving_the_route_pulls_its_image_outside_the_tunnel_lock(self, monkeypatch):
-        """Every stop through the proxy, the cap's too, waits for that lock: a long pull must not hold it."""
+    def test_a_direct_deploy_leaving_the_route_holds_no_proxy_lock(self, monkeypatch):
+        """Every stop through the proxy, the cap's too, takes that lock: a long pull must not hold it."""
         route_gate.mark("honeygain", 3)
         held_at = {}
         client = MagicMock()
         client.images.pull.side_effect = lambda image: held_at.setdefault("pull", proxy_tunnel._deploy_lock(3).locked())
 
         def deploy_raw(**kwargs):
+            client.images.pull(kwargs["image"])
             held_at["deploy"] = proxy_tunnel._deploy_lock(3).locked()
             return "direct-id"
 
@@ -945,28 +948,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         assert (
             worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", leave_route=True) == "direct-id"
         )
-        assert held_at == {"pull": False, "deploy": True}
-        assert route_gate.routed() == {}
-
-    def test_the_real_deploy_raw_does_not_pull_again_under_the_tunnel_lock(self, monkeypatch):
-        """A pull asks the registry even for a local image: a slow one must not hold the proxy's lock."""
-        route_gate.mark("honeygain", 3)
-        pulls = []
-        client = _client_with()
-        client.containers.get.side_effect = NotFound("no such container")
-        client.images.get.return_value.attrs = {"Config": {}}
-        client.images.pull.side_effect = lambda image: pulls.append(proxy_tunnel._deploy_lock(3).locked())
-        client.containers.run.side_effect = lambda **kw: pulls.append("run") or MagicMock(id="direct-id")
-        monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
-        monkeypatch.setattr(orchestrator, "container_network", lambda mode: None)
-        monkeypatch.setattr(orchestrator, "container_runtime", lambda slug, mode, runtime: None)
-        monkeypatch.setattr(orchestrator, "container_dns", lambda network: None)
-        monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
-        monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
-        assert (
-            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", leave_route=True) == "direct-id"
-        )
-        assert pulls == [False, "run"]
+        assert held_at == {"pull": False, "deploy": False}
         assert route_gate.routed() == {}
 
     def _real_deploy_raw_client(self, monkeypatch):
@@ -981,8 +963,8 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
         return client
 
-    def test_leaving_the_route_with_no_mark_still_pulls_the_image(self, monkeypatch):
-        """No proxy lock to keep free, so deploy_raw pulls: a moved tag must not run from a stale local copy."""
+    def test_leaving_the_route_pulls_the_image(self, monkeypatch):
+        """A moved tag must not run from a stale local copy."""
         steps = []
         client = self._real_deploy_raw_client(monkeypatch)
         client.images.pull.side_effect = lambda image: steps.append(("pull", image))
@@ -992,7 +974,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         )
         assert steps == [("pull", "honeygain/honeygain:1"), "run"]
 
-    def test_a_failed_pull_ahead_of_the_lock_keeps_the_registrys_reason(self, monkeypatch):
+    def test_a_failed_pull_when_leaving_the_route_keeps_the_registrys_reason(self, monkeypatch):
         """A typo'd tag and a rate limit read differently; the daemon's "No such image" says neither."""
         route_gate.mark("honeygain", 3)
         client = self._real_deploy_raw_client(monkeypatch)
@@ -1001,7 +983,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         with pytest.raises(orchestrator.ContainerRuntimeError) as err:
             worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:typo", leave_route=True)
         assert "manifest for honeygain/honeygain:typo not found" in str(err.value)
-        assert client.images.pull.call_count == 1  # not again under the lock
+        assert client.images.pull.call_count == 1
         client.containers.run.assert_not_called()
         assert route_gate.routed() == {"honeygain": 3}
 

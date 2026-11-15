@@ -100,7 +100,7 @@ MOVING_SUFFIX = "-moving"
 # heartbeat must not start an earner that is being removed, or read a half swap.
 _swap_lock = threading.Lock()
 # One operation per proxy at a time: the copies through a proxy share its
-# tunnel, so a second deploy would take the first one's staged tunnel for a
+# tunnel (the route mark is guarded by route_gate.deploying, taken first), so a second deploy would take the first one's staged tunnel for a
 # leftover, and a stop, start or removal that ran during a deploy could stop or
 # remove the tunnel the deploy is putting a copy into.
 _deploy_locks: dict[int, threading.Lock] = {}
@@ -1177,8 +1177,12 @@ def deploy(
     ``only_if_running`` replaces only a copy that runs and that the owner or
     the cap did not stop, and changes nothing otherwise (409). It is checked
     under the lock a stop takes, so a stop that came first always wins.
+
+    The service's lock (route_gate.deploying) is held from the mark read to
+    the earner, as every route change holds it: a route can never move while
+    a copy built by the old one is still being made.
     """
-    with _deploy_lock(proxy_id):
+    with route_gate.deploying(slug), _deploy_lock(proxy_id):
         if only_if_running:
             _require_running(slug, proxy_id)
         return _deploy(slug, proxy_id, earner, proxy, own_ip, own_tunnel=_routed_here(slug, proxy_id))
@@ -1332,9 +1336,10 @@ def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip:
     looked up again.
 
     The earner is restarted rather than started when it is still running in a
-    namespace the tunnel left behind.
+    namespace the tunnel left behind. It holds the service's lock as a
+    deploy does: a copy whose tunnel is gone is rebuilt by the route it reads.
     """
-    with _deploy_lock(proxy_id):
+    with route_gate.deploying(slug), _deploy_lock(proxy_id):
         return _start(slug, proxy_id, proxy, own_ip)
 
 

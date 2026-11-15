@@ -1023,6 +1023,9 @@ class TestReviewFollowUps:
 # ---------------------------------------------------------------------------
 
 _CP_TUNNEL = (Path(__file__).resolve().parent.parent / "tunnel" / "cp-tunnel").read_text()
+_CP_PROBE = Path(__file__).resolve().parent.parent / "tunnel" / "cp-probe"
+#: For a test of one step on its own: every step gets its full cap, as before the deadline is near.
+_NO_DEADLINE = 'cap() { echo "$1"; }\n'
 
 
 def _logout_seconds() -> int:
@@ -1186,7 +1189,7 @@ def _proxy_refuses_dns(tmp_path: Path, scheme: str, first_rc: int, out: str, rc:
     (bin_dir / "curl").chmod(0o755)
     script = (
         f'read_key() {{ case "$1" in proxy_scheme) echo {scheme} ;; *) echo ;; esac; }}\n'
-        "PROXY_IP=203.0.113.5 PROXY_PORT=1080 DNS_TARGET=1.1.1.1\n"
+        f"{_NO_DEADLINE}PROXY_IP=203.0.113.5 PROXY_PORT=1080 DNS_TARGET=1.1.1.1\n"
         f"{body}\nproxy_refuses_dns\n"
     )
     env = {
@@ -1255,7 +1258,7 @@ def _dns_rounds(tmp_path: Path, resolves: str, step: int) -> list[str]:
     for name, body in stubs.items():
         (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
         (bin_dir / name).chmod(0o755)
-    script = f"proxy_refuses_dns() {{ return 1; }}\n/bin/sleep 30 &\nTPID=$!\n{loop}kill $TPID\n"
+    script = f"{_NO_DEADLINE}proxy_refuses_dns() {{ return 1; }}\n/bin/sleep 30 &\nTPID=$!\n{loop}kill $TPID\n"
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "STUB_RESOLVES": resolves}
     proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, proc.stderr
@@ -1296,7 +1299,7 @@ def _dns_mode_after_wait(tmp_path: Path, blocked: str, **stubs_over: str) -> lis
         (bin_dir / name).chmod(0o755)
     script = (
         'read_key() { case "$1" in proxy_scheme) echo http ;; *) echo ;; esac; }\n'
-        "PROXY_IP=203.0.113.5 PROXY_PORT=3128 DNS_TARGET=1.1.1.1\n"
+        f"{_NO_DEADLINE}PROXY_IP=203.0.113.5 PROXY_PORT=3128 DNS_TARGET=1.1.1.1\n"
         f'start_tun2proxy() {{ echo "$1" >>{modes}; date +%s >>{tmp_path / "switched"}; /bin/sleep 30 & TPID=$!; }}\n'
         f"{body}\n/bin/sleep 30 &\nTPID=$!\n{loop}kill $TPID\n"
     )
@@ -1334,6 +1337,79 @@ class TestTheTunnelFallsBackOnAnyProbeEndpoint:
 
     def test_control_a_proxy_that_carries_nothing_keeps_dns_over_tcp(self, tmp_path):
         assert _dns_mode_after_wait(tmp_path, "api.ipify.org ifconfig.me icanhazip.com") == []
+
+
+def _ready_at_worst_case(tmp_path: Path) -> tuple[int | None, list[str]]:
+    """Run cp-tunnel from its deadline to /run/ready, with the real cp-probe, against the slowest working proxy.
+
+    An HTTP proxy that refuses port 53, so names are not resolved until the
+    switch: the first round's lookup stalls its 6 s, the liveness requests
+    stall their 6 s (asked at once, so one stub stall stands for them), and the
+    port 53 check stalls its 6 s. Then the probe: the first two endpoints stall
+    their 8 s, the third answers in 4 s, and the country lookup stalls its 8 s.
+    Every stall lasts what its timeout allows, on a stub clock that a stall
+    moves on. Returns the clock when /run/ready was written (None if never)
+    and the DNS modes started.
+    """
+    import subprocess
+
+    def part(start_marker: str, end_marker: str) -> str:
+        start = _CP_TUNNEL.index(start_marker)
+        return _CP_TUNNEL[start : _CP_TUNNEL.index(end_marker, start) + len(end_marker)]
+
+    deadline = part("DEADLINE=", "\n}\n")
+    ready = tmp_path / "ready"
+    probe = part("probe_until_ready() {", "\n}\n").replace("/run/ready", str(ready))
+    refuses = part("    proxy_refuses_dns() {", "\n    }\n")
+    begin = _CP_TUNNEL.index("    start_tun2proxy over-tcp\n") + len("    start_tun2proxy over-tcp\n")
+    loop = _CP_TUNNEL[begin : _CP_TUNNEL.index("\n    done\n", begin) + len("\n    done\n")]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    clock = tmp_path / "clock"
+    clock.write_text("0")
+    modes = tmp_path / "modes"
+    nap = f"nap() {{ echo $(($(cat {clock}) + $1)) >{clock}; }}\n"
+    stubs = {
+        "date": f"cat {clock}",
+        "timeout": 'export STUB_LIMIT="$1"\nshift\nexec "$@"',
+        "getent": f'{nap}nap "$STUB_LIMIT"\nexit 2',
+        "sleep": f'{nap}nap "$1"',
+        "curl": nap + 'm=\nprev=\nfor a in "$@"; do case "$prev" in -m | --max-time) m=$a ;; esac; prev=$a; done\n'
+        'case "$*" in\n'
+        '*" -x "*https://icanhazip.com/* | *" -x "*https://ifconfig.me/*) exit 0 ;;\n'
+        '*"https://icanhazip.com") if [ "$m" -ge 4 ]; then nap 4; echo 203.0.113.7; exit 0; fi ;;\n'
+        "esac\n"
+        # A stall writes nothing but what -w asks for: no answer to the CONNECT.
+        'nap "$m"\ncase "$*" in *:53/*) printf 000 ;; esac\nexit 28',
+    }
+    for name, stub in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{stub}\n")
+        (bin_dir / name).chmod(0o755)
+    (bin_dir / "cp-probe").write_text(_CP_PROBE.read_text())
+    (bin_dir / "cp-probe").chmod(0o755)
+    script = (
+        'read_key() { case "$1" in proxy_scheme) echo http ;; *) echo ;; esac; }\n'
+        "PROXY_IP=203.0.113.5 PROXY_PORT=3128 DNS_TARGET=1.1.1.1 OWN_IP=198.51.100.1\n"
+        f"{deadline}{probe}"
+        f'start_tun2proxy() {{ echo "$1" >>{modes}; /bin/sleep 30 & TPID=$!; }}\n'
+        f"{refuses}\n/bin/sleep 30 &\nTPID=$!\n{loop}"
+        f"probe_until_ready && date +%s >{tmp_path / 'ready_at'}\n"
+        "kill $TPID\n"
+    )
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    at = tmp_path / "ready_at"
+    return (int(at.read_text()) if at.exists() else None), (modes.read_text().split() if modes.exists() else [])
+
+
+class TestTheWholeWayToReadyFitsTheWorkersWait:
+    def test_the_slowest_working_proxy_is_ready_before_45_seconds(self, tmp_path):
+        """Each step alone fits; added up they took 46 s, past the worker's 45 s (proxy_tunnel.READY_TIMEOUT)."""
+        ready_at, modes = _ready_at_worst_case(tmp_path)
+        assert modes == ["virtual"]  # the worst case: names only after the switch
+        assert ready_at is not None and ready_at < proxy_tunnel.READY_TIMEOUT
+        assert '"ip":"203.0.113.7"' in (tmp_path / "ready").read_text()
 
 
 class TestTheTunnelWaitsForDnsInsideTheReadyBudget:

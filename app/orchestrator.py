@@ -883,8 +883,6 @@ def deploy_raw(
     instance: int = 1,
     name: str | None = None,
     leave_route: bool = False,
-    pull: bool = True,
-    pull_error: Exception | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -908,9 +906,6 @@ def deploy_raw(
     routed through a proxy, or a proxied-only worker, refuses to run from the
     box's own IP (route_gate.check). ``leave_route`` is set only by the worker
     API, after it checked the owner's password approval for that switch.
-    ``pull=False`` is for a caller that pulled the image before a lock it holds
-    through this call: a pull asks the registry even for an image that is local.
-    ``pull_error`` is why that earlier pull failed, reported if the image is not here.
     """
     client = _get_client()
     name = name or _container_name(slug, instance)
@@ -946,13 +941,13 @@ def deploy_raw(
     # or a typo'd image must not cost the running container. And once the image
     # is here, what it would run as PID 1 is known, so an image that cannot run
     # under this worker's hardening is refused now, not left to loop.
-    if pull:
-        logger.info("Pulling image %s", image)
-        try:
-            client.images.pull(image)
-        except APIError as exc:
-            pull_error = exc
-            logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+    logger.info("Pulling image %s", image)
+    pull_error: APIError | None = None
+    try:
+        client.images.pull(image)
+    except APIError as exc:
+        pull_error = exc
+        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
     try:
         image_config = client.images.get(image).attrs.get("Config") or {}
     except DockerException as exc:

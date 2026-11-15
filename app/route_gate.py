@@ -44,11 +44,14 @@ _deploying: dict[str, threading.RLock] = {}
 def deploying(slug: str) -> threading.RLock:
     """The lock a deploy of ``slug`` holds while it decides how the service runs and creates it.
 
-    A direct deploy holds it from its check to its container's start
-    (orchestrator.deploy_raw), and a routed deploy from its mark to its earner
-    or the undoing of that mark (worker_api.api_proxied_deploy). Otherwise a
-    direct earner could be created after a routed deploy found none, and a
-    failed routed deploy could undo the route of one that succeeded meanwhile.
+    The one lock on the route of ``slug``: every route change and every
+    earner of ``slug`` takes it. A direct deploy holds it from its check to its
+    container's start (orchestrator.deploy_raw), a routed deploy from its mark
+    to its earner or the undoing of that mark (worker_api._deploy_routed), and
+    a copy deploy or start from its mark read to its earner (proxy_tunnel.deploy,
+    proxy_tunnel.start). So no earner is ever made by a route that moved after
+    it was read. Taken before a proxy's lock (proxy_tunnel._deploy_lock), never
+    after one.
     """
     with _lock:
         return _deploying.setdefault(slug, threading.RLock())

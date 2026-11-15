@@ -36,6 +36,18 @@ KIND=$(read_key kind)
 OWN_IP=$(read_key own_ip)
 rm -f /run/ready
 
+# One deadline for the whole way to /run/ready: the worker waits 45 s for it
+# (proxy_tunnel.READY_TIMEOUT). Each step below that can wait gets its own cap
+# or the time left, whichever is less, and at least 1 s (cap); cp-probe does
+# the same (CP_DEADLINE). So slow steps add up to the deadline, never past it.
+# Once it has passed the worker no longer waits, and the steps get their full
+# time again: the heartbeat still reads a tunnel that gets ready later.
+DEADLINE=$(($(date +%s) + 40))
+cap() {
+    left=$((DEADLINE - $(date +%s)))
+    if [ "$left" -lt 0 ] || [ "$left" -ge "$1" ]; then echo "$1"; elif [ "$left" -lt 1 ]; then echo 1; else echo "$left"; fi
+}
+
 DEV=$(ip -4 route show default | awk '{print $5; exit}')
 GW=$(ip -4 route show default | awk '{print $3; exit}')
 [ -n "$DEV" ] && [ -n "$GW" ] || die "no default route on the container network; nothing to tunnel over"
@@ -158,7 +170,7 @@ probe_until_ready() {
     i=0
     while [ "$i" -lt 40 ]; do
         i=$((i + 1))
-        if out=$(cp-probe 2>/dev/null); then
+        if out=$(CP_DEADLINE=$DEADLINE cp-probe 2>/dev/null); then
             exit_ip=$(printf '%s' "$out" | sed -n 's/.*"ip":"\([^"]*\)".*/\1/p')
             if [ -n "$exit_ip" ] && [ "$exit_ip" != "$OWN_IP" ]; then
                 printf '%s\n' "$out" >/run/ready.tmp && mv /run/ready.tmp /run/ready
@@ -248,12 +260,15 @@ else
         if [ "$scheme" = socks5 ]; then via="socks5h://$at"; else via="http://$at"; fi
         pids=
         for e in api.ipify.org ifconfig.me icanhazip.com; do
-            curl -ks -m 6 -o /dev/null -x "$via" "https://$e/" 2>/dev/null &
+            curl -ks -m "$(cap 6)" -o /dev/null -x "$via" "https://$e/" 2>/dev/null &
             pids="$pids $!"
         done
         live=
         for p in $pids; do wait "$p" && live=1; done
         [ -n "$live" ] || return 1
+        # A port 53 check cut short by the deadline would read as a refusal
+        # and send names to the proxy: without its full 6 s, no switch.
+        [ "$(cap 6)" -eq 6 ] || return 1
         if [ "$scheme" = socks5 ]; then
             # time_pretransfer stays 0 unless the proxy connected us to port 53:
             # a refusal (curl exit 97) and a stall (exit 28) both leave it 0,
@@ -285,7 +300,7 @@ else
         name=$1
         shift
         set -- "$@" "$name"
-        timeout 6 getent hosts "$name" >/dev/null 2>&1 && break
+        timeout "$(cap 6)" getent hosts "$name" >/dev/null 2>&1 && break
         if proxy_refuses_dns; then
             echo "cp-tunnel: the proxy refuses DNS over TCP (port 53), so names are resolved by the proxy instead. A name that points at the proxy's own network then reaches it; allow TCP 53 on the proxy to close that" >&2
             kill "$TPID" 2>/dev/null
