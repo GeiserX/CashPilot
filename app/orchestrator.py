@@ -36,13 +36,15 @@ if "stop_timeout" not in docker.models.containers.RUN_CREATE_KWARGS:
     docker.models.containers.RUN_CREATE_KWARGS.append("stop_timeout")
 
 try:
-    from app.catalog import critical_volume_targets, get_service, get_services
+    from app.catalog import critical_volume_targets, get_service, get_services, identity_digest, identity_keys
 except ImportError:
     # Defensive fallback if the catalog module isn't importable in some context.
     # (The worker image does ship catalog.py + services/, so this normally no-ops.)
     get_service = None  # type: ignore[assignment]
     get_services = None  # type: ignore[assignment]
     critical_volume_targets = None  # type: ignore[assignment]
+    identity_digest = None  # type: ignore[assignment]
+    identity_keys = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ from app import socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
+    DEPLOY_DEADLINE_SECONDS,
     LABEL_CATEGORY,
     LABEL_DEPLOYED_BY,
     LABEL_INSTANCE,
@@ -70,6 +73,8 @@ _docker_available: bool | None = None
 # In-memory status cache — populated by health check, served instantly to UI
 _status_cache: list[dict[str, Any]] = []
 _status_cache_time: float = 0.0
+# Whether the last get_status listed every managed container (status_listed).
+_status_listed = False
 
 
 def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
@@ -834,6 +839,46 @@ def container_runtime(slug: str, network_mode: str | None, requested: str | None
 GATED_DEPLOY_LOCK = threading.Lock()
 
 
+def _past_deadline(image: str) -> ContainerRuntimeError:
+    return ContainerRuntimeError(
+        f"The deploy of {image} ran past its {DEPLOY_DEADLINE_SECONDS // 60}-minute limit, so it was abandoned "
+        "before its container was created. Try again."
+    )
+
+
+def _refuse_past(deadline: float, image: str) -> None:
+    """Abandon a deploy at its deadline, before its container is created."""
+    if time.monotonic() >= deadline:
+        raise _past_deadline(image)
+
+
+def _pull_until(client: Any, image: str, deadline: float) -> APIError | None:
+    """Pull ``image``, waiting no later than ``deadline``; the registry's refusal, if it refused.
+
+    docker-py's pull has no overall deadline, only one per read, so a slow pull
+    could run for hours. It runs in its own thread: past the deadline the deploy
+    is abandoned (_refuse_past) and the pull may finish on its own, which only
+    leaves an image behind.
+    """
+    outcome: dict[str, BaseException] = {}
+
+    def pull() -> None:
+        try:
+            client.images.pull(image)
+        except BaseException as exc:  # noqa: BLE001 - handed to the deploy below
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=pull, name=f"pull {image}", daemon=True)
+    worker.start()
+    worker.join(max(0.0, deadline - time.monotonic()))
+    if worker.is_alive():
+        raise _past_deadline(image)
+    error = outcome.get("error")
+    if error is None or isinstance(error, APIError):
+        return error
+    raise error
+
+
 #: Slugs a restore (restore_state) is creating now, and how many deploy_raw
 #: calls run per slug, both under _SLUG_WORK_LOCK. A deploy replaces the
 #: container of its slug and keeps its volumes, so one that met a restore's
@@ -896,6 +941,8 @@ def deploy_raw(
     keep_targets: set[str] | None = None,
     instance: int = 1,
     name: str | None = None,
+    replaced_identity: dict[str, str] | None = None,
+    deadline: float | None = None,
     start: bool = True,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
@@ -908,7 +955,13 @@ def deploy_raw(
     ``_keep_live_mounts``. ``moved_mounts`` names the targets the operator
     relocated on purpose this deploy; ``keep_targets`` limits keeping to the
     targets the caller vouches for; ``kept_mounts``, when given, is filled with
-    what was kept so the caller can report it.
+    what was kept so the caller can report it. ``replaced_identity``, when
+    given, gets the ``identity_digest`` of the container being replaced, read
+    before it goes, so the UI can keep the ids it ran (identity ledger).
+    ``deadline`` (time.monotonic(); by default DEPLOY_DEADLINE_SECONDS from
+    now): past it, no new container is created. Up to the volume setup the
+    running container is not touched; a deadline passed after that (a slow
+    volume setup or stop) puts the stopped container back and starts it again.
 
     ``network_mode="container:<id>"`` and ``name`` are for app/proxy_tunnel.py
     only: the worker API refuses a container: network mode from any caller.
@@ -920,6 +973,8 @@ def deploy_raw(
     makes the container's cgroup limits durable across recreates. Returns the
     container ID.
     """
+    if deadline is None:
+        deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     client = _get_client()
     name = name or _container_name(slug, instance)
     joined = (network_mode or "").startswith("container:")
@@ -948,12 +1003,9 @@ def deploy_raw(
     # is here, what it would run as PID 1 is known, so an image that cannot run
     # under this worker's hardening is refused now, not left to loop.
     logger.info("Pulling image %s", image)
-    pull_error: APIError | None = None
-    try:
-        client.images.pull(image)
-    except APIError as exc:
-        pull_error = exc
-        logger.warning("Failed to pull image %s: %s (trying local)", image, exc)
+    pull_error = _pull_until(client, image, deadline)
+    if pull_error is not None:
+        logger.warning("Failed to pull image %s: %s (trying local)", image, pull_error)
     try:
         image_config = client.images.get(image).attrs.get("Config") or {}
     except DockerException as exc:
@@ -965,6 +1017,7 @@ def deploy_raw(
         ) from None
     entrypoint = _get_entrypoint(slug)
     _refuse_init_image(image, image_config, entrypoint, command)
+    _refuse_past(deadline, image)
 
     # Replace any existing container with the same name. It is stopped and
     # moved aside, not removed, until its replacement runs: Docker can still
@@ -994,6 +1047,8 @@ def deploy_raw(
             )
         if problem := _aside_taken(client, old, name, slug):
             raise ContainerRuntimeError(problem)
+        if replaced_identity is not None:
+            replaced_identity.update(_identity_entry(old, slug))
         volumes, kept = _keep_live_mounts(old, volumes, moved_mounts, keep_targets)
         if kept:
             # A kept mount is the old container's own: one made before this
@@ -1171,6 +1226,9 @@ def deploy_raw(
     created = None
     began = time.monotonic()
     try:
+        # Again here: the volumes and the old container's stop come after the
+        # check above, and can take long. Past it, the old one is put back.
+        _refuse_past(deadline, image)
         try:
             container = (
                 client.containers.create(**run_kwargs)
@@ -3046,13 +3104,15 @@ def remove_instance(slug: str, instance: int) -> dict[str, Any]:
     if instance <= 1:
         raise ValueError("The first instance is removed with the service, not on its own")
     container = _find_container(slug, instance)
+    # Read before it goes: the UI keeps the ids this copy ran with (identity ledger).
+    identity = _identity_entry(container, slug)
     try:
         container.stop(timeout=_get_stop_timeout(slug))
     except APIError as exc:
         logger.warning("Could not stop %s cleanly before removing it: %s", container.name, exc)
     _remove_container(container, slug)
     logger.info("Removed container %s", container.name)
-    return {"container": container.name}
+    return {"container": container.name, **identity}
 
 
 def remove_extra_instances(slug: str) -> list[str]:
@@ -4024,6 +4084,59 @@ def _advertised_address(container: Any, slug: str) -> str | None:
     return None
 
 
+# What keys identity_digest: the worker's active API key, set by worker_api.
+# Unset (the UI process, a test) means no digest at all.
+identity_digest_key: Any = None
+
+# Container id -> the identity values it runs with. A container's env never
+# changes, so each is inspected once; the cap only bounds a long uptime. The
+# digest is made per call, so it follows the key when the worker enrols.
+_identity_values: dict[str, dict[str, str]] = {}
+
+
+def _identity_entry(container: Any, slug: str) -> dict[str, str]:
+    """``identity_digest``: a keyed hash of the device ids this container runs with.
+
+    The UI writes a copy's ledger row only when this matches what its deploy
+    record derives (catalog.identity_digest), so a copy still running an older
+    id is never given a newer one. Only for a service with identity keys, and
+    never the ids themselves: they let whoever holds them claim the device.
+    """
+    if get_service is None or identity_digest is None or identity_keys is None or identity_digest_key is None:
+        return {}
+    try:
+        service = get_service(slug)
+        key = identity_digest_key()
+    except Exception:
+        return {}
+    cid = str(getattr(container, "id", "") or "")
+    if not service or not cid or not key:
+        return {}
+    if cid not in _identity_values:
+        names = identity_keys(service)
+        if not names:
+            return {}
+        try:
+            env_list = (container.client.api.inspect_container(cid).get("Config") or {}).get("Env") or []
+        except Exception:
+            return {}
+        env = dict(e.split("=", 1) for e in env_list if isinstance(e, str) and "=" in e)
+        if len(_identity_values) > 1024:
+            _identity_values.clear()
+        _identity_values[cid] = {name: env.get(name, "") for name in names}
+    digest = identity_digest(service, _identity_values[cid], key)
+    return {"identity_digest": digest} if digest else {}
+
+
+def copy_identity_digests(slug: str) -> dict[str, str]:
+    """The digest of every copy of ``slug`` on this worker, by copy number, before a removal."""
+    digests: dict[str, str] = {}
+    for container in service_instances(slug):
+        if digest := _identity_entry(container, slug).get("identity_digest"):
+            digests[str(_instance_of(container))] = digest
+    return digests
+
+
 def get_status() -> list[dict[str, Any]]:
     """Return live status of all known containers (labeled + image-matched).
 
@@ -4032,8 +4145,9 @@ def get_status() -> list[dict[str, Any]]:
     than a plain list. Use get_status_cached() for page loads; this is for
     background refresh.
     """
-    global _status_cache, _status_cache_time
+    global _status_cache, _status_cache_time, _status_listed
 
+    _status_listed = False
     try:
         client = _get_client()
     except RuntimeError:
@@ -4064,6 +4178,7 @@ def get_status() -> list[dict[str, Any]]:
     seen_ids.update(c.id for c in labeled if is_proxied(c))
     labeled = [c for c in labeled if not is_proxied(c)]
     labeled_stats = _collect_stats_bulk(list(labeled))
+    listed = True
     for c in labeled:
         try:
             seen_ids.add(c.id)
@@ -4086,6 +4201,7 @@ def get_status() -> list[dict[str, Any]]:
                 "instance": _instance_of(c),
                 **_shape_entry(c),
                 **_stop_facts(c),
+                **_identity_entry(c, slug),
                 **_state_id_entry(c, slug, client),
                 **_fatal_entry(c, slug),
                 **_held_entry(c),
@@ -4096,6 +4212,7 @@ def get_status() -> list[dict[str, Any]]:
                 entry["advertised_address"] = advertised
             results.append(entry)
         except Exception as exc:
+            listed = False
             logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Image-matched containers (deployed externally)
@@ -4158,8 +4275,18 @@ def get_status() -> list[dict[str, Any]]:
     # Update the cache
     _status_cache = results
     _status_cache_time = time.monotonic()
+    _status_listed = listed
 
     return results
+
+
+def status_listed() -> bool:
+    """Whether the last get_status listed every managed container.
+
+    get_status answers an empty list when Docker would not list them, and
+    skips a container it could not read. Neither means those copies are gone.
+    """
+    return _status_listed
 
 
 def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:

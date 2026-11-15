@@ -40,7 +40,7 @@ Turn CashPilot from a deployment tool into an earnings optimization platform. Al
 - [x] **Earnings collectors**: 13 services with automated balance tracking
   - [x] Honeygain (JWT auth + /v2/earnings)
   - [x] EarnApp (OAuth cookie auth + /dashboard/api/money/)
-  - [x] MystNodes (Tequila API at localhost:4449)
+  - [x] MystNodes (TequilAPI on 127.0.0.1:4050 inside the node container)
   - [x] Traffmonetizer (Bearer token + /api/dashboard)
   - [x] IPRoyal Pawns (JWT auth + /api/v1/users/me/balance-dashboard)
   - [x] Storj (storagenode local API at port 14002, optional `api_url`)

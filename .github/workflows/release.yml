@@ -85,6 +85,8 @@ jobs:
     if: needs.pending.outputs.any == 'true'
     name: Verify CI passes
     runs-on: ubuntu-latest
+    # Same backstop as test.yml: a hung test once held a runner for six hours.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
         with:

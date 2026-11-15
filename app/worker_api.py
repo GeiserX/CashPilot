@@ -58,7 +58,7 @@ from app import (
     step_up,
     version,
 )
-from app.constants import MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
+from app.constants import DEPLOY_DEADLINE_SECONDS, MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
 
 try:
     from app.catalog import get_services as _catalog_get_services
@@ -314,6 +314,10 @@ activity.WORKER_ID = CLIENT_ID
 def _active_key() -> str:
     """The key we authenticate with: our own once enrolled, else the shared key."""
     return _worker_key or API_KEY
+
+
+# The heartbeat's identity_digest is keyed with the same key, which the UI holds too.
+orchestrator.identity_digest_key = _active_key
 
 
 # ---------------------------------------------------------------------------
@@ -683,8 +687,10 @@ async def _send_heartbeat() -> None:
     global _consecutive_heartbeat_failures, _link_hint_logged, _last_heartbeat_ok
 
     containers = []
+    listed = False
     try:
         containers = await asyncio.to_thread(orchestrator.get_status)
+        listed = orchestrator.status_listed()
     except Exception as exc:
         logger.warning("Failed to get container status for heartbeat: %s", exc)
 
@@ -700,6 +706,9 @@ async def _send_heartbeat() -> None:
     features = (
         ["instances", "isolation_check", "state_backup", "activity", "proxy_tunnel"] if docker_ok else ["instances"]
     )
+    # Every deploy this worker runs ends by DEPLOY_DEADLINE_SECONDS, so the UI
+    # may let go of the ids of one it got no answer for (main._settle_pending_identities).
+    features.append("deploy_deadline")
     # None, not an empty list, when they could not be read: the UI alerts on a
     # copy this list leaves out, and "could not look" must not read as "gone".
     proxied: list[dict[str, Any]] | None = []
@@ -719,6 +728,10 @@ async def _send_heartbeat() -> None:
             "arch": platform.machine(),
             "hostname": socket.gethostname(),
             "docker_available": docker_ok,
+            # False when "containers" is not the whole list (Docker would not
+            # list them, or one could not be read): the UI then retires no
+            # device id of a copy the list leaves out.
+            "containers_listed": listed,
             # So the UI can tell an operator when the two halves are different
             # releases. An older worker sends nothing here, which reads as
             # unknown rather than as a mismatch (CashPilot-l6c).
@@ -752,6 +765,9 @@ async def _send_heartbeat() -> None:
         # Starts a fence_gated service (Mysterium) only behind a confirmed fence,
         # on the bridge, with its port range and several WebUI addresses.
         payload["system_info"]["features"].append("fence_gated")
+        # Takes "only_if_running" on a proxied copy deploy, so the UI can rebuild
+        # a running copy without starting one the owner stopped meanwhile.
+        payload["system_info"]["features"].append("proxied_if_running")
         # Restores a passphrase backup into a new container (POST /api/containers/{slug}/restore).
         payload["system_info"]["features"].append("state_restore")
         # The services a restore that did not finish left half-written here. The
@@ -1785,6 +1801,9 @@ class ProxySpec(BaseModel):
 class ProxiedDeploySpec(BaseModel):
     earner: DeploySpec
     proxy: ProxySpec
+    # Replace the copy only while it runs and the owner has not stopped it:
+    # a rebuild the UI makes on its own (a device rename) must never start it.
+    only_if_running: bool = False
 
 
 class ProxyTestSpec(BaseModel):
@@ -1885,7 +1904,15 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
         "resources": spec.earner.resources,
     }
     try:
-        result = await asyncio.to_thread(proxy_tunnel.deploy, slug, proxy_id, earner, spec.proxy.plain(), own_ip)
+        result = await asyncio.to_thread(
+            proxy_tunnel.deploy,
+            slug,
+            proxy_id,
+            earner,
+            spec.proxy.plain(),
+            own_ip,
+            only_if_running=spec.only_if_running,
+        )
     except Exception as exc:  # noqa: BLE001 - mapped to a status below
         raise _proxy_http_error(exc) from None
     return {"status": "deployed", **result}
@@ -1982,6 +2009,9 @@ async def api_list_containers(request: Request) -> list[dict[str, Any]]:
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
     """Deploy a container from spec sent by UI."""
     _verify_api_key(request)
+    # Counted from now, not from when a thread is free: the UI's hold on the ids
+    # of a deploy it got no answer for must outlast it (constants.DEPLOY_DEADLINE_SECONDS).
+    deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     # Threaded like every other Docker touch in this file: _validate_runtime
     # inside does a live daemon round-trip (available_runtimes has no cache and
     # no timeout), and unthreaded it blocked the WHOLE event loop on a wedged
@@ -1992,6 +2022,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     # Last of the checks: it spends the approval, which a refusal above must not.
     await asyncio.to_thread(_validate_critical_spec, spec, slug)
     kept_mounts: list[dict[str, str]] = []
+    replaced: dict[str, str] = {}
     try:
         container_id = await asyncio.to_thread(
             orchestrator.deploy_raw,
@@ -2014,11 +2045,17 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
+            replaced_identity=replaced,
+            deadline=deadline,
         )
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
         if kept_mounts:
             response["kept_mounts"] = kept_mounts
+        # The ids the replaced container ran, for the UI's ledger (a replacement
+        # is a removal of the old container).
+        if digest := replaced.get("identity_digest"):
+            response["replaced_identity_digest"] = digest
         return response
     except orchestrator.ContainerNetworkError as exc:
         # The operator's own setting, and the message says how to fix it; a bare
@@ -2029,8 +2066,9 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         logger.warning("Deploy of %s refused: %s", slug, exc)
         raise HTTPException(status_code=403, detail={"error": "critical_volume_mount", "message": str(exc)}) from None
     except orchestrator.ContainerRuntimeError as exc:
-        # Same shape as the network setting, also raised before the old container
-        # was touched; 503 when the daemon could not be asked at all.
+        # Same shape as the network setting; 503 when the daemon could not be
+        # asked at all. Mostly raised before the old container was touched; a
+        # deadline passed after its stop puts it back and starts it again.
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except APIError as exc:
         refusal = orchestrator.proxy_refusal(exc)
@@ -2112,6 +2150,13 @@ async def api_remove_container(
             allow_delete_critical=allow_delete_critical,
             only_if_restore_unfinished=only_if_restore_unfinished,
         )
+        # Read before they go: the UI keeps the ids the copies ran with.
+        try:
+            digests = await asyncio.to_thread(orchestrator.copy_identity_digests, slug)
+        except Exception:  # noqa: BLE001 - bookkeeping never blocks a removal
+            digests = {}
+        if digests:
+            result["identity_digests"] = digests
         extras = await asyncio.to_thread(orchestrator.remove_extra_instances, slug)
         if extras:
             result["extra_instances"] = extras

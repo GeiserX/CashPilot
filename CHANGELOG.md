@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.4.0] - 2026-11-14
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#737)
+
+### Features
+
+- Stop sign-in bots with an optional CAPTCHA (Turnstile, hCaptcha, reCAPTCHA) (#742)
+
 ## [2.3.3] - 2026-11-13
 
 ### Documentation

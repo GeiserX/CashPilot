@@ -546,6 +546,19 @@ class TestWorkerApi:
         assert (slug, proxy_id, own_ip) == ("honeygain", 3, "192.0.2.1")
         assert proxy["password"] == PASSWORD and earner["env"] == {"A": "b"}
         assert PASSWORD not in resp.text
+        assert deploy.call_args.kwargs == {"only_if_running": False}
+
+    def test_deploy_passes_only_if_running_through(self):
+        body = {"earner": {"image": "honeygain/honeygain:1"}, "proxy": _socks(), "only_if_running": True}
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_validate_deploy_spec"),
+            patch.object(worker_api, "_detect_egress_ip", return_value=None),
+            patch.object(proxy_tunnel, "deploy", return_value={"container_id": "c", "tunnel_id": "t"}) as deploy,
+        ):
+            resp = _api().post("/api/proxied/honeygain/3/deploy", json=body, headers=AUTH)
+        assert resp.status_code == 200, resp.text
+        assert deploy.call_args.kwargs == {"only_if_running": True}
 
     def test_proxy_test_refuses_a_private_exit(self):
         with (

@@ -53,21 +53,50 @@ check('anyone else gets no button', viewer.identityPickButton(svc, {key: 'U', pe
 // --- the list --------------------------------------------------------------
 const rows = [
   {id: 1, service: 'EarnApp', label: 'Node UUID', masked: '...1234', worker: 'box-a', copy: '', status: 'active', source: 'deploy', readable: true},
-  {id: 2, service: 'EarnApp', label: 'Node UUID', masked: '...9999', worker: 'box-b', copy: 'copy 2', status: 'retired', source: 'deploy', readable: true},
-  {id: 3, service: 'Mysterium', label: 'Node identity', masked: '...beef', worker: 'box-c', copy: '', status: 'active', source: 'node', kind: 'node', readable: true},
-  {id: 4, service: 'X', label: '<img src=x onerror=alert(1)>', masked: '...', worker: '<b>w</b>', copy: '', status: 'retired', source: 'deploy', readable: false},
+  {id: 2, service: 'EarnApp', label: 'Node UUID', masked: '...9999', worker: 'box-b', copy: 'copy 2', status: 'retired', source: 'deploy', forgettable: true, readable: true},
+  {id: 3, service: 'Mysterium', label: 'Node identity', masked: '...beef', worker: 'box-c', copy: '', status: 'active', source: 'node', kind: 'node', forgettable: true, readable: true},
+  {id: 4, service: 'X', label: '<img src=x onerror=alert(1)>', masked: '...', worker: '<b>w</b>', copy: '', status: 'retired', source: 'deploy', forgettable: true, readable: false},
+  {id: 5, service: 'EarnApp', label: 'Node UUID', masked: '...5555', worker: 'box-a', copy: 'deploy not confirmed', status: 'active', source: 'deploy', pending: true, forgettable: true, readable: true},
 ];
 const html = owner.identityRowsHtml(rows);
 check('masked values are shown', html.includes('...1234') && html.includes('...9999'), html);
-check('each readable row has Show and Copy', (html.match(/data-action="revealIdentity"/g) || []).length === 3, html);
-check('only removed or node-reported ids can be forgotten', (html.match(/data-action="forgetIdentity"/g) || []).length === 3
+check('each readable row has Show and Copy', (html.match(/data-action="revealIdentity"/g) || []).length === 4, html);
+check('only removed, node-reported or unconfirmed ids can be forgotten', (html.match(/data-action="forgetIdentity"/g) || []).length === 4
   && !html.includes('data-action="forgetIdentity" data-a1="1"')
-  && html.includes('data-action="forgetIdentity" data-a1="3"'), html);
+  && html.includes('data-action="forgetIdentity" data-a1="3"')
+  && html.includes('data-action="forgetIdentity" data-a1="5"'), html);
+check('an unconfirmed hold past its time is forgotten with the hold\'s warning',
+  html.includes('data-action="forgetIdentity" data-a1="5" data-a2="pending"') && !html.includes('data-a1="2" data-a2'), html);
+// A fresh hold: the deploy may still land, so no Forget, and the row says why.
+const fresh = owner.identityRowsHtml([{...rows[4], id: 6, forgettable: false}]);
+check('a fresh unconfirmed hold offers no Forget', !fresh.includes('forgetIdentity'), fresh);
+check('a fresh unconfirmed hold says the box may still start it', fresh.includes('may still start with this id'), fresh);
+const removedHold = owner.identityRowsHtml([{...rows[4], id: 9, status: 'retired', forgettable: true}]);
+check('a retired hold is forgotten like any removed id', removedHold.includes('data-a1="9">Forget')
+  && !removedHold.includes('may still start'), removedHold);
 check('a node-reported id says so', html.includes('Reported by the node itself'), html);
 check('markup in a label stays text', !html.includes('<img') && html.includes('&lt;img'), html);
 check('markup in a worker name stays text', !html.includes('<b>w</b>'), html);
 check('an unreadable value offers no Show', !html.includes('data-a1="4">Show'), html);
 check('an empty list says what fills it', owner.identityRowsHtml([]).includes('No device ids yet'), owner.identityRowsHtml([]));
+
+// --- the Forget confirm -----------------------------------------------------
+// A hold's Forget names the risk the shared-id 409 names: the box may still
+// start the id, and then nothing warns before a second box takes it.
+const forgetFn = slice('async function forgetIdentity(', "// The deploy form's");
+async function forget(kind) {
+  const texts = [];
+  const window = {confirm: (text) => { texts.push(text); return false; }};
+  const run = new Function('window', 'api', 'loadIdentities', 'toast', `${forgetFn}; return forgetIdentity;`)(
+    window, async () => {}, () => {}, () => {});
+  await run(5, kind);
+  return texts[0] || '';
+}
+let text = await forget('pending');
+check('a hold\'s Forget warns the box may still start it', text.includes('may still start with it')
+  && text.includes('another box'), text);
+text = await forget(undefined);
+check('a removed id\'s Forget keeps its own text', !text.includes('may still start') && text.includes('offer it again'), text);
 
 // --- the reuse offer -------------------------------------------------------
 const offers = owner.identityOffersHtml('earnapp', 'EARNAPP_UUID', [
@@ -79,6 +108,34 @@ check('an id in use says where', offers.includes('In use on box-c, box-d'), offe
 check('the Use button carries where it runs, for the warning', offers.includes('data-a4="box-c, box-d"'), offers);
 check('a free id carries no warning', offers.includes('data-a3="7" data-a4=""'), offers);
 check('no offer says so', owner.identityOffersHtml('s', 'k', []).includes('no earlier id'), '');
+
+// --- the reuse offer leaves out the box being deployed to ------------------
+// The server leaves ``worker_id`` out of "in use on", as the deploy's shared-id
+// check does, so the offer warns about the same boxes the deploy refuses.
+const pickFn = slice('async function pickPreviousIdentity(', 'async function useIdentity(');
+async function pick(checked) {
+  const asked = [];
+  const document = {querySelectorAll: (sel) => {
+    if (sel.includes('worker-cb')) {
+      return sel.split(',').some(part => part.includes('earnapp')) ? checked.map(wid => ({dataset: {wid: String(wid)}})) : [];
+    }
+    return [];
+  }};
+  const api = async (path) => { asked.push(path); return []; };
+  const run = new Function('document', 'api', 'identityOffersHtml', '_identityPicks', 'toast', '_selectedWorkerIds',
+    '_rescaledWorkerIds', `${pickFn}; return pickPreviousIdentity;`)(
+    document, api, () => '', () => [], () => {},
+    (sel) => Array.from(document.querySelectorAll(sel)).map(cb => parseInt(cb.dataset.wid)),
+    () => []);
+  await run('earnapp', 'EARNAPP_UUID');
+  return asked[0] || '';
+}
+let asked = await pick([2]);
+check('one box picked: the offer asks without it', asked.includes('worker_id=2'), asked);
+asked = await pick([2, 3]);
+check('two boxes picked: the offer leaves none out', !asked.includes('worker_id'), asked);
+asked = await pick([]);
+check('no box picked: the offer leaves none out', !asked.includes('worker_id'), asked);
 
 // --- the deploy retry when an id runs on another box -----------------------
 async function runApi(answers, confirmAnswer) {
@@ -116,6 +173,37 @@ check('Cancel sends nothing more and shows the reason', r.calls.length === 1 && 
 
 r = await runApi([inUse, inUse], true);
 check('a second refusal is shown, never asked again', r.calls.length === 2 && r.asked === 1 && r.error, JSON.stringify(r));
+
+// --- two Use clicks: the later one wins, whichever reveal answers first -------
+const useFn = slice('function _identityTargetWorker(', '// Exported for the harness');
+{
+  const input = {dataset: {slug: 'earnapp', key: 'EARNAPP_UUID'}, value: ''};
+  const document = {querySelectorAll: (sel) => (sel.startsWith('input') ? [input] : [])};
+  const pending = {};
+  const reveal = (id) => new Promise(resolve => { pending[id] = resolve; });
+  const useIdentity = new Function('document', 'window', '_revealIdentity', 'toast', '_identityPicks',
+    `${useFn}; return useIdentity;`)(document, {confirm: () => true}, reveal, () => {}, () => []);
+  const first = useIdentity('earnapp', 'EARNAPP_UUID', 7, '');
+  const second = useIdentity('earnapp', 'EARNAPP_UUID', 8, '');
+  pending[8]('id-of-8');
+  await second;
+  pending[7]('id-of-7');
+  await first;
+  check('a reveal that answers after a later Use leaves the later id', input.value === 'id-of-8', input.value);
+
+  // The owner types another id while the reveal is out: what they typed stays.
+  const third = useIdentity('earnapp', 'EARNAPP_UUID', 9, '');
+  input.value = 'typed-by-owner';
+  pending[9]('id-of-9');
+  await third;
+  check('a reveal that answers after the owner typed leaves what they typed', input.value === 'typed-by-owner', input.value);
+
+  // The positive control: an untouched field takes the revealed id.
+  const fourth = useIdentity('earnapp', 'EARNAPP_UUID', 10, '');
+  pending[10]('id-of-10');
+  await fourth;
+  check('a reveal into an untouched field fills it', input.value === 'id-of-10', input.value);
+}
 
 // --- the Settings list loads even when /api/config fails ----------------------
 // loadIdentities has its own error path; behind the config call it never ran,

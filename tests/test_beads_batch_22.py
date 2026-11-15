@@ -55,12 +55,14 @@ class TestThePlaceholderIsResolvedEvenWhenItArrivesAsAUserValue:
         from app import main
 
         source = inspect.getsource(main._deploy)
-        start = source.index("hn = body.hostname or HOSTNAME_PREFIX")
+        # hn itself is decided per worker (_device_names, tests/test_device_names.py);
+        # this is about what happens to it once decided.
+        start = source.index("env: dict[str, str] = {}")
         end = source.index("\n", source.index("env = {k: v.replace", start))
         snippet = "\n".join(line[4:] if line.startswith("    ") else line for line in source[start:end].splitlines())
         scope = {
             "body": MagicMock(hostname=hostname, env=user_env),
-            "HOSTNAME_PREFIX": "cashpilot",
+            "hn": hostname,
             "docker_conf": {
                 "env": [
                     {"key": "HONEYGAIN_DEVICE_NAME", "default": "cashpilot-{hostname}"},

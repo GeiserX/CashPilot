@@ -31,7 +31,7 @@ import io
 import logging
 import os
 import tarfile
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1110,7 +1110,7 @@ class TestTheRestoreRouteGuards:
 
         bundle = mysterium_bundle()
         upload = _upload(ui, bundle).json()
-        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=main.WorkerNoAnswer(504, "no answer"))):
+        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=main._WorkerNoAnswer(504, "no answer"))):
             resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
         assert resp.status_code == 504
         rows = asyncio.run(database.backup_records(hashlib.sha256(bundle).hexdigest()))
@@ -1326,7 +1326,7 @@ class TestALineageThroughAnUnknown:
         _export_route(ui, f1, 2, "S1")
         _runs(ui, None)
         upload = _upload(ui, f1).json()
-        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=main.WorkerNoAnswer(504, "no answer"))):
+        with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=main._WorkerNoAnswer(504, "no answer"))):
             assert _restore(ui, upload["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD).status_code == 504
         _runs(ui, 1, "SA")  # the worker finished it after all
         _export_route(ui, f2, 1, "SA")
@@ -1548,7 +1548,7 @@ class TestARestoreWithNoAnswer:
         """No heartbeat lists it yet, and no deploy record: the pending row alone refuses another box."""
         bundle = mysterium_bundle()
         _export(bundle, 2)
-        assert self._lost(ui, bundle, main.WorkerNoAnswer(504, "no answer")).status_code == 504
+        assert self._lost(ui, bundle, main._WorkerNoAnswer(504, "no answer")).status_code == 504
         upload = _upload(ui, bundle).json()
         assert upload["live_on"] == ["box-a"]
         resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
@@ -1557,7 +1557,7 @@ class TestARestoreWithNoAnswer:
     def test_a_dropped_connection_holds_it_too(self, ui):
         bundle = mysterium_bundle()
         _export(bundle, 2)
-        assert self._lost(ui, bundle, main.WorkerNoAnswer(503, "Worker communication failed")).status_code == 503
+        assert self._lost(ui, bundle, main._WorkerNoAnswer(503, "Worker communication failed")).status_code == 503
         upload = _upload(ui, bundle).json()
         resp = _restore(ui, upload["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True)
         assert resp.status_code == 409 and "box-a" in _detail(resp)
@@ -1565,7 +1565,7 @@ class TestARestoreWithNoAnswer:
     def test_the_box_it_was_sent_to_may_take_it_again_and_that_settles_it(self, ui):
         bundle = mysterium_bundle()
         _export(bundle, 2)
-        self._lost(ui, bundle, main.WorkerNoAnswer(504, "no answer"))
+        self._lost(ui, bundle, main._WorkerNoAnswer(504, "no answer"))
         upload = _upload(ui, bundle).json()
         resp = _restore(ui, upload["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
         assert resp.status_code == 200, resp.text
@@ -1591,27 +1591,36 @@ class TestARestoreWithNoAnswer:
 class TestTheWorkerProxyErrors:
     """Only a failure to connect means the worker never got the request."""
 
-    async def _call(self, exc, answer=None):
+    async def _call(self, exc, answer=None, marked=True):
         worker = {"id": 1, "url": "https://a"}
         with (
             patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
             patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("https://a", {}))),
             patch("httpx.AsyncClient.post", AsyncMock(side_effect=exc, return_value=answer)),
         ):
-            await main._proxy_to_worker(1, "POST", "/api/containers/mysterium/restore", json={})
+            await main._proxy_to_worker(1, "POST", "/api/containers/mysterium/restore", json={}, marked=marked)
 
     @pytest.mark.parametrize(
         "exc", [httpx.ReadError("reset"), httpx.RemoteProtocolError("closed"), httpx.ReadTimeout("slow")]
     )
     def test_an_error_after_the_request_went_out_is_no_answer(self, exc):
-        with pytest.raises(main.WorkerNoAnswer):
+        with pytest.raises(main._WorkerNoAnswer):
             asyncio.run(self._call(exc))
 
-    @pytest.mark.parametrize("status", [502, 503, 504])
+    @pytest.mark.parametrize("status", [502, 503, 504, 520, 524])
     def test_a_gateway_error_in_front_of_the_worker_is_no_answer(self, status):
         answer = httpx.Response(status, request=httpx.Request("POST", "https://a/api/containers/mysterium/restore"))
-        with pytest.raises(main.WorkerNoAnswer):
+        with pytest.raises(main._WorkerNoAnswer):
             asyncio.run(self._call(None, answer))
+
+    def test_an_unmarked_route_keeps_the_status_reading(self):
+        """A deploy's 503 is the worker's own (main._GATEWAY_NO_ANSWER): only the restore marks its answers."""
+        from fastapi import HTTPException
+
+        answer = httpx.Response(503, request=httpx.Request("POST", "https://a/api/containers/mysterium/deploy"))
+        with pytest.raises(HTTPException) as caught:
+            asyncio.run(self._call(None, answer, marked=False))
+        assert not isinstance(caught.value, main._WorkerNoAnswer) and not main._outcome_unknown(caught.value)
 
     def test_the_workers_own_refusal_is_a_plain_refusal(self):
         answer = httpx.Response(409, json={"detail": "volume exists"}, request=httpx.Request("POST", "https://a/x"))
@@ -1619,7 +1628,7 @@ class TestTheWorkerProxyErrors:
 
         with pytest.raises(HTTPException) as caught:
             asyncio.run(self._call(None, answer))
-        assert caught.value.status_code == 409 and not isinstance(caught.value, main.WorkerNoAnswer)
+        assert caught.value.status_code == 409 and not isinstance(caught.value, main._WorkerNoAnswer)
 
     @pytest.mark.parametrize(
         "exc", [httpx.ConnectError("refused"), httpx.ConnectTimeout("slow"), httpx.PoolTimeout("full")]
@@ -1629,7 +1638,7 @@ class TestTheWorkerProxyErrors:
 
         with pytest.raises(HTTPException) as caught:
             asyncio.run(self._call(exc))
-        assert caught.value.status_code == 503 and not isinstance(caught.value, main.WorkerNoAnswer)
+        assert caught.value.status_code == 503 and not isinstance(caught.value, main._WorkerNoAnswer)
 
 
 class TestRemoveAfterARestoreThatDidNotFinish:
@@ -2271,3 +2280,62 @@ class TestTheDeleteOfAPartialRestoreIsTiedToIt:
         assert resp.json()["detail"]["error"] == "restore_cleared"
         assert "nothing was removed" in resp.json()["detail"]["message"]
         assert ("delete_critical_volumes", "deleted") not in _audit()
+
+
+# ---------------------------------------------------------------------------
+# The restore on main's identity ledger (#753): the deploy's holds and Forget
+# ---------------------------------------------------------------------------
+
+
+class TestARestoreOnTheIdentityLedger:
+    """A restore sends a deploy spec, so its device ids are held as a deploy's are."""
+
+    HELD = ("u1", {"DEVICE_ID": "dev-1"})
+
+    def _restore_with(self, ui, side_effect=None, answer=None):
+        upload = _upload(ui, mysterium_bundle()).json()
+        release = AsyncMock()
+        patches = [
+            patch.object(main, "_reserve_pending_identities", AsyncMock(return_value=self.HELD)),
+            patch.object(main, "_release_pending_identities", release),
+        ]
+        if answer is not None:
+            patches += [
+                patch.object(main, "_proxy_to_worker", REAL_PROXY),
+                patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("https://a", {}))),
+                patch("httpx.AsyncClient.post", AsyncMock(return_value=answer)),
+            ]
+        else:
+            patches.append(patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=side_effect)))
+        with ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            resp = _restore(ui, upload["upload_id"], confirm_name="Mysterium", step_up_password=OWNER_PASSWORD)
+        return resp, release
+
+    def test_a_refusal_ends_the_hold(self, ui):
+        from fastapi import HTTPException
+
+        resp, release = self._restore_with(ui, HTTPException(409, "volume exists"))
+        assert resp.status_code == 409
+        release.assert_awaited_once_with("mysterium", 1, self.HELD)
+
+    def test_no_answer_keeps_the_hold(self, ui):
+        resp, release = self._restore_with(ui, main._WorkerNoAnswer(504, "no answer"))
+        assert resp.status_code == 504
+        release.assert_not_awaited()
+
+    def test_the_workers_own_undo_behind_a_gateway_status_ends_it(self, ui):
+        """A 504 the worker marks "restored": false is its answer; _outcome_unknown alone would keep the hold."""
+        request = httpx.Request("POST", "https://a/api/containers/mysterium/restore")
+        answer = httpx.Response(504, request=request, json={"detail": "Undone.", "restored": False})
+        resp, release = self._restore_with(ui, answer=answer)
+        assert resp.status_code == 504
+        release.assert_awaited_once_with("mysterium", 1, self.HELD)
+
+    def test_a_backup_row_offers_forget(self, ui):
+        """The view's forgettable matches what delete_identity accepts for a backup row."""
+        row_id = asyncio.run(database.record_backup("mysterium", 1, "b" * 64, "export"))
+        view = next(r for r in ui.get("/api/identities").json() if r["id"] == row_id)
+        assert view["kind"] == "backup" and view["forgettable"] is True
+        assert asyncio.run(database.delete_identity(row_id)) is True

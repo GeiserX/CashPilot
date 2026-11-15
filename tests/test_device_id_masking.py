@@ -42,6 +42,8 @@ OWNER = {"uid": 1, "u": "admin", "r": "owner"}
 WRITER = {"uid": 2, "u": "writer", "r": "writer"}
 VIEWER = {"uid": 3, "u": "viewer", "r": "viewer"}
 READER = {"uid": 0, "u": "api", "r": "reader"}
+# The admin API key: owner role, but no signed-in owner, so no full device id (issue #740).
+ADMIN_KEY = {"uid": 0, "u": "api", "r": "owner"}
 
 
 @asynccontextmanager
@@ -221,6 +223,14 @@ def test_no_other_role_gets_the_full_id_or_link(client, user):
     assert "...cdef" in entry["error"]
 
 
+def test_the_admin_key_gets_the_bell_without_the_full_id_or_link(client):
+    resp = _bell(client, ADMIN_KEY)
+    assert resp.status_code == 200
+    (entry,) = resp.json()["alerts"]
+    assert "devices" not in entry and "device_steps" not in entry
+    assert EARNAPP_ID not in resp.text
+
+
 def test_the_read_only_key_still_cannot_read_the_bell(client):
     assert _bell(client, READER).status_code == 403
 
@@ -355,6 +365,13 @@ def test_the_owner_reads_the_logs_as_they_are(client):
     resp = _logs(client, OWNER, "earnapp", _EARNAPP_LOG, {EARNAPP_ID})
     assert resp.status_code == 200
     assert resp.json()["logs"] == _EARNAPP_LOG
+
+
+def test_the_admin_key_reads_earnapp_logs_masked(client):
+    resp = _logs(client, ADMIN_KEY, "earnapp", _EARNAPP_LOG, {EARNAPP_ID})
+    assert resp.status_code == 200
+    logs = resp.json()["logs"]
+    assert EARNAPP_ID not in logs and "earnapp.com/r/" not in logs
 
 
 def test_a_failed_read_of_the_deployed_ids_still_masks_by_shape(client):
