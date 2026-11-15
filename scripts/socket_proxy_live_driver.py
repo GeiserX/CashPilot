@@ -59,6 +59,23 @@ def check(name: str, fn) -> object:
     return value
 
 
+def remove_with_data(slug: str) -> dict:
+    """Remove ``slug`` with its volumes as the dashboard's owner does: review what the box names, confirm that set.
+
+    The override alone reviewed nothing, so it deletes no critical volume: the
+    first call names them (critical_set), the second confirms exactly those.
+    """
+    from app import orchestrator
+
+    try:
+        return orchestrator.remove_service(slug, delete_volumes=True)
+    except orchestrator.CriticalVolumeError as refusal:
+        reviewed = refusal.critical_set
+    return orchestrator.remove_service(
+        slug, delete_volumes=True, allow_delete_critical=True, approved_critical=reviewed
+    )
+
+
 # ---------------------------------------------------------------------------
 # allowed: the worker's own code, through the proxy
 # ---------------------------------------------------------------------------
@@ -179,7 +196,7 @@ def phase_allowed() -> None:
     for slug in (["cplive-earner"] if TUNNEL_IMAGE else []) + ["cplive-host", plain]:
         check(
             f"remove {slug} and its volumes",
-            lambda slug=slug: orchestrator.remove_service(slug, delete_volumes=True, allow_delete_critical=True),
+            lambda slug=slug: remove_with_data(slug),
         )
     for c in client.containers.list(all=True, filters={"label": "cashpilot.live-test=1"}):
         check(f"remove {c.name}", lambda c=c: c.remove(force=True, v=True))
@@ -443,7 +460,7 @@ def phase_fresh() -> None:
     )
     check(
         "remove it and its volume",
-        lambda: orchestrator.remove_service("cplive-fresh", delete_volumes=True, allow_delete_critical=True),
+        lambda: remove_with_data("cplive-fresh"),
     )
     try:
         docker.from_env().volumes.get("cplive-fresh-data")

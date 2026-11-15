@@ -142,7 +142,11 @@ identity sits on a named Docker volume. The rules:
   On any failure, the containers the restore made are removed. The volumes it
   made stay: Docker deletes a volume by name only, so the worker cannot prove
   at the delete that the volume is still the one it made, and it never
-  deletes one on its own. A Mysterium the restore made and could not remove is
+  deletes one on its own. Each volume carries a random label the restore made
+  it with, and the box records that label: a volume under the same name
+  without it is another client's, and the box never offers to delete it. A
+  volume the restore made and never wrote holds none of the backup, so the
+  dashboard does not hold the identity on that box for it. A Mysterium the restore made and could not remove is
   held stopped, so the LAN fence guard never starts data that did not check
   out. While a restore runs, and after a restore that failed or stopped
   mid-write (a worker restart), Start, Restart, Deploy and Restore refuse the
