@@ -3401,3 +3401,55 @@ class TestAnExtraCopyWhoseHoldCannotBeWritten:
         assert [(s["json"] or {}).get("instance", 1) for s in sent] == [1]
         started = [c.kwargs.get("instance") for c in events.await_args_list if c.args[1] == "start"]
         assert started == [1]
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, twentieth round: a heartbeat that proves a hold during its
+# deploy leaves no retired row, and an extra copy whose start event fails ends
+# its hold
+# ---------------------------------------------------------------------------
+
+
+class TestAHoldProvedDuringItsDeploy:
+    def test_a_redeploy_of_the_same_id_leaves_only_its_copy_row(self, db):
+        """Box-a runs UUID_B and redeploys it; a heartbeat during the pull proves the hold."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        proved = []
+
+        async def hop(worker_id, slug, spec, **kwargs):
+            await database.settle_pending_identities(slug, worker_id, "u1", {"EARNAPP_UUID": UUID_B}, runs=True)
+            proved.append(True)
+            return {"container_id": "c1"}
+
+        with patch.object(main, "_proxy_worker_deploy", hop):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, wid)[0] is None
+        assert proved
+        mine = [(r["instance"], r["status"], r["value"]) for r in _rows() if r["worker_id"] == wid]
+        assert mine == [("1", "active", UUID_B)]
+
+    def test_a_hold_the_heartbeat_does_not_prove_is_still_retired(self, db):
+        """The positive control: an unanswered hold whose time ran out with no proof stays listed, retired."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        _deploy(
+            "earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=TestADeployTheWorkerDidNotAnswer._timed_out, fail_status=504
+        )
+        TestADeployTheWorkerDidNotAnswer._age_pending()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert ("earnapp", wid, "u1", "EARNAPP_UUID", UUID_A) in _retired()
+
+
+class TestAnExtraCopyWhoseStartEventFails:
+    def test_its_hold_ends_and_it_is_never_sent(self, db):
+        hg = TestACopyWhoseWriteFailed.HG
+
+        async def copy_two_locked(slug, action, *args, **kwargs):
+            if action == "start" and kwargs.get("instance") == 2:
+                raise sqlite3.OperationalError("database is locked")
+
+        with (
+            patch.object(main, "scaling_limit", lambda svc: (3, "")),
+            pytest.raises(sqlite3.OperationalError),
+        ):
+            _deploy("honeygain", hg, 1, instances=2, events=AsyncMock(side_effect=copy_two_locked))
+        assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box-2")) == []
+        assert asyncio.run(database.identity_in_use("honeygain", "HONEYGAIN_DEVICE_NAME", "box")) == [1]

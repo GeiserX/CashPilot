@@ -4472,13 +4472,20 @@ async def _deploy(
         for n in range(2, instances + 1):
             # Before its start: a copy whose hold cannot be written is never sent.
             held = await _reserve_pending_identities(slug, worker_id, n, copy_envs[n - 1], copy_note=n)
-            await database.record_health_event(
-                slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
-            )
+            # A start that cannot be written sends nothing, so it ends the hold.
+            sent = False
             try:
+                await database.record_health_event(
+                    slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
+                )
+                sent = True
                 answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
             except HTTPException as exc:
                 if not _outcome_unknown(exc):
+                    await _release_pending_identities(slug, worker_id, held)
+                raise
+            except BaseException:
+                if not sent:
                     await _release_pending_identities(slug, worker_id, held)
                 raise
             await _record_replaced_copy(slug, worker_id, recorded, old_prior, n, answer, docker_conf)

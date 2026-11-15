@@ -5209,13 +5209,15 @@ async def settle_pending_identities(
 
     ``runs`` (a heartbeat proved the copy runs them): they become the copy's own
     row, which retires what it ran before, while the worker still has a deploy
-    record of ``slug``. With none (a removal, or a first deploy that never got
-    one) the hold stays and is refreshed instead: a heartbeat built before a
-    removal proves a container the removal stopped, and a copy row with no
-    record is one nothing retires. The hold ends once its time is up with no
-    heartbeat proving it. Otherwise they are retired and the copy's row stays
-    as it is. Another attempt on the same copy stays held: the worker may still
-    land it. A deploy or a removal that settled them first leaves nothing to do.
+    record of ``slug``; the hold's rows are deleted, as an answer deletes them,
+    so a deploy proved while in flight leaves no unconfirmed row behind. With
+    none (a removal, or a first deploy that never got one) the hold stays and
+    is refreshed instead: a heartbeat built before a removal proves a container
+    the removal stopped, and a copy row with no record is one nothing retires.
+    The hold ends once its time is up with no heartbeat proving it. Otherwise
+    they are retired and the copy's row stays as it is. Another attempt on the
+    same copy stays held: the worker may still land it. A deploy or a removal
+    that settled them first leaves nothing to do.
     """
     keys = _identity_keys(slug)
     copy = pending_copy_number(instance)
@@ -5226,14 +5228,12 @@ async def settle_pending_identities(
         db.row_factory = aiosqlite.Row
         await db.execute("BEGIN IMMEDIATE")
         try:
-            held = {
-                row["name"]: decrypt_value(row["value_encrypted"])
-                for row in await _active_identity_rows(db, slug, worker_id)
-                if row["instance"] == instance
-            }
+            rows = [r for r in await _active_identity_rows(db, slug, worker_id) if r["instance"] == instance]
+            held = {row["name"]: decrypt_value(row["value_encrypted"]) for row in rows}
+            promote = runs and bool(await _deploy_records(db, slug, worker_id))
             values: dict[str, Mapping[str, Any]] = {instance: {}}
-            if runs and await _deploy_records(db, slug, worker_id):
-                values[str(copy)] = env
+            if promote:
+                values = {str(copy): env}
             elif runs:
                 values[instance] = env
             # Retiring one whose time is up: a retry of the same ids that timed
@@ -5242,6 +5242,8 @@ async def settle_pending_identities(
                 await _record_identities_locked(
                     db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
                 )
+                if promote:
+                    await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
             await db.commit()
         except BaseException:
             await db.rollback()
