@@ -5332,11 +5332,14 @@ async def _record_identities_locked(
             continue
         # The same value on the same copy before (a reuse): bring that row
         # back instead of keeping two, so its first_seen stays the real one.
+        # Except a hold's: a hold that ended is a deploy that is over, and a
+        # new one starts its own time, which _record_after_hold compares with.
         revived = await _find_identity_row(db, slug, worker_id, instance, key, value, status="retired")
         if revived is not None:
+            restart = ", first_seen = datetime('now')" if instance.startswith(PENDING_COPY_PREFIX) else ""
             await db.execute(
-                "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now') "
-                "WHERE id = ?",
+                "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now')"
+                f"{restart} WHERE id = ?",
                 (revived,),
             )
             continue

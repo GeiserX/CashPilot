@@ -3636,3 +3636,51 @@ class TestAProvedHoldThroughARemoval:
         # Answered: the hold ended, and only the copy's row is left.
         mine = [(r["instance"], r["status"], r["value"]) for r in _rows() if r["worker_id"] == wid]
         assert mine == [("1", "active", UUID_B)]
+
+
+# ---------------------------------------------------------------------------
+# Review of #753, twenty-fourth round: a new hold on ids an expired hold once
+# held starts its own time, so a record saved between the two is older than it
+# ---------------------------------------------------------------------------
+
+
+class TestANewHoldOnIdsAnOldHoldOnceHeld:
+    """EarnApp copy 1 on box-a: deploy A expired unanswered, C replaced it, then A is deployed and unanswered again."""
+
+    @staticmethod
+    def _held_again():
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        timed_out = TestADeployTheWorkerDidNotAnswer._timed_out
+        # Day 1: A never lands; once its wait runs out a heartbeat showing B retires the hold.
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=timed_out, fail_status=504)[0].status_code == 504
+        TestADeployTheWorkerDidNotAnswer._age_pending()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert ("earnapp", wid, "u1", "EARNAPP_UUID") not in _active()
+        _shift("device_identities", "first_seen", -2 * 86400)
+        # Day 2: C is confirmed and runs.
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_C}, wid)[0] is None
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_C}}, slug="earnapp", listed=True)
+        _shift("deployment_specs", "deployed_at", -86400)
+        # Day 3: A again, unanswered again.
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=timed_out, fail_status=504)[0].status_code == 504
+        assert _active()[("earnapp", wid, "u1", "EARNAPP_UUID")] == UUID_A
+        return wid
+
+    def test_a_heartbeat_that_proves_it_makes_it_the_row(self, db):
+        wid = self._held_again()
+        for _ in range(3):
+            _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        assert _active()[("earnapp", wid, "1", "EARNAPP_UUID")] == UUID_A
+        assert ("earnapp", wid, "1", "EARNAPP_UUID", UUID_C) in _retired()
+
+    def test_the_new_hold_starts_its_own_time(self, db):
+        """The revived hold row's first_seen is the new deploy's, not the expired hold's."""
+        wid = self._held_again()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_A}}, slug="earnapp", listed=True)
+        with sqlite3.connect(database.DB_PATH) as conn:
+            fresh = conn.execute(
+                "SELECT first_seen > datetime('now', '-3600 seconds') FROM device_identities "
+                "WHERE worker_id = ? AND instance = 'u1' AND status = 'active'",
+                (wid,),
+            ).fetchone()
+        assert fresh == (1,)
