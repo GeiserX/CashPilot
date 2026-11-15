@@ -4644,7 +4644,8 @@ const CP = (() => {
         ? `<button class="btn btn-ghost btn-sm" data-action="revealIdentity" data-a1="${id}">Show</button>
            <button class="btn btn-ghost btn-sm" data-action="copyIdentity" data-a1="${id}">Copy</button>`
         : '<span class="muted">Unreadable: the encryption key changed</span>';
-      const forget = r.status === 'retired' || r.kind === 'node'
+      // An unconfirmed deploy's hold too: it may never be proven or run out on its own.
+      const forget = r.status === 'retired' || r.kind === 'node' || r.pending
         ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}">Forget</button>` : '';
       return `
         <div class="credential-health-item identity-row" data-identity="${id}">

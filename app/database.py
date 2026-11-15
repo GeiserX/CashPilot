@@ -5389,16 +5389,21 @@ async def get_identity(identity_id: int) -> dict[str, Any] | None:
 
 
 async def delete_identity(identity_id: int) -> bool:
-    """Delete one row (the owner's "forget"): a retired one, or one a node reported.
+    """Delete one row (the owner's "forget"): a retired one, one a node reported, or an unconfirmed hold.
 
     An active row CashPilot deployed with is never deleted: the shared-id check
     reads it. A node-reported row is only shown, so the owner may drop it while
-    its node runs; the next read brings it back if the node still says so.
+    its node runs; the next read brings it back if the node still says so. The
+    hold of a deploy the worker never answered (``u<n>``) may never be proven
+    or run out on its own (a worker with no deploy deadline, a catalog that no
+    longer marks the key), so the owner may end it: they take the risk that the
+    id still runs there, as with confirming a shared id.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node')",
+            "DELETE FROM device_identities WHERE id = ? "
+            f"AND (status = 'retired' OR kind = 'node' OR instance LIKE '{PENDING_COPY_PREFIX}%')",
             (identity_id,),
         )
         await db.commit()

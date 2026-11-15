@@ -4390,15 +4390,16 @@ async def _deploy(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"{svc.get('name') or slug} copy {n}: {exc}") from exc
 
-    # Held from the check until this copy's row is written, so a second deploy
-    # of the same id to another box at the same time waits and then sees it.
-    async with _device_id_claim(slug, svc, {} if body.allow_shared_identity else merged_env):
+    # Each extra copy runs an id derived from the first's, which another box may
+    # already run, or be deploying, as its own.
+    copy_envs = [merged_env] + [_instance_spec(spec, n, docker_conf)["env"] for n in range(2, instances + 1)]
+    # Every copy's ids, held from the check until the last copy's row is written,
+    # so a second deploy of one of them to another box at the same time waits
+    # and then sees it.
+    async with _device_id_claim(slug, svc, *([] if body.allow_shared_identity else copy_envs)):
         if not body.allow_shared_identity:
-            await _refuse_shared_device_ids(slug, svc, merged_env, worker_id)
-            # Each extra copy runs an id derived from the first's, which another
-            # box may already run as its own.
-            for n in range(2, instances + 1):
-                await _refuse_shared_device_ids(slug, svc, _instance_spec(spec, n, docker_conf)["env"], worker_id)
+            for env in copy_envs:
+                await _refuse_shared_device_ids(slug, svc, env, worker_id)
 
         # A service that keeps a wallet or node identity runs as the catalog says,
         # or with the owner's password now, not just a session: whatever runs in its
@@ -4455,26 +4456,26 @@ async def _deploy(
         # once its own deploy succeeded, and one being dropped is retired once its
         # removal did, so a failure halfway never marks an id that is not running.
         await _record_deploy_identities(slug, worker_id, spec, [1], docker_conf, scope="given")
-    # Each copy's start is recorded as its deploy is attempted: one that fails
-    # must not leave an older stop as its latest action, which would hide its
-    # crash, and a copy the deploy never reaches keeps the stop it had.
-    await database.record_health_event(
-        slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=1
-    )
-    # The extra copies, after the save: if one fails, the next redeploy still
-    # knows how many this worker should run and tries again.
-    for n in range(2, instances + 1):
+        # Each copy's start is recorded as its deploy is attempted: one that fails
+        # must not leave an older stop as its latest action, which would hide its
+        # crash, and a copy the deploy never reaches keeps the stop it had.
         await database.record_health_event(
-            slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
+            slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=1
         )
-        try:
-            answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
-        except HTTPException as exc:
-            if _outcome_unknown(exc):
-                await _record_pending_identities(slug, worker_id, {n: _instance_spec(spec, n, docker_conf).get("env")})
-            raise
-        await _record_replaced_copy(slug, worker_id, recorded, old_prior, n, answer, docker_conf)
-        await _record_deploy_identities(slug, worker_id, spec, [n], docker_conf, scope="given")
+        # The extra copies, after the save: if one fails, the next redeploy still
+        # knows how many this worker should run and tries again.
+        for n in range(2, instances + 1):
+            await database.record_health_event(
+                slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
+            )
+            try:
+                answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
+            except HTTPException as exc:
+                if _outcome_unknown(exc):
+                    await _record_pending_identities(slug, worker_id, {n: copy_envs[n - 1]})
+                raise
+            await _record_replaced_copy(slug, worker_id, recorded, old_prior, n, answer, docker_conf)
+            await _record_deploy_identities(slug, worker_id, spec, [n], docker_conf, scope="given")
     deleted: set[int] = set()
     for n in sorted(c for c in running_copies if c > instances):
         removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
@@ -4589,8 +4590,8 @@ _DEVICE_ID_CLAIMS: dict[tuple[str, str, str], tuple[asyncio.Lock, int]] = {}
 
 
 @asynccontextmanager
-async def _device_id_claim(slug: str, svc: dict[str, Any], env: dict[str, Any]):
-    """Hold each ``per_device`` id in ``env`` while one deploy checks it and records it.
+async def _device_id_claim(slug: str, svc: dict[str, Any], *envs: dict[str, Any]):
+    """Hold each ``per_device`` id in ``envs`` (one per copy) while one deploy checks it and records it.
 
     The shared-id check reads the ledger, and the row it reads is written only
     after the worker answers, which takes minutes on an image pull. Without
@@ -4603,6 +4604,7 @@ async def _device_id_claim(slug: str, svc: dict[str, Any], env: dict[str, Any]):
     keys = sorted(
         {
             (slug, key, hashlib.sha256(value.casefold().encode()).hexdigest())
+            for env in envs
             for key in _per_device_keys(svc)
             if (value := str(env.get(key) or "").strip())
         }
@@ -4830,6 +4832,23 @@ async def _identity_digest_keys(worker_id: int) -> list[str]:
     return [k for k in (own, FLEET_API_KEY) if k]
 
 
+def _digest_proves(svc: dict[str, Any] | None, ids: Any, digest: str | None, keys: list[str]) -> bool:
+    """Whether a copy's ``digest``, keyed with one of ``keys``, is that of ``ids``."""
+    return bool(svc and digest and ids) and any(
+        hmac.compare_digest(catalog.identity_digest(svc, ids, k) or "", digest or "") for k in keys
+    )
+
+
+def _listed_copies(containers: Any, slug: str) -> set[int]:
+    """The copies of ``slug`` a heartbeat lists, with a digest or without one."""
+    entries = containers if isinstance(containers, list) else []
+    return {
+        n
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("slug") == slug and (n := _copy_number(entry)) is not None and n >= 1
+    }
+
+
 def _copy_digests(containers: Any, slug: str) -> dict[int, str]:
     """The ``identity_digest`` a heartbeat reported for each copy of ``slug``, by copy number.
 
@@ -5002,12 +5021,15 @@ async def _settle_pending_identities(worker_id: int, containers: Any, *, complet
     """Confirm or drop the unconfirmed ids of a deploy the worker did not answer (_record_pending_identities).
 
     A copy this heartbeat lists with their digest runs them: they become its
-    row. Past PENDING_IDENTITY_SECONDS, a full list that does not show them
-    retires them, but only from a worker that ends every deploy by its deadline
+    row. Past PENDING_IDENTITY_SECONDS, a full list retires them when it shows
+    the copy gone, or running the ids its active row records; a copy listed
+    with no digest, twice, or with one that proves neither proves nothing, so
+    the hold stays. Only from a worker that ends every deploy by its deadline
     (``deadline``, its ``deploy_deadline`` feature). One without it may still be
     pulling hours later, so its holds stay until proven, until it runs a release
-    with the deadline (the restart ended the old process's deploy), or until the
-    box is deleted. A copy still showing its old ids proves nothing before that:
+    with the deadline (the restart ended the old process's deploy), until the
+    owner forgets the id (database.delete_identity), or until the box is
+    deleted. A copy still showing its old ids proves nothing before that:
     the worker may still be pulling. Read on every heartbeat (one indexed
     SELECT), never cached: a deploy that times out during the read must still
     be settled by the next one. Bookkeeping: never raises.
@@ -5019,10 +5041,13 @@ async def _settle_pending_identities(worker_id: int, containers: Any, *, complet
             slug, copy, env = entry["slug"], entry["copy"], entry["env"]
             svc = catalog.get_service(slug)
             digest = _copy_digests(containers, slug).get(copy)
-            runs = bool(svc and digest) and any(
-                hmac.compare_digest(catalog.identity_digest(svc, env, k) or "", digest or "") for k in keys
-            )
-            if runs or (complete and deadline and entry["age"] >= PENDING_IDENTITY_SECONDS):
+            runs = _digest_proves(svc, env, digest, keys)
+            expired = complete and deadline and entry["age"] >= PENDING_IDENTITY_SECONDS
+            if expired and not runs and copy in _listed_copies(containers, slug):
+                # Listed: retired only when it proves the ids the copy's row records.
+                active = await database.active_identity_values(slug, worker_id)
+                expired = _digest_proves(svc, active.get(str(copy)), digest, keys)
+            if runs or expired:
                 await database.settle_pending_identities(slug, worker_id, entry["instance"], env, runs=runs)
                 _forget_checked_copies(worker_id, slug)
     except Exception:  # noqa: BLE001
@@ -10645,9 +10670,10 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
     slug = row["slug"]
     svc = catalog.get_service(slug) or {}
     instance = str(row.get("instance") or "1")
+    pending = database.pending_copy_number(instance)
     if instance.startswith("p"):
         copy = f"through proxy {instance[1:]}"
-    elif (pending := database.pending_copy_number(instance)) is not None:
+    elif pending is not None:
         copy = "deploy not confirmed" if pending == 1 else f"copy {pending}, deploy not confirmed"
     elif instance != "1":
         copy = f"copy {instance}"
@@ -10668,6 +10694,8 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
         "readable": bool(row.get("value")),
         "source": row.get("source") or "deploy",
         "status": row.get("status") or "active",
+        # A deploy the worker never answered: the owner may forget its hold.
+        "pending": pending is not None,
         "first_seen": row.get("first_seen"),
         "last_seen": row.get("last_seen"),
         "retired_at": row.get("retired_at"),
@@ -10708,7 +10736,10 @@ async def api_identity_reveal(request: Request, identity_id: int) -> dict[str, s
 
 @app.delete("/api/identities/{identity_id}")
 async def api_identity_forget(request: Request, identity_id: int) -> dict[str, str]:
-    """Forget one retired device id, or one a node reported. One a box still runs with cannot be forgotten."""
+    """Forget one retired device id, one a node reported, or an unconfirmed deploy's hold.
+
+    One a box is known to run with cannot be forgotten.
+    """
     user = _require_owner_session(request)
     row = await database.get_identity(identity_id)
     if not row:

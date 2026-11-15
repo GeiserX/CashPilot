@@ -56,13 +56,15 @@ const rows = [
   {id: 2, service: 'EarnApp', label: 'Node UUID', masked: '...9999', worker: 'box-b', copy: 'copy 2', status: 'retired', source: 'deploy', readable: true},
   {id: 3, service: 'Mysterium', label: 'Node identity', masked: '...beef', worker: 'box-c', copy: '', status: 'active', source: 'node', kind: 'node', readable: true},
   {id: 4, service: 'X', label: '<img src=x onerror=alert(1)>', masked: '...', worker: '<b>w</b>', copy: '', status: 'retired', source: 'deploy', readable: false},
+  {id: 5, service: 'EarnApp', label: 'Node UUID', masked: '...5555', worker: 'box-a', copy: 'deploy not confirmed', status: 'active', source: 'deploy', pending: true, readable: true},
 ];
 const html = owner.identityRowsHtml(rows);
 check('masked values are shown', html.includes('...1234') && html.includes('...9999'), html);
-check('each readable row has Show and Copy', (html.match(/data-action="revealIdentity"/g) || []).length === 3, html);
-check('only removed or node-reported ids can be forgotten', (html.match(/data-action="forgetIdentity"/g) || []).length === 3
+check('each readable row has Show and Copy', (html.match(/data-action="revealIdentity"/g) || []).length === 4, html);
+check('only removed, node-reported or unconfirmed ids can be forgotten', (html.match(/data-action="forgetIdentity"/g) || []).length === 4
   && !html.includes('data-action="forgetIdentity" data-a1="1"')
-  && html.includes('data-action="forgetIdentity" data-a1="3"'), html);
+  && html.includes('data-action="forgetIdentity" data-a1="3"')
+  && html.includes('data-action="forgetIdentity" data-a1="5"'), html);
 check('a node-reported id says so', html.includes('Reported by the node itself'), html);
 check('markup in a label stays text', !html.includes('<img') && html.includes('&lt;img'), html);
 check('markup in a worker name stays text', !html.includes('<b>w</b>'), html);
