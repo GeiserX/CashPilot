@@ -763,6 +763,12 @@ def worker(monkeypatch):
     return post
 
 
+def _delete_approval(slug="mysterium", client_id=CLIENT_ID, key=WORKER_KEY):
+    """The header the UI sends with a delete of critical data once the owner gave the password."""
+    target = step_up.delete_target(slug, client_id)
+    return {step_up.APPROVAL_HEADER: step_up.sign(key, step_up.ACTION_DELETE_CRITICAL, target)}
+
+
 def _detail(resp):
     detail = resp.json().get("detail")
     return detail.get("message") if isinstance(detail, dict) else detail
@@ -1803,6 +1809,25 @@ class TestDeletingANodeIdentityNeedsThePassword:
         assert [(e["target"], e["outcome"]) for e in confirmed] == [("mysterium|2", "confirmed")]
         assert ("delete_critical_volumes", "deleted") in _audit()
 
+    def test_the_delete_carries_an_approval_only_that_box_accepts(self, ui):
+        resp, sent = self._remove(ui, self.CRITICAL, OWNER_PASSWORD)
+        assert resp.status_code == 200
+        approval = sent.call_args.kwargs["headers"][step_up.APPROVAL_HEADER]
+        with pytest.raises(step_up.StepUpError, match="another action"):
+            step_up.check(WORKER_KEY, approval, step_up.ACTION_DELETE_CRITICAL, "mysterium|client-a")
+        step_up.check(WORKER_KEY, approval, step_up.ACTION_DELETE_CRITICAL, "mysterium|client-b")
+
+    def test_a_box_that_has_not_enrolled_is_sent_nothing(self, ui):
+        with patch.object(main, "_confirmed_worker_key", AsyncMock(return_value=None)):
+            resp, sent = self._remove(ui, self.CRITICAL, OWNER_PASSWORD)
+        assert resp.status_code == 409 and "enrolling" in _detail(resp)
+        assert not sent.called
+
+    def test_control_a_removal_that_keeps_critical_data_sends_no_approval(self, ui):
+        resp, sent = self._remove(ui, "&delete_volumes=true", None)
+        assert resp.status_code == 200
+        assert step_up.APPROVAL_HEADER not in sent.call_args.kwargs["headers"]
+
     def test_the_api_key_cannot_delete_it(self, ui):
         ui.state["user"] = {"uid": 0, "u": "api", "r": "owner"}
         resp, sent = self._remove(ui, self.CRITICAL, OWNER_PASSWORD)
@@ -1819,6 +1844,69 @@ class TestDeletingANodeIdentityNeedsThePassword:
         resp, sent = self._remove(ui, query, None)
         assert resp.status_code == 200 and sent.called
         assert not [e for e in _audit() if e[0] == "delete-critical-volumes"]
+
+
+class TestTheWorkerChecksTheCriticalDeleteApproval:
+    """The worker itself refuses a delete of critical data without the owner's approval.
+
+    The fleet key an owner can reveal, or the admin API key behind it, must
+    not reach past the UI's password check by calling the worker directly.
+    """
+
+    URL = "/api/containers/mysterium?delete_volumes=true&allow_delete_critical=true"
+
+    def _delete(self, worker, monkeypatch, headers):
+        removed = MagicMock(return_value={"container": "cashpilot-mysterium", "deleted_volumes": []})
+        monkeypatch.setattr(worker_api.orchestrator, "remove_service", removed)
+        monkeypatch.setattr(worker_api.orchestrator, "remove_extra_instances", lambda slug: [])
+        monkeypatch.setattr(worker_api.orchestrator, "copy_identity_digests", lambda slug: {})
+        monkeypatch.setattr(worker_api.proxy_tunnel, "remove_all", lambda slug: [])
+        resp = worker.client.delete(self.URL, headers={"Authorization": f"Bearer {WORKER_KEY}", **headers})
+        return resp, removed
+
+    def test_without_an_approval_nothing_is_removed(self, worker, monkeypatch):
+        resp, removed = self._delete(worker, monkeypatch, {})
+        detail = resp.json()["detail"]
+        assert resp.status_code == 403 and detail["error"] == "step_up_rejected"
+        assert "Nothing was removed" in detail["message"]
+        assert not removed.called
+
+    def test_on_the_shared_fleet_key_nothing_is_removed(self, worker, monkeypatch):
+        monkeypatch.setattr(worker_api, "_worker_key", None)
+        monkeypatch.setattr(worker_api, "API_KEY", WORKER_KEY)  # the revealed shared key
+        resp, removed = self._delete(worker, monkeypatch, _delete_approval())
+        assert resp.status_code == 403 and "shared fleet key" in resp.json()["detail"]["message"]
+        assert not removed.called
+
+    @pytest.mark.parametrize(
+        "other",
+        [{"slug": "storj"}, {"client_id": "another-box"}, {"key": "the-shared-fleet-key"}],
+        ids=["another-service", "another-box", "another-key"],
+    )
+    def test_an_approval_for_something_else_removes_nothing(self, worker, monkeypatch, other):
+        resp, removed = self._delete(worker, monkeypatch, _delete_approval(**other))
+        assert resp.status_code == 403 and resp.json()["detail"]["error"] == "step_up_rejected"
+        assert not removed.called
+
+    def test_an_approval_carries_one_delete(self, worker, monkeypatch):
+        approval = _delete_approval()
+        assert self._delete(worker, monkeypatch, approval)[0].status_code == 200
+        resp, removed = self._delete(worker, monkeypatch, approval)
+        assert resp.status_code == 403 and "already used" in resp.json()["detail"]["message"]
+        assert not removed.called
+
+    def test_control_the_owners_approval_removes_it(self, worker, monkeypatch):
+        resp, removed = self._delete(worker, monkeypatch, _delete_approval())
+        assert resp.status_code == 200, resp.text
+        removed.assert_called_once_with(
+            "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=False
+        )
+
+    @pytest.mark.parametrize("query", ["?delete_volumes=true", "?allow_delete_critical=true", ""])
+    def test_control_a_removal_that_keeps_the_guard_needs_none(self, worker, monkeypatch, query):
+        monkeypatch.setattr(self, "URL", f"/api/containers/mysterium{query}")
+        resp, removed = self._delete(worker, monkeypatch, {})
+        assert resp.status_code == 200 and removed.called
 
 
 class TestARestoreTheWorkerUndid:
@@ -2413,7 +2501,7 @@ class TestABoxWithOnlyAPartialRestore:
         assert resp.status_code == 409 and resp.json()["detail"]["error"] == "restore_unfinished"
         resp = worker.client.delete(
             "/api/containers/mysterium?delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true",
-            headers=headers,
+            headers={**headers, **_delete_approval()},
         )
         assert resp.status_code == 200, resp.text
         assert docker.container_map == {} and docker.volume_map == {}
@@ -2445,7 +2533,7 @@ class TestTheDeleteOfAPartialRestoreIsTiedToIt:
         TestStartAndRemoveAroundARestore()._service(docker)
         resp = worker.client.delete(
             "/api/containers/mysterium?delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true",
-            headers={"Authorization": f"Bearer {WORKER_KEY}"},
+            headers={"Authorization": f"Bearer {WORKER_KEY}", **_delete_approval()},
         )
         detail = resp.json()["detail"]
         assert resp.status_code == 409 and detail["error"] == "restore_cleared"

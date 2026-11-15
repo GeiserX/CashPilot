@@ -6264,8 +6264,17 @@ async def _svc_remove(
         # owner; permanently destroying the money must not be the easier action.
         _require_owner(request)
     worker_id = await _resolve_worker_id(worker_id)
+    approval: dict[str, str] | None = None
     if delete_volumes and allow_delete_critical:
         await _confirm_critical_delete(request, slug, worker_id)
+        # The worker checks this too (worker_api._check_critical_delete_approval),
+        # so its own key, not the shared fleet key, is what lets the delete go.
+        client_id = (await database.get_worker(worker_id) or {}).get("client_id") or ""
+        approval = {
+            step_up.APPROVAL_HEADER: await _sign_for_worker(
+                worker_id, step_up.ACTION_DELETE_CRITICAL, step_up.delete_target(slug, client_id)
+            )
+        }
     params: dict[str, str] | None = None
     if delete_volumes:
         params = {"delete_volumes": "true"}
@@ -6276,7 +6285,7 @@ async def _svc_remove(
         # refuses it once that restore is gone (a later one may have succeeded).
         params = {**(params or {}), "only_if_restore_unfinished": "true"}
     try:
-        result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
+        result = await _proxy_worker_command(worker_id, "remove", slug, params=params, headers=approval)
     except HTTPException as exc:
         if isinstance(exc.detail, dict) and exc.detail.get("error") == "restore_unfinished":
             # The data delete the dashboard then offers must reach this box and
@@ -6621,6 +6630,7 @@ async def _proxy_to_worker(
     timeout: float = 30,
     marked: bool = False,
     allow_plain_http: bool = True,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Proxy one request to a worker's REST API and return its parsed JSON.
 
@@ -6634,7 +6644,10 @@ async def _proxy_to_worker(
     the URL this call sends to, not one read earlier (the restore's passphrase).
     """
     worker = await database.get_worker(worker_id)
+    extra = headers
     url, headers = await _get_verified_worker_url(worker)
+    if extra:
+        headers = {**headers, **extra}
     if not allow_plain_http and urllib.parse.urlparse(url).scheme.lower() != "https":
         raise HTTPException(
             status_code=400,
@@ -6716,12 +6729,19 @@ async def _proxy_to_worker(
 
 
 async def _proxy_worker_command(
-    worker_id: int, command: str, slug: str, *, params: dict[str, str] | None = None, instance: int = 1
+    worker_id: int,
+    command: str,
+    slug: str,
+    *,
+    params: dict[str, str] | None = None,
+    instance: int = 1,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Forward a container command (restart/stop/start/remove) to a worker.
 
     ``instance`` picks one copy of a service that runs more than once; the first
     copy is addressed without it, so an older worker sees the request it always did.
+    ``headers`` go with a remove only: the owner's approval of a critical delete.
     """
     # A stop, restart or removal waits for the container to stop cleanly (300 s
     # for storj). Cut off sooner, a stop that went through answers 504 and is
@@ -6732,7 +6752,9 @@ async def _proxy_worker_command(
         # (orchestrator.GATED_DEPLOY_LOCK), so a Stop sent during one waits for it first.
         timeout += _deploy_timeout(slug)
     if command == "remove":
-        return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout)
+        return await _proxy_to_worker(
+            worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout, headers=headers
+        )
     return await _proxy_to_worker(
         worker_id,
         "POST",

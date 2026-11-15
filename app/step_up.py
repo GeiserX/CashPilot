@@ -55,8 +55,13 @@ ACTION_LEAVE_ROUTE = "leave-route"
 #: Deleting a service's critical volumes (a node identity, a wallet) with the
 #: rest of its data, on one worker. Also the delete of a restore that did not
 #: finish: the worker deletes every volume of the service there, and the UI
-#: cannot see which ones held a working node. Target: ``slug|worker_id``.
+#: cannot see which ones held a working node. Target: :func:`delete_target`;
+#: the UI's own audit row names the box by its id instead (``slug|worker_id``).
 ACTION_DELETE_CRITICAL = "delete-critical-volumes"
+
+#: The request header that carries an approval on a request with no JSON body
+#: (the DELETE of a service with its critical data).
+APPROVAL_HEADER = "X-CashPilot-Step-Up"
 
 #: How long an approval stays valid. Long enough for a slow pull before the
 #: worker checks it (the check runs before the pull), short enough that one seen
@@ -102,6 +107,11 @@ def restore_target(slug: str, worker_client_id: str, bundle_sha256: str) -> str:
     names that box even before its key is checked.
     """
     return f"{slug}|{worker_client_id}|{bundle_sha256}"
+
+
+def delete_target(slug: str, worker_client_id: str) -> str:
+    """The approval target of one delete of critical data: this service, on this worker."""
+    return f"{slug}|{worker_client_id}"
 
 
 class StepUpError(Exception):

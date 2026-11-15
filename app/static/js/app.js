@@ -2974,8 +2974,10 @@ const CP = (() => {
   // only; from the service page it goes to the one online box, and never
   // takes the data with it. A row a restore that did not finish left
   // (leftover) removes only while that partial restore is still there.
-  // Deleting the critical data asks for the owner's password: the server
-  // answers step_up_required and api() asks, as for a restore.
+  // Deleting the data asks for the owner's password only when it holds a
+  // node identity or wallet: the box's own catalog decides that (it answers
+  // critical_volume), then the critical delete goes, the server answers
+  // step_up_required and api() asks, as for a restore.
   async function removeService(slug, workerId, boxName, leftover) {
     const pinned = workerId != null && workerId !== '';
     const where = pinned ? ` from ${boxName || `worker #${workerId}`}` : '';
@@ -2987,20 +2989,24 @@ const CP = (() => {
     // row: the service page names no box, and the server would pick the one
     // online box, which may not be the one the owner means.
     const params = pinned ? [`worker_id=${encodeURIComponent(workerId)}`] : [];
-    const first = { method: 'DELETE' };
-    if (pinned && _isOwner && confirm(`Also delete the data of ${slug} on ${boxName || `worker #${workerId}`}? A node identity or wallet in it is gone for good unless you have its backup file. Cancel keeps the data for a later deploy.`)) {
-      params.push('delete_volumes=true', 'allow_delete_critical=true');
-      first.body = {};
-    }
+    const withData = pinned && _isOwner && confirm(`Also delete the data of ${slug} on ${boxName || `worker #${workerId}`}? A node identity or wallet in it is gone for good unless you have its backup file. Cancel keeps the data for a later deploy.`);
+    if (withData) params.push('delete_volumes=true');
     // That row was drawn for a partial restore: a restore that finished since,
     // in another tab, is not what was meant, with its data or without, by the
     // owner or a writer. The worker then removes nothing.
     if (leftover === 'leftover') params.push('only_if_restore_unfinished=true');
+    const path = (list) => `/api/services/${slug}${list.length ? `?${list.join('&')}` : ''}`;
     try {
       let result;
       try {
-        result = await api(`/api/services/${slug}${params.length ? `?${params.join('&')}` : ''}`, first);
+        result = await api(path(params), { method: 'DELETE' });
       } catch (err) {
+        // The box kept everything: its data holds a node identity or wallet.
+        // The owner's yes above was to that; the critical delete asks for the
+        // password, as for a restore.
+        if (withData && err.code === 'critical_volume') {
+          return removed(await api(path([...params, 'allow_delete_critical=true']), { method: 'DELETE', body: {} }));
+        }
         // A restore that did not finish left a half-written data volume, and
         // the worker keeps it marked until it goes. The way out is the same
         // owner-only, audited critical delete a custom service's Remove uses.
@@ -3016,14 +3022,18 @@ const CP = (() => {
         // in another tab, is not what the owner agreed to delete.
         result = await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true`, { method: 'DELETE', body: {} });
       }
+      removed(result);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+
+    function removed(result) {
       // A volume the box could not delete stays, and stays marked half-written.
       const kept = Array.isArray(result?.failed_volumes) ? result.failed_volumes : [];
       if (kept.length) toast(`${slug} removed${where}, but its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`, 'error');
       else toast(`${slug} removed${where}`, 'success');
       loadServicesTable();
       if (pinned) openServiceDetail(slug);
-    } catch (err) {
-      toast(err.message, 'error');
     }
   }
 

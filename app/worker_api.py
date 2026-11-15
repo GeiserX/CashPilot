@@ -2435,6 +2435,29 @@ async def api_start_container(request: Request, slug: str, instance: int = 1) ->
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+def _check_critical_delete_approval(request: Request, slug: str) -> None:
+    """Refuse a delete of critical data that does not carry the owner's checked approval.
+
+    Overriding the critical-volume guard destroys a node identity or a wallet
+    for good. The UI signs this approval (step_up.ACTION_DELETE_CRITICAL, bound
+    to this service on this worker) only after the owner re-entered their
+    password, and only this worker's own key checks it, so neither the shared
+    fleet key nor the admin API key can do it alone. A worker still on the
+    shared key refuses it, as it refuses a restore.
+    """
+    try:
+        step_up.check(
+            _worker_key,
+            request.headers.get(step_up.APPROVAL_HEADER),
+            step_up.ACTION_DELETE_CRITICAL,
+            step_up.delete_target(slug, CLIENT_ID),
+        )
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was removed."}
+        ) from None
+
+
 @app.delete("/api/containers/{slug}")
 async def api_remove_container(
     request: Request,
@@ -2444,6 +2467,8 @@ async def api_remove_container(
     only_if_restore_unfinished: bool = False,
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    if delete_volumes and allow_delete_critical:
+        _check_critical_delete_approval(request, slug)
     # Copy deploys running when the removal starts, and how many had started.
     # One may finish inside remove_all, after it listed the copies, or start
     # and finish inside it, so the set read afterwards alone would miss the

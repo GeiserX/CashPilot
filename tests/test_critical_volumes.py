@@ -200,16 +200,22 @@ class TestWorkerEndpoint:
         assert "allow_delete_critical" in detail["hint"]
 
     def test_override_is_forwarded_to_the_orchestrator(self, client):
+        from app import step_up
+
         client, worker_api = client
         removal = {"container": "cashpilot-storj", "deleted_volumes": [], "failed_volumes": []}
+        # The override carries the owner's approval, checked with this worker's own key.
+        approval = step_up.sign("own-key", step_up.ACTION_DELETE_CRITICAL, step_up.delete_target("storj", "box-id"))
 
         with (
+            patch.object(worker_api, "_worker_key", "own-key"),
+            patch.object(worker_api, "CLIENT_ID", "box-id"),
             patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock,
             patch("app.worker_api.orchestrator.remove_extra_instances", return_value=[]),
         ):
             resp = client.delete(
                 "/api/containers/storj?delete_volumes=true&allow_delete_critical=true",
-                headers={"Authorization": f"Bearer {worker_api.API_KEY}"},
+                headers={"Authorization": "Bearer own-key", step_up.APPROVAL_HEADER: approval},
             )
 
         assert resp.status_code == 200
@@ -305,7 +311,7 @@ class TestOverrideAuthorization:
         async def _resolve(worker_id):
             return 1
 
-        async def _proxy(worker_id, command, slug, params=None):
+        async def _proxy(worker_id, command, slug, params=None, headers=None):
             return {"status": "removed"}
 
         with (
