@@ -80,14 +80,16 @@ def make_slug(name: str, taken: set[str] | frozenset[str]) -> str:
     ``cashpilot-<slug>-N`` (orchestrator._container_name), so a slug like
     ``custom-foo-2`` would share its container name with copy 2 of
     ``custom-foo``, and a deploy of one would replace the other. "Foo 2" becomes
-    ``custom-foo2``, and a second "Foo" becomes ``custom-foo-v2``.
+    ``custom-foo2``, and a second "Foo" becomes ``custom-foo-v2``. Nor in
+    ``-next`` or ``-moving``, for the reason catalog._validate refuses them:
+    "Foo Next" becomes ``custom-foonext``.
 
     ``taken`` must hold every slug ever used, deleted ones included
     (database.custom_service_slugs): a reused slug would mount the data volume
     a deleted service left behind.
     """
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-") or "service"
-    base = re.sub(r"-(\d+)$", r"\1", base)
+    base = re.sub(r"-(\d+|next|moving)$", r"\1", base)
     slug = f"{SLUG_PREFIX}{base}"
     n = 2
     while slug in taken:

@@ -333,6 +333,8 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "exit_ip": e.get("exit_ip"),
                             "exit_country": e.get("exit_country"),
                             "tunnel_status": e.get("tunnel_status"),
+                            # Stopped by the owner or the cap and kept so (proxy_tunnel.status).
+                            "held": e.get("held"),
                         },
                         "_arch": sys_info.get("arch"),
                         "_node": worker_name,
@@ -553,6 +555,10 @@ async def _container_down_check(statuses: list[dict[str, Any]]) -> None:
             # The provider refused it (account disabled): starting it again
             # cannot help, and the account-disabled alert says so instead.
             if s.get("fatal"):
+                continue
+            # A routed copy the owner or the cap stopped writes no lifecycle event
+            # here, so this check cannot tell; _proxied_copy_check judges it instead.
+            if (s.get("route") or {}).get("held") is True:
                 continue
             key = (s.get("_worker_id"), str(s.get("name") or s.get("slug")))
             seen_keys.add(key)
@@ -4731,12 +4737,12 @@ async def _deploy_routed(
                 timeout=180,
             )
         except HTTPException as exc:
-            if exc.status_code == 504 or (not redeploy and _worker_error(exc) == "routed_copy_may_exist"):
+            if not redeploy and (exc.status_code == 504 or _worker_error(exc) == "routed_copy_may_exist"):
                 # The worker may still finish it, or found the earner of a new
                 # routed copy still there after the failure: both records stay, so
                 # the service is listed and capped, its route is kept, and it can
-                # be stopped or removed. A redeploy keeps the record it had: the
-                # earner found may be the old one, still on the old settings.
+                # be stopped or removed. A redeploy keeps the record it had, after
+                # a timeout too: the earner may be the old one, on the old settings.
                 await database.save_deployment(slug=slug, container_id="remote", spec=record, worker_id=worker_id)
             elif not had_record and _worker_error(exc) != "routed_copy_may_exist":
                 # The copy record of an earner that may still run stays, so it stays capped.
@@ -6368,24 +6374,8 @@ async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str, *, leav
             direct = {k: v for k, v in spec.items() if k != "route"}
             await database.save_deployment(slug=slug, container_id="remote", spec=direct, worker_id=worker_id)
     else:
-        await _drop_unkept_routed_record(worker_id, slug)
+        await database.remove_unkept_routed_deployment(slug, worker_id)
     await _drop_copy_device_links(proxy_id, slug)
-
-
-async def _drop_unkept_routed_record(worker_id: int, slug: str) -> None:
-    """Drop the record of a service routed at deploy once nothing on the worker keeps it.
-
-    Its copy through its route keeps it, and so does any copy of it whose
-    removal is still pending (_finish_copy_removal). Run again when a pending
-    removal ends: a final failure clears that mark and may leave a record
-    whose routed copy is already gone.
-    """
-    route = proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id))
-    if route is not None and not any(
-        c["worker_id"] == worker_id and c["slug"] == slug and (c["proxy_id"] == route or c.get("removing_since"))
-        for c in await database.list_proxied_copies()
-    ):
-        await database.remove_deployment(slug, worker_id=worker_id)
 
 
 async def _drop_copy_device_links(proxy_id: int, slug: str | None = None) -> None:
@@ -6456,7 +6446,9 @@ async def _remove_copy(proxy_id: int, worker_id: int, slug: str) -> Any:
                     },
                 )
             await database.set_proxied_copy_removing(proxy_id, worker_id, slug, False)
-            await _drop_unkept_routed_record(worker_id, slug)
+            # A final failure clears the pending mark, which may have been all
+            # that kept a record whose routed copy is already gone.
+            await database.remove_unkept_routed_deployment(slug, worker_id)
             raise
         await _finish_copy_removal(proxy_id, worker_id, slug)
     return result
@@ -6493,7 +6485,7 @@ async def _resume_copy_removals(copies: list[tuple[int, int, str]]) -> None:
                     # The worker answered and could not remove it: the copy is
                     # still there, so it is listed again with its buttons.
                     await database.set_proxied_copy_removing(proxy_id, worker_id, slug, False)
-                    await _drop_unkept_routed_record(worker_id, slug)
+                    await database.remove_unkept_routed_deployment(slug, worker_id)
                     logger.warning(
                         "Worker %s could not remove the copy of %s through proxy %s: %s",
                         worker_id,

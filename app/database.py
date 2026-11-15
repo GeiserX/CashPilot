@@ -2162,23 +2162,62 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
     """
     db = await _get_db()
     try:
-        gone = True
-        if worker_id is None:
-            # Gone everywhere: each box's record goes with it, or those records
-            # would go on claiming the service is deployed on those boxes.
-            await db.execute("DELETE FROM deployment_specs WHERE slug = ?", (slug,))
-            await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
-        else:
-            await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
-            if await _deployed_on_another_worker(db, slug, worker_id):
-                gone = False
-            else:
-                await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
-        if gone:
-            await _record_removed(db, slug)
+        await _forget_deployment(db, slug, worker_id)
         await db.commit()
     finally:
         await db.close()
+
+
+async def _forget_deployment(db: Any, slug: str, worker_id: int | None) -> None:
+    gone = True
+    if worker_id is None:
+        # Gone everywhere: each box's record goes with it, or those records
+        # would go on claiming the service is deployed on those boxes.
+        await db.execute("DELETE FROM deployment_specs WHERE slug = ?", (slug,))
+        await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+    else:
+        await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
+        if await _deployed_on_another_worker(db, slug, worker_id):
+            gone = False
+        else:
+            await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
+    if gone:
+        await _record_removed(db, slug)
+
+
+async def remove_unkept_routed_deployment(slug: str, worker_id: int) -> None:
+    """Forget a service routed at deploy on ``worker_id`` once nothing there keeps its record.
+
+    Its copy through its route keeps it, and so does any copy of it whose
+    removal is still pending. Own connection and BEGIN IMMEDIATE: the route
+    read, the copy check and the delete are one step, so a removal and a new
+    deploy through another proxy cannot land between them and lose the new
+    deployment's record.
+    """
+    from app.proxies import route_of
+
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id)
+            )
+            row = await cursor.fetchone()
+            route = route_of(_decode_spec(row["spec_encrypted"] or "", slug)) if row else None
+            if route is not None:
+                cursor = await db.execute(
+                    "SELECT 1 FROM proxied_copies WHERE worker_id = ? AND slug = ? "
+                    "AND (proxy_id = ? OR removing_since IS NOT NULL) LIMIT 1",
+                    (worker_id, slug, route),
+                )
+                if await cursor.fetchone() is None:
+                    await _forget_deployment(db, slug, worker_id)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
 
 
 async def list_deployment_placements() -> list[dict[str, Any]]:

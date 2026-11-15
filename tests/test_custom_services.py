@@ -141,6 +141,12 @@ class TestSlugs:
     def test_a_trailing_number_loses_its_dash(self):
         assert custom_services.make_slug("Node 2", set()) == "custom-node2"
 
+    def test_a_tunnel_suffix_loses_its_dash(self):
+        """A routed copy's tunnel ends in the slug: -next or -moving would read as a staged or aside tunnel."""
+        assert custom_services.make_slug("Node Next", set()) == "custom-nodenext"
+        assert custom_services.make_slug("Node Moving", set()) == "custom-nodemoving"
+        assert custom_services.make_slug("Next Node", set()) == "custom-next-node"
+
     def test_no_slug_shares_a_container_name_with_another_slugs_copy(self):
         """Copy N runs as cashpilot-<slug>-N. A slug ending in -<digits> would be
         another service's copy, and a deploy of one replaced the other."""

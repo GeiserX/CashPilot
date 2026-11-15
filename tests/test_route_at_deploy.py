@@ -12,9 +12,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sqlite3
 import threading
 import time
 from contextlib import ExitStack, asynccontextmanager, contextmanager
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -1567,6 +1569,35 @@ class TestADroppedConnectionIsNotAFailedDeploy:
         assert [c["slug"] for c in copies] == ["honeygain"]
         assert proxies.route_of(record) == pid
 
+    def test_a_routed_redeploy_that_times_out_keeps_the_record_it_had(self, db):
+        """The worker may fail it and keep the old earner: the settings that may never run are not recorded."""
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy()
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            before = await database.get_deployment_spec("honeygain", worker_id=1)
+            with ExitStack() as stack:
+                for p in self._hop_raising(httpx.ReadError("reset")):
+                    stack.enter_context(p)
+                real = main._proxy_to_worker
+                stack.enter_context(ui.active())
+                main._proxy_to_worker = lambda wid, m, path, **k: (
+                    real(wid, m, path, **k) if path.endswith("/deploy") else ui.hop(wid, m, path, **k)
+                )
+                with pytest.raises(HTTPException) as err:
+                    await main.api_deploy(
+                        _request(), "honeygain", main.DeployRequest(env={**ENV, "HONEYGAIN_PASSWORD": "new"}, route=pid)
+                    )
+            copies = [c for c in await database.list_proxied_copies(pid) if c["worker_id"] == 1]
+            return pid, err.value, copies, before, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        pid, err, copies, before, record = _run(go)
+        assert err.status_code == 504
+        assert [c["slug"] for c in copies] == ["honeygain"]
+        assert proxies.route_of(record) == pid
+        assert record == before
+
 
 class TestAFailedRoutedDeployWhoseEarnerSurvived:
     """The worker kept the route because the earner may still run: the UI keeps both records, as after a timeout."""
@@ -2103,6 +2134,56 @@ class TestTheUiManagesARoutedService:
         assert left == [pid]
         assert record is not None and proxies.route_of(record) == pid
 
+    def test_a_plain_copy_cleanup_never_drops_a_deploy_that_landed_after_its_read(self, db):
+        """Between the cleanup reading route A and deleting, A is removed and a deploy through C lands: C's record stays."""
+        ui, setup = self._routed(db)
+        decode = database._decode_spec
+
+        async def go():
+            pid = await setup()
+            plain, third = await ui.proxy(), await ui.proxy()
+            await database.save_proxied_copy(plain, 1, "honeygain")
+            before = await database.get_deployment_spec("honeygain", worker_id=1)
+            landed = {**before, "route": {"proxy_id": third}}
+
+            def compete():
+                # The other requests, straight on the file: remove A and its record, then deploy through C.
+                con = sqlite3.connect(str(database.DB_PATH), timeout=0, isolation_level=None)
+                try:
+                    con.execute("BEGIN IMMEDIATE")
+                    con.execute("DELETE FROM proxied_copies WHERE proxy_id = ? AND slug = 'honeygain'", (pid,))
+                    con.execute("DELETE FROM deployment_specs WHERE worker_id = 1 AND slug = 'honeygain'")
+                    con.execute(
+                        "INSERT INTO proxied_copies (proxy_id, worker_id, slug) VALUES (?, 1, 'honeygain')", (third,)
+                    )
+                    con.execute(
+                        "INSERT INTO deployment_specs (slug, worker_id, spec_encrypted) VALUES ('honeygain', 1, ?)",
+                        (database.encrypt_value(json.dumps(landed, sort_keys=True)),),
+                    )
+                    con.execute("COMMIT")
+                    return True
+                except sqlite3.OperationalError:  # the cleanup holds the write lock: they wait for it
+                    return False
+                finally:
+                    con.close()
+
+            tried = []
+
+            def decode_then_compete(blob, slug):
+                spec = decode(blob, slug)
+                if not tried and proxies.route_of(spec) == pid:
+                    tried.append(compete())
+                return spec
+
+            with patch.object(database, "_decode_spec", decode_then_compete):
+                await main._finish_copy_removal(plain, 1, "honeygain")
+            assert compete()  # held off until the cleanup's one step ended, then lands
+            return tried, landed, await database.get_deployment_spec("honeygain", worker_id=1)
+
+        tried, landed, record = _run(go)
+        assert tried == [False]
+        assert record == landed
+
     def test_a_copy_through_the_same_proxy_is_refused(self, db):
         ui, setup = self._routed(db)
 
@@ -2191,6 +2272,31 @@ class TestTheDashboardCountsIt:
             with patch.object(main.database, "list_workers", AsyncMock(return_value=[_worker_row(proxied=[entry])])):
                 (row,) = asyncio.run(main._get_all_worker_containers())
             assert row["image"] == image
+
+    def test_a_held_routed_copy_is_not_a_down_container(self, db, monkeypatch):
+        """Stopped by the owner or the cap and kept so: _proxied_copy_check judges it, not the container-down alert."""
+        monkeypatch.setattr(main, "CONTAINER_DOWN_GRACE", timedelta(0))
+        monkeypatch.setattr(main, "_container_first_seen_down", {})
+        monkeypatch.setattr(main, "_container_down_bell", {})
+        monkeypatch.setattr(main, "_collector_alerts", [])
+
+        def alerted(held):
+            entry = {**self.ROUTED, "status": "exited", "held": held}
+            record = AsyncMock(return_value=None)
+            with (
+                patch.object(main.database, "list_workers", AsyncMock(return_value=[_worker_row(proxied=[entry])])),
+                patch.object(main.database, "record_alert", record),
+                patch.object(main.database, "get_alert_subjects", AsyncMock(return_value=set())),
+                patch.object(main.database, "clear_alerts", AsyncMock()),
+                patch.object(main.database, "get_last_lifecycle_event", AsyncMock(return_value=None)),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+            ):
+                rows = asyncio.run(main._get_all_worker_containers())
+                asyncio.run(main._container_down_check(rows))
+            return [c.args[1] for c in record.call_args_list]
+
+        assert alerted(True) == []
+        assert alerted(False) == ["honeygain"]  # control: one that should run still alerts
 
     def test_routed_entries_reads_a_raw_database_row(self):
         assert proxies.routed_entries(_worker_row(proxied=[self.ROUTED, self.COPY])) == [self.ROUTED]
