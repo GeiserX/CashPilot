@@ -10,6 +10,36 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.5.0] - 2026-11-15
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#744)
+- Fix the 4050 commands that always fail and explain a WebUI that never loads (#752)
+- Show how to free the disk that old images take, without giving the worker image delete (#746)
+
+### Features
+
+- Route a service through a proxy from its first deploy, so its provider never sees the box's IP (#754)
+- Keep the device ids a service ran with after it is removed (#753)
+- Stop a stolen session from reading or replacing a wallet volume (#751)
+
+### Fixes
+
+- Let a redeploy keep required values the server already stores (#756)
+- Give each box its own device name so providers stop merging them (#749)
+- Keep claimable device IDs out of pushed notices and other roles (#748)
+- Stop a backup file from unpacking 100 MB or file capabilities on restore (#750)
+- Never send a stored proxy secret to a new server (#747)
+
+### Maintenance
+
+- Pin the examples to 2.4 (#743)
+
+### Testing
+
+- Fail a hung test in minutes instead of holding a runner for six hours (#757)
+
 ## [2.4.0] - 2026-11-14
 
 ### Documentation
