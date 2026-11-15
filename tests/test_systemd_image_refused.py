@@ -120,3 +120,123 @@ class TestWhatRunsFirst:
 
     def test_an_empty_config_is_not_systemd(self):
         assert not orchestrator._boots_init_system({}, None, None)
+
+
+class TestTheDeployDeadline:
+    """Past its deadline a deploy creates nothing, so the UI's hold on its ids outlasts it (#753)."""
+
+    def test_a_pull_still_running_at_the_deadline_is_abandoned(self):
+        import threading
+        import time
+
+        old = MagicMock()
+        client = _client({"Entrypoint": ["entrypoint"]}, old=old)
+        release = threading.Event()
+        client.images.pull.side_effect = lambda *_a, **_k: release.wait(5)
+        try:
+            with pytest.raises(orchestrator.ContainerRuntimeError) as exc:
+                _deploy(client, deadline=time.monotonic() + 0.2)
+        finally:
+            release.set()
+        assert exc.value.status_code == 409 and "abandoned" in str(exc.value)
+        old.stop.assert_not_called()
+        old.remove.assert_not_called()
+        client.containers.run.assert_not_called()
+        client.containers.create.assert_not_called()
+
+    def test_a_deadline_that_passes_after_the_pull_creates_nothing(self):
+        import time
+
+        old = MagicMock()
+        client = _client({"Entrypoint": ["entrypoint"]}, old=old)
+        image = client.images.get.return_value
+
+        def slow_inspect(*_a, **_k):
+            time.sleep(0.3)
+            return image
+
+        client.images.get.side_effect = slow_inspect
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="abandoned"):
+            _deploy(client, deadline=time.monotonic() + 0.1)
+        old.stop.assert_not_called()
+        client.containers.run.assert_not_called()
+
+    @pytest.mark.parametrize("replacing", [False, True])
+    def test_a_deadline_that_passes_while_the_volumes_are_made_creates_nothing(self, replacing):
+        """Many named volumes, each slow: the deploy is past its deadline before the container is created.
+
+        The volume setup moves the worker's clock two hours on instead of
+        sleeping, so a slow runner cannot pass the deadline at an earlier check.
+        """
+        import time
+        import types
+
+        skew = [0.0]
+        clock = types.SimpleNamespace(**{k: getattr(time, k) for k in dir(time) if not k.startswith("_")})
+        clock.monotonic = lambda: time.monotonic() + skew[0]
+
+        def slow_volumes(*_a):
+            skew[0] = 7200.0
+
+        old = MagicMock(status="running", labels={orchestrator.LABEL_SERVICE: "earnapp"}) if replacing else None
+        client = _client({"Entrypoint": ["entrypoint"]}, old=old)
+        if replacing:
+            names = {"cashpilot-earnapp": old}
+
+            def get(name):
+                if name not in names:
+                    raise orchestrator.NotFound(name)
+                return names[name]
+
+            def rename(new):
+                names.pop(next(n for n, c in names.items() if c is old))
+                names[new] = old
+
+            client.containers.get.side_effect = get
+            old.rename.side_effect = rename
+        with (
+            patch.object(orchestrator, "time", clock),
+            patch.object(orchestrator, "_ensure_volumes", slow_volumes),
+            patch.object(orchestrator, "_instance_of", lambda c: 1),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="abandoned"),
+        ):
+            _deploy(client, deadline=time.monotonic() + 3600)
+        assert skew[0], "the volume setup ran"
+        client.containers.run.assert_not_called()
+        client.containers.create.assert_not_called()
+        if replacing:
+            # Stopped and moved aside before the check, so it is put back and started again.
+            old.stop.assert_called()
+            old.start.assert_called()
+            assert names == {"cashpilot-earnapp": old}
+
+    def test_a_pull_error_inside_the_deadline_still_falls_back_to_a_local_copy(self):
+        """The positive control: the deadline changes nothing for a deploy that keeps to it."""
+        client = _client({"Entrypoint": ["entrypoint"]})
+        client.images.pull.side_effect = orchestrator.APIError("registry down")
+        assert _deploy(client) == "new"
+
+    def test_the_worker_counts_the_deadline_from_the_request(self):
+        import time
+        from contextlib import asynccontextmanager
+
+        from fastapi.testclient import TestClient
+
+        from app import constants, worker_api
+
+        @asynccontextmanager
+        async def no_lifespan(_app):
+            yield
+
+        worker_api.app.router.lifespan_context = no_lifespan
+        before = time.monotonic()
+        with (
+            patch.object(worker_api.orchestrator, "deploy_raw", return_value="cid") as deploy,
+            patch.object(worker_api.lan_fence, "refresh_outside"),
+            patch.object(worker_api, "_verify_api_key", lambda request: None),
+        ):
+            resp = TestClient(worker_api.app).post("/api/containers/honeygain/deploy", json={"image": "img"})
+        after = time.monotonic()
+        assert resp.status_code == 200, resp.text
+        deadline = deploy.call_args.kwargs["deadline"]
+        assert before + constants.DEPLOY_DEADLINE_SECONDS <= deadline <= after + constants.DEPLOY_DEADLINE_SECONDS

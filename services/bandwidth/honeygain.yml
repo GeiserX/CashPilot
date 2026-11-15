@@ -33,6 +33,7 @@ docker:
       secret: true
       description: "Your Honeygain account password"
     - key: HONEYGAIN_DEVICE_NAME
+      identifier: true
       label: "Device name"
       required: false
       secret: false

@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app import (  # noqa: E402
     auth,
+    catalog,
     database,
     main,
     orchestrator,
@@ -2783,3 +2784,126 @@ class TestARoutedRenameReachesThePlainCopies:
         assert copies[other_pid]["rename_pending"] == 1
         assert copies[routed_pid]["rename_pending"] == 0
         assert any(f"p{other_pid}" in note for note in result.get("kept_from_previous_deployment", []))
+
+
+PR_UUID = "ab" * 32
+PR_ENV = {"UUID": PR_UUID, "DEVICE_NAME": "box-proxyrack"}
+
+
+async def _ledger(slug="proxyrack"):
+    """Active ledger rows as {(worker, instance, key): value}."""
+    return {
+        (r["worker_id"], r["instance"], r["name"]): r["value"]
+        for r in await database.list_identities()
+        if r["slug"] == slug and r["status"] == "active"
+    }
+
+
+class TestARoutedDeployKeepsTheIdentityLedger:
+    """A routed deploy holds, records and releases its device ids as the direct path does, and the shared-id guard runs."""
+
+    @staticmethod
+    async def _boxes():
+        """Worker 1 (the one _Ui deploys to) and worker 2, both enrolled, so their ledger rows count."""
+        one = await database.upsert_worker("client-a", name="box")
+        two = await database.upsert_worker("client-b", name="box-b")
+        assert (one, two) == (1, 2)
+
+    def _deploy(self, ui, body):
+        return ui.deploy(body, slug="proxyrack")
+
+    def test_its_ids_are_the_services_own_copy_and_go_with_its_removal(self, db):
+        ui = _Ui()
+
+        async def go():
+            await self._boxes()
+            pid = await ui.proxy()
+            with patch.object(main, "_register_device", AsyncMock(return_value=True)):
+                await self._deploy(ui, main.DeployRequest(env=PR_ENV, route=pid))
+            deployed = await _ledger()
+            with ui.active():
+                await main._svc_remove(_request(), "proxyrack", 1, False)
+            return deployed, await _ledger()
+
+        deployed, removed = _run(go)
+        # Copy 1, like a direct deploy: no hold left, no proxied-copy row.
+        assert deployed == {(1, "1", "UUID"): PR_UUID, (1, "1", "DEVICE_NAME"): "box-proxyrack"}
+        assert removed == {}
+
+    def test_an_id_running_on_another_box_is_refused_until_the_owner_confirms(self, db):
+        ui = _Ui()
+
+        async def go():
+            await self._boxes()
+            pid = await ui.proxy()
+            await database.record_identities("proxyrack", 2, {"1": {"UUID": PR_UUID}}, scope="given")
+            with patch.object(main, "_register_device", AsyncMock(return_value=True)):
+                with pytest.raises(HTTPException) as refused:
+                    await self._deploy(ui, main.DeployRequest(env=PR_ENV, route=pid))
+                sent_before = list(ui.calls)
+                await self._deploy(ui, main.DeployRequest(env=PR_ENV, route=pid, allow_shared_identity=True))
+            return refused.value, sent_before, ui.paths()
+
+        refused, sent_before, paths = _run(go)
+        assert refused.status_code == 409 and refused.detail["error"] == "identity_in_use"
+        assert sent_before == []
+        assert paths == [("POST", "/api/proxied/proxyrack/1/deploy")]
+
+    @pytest.mark.parametrize(
+        ("answer", "held"),
+        [
+            (HTTPException(status_code=409, detail="Docker refused the container"), False),
+            (HTTPException(status_code=504, detail="the worker did not answer in time"), True),
+            (HTTPException(status_code=409, detail={"error": "routed_copy_may_exist", "message": "x"}), True),
+        ],
+        ids=["refused", "no-answer", "copy-may-exist"],
+    )
+    def test_the_hold_ends_only_when_the_worker_said_no(self, db, answer, held):
+        ui = _Ui()
+
+        async def go():
+            await self._boxes()
+            pid = await ui.proxy()
+            ui.worker_reply = lambda method, path, body: answer if path.endswith("/deploy") else {}
+            with pytest.raises(HTTPException):
+                await self._deploy(ui, main.DeployRequest(env=PR_ENV, route=pid))
+            return await _ledger()
+
+        rows = _run(go)
+        assert rows == ({(1, "u1", "UUID"): PR_UUID, (1, "u1", "DEVICE_NAME"): "box-proxyrack"} if held else {})
+
+    @pytest.mark.parametrize("routed", [True, False], ids=["routed", "plain-copy-control"])
+    def test_a_heartbeat_listing_the_routed_copy_proves_an_unanswered_deploy(self, db, routed):
+        """It has no container of its own: its copy through the route, flagged routed, is its copy 1."""
+        ui = _Ui()
+        digest = catalog.identity_digest(catalog.get_service("proxyrack"), PR_ENV, WORKER_KEY)
+
+        async def go():
+            await self._boxes()
+            await database.set_worker_key("client-a", WORKER_KEY)
+            pid = await ui.proxy()
+            timeout = HTTPException(status_code=504, detail="the worker did not answer in time")
+            ui.worker_reply = lambda method, path, body: timeout if path.endswith("/deploy") else {}
+            with pytest.raises(HTTPException):
+                await self._deploy(ui, main.DeployRequest(env=PR_ENV, route=pid))
+            entry = {"slug": "proxyrack", "proxy_id": pid, "container_id": "e1", "identity_digest": digest}
+            if routed:
+                entry["routed"] = True
+            body = main.WorkerHeartbeat(
+                name="box",
+                client_id="client-a",
+                containers=[],
+                system_info={"containers_listed": True, "features": ["deploy_deadline"], "proxied": [entry]},
+            )
+            with (
+                patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+                patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            ):
+                await main.api_worker_heartbeat(MagicMock(), body)
+            return await _ledger()
+
+        rows = _run(go)
+        held = {(1, "u1", "UUID"): PR_UUID, (1, "u1", "DEVICE_NAME"): "box-proxyrack"}
+        mine = {(1, "1", "UUID"): PR_UUID, (1, "1", "DEVICE_NAME"): "box-proxyrack"}
+        # Proven: the ids become copy 1's row, the hold stays beside it until the deadline.
+        assert rows == ({**held, **mine} if routed else held)

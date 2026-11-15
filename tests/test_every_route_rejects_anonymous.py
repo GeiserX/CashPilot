@@ -46,6 +46,7 @@ SUBSTITUTIONS = {
     "payout_id": "1",
     "alert_id": "1",
     "id": "1",
+    "identity_id": "1",
     "proxy_id": "1",
     "command": "stop",
 }

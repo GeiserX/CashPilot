@@ -163,6 +163,10 @@ def _deploy(instances, *, svc=SCALABLE, recorded=None, worker=None, image=None, 
             patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=recorded)),
             patch.object(main.database, "save_deployment", saved),
             patch.object(main.database, "record_health_event", AsyncMock()),
+            # No ledger table here: the hold each copy's deploy writes first is
+            # tested in test_identity_ledger, and a failed one refuses the deploy.
+            patch.object(main.database, "hold_pending_identities", AsyncMock(return_value="u1")),
+            patch.object(main.database, "release_pending_identities", AsyncMock()),
             patch.object(main, "_spawn", lambda coro: coro.close()),
             patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
         ):
