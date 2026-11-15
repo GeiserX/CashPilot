@@ -6221,6 +6221,34 @@ async def _svc_restart(request: Request, slug: str, worker_id: int | None, insta
     return result
 
 
+async def _confirm_critical_delete(request: Request, slug: str, worker_id: int) -> None:
+    """The owner's password before a node identity or wallet on ``worker_id`` is deleted for good.
+
+    Restoring one (which only creates) already asks for it; destroying one must
+    not be the easier action for a stolen session. The password comes in the
+    JSON body as ``step_up_password``. Without one the answer is 403
+    ``step_up_required``, which the dashboard turns into a password prompt; the
+    step-up writes its own audit row (deps.require_step_up).
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 - no body, or not JSON: no password
+        body = None
+    password = body.get("step_up_password") if isinstance(body, dict) else None
+    if not isinstance(password, str) or not password:
+        worker = await database.get_worker(worker_id) or {}
+        box = worker.get("name") or f"worker {worker_id}"
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": f"Deleting the data of {slug} on {box} destroys any node identity or wallet in it "
+                "for good. Enter your password to continue.",
+            },
+        )
+    await require_step_up(request, password, action=step_up.ACTION_DELETE_CRITICAL, target=f"{slug}|{worker_id}")
+
+
 async def _svc_remove(
     request: Request,
     slug: str,
@@ -6236,6 +6264,8 @@ async def _svc_remove(
         # owner; permanently destroying the money must not be the easier action.
         _require_owner(request)
     worker_id = await _resolve_worker_id(worker_id)
+    if delete_volumes and allow_delete_critical:
+        await _confirm_critical_delete(request, slug, worker_id)
     params: dict[str, str] | None = None
     if delete_volumes:
         params = {"delete_volumes": "true"}

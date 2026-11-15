@@ -52,6 +52,12 @@ ACTION_RESTORE = "restore-backup"
 #: there (app/route_gate.py). Target: the service's slug.
 ACTION_LEAVE_ROUTE = "leave-route"
 
+#: Deleting a service's critical volumes (a node identity, a wallet) with the
+#: rest of its data, on one worker. Also the delete of a restore that did not
+#: finish: the worker deletes every volume of the service there, and the UI
+#: cannot see which ones held a working node. Target: ``slug|worker_id``.
+ACTION_DELETE_CRITICAL = "delete-critical-volumes"
+
 #: How long an approval stays valid. Long enough for a slow pull before the
 #: worker checks it (the check runs before the pull), short enough that one seen
 #: in a log is useless soon after. The UI and the worker clocks must agree to

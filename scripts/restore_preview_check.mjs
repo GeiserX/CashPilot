@@ -107,25 +107,41 @@ check('no tag from the data reaches the page',
 // only then is the remove sent again as the audited critical delete.
 const apiSrc = slice('async function api(', '// One prompt at a time');
 const removeSrc = slice('async function removeService(', '// Log viewer');
-function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worker_id: 1, worker_name: 'box-a'}, args = [], failed = []}) {
-  const sent = [];
-  const asked = [];
-  const toasts = [];
-  const reopened = [];
-  const fetch = async (path, config) => {
+// With stepUp the stub server is the real one's rule: a delete of critical
+// data without the owner's password is answered step_up_required, and api()
+// asks for it (askStepUp answers `password`).
+function stubServer({refusal, box, failed, stepUp, sent, bodies}) {
+  let reached = 0;
+  return async (path, config) => {
     sent.push(`${config.method} ${path}`);
-    const ok = sent.length > 1 || !refusal;
+    const sentBody = config.body ? JSON.parse(config.body) : undefined;
+    bodies.push(sentBody);
+    if (stepUp && path.includes('allow_delete_critical=true') && !(sentBody && sentBody.step_up_password)) {
+      return {ok: false, status: 403, json: async () => ({detail: {error: 'step_up_required', message: 'Enter your password.'}})};
+    }
+    reached++;
+    const ok = reached > 1 || !refusal;
     const body = ok ? {status: 'removed', failed_volumes: failed}
       : {detail: {error: refusal, message: 'A restore of mysterium did not finish.', ...box}};
     return {ok, status: ok ? 200 : 409, json: async () => body};
   };
+}
+function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worker_id: 1, worker_name: 'box-a'}, args = [], failed = [], stepUp = false, password = null}) {
+  const sent = [];
+  const bodies = [];
+  const asked = [];
+  const prompted = [];
+  const toasts = [];
+  const reopened = [];
+  const fetch = stubServer({refusal, box, failed, stepUp, sent, bodies});
   const confirm = (text) => { asked.push(text); return answers.shift(); };
   const toast = (text, kind) => toasts.push(`${kind}: ${text}`);
+  const askStepUp = async (text) => { prompted.push(text); return password; };
   const {removeService} = new Function(
     'fetch', 'confirm', 'toast', 'loadServicesTable', 'openServiceDetail', '_isOwner', 'window', 'askStepUp',
     `${apiSrc}\n${removeSrc}\nreturn {removeService};`,
-  )(fetch, confirm, toast, () => {}, (slug) => reopened.push(slug), owner, {confirm}, async () => null);
-  return removeService('mysterium', ...args).then(() => ({sent, asked, toasts, reopened}));
+  )(fetch, confirm, toast, () => {}, (slug) => reopened.push(slug), owner, {confirm}, askStepUp);
+  return removeService('mysterium', ...args).then(() => ({sent, bodies, asked, prompted, toasts, reopened}));
 }
 
 const CRITICAL = '&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true';
@@ -189,6 +205,65 @@ check('control: a box row with a container sends its data delete without that fl
 run = await runRemove({owner: false, answers: [true], refusal: null});
 check('a writer is never asked about the data and never sends its delete', run.asked.length === 1
   && run.sent.join() === 'DELETE /api/services/mysterium', run);
+// Every first delete from a partial-restore row carries the flag, not only the
+// one with the data: a plain removal there would take a restore that finished
+// since, in another tab (its container; the worker keeps nothing back).
+run = await runRemove({owner: true, answers: [true, false], refusal: null, args: ['2', 'box-b', 'leftover']});
+check('a partial-restore row the owner removes without its data still removes only that partial restore',
+  run.sent.join() === 'DELETE /api/services/mysterium?worker_id=2&only_if_restore_unfinished=true', run.sent);
+run = await runRemove({owner: false, answers: [true], refusal: null, args: ['2', 'box-b', 'leftover']});
+check('a writer on a partial-restore row removes only that partial restore', run.asked.length === 1
+  && run.sent.join() === 'DELETE /api/services/mysterium?worker_id=2&only_if_restore_unfinished=true', run.sent);
+run = await runRemove({owner: false, answers: [true], refusal: 'restore_cleared', args: ['2', 'box-b', 'leftover']});
+check('and when that restore finished meanwhile the refusal is shown and nothing more is sent',
+  run.sent.length === 1 && /^error: /.test(run.toasts.join()), run);
+run = await runRemove({owner: false, answers: [true], refusal: null, args: ['2', 'box-b']});
+check('control: a writer on a box row with a container sends no flag',
+  run.sent.join() === 'DELETE /api/services/mysterium?worker_id=2', run.sent);
+
+// --- Deleting a node identity asks for the owner's password -----------------
+// The server answers step_up_required for a delete of critical data without
+// it; api() asks once and sends the same delete again with the password.
+run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, password: 'pw'});
+check('the data delete asks for the password and sends it with the same delete', run.prompted.length === 1
+  && run.sent.length === 2 && run.sent[0] === run.sent[1]
+  && run.sent[1] === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true'
+  && run.bodies[1] && run.bodies[1].step_up_password === 'pw' && run.toasts.join() === 'success: mysterium removed from box-b', JSON.stringify(run));
+run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b'], stepUp: true, password: null});
+check('cancelling the password deletes nothing and says why', run.prompted.length === 1 && run.sent.length === 1
+  && /^error: Enter your password/.test(run.toasts.join()), run);
+run = await runRemove({owner: true, answers: [true, false, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}, stepUp: true, password: 'pw'});
+check('the delete of a partial restore asks for the password too', run.prompted.length === 1
+  && run.sent.join(' | ') === `DELETE /api/services/mysterium?worker_id=2 | DELETE /api/services/mysterium?worker_id=2${CRITICAL} | DELETE /api/services/mysterium?worker_id=2${CRITICAL}`
+  && run.bodies[2].step_up_password === 'pw', run);
+run = await runRemove({owner: true, answers: [true, false], refusal: null, args: ['2', 'box-b'], stepUp: true, password: 'pw'});
+check('control: a removal that keeps the data asks no password', run.prompted.length === 0
+  && run.sent.join() === 'DELETE /api/services/mysterium?worker_id=2', run);
+
+// A custom service's Remove can delete its data too: the same password.
+const customSrc = slice('async function removeCustomFromBox(', 'async function deployServiceToWorkers(');
+async function runCustomRemove({answers, password}) {
+  const sent = [];
+  const bodies = [];
+  const prompted = [];
+  const toasts = [];
+  const fetch = stubServer({refusal: null, box: {}, failed: [], stepUp: true, sent, bodies});
+  const confirm = (text) => answers.shift();
+  const {removeCustomFromBox} = new Function(
+    'fetch', 'toast', 'openServiceDetail', '_isOwner', 'window', 'askStepUp',
+    `${apiSrc}\n${customSrc}\nreturn {removeCustomFromBox};`,
+  )(fetch, (text, kind) => toasts.push(`${kind}: ${text}`), () => {}, true, {confirm},
+    async (text) => { prompted.push(text); return password; });
+  await removeCustomFromBox('mine', 3, 'box-c');
+  return {sent, bodies, prompted, toasts};
+}
+run = await runCustomRemove({answers: [true, true], password: 'pw'});
+check('a custom service\'s data delete asks for the password', run.prompted.length === 1 && run.sent.length === 2
+  && run.bodies[1].step_up_password === 'pw' && /^success: /.test(run.toasts.join()), run);
+run = await runCustomRemove({answers: [true, false], password: 'pw'});
+check('control: a custom removal that keeps the data asks no password', run.prompted.length === 0
+  && run.sent.join() === 'DELETE /api/services/mine?worker_id=3', run);
+
 const settingsHtml = readFileSync('app/templates/settings.html', 'utf8');
 const guide = readFileSync('docs/backup.md', 'utf8');
 check('the settings page points at that question', /say yes when it asks to delete its data/.test(settingsHtml));

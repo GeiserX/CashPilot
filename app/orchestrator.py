@@ -905,9 +905,11 @@ def _pull_until(client: Any, image: str, deadline: float) -> APIError | None:
 #: skips this. ``_removing`` counts remove_service calls per slug: a restore
 #: and a deploy refuse while one runs, so the helper and volumes a removal read
 #: and deletes are never those of a restore that started after its check, and
-#: no deploy starts on a volume it is about to delete. ``_operating`` counts the
-#: start, restart and export calls per slug (_holds_slug): a restore refuses
-#: while one runs, so none of them meets the container a restore created.
+#: no deploy starts on a volume it is about to delete; a removal refuses while
+#: a deploy, start, restart or export runs, so it never deletes the volume a
+#: deploy found. ``_operating`` counts the start, restart and export calls per
+#: slug (_holds_slug): a restore refuses while one runs, so none of them meets
+#: the container a restore created.
 #: Each registers before its own check and holds the slug to its last Docker
 #: action.
 _SLUG_WORK_LOCK = threading.Lock()
@@ -3572,6 +3574,19 @@ def remove_service(
         if slug in _restoring:
             raise ContainerRuntimeError(
                 f"A restore of {slug} is running on this box, so nothing was removed. Try again when it ends.", 409
+            )
+        # A deploy keeps the volumes it finds and creates the missing ones: a
+        # data delete during its pull would leave it to start a new identity on
+        # an empty volume. A start, restart or backup reads the same container.
+        if _deploying.get(slug):
+            raise ContainerRuntimeError(
+                f"A deploy of {slug} is running on this box, so nothing was removed. Try again when it ends.", 409
+            )
+        if _operating.get(slug):
+            raise ContainerRuntimeError(
+                f"A start, restart or backup of {slug} is running on this box, so nothing was removed. "
+                "Try again when it ends.",
+                409,
             )
         # From the check to the last delete: a restore of this slug refuses meanwhile (restore_state).
         _removing[slug] = _removing.get(slug, 0) + 1

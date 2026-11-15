@@ -36,7 +36,7 @@ from contextlib import ExitStack, asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -1717,7 +1717,8 @@ class TestRemoveAfterARestoreThatDidNotFinish:
         }
     }
 
-    def _remove(self, ui, query, status, body, box="?worker_id=1"):
+    def _remove(self, ui, query, status, body, box="?worker_id=1", password=OWNER_PASSWORD):
+        """A Remove as the dashboard sends it: a data delete carries the owner's password in its body."""
         request = httpx.Request("DELETE", "https://a/api/containers/mysterium")
         answer = httpx.Response(status, request=request, json=body)
         sent = AsyncMock(return_value=answer)
@@ -1726,7 +1727,10 @@ class TestRemoveAfterARestoreThatDidNotFinish:
             patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("https://a", {}))),
             patch("httpx.AsyncClient.delete", sent),
         ):
-            return ui.delete(f"/api/services/mysterium{box}{query}"), sent
+            url = f"/api/services/mysterium{box}{query}"
+            if password is None:
+                return ui.delete(url), sent
+            return ui.request("DELETE", url, json={"step_up_password": password}), sent
 
     def test_the_refusal_reaches_the_dashboard_with_its_code(self, ui):
         resp, _sent = self._remove(ui, "", 409, self.UNFINISHED, box="?worker_id=2")
@@ -1765,6 +1769,56 @@ class TestRemoveAfterARestoreThatDidNotFinish:
         ui.state["user"] = {**ui.state["user"], "r": "writer"}
         resp, sent = self._remove(ui, "&delete_volumes=true&allow_delete_critical=true", 200, {"status": "removed"})
         assert resp.status_code == 403 and not sent.called
+
+
+class TestDeletingANodeIdentityNeedsThePassword:
+    """Destroying a wallet or node identity asks for the owner's password, as restoring one does."""
+
+    CRITICAL = "&delete_volumes=true&allow_delete_critical=true"
+    REMOVED = {"status": "removed", "deleted_volumes": ["mysterium-data"]}
+
+    def _remove(self, ui, query, password, box="?worker_id=2"):
+        return TestRemoveAfterARestoreThatDidNotFinish()._remove(ui, query, 200, self.REMOVED, box, password)
+
+    def test_without_the_password_it_asks_and_deletes_nothing(self, ui):
+        resp, sent = self._remove(ui, self.CRITICAL, None)
+        detail = resp.json()["detail"]
+        assert resp.status_code == 403 and detail["error"] == "step_up_required"
+        assert "mysterium on box-b" in detail["message"] and "password" in detail["message"]
+        assert not sent.called
+        assert ("delete_critical_volumes", "deleted") not in _audit()
+
+    def test_a_wrong_password_deletes_nothing_and_is_audited(self, ui):
+        resp, sent = self._remove(ui, self.CRITICAL, "nope")
+        assert resp.status_code == 403 and resp.json()["detail"]["error"] == "step_up_failed"
+        assert not sent.called
+        assert ("delete-critical-volumes", "failed") in _audit()
+
+    def test_with_the_password_it_deletes_and_both_are_audited(self, ui):
+        resp, sent = self._remove(ui, self.CRITICAL, OWNER_PASSWORD)
+        assert resp.status_code == 200 and sent.called
+        assert sent.call_args.kwargs["params"] == {"delete_volumes": "true", "allow_delete_critical": "true"}
+        events = asyncio.run(database.get_audit_events())
+        confirmed = [e for e in events if e["action"] == "delete-critical-volumes"]
+        assert [(e["target"], e["outcome"]) for e in confirmed] == [("mysterium|2", "confirmed")]
+        assert ("delete_critical_volumes", "deleted") in _audit()
+
+    def test_the_api_key_cannot_delete_it(self, ui):
+        ui.state["user"] = {"uid": 0, "u": "api", "r": "owner"}
+        resp, sent = self._remove(ui, self.CRITICAL, OWNER_PASSWORD)
+        assert resp.status_code == 403 and not sent.called
+        assert ("delete-critical-volumes", "refused") in _audit()
+
+    def test_the_delete_of_a_partial_restore_asks_too(self, ui):
+        resp, sent = self._remove(ui, self.CRITICAL + "&only_if_restore_unfinished=true", None)
+        assert resp.status_code == 403 and resp.json()["detail"]["error"] == "step_up_required"
+        assert not sent.called
+
+    @pytest.mark.parametrize("query", ["", "&delete_volumes=true", "&only_if_restore_unfinished=true"])
+    def test_control_a_removal_that_keeps_critical_data_needs_no_password(self, ui, query):
+        resp, sent = self._remove(ui, query, None)
+        assert resp.status_code == 200 and sent.called
+        assert not [e for e in _audit() if e[0] == "delete-critical-volumes"]
 
 
 class TestARestoreTheWorkerUndid:
@@ -2999,6 +3053,65 @@ class TestADeployDuringARemoval:
         orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
         with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
             TestStartAndRemoveAroundARestore()._deploy(docker)
+
+
+class TestARemovalDuringADeployOrAStart:
+    """A removal with its data, during a deploy's pull, would leave the deploy a new empty identity volume."""
+
+    @staticmethod
+    def _remove(seen: list[Exception]) -> None:
+        try:
+            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        except orchestrator.ContainerRuntimeError as exc:
+            seen.append(exc)
+
+    def test_a_removal_during_a_deploy_is_refused_and_touches_nothing(self, docker):
+        container = TestStartAndRemoveAroundARestore()._service(docker)
+        seen: list[Exception] = []
+        docker.images = MagicMock()
+        docker.images.get.side_effect = orchestrator.DockerException("no such image")
+
+        def pull(*_a, **_kw):
+            # The deploy holds the slug through its pull: a removal now must not delete its volume.
+            self._remove(seen)
+            return DEFAULT
+
+        docker.images.pull.side_effect = pull
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="not available"):
+            REAL_DEPLOY_RAW(slug="mysterium", image=MYSTERIUM_DEPLOY["image"], volumes=MYSTERIUM_DEPLOY["volumes"])
+        assert len(seen) == 1 and seen[0].status_code == 409, seen
+        assert "deploy of mysterium is running" in str(seen[0]) and "nothing was removed" in str(seen[0])
+        assert docker.container_map["cashpilot-mysterium"] is container
+        assert "mysterium-data" in docker.volume_map
+        assert orchestrator._removing == {}
+
+    def test_a_removal_during_a_start_is_refused_and_touches_nothing(self, docker):
+        container = TestStartAndRemoveAroundARestore()._service(docker)
+        seen: list[Exception] = []
+        real_find = orchestrator._find_container
+
+        raced: list[bool] = []
+
+        def racing(slug, *args, **kwargs):
+            if not raced:
+                # Once, as the start reaches its container: the removal runs now.
+                raced.append(True)
+                self._remove(seen)
+            return real_find(slug, *args, **kwargs)
+
+        with patch.object(orchestrator, "_find_container", racing):
+            orchestrator.start_service("mysterium")
+        assert len(seen) == 1 and seen[0].status_code == 409, seen
+        assert "start, restart or backup of mysterium is running" in str(seen[0])
+        assert docker.container_map["cashpilot-mysterium"] is container
+        assert "mysterium-data" in docker.volume_map
+        assert orchestrator._removing == {}
+
+    def test_control_with_no_holder_the_removal_goes_on(self, docker):
+        TestStartAndRemoveAroundARestore()._service(docker)
+        orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert "cashpilot-mysterium" not in docker.container_map
+        assert "mysterium-data" not in docker.volume_map
 
 
 class TestUploadsStillArrivingCountAgainstTheLimit:

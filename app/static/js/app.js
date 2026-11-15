@@ -2973,7 +2973,9 @@ const CP = (() => {
   // Remove a service. From a box's row (workerId, boxName) it goes to that box
   // only; from the service page it goes to the one online box, and never
   // takes the data with it. A row a restore that did not finish left
-  // (leftover) deletes only while that partial restore is still there.
+  // (leftover) removes only while that partial restore is still there.
+  // Deleting the critical data asks for the owner's password: the server
+  // answers step_up_required and api() asks, as for a restore.
   async function removeService(slug, workerId, boxName, leftover) {
     const pinned = workerId != null && workerId !== '';
     const where = pinned ? ` from ${boxName || `worker #${workerId}`}` : '';
@@ -2985,16 +2987,19 @@ const CP = (() => {
     // row: the service page names no box, and the server would pick the one
     // online box, which may not be the one the owner means.
     const params = pinned ? [`worker_id=${encodeURIComponent(workerId)}`] : [];
+    const first = { method: 'DELETE' };
     if (pinned && _isOwner && confirm(`Also delete the data of ${slug} on ${boxName || `worker #${workerId}`}? A node identity or wallet in it is gone for good unless you have its backup file. Cancel keeps the data for a later deploy.`)) {
       params.push('delete_volumes=true', 'allow_delete_critical=true');
-      // That row was drawn for a partial restore: one restored since, in
-      // another tab, is not what the owner agreed to delete.
-      if (leftover === 'leftover') params.push('only_if_restore_unfinished=true');
+      first.body = {};
     }
+    // That row was drawn for a partial restore: a restore that finished since,
+    // in another tab, is not what was meant, with its data or without, by the
+    // owner or a writer. The worker then removes nothing.
+    if (leftover === 'leftover') params.push('only_if_restore_unfinished=true');
     try {
       let result;
       try {
-        result = await api(`/api/services/${slug}${params.length ? `?${params.join('&')}` : ''}`, { method: 'DELETE' });
+        result = await api(`/api/services/${slug}${params.length ? `?${params.join('&')}` : ''}`, first);
       } catch (err) {
         // A restore that did not finish left a half-written data volume, and
         // the worker keeps it marked until it goes. The way out is the same
@@ -3009,7 +3014,7 @@ const CP = (() => {
         if (!confirm(`A restore of ${slug} on ${name} did not finish, so its data volume there holds a partial restore. Remove now deletes that volume on ${name}, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
         // Only while that partial restore is still there: one restored since,
         // in another tab, is not what the owner agreed to delete.
-        result = await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true`, { method: 'DELETE' });
+        result = await api(`/api/services/${slug}${box(refused)}&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true`, { method: 'DELETE', body: {} });
       }
       // A volume the box could not delete stays, and stays marked half-written.
       const kept = Array.isArray(result?.failed_volumes) ? result.failed_volumes : [];
@@ -4634,15 +4639,18 @@ const CP = (() => {
   // Removing a custom container from a box. Its data volume stays unless the
   // owner asks for it to go too: the worker cannot judge whether a volume of
   // a service its catalog does not know is irreplaceable, so it only deletes
-  // one with allow_delete_critical, which is owner-only on the server too.
+  // one with allow_delete_critical, which is owner-only on the server too and
+  // asks for the owner's password (api() shows the prompt).
   async function removeCustomFromBox(slug, workerId, boxName) {
     if (!window.confirm(`Remove ${slug} from ${boxName}? Its container is stopped and deleted.`)) return;
     let query = `?worker_id=${encodeURIComponent(workerId)}`;
+    const opts = { method: 'DELETE' };
     if (_isOwner && window.confirm(`Also delete its data volume on ${boxName}? This cannot be undone. Cancel keeps the data for a later deploy.`)) {
       query += '&delete_volumes=true&allow_delete_critical=true';
+      opts.body = {};
     }
     try {
-      await api(`/api/services/${encodeURIComponent(slug)}${query}`, { method: 'DELETE' });
+      await api(`/api/services/${encodeURIComponent(slug)}${query}`, opts);
       toast(`${slug} removed from ${boxName}`, 'success');
     } catch (err) {
       toast(`Remove failed: ${err.message}`, 'error');

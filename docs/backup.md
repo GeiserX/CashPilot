@@ -106,7 +106,7 @@ identity sits on a named Docker volume. The rules:
   its identity volume must not exist. The restore never writes over anything.
   To replace a running identity, take its backup first, then remove the service
   from that box on the dashboard and say yes when it asks to delete its data
-  (the owner only). Then restore.
+  (the owner only, with your password). Then restore.
 - **Passphrase files only.** A file sealed to a key is refused before anything
   secret is asked for: its private key never goes through the dashboard. Use
   the command line steps below for it.
@@ -148,9 +148,9 @@ identity sits on a named Docker volume. The rules:
   from this box** next to that box. A box that kept only the half-written
   volume has no container to show, so it is listed under **A restore did not
   finish**. The dashboard says its data volume there holds a partial restore
-  and asks you, the owner, to delete it with the container. The delete goes to
-  that box only, only while that partial restore is still there, and the audit
-  log records it. Then restore again.
+  and asks you, the owner, to delete it with the container, with your
+  password. The delete goes to that box only, only while that partial restore
+  is still there, and the audit log records it. Then restore again.
 - **Nothing kept.** The file waits in a private folder under the data folder
   for at most 15 minutes and is deleted once the restore runs. The passphrase
   goes to the worker in that one request and is never stored or logged.
