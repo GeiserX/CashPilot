@@ -9,6 +9,7 @@
 <nav class="settings-index" aria-label="Settings sections">
   <a href="#set-collection">Earnings collection</a>
   <a href="#credential-health-card" id="credential-health-link" hidden>Credential health</a>
+  <a href="#set-identities">Device ids</a>
   <a href="#set-env">Environment</a>
   <a href="#set-about">About and updates</a>
   <a href="/import">Import from another tool</a>
@@ -46,6 +47,20 @@
     Credential values are never shown here &mdash; only which one it is and how it is doing.
   </p>
   <div id="credential-health-body"></div>
+</div>
+
+<!-- Device ids (issue #740). Owner only, like the whole page and its API. -->
+<div class="card settings-section" id="set-identities">
+  <h3 class="settings-section-title">Device ids</h3>
+  <p class="settings-section-desc">
+    The device names and ids CashPilot deployed each service with, per box. They stay here after you remove
+    a service, so you can find the device at the provider or give a new box the same id. Each value is hidden
+    until you show or copy it, and every show is written to the audit log. Passwords, keys and wallet seeds
+    are never kept here.
+  </p>
+  <div id="identities-container">
+    <p class="loading-line">Loading...</p>
+  </div>
 </div>
 
 <!-- Environment Variables -->

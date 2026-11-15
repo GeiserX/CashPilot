@@ -40,10 +40,10 @@ def client():
         yield c
 
 
-def _deploy(client, slug, env, recorded=None, config=None):
+def _deploy(client, slug, env, recorded=None, config=None, user=None):
     worker = {"id": 1, "name": "w1", "status": "online", "url": "http://192.168.1.10:8081"}
     with (
-        patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "admin", "r": "owner"}),
+        patch("app.main.auth.get_current_user", return_value=user or {"uid": 1, "u": "admin", "r": "owner"}),
         patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[worker]),
         patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
         patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded),
@@ -82,6 +82,16 @@ def test_a_blank_redeploy_links_the_recorded_uuid(client):
     resp = _deploy(client, "earnapp", {"EARNAPP_UUID": ""}, recorded=recorded)
     assert resp.status_code == 200, resp.text
     assert resp.json()["device_link"]["id"] == EARNAPP_UUID
+
+
+def test_the_admin_api_key_gets_the_step_without_the_id(client):
+    """The id claims the device; only a signed-in owner reads it in full (issue #740)."""
+    resp = _deploy(client, "earnapp", {"EARNAPP_UUID": EARNAPP_UUID}, user={"uid": 0, "u": "api", "r": "owner"})
+    assert resp.status_code == 200, resp.text
+    link = resp.json()["device_link"]
+    assert EARNAPP_UUID not in resp.text
+    assert link["id"].endswith(EARNAPP_UUID[-4:]) and "url" not in link
+    assert "signed in" in link["steps"]
 
 
 def test_a_service_with_nothing_to_link_returns_no_step(client):

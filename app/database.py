@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import re
 import sqlite3
 import time
 from collections.abc import Collection, Mapping, Sequence
@@ -33,7 +34,7 @@ except ImportError as exc:  # pragma: no cover - only after an aiosqlite upgrade
     ) from exc
 from cryptography.fernet import Fernet, InvalidToken
 
-from app import themes, usage
+from app import catalog, themes, usage
 from app.exchange_rates import HISTORY_DAYS, UNPRICED_BY_DESIGN
 
 _logger = logging.getLogger(__name__)
@@ -437,6 +438,9 @@ CREATE TABLE IF NOT EXISTS deployment_specs (
     worker_id      INTEGER NOT NULL,
     spec_encrypted TEXT    NOT NULL,
     deployed_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    -- The spec this one replaced, until every copy runs the new one: a copy
+    -- whose replacement failed still runs it (identity ledger, issue #740).
+    prior_spec_encrypted TEXT,
     PRIMARY KEY (slug, worker_id)
 );
 
@@ -806,6 +810,38 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_audit_events_created
     ON audit_events (created_at);
+
+-- The identity ledger (issue #740): the device names and ids CashPilot deployed
+-- a service with, per box and per copy, kept after the service is removed so
+-- the owner can see them and reuse one. A row is `active` while that copy runs
+-- with it and `retired` once it is removed or redeployed with another value;
+-- nothing deletes a row except the owner. Only values the catalog marks
+-- `per_device` or `identifier` (never a secret) ever land here, and only from
+-- the spec CashPilot itself sent: never from a container's logs or files.
+-- `value_encrypted` is Fernet like every credential, which guards a leaked
+-- database file but not a compromised UI (the key sits in the same /data); the
+-- real control is that no secret is kept here and only the owner reads it.
+-- `instance` is the copy: '1' the service, '2'.. its extra copies, 'p<id>' the
+-- copy through proxy <id>. `kind` is 'env' (`name` is the env key); a later
+-- kind keeps the hashes of exported state backups here too (#741), so one
+-- ledger answers "which identities did this box ever have".
+CREATE TABLE IF NOT EXISTS device_identities (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug            TEXT    NOT NULL,
+    worker_id       INTEGER NOT NULL,
+    instance        TEXT    NOT NULL DEFAULT '1',
+    kind            TEXT    NOT NULL DEFAULT 'env',
+    name            TEXT    NOT NULL,
+    value_encrypted TEXT    NOT NULL,
+    source          TEXT    NOT NULL DEFAULT 'deploy',
+    status          TEXT    NOT NULL DEFAULT 'active',
+    first_seen      TEXT    NOT NULL DEFAULT (datetime('now')),
+    last_seen       TEXT    NOT NULL DEFAULT (datetime('now')),
+    retired_at      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_identities_slug
+    ON device_identities (slug, worker_id);
 """
 
 
@@ -1119,7 +1155,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 
 async def init_db() -> None:
@@ -1218,6 +1254,11 @@ async def init_db() -> None:
                 "UPDATE workers SET key_issued_at = datetime('now') "
                 "WHERE api_key_enc IS NOT NULL AND api_key_enc != '' AND key_confirmed = 0"
             )
+
+        cursor = await db.execute("PRAGMA table_info(deployment_specs)")
+        if "prior_spec_encrypted" not in {row["name"] for row in await cursor.fetchall()}:
+            applied.append("deployment_specs.prior_spec_encrypted")
+            await db.execute("ALTER TABLE deployment_specs ADD COLUMN prior_spec_encrypted TEXT")
 
         # A copy removal the worker has not confirmed yet. NULL is the truthful
         # backfill: no removal was pending before this column existed.
@@ -1984,12 +2025,22 @@ async def save_deployment(
         # Deployed or re-added again: a removal recorded earlier no longer holds.
         await db.execute("DELETE FROM config WHERE key = ?", (_removed_key(slug),))
         if spec is not None and spec_encrypted and worker_id is not None:
+            # One prior spec, never a history: the one this replaces, unless it
+            # is the same spec again (a retry), which keeps the prior it had.
+            cursor = await db.execute(
+                "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
+                (slug, worker_id),
+            )
+            old = await cursor.fetchone()
+            prior = old["spec_encrypted"] if old else None
+            if old and _decode_spec(old["spec_encrypted"] or "", slug) == json.loads(json.dumps(spec, sort_keys=True)):
+                prior = old["prior_spec_encrypted"]
             await db.execute(
                 """
-                INSERT OR REPLACE INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at)
-                VALUES (?, ?, ?, datetime('now'))
+                INSERT OR REPLACE INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at, prior_spec_encrypted)
+                VALUES (?, ?, ?, datetime('now'), ?)
                 """,
-                (slug, worker_id, spec_encrypted),
+                (slug, worker_id, spec_encrypted, prior),
             )
         await db.commit()
     finally:
@@ -2061,6 +2112,26 @@ def _runs_container(containers_json: str | None, slug: str, recorded_id: str) ->
         if len(short_id) >= 12 and recorded_id.startswith(short_id):
             return True
     return False
+
+
+async def _legacy_deployment_spec(db: Any, slug: str) -> tuple[int, dict[str, Any]] | None:
+    """The fleet-wide row's spec and the worker that runs its container, or None.
+
+    A deployment from before specs were kept per worker has its spec only in
+    ``deployments``; it belongs to the worker whose heartbeat lists the container
+    it recorded, as in _worker_deployment_spec.
+    """
+    cursor = await db.execute("SELECT container_id, spec_encrypted FROM deployments WHERE slug = ?", (slug,))
+    row = await cursor.fetchone()
+    recorded_id = str((row["container_id"] if row else "") or "")
+    if not recorded_id:
+        return None
+    cursor = await db.execute("SELECT id, containers FROM workers")
+    for worker in await cursor.fetchall():
+        if _runs_container(worker["containers"], slug, recorded_id):
+            spec = _decode_spec(row["spec_encrypted"] or "", slug)
+            return (int(worker["id"]), spec) if spec else None
+    return None
 
 
 async def get_custom_images(slug: str) -> dict[int, str]:
@@ -2162,6 +2233,9 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
     """
     db = await _get_db()
     try:
+        # The device ids it ran with stay in the identity ledger as retired, so
+        # removing a service no longer forgets them (issue #740).
+        await _retire_identities(db, slug, worker_id)
         gone = True
         if worker_id is None:
             # Gone everywhere: each box's record goes with it, or those records
@@ -2172,6 +2246,13 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
             await db.execute("DELETE FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id))
             if await _deployed_on_another_worker(db, slug, worker_id):
                 gone = False
+                # The fleet row stays for the other boxes, but the container it
+                # names may be this box's: it no longer runs there, so the row
+                # must stop counting as this box's record (_legacy_deployment_spec),
+                # or the ids just retired read as still running and come back.
+                legacy = await _legacy_deployment_spec(db, slug)
+                if legacy and legacy[0] == worker_id:
+                    await db.execute("UPDATE deployments SET container_id = '' WHERE slug = ?", (slug,))
             else:
                 await db.execute("DELETE FROM deployments WHERE slug = ?", (slug,))
         if gone:
@@ -2415,6 +2496,7 @@ async def delete_proxied_copies_of(worker_id: int, slug: str) -> None:
     db = await _get_db()
     try:
         await db.execute("DELETE FROM proxied_copies WHERE worker_id = ? AND slug = ?", (worker_id, slug))
+        await _retire_identity_rows(db, slug, worker_id, proxied=True)
         await db.commit()
     finally:
         await db.close()
@@ -2427,6 +2509,7 @@ async def delete_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> bool:
             "DELETE FROM proxied_copies WHERE proxy_id = ? AND worker_id = ? AND slug = ?",
             (proxy_id, worker_id, slug),
         )
+        await _retire_identity_rows(db, slug, worker_id, instances=[f"p{int(proxy_id)}"])
         await db.commit()
         return (cursor.rowcount or 0) > 0
     finally:
@@ -3093,6 +3176,21 @@ async def mark_worker_offline_if_unchanged(worker_id: int, expected_heartbeat: s
 async def delete_worker(worker_id: int) -> None:
     db = await _get_db()
     try:
+        # The device ids it ran with become retired, not stuck as "in use" on a
+        # box that is gone: they stay in the list and the deploy form offers
+        # them for the replacement box (issue #740). A deploy record from before
+        # the ledger is kept as retired first, as a removal does: its own, or the
+        # fleet-wide row of one from before per-worker records, if this box runs it.
+        cursor = await db.execute(
+            "SELECT slug FROM deployment_specs WHERE worker_id = ? UNION SELECT slug FROM deployments", (worker_id,)
+        )
+        for (slug,) in await cursor.fetchall():
+            await _retire_identities(db, slug, worker_id)
+        await db.execute(
+            "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+            "WHERE worker_id = ? AND status = 'active'",
+            (worker_id,),
+        )
         await db.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
         # Its proxied copies go with it; a row left behind could never be removed
         # through a worker that no longer exists, and would block deleting its proxy.
@@ -4818,3 +4916,749 @@ async def get_audit_events(limit: int = 100) -> list[dict[str, Any]]:
         return [dict(r) for r in await cursor.fetchall()]
     finally:
         await db.close()
+
+
+# --- Identity ledger (issue #740; table device_identities above) ---
+
+#: Longest identifier the ledger keeps. Device names and ids are short; a longer
+#: value is not one, and is left out rather than cut.
+IDENTITY_VALUE_MAX = 256
+
+
+def _identity_keys(slug: str) -> dict[str, str]:
+    """The env keys of ``slug`` the catalog marks as identifiers (``catalog.identity_keys``)."""
+    try:
+        return catalog.identity_keys(catalog.get_service(slug))
+    except Exception:  # noqa: BLE001 - a catalog problem must not break a removal
+        _logger.warning("Could not read the identifier keys of %s", slug, exc_info=True)
+        return {}
+
+
+def _identity_value(value: Any) -> str:
+    text = str(value if value is not None else "").strip()
+    return text if 0 < len(text) <= IDENTITY_VALUE_MAX else ""
+
+
+async def _active_identity_rows(db: Any, slug: str, worker_id: int) -> list[dict[str, Any]]:
+    cursor = await db.execute(
+        "SELECT id, instance, name, value_encrypted FROM device_identities "
+        "WHERE slug = ? AND worker_id = ? AND kind = 'env' AND status = 'active'",
+        (slug, worker_id),
+    )
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+async def prior_deployment_spec(slug: str, worker_id: int, *, clear: bool = False) -> dict[str, Any] | None:
+    """The spec a worker's current one replaced (see deployment_specs); ``clear`` forgets it."""
+    db = await _get_db()
+    try:
+        if clear:
+            await db.execute(
+                "UPDATE deployment_specs SET prior_spec_encrypted = NULL WHERE slug = ? AND worker_id = ?",
+                (slug, worker_id),
+            )
+            await db.commit()
+            return None
+        cursor = await db.execute(
+            "SELECT prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id)
+        )
+        row = await cursor.fetchone()
+        return _decode_spec(row["prior_spec_encrypted"] or "", slug) if row else None
+    finally:
+        await db.close()
+
+
+async def active_identity_values(slug: str, worker_id: int) -> dict[str, dict[str, str]]:
+    """Each copy of ``slug`` on a worker with an active row: its active values, by key name."""
+    db = await _get_db()
+    try:
+        out: dict[str, dict[str, str]] = {}
+        for row in await _active_identity_rows(db, slug, worker_id):
+            out.setdefault(str(row["instance"]), {})[row["name"]] = decrypt_value(row["value_encrypted"])
+        return out
+    finally:
+        await db.close()
+
+
+async def active_identity_copies(slug: str, worker_id: int) -> set[str]:
+    """The copies of ``slug`` on a worker that have an active ledger row: '1', '2', 'p7'."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT DISTINCT instance FROM device_identities "
+            "WHERE slug = ? AND worker_id = ? AND kind = 'env' AND status = 'active'",
+            (slug, worker_id),
+        )
+        return {str(row["instance"]) for row in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+async def active_extra_copies(worker_id: int) -> set[tuple[str, int]]:
+    """Each (slug, copy above the first) with an active ledger row on a worker."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT DISTINCT slug, instance FROM device_identities WHERE worker_id = ? AND kind = 'env' AND status = 'active'",
+            (worker_id,),
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    return {
+        (row["slug"], int(row["instance"]))
+        for row in rows
+        if str(row["instance"]).isdigit() and int(row["instance"]) > 1
+    }
+
+
+async def record_identities(
+    slug: str,
+    worker_id: int,
+    values: Mapping[str, Mapping[str, Any]],
+    *,
+    scope: str = "copies",
+    if_record: Mapping[str, Any] | None = None,
+) -> bool:
+    """Record the identifier values one worker now runs ``slug`` with.
+
+    ``values`` maps a copy (``instance``: "1", "2", .., "p<proxy id>", or "u<n>"
+    for copy n's unconfirmed ids, PENDING_COPY_PREFIX) to its env;
+    only the keys the catalog marks as identifiers are kept. A copy whose value
+    changed gets a new active row and its old value is retired, not lost. With
+    ``scope="copies"`` (a deploy, which decides every on-box copy) an on-box copy
+    absent from ``values`` is retired too; ``scope="given"`` touches only the
+    copies named (a proxied copy). ``if_record``: write only while that spec is
+    still the worker's deploy record of ``slug``, so a proof read before a
+    removal cannot bring the removed copy's ids back after it. False: that spec
+    was no longer the record, so nothing was written and the caller may retry.
+    """
+    keys = _identity_keys(slug)
+    if not keys:
+        return True
+    wanted = _wanted_identities(keys, values)
+    # Own connection and BEGIN IMMEDIATE: the read and the writes below are one
+    # step. On the shared connection two deploys at once (two proxied copies
+    # added together) both read "no row" and both inserted an active one.
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            applied = if_record is None or await _deploy_records(db, slug, worker_id) == [(worker_id, dict(if_record))]
+            if applied:
+                await _record_identities_locked(db, slug, worker_id, keys, values, wanted, scope)
+                await _retire_if_worker_gone(db, slug, worker_id)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    return applied
+
+
+async def _retire_if_worker_gone(db: Any, slug: str, worker_id: int) -> None:
+    """A write that finished after its box was deleted: its ids are retired as
+    delete_worker retires them, so the replacement box is offered them and the
+    owner may forget them (issue #740)."""
+    cursor = await db.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,))
+    if await cursor.fetchone() is None:
+        await db.execute(
+            "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+            "WHERE slug = ? AND worker_id = ? AND status = 'active'",
+            (slug, worker_id),
+        )
+
+
+def _wanted_identities(keys: Mapping[str, str], values: Mapping[str, Mapping[str, Any]]) -> dict[tuple[str, str], str]:
+    """(copy, key) -> value for each identifier ``values`` sets."""
+    wanted: dict[tuple[str, str], str] = {}
+    for instance, env in values.items():
+        for key in keys:
+            value = _identity_value((env or {}).get(key))
+            if value:
+                wanted[(str(instance), key)] = value
+    return wanted
+
+
+#: The ledger copy that holds the ids a deploy of copy ``n`` sent and the
+#: worker never answered: ``u<n>``, and ``u<n>.<k>`` for a second attempt with
+#: other ids while the first is unconfirmed. Beside the copy's own row, not in it.
+PENDING_COPY_PREFIX = "u"
+
+#: How long the ids of a deploy the worker never answered stay claimed while no
+#: heartbeat shows them running. The worker pulls the image before it touches
+#: the running container, so a heartbeat during the pull still shows the old
+#: ids. A worker creates nothing past constants.DEPLOY_DEADLINE_SECONDS (1 h)
+#: from the request, and Docker's timeouts end what follows within minutes, so
+#: by the time this runs out the deploy is over: what a heartbeat shows then is
+#: what runs. A worker from before that deadline has none, and says so by not
+#: listing the ``deploy_deadline`` feature: its holds never run out this way.
+#: Until this runs out the owner cannot forget a hold either (delete_identity).
+PENDING_IDENTITY_SECONDS = 6 * 3600
+
+
+def pending_copy_number(instance: str) -> int | None:
+    """The copy an unconfirmed-ids ledger copy (``u<n>`` or ``u<n>.<k>``) is for; None for any other."""
+    if not instance.startswith(PENDING_COPY_PREFIX):
+        return None
+    n = instance[len(PENDING_COPY_PREFIX) :].split(".", 1)[0]
+    return int(n) if n.isdigit() else None
+
+
+async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Mapping[str, Any]) -> str | None:
+    """Hold the ids a deploy of copy ``copy`` is about to send, unconfirmed, until the worker answers.
+
+    Each attempt with other ids gets its own ledger copy, so a second
+    unanswered deploy never drops the first one's ids: the worker may still
+    land either. The same ids again refresh their row. Returns the ledger copy
+    this call created, which release_pending_identities ends once the worker
+    answered; None when it created none (no ids, or an earlier attempt that the
+    worker never answered holds them, which an answer to this one must not end).
+    """
+    keys = _identity_keys(slug)
+    ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
+    if not ids:
+        return None
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            held: dict[str, dict[str, str]] = {}
+            for row in await _active_identity_rows(db, slug, worker_id):
+                if pending_copy_number(str(row["instance"])) == int(copy):
+                    held.setdefault(str(row["instance"]), {})[row["name"]] = decrypt_value(row["value_encrypted"])
+            instance = next((i for i, have in held.items() if have == ids), None)
+            created = instance is None
+            if instance is None:
+                instance, attempt = f"{PENDING_COPY_PREFIX}{int(copy)}", 1
+                while instance in held:
+                    attempt += 1
+                    instance = f"{PENDING_COPY_PREFIX}{int(copy)}.{attempt}"
+            values = {instance: env}
+            await _record_identities_locked(
+                db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
+            )
+            await _retire_if_worker_gone(db, slug, worker_id)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    return instance if created else None
+
+
+async def release_pending_identities(slug: str, worker_id: int, instance: str, env: Mapping[str, Any]) -> None:
+    """End the hold ``instance`` that hold_pending_identities created for ``env``, once the worker answered its deploy.
+
+    Its rows are deleted, not retired: an answered deploy leaves no unconfirmed
+    row behind, so a refused id is not listed or offered for reuse as if it ran,
+    and one a heartbeat already made the copy's row leaves only that row. Only
+    while ``instance`` still holds exactly those ids, read and deleted in one
+    step: once the hold has ended another way, a second deploy to the same copy
+    may reuse the name for its own ids, which this answer must not end.
+    """
+    keys = _identity_keys(slug)
+    ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
+    if not ids:
+        return
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            rows = [r for r in await _active_identity_rows(db, slug, worker_id) if r["instance"] == instance]
+            if {r["name"]: decrypt_value(r["value_encrypted"]) for r in rows} == ids:
+                await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+
+async def pending_identities(worker_id: int) -> list[dict[str, Any]]:
+    """Each attempt on a worker with unconfirmed ids: its slug, ledger copy, copy number, ids and age in seconds."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT slug, instance, name, value_encrypted, "
+            "(julianday('now') - julianday(last_seen)) * 86400 AS age FROM device_identities "
+            "WHERE worker_id = ? AND kind = 'env' AND status = 'active' AND instance LIKE ?",
+            (worker_id, f"{PENDING_COPY_PREFIX}%"),
+        )
+        found: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in await cursor.fetchall():
+            instance = str(row["instance"])
+            copy = pending_copy_number(instance)
+            if copy is None:
+                continue
+            entry = found.setdefault(
+                (row["slug"], instance),
+                {"slug": row["slug"], "instance": instance, "copy": copy, "env": {}, "age": 0.0},
+            )
+            entry["env"][row["name"]] = decrypt_value(row["value_encrypted"])
+            entry["age"] = max(entry["age"], float(row["age"] or 0))
+        return list(found.values())
+    finally:
+        await db.close()
+
+
+async def settle_pending_identities(
+    slug: str, worker_id: int, instance: str, env: Mapping[str, str], *, runs: bool, over: bool = False
+) -> None:
+    """Settle one attempt's unconfirmed ids (ledger copy ``instance``), while they are still ``env``.
+
+    ``runs`` (a heartbeat proved the copy runs them): they become the copy's own
+    row, which retires what it ran before, while the worker still has a deploy
+    record of ``slug``. The hold stays beside that row: a removal keeps holds
+    and retires the row, and the unanswered deploy may still land after it, so
+    only the worker's answer (release_pending_identities) ends the hold, or
+    ``over`` (the worker's deploy deadline passed since the hold was last
+    written, so the deploy is over and the row alone says what runs). With
+    none (a removal, or a first deploy that never got one) the hold stays and
+    is refreshed instead: a heartbeat built before a removal proves a container
+    the removal stopped, and a copy row with no record is one nothing retires.
+    The same when the record was saved after the hold was first written: a
+    deploy confirmed since then replaced the copy, and a heartbeat built before
+    it must not put the replaced ids back over the newer row. No refresh moves
+    that time, so the hold stays held while heartbeats prove it and runs out
+    once they stop: both ids stay reserved meanwhile. A hold whose ids the
+    copy's own row already holds (a retry of the same ids the worker then
+    confirmed) settles as proven, since nothing it replaces is newer: it is
+    not refreshed, so ``over`` ends it.
+    The hold ends once its time is up with no heartbeat proving it. Otherwise
+    they are retired and the copy's row stays as it is. Another attempt on the
+    same copy stays held: the worker may still land it. A deploy or a removal
+    that settled them first leaves nothing to do.
+    """
+    keys = _identity_keys(slug)
+    copy = pending_copy_number(instance)
+    if copy is None:
+        return
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            active = await _active_identity_rows(db, slug, worker_id)
+            rows = [r for r in active if r["instance"] == instance]
+            held = {row["name"]: decrypt_value(row["value_encrypted"]) for row in rows}
+            copy_row = {r["name"]: decrypt_value(r["value_encrypted"]) for r in active if r["instance"] == str(copy)}
+            promote = (
+                runs
+                and bool(await _deploy_records(db, slug, worker_id))
+                and (copy_row == held or not await _record_after_hold(db, slug, worker_id, instance))
+            )
+            values: dict[str, Mapping[str, Any]] = {instance: {}}
+            if promote:
+                values = {str(copy): env}
+            elif runs:
+                values[instance] = env
+            # Retiring one whose time is up: a retry of the same ids that timed
+            # out since the caller read its age refreshed it, and holds it again.
+            if keys and held and held == dict(env) and (runs or await _pending_aged(db, slug, worker_id, instance)):
+                await _record_identities_locked(
+                    db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
+                )
+                if promote and over and await _pending_aged(db, slug, worker_id, instance):
+                    await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+
+async def _record_after_hold(db: Any, slug: str, worker_id: int, instance: str) -> bool:
+    """Whether the worker's deploy record of ``slug`` was saved after unconfirmed ledger copy ``instance`` was first written.
+
+    The record is saved once a deploy's first copy is confirmed, and an
+    unanswered copy 1 never saves one, so a record newer than the hold is a
+    later deploy the worker confirmed. first_seen, never last_seen: every
+    heartbeat and every retry of the same ids refreshes last_seen, which would
+    make a replaced hold look newer than the deploy that replaced it. Both
+    times are datetime('now'), whole seconds: a hold the worker never answered
+    was written before a wait that ran out, so a record saved after it lands
+    seconds later, not in the same second.
+    """
+    cursor = await db.execute(
+        "SELECT 1 FROM deployment_specs WHERE slug = ? AND worker_id = ? AND deployed_at > "
+        "(SELECT MIN(first_seen) FROM device_identities WHERE slug = ? AND worker_id = ? AND instance = ? "
+        "AND kind = 'env' AND status = 'active')",
+        (slug, worker_id, slug, worker_id, instance),
+    )
+    return await cursor.fetchone() is not None
+
+
+async def _pending_aged(db: Any, slug: str, worker_id: int, instance: str) -> bool:
+    """Whether every active row of unconfirmed ledger copy ``instance`` is older than PENDING_IDENTITY_SECONDS."""
+    cursor = await db.execute(
+        "SELECT COUNT(*) FROM device_identities WHERE slug = ? AND worker_id = ? AND instance = ? "
+        "AND kind = 'env' AND status = 'active' AND last_seen > datetime('now', ?)",
+        (slug, worker_id, instance, f"-{PENDING_IDENTITY_SECONDS} seconds"),
+    )
+    row = await cursor.fetchone()
+    return not (row and row[0])
+
+
+async def _record_identities_locked(
+    db: Any,
+    slug: str,
+    worker_id: int,
+    keys: Mapping[str, str],
+    values: Mapping[str, Mapping[str, Any]],
+    wanted: Mapping[tuple[str, str], str],
+    scope: str,
+) -> None:
+    """record_identities inside its write lock."""
+    active = await _active_identity_rows(db, slug, worker_id)
+    current: dict[tuple[str, str], tuple[int, str]] = {}
+    for row in active:
+        current[(row["instance"], row["name"])] = (row["id"], decrypt_value(row["value_encrypted"]))
+    retire: list[int] = []
+    for (instance, key), (row_id, value) in current.items():
+        if key not in keys:
+            continue
+        in_scope = (instance in values) or (scope == "copies" and not instance.startswith("p"))
+        if in_scope and wanted.get((instance, key)) != value:
+            retire.append(row_id)
+    for row_id in retire:
+        await db.execute(
+            "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE id = ?",
+            (row_id,),
+        )
+    for (instance, key), value in wanted.items():
+        kept = current.get((instance, key))
+        if kept and kept[1] == value:
+            await db.execute("UPDATE device_identities SET last_seen = datetime('now') WHERE id = ?", (kept[0],))
+            continue
+        # The same value on the same copy before (a reuse): bring that row
+        # back instead of keeping two, so its first_seen stays the real one.
+        # Except a hold's: a hold that ended is a deploy that is over, and a
+        # new one starts its own time, which _record_after_hold compares with.
+        revived = await _find_identity_row(db, slug, worker_id, instance, key, value, status="retired")
+        if revived is not None:
+            restart = ", first_seen = datetime('now')" if instance.startswith(PENDING_COPY_PREFIX) else ""
+            await db.execute(
+                "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now')"
+                f"{restart} WHERE id = ?",
+                (revived,),
+            )
+            continue
+        await db.execute(
+            "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
+            "VALUES (?, ?, ?, 'env', ?, ?, 'deploy')",
+            (slug, worker_id, instance, key, encrypt_value(value)),
+        )
+
+
+async def _find_identity_row(
+    db: Any, slug: str, worker_id: int, instance: str, name: str, value: str, *, status: str
+) -> int | None:
+    cursor = await db.execute(
+        "SELECT id, value_encrypted FROM device_identities "
+        "WHERE slug = ? AND worker_id = ? AND instance = ? AND kind = 'env' AND name = ? AND status = ? "
+        "ORDER BY id DESC",
+        (slug, worker_id, instance, name, status),
+    )
+    for row in await cursor.fetchall():
+        if decrypt_value(row["value_encrypted"]) == value:
+            return int(row["id"])
+    return None
+
+
+async def _retire_identity_rows(
+    db: Any,
+    slug: str,
+    worker_id: int | None,
+    *,
+    proxied: bool = False,
+    instances: Collection[str] | None = None,
+) -> None:
+    """Retire the active rows of ``slug`` (on ``worker_id``, or everywhere when None).
+
+    The on-box copies by default, the proxied copies with ``proxied``, or just
+    the copies named in ``instances``. The default leaves the unconfirmed ids
+    of a deploy the worker never answered (``u<n>``) held: a removal does not
+    stop that deploy, which may still create its container, so only the
+    worker's answer (release_pending_identities) or main._settle_pending_identities
+    ends them (delete_worker retires them too).
+    """
+    sql = "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE slug = ? AND status = 'active'"
+    args: list[Any] = [slug]
+    if worker_id is not None:
+        sql += " AND worker_id = ?"
+        args.append(worker_id)
+    if instances is not None:
+        names = [str(i) for i in instances]
+        if not names:
+            return
+        sql += f" AND instance IN ({', '.join('?' for _ in names)})"
+        args.extend(names)
+    elif proxied:
+        sql += " AND instance LIKE 'p%'"
+    else:
+        sql += f" AND instance NOT LIKE 'p%' AND instance NOT LIKE '{PENDING_COPY_PREFIX}%'"
+    await db.execute(sql, args)
+
+
+async def _deploy_records(db: Any, slug: str, worker_id: int | None = None) -> list[tuple[int, dict[str, Any]]]:
+    """The deploy record of ``slug`` on each worker that still exists (``worker_id``'s alone, when given).
+
+    The per-worker records, and, for a deployment from before them, the
+    fleet-wide row's spec for the box that runs its container. A deleted box's
+    records stay behind, but its ids were retired with it: they must neither
+    count as running nor come back after the owner forgot them.
+    """
+    sql = "SELECT worker_id, spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id IN (SELECT id FROM workers)"
+    args: tuple[Any, ...] = (slug,)
+    if worker_id is not None:
+        sql += " AND worker_id = ?"
+        args = (slug, worker_id)
+    cursor = await db.execute(sql, args)
+    records = [
+        (int(row["worker_id"]), _decode_spec(row["spec_encrypted"] or "", slug) or {})
+        for row in await cursor.fetchall()
+    ]
+    legacy = await _legacy_deployment_spec(db, slug)
+    if legacy and legacy[0] not in {wid for wid, _ in records} and worker_id in (None, legacy[0]):
+        records.append(legacy)
+    return records
+
+
+async def _retire_identities(db: Any, slug: str, worker_id: int | None) -> None:
+    """On removal: retire the on-box copies' rows, keeping what the deploy records hold.
+
+    A deployment recorded before the ledger existed has no row, only its spec.
+    Its identifier values go in as retired before that spec is deleted, so the
+    first removal after an upgrade does not forget them either.
+    """
+    keys = _identity_keys(slug)
+    if keys:
+        for wid, spec in await _deploy_records(db, slug, worker_id):
+            env = spec.get("env") or {}
+            if not isinstance(env, dict):
+                continue
+            # A raw deploy of one copy records that copy's spec: keep it on that copy.
+            instance = str(spec_copy_number(spec))
+            for key in keys:
+                value = _identity_value(env.get(key))
+                if not value:
+                    continue
+                if await _find_identity_row(db, slug, wid, instance, key, value, status="active") is not None:
+                    continue
+                if await _find_identity_row(db, slug, wid, instance, key, value, status="retired") is not None:
+                    continue
+                await db.execute(
+                    "INSERT INTO device_identities "
+                    "(slug, worker_id, instance, kind, name, value_encrypted, source, status, retired_at) "
+                    "VALUES (?, ?, ?, 'env', ?, ?, 'deploy', 'retired', datetime('now'))",
+                    (slug, wid, instance, key, encrypt_value(value)),
+                )
+    await _retire_identity_rows(db, slug, worker_id)
+
+
+def spec_copy_number(spec: Mapping[str, Any]) -> int:
+    """The copy a deploy spec names (``instance``): 1 when it names none or none readable."""
+    raw = spec.get("instance") or 1
+    if isinstance(raw, float) and not raw.is_integer():
+        return 1
+    try:
+        copy = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return 1
+    return copy if copy > 0 else 1
+
+
+async def list_identities() -> list[dict[str, Any]]:
+    """Every ledger row, newest first, with its value decrypted (``value``).
+
+    Owner-only data: the caller masks it. A row whose value cannot be decrypted
+    (the encryption key changed) comes back with ``value`` "".
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, slug, worker_id, instance, kind, name, value_encrypted, source, status, "
+            "first_seen, last_seen, retired_at, (julianday('now') - julianday(last_seen)) * 86400 AS age "
+            "FROM device_identities ORDER BY status, slug, worker_id, instance, id DESC"
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+    for row in rows:
+        row["value"] = decrypt_value(row.pop("value_encrypted") or "")
+    return rows
+
+
+async def get_identity(identity_id: int) -> dict[str, Any] | None:
+    for row in await list_identities():
+        if row["id"] == identity_id:
+            return row
+    return None
+
+
+async def delete_identity(identity_id: int) -> bool:
+    """Delete one row (the owner's "forget"): a retired one, one a node reported, or an unconfirmed hold.
+
+    An active row CashPilot deployed with is never deleted: the shared-id check
+    reads it. A node-reported row is only shown, so the owner may drop it while
+    its node runs; the next read brings it back if the node still says so. The
+    hold of a deploy the worker never answered (``u<n>``) may never be proven
+    or run out on its own (a worker with no deploy deadline, a catalog that no
+    longer marks the key), so the owner may end it, but only once it is older
+    than PENDING_IDENTITY_SECONDS. Before that the worker may still create the
+    container with it, and no deploy record holds the id to bring it back, so
+    a second box could take it without the shared-id check asking.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node' "
+            f"OR (instance LIKE '{PENDING_COPY_PREFIX}%' AND last_seen <= datetime('now', ?)))",
+            (identity_id, f"-{PENDING_IDENTITY_SECONDS} seconds"),
+        )
+        await db.commit()
+        return (cursor.rowcount or 0) > 0
+    finally:
+        await db.close()
+
+
+async def identity_in_use(slug: str, name: str, value: str, *, except_worker: int | None = None) -> list[int]:
+    """The workers that run ``slug`` with ``name`` = ``value`` now, other than ``except_worker``.
+
+    From the ledger's active rows (every copy, proxied ones too) and from the
+    deploy records (deployments from before the ledger). Deleting a worker
+    retires its rows, so a deleted box no longer counts: the owner said it is
+    gone, and its ids are what the replacement box should reuse; a row a deploy
+    wrote after the delete does not count either. Letter case is ignored: a
+    UUID copied from a dashboard in capitals is the same device.
+    """
+    value = _identity_value(value).casefold()
+    if not value:
+        return []
+    found: set[int] = set()
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT worker_id, value_encrypted FROM device_identities "
+            "WHERE slug = ? AND name = ? AND kind = 'env' AND status = 'active' AND worker_id IN (SELECT id FROM workers)",
+            (slug, name),
+        )
+        for row in await cursor.fetchall():
+            if decrypt_value(row["value_encrypted"]).casefold() == value:
+                found.add(int(row["worker_id"]))
+        for wid, spec in await _deploy_records(db, slug):
+            env = spec.get("env") or {}
+            if isinstance(env, dict) and _identity_value(env.get(name)).casefold() == value:
+                found.add(wid)
+    finally:
+        await db.close()
+    found.discard(except_worker if except_worker is not None else -1)
+    return sorted(found)
+
+
+#: What a node identity a worker reports may look like to be kept: a plain
+#: token (Mysterium's 0x address is one). Anything else is left out.
+_NODE_IDENTITY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
+
+#: Highest copy number a node row may carry. The value and the copy come from
+#: the worker, and through it from inside the node container, so both are capped.
+NODE_IDENTITY_MAX_COPY = 32
+
+#: Most retired node rows kept per service and box. A node whose identity keeps
+#: changing (a hostile image can report a new one every read) pushes out the
+#: oldest retired ones instead of growing the table: these rows are only shown,
+#: never offered for reuse.
+NODE_IDENTITY_KEEP_RETIRED = 4
+
+
+async def record_node_identity(slug: str, worker_id: int, value: str, instance: Any = 1) -> bool:
+    """Keep the node identity one copy reported (``kind`` 'node', ``source`` 'node').
+
+    One active row per (service, box, copy): a new value retires the copy's
+    previous one, and at most ``NODE_IDENTITY_KEEP_RETIRED`` retired rows stay
+    per service and box. Returns False, keeping nothing, for a value that is not
+    a plain token or a copy number out of range.
+    """
+    value = str(value or "").strip()
+    if not _NODE_IDENTITY.fullmatch(value):
+        return False
+    try:
+        copy = int(instance)
+    except (TypeError, ValueError):
+        return False
+    if not 1 <= copy <= NODE_IDENTITY_MAX_COPY:
+        return False
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, value_encrypted, status FROM device_identities "
+            "WHERE slug = ? AND worker_id = ? AND instance = ? AND kind = 'node' ORDER BY id DESC",
+            (slug, worker_id, str(copy)),
+        )
+        rows = await cursor.fetchall()
+        match = next((r for r in rows if decrypt_value(r["value_encrypted"]).lower() == value.lower()), None)
+        await db.execute(
+            "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+            "WHERE slug = ? AND worker_id = ? AND instance = ? AND kind = 'node' AND status = 'active' AND id != ?",
+            (slug, worker_id, str(copy), match["id"] if match else -1),
+        )
+        if match is not None:
+            await db.execute(
+                "UPDATE device_identities SET status = 'active', retired_at = NULL, last_seen = datetime('now') "
+                "WHERE id = ?",
+                (match["id"],),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
+                "VALUES (?, ?, ?, 'node', 'node identity', ?, 'node')",
+                (slug, worker_id, str(copy), encrypt_value(value)),
+            )
+        await db.execute(
+            "DELETE FROM device_identities WHERE id IN ("
+            "SELECT id FROM device_identities WHERE slug = ? AND worker_id = ? AND kind = 'node' "
+            "AND status = 'retired' ORDER BY retired_at DESC, id DESC LIMIT -1 OFFSET ?)",
+            (slug, worker_id, NODE_IDENTITY_KEEP_RETIRED),
+        )
+        await db.commit()
+        return True
+    finally:
+        await db.close()
+
+
+async def identity_backfill_specs() -> list[dict[str, Any]]:
+    """The deploy records the identity ledger has no active row for, decoded.
+
+    One dict per (slug, worker) with ``slug``, ``worker_id``, ``spec`` and
+    ``instances``: the active row instances the ledger already holds for that
+    pair (empty for a deployment from before the ledger). Only existing workers.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT slug, worker_id, spec_encrypted FROM deployment_specs WHERE worker_id IN (SELECT id FROM workers)"
+        )
+        specs: dict[tuple[str, int], dict[str, Any]] = {}
+        for row in await cursor.fetchall():
+            spec = _decode_spec(row["spec_encrypted"] or "", row["slug"])
+            if spec:
+                specs[(row["slug"], int(row["worker_id"]))] = spec
+        # A deployment from before per-worker specs: its fleet-wide row, for the
+        # box that runs the container it recorded.
+        cursor = await db.execute("SELECT slug FROM deployments")
+        for (slug,) in await cursor.fetchall():
+            legacy = await _legacy_deployment_spec(db, slug)
+            if legacy:
+                specs.setdefault((slug, legacy[0]), legacy[1])
+        cursor = await db.execute(
+            "SELECT slug, worker_id, instance FROM device_identities WHERE kind = 'env' AND status = 'active'"
+        )
+        active: dict[tuple[str, int], set[str]] = {}
+        for row in await cursor.fetchall():
+            active.setdefault((row["slug"], int(row["worker_id"])), set()).add(str(row["instance"]))
+    finally:
+        await db.close()
+    return [
+        {"slug": key[0], "worker_id": key[1], "spec": spec, "instances": active.get(key, set())}
+        for key, spec in specs.items()
+    ]
