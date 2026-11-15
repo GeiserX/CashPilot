@@ -4116,6 +4116,7 @@ def _remove_service(
     on_record = {**dict.fromkeys(held), **nonce_on_record} if helper is not None else nonce_on_record
     unconfirmed: list[str] = []
     unverified: list[str] = []
+    unread: list[str] = []
     for vol_name, nonce in on_record.items():
         if nonce or vol_name in deleted_volumes:
             continue
@@ -4128,7 +4129,13 @@ def _remove_service(
             unconfirmed.remove(vol_name)
             continue
         except Exception as exc:  # noqa: BLE001 - unknown, so it is kept and the record stays
+            # Not known to be there either, so it is not sent to the owner to
+            # check by hand: a Remove again reads it afresh.
             logger.warning("Could not read the volume %s a restore of %s may have written: %s", vol_name, slug, exc)
+            unread.append(vol_name)
+            if vol_name not in failed_volumes:
+                failed_volumes.append(vol_name)
+            continue
         unverified.append(vol_name)
         if vol_name not in failed_volumes:
             failed_volumes.append(vol_name)
@@ -4155,6 +4162,9 @@ def _remove_service(
         # Kept because nothing proves they are the restore's: the owner checks
         # and deletes them, and the service stays held until they are gone.
         "unverified_volumes": unverified,
+        # Named on the record but could not be read just now: the service
+        # stays held, and a Remove again reads them afresh.
+        "unread_volumes": unread,
     }
 
 

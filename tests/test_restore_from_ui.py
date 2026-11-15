@@ -4819,4 +4819,8 @@ class TestALegacyRecordWhoseHelperIsLost:
         with patch.object(docker.volumes, "get", side_effect=APIError("daemon gone", response=response)):
             result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert orchestrator.restore_marks() == {"mysterium"}
-        assert result["unverified_volumes"] == ["mysterium-data"]
+        # Not known to be there, so it is not named for the owner to delete
+        # by hand: it is reported as unread, for a Remove again.
+        assert result["unverified_volumes"] == []
+        assert result["unread_volumes"] == ["mysterium-data"]
+        assert "mysterium-data" in result["failed_volumes"]

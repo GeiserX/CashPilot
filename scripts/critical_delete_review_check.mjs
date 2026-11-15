@@ -132,6 +132,11 @@ check('an unverified volume is named for the owner to check and delete',
 check('an unverified volume\'s toast says the hold ends only once the volume is gone',
   unverifiedToast.includes('stays held until that volume is gone')
     && !unverifiedToast.includes('delete it if it holds the partial restore'), unverifiedToast);
+const unreadToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a'],
+  removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: [], unverified_volumes: [], unread_volumes: ['mysterium-data']})));
+check('an unreadable volume is sent back to Remove again, not to a delete by hand',
+  unreadToast.includes('could not read its volume mysterium-data just now') && unreadToast.includes('Try Remove again.')
+    && !unreadToast.includes('cannot tell whether') && !unreadToast.includes('could not be deleted and stays'), unreadToast);
 
 if (bad) {
   console.error(`\n${bad} check(s) failed`);
