@@ -119,6 +119,15 @@ const failedToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a']
   removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: []})));
 check('control: a volume Docker would not delete still says Remove again',
   failedToast.includes('mysterium-data could not be deleted and stays. Try Remove again.'), failedToast);
+// A volume an older worker's record names with nothing that proves it is the
+// restore's: Remove again alone never deletes it, so the owner checks it.
+const unverifiedToast = toastOf(await run('removeService', ['mysterium', 7, 'box-a'],
+  removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: [], unverified_volumes: ['mysterium-data']})));
+check('an unverified volume is not sent back to Remove again alone',
+  !unverifiedToast.includes('could not be deleted and stays. Try Remove again.'), unverifiedToast);
+check('an unverified volume is named for the owner to check and delete',
+  unverifiedToast.includes('cannot tell whether its volume mysterium-data holds the partial restore')
+    && unverifiedToast.includes('service stays held'), unverifiedToast);
 
 if (bad) {
   console.error(`\n${bad} check(s) failed`);

@@ -180,11 +180,17 @@ identity sits on a named Docker volume. The rules:
   socket removes the volume and makes its own under the name in the instant
   between that read and the delete, Docker deletes the new one. Keeping every
   volume to close that gap would make every delete you confirm impossible.
-  The delete goes to that box only, only while that partial
+  A record from an older CashPilot names the volume without the label. When
+  the box can no longer tell whether such a volume is the restore's, it keeps
+  the volume and keeps the service held, and the answer names the volume:
+  check it, delete it yourself if it holds the partial restore, then press
+  Remove again. The delete goes to that box only, only while that partial
   restore is still there, and the audit log records it. Then restore again.
 - **Nothing kept.** The file waits in a private folder under the data folder
-  for at most 15 minutes and is deleted once the restore runs. The passphrase
-  goes to the worker in that one request and is never stored or logged.
+  for at most 15 minutes. It is deleted once the restore runs, or when those
+  15 minutes end if it never does. If CashPilot stops before then, it deletes
+  the file when it starts again. The passphrase goes to the worker in that one
+  request and is never stored or logged.
 
 Storj and Sia keep their state in host folders, and Storj's is over the 64 MB
 export cap: restore those with the command line steps.

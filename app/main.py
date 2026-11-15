@@ -2895,8 +2895,9 @@ async def lifespan(app: FastAPI):
         coalesce=True,
         misfire_grace_time=300,
     )
-    # A backup file uploaded for a restore and then left goes within
-    # RESTORE_UPLOAD_TTL plus this interval, with no request to trigger it.
+    # A backup file uploaded for a restore and then left goes at
+    # RESTORE_UPLOAD_TTL on its own timer (_restore_expire); this sweep also
+    # deletes a file in the folder no upload of this process knows.
     scheduler.add_job(
         _run_restore_sweep,
         "interval",
@@ -6314,11 +6315,19 @@ async def _svc_remove(
         metrics.record_container_lifecycle("remove", slug)
         return result
     if delete_volumes and allow_delete_critical:
-        kept = isinstance(result, dict) and bool(result.get("failed_volumes"))
+        answer = result if isinstance(result, dict) else {}
+        # "deleted" only when a volume went and none stayed: a removal that
+        # found no volume to delete removed no identity either.
+        if answer.get("failed_volumes") or answer.get("replaced_volumes"):
+            outcome = "partial"
+        elif answer.get("deleted_volumes"):
+            outcome = "deleted"
+        else:
+            outcome = "none_deleted"
         await _audit(
             "delete_critical_volumes",
             slug,
-            "partial" if kept else "deleted",
+            outcome,
             actor=auth.get_current_user(request),
             worker_id=worker_id,
         )
@@ -11844,6 +11853,22 @@ def _restore_sweep() -> None:
                 os.remove(path)
 
 
+def _restore_expire(upload_id: str) -> None:
+    """Delete an upload no restore used, RESTORE_UPLOAD_TTL after it arrived (api_restore_upload's timer).
+
+    A restore sending that file now deletes it itself once it used it; one it
+    refused before that leaves it, so the check comes back each second until
+    no restore holds it.
+    """
+    entry = _restore_uploads.get(upload_id)
+    if entry is None:
+        return
+    if entry["sha256"] in _restore_inflight:
+        asyncio.get_running_loop().call_later(1, _restore_expire, upload_id)
+        return
+    _restore_forget(upload_id)
+
+
 async def _run_restore_sweep() -> None:
     """_restore_sweep on the event loop, where the upload and restore routes change what it reads."""
     _restore_sweep()
@@ -12078,6 +12103,9 @@ async def api_restore_upload(request: Request) -> dict[str, Any]:
         "created": time.time(),
     }
     _restore_uploads[upload_id] = entry
+    # Deleted at the TTL on its own timer, not at the next sweep: the backup
+    # guide promises the file waits no longer than that.
+    asyncio.get_running_loop().call_later(RESTORE_UPLOAD_TTL, _restore_expire, upload_id)
     return await _restore_preview(entry)
 
 

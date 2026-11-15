@@ -4101,11 +4101,40 @@ def _remove_service(
                 ", ".join(stayed),
                 exc,
             )
+    # A name the record keeps no nonce for (a record from an older worker)
+    # proves nothing, so the record holds it until it is confirmed gone: one
+    # this removal tried to delete and could not stays named as not deleted;
+    # one nothing here mounts (its helper is lost) is read now. One that is
+    # there cannot be told from another client's volume, so the box neither
+    # deletes it nor drops the hold, and names it for the owner to check.
+    unconfirmed: list[str] = []
+    unverified: list[str] = []
+    for vol_name, nonce in nonce_on_record.items():
+        if nonce or vol_name in deleted_volumes:
+            continue
+        unconfirmed.append(vol_name)
+        if vol_name in volume_names:
+            continue
+        try:
+            _get_client().volumes.get(vol_name)
+        except NotFound:
+            unconfirmed.remove(vol_name)
+            continue
+        except Exception as exc:  # noqa: BLE001 - unknown, so it is kept and the record stays
+            logger.warning("Could not read the volume %s a restore of %s may have written: %s", vol_name, slug, exc)
+        unverified.append(vol_name)
+        failed_volumes.append(vol_name)
+        logger.warning(
+            "Kept volume %s: the record of the restore of %s that did not finish names it with nothing that proves "
+            "it is the restore's, so the service stays held until it is gone",
+            vol_name,
+            slug,
+        )
     # The record goes only once every volume it holds is confirmed gone or was
     # found another client's at the delete, or every one it names was read and
     # is gone or another client's; with no volume known, nothing was confirmed,
     # so it stays.
-    if unfinished and (held or recorded) and set(held) - set(not_ours) <= set(deleted_volumes):
+    if unfinished and (held or recorded) and set(held) - set(not_ours) <= set(deleted_volumes) and not unconfirmed:
         _mark_restore_unfinished(slug, False)
 
     return {
@@ -4115,6 +4144,9 @@ def _remove_service(
         # only this still reports the delete as partial.
         "failed_volumes": failed_volumes,
         "replaced_volumes": replaced,
+        # Kept because nothing proves they are the restore's: the owner checks
+        # and deletes them, and the service stays held until they are gone.
+        "unverified_volumes": unverified,
     }
 
 

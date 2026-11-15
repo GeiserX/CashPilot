@@ -1931,11 +1931,36 @@ class TestRemoveAfterARestoreThatDidNotFinish:
 
     def test_the_owner_deletes_the_data_and_it_is_audited(self, ui):
         resp, sent = self._remove(
-            ui, "&delete_volumes=true&allow_delete_critical=true", 200, {"status": "removed", "deleted_volumes": []}
+            ui,
+            "&delete_volumes=true&allow_delete_critical=true",
+            200,
+            {"status": "removed", "deleted_volumes": ["mysterium-data"]},
         )
         assert resp.status_code == 200
         assert sent.call_args.kwargs["params"] == {"delete_volumes": "true", "allow_delete_critical": "true"}
         assert ("delete_critical_volumes", "deleted") in _audit()
+
+    def test_a_delete_that_removed_no_volume_is_not_audited_as_deleted(self, ui):
+        resp, _sent = self._remove(
+            ui,
+            "&delete_volumes=true&allow_delete_critical=true",
+            200,
+            {"status": "removed", "deleted_volumes": [], "failed_volumes": []},
+        )
+        assert resp.status_code == 200
+        assert ("delete_critical_volumes", "none_deleted") in _audit()
+        assert ("delete_critical_volumes", "deleted") not in _audit()
+
+    def test_a_replaced_volume_alone_is_audited_as_partial(self, ui):
+        """A worker answer that names a replaced volume only in replaced_volumes still did not delete it."""
+        resp, _sent = self._remove(
+            ui,
+            "&delete_volumes=true&allow_delete_critical=true",
+            200,
+            {"status": "removed", "deleted_volumes": ["other"], "replaced_volumes": ["mysterium-data"]},
+        )
+        assert resp.status_code == 200
+        assert ("delete_critical_volumes", "partial") in _audit()
 
     def test_a_volume_the_box_kept_is_audited_as_partial(self, ui):
         resp, _sent = self._remove(
@@ -2184,6 +2209,50 @@ class TestTheUploadFolder:
             resp = _upload(ui, mysterium_bundle())
         assert resp.status_code == 200, resp.text
         assert main._restore_receiving == set()
+
+    @staticmethod
+    def _upload_then_wait(ui, monkeypatch, *, held: bool = False) -> list[list[str]]:
+        """Upload on one event loop that keeps running, as the server's does, and send nothing more.
+
+        No request and no scheduler sweep runs after the upload: only the
+        upload's own timer can delete the file. Returns what is on disk at
+        each look.
+        """
+        monkeypatch.setattr(main, "RESTORE_UPLOAD_TTL", 0.2)
+        seen: list[list[str]] = []
+
+        async def go():
+            transport = httpx.ASGITransport(app=main.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                resp = await client.post(
+                    "/api/restore/upload",
+                    content=mysterium_bundle(),
+                    headers={"Content-Type": "application/octet-stream"},
+                )
+                assert resp.status_code == 200, resp.text
+                seen.append(_uploads_on_disk(ui))
+                if held:
+                    main._restore_inflight.add(next(iter(main._restore_uploads.values()))["sha256"])
+                await asyncio.sleep(0.6)
+                seen.append(_uploads_on_disk(ui))
+                if held:
+                    main._restore_inflight.clear()
+                    await asyncio.sleep(1.3)
+                    seen.append(_uploads_on_disk(ui))
+
+        try:
+            asyncio.run(go())
+        finally:
+            main._restore_inflight.clear()
+        return seen
+
+    def test_an_upload_no_restore_used_is_deleted_at_the_ttl_with_no_request(self, ui, monkeypatch):
+        seen = self._upload_then_wait(ui, monkeypatch)
+        assert len(seen[0]) == 1 and seen[1] == [] and main._restore_uploads == {}
+
+    def test_an_upload_a_restore_is_sending_waits_for_it_then_goes(self, ui, monkeypatch):
+        seen = self._upload_then_wait(ui, monkeypatch, held=True)
+        assert len(seen[0]) == 1 and seen[1] == seen[0] and seen[2] == []
 
     def test_a_file_changed_on_disk_after_the_upload_is_not_sent(self, ui):
         upload = _upload(ui, mysterium_bundle()).json()
@@ -4649,3 +4718,47 @@ class TestTheDeleteHoldsNoWorkerWideLock:
         with patch.object(FakeVolume, "remove", remove):
             result = _owner_removes("mysterium", only_if_restore_unfinished=True)
         assert result["deleted_volumes"] == ["mysterium-data"] and locked_while_deleting == [False]
+
+
+class TestALegacyRecordWhoseHelperIsLost:
+    """A record from an older worker names the volume with no nonce: only the helper said it was the restore's."""
+
+    def _first_remove_loses_the_helper(self, docker) -> dict[str, Any]:
+        """The helper goes, the volume delete fails, and the helper cannot come back."""
+        TestAVolumeMadeThisSecondBindsNoReview()._legacy_record(docker, "2026-11-14T10:00:00Z")
+        with (
+            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
+            patch.object(orchestrator, "_create_restore_helper", side_effect=RuntimeError("daemon gone")),
+        ):
+            result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["failed_volumes"] == ["mysterium-data"] and docker.container_map == {}
+        assert orchestrator.restore_marks() == {"mysterium"}
+        return result
+
+    def test_the_retry_keeps_the_hold_and_names_the_volume_to_clean_up(self, docker):
+        self._first_remove_loses_the_helper(docker)
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert "mysterium-data" in docker.volume_map and docker.removed == [
+            ("container", "cashpilot-mysterium.restore")
+        ]
+        assert orchestrator.restore_marks() == {"mysterium"}
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            TestStartAndRemoveAroundARestore()._deploy(docker)
+        assert result["deleted_volumes"] == [] and result["unverified_volumes"] == ["mysterium-data"]
+        assert "mysterium-data" in result["failed_volumes"]
+
+    def test_control_once_the_owner_deletes_the_volume_the_next_remove_ends_the_hold(self, docker):
+        self._first_remove_loses_the_helper(docker)
+        del docker.volume_map["mysterium-data"]
+        result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert result["failed_volumes"] == [] and result["unverified_volumes"] == []
+        assert orchestrator.restore_marks() == set()
+
+    def test_a_volume_that_cannot_be_read_keeps_the_hold(self, docker):
+        self._first_remove_loses_the_helper(docker)
+        response = requests.Response()
+        response.status_code = 500
+        with patch.object(docker.volumes, "get", side_effect=APIError("daemon gone", response=response)):
+            result = _owner_removes("mysterium", only_if_restore_unfinished=True)
+        assert orchestrator.restore_marks() == {"mysterium"}
+        assert result["unverified_volumes"] == ["mysterium-data"]

@@ -3067,10 +3067,15 @@ const CP = (() => {
       // one with no review at all, so the text names no confirmation.
       const list = (v) => (Array.isArray(v) ? v : []);
       const replaced = list(result?.replaced_volumes);
-      const kept = list(result?.failed_volumes).filter((v) => !replaced.includes(v));
+      // Named by a restore record from an older worker with nothing that
+      // proves it is the restore's: the box keeps it and the service stays
+      // held until the owner deletes it.
+      const unverified = list(result?.unverified_volumes);
+      const kept = list(result?.failed_volumes).filter((v) => !replaced.includes(v) && !unverified.includes(v));
       const notes = [];
       if (kept.length) notes.push(`its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`);
       if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')}, so the box kept that volume. Check it yourself.`);
+      if (unverified.length) notes.push(`the box cannot tell whether its volume ${unverified.join(', ')} holds the partial restore, so it kept that volume and the service stays held. Check it yourself: delete it if it holds the partial restore, then Remove again.`);
       if (notes.length) toast(`${slug} removed${where}, but ${notes.join(' And ')}`, 'error');
       else toast(`${slug} removed${where}`, 'success');
       loadServicesTable();
