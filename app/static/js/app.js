@@ -2971,18 +2971,25 @@ const CP = (() => {
   }
 
   // Remove a service. From a box's row (workerId, boxName) it goes to that box
-  // only; from the service page it goes to the one online box.
-  async function removeService(slug, workerId, boxName) {
+  // only; from the service page it goes to the one online box, and never
+  // takes the data with it. A row a restore that did not finish left
+  // (leftover) deletes only while that partial restore is still there.
+  async function removeService(slug, workerId, boxName, leftover) {
     const pinned = workerId != null && workerId !== '';
     const where = pinned ? ` from ${boxName || `worker #${workerId}`}` : '';
     if (!confirm(`Remove ${slug}${where}? This will stop and delete the container.`)) return;
     const box = (id) => `?worker_id=${encodeURIComponent(id)}`;
     // Its data goes only when the owner says so, never by default: the same
     // owner-only, audited delete a custom service's Remove offers. It is the
-    // way to free the box for a restore of a backup.
+    // way to free the box for a restore of a backup. Only from a box's own
+    // row: the service page names no box, and the server would pick the one
+    // online box, which may not be the one the owner means.
     const params = pinned ? [`worker_id=${encodeURIComponent(workerId)}`] : [];
-    if (_isOwner && confirm(`Also delete the data of ${slug}${pinned ? ` on ${boxName || `worker #${workerId}`}` : ''}? A node identity or wallet in it is gone for good unless you have its backup file. Cancel keeps the data for a later deploy.`)) {
+    if (pinned && _isOwner && confirm(`Also delete the data of ${slug} on ${boxName || `worker #${workerId}`}? A node identity or wallet in it is gone for good unless you have its backup file. Cancel keeps the data for a later deploy.`)) {
       params.push('delete_volumes=true', 'allow_delete_critical=true');
+      // That row was drawn for a partial restore: one restored since, in
+      // another tab, is not what the owner agreed to delete.
+      if (leftover === 'leftover') params.push('only_if_restore_unfinished=true');
     }
     try {
       let result;
@@ -4397,7 +4404,7 @@ const CP = (() => {
           <strong class="sd-inst-box">${escapeHtml(w.name)}</strong>
           <span class="state state-warn">partial restore, no container</span>
           ${_canWrite ? `<div class="sd-inst-actions">
-            <button class="btn btn-danger btn-sm" data-action="removeService" data-a1="${escapeHtml(svc.slug)}" data-a2="${w.id}" data-a3="${escapeHtml(w.name)}">Remove from this box</button>
+            <button class="btn btn-danger btn-sm" data-action="removeService" data-a1="${escapeHtml(svc.slug)}" data-a2="${w.id}" data-a3="${escapeHtml(w.name)}" data-a4="leftover">Remove from this box</button>
           </div>` : ''}
         </div>`).join('')}
       </div>`;

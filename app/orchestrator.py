@@ -1847,8 +1847,28 @@ def _failed_on_disk() -> set[str]:
         return set()
 
 
+class FailedMarksUnreadable(ContainerRuntimeError):
+    """The failed marks are there but cannot be read: any fence-gated container may be one a failed deploy left."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "the worker could not read its record of failed deploys, so any fence-gated node may be one a failed "
+            "deploy or an unfinished restore left, and none is started. The worker's log says why",
+            503,
+        )
+
+
 def deploy_failed() -> set[str]:
-    names = _failed_on_disk()
+    """The container names a failed deploy holds stopped.
+
+    Raises FailedMarksUnreadable when the file is there but cannot be read: an
+    empty answer would let the guard start a half-written node.
+    """
+    try:
+        names = _read_failed()
+    except OSError as exc:
+        logger.warning("Could not read the failed marks: %s", exc)
+        raise FailedMarksUnreadable() from None
     for name, failed in _FAILED_UNWRITTEN.items():
         names = names | {name} if failed else names - {name}
     return names
@@ -2798,8 +2818,9 @@ _RESTORE_LOCK = threading.Lock()
 #: Docker would not create again), so _refuse_mid_restore holds a service no
 #: failed mark covers (ProxyBase, Anyone).
 RESTORE_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".restore_unfinished")
-#: A mark the file could not lose, by slug: lifted in this process only, as
-#: _FAILED_UNWRITTEN does. After a worker restart the file holds it again.
+#: A hold the file could not take, by slug: kept in this process only. A clear
+#: the file could not take is never kept here: the file still holds the slug,
+#: and so does this process, until a clear reaches the disk.
 _RESTORE_MARK_UNWRITTEN: dict[str, bool] = {}
 _RESTORE_MARK_LOCK = threading.Lock()
 
@@ -2885,7 +2906,12 @@ def _mark_restore_unfinished(slug: str, held: bool, volumes: Any = ()) -> bool:
             _RESTORE_MARK_UNWRITTEN.pop(slug, None)
             return True
         except OSError as exc:
-            _RESTORE_MARK_UNWRITTEN[slug] = held
+            if held:
+                _RESTORE_MARK_UNWRITTEN[slug] = True
+            else:
+                # The file still holds it, so this process does too: a hold lifted
+                # here only would come back after a restart over a fresh node.
+                _RESTORE_MARK_UNWRITTEN.pop(slug, None)
             logger.warning(
                 "Could not record that a restore of %s %s: %s", slug, "did not finish" if held else "ended", exc
             )
@@ -3329,7 +3355,10 @@ def _restore_locked(
     made: list[str] = []
     containers: list[Any] = []
     written: list[str] = []
-    failed_before = name in deploy_failed()
+    try:
+        failed_before = gated and name in deploy_failed()
+    except FailedMarksUnreadable as exc:
+        raise RestoreError(f"Nothing was restored: {exc}.", 503) from None
     files = 0
     try:
         # On disk before anything is made, until the data reads back: a worker
@@ -3386,15 +3415,18 @@ def _restore_locked(
         # Anything this restore made that stayed keeps the record: a written
         # volume, whether or not its helper could be put back, and as much a
         # container or volume no check ever read (a create that failed before
-        # any write). The record goes only when the undo confirmed all of it gone.
-        _mark_restore_unfinished(slug, bool(left))
+        # any write), or a container deploy_raw's roll-back left under the name,
+        # which mounts a volume this restore made. The record goes only when the
+        # undo confirmed all of it gone; it keeps naming the volumes it holds.
+        taken = _name_taken(client, name)
+        _mark_restore_unfinished(slug, bool(left) or taken, targets.values())
         if gated:
             # Any container left under the name stays held (ours that could not
             # be removed, or one deploy_raw's roll-back left), and so does a
             # written volume that stayed: the guard never starts unchecked data.
             # A free name with nothing written left gets its mark back as it was.
             half_written = any(v in left for v in written)
-            _mark_failed(name, failed_before or half_written or _name_taken(client, name))
+            _mark_failed(name, failed_before or half_written or taken)
         note = f" Could not remove {', '.join(left)}: remove it by hand." if left else ""
         if isinstance(exc, RestoreError):
             raise RestoreError(

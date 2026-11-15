@@ -129,20 +129,20 @@ function runRemove({owner, answers, refusal = 'restore_unfinished', box = {worke
 }
 
 const CRITICAL = '&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true';
-// An owner is asked first whether the data goes too; false keeps it, as below.
-let run = await runRemove({owner: true, answers: [true, false, true]});
+// From the service page no box is named, so the data question is not asked.
+let run = await runRemove({owner: true, answers: [true, true]});
 check('a refused Remove asks the owner about the half-written data',
-  run.asked.length === 3 && /partial restore/.test(run.asked[2]) && /deletes that volume/.test(run.asked[2]), run.asked);
-check('and names the box that refused', /on box-a did not finish/.test(run.asked[2]), run.asked);
+  run.asked.length === 2 && /partial restore/.test(run.asked[1]) && /deletes that volume/.test(run.asked[1]), run.asked);
+check('and names the box that refused', /on box-a did not finish/.test(run.asked[1]), run.asked);
 check('and sends the audited critical delete to that box only', run.sent.length === 2
   && run.sent[0] === 'DELETE /api/services/mysterium'
   && run.sent[1] === `DELETE /api/services/mysterium?worker_id=1${CRITICAL}`, run.sent);
 check('and says it was removed', run.toasts.join() === 'success: mysterium removed', run.toasts);
-run = await runRemove({owner: true, answers: [true, false, true], failed: ['mysterium-data']});
+run = await runRemove({owner: true, answers: [true, true], failed: ['mysterium-data']});
 check('a volume the box could not delete is not reported as removed', run.toasts.length === 1
   && /^error: /.test(run.toasts[0]) && /mysterium-data could not be deleted/.test(run.toasts[0]), run.toasts);
-run = await runRemove({owner: true, answers: [true, false, true], box: {}});
-check('a refusal that names no box deletes nothing', run.sent.length === 1 && run.asked.length === 2
+run = await runRemove({owner: true, answers: [true, true], box: {}});
+check('a refusal that names no box deletes nothing', run.sent.length === 1 && run.asked.length === 1
   && /^error: /.test(run.toasts.join()), run);
 run = await runRemove({owner: true, answers: [true, false, true], args: ['2', 'box-b'], box: {worker_id: 2, worker_name: 'box-b'}});
 check('Remove from this box asks about that box', /from box-b\?/.test(run.asked[0]) && /on box-b\?/.test(run.asked[1])
@@ -152,17 +152,17 @@ check('and both requests go to that box', run.sent.join(' | ')
 check('and the service panel is shown again', run.reopened.join() === 'mysterium', run.reopened);
 run = await runRemove({owner: true, answers: [true, false, true], args: ['2', 'box-b'], box: {worker_id: 1, worker_name: 'box-a'}});
 check('a box-row Remove never deletes on another box', run.sent.every((r) => r.includes('worker_id=2')), run.sent);
-run = await runRemove({owner: true, answers: [true, false, false]});
+run = await runRemove({owner: true, answers: [true, false]});
 check('an owner who says no deletes nothing', run.sent.length === 1 && run.toasts.length === 0, run);
 run = await runRemove({owner: false, answers: [true]});
 check('a writer is not offered the delete', run.sent.length === 1 && run.asked.length === 1
   && /Only the owner/.test(run.toasts.join()), run);
-run = await runRemove({owner: true, answers: [true, false], refusal: 'something_else'});
-check('any other refusal is shown and not retried', run.sent.length === 1 && run.asked.length === 2
+run = await runRemove({owner: true, answers: [true], refusal: 'something_else'});
+check('any other refusal is shown and not retried', run.sent.length === 1 && run.asked.length === 1
   && /^error: /.test(run.toasts.join()), run);
-run = await runRemove({owner: true, answers: [true, false], refusal: null});
+run = await runRemove({owner: true, answers: [true], refusal: null});
 check('a Remove the worker takes asks nothing more', run.sent.length === 1
-  && run.sent[0] === 'DELETE /api/services/mysterium' && run.asked.length === 2, run);
+  && run.sent[0] === 'DELETE /api/services/mysterium' && run.asked.length === 1, run);
 
 // --- Remove with its data, the way to free a box for a restore ---------------
 // The settings page and the backup guide send the owner here: only a yes to
@@ -171,10 +171,21 @@ run = await runRemove({owner: true, answers: [true, true], refusal: null, args: 
 check('an owner who says yes to the data sends the delete with the data to that box', run.sent.length === 1
   && run.sent[0] === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true'
   && /Also delete the data of mysterium on box-b\?/.test(run.asked[1]) && /backup file/.test(run.asked[1]), run);
+// The service page names no box: the server would pick the one online box,
+// which may not be the box the owner means, so its data is never offered there.
 run = await runRemove({owner: true, answers: [true, true], refusal: null});
-check('from the service page too', run.sent.join() === 'DELETE /api/services/mysterium?delete_volumes=true&allow_delete_critical=true', run.sent);
-run = await runRemove({owner: true, answers: [true, false], refusal: null});
-check('control: an owner who says no keeps the data', run.sent.join() === 'DELETE /api/services/mysterium', run.sent);
+check('the service page never offers the data delete', run.asked.length === 1
+  && run.sent.join() === 'DELETE /api/services/mysterium', run);
+run = await runRemove({owner: true, answers: [true, false], refusal: null, args: ['2', 'box-b']});
+check('control: an owner who says no keeps the data', run.sent.join() === 'DELETE /api/services/mysterium?worker_id=2', run.sent);
+// A row a partial restore left: a restore that finished since, in another
+// tab, must not be deleted on this yes, so its first delete carries the flag.
+run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b', 'leftover']});
+check('a partial-restore row deletes only while that partial restore is there', run.sent.length === 1
+  && run.sent[0] === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true&only_if_restore_unfinished=true', run.sent);
+run = await runRemove({owner: true, answers: [true, true], refusal: null, args: ['2', 'box-b']});
+check('control: a box row with a container sends its data delete without that flag',
+  run.sent.join() === 'DELETE /api/services/mysterium?worker_id=2&delete_volumes=true&allow_delete_critical=true', run.sent);
 run = await runRemove({owner: false, answers: [true], refusal: null});
 check('a writer is never asked about the data and never sends its delete', run.asked.length === 1
   && run.sent.join() === 'DELETE /api/services/mysterium', run);
@@ -201,7 +212,7 @@ const boxA = {id: 1, name: 'box-a', system_info: {restore_unfinished: ['proxybas
 const boxB = {id: 2, name: 'box-b<i>', system_info: {restore_unfinished: ['mysterium']}};
 let rows = leftover([boxA, boxB]);
 check('a box with only a partial restore gets Remove from this box',
-  /data-action="removeService" data-a1="mysterium" data-a2="2" data-a3="box-b&lt;i&gt;">Remove from this box</.test(rows), rows);
+  /data-action="removeService" data-a1="mysterium" data-a2="2" data-a3="box-b&lt;i&gt;" data-a4="leftover">Remove from this box</.test(rows), rows);
 check('and no other box does', !/data-a2="1"/.test(rows), rows);
 check('and its name stays text', !/<i>/.test(rows), rows);
 check('a box already listed with a container gets no second row',

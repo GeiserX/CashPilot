@@ -278,6 +278,8 @@ def markers(tmp_path, monkeypatch):
     monkeypatch.setattr(orchestrator, "_MISMATCH_HELD", {}, raising=False)
     monkeypatch.setattr(orchestrator, "FAILED_MARKER", str(tmp_path / "failed"), raising=False)
     monkeypatch.setattr(orchestrator, "_FAILED_UNWRITTEN", {}, raising=False)
+    monkeypatch.setattr(orchestrator, "RESTORE_MARKER", str(tmp_path / "restore-unfinished"), raising=False)
+    monkeypatch.setattr(orchestrator, "_RESTORE_MARK_UNWRITTEN", {}, raising=False)
     return tmp_path
 
 
@@ -1808,3 +1810,64 @@ def test_the_isolation_check_passes_the_workers_mode_to_the_finding():
     ):
         isolation_check._run(client)
     spy.assert_called_once_with([], lan_fence.MODE_OPERATOR)
+
+
+def _unreadable(monkeypatch, path: str) -> None:
+    """open() of ``path`` for reading raises EACCES in the orchestrator, as after a chown of /data."""
+    import builtins
+
+    real_open = builtins.open
+
+    def fake_open(file, *args, **kwargs):
+        if str(file) == path and (args[0] if args else kwargs.get("mode", "r")) == "r":
+            raise PermissionError(13, "Permission denied")
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(orchestrator, "open", fake_open, raising=False)
+
+
+class TestTheGuardNeverStartsAHalfWrittenRestore:
+    """A worker that died mid-restore leaves a created node; the guard is what would start it."""
+
+    @pytest.mark.parametrize("record", ["FAILED_MARKER", "RESTORE_MARKER"])
+    def test_a_record_it_cannot_read_starts_no_node(self, markers, monkeypatch, record):
+        Path(orchestrator.FAILED_MARKER).write_text("cashpilot-mysterium\n", encoding="utf-8")
+        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+        _unreadable(monkeypatch, getattr(orchestrator, record))
+        node = _node(status="created")
+        held, _ = _guard([node])
+        node.start.assert_not_called()
+        assert held["cashpilot-mysterium"] == lan_fence.HOLDS_UNREAD
+
+    def test_a_record_it_cannot_read_leaves_a_running_node_running(self, markers, monkeypatch):
+        _unreadable(monkeypatch, orchestrator.FAILED_MARKER)
+        Path(orchestrator.FAILED_MARKER).write_text("", encoding="utf-8")
+        node = _node()
+        _guard([node])
+        node.stop.assert_not_called()
+
+    def test_a_restore_that_did_not_finish_holds_its_node(self, markers):
+        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+        node = _node(status="created")
+        held, _ = _guard([node])
+        node.start.assert_not_called()
+        assert held["cashpilot-mysterium"] == lan_fence.RESTORE_UNFINISHED
+
+    def test_control_another_slugs_record_holds_nothing_here(self, markers):
+        Path(orchestrator.RESTORE_MARKER).write_text("proxybase-xyz proxybase-data\n", encoding="utf-8")
+        node = _node(status="created")
+        held, _ = _guard([node])
+        node.start.assert_called_once()
+        assert held == {}
+
+    def test_a_start_from_the_dashboard_is_refused_on_failed_marks_it_cannot_read(self, markers, monkeypatch):
+        Path(orchestrator.FAILED_MARKER).write_text("cashpilot-mysterium\n", encoding="utf-8")
+        _unreadable(monkeypatch, orchestrator.FAILED_MARKER)
+        with (
+            patch.object(orchestrator, "_require_fence"),
+            patch.object(orchestrator, "_get_client"),
+            patch.object(lan_fence, "resolve_mode", return_value=lan_fence.MODE_ON),
+            pytest.raises(orchestrator.ContainerRuntimeError, match="could not read") as caught,
+        ):
+            orchestrator._require_startable(_node(status="exited"), "mysterium")
+        assert caught.value.status_code == 503

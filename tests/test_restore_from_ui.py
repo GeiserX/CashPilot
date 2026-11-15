@@ -3175,7 +3175,10 @@ class TestAWrittenVolumeAnotherContainerMounts:
         orchestrator.deploy_raw.__wrapped__ = taken
         with pytest.raises(orchestrator.RestoreError) as caught:
             orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
-        assert caught.value.left == [] and orchestrator.restore_marks() == set()
+        assert caught.value.left == [] and "mysterium-data" in docker.volume_map
+        # Not left, but a container under the name mounts the volume this restore
+        # made and no check read: the record holds it, as the gated branch's mark does.
+        assert orchestrator.restore_marks() == {"mysterium"}
 
 
 class TestAnUndoThatLeavesAnUncheckedContainer:
@@ -3234,6 +3237,22 @@ class TestARemovalPersistsTheHoldBeforeTheHelperGoes:
         orchestrator._RESTORE_MARK_UNWRITTEN.clear()
         with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
             TestStartAndRemoveAroundARestore()._deploy(docker)
+
+    def test_a_record_write_that_fails_then_a_restart_still_holds_by_the_helper(self, docker, monkeypatch):
+        """The write fails for real, the removal is refused, the worker restarts: the helper it kept still holds."""
+        TestStartAndRemoveAroundARestore()._service(docker, helper=True)
+        _record_unwritable(monkeypatch)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="nothing was removed") as caught:
+            orchestrator.remove_service("mysterium", delete_volumes=True, allow_delete_critical=True)
+        assert caught.value.status_code == 503 and docker.removed == []
+        orchestrator._RESTORE_MARK_UNWRITTEN.clear()
+        assert orchestrator.restore_marks() == set()
+        assert orchestrator._restore_helper("mysterium") is not None
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            TestStartAndRemoveAroundARestore()._deploy(docker)
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            orchestrator.start_service("mysterium")
+        assert docker.started == []
 
 
 class TestABackupFingerprintIsOfTheVolumeItRead:
@@ -3296,3 +3315,80 @@ class TestAStalledUploadGivesItsSlotBack:
             asyncio.run(asyncio.wait_for(main.api_restore_upload(Stalled()), 5))
         assert caught.value.status_code == 408
         assert main._restore_receiving == set() and _uploads_on_disk(ui) == []
+
+
+def _record_unwritable(monkeypatch, when=lambda: True) -> None:
+    """The record's .tmp cannot be written while ``when()``, as a full or read-only /data."""
+    import builtins
+
+    real_open = builtins.open
+    temp = f"{orchestrator.RESTORE_MARKER}.tmp"
+
+    def fake_open(file, *args, **kwargs):
+        if str(file) == temp and when():
+            raise OSError(28, "No space left on device")
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(orchestrator, "open", fake_open, raising=False)
+
+
+class TestAClearTheDiskDidNotTakeKeepsTheHold:
+    """A clear that did not reach the disk lifts nothing: after a restart the file would hold a fresh node."""
+
+    def test_the_undo_keeps_holding_the_slug_in_this_process(self, docker, monkeypatch):
+        docker.corrupt_put = True
+        # The hold goes on disk; only the clear, once data was written, cannot.
+        _record_unwritable(monkeypatch, lambda: bool(docker.puts))
+        with pytest.raises(orchestrator.RestoreError) as caught:
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.left == [] and docker.container_map == {} and docker.volume_map == {}
+        assert Path(orchestrator.RESTORE_MARKER).read_text(encoding="utf-8") == "mysterium mysterium-data\n"
+        assert orchestrator.restore_marks() == {"mysterium"}
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            TestStartAndRemoveAroundARestore()._deploy(docker)
+
+    def test_a_removal_keeps_holding_the_slug_in_this_process(self, docker, monkeypatch):
+        Path(orchestrator.RESTORE_MARKER).write_text("mysterium mysterium-data\n", encoding="utf-8")
+        docker.volumes.create("mysterium-data")
+        _record_unwritable(monkeypatch)
+        result = orchestrator.remove_service(
+            "mysterium", delete_volumes=True, allow_delete_critical=True, only_if_restore_unfinished=True
+        )
+        assert result["deleted_volumes"] == ["mysterium-data"]
+        assert orchestrator.restore_marks() == {"mysterium"}
+
+    def test_control_a_clear_the_disk_took_ends_the_hold(self, docker):
+        docker.corrupt_put = True
+        with pytest.raises(orchestrator.RestoreError):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert orchestrator.restore_marks() == set() and not Path(orchestrator.RESTORE_MARKER).read_text()
+
+
+class TestAnUndoKeepsTheVolumesInTheRecord:
+    def test_a_start_that_fails_after_the_clear_records_the_volume_again(self, docker):
+        with (
+            patch.object(orchestrator, "_start_restored", side_effect=RuntimeError("start refused")),
+            patch.object(FakeVolume, "remove", side_effect=requests.exceptions.ReadTimeout("proxy timed out")),
+            pytest.raises(orchestrator.RestoreError) as caught,
+        ):
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.left == ["mysterium-data"]
+        assert Path(orchestrator.RESTORE_MARKER).read_text(encoding="utf-8") == "mysterium mysterium-data\n"
+
+
+class TestALeftoverUnderTheNameHoldsANonGatedRestore:
+    """deploy_raw's roll-back can leave a container the restore never listed, mounting the volume it made."""
+
+    def test_the_record_stays_and_nothing_starts_it(self, docker):
+        def half_made(**kwargs):
+            docker.deploy_raw(**kwargs)
+            raise orchestrator.ContainerRuntimeError("create timed out; the leftover could not be removed")
+
+        orchestrator.deploy_raw.__wrapped__ = half_made
+        with pytest.raises(orchestrator.RestoreError) as caught:
+            orchestrator.restore_state("mysterium", _archives(), MYSTERIUM_DEPLOY)
+        assert caught.value.left == [] and "cashpilot-mysterium" in docker.container_map
+        assert orchestrator.restore_marks() == {"mysterium"}
+        with pytest.raises(orchestrator.ContainerRuntimeError, match="did not finish"):
+            orchestrator.start_service("mysterium")
+        assert docker.started == []
