@@ -253,15 +253,25 @@ devices, and starts again only once the new tunnel is ready. Recreating a
 copy loses its writable layer, as moving a legacy pair does, so a provider
 that keeps its device id there sees a new device once. No earner starts in
 the old tunnel meanwhile. If one copy cannot move, the copies already moved
-keep running in the new tunnel, and the worker finishes the move about five
-minutes later. A copy left in such a tunnel by a redeploy that did not
+keep running in the new tunnel, and the worker tries to finish the move again
+about five minutes later. That is a retry, not a promise: while Docker keeps
+refusing (a container it cannot create, a full disk), the move stays half
+done and the worker log says why, so fix the cause and the next try finishes
+it. A copy left in such a tunnel by a redeploy that did not
 finish (`cashpilot-tunnel-p<id>.old`) moves into the proxy's current tunnel.
 
 A copy still in a legacy one-tunnel-per-copy pair never starts in its old
-tunnel either. While it runs, it stays where it is: an older worker wrote no
-stop down, so only Docker knows whether its owner stopped it. When it must
-start (after its own crash, or a start from a UI that sends no settings),
-the pair moves into the shared tunnel first, and the earner starts there.
+tunnel either. When the worker starts, it moves the running pairs of each
+proxy into the shared tunnel at once (see the upgrade note below), so a
+running copy can be recreated then. That does not happen for a proxy with no
+ready tunnel to copy the settings from, or with an older worker's shared
+tunnel whose copies are not settled, or when the move fails: those pairs stay
+as they are. After that, the heartbeat leaves a running pair where it is: an
+older worker wrote no stop down, so only Docker knows whether its owner
+stopped it. When the copy must start (after its own crash, or a start from a
+UI that sends no settings), the pair moves into the shared tunnel first, and
+the earner starts there. Either move recreates the copy, so a provider that
+keeps its device id inside the container sees a new device once.
 
 What this cannot cover: someone who starts a tunnel container by hand
 (`docker start`), or a second CashPilot worker on the same Docker daemon,

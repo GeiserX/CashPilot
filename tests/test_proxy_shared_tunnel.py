@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import copy
+import errno
 import io
 import itertools
 import json
@@ -4288,3 +4289,148 @@ class TestTheGuaranteesThatHadNoTest:
         assert shared.id != old.id and shared.attrs["HostConfig"]["RestartPolicy"] == {"Name": "no"}
         assert _member_ids(docker, shared) == ["cashpilot-earnfm-p3", NAME]
         assert {docker.named(n).status for n in ("cashpilot-earnfm-p3", NAME)} == {"running"}
+
+
+def _folder_fsync(err: int | None, folders: list | None = None):
+    """os.fsync that fails with ``err`` on a folder (None: works), and counts each folder flush in ``folders``."""
+    real = os.fsync
+
+    def fsync(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            if folders is not None:
+                folders.append(fd)
+            if err is not None:
+                raise OSError(err, os.strerror(err))
+        return real(fd)
+
+    return patch.object(proxy_tunnel.os, "fsync", side_effect=fsync)
+
+
+class TestARecordThatCannotBeFlushed:
+    def test_a_stop_whose_record_cannot_be_flushed_still_stops_the_copy(self, docker):
+        """The stop raised before it stopped anything, and every retry of the cap raised again: the copy kept
+        spending the metered proxy past its cap until the disk could flush its folder."""
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        with _folder_fsync(errno.EIO):
+            for _ in range(3):  # the owner, then the cap on every heartbeat
+                with pytest.raises(proxy_tunnel.ProxyTunnelError, match="was stopped, but"):
+                    proxy_tunnel.stop("honeygain", 3)
+        assert proxy_tunnel.held() == {NAME}
+        assert docker.named(NAME).status == "exited" and tunnel.status == "exited"
+        proxy_tunnel.stop("honeygain", 3)  # control: once the folder flushes, the stop is acknowledged
+
+    def test_a_legacy_stop_whose_record_cannot_be_flushed_still_stops_the_pair(self, docker):
+        legacy = _legacy_pair(docker, "honeygain")
+        with _folder_fsync(errno.EIO), pytest.raises(proxy_tunnel.ProxyTunnelError, match="was stopped, but"):
+            proxy_tunnel.stop("honeygain", 3)
+        assert legacy.status == "exited" and docker.named(NAME).status == "exited"
+
+    def test_a_filesystem_that_never_flushes_a_folder_still_deploys_starts_and_stops(self, docker):
+        """EINVAL on a folder is what some network and shared-folder filesystems always answer: raising broke every
+        deploy, start and stop there."""
+        with _folder_fsync(errno.EINVAL):
+            _deploy("honeygain")
+            assert docker.named(NAME).status == "running"
+            proxy_tunnel.stop("honeygain", 3)
+            assert proxy_tunnel.held() == {NAME} and docker.named(NAME).status == "exited"
+            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert proxy_tunnel.held() == set() and docker.named(NAME).status == "running"
+
+    @pytest.mark.parametrize("marker", ["held", "kept"])
+    def test_a_retry_after_a_worker_restart_flushes_the_folder(self, docker, marker):
+        """Which writes had not flushed their folder lived in the process: after a restart, a retry that found the
+        marker already saying so was acknowledged with the rename maybe not on disk."""
+        path = proxy_tunnel.HELD_MARKER if marker == "held" else proxy_tunnel.KEPT_MARKER
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("cashpilot-honeygain-p3\n")  # renamed by the worker before the restart, folder not flushed
+        folders: list = []
+        with _folder_fsync(None, folders):
+            if marker == "held":
+                proxy_tunnel._set_held(NAME, True, strict=True)
+            else:
+                proxy_tunnel._set_kept(NAME, True, strict=True)
+        assert folders, "the retry found the marker already saying so and never flushed its folder"
+        with _folder_fsync(errno.EIO), pytest.raises(proxy_tunnel.ProxyTunnelError):
+            proxy_tunnel._set_held(NAME, True, strict=True)  # and a flush that fails is never acknowledged
+
+
+class TestRoundThreeFollowups:
+    @pytest.mark.parametrize("by", ["older UI", "heartbeat"])
+    def test_a_copy_in_a_retired_older_tunnel_runs_again_when_the_tunnel_under_the_name_is_down(self, docker, by):
+        """Only a running tunnel under the name took the copy, and nothing started that tunnel: the copy stayed down
+        for good, while the retired tunnel held the proxy's login with no copy running in it."""
+        old, current = _older_tunnel_retired_beside_a_current_one(docker)
+        proxy_tunnel.stop("earnfm", 3)  # the only copy in the current tunnel, which goes down with it
+        assert current.status == "exited"
+        docker.named(NAME).stop()  # its own crash
+        if by == "older UI":
+            proxy_tunnel.start("honeygain", 3, None, None)
+        else:
+            _heartbeat()
+            _heartbeat()
+        earner = docker.named(NAME)
+        assert earner.status == "running" and earner.attrs["HostConfig"]["NetworkMode"] == f"container:{current.id}"
+        assert docker.tunnels() == [current] and current.status == "running"
+        assert docker.named("cashpilot-earnfm-p3").status == "exited" and proxy_tunnel.held() == {"cashpilot-earnfm-p3"}
+
+    def test_a_down_tunnel_under_the_name_that_never_gets_ready_goes_down_again(self, docker):
+        old, current = _older_tunnel_retired_beside_a_current_one(docker)
+        proxy_tunnel.stop("earnfm", 3)
+        docker.named(NAME).stop()
+        real_ready = docker.ready
+        with (
+            patch.object(docker, "ready", lambda c: c is not current and real_ready(c)),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.start("honeygain", 3, None, None)
+        assert current.status == "exited" and docker.named(NAME).status == "exited"
+
+    def test_an_older_ui_start_that_cannot_move_a_legacy_pair_stops_its_tunnel_again(self, docker):
+        """The legacy tunnel was started for its settings and left running, Docker restarting it, while its only
+        copy stayed stopped: the proxy's login (or an online tailnet node) held for nothing."""
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
+        _made_by_an_older_worker(legacy)
+        proxy_tunnel.stop("earnfm", 4)
+        assert legacy.status == "exited"
+        with (
+            patch.object(proxy_tunnel, "start_sidecar", side_effect=proxy_tunnel.ProxyTunnelError("no exit")),
+            pytest.raises(proxy_tunnel.ProxyTunnelError),
+        ):
+            proxy_tunnel.start("earnfm", 4, None, None)
+        assert legacy.status == "exited" and proxy_tunnel.held() == {"cashpilot-earnfm-p4"}
+        proxy_tunnel.start("earnfm", 4, None, None)  # control: the next start moves it
+        assert docker.named("cashpilot-earnfm-p4").status == "running"
+
+    @pytest.mark.parametrize("shared", ["no shared tunnel", "an older shared tunnel"])
+    def test_the_heartbeat_move_of_a_legacy_pair_gives_up_on_a_pull_that_never_returns(self, docker, shared):
+        """The legacy path pulled the tunnel image with no deadline, holding the proxy's lock: a stalled registry
+        kept a cap's Stop waiting for as long as the pull hung."""
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4, proxy=_socks())
+        _made_by_an_older_worker(legacy)
+        if shared == "an older shared tunnel":
+            _deploy("honeygain", proxy_id=4)
+            older = docker.named("cashpilot-tunnel-p4")
+            _made_by_an_older_worker(older)
+        docker.named("cashpilot-earnfm-p4").stop()  # its own crash: the pair must move
+        release = threading.Event()
+        pulls = []
+
+        def pull(image):
+            pulls.append(image)
+            release.wait(3)  # never returns within the test's bound
+
+        try:
+            with (
+                patch.object(docker, "pull", side_effect=pull),
+                patch.object(proxy_tunnel, "REPLACE_PULL_SECONDS", 0.2),
+            ):
+                began = time.monotonic()
+                _heartbeat()
+                took = time.monotonic() - began
+        finally:
+            release.set()
+        assert pulls, "the heartbeat never tried to move the pair"
+        assert took < 2, took
+        assert not proxy_tunnel._deploy_lock(4).locked()
+        assert docker.named("cashpilot-earnfm-p4").status == "exited"

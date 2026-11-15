@@ -44,6 +44,7 @@ errors pass through ``redact`` before they leave this module.
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
 import io
 import ipaddress
@@ -178,31 +179,50 @@ def _write_names(path: str, names: set[str]) -> None:
         os.fsync(fh.fileno())
     os.replace(tmp, path)
     # And the rename itself, or a power cut can bring the old list back. A
-    # failure raises like any other write: a stop or a deploy is acknowledged
-    # only once its record is on disk. The marker already holds the new list,
-    # so a retry that finds it there syncs the folder again (_sync_pending)
-    # instead of taking it for done.
-    _unsynced.add(path)
+    # failure raises (_sync_folder): a stop or a deploy is acknowledged only
+    # once its record is on disk. The marker already holds the new list, so a
+    # retry that finds it there flushes the folder again (_flush_unchanged).
     _sync_folder(path)
 
 
-#: Markers whose last rename may not be on disk yet: their folder sync failed.
-_unsynced: set[str] = set()
+#: What a folder flush answers on a filesystem that cannot flush a folder at
+#: all (some network and VM shared folders). It always will, and nothing more
+#: can be done there, so the rename stands as written and is logged once, as
+#: PostgreSQL's fsync_fname does. Any other error (EIO) means the rename may be
+#: lost, and raises.
+_NO_FOLDER_FLUSH = frozenset({errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EBADF})
+_no_folder_flush_logged: set[str] = set()
+
+
+class _NotFlushed(OSError):
+    """The marker holds the new list, but its folder could not be flushed: the rename may not survive a power cut."""
 
 
 def _sync_folder(path: str) -> None:
-    """Flush the folder of the marker at ``path``, so its last rename survives a power cut. Raises OSError."""
-    folder = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
+    """Flush the folder of the marker at ``path``, so its last rename survives a power cut. Raises _NotFlushed."""
+    folder_path = os.path.dirname(path) or "."
+    folder = os.open(folder_path, os.O_RDONLY)
     try:
         os.fsync(folder)
+    except OSError as exc:
+        if exc.errno not in _NO_FOLDER_FLUSH:
+            raise _NotFlushed(exc.errno, f"the data folder could not be flushed: {exc.strerror or exc}") from None
+        if folder_path not in _no_folder_flush_logged:
+            _no_folder_flush_logged.add(folder_path)
+            logger.warning(
+                "The filesystem of %s cannot flush a folder (%s); markers are written without it", folder_path, exc
+            )
     finally:
         os.close(folder)
-    _unsynced.discard(path)
 
 
-def _sync_pending(path: str) -> None:
-    """For a write that finds the marker already says so: sync its folder if the write that said so could not."""
-    if path in _unsynced:
+def _flush_unchanged(path: str) -> None:
+    """For a write that finds the marker already says so: flush its folder anyway.
+
+    The write that said so may not have flushed it, in this process or in one
+    before a restart, so the retry is acknowledged only once it is on disk. No
+    marker means no rename to flush."""
+    if os.path.exists(path):
         _sync_folder(path)
 
 
@@ -288,7 +308,7 @@ def _set_id(path: str, key: str, on: bool, *, strict: bool = False) -> bool:
         try:
             keys = _read_names(path)
             if (key in keys) == on:
-                _sync_pending(path)
+                _flush_unchanged(path)
                 return True
             _write_names(path, keys | {key} if on else keys - {key})
             return True
@@ -314,12 +334,14 @@ def _set_held(name: str, on: bool, *, strict: bool = False, rewrite: bool = Fals
         try:
             names = held()
             if (name in names) == on and not rewrite:
-                _sync_pending(HELD_MARKER)
+                _flush_unchanged(HELD_MARKER)
                 return
             _write_names(HELD_MARKER, names | {name} if on else names - {name})
         except OSError as exc:
             if strict:
                 what = "was stopped" if on else "is no longer stopped"
+                if isinstance(exc, _NotFlushed):
+                    raise _RecordNotFlushed(f"Could not record that {name} {what} for good ({exc})") from None
                 raise ProxyTunnelError(f"Could not record that {name} {what} ({exc}); it was left as it was") from None
             logger.warning("Could not clear the stop of %s: %s", name, exc)
 
@@ -340,6 +362,10 @@ class ProxyTunnelError(RuntimeError):
     def __init__(self, message: str, status_code: int = 409) -> None:
         super().__init__(message)
         self.status_code = status_code
+
+
+class _RecordNotFlushed(ProxyTunnelError):
+    """A stop or start is in the marker, but its folder could not be flushed (_NotFlushed)."""
 
 
 def tunnel_image() -> str:
@@ -2057,7 +2083,20 @@ def _stop(slug: str, proxy_id: int) -> bool:
         raise ProxyTunnelError(f"Could not read which copies are stopped ({exc}); {name} was left as it was") from None
     tunnel_live = tunnel is not None and getattr(tunnel, "status", "") in _LIVE
     was_running = (earner is not None and getattr(earner, "status", "") in _LIVE) or (tunnel_live and not was_held)
-    _set_held(name, True, strict=True)
+    try:
+        _set_held(name, True, strict=True)
+    except _RecordNotFlushed as exc:
+        # The marker says stopped, but a power cut may lose it: the copy is
+        # stopped all the same, the safe way, and the stop then reports it.
+        _halt(client, slug, earner, tunnel, tunnel_live, was_running)
+        raise ProxyTunnelError(
+            f"{name} was stopped, but the stop may not survive a power cut. {exc}. Stop it again once the disk is healthy."
+        ) from None
+    return _halt(client, slug, earner, tunnel, tunnel_live, was_running)
+
+
+def _halt(client: Any, slug: str, earner: Any, tunnel: Any, tunnel_live: bool, was_running: bool) -> bool:
+    """_stop's work once the stop is in the marker: the earner down, and its tunnel when no copy in it should run."""
     if tunnel is not None and not _is_shared(tunnel):
         tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
         if earner is not None:
@@ -2202,10 +2241,7 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
     except Exception:
         # The tunnel was started for this copy, which stays stopped: down
         # again unless another copy in it should run.
-        with contextlib.suppress(Exception):
-            stopped = held()
-            if not any(str(m.name) not in stopped for m in _members(client, current)):
-                current.stop(timeout=SIDECAR_STOP_SECONDS)
+        _stop_if_unwanted(client, current)
         raise
     earner.reload()
     if earner.status == "running":
@@ -2214,6 +2250,14 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
     else:
         _started_or_raise(earner, current, slug)
     return {"exit": exit_info}
+
+
+def _stop_if_unwanted(client: Any, tunnel: Any) -> None:
+    """Stop ``tunnel`` unless a copy in it should run. Errors are ignored: a start that failed reports its own."""
+    with contextlib.suppress(Exception):
+        stopped = held()
+        if not any(str(m.name) not in stopped for m in _members(client, tunnel)):
+            tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
 
 
 def _started_or_raise(earner: Any, tunnel: Any, slug: str, *, restart: bool = False) -> None:
@@ -2233,24 +2277,33 @@ def _start_legacy(slug: str, earner: Any, sidecar: Any, name: str) -> dict[str, 
     (_start_in_ready_run): it is started for its settings, and the pair moves
     into the proxy's shared tunnel first (_migrate_proxy), where the earner
     starts."""
+    client = orchestrator._get_client()
     sidecar.reload()
     if sidecar.status != "running":
         refresh_proxy_ip(sidecar)
     sidecar.start()
-    exit_info = _wait_ready(sidecar)
-    moved = _restarts_by_itself(sidecar)
-    if moved:
-        client = orchestrator._get_client()
-        proxy_id = int(_labels(sidecar).get(LABEL_PROXY, ""))
-        _migrate_proxy(client, proxy_id, [sidecar])
-        earner = _get(client, name)
-        sidecar = _tunnel_of(client, earner, slug, proxy_id)
-        if earner is None or not _is_shared(sidecar):
-            raise ProxyTunnelError(
-                f"{name} was not started: its tunnel was made by an older worker and could not be replaced yet"
-            )
-        exit_info = _read_exit(sidecar) or exit_info
-    _set_held(name, False, strict=True)
+    legacy = sidecar
+    try:
+        exit_info = _wait_ready(sidecar)
+        moved = _restarts_by_itself(sidecar)
+        if moved:
+            proxy_id = int(_labels(sidecar).get(LABEL_PROXY, ""))
+            _migrate_proxy(client, proxy_id, [sidecar])
+            earner = _get(client, name)
+            sidecar = _tunnel_of(client, earner, slug, proxy_id)
+            if earner is None or not _is_shared(sidecar):
+                raise ProxyTunnelError(
+                    f"{name} was not started: its tunnel was made by an older worker and could not be replaced yet"
+                )
+            exit_info = _read_exit(sidecar) or exit_info
+        _set_held(name, False, strict=True)
+    except Exception:
+        # Started for this copy, which stays stopped: down again, as _start
+        # does, or it holds the proxy's login (or an online node) for nothing.
+        # The same for a shared tunnel it moved into.
+        for tunnel in {id(t): t for t in (legacy, sidecar) if t is not None}.values():
+            _stop_if_unwanted(client, tunnel)
+        raise
     earner.reload()
     if earner.status != "running":
         _started_or_raise(earner, sidecar, slug)
@@ -2575,7 +2628,8 @@ def migrate_legacy() -> list[str]:
     return moved
 
 
-def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any]) -> list[str]:
+def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any], *, deadline: float | None = None) -> list[str]:
+    """Move the legacy pairs ``tunnels`` of the proxy into its shared tunnel. ``deadline`` bounds the image pull."""
     ready = _shared_ready(client, proxy_id)
     if ready is not None and _restarts_by_itself(ready[0]):
         # An older worker's shared tunnel: no copy starts in it, so it is
@@ -2583,7 +2637,7 @@ def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any]) -> list[str]:
         if not _settled_and_wanted(client, ready[0], str(proxy_id)):
             logger.info("Proxy %s's tunnel is replaced first; its other copies move on their next start", proxy_id)
             return []
-        ready = _replace_restarting(client, ready[0])
+        ready = _replace_restarting(client, ready[0], deadline=deadline)
     if ready is None:
         sources = [t for t in tunnels if getattr(t, "status", "") == "running" and _read_exit(t) is not None]
         if not sources:
@@ -2596,7 +2650,7 @@ def _migrate_proxy(client: Any, proxy_id: int, tunnels: list[Any]) -> list[str]:
         if files.get("kind") == "tailscale":
             files["hostname"] = _ts_hostname(shared_label(proxy_id))
         files = _with_digest(files)
-        ready = _ensure_tunnel(client, proxy_id, None, files.get("own_ip") or None, files=files)
+        ready = _ensure_tunnel(client, proxy_id, None, files.get("own_ip") or None, files=files, deadline=deadline)
     shared, _ = ready
     moved: list[str] = []
     for tunnel in tunnels:
@@ -3033,7 +3087,8 @@ def _replace_restarting(client: Any, tunnel: Any, *, deadline: float | None = No
     name back when that name is free or empty (_reclaim_retired). When
     another copy holds the name, its copies move into the tunnel under that
     name instead, which runs the proxy's current settings, once that tunnel
-    is ready and is not an older worker's too; until then, nothing is done.
+    is ready (started first when it is down) and is not an older worker's
+    too; until then, nothing is done.
     Either way the copies end up in the tunnel this returns.
 
     ``deadline`` bounds the image pull (start_sidecar). The caller holds the
@@ -3046,8 +3101,19 @@ def _replace_restarting(client: Any, tunnel: Any, *, deadline: float | None = No
         tunnel.reload()
     if str(tunnel.name) != final:
         target = _get(client, final)
-        if not _is_tunnel_for(target, pid, key) or _restarts_by_itself(target) or target.status != "running":
+        if not _is_tunnel_for(target, pid, key) or _restarts_by_itself(target):
             raise ProxyTunnelError(f"{tunnel.name} is replaced once {final} runs on this worker's terms")
+        if target.status != "running":
+            # Down, as when every copy in it was stopped: started on the
+            # settings it holds, as a start does, since a copy moving in should
+            # run. Nothing else starts it, so the move would wait for good.
+            refresh_proxy_ip(target)
+            target.start()
+            try:
+                _wait_ready(target)
+            except Exception:
+                _stop_if_unwanted(client, target)
+                raise
         if (exit_info := _read_exit(target)) is None:
             raise ProxyTunnelError(f"{tunnel.name} is replaced once {final} is ready")
         with _swap_lock:
@@ -3159,9 +3225,10 @@ def _replace_restarting_tunnels() -> None:
             if not shared and not (ready and _must_start(client, tunnel)):
                 continue
             try:
+                deadline = time.monotonic() + REPLACE_PULL_SECONDS
                 if shared:
-                    _replace_restarting(client, tunnel, deadline=time.monotonic() + REPLACE_PULL_SECONDS)
-                elif not _migrate_proxy(client, int(pid), [tunnel]):
+                    _replace_restarting(client, tunnel, deadline=deadline)
+                elif not _migrate_proxy(client, int(pid), [tunnel], deadline=deadline):
                     raise ProxyTunnelError("its copy could not move into the proxy's shared tunnel yet")
                 _replace_failed.pop(tunnel.id, None)
             except Exception as exc:  # noqa: BLE001 - it stays as it is, and no earner starts in it
