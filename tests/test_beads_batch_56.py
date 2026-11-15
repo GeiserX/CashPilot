@@ -404,6 +404,9 @@ class TestTheDeviceCeilingIsDocumentedWhereItIsEnforced:
             patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            # The device name is read from the worker record; without this the
+            # test reads whatever database earlier tests left behind.
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=None),
             # Mysterium deploys only to a worker that runs it behind the fence.
             patch("app.main._worker_features", new_callable=AsyncMock, return_value={"fence_gated"}),
         ):
@@ -442,6 +445,9 @@ class TestTheDeviceCeilingIsDocumentedWhereItIsEnforced:
             patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            # The device name is read from the worker record; without this the
+            # test reads whatever database earlier tests left behind.
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=None),
         ):
             asyncio.run(main_module.api_deploy(_FakeRequest(), "honeygain", body, worker_id=1))
 

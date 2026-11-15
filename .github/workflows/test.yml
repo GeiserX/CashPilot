@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A green run takes 11 to 16 minutes. On 2026-11-14 a hung test held runners
+    # until GitHub's six-hour default and queued every other PR behind them.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
         with:
