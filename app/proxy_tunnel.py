@@ -2156,8 +2156,16 @@ def _stop(slug: str, proxy_id: int) -> dict[str, Any]:
     # and state: down for its tunnel, after a reboot, or left as a half or an
     # aside, the heartbeat would start it. A held one is not, unless it still
     # runs: a stop that failed halfway (an error, so the cap did not mark it)
-    # and is tried again must still be marked.
-    was_running = not was_held or any(getattr(c, "status", "") in _LIVE for c in (earner, *halves) if c is not None)
+    # and is tried again must still be marked. A legacy pair (its own tunnel)
+    # is the exception: an older worker's stop left no marker, the heartbeat
+    # never starts it, and Docker restarts it unless its owner stopped it
+    # (_status), so down and unheld means stopped by its owner. It counts only
+    # live, or its tunnel live and the copy not held.
+    live = any(getattr(c, "status", "") in _LIVE for c in (earner, *halves) if c is not None)
+    if tunnel is not None and not _is_shared(tunnel):
+        was_running = live or (tunnel_live and not was_held)
+    else:
+        was_running = not was_held or live
     try:
         _set_held(name, True, strict=True)
     except _RecordNotFlushed as exc:

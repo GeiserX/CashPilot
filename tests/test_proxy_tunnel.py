@@ -1028,11 +1028,12 @@ class TestStartAppliesTheStoredProxy:
 
 class TestReviewFollowUps:
     def test_stop_says_whether_the_copy_was_running(self):
-        """Whether the owner wanted it running: a copy never stopped counts, even down (after a reboot), so the
-        cap marks it for its reset; one already held does not."""
+        """A legacy pair (its own tunnel) counts as running only live: an older worker's stop left no marker, so
+        down and unheld means its owner stopped it, and the cap must not mark it for its reset to start."""
         for earner_status, tunnel_status, was_held, expected in (
             ("running", "running", False, True),
-            ("exited", "exited", False, True),
+            ("exited", "running", False, True),
+            ("exited", "exited", False, False),
             ("exited", "exited", True, False),
         ):
             earner = _container("cashpilot-x-p1", "x", proxy=1, status=earner_status)
