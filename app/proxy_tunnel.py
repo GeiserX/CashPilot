@@ -2218,28 +2218,38 @@ def _halt(
     """_stop's work once the stop is in the marker: the earner down, and its tunnel when no copy in it should run.
 
     ``halves`` are what a move a worker died in, or a failed redeploy, left of the copy (_stop): down too.
-    A half that cannot stop never keeps the earner and its tunnel up, and never
-    makes the stop an error: its first failure is returned with ``was_running``,
-    for the answer's warning (_stopped). A failure to stop the earner is raised."""
+    A half that cannot stop never keeps the earner and its tunnel up. One that
+    was down (the usual case: the member stops before its rename, and a clone
+    is not started) never makes the stop an error: its first failure is
+    returned with ``was_running``, for the answer's warning (_stopped). One
+    that still runs is raised once the earner and the tunnel are down, as a
+    failure to stop the earner is: the copy still runs, so the cap must retry."""
     half_failure = None
+    live_failure = None
     for half in halves:
+        was_live = getattr(half, "status", "") in _LIVE
         try:
             half.stop(timeout=orchestrator._get_stop_timeout(slug))
         except NotFound:
             pass
-        except Exception as exc:  # noqa: BLE001 - a warning in the answer, once the earner and the tunnel are down
-            half_failure = half_failure or exc
+        except Exception as exc:  # noqa: BLE001 - a warning, or raised once the earner and the tunnel are down
+            if was_live:
+                live_failure = live_failure or exc
+            else:
+                half_failure = half_failure or exc
     if tunnel is not None and not _is_shared(tunnel):
         tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
         if earner is not None:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
+        if live_failure is not None:
+            raise live_failure
         return was_running, half_failure
-    failure = None
+    failure = live_failure
     if earner is not None:
         try:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
         except Exception as exc:  # noqa: BLE001 - raised below, after the tunnel
-            failure = exc
+            failure = failure or exc
     if tunnel is not None and tunnel_live:
         # Also when the earner did not stop: with no copy that should run left,
         # stopping the tunnel cuts the earner's way out all the same.

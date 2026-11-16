@@ -4897,6 +4897,33 @@ class TestRoundEightFollowups:
         assert "durable" not in answer
         assert "could not be stopped" in answer["warning"] and "stop timed out" in answer["warning"]
 
+    def test_a_half_that_still_runs_and_cannot_stop_is_a_failed_stop_the_cap_retries(self, docker):
+        """A half that cannot stop was turned into a warning even when it still ran: the cap dropped its retry while
+        that copy kept using the proxy. Only a half that was already down is a warning."""
+        _deploy("honeygain")
+        _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+        earner = docker.named(NAME)
+
+        def cannot_remove(force=False, v=False):
+            raise APIError("500 Server Error: remove timed out")
+
+        earner.remove = cannot_remove
+        _heartbeat()
+        moving = docker.named(NAME + proxy_tunnel.MOVING_SUFFIX)
+        moving.status = "running"  # not what a current worker leaves, but a stop must never hide it
+
+        def cannot_stop(timeout=None):
+            raise APIError("500 Server Error: stop timed out")
+
+        moving.stop = cannot_stop
+        with pytest.raises(APIError, match="stop timed out"):
+            proxy_tunnel.stop("honeygain", 3)
+        assert proxy_tunnel.held() == {NAME}
+        assert docker.named(NAME).status == "exited"
+        # The cap's retry: the half still runs, so the copy counts as running and is marked.
+        moving.stop = lambda timeout=None: setattr(moving, "status", "exited")
+        assert proxy_tunnel.stop("honeygain", 3)["was_running"] is True
+
     def test_a_half_that_cannot_stop_still_leaves_a_capped_copy_marked_for_its_reset(self, docker):
         """A half's failed stop raised after the copy and its tunnel were down and the marker held: the cap read
         "could not stop", a second stop found the copy held and down (was_running False), so it was never marked
