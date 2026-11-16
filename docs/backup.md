@@ -29,9 +29,16 @@ the same list the delete guard refuses on, so it can export exactly those.
 
 ## How it works
 
-**Encryption happens on the worker**, on the machine that holds the data. The UI
-only ever handles ciphertext, so plaintext key material never crosses the fleet
-network and never sits in the dashboard's memory.
+**Encryption happens on the worker**, on the machine that holds the data. The
+bundle payload is ciphertext whenever the UI holds it: an export comes back
+encrypted, and a restore passes the uploaded file to the worker as it is. The
+bundle header is readable JSON, authenticated but not encrypted: anyone with the
+file can read its service slug, worker name, targets and payload SHA-256
+digest. It never holds key material. Apart from the
+passphrase below, plaintext key material never crosses the fleet network and
+never sits in the dashboard's memory. A passphrase is the one secret that crosses: it goes once from the UI to
+the worker, in the export or restore request that uses it, and CashPilot never
+stores or logs it.
 
 **You choose the target**, and CashPilot cannot decrypt either kind:
 

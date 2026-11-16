@@ -88,7 +88,7 @@ def clean_definition(body: dict[str, Any], existing: dict[str, Any] | None = Non
         if not out["auth_key"]:
             raise ProxyInputError("A Tailscale proxy needs an auth key")
         if not _EXIT_NODE_RE.match(out["exit_node"]):
-            raise ProxyInputError("Name the exit node by its Tailscale name or IP")
+            raise ProxyInputError("Give the exit node's Tailscale 100.x address, not its name")
         if out["login_server"] and not valid_login_server(out["login_server"]):
             raise ProxyInputError(
                 "The login server must be an https:// URL with no user name, password, query or fragment"

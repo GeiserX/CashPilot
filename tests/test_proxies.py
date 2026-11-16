@@ -67,6 +67,20 @@ class TestDefinition:
         )
         assert d["auth_key"] == AUTH_KEY and d["host"] == "" and d["password"] == ""
 
+    def test_a_missing_exit_node_asks_for_its_address_not_its_name(self):
+        # The tunnel sets the exit node while tailscaled is still starting, so a
+        # name does not resolve yet (docs/proxies.md). Both refusals must ask for
+        # the 100.x address, as the form's placeholder does.
+        from app import worker_api
+
+        with pytest.raises(proxies.ProxyInputError) as ui_err:
+            proxies.clean_definition({"name": "Exit node A", "kind": "tailscale", "auth_key": AUTH_KEY})
+        with pytest.raises(HTTPException) as worker_err:
+            worker_api._validate_proxy(worker_api.ProxySpec(kind="tailscale", auth_key=AUTH_KEY, exit_node=""))
+        for message in (str(ui_err.value), str(worker_err.value.detail)):
+            assert "100.x address" in message
+            assert "name or IP" not in message
+
     def test_an_edit_keeps_secrets_left_blank_and_clears_on_request(self):
         stored = proxies.clean_definition(_socks(username=USERNAME, password=PASSWORD))
         kept = proxies.clean_definition({"name": "Renamed", "password": ""}, stored)

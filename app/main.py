@@ -3467,7 +3467,11 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
     single row with summed CPU/memory, an instance count, and per-instance
     details for the expandable sub-row UI.
     """
-    _require_reader(request)
+    user = _require_reader(request)
+    # The read-only key feeds Grafana and Home Assistant widgets. A route's
+    # exit IP can be a home WAN address (a Tailscale exit node), so that key
+    # never sees it; a signed-in user already reads it on the workers page.
+    show_route = (user or {}).get("r") != "reader"
     statuses: list[dict[str, Any]] = await _get_all_worker_containers()
 
     # Get latest earnings per platform for balance display
@@ -3594,6 +3598,10 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "fatal": inst.get("fatal"),
                 "held": inst.get("held"),
             }
+            # A copy routed through a proxy from its deploy: the row shows
+            # the exit IP and country it leaves from.
+            if show_route and inst.get("route"):
+                detail["route"] = inst["route"]
             # Only containers CashPilot made (constants.CASHPILOT_DEPLOYED): a
             # container the user runs by hand is theirs to shape, even when it
             # carries CashPilot's labels or a catalog image.

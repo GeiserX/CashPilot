@@ -1914,7 +1914,7 @@ def _validate_proxy(proxy: ProxySpec) -> None:
     if proxy.kind == "tailscale":
         if not proxy.auth_key or not _EXIT_NODE_RE.match(proxy.exit_node or ""):
             raise HTTPException(
-                status_code=400, detail="A Tailscale proxy needs an auth key and an exit node name or IP"
+                status_code=400, detail="A Tailscale proxy needs an auth key and the exit node's 100.x address"
             )
         if proxy.login_server and not _LOGIN_SERVER_RE.match(proxy.login_server):
             raise HTTPException(status_code=400, detail="The Tailscale login server must be an https:// URL")
