@@ -11800,8 +11800,17 @@ async def api_identity_add(request: Request) -> dict[str, Any]:
     problem = database.manual_identity_error(label, value)
     if problem:
         raise HTTPException(status_code=400, detail=problem)
-    if not (catalog.get_service(slug) or await _custom_service(slug, reveal=False)):
+    svc = catalog.get_service(slug)
+    if not (svc or await _custom_service(slug, reveal=False)):
         raise HTTPException(status_code=404, detail="No such service")
+    # The list and the form name a field by its label ('Node UUID'), the reuse
+    # picker by its env key: keep a field the owner names either way, in any
+    # letter case, under its key, or "use one this service had before" never finds it.
+    wanted = " ".join(label.split()).casefold()
+    for key, key_label in catalog.identity_keys(svc).items():
+        if wanted in (key.casefold(), " ".join(key_label.split()).casefold()):
+            label = key
+            break
     if not await database.get_worker(worker_id):
         raise HTTPException(status_code=404, detail="No such box")
     row_id = await database.add_manual_identity(slug, worker_id, str(copy), label, value)

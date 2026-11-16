@@ -3804,6 +3804,20 @@ class TestAnIdTheOwnerEnters:
         assert [o["masked"] for o in offers] == ["..." + UUID_A[-4:]]
         assert offers[0]["in_use_on"] == []
 
+    @pytest.mark.parametrize("label", ["Node UUID", "node uuid", "earnapp_uuid", "  EarnApp_UUID "])
+    def test_the_field_shown_by_its_label_or_in_other_letter_case_is_kept_under_its_key(self, db, label):
+        """The list names the field 'Node UUID': typing that, or the key in any case, must still be offered."""
+        assert _enter(label=label).status_code == 200, label
+        [row] = _call(OWNER, "GET", "/api/identities").json()
+        assert (row["key"], row["label"]) == ("EARNAPP_UUID", "Node UUID")
+        offers = _call(OWNER, "GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID").json()
+        assert [o["masked"] for o in offers] == ["..." + UUID_A[-4:]]
+
+    def test_the_label_and_the_key_of_one_field_are_one_id(self, db):
+        assert _enter(label="Node UUID").status_code == 200
+        assert _enter(label="EARNAPP_UUID").status_code == 409
+        assert len(_rows()) == 1
+
 
 class TestTheExport:
     def test_without_a_password_it_asks_for_one(self, db):

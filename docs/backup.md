@@ -296,7 +296,10 @@ owner sees this section. An API key cannot read it.
   creation goes to the audit log. CashPilot does not treat this id as running
   on the box. So it never makes a deploy ask about an id that another box
   uses. When you deploy that service again, **Use one this service had before**
-  offers it for that field.
+  offers it for that field. Type the field as the list shows it (`Node UUID`)
+  or as its setting (`EARNAPP_UUID`), in any letter case: CashPilot keeps it
+  under the setting. A field name the service does not have is kept as you
+  typed it, but no deploy offers it.
 - **Download all.** This gives you a JSON file with every row in full: the
   service, the field, the value, the box, the copy, the state, and the first
   seen, last seen and removed times. CashPilot asks for your password first.
