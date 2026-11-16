@@ -5531,13 +5531,9 @@ async def _record_removed_copies(slug: str, worker_id: int, result: Any) -> None
 
     The first copy goes with the service and its record is its proof. An extra
     copy needs its digest: from the worker's answer (``identity_digests``, read
-    before it removed them), else from its last heartbeat. Each proxied copy
-    is proved by its last heartbeat, even when the worker says some remain
-    (``proxied_error``): it may have removed the others, and no later heartbeat
-    lists them. Their records stay then, and each copy's own removal retires
-    its row.
+    before it removed them), else from its last heartbeat. The proxied copies
+    were recorded before the worker was asked (_record_removed_proxied_copies).
     """
-    await _record_removed_proxied_copies(worker_id, slug)
     try:
         spec = await database.get_deployment_spec(slug, worker_id=worker_id)
         digests = await _stored_copy_digests(worker_id, slug)
@@ -6484,6 +6480,10 @@ async def _svc_remove(
         # The delete the owner agreed to is of a partial restore: the worker
         # refuses it once that restore is gone (a later one may have succeeded).
         params = {**(params or {}), "only_if_restore_unfinished": "true"}
+    # Before the worker is asked: once it removes the proxied copies, its next
+    # heartbeat no longer lists them to prove their ids. A failed removal
+    # leaves them running, so the rows this writes stay right.
+    await _record_removed_proxied_copies(worker_id, slug)
     try:
         result = await _proxy_worker_command(worker_id, "remove", slug, params=params, headers=approval)
     except HTTPException as exc:
@@ -11651,6 +11651,8 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             lambda pid: _routed_command(worker_id, body.slug, command, pid),
         )
     elif body.command == "remove":
+        # As in _svc_remove: before the worker removes the proxied copies.
+        await _record_removed_proxied_copies(worker_id, body.slug)
         result = await _or_routed(
             worker_id,
             body.slug,

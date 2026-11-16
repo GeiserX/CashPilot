@@ -1935,6 +1935,60 @@ class TestAProxiedCopyWithNoRow:
         assert asyncio.run(database.list_proxied_copies(7)) == []
         assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME", "boxB-p7") in _retired()
 
+    async def _heartbeat_without_the_copy(self, wid):
+        """The worker removed the copy and its heartbeat landed before its answer."""
+        worker = await database.get_worker(wid)
+        await database.upsert_worker(
+            worker["client_id"],
+            name=worker["name"],
+            containers=worker["containers"],
+            system_info=json.dumps({"proxied": []}),
+        )
+
+    def test_removing_the_service_keeps_the_ids_when_a_heartbeat_lands_before_the_answer(self, db):
+        wid = self._setup()
+        _proxied_heartbeat(wid, "honeygain", 7, {"HONEYGAIN_DEVICE_NAME": "boxB-p7"})
+
+        async def worker_removes(*a, **kw):
+            await self._heartbeat_without_the_copy(wid)
+            return {"status": "removed", "container": "cashpilot-honeygain"}
+
+        async def run():
+            with (
+                patch.object(main, "_require_writer", lambda r: OWNER),
+                patch.object(main, "_resolve_worker_id", AsyncMock(return_value=wid)),
+                patch.object(main, "_proxy_worker_command", worker_removes),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                await main._svc_remove(_request(), "honeygain", wid, False)
+
+        asyncio.run(run())
+        assert asyncio.run(database.list_proxied_copies(7)) == []
+        assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME", "boxB-p7") in _retired()
+
+    def test_a_raw_remove_keeps_the_ids_when_a_heartbeat_lands_before_the_answer(self, db):
+        wid = self._setup()
+        _proxied_heartbeat(wid, "honeygain", 7, {"HONEYGAIN_DEVICE_NAME": "boxB-p7"})
+
+        async def worker_removes(*a, **kw):
+            await self._heartbeat_without_the_copy(wid)
+            return {"status": "removed", "container": "cashpilot-honeygain"}
+
+        async def run():
+            with (
+                patch.object(main, "_require_writer", lambda r: OWNER),
+                patch.object(main, "_proxy_to_worker", worker_removes),
+                patch.object(main.database, "record_health_event", AsyncMock()),
+                patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
+            ):
+                body = main.WorkerCommand(command="remove", slug="honeygain")
+                await main.api_worker_command(_request(), wid, body)
+
+        asyncio.run(run())
+        assert asyncio.run(database.list_proxied_copies(7)) == []
+        assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME", "boxB-p7") in _retired()
+
     def test_a_service_removed_while_its_copy_is_removed_leaves_no_active_row(self, db):
         """The service's removal retires the copy between the copy removal's read and its write."""
         wid = self._setup()
