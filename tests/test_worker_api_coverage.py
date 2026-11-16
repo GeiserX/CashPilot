@@ -427,7 +427,13 @@ class TestRemoveEndpoint:
         body = resp.json()
         assert body["status"] == "removed"
         assert body["container"] == "cashpilot-honeygain"
-        mock_remove.assert_called_once_with("honeygain", delete_volumes=False, allow_delete_critical=False)
+        mock_remove.assert_called_once_with(
+            "honeygain",
+            delete_volumes=False,
+            allow_delete_critical=False,
+            only_if_restore_unfinished=False,
+            approved_critical=None,
+        )
 
     def test_remove_with_delete_volumes_query_param(self):
         removal = {"container": "cashpilot-honeygain", "deleted_volumes": ["v1"], "failed_volumes": []}
@@ -437,7 +443,13 @@ class TestRemoveEndpoint:
         ):
             resp = _client().delete("/api/containers/honeygain?delete_volumes=true", headers=_auth())
         assert resp.status_code == 200
-        mock_remove.assert_called_once_with("honeygain", delete_volumes=True, allow_delete_critical=False)
+        mock_remove.assert_called_once_with(
+            "honeygain",
+            delete_volumes=True,
+            allow_delete_critical=False,
+            only_if_restore_unfinished=False,
+            approved_critical=None,
+        )
 
     def test_remove_not_found_returns_404(self):
         with patch("app.worker_api.orchestrator.remove_service", side_effect=ValueError("gone")):

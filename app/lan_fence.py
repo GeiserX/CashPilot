@@ -1210,6 +1210,8 @@ def guard() -> dict[str, str]:
     then applied again; the next pass starts the container once it reads
     complete. Returns the containers held stopped, with the reason.
     """
+    from app.constants import LABEL_SERVICE
+
     orch = _orchestrator()
     held: dict[str, str] = {}
     scanned = False
@@ -1249,7 +1251,7 @@ def guard() -> dict[str, str]:
                     with contextlib.suppress(RuntimeError, IsolationConflict):
                         apply_fence(client)
             stopped = orch.user_stopped()
-            failed = orch.deploy_failed()
+            failed, restoring, unread = _start_holds(orch)
             for c in gated:
                 running = c.status == "running" and c.name not in stopped_now
                 problem = (
@@ -1257,6 +1259,7 @@ def guard() -> dict[str, str]:
                     # CASHPILOT_PROXIED_ONLY: a gated node runs from the box's own IP.
                     or orch.direct_problem(c)
                     or (FAILED_DEPLOY if c.name in failed else None)
+                    or (RESTORE_UNFINISHED if (c.labels or {}).get(LABEL_SERVICE) in restoring else None)
                     or orch.gated_spec_problem(c, mode)
                     or (None if deploying else orch.identity_problem(c))
                 )
@@ -1264,6 +1267,10 @@ def guard() -> dict[str, str]:
                     held[c.name] = problem
                     if running:
                         _guard_stop(c, problem)
+                elif unread and not running:
+                    # Not knowing the marks is not knowing the node is whole: it
+                    # is not started. One already running is left as it is.
+                    held[c.name] = unread
                 elif (
                     not deploying
                     and c.status in ("exited", "created")
@@ -1303,6 +1310,37 @@ FAILED_DEPLOY = (
     "back or started by hand included, until a deploy from CashPilot succeeds. Redeploy it from the CashPilot "
     "dashboard; starting it with Docker does not lift this"
 )
+
+
+#: Why the guard holds a node a restore that did not finish left: its volume may be half-written.
+RESTORE_UNFINISHED = (
+    "a restore of it did not finish, so its data may be half-written. Remove the service with its data from the "
+    "CashPilot dashboard, then restore the backup again"
+)
+
+#: Why the guard starts no node while the failed marks or the restore record cannot be read.
+HOLDS_UNREAD = (
+    "the worker could not read its record of failed deploys or of restores that did not finish, so it starts no "
+    "fence-gated node until it can. The worker's log says why"
+)
+
+
+def _start_holds(orch: Any) -> tuple[set[str], set[str], str | None]:
+    """The names a failed deploy holds, the slugs an unfinished restore holds, and HOLDS_UNREAD when either cannot be read.
+
+    Each record is read on its own: one that cannot be read never drops what
+    the other says, so a running node either record holds is still stopped.
+    """
+    unread: str | None = None
+    try:
+        failed = orch.deploy_failed()
+    except orch.FailedMarksUnreadable:
+        failed, unread = set(), HOLDS_UNREAD
+    try:
+        restoring = orch.restore_marks()
+    except orch.RestoreRecordUnreadable:
+        restoring, unread = set(), HOLDS_UNREAD
+    return failed, restoring, unread
 
 
 #: A start the guard could not read back: stopped, but tried again next pass.

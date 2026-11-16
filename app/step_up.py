@@ -44,9 +44,24 @@ from typing import Any
 #: mount. Target: :func:`deploy_target` of the exact spec sent to the worker.
 ACTION_CUSTOM_IMAGE = "deploy-custom-image"
 
+#: Restoring a backup file into a new container on one worker (issue #741).
+#: Target: :func:`restore_target`.
+ACTION_RESTORE = "restore-backup"
+
 #: Running a service from the box's own IP after it was routed through a proxy
 #: there (app/route_gate.py). Target: the service's slug.
 ACTION_LEAVE_ROUTE = "leave-route"
+
+#: Deleting a service's critical volumes (a node identity, a wallet) with the
+#: rest of its data, on one worker. Also the delete of a restore that did not
+#: finish: the worker deletes every volume of the service there, and the UI
+#: cannot see which ones held a working node. Target: :func:`delete_target`;
+#: the UI's own audit row names the box by its id instead (``slug|worker_id``).
+ACTION_DELETE_CRITICAL = "delete-critical-volumes"
+
+#: The request header that carries an approval on a request with no JSON body
+#: (the DELETE of a service with its critical data).
+APPROVAL_HEADER = "X-CashPilot-Step-Up"
 
 #: How long an approval stays valid. Long enough for a slow pull before the
 #: worker checks it (the check runs before the pull), short enough that one seen
@@ -82,6 +97,29 @@ def deploy_target(slug: str, image: str, command: str | None, env: Any, volumes:
     }
     digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return f"{slug}|{image}|{digest}"
+
+
+def restore_target(slug: str, worker_client_id: str, bundle_sha256: str) -> str:
+    """The approval target of one restore: this service, on this worker, from this exact file.
+
+    The worker recomputes the file's SHA-256 from the bytes it received, so an
+    approval for one file cannot carry another one, and one given for one box
+    names that box even before its key is checked.
+    """
+    return f"{slug}|{worker_client_id}|{bundle_sha256}"
+
+
+def delete_target(slug: str, worker_client_id: str, critical_set: str | None = None) -> str:
+    """The approval target of one delete of critical data: this service, on this worker.
+
+    ``critical_set`` is the set of critical volumes the owner reviewed, as the
+    worker's refusal named it (orchestrator.critical_set). With it, the
+    approval covers those volumes and no other: the worker deletes nothing when
+    the critical volumes mounted at the delete differ.
+    """
+    if critical_set is None:
+        return f"{slug}|{worker_client_id}"
+    return f"{slug}|{worker_client_id}|{hashlib.sha256(critical_set.encode()).hexdigest()}"
 
 
 class StepUpError(Exception):

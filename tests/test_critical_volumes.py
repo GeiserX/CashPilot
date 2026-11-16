@@ -84,19 +84,44 @@ class TestRemoveGuard:
             orchestrator.remove_service("storj", delete_volumes=True)
 
         container.remove.assert_not_called()
-        client.volumes.get.assert_not_called()
+        # The refusal reads each volume (critical_set names when it was made); it removes none.
+        client.volumes.get.return_value.remove.assert_not_called()
+        client.volumes.remove.assert_not_called()
 
     def test_explicit_override_allows_the_delete(self):
         container = _container([_volume_mount("storj-identity", "/app/identity")])
         client = MagicMock()
+        client.volumes.get.return_value.attrs = {"CreatedAt": "2026-11-01T00:00:00Z"}
         with (
             patch.object(orchestrator, "_find_container", return_value=container),
             patch.object(orchestrator, "_get_client", return_value=client),
         ):
-            result = orchestrator.remove_service("storj", delete_volumes=True, allow_delete_critical=True)
+            result = orchestrator.remove_service(
+                "storj",
+                delete_volumes=True,
+                allow_delete_critical=True,
+                approved_critical="storj-identity@2026-11-01T00:00:00Z",
+            )
 
         container.remove.assert_called_once()
         assert result["deleted_volumes"] == ["storj-identity"]
+
+    def test_an_override_that_reviewed_no_set_deletes_no_critical_volume(self):
+        """The override alone is not the owner's review: a critical volume nobody listed to them stays."""
+        container = _container([_volume_mount("storj-identity", "/app/identity")])
+        client = MagicMock()
+        client.volumes.get.return_value.attrs = {"CreatedAt": "2026-11-01T00:00:00Z"}
+        with (
+            patch.object(orchestrator, "_find_container", return_value=container),
+            patch.object(orchestrator, "_get_client", return_value=client),
+            pytest.raises(orchestrator.CriticalVolumeError) as caught,
+        ):
+            orchestrator.remove_service("storj", delete_volumes=True, allow_delete_critical=True)
+
+        container.remove.assert_not_called()
+        client.volumes.get.return_value.remove.assert_not_called()
+        # The refusal names the set the owner then reviews.
+        assert caught.value.critical_set == "storj-identity@2026-11-01T00:00:00Z"
 
     def test_non_critical_volume_is_unaffected(self):
         container = _container([_volume_mount("honeygain-data", "/data")])
@@ -200,20 +225,33 @@ class TestWorkerEndpoint:
         assert "allow_delete_critical" in detail["hint"]
 
     def test_override_is_forwarded_to_the_orchestrator(self, client):
+        from app import step_up
+
         client, worker_api = client
         removal = {"container": "cashpilot-storj", "deleted_volumes": [], "failed_volumes": []}
+        # The override carries the owner's approval, checked with this worker's own key.
+        approval = step_up.sign("own-key", step_up.ACTION_DELETE_CRITICAL, step_up.delete_target("storj", "box-id"))
 
         with (
+            patch.object(worker_api, "_worker_key", "own-key"),
+            patch.object(worker_api, "CLIENT_ID", "box-id"),
             patch("app.worker_api.orchestrator.remove_service", return_value=removal) as mock,
             patch("app.worker_api.orchestrator.remove_extra_instances", return_value=[]),
         ):
             resp = client.delete(
                 "/api/containers/storj?delete_volumes=true&allow_delete_critical=true",
-                headers={"Authorization": f"Bearer {worker_api.API_KEY}"},
+                headers={"Authorization": "Bearer own-key", step_up.APPROVAL_HEADER: approval},
             )
 
         assert resp.status_code == 200
-        mock.assert_called_once_with("storj", delete_volumes=True, allow_delete_critical=True)
+        mock.assert_called_once_with(
+            "storj",
+            delete_volumes=True,
+            allow_delete_critical=True,
+            only_if_restore_unfinished=False,
+            # No set named: the approval reviewed none, so it deletes no critical volume.
+            approved_critical="",
+        )
 
 
 class TestSafeWorkerDetail:
@@ -303,7 +341,7 @@ class TestOverrideAuthorization:
         async def _resolve(worker_id):
             return 1
 
-        async def _proxy(worker_id, command, slug, params=None):
+        async def _proxy(worker_id, command, slug, params=None, headers=None):
             return {"status": "removed"}
 
         with (

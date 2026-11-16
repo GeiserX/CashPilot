@@ -802,16 +802,37 @@ class TestRunningBoxesCanBeRenamed:
         assert deploys[0]["body"] == {"env": {"EMAIL": "me@x.io"}, "rename_devices": True}
         assert note.get("reopened") is True
 
-    def test_that_redeploy_with_the_value_left_blank_sends_nothing(self):
-        deploys, confirms, note = _form(
-            run="withValues",
-            workers=[3],
-            renames={"3": [RENAME]},
-            missing={"3": ["Email"]},
-            typed={"EMAIL": ""},
-            answer=True,
+    # The deploy form shows each required field from its catalog default, never
+    # the value the box was deployed with, so a stored value with no default is
+    # a blank required box. Two required fields, only the password recorded:
+    # the form's request goes through the real deploy route.
+    REQUIRED = [
+        {**SVC["docker"]["env"][0], "required": True},
+        {"key": "PASSWORD", "label": "Password", "default": "", "secret": True, "required": True},
+        *SVC["docker"]["env"][1:],
+    ]
+
+    def _form_then_server(self, client, typed):
+        stored = _recorded(LEGACY)
+        del stored["env"]["EMAIL"]  # this box has no record of the email
+        stored["env"]["PASSWORD"] = "stored-pw"
+        deploys, _, _ = _form(
+            run="withValues", workers=[1], renames={}, missing={"1": ["Email"]}, typed=typed, answer=False
         )
-        assert deploys == [] and confirms == [] and not note.get("reopened")
+        assert len(deploys) == 1, "the form leaves the stored values for the server to check"
+        with patch.dict(SVC["docker"], {"env": self.REQUIRED}):
+            return _deploy(client, deploys[0]["body"], [_worker(1, "cid-a")], recorded=stored)
+
+    def test_that_redeploy_does_not_ask_again_for_a_value_the_box_has(self, client):
+        resp, sent = self._form_then_server(client, {"EMAIL": "me@x.io", "PASSWORD": ""})
+        assert resp.status_code == 200, resp.text
+        assert sent[0]["env"]["EMAIL"] == "me@x.io"
+        assert sent[0]["env"]["PASSWORD"] == "stored-pw", "the blank box keeps the stored password"
+
+    def test_that_redeploy_with_the_missing_value_left_blank_is_refused_by_name(self, client):
+        resp, sent = self._form_then_server(client, {"EMAIL": "", "PASSWORD": ""})
+        assert resp.status_code == 400 and sent == []
+        assert resp.json()["detail"] == "Missing required fields: Email", "the stored password is not missing"
 
     def test_the_page_has_the_note_and_the_button_is_wired(self):
         js = (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")

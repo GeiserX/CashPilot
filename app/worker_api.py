@@ -15,7 +15,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import hashlib
 import hmac
+import json
 import logging
 import os
 import platform
@@ -38,7 +40,7 @@ from docker.errors import APIError, DockerException
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from app import (
     activity,
@@ -778,6 +780,15 @@ async def _send_heartbeat() -> None:
         # Takes "only_if_running" on a proxied copy deploy, so the UI can rebuild
         # a running copy without starting one the owner stopped meanwhile.
         payload["system_info"]["features"].append("proxied_if_running")
+        # Restores a passphrase backup into a new container (POST /api/containers/{slug}/restore).
+        payload["system_info"]["features"].append("state_restore")
+        # The services a restore that did not finish left half-written here. The
+        # box may hold no container of one, so the dashboard draws its Remove
+        # from this list. Left out when it cannot be read.
+        try:
+            payload["system_info"]["restore_unfinished"] = await asyncio.to_thread(orchestrator.unfinished_restores)
+        except Exception as exc:  # noqa: BLE001 - one missed reading, not a missed heartbeat
+            logger.warning("Failed to list unfinished restores for heartbeat: %s", exc)
     # Only what the owner asked for, and only a finished round.
     sent_seq = _activity_seq
     if _activity_enabled and _pending_activity is not None:
@@ -2408,6 +2419,9 @@ async def api_restart_container(request: Request, slug: str, instance: int = 1) 
         raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.ContainerRuntimeError as exc:
+        # A refusal (a restore of it runs or did not finish), not an unreachable Docker.
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -2438,8 +2452,36 @@ async def api_start_container(request: Request, slug: str, instance: int = 1) ->
         raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.ContainerRuntimeError as exc:
+        # A refusal (a restore of it runs or did not finish), not an unreachable Docker.
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+def _check_critical_delete_approval(request: Request, slug: str, critical_set: str | None = None) -> None:
+    """Refuse a delete of critical data that does not carry the owner's checked approval.
+
+    Overriding the critical-volume guard destroys a node identity or a wallet
+    for good. The UI signs this approval (step_up.ACTION_DELETE_CRITICAL, bound
+    to this service on this worker) only after the owner re-entered their
+    password, and only this worker's own key checks it, so neither the shared
+    fleet key nor the admin API key can do it alone. A worker still on the
+    shared key refuses it, as it refuses a restore. ``critical_set`` is the set
+    of critical volumes the owner reviewed: the approval must name it, and the
+    removal then deletes those volumes or nothing (orchestrator.remove_service).
+    """
+    try:
+        step_up.check(
+            _worker_key,
+            request.headers.get(step_up.APPROVAL_HEADER),
+            step_up.ACTION_DELETE_CRITICAL,
+            step_up.delete_target(slug, CLIENT_ID, critical_set),
+        )
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was removed."}
+        ) from None
 
 
 @app.delete("/api/containers/{slug}")
@@ -2448,8 +2490,16 @@ async def api_remove_container(
     slug: str,
     delete_volumes: bool = False,
     allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
+    critical_set: str | None = None,
 ) -> dict[str, Any]:
     _verify_api_key(request)
+    approved = None
+    if delete_volumes and allow_delete_critical:
+        _check_critical_delete_approval(request, slug, critical_set)
+        # A delete that names no reviewed set reviewed none: it removes no
+        # critical volume (orchestrator.remove_service refuses and names them).
+        approved = critical_set or ""
     # Copy deploys running when the removal starts, and how many had started.
     # One may finish inside remove_all, after it listed the copies, or start
     # and finish inside it, so the set read afterwards alone would miss the
@@ -2462,6 +2512,8 @@ async def api_remove_container(
             slug,
             delete_volumes=delete_volumes,
             allow_delete_critical=allow_delete_critical,
+            only_if_restore_unfinished=only_if_restore_unfinished,
+            approved_critical=approved,
         )
         # Read before they go: the UI keeps the ids the copies ran with.
         try:
@@ -2507,6 +2559,8 @@ async def api_remove_container(
                 "error": "critical_volume",
                 "message": str(exc),
                 "blocked": exc.blocked,
+                # What the owner's approval names to delete exactly these (step_up.delete_target).
+                "critical_set": exc.critical_set,
                 "hint": (
                     "Nothing was removed. Back up the listed volumes first. To proceed "
                     "anyway, repeat the request with allow_delete_critical=true."
@@ -2515,6 +2569,14 @@ async def api_remove_container(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except orchestrator.RestoreUnfinishedError as exc:
+        # A code, so the dashboard's Remove can offer to delete the half-written data.
+        raise HTTPException(status_code=409, detail={"error": "restore_unfinished", "message": str(exc)})
+    except orchestrator.RestoreClearedError as exc:
+        # The owner's yes was to delete a partial restore, which is gone now.
+        raise HTTPException(status_code=409, detail={"error": "restore_cleared", "message": str(exc)})
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -2610,9 +2672,11 @@ async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[s
     """
     _verify_api_key(request)
     try:
-        payload, targets = await asyncio.to_thread(orchestrator.read_critical_state, slug)
+        payload, targets, fingerprint = await asyncio.to_thread(orchestrator.read_critical_state, slug)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Backup read failed for %s: %s", slug, exc)
         raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
@@ -2634,15 +2698,10 @@ async def api_backup(slug: str, body: BackupRequest, request: Request) -> dict[s
         # deliberately contain neither the passphrase nor any state.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    try:
-        # Which state this bundle holds, so the UI can tell when it no longer
-        # matches what runs. Unknown is fine: the UI falls back to a time limit.
-        # The heartbeat's "state_backup" feature tells the UI this field exists.
-        fingerprint = await asyncio.to_thread(orchestrator.critical_state_id, slug)
-    except Exception as exc:  # noqa: BLE001 - the bundle is still good
-        logger.info("Could not fingerprint %s's state after a backup: %s", slug, exc)
-        fingerprint = None
-
+    # "state_id" says which state this bundle holds, so the UI can tell when it
+    # no longer matches what runs; read_critical_state took it from the volume
+    # the archive came from. Unknown is fine: the UI falls back to a time limit.
+    # The heartbeat's "state_backup" feature tells the UI this field exists.
     return {
         "slug": slug,
         "targets": targets,
@@ -2672,9 +2731,11 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
         raise HTTPException(status_code=400, detail="That file is not a CashPilot backup bundle")
 
     try:
-        payload, _targets = await asyncio.to_thread(orchestrator.read_critical_state, slug)
+        payload, _targets, _state = await asyncio.to_thread(orchestrator.read_critical_state, slug)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Backup verify read failed for %s: %s", slug, exc)
         raise HTTPException(status_code=500, detail="Could not read this service's state") from exc
@@ -2687,6 +2748,151 @@ async def api_backup_verify(slug: str, body: VerifyRequest, request: Request) ->
             recipient_private_key=body.recipient_private_key,
         )
     )
+
+
+#: The largest restore request the worker reads: a bundle of the largest export
+#: (orchestrator.MAX_BACKUP_BYTES) in base64, plus the deploy spec. Read by hand
+#: and counted as it arrives, so a bigger body is refused without being held.
+MAX_RESTORE_BODY = (orchestrator.MAX_BACKUP_BYTES + 1024 * 1024) * 4 // 3 + 256 * 1024
+
+
+async def _read_capped(request: Request, limit: int) -> bytes:
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail="The restore request is larger than any backup can be")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            raise HTTPException(status_code=413, detail="The restore request is larger than any backup can be")
+    return bytes(body)
+
+
+@app.post("/api/containers/{slug}/restore")
+async def api_restore(slug: str, request: Request) -> dict[str, Any]:
+    """Restore a passphrase backup into a new container of ``slug`` on this box (issue #741).
+
+    The body is the deploy spec the UI built for a plain deploy, plus
+    ``bundle_b64``, ``passphrase`` and ``approval``. It is read by hand, never
+    through a model, so no error can echo the passphrase, and it is capped.
+
+    In order: the spec passes every deploy check, and must be exactly the
+    catalog's (no custom image, command, env key or mount, even with a
+    password); the approval must be the UI's, for this action, this service,
+    this worker and the SHA-256 of these bytes. Then the bundle is opened here and checked by the same rules as
+    the command line restore, outside any lock, and orchestrator.restore_state
+    writes it into a new container, compares and starts it. Recipient-key
+    bundles are refused: their private key never comes through the dashboard.
+    """
+    _verify_api_key(request)
+    raw = await _read_capped(request, MAX_RESTORE_BODY)
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        body = None
+    del raw
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected a JSON object")
+    bundle_b64, passphrase, approval = (
+        body.pop("bundle_b64", None),
+        body.pop("passphrase", None),
+        body.pop("approval", None),
+    )
+    if not all(isinstance(v, str) and v for v in (bundle_b64, passphrase, approval)):
+        raise HTTPException(status_code=400, detail="A restore needs the file, its passphrase and the approval")
+    try:
+        spec = DeploySpec(**body)
+    except (ValidationError, TypeError):
+        raise HTTPException(status_code=400, detail="The deploy spec of the restore is malformed") from None
+    if spec.instance != 1 or spec.approval:
+        raise HTTPException(status_code=400, detail="A restore creates the first copy, as the catalog runs it")
+    await asyncio.to_thread(_validate_deploy_spec, spec, slug)
+    if slug not in orchestrator.critical_slugs() or orchestrator.restore_targets(slug) is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{slug} cannot be restored from the dashboard: it keeps its state in a host folder, or none. "
+            "Use the command line steps in the backup guide.",
+        )
+    found = orchestrator.critical_spec_deviations(slug, spec.image, spec.command, spec.env, spec.volumes)
+    if found:
+        raise HTTPException(
+            status_code=403,
+            detail=f"A restore runs {slug} exactly as this worker's catalog does, and this one differs: "
+            f"{'; '.join(found)}. Nothing was restored.",
+        )
+    # The deviations above compare mount targets only: a spec that mounts
+    # another volume at a critical folder, or none, would pass them and fail
+    # only after the restore made its volume. Refused here, before anything.
+    mounted = {
+        orchestrator._norm_mount(str((m or {}).get("bind") or "")): str(source)
+        for source, m in (spec.volumes or {}).items()
+    }
+    for target, volume in sorted((orchestrator.restore_targets(slug) or {}).items()):
+        if mounted.get(orchestrator._norm_mount(target)) != volume:
+            raise HTTPException(
+                status_code=400,
+                detail=f"A restore writes {target} into the volume {volume}, as this worker's catalog runs {slug}, "
+                "and this deploy spec does not mount it there. Nothing was restored.",
+            )
+    try:
+        bundle = base64.b64decode(bundle_b64, validate=True)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="The backup file is not valid base64") from None
+    del bundle_b64
+    digest = hashlib.sha256(bundle).hexdigest()
+    try:
+        step_up.check(_worker_key, approval, step_up.ACTION_RESTORE, step_up.restore_target(slug, CLIENT_ID, digest))
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was restored."}
+        ) from None
+    try:
+        header = state_backup.read_header(bundle)
+        if header.get("mode") != state_backup.MODE_PASSPHRASE:
+            raise state_backup.BackupError(
+                "This file is sealed to a key, not a passphrase. Its private key never goes through the dashboard: "
+                "restore it with the command line steps in the backup guide."
+            )
+        payload = await asyncio.to_thread(state_backup.open_bundle, bundle, passphrase=passphrase)
+        del passphrase
+        meta = header.get("metadata") or {}
+        if meta.get("slug") != slug:
+            # The header is authenticated, so this is what the file really holds.
+            raise state_backup.BackupError(f"This is a backup of {meta.get('slug')!r}, not of {slug}.")
+        archives = await asyncio.to_thread(state_backup.split_archives, payload)
+        del payload
+    except state_backup.BackupError as exc:
+        raise HTTPException(status_code=400, detail=f"{exc} Nothing was restored.") from None
+    deploy = {
+        "image": spec.image,
+        "env": spec.env,
+        "ports": spec.ports,
+        "volumes": spec.volumes,
+        "network_mode": spec.network_mode,
+        "cap_add": spec.cap_add,
+        "devices": spec.devices,
+        "command": spec.command,
+        "hostname": spec.hostname,
+        "labels": spec.labels,
+        "resources": spec.resources,
+        "runtime": spec.runtime,
+        "keep_targets": _catalog_volume_targets(slug),
+    }
+    try:
+        result = await asyncio.to_thread(orchestrator.restore_state, slug, archives, deploy)
+    except orchestrator.RestoreError as exc:
+        logger.warning("Restore of %s refused or undone: %s", slug, exc)
+        # exc.detail, never str(exc): the message RestoreError was built with,
+        # fixed text and names only (Docker's own answer stays in the log).
+        if exc.left:
+            # The undo could not remove these: the restored data may still be
+            # on the box, so the UI keeps holding the identity there.
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "left": exc.left})
+        # "restored": false tells the UI this is the worker's own answer, so a
+        # 503 here is not a gateway's: nothing of this restore is on the box.
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "restored": False})
+    await asyncio.to_thread(lan_fence.refresh_outside)
+    return {"status": "restored", "bundle_sha256": digest, **result}
 
 
 @app.get("/api/runtimes")

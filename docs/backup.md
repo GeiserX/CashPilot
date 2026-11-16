@@ -96,7 +96,108 @@ then asks once more, because there was no fingerprint to compare against.
 
 **Undo** next to a confirmed line takes the confirmation back.
 
-## Restore a backup
+## Restore from the dashboard
+
+**Settings > Restore from a backup** puts a node identity or wallet back on a
+box from a `.cpbackup` file. It covers Mysterium, ProxyBase and Anyone, whose
+identity sits on a named Docker volume. The rules:
+
+- **It only creates.** The box must not have the service in any state, and
+  its identity volume must not exist. The restore never writes over anything.
+  To replace a running identity, take its backup first, then remove the service
+  from that box on the dashboard and say yes when it asks to delete its data
+  (the owner only, with your password). Then restore.
+- **Passphrase files only.** A file sealed to a key is refused before anything
+  secret is asked for: its private key never goes through the dashboard. Use
+  the command line steps below for it.
+- **Owner only, with your password.** The worker checks a one-use approval for
+  this service, this box and this exact file. The admin API key cannot restore.
+- **Files it does not know need the name typed.** CashPilot keeps the SHA-256
+  of every file it exports (the Device ids list shows them). For any other
+  file, you type the service name, because nobody can tell from the file whose
+  identity or wallet is inside. A file exported before this record existed is
+  one of these: the preview names the boxes that run the service now.
+- **One identity, one box.** CashPilot links every file of one node, so two
+  files of the same node count as one: exports by the volume they were read
+  from, and an export of a node that came from a restore to the file it was
+  restored from, however many times the node moved. The restore is refused,
+  naming the box, when any of them was restored on a box that still runs the
+  volume the restore made, or came from a box that still runs it on the same
+  volume. A box that was wiped and runs a new volume does not count, once a
+  heartbeat sent after the export or restore shows the new volume. A restore
+  sent to a box that gave no answer (a timeout, a dropped connection, a gateway
+  error) counts on that box, running or not, until a retry there succeeds or
+  you forget the row in the Device ids list; one the worker answered it undid
+  does not. For a file it does not know, the box named inside the file counts
+  too. Two boxes on one identity look like one node to the provider, which may
+  merge or ban them. One restore runs at a time.
+- **Plain HTTP needs your yes.** The passphrase goes to the worker in the
+  request. To a worker reached over `http://`, it crosses your network
+  unencrypted, so the restore asks you to tick a box that accepts this. Give
+  the worker an HTTPS address to avoid it.
+- **Checked before it starts.** The worker creates the container without
+  starting it, writes the backup into its new volume, reads the folder back
+  from the container and compares every file, link, owner and permission. Only
+  then does the container start (Mysterium only behind a confirmed LAN fence).
+  On any failure, the containers the restore made are removed. The volumes it
+  made stay: Docker deletes a volume by name only, so the worker cannot prove
+  at the delete that the volume is still the one it made, and it never
+  deletes one on its own. Each volume carries a random label the restore made
+  it with, and the box records that label: a volume under the same name
+  without it is another client's, and the box never offers to delete it. A
+  volume the restore made and never wrote holds none of the backup, so the
+  dashboard does not hold the identity on that box for it. The label is read
+  again right before each write. If another client replaced the volume while
+  the restore wrote, the backup may be in that volume, so the restore reports
+  it as left, the dashboard keeps holding the identity there, and the box
+  never deletes that volume: check it yourself. **Remove from this box** for
+  that restore clears the box's record of the unfinished restore. The answer
+  then names that volume as one another client replaced, which the box kept,
+  and never shows the removal as a plain success. That Remove does not end
+  the dashboard's hold on the identity on that box: as for a restore that gave
+  no answer, the hold stays until a retry there succeeds, or until you forget
+  the row in the Device ids list, which you can do 6 hours after the restore.
+  A Mysterium the restore made and could not remove is
+  held stopped, so the LAN fence guard never starts data that did not check
+  out. While a restore runs, and after a restore that failed or stopped
+  mid-write (a worker restart), Start, Restart, Deploy and Restore refuse the
+  service. Open the service on the dashboard and press **Remove from this
+  box** next to that box. A box that kept only the restore's volume has no
+  container to show, so it is listed under **A restore did not finish**. The
+  dashboard says its data volume there holds a partial restore, then lists
+  each volume the box would delete, with the time Docker made it. You, the
+  owner, confirm exactly those, with your password. The box deletes those or
+  nothing: a volume made again under the same name since reads another time
+  and stays. Docker gives that time only to the second, so the box takes no
+  confirmation for a volume made in the last 2 seconds; try again a moment
+  later. If the service now mounts a volume another client made in place of
+  the restore's, the box removes nothing. As the last step before each
+  delete, the box reads the volume again and compares the time Docker made
+  it, and the restore's label, with what you confirmed; a volume replaced
+  before that read stays. One gap stays
+  open: Docker deletes a volume by name and has no delete that holds only
+  while it is the same volume. If another client with access to the Docker
+  socket removes the volume and makes its own under the name in the instant
+  between that read and the delete, Docker deletes the new one. Keeping every
+  volume to close that gap would make every delete you confirm impossible.
+  A record from an older CashPilot names the volume without the label. When
+  the box can no longer tell whether such a volume is the restore's, it keeps
+  the volume and keeps the service held, and the answer names the volume.
+  The hold ends only once that volume is gone, and no Remove deletes it:
+  check it, copy out anything you want to keep, delete it yourself, then
+  press Remove again. The delete goes to that box only, only while that partial
+  restore is still there, and the audit log records it. Then restore again.
+- **Nothing kept.** The file waits in a private folder under the data folder.
+  It is deleted once the restore runs, or 15 minutes after it arrived if no
+  restore uses it. A restore that is running at that moment keeps the file
+  until it ends, and then the file is deleted. If CashPilot stops before then,
+  it deletes the file when it starts again. The passphrase goes to the worker in that one
+  request and is never stored or logged.
+
+Storj and Sia keep their state in host folders, and Storj's is over the 64 MB
+export cap: restore those with the command line steps.
+
+## Restore a backup from the command line
 
 You need the `.cpbackup` file and its passphrase or private key.
 

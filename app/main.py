@@ -7,6 +7,7 @@ management, and earnings tracking.
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import contextlib
 import hashlib
@@ -74,6 +75,7 @@ from app import (
     proxies,
     ratings,
     setup_token,
+    state_backup,
     step_up,
     update_check,
     usage,
@@ -2785,6 +2787,8 @@ async def lifespan(app: FastAPI):
     catalog.register_sighup()
     # Deployments from before the identity ledger (issue #740) show in it too.
     await _backfill_identities()
+    # Backup files uploaded for a restore before this start: none can be used now.
+    _restore_sweep()
 
     def _on_job_event(event):
         logger.error("Scheduler job %s failed or missed", event.job_id, exc_info=getattr(event, "exception", None))
@@ -2924,6 +2928,18 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=15,
         id="exchange_rates",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    # A backup file uploaded for a restore and then left goes at
+    # RESTORE_UPLOAD_TTL on its own timer (_restore_expire); this sweep also
+    # deletes a file in the folder no upload of this process knows.
+    scheduler.add_job(
+        _run_restore_sweep,
+        "interval",
+        minutes=5,
+        id="restore_sweep",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -4229,7 +4245,11 @@ _custom_deleting: collections.Counter[str] = collections.Counter()
 
 
 async def _deploy(
-    slug: str, body: DeployRequest, worker_id: int | None, request: Request | None = None
+    slug: str,
+    body: DeployRequest,
+    worker_id: int | None,
+    request: Request | None = None,
+    restore: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
@@ -4511,50 +4531,66 @@ async def _deploy(
             for env in copy_envs:
                 await _refuse_shared_device_ids(slug, svc, env, worker_id)
 
-        # A service that keeps a wallet or node identity runs as the catalog says,
-        # or with the owner's password now, not just a session: whatever runs in its
-        # container can take the wallet. The worker checks the approval this
-        # produces against the exact spec it receives; see _step_up_critical.
-        # A recorded device id rides every redeploy (the merge above), so an image
-        # the caller picks now could carry it off: that takes the owner's password
-        # too, which an API key cannot give. Keeping the image the record already
-        # has asks nothing new.
-        new_image = bool(custom_image) and custom_image != (recorded or {}).get("custom_image")
-        carries_id = new_image and any(str(merged_env.get(k) or "").strip() for k in _per_device_keys(svc))
-        approve = await _step_up_critical(
-            request, slug, svc, custom_image, getattr(body, "step_up_password", None), device_id=carries_id
-        )
-        # Passed only when set, so the plain call keeps its three-argument shape.
-        signed: dict[str, Any] = {"approve": True} if approve else {}
-        if route is not None:
-            return await _deploy_routed(
-                slug,
-                svc,
-                spec,
-                worker_id,
-                route,
-                merged_env,
-                divergence,
-                rename_copies=bool(device_renames and body.rename_devices),
-                request=request,
-            )
+        signed: dict[str, Any] = {}
         password = getattr(body, "step_up_password", None)
-        # A service routed through a proxy on this worker leaves the route only with
-        # the owner's password, and its routed copy goes first: both run the same
-        # device. The worker refuses the direct deploy without that confirmation.
-        if recorded_route is not None:
-            await _refuse_direct_on_proxied_only(svc, slug, worker_id)
-            await _confirm_leave_route(request, svc, slug, worker_id, password)
-            await _remove_routed_copies(worker_id, slug, [recorded_route])
-            signed["leave_route"] = True
+        if restore is not None:
+            # A restore (api_restore) builds the spec exactly as a deploy does, and
+            # only the last step differs: the worker creates the container, writes
+            # the backup into it, checks it and only then starts it. Its own
+            # step-up was taken by the caller; a custom image is never restored.
+            if custom_image or instances != 1:
+                raise HTTPException(status_code=400, detail="A restore runs one copy of the catalog's image")
+        else:
+            # A service that keeps a wallet or node identity runs as the catalog says,
+            # or with the owner's password now, not just a session: whatever runs in its
+            # container can take the wallet. The worker checks the approval this
+            # produces against the exact spec it receives; see _step_up_critical.
+            # A recorded device id rides every redeploy (the merge above), so an image
+            # the caller picks now could carry it off: that takes the owner's password
+            # too, which an API key cannot give. Keeping the image the record already
+            # has asks nothing new.
+            new_image = bool(custom_image) and custom_image != (recorded or {}).get("custom_image")
+            carries_id = new_image and any(str(merged_env.get(k) or "").strip() for k in _per_device_keys(svc))
+            approve = await _step_up_critical(request, slug, svc, custom_image, password, device_id=carries_id)
+            # Passed only when set, so the plain call keeps its three-argument shape.
+            signed = {"approve": True} if approve else {}
+            if route is not None:
+                return await _deploy_routed(
+                    slug,
+                    svc,
+                    spec,
+                    worker_id,
+                    route,
+                    merged_env,
+                    divergence,
+                    rename_copies=bool(device_renames and body.rename_devices),
+                    request=request,
+                )
+            # A service routed through a proxy on this worker leaves the route only with
+            # the owner's password, and its routed copy goes first: both run the same
+            # device. The worker refuses the direct deploy without that confirmation.
+            if recorded_route is not None:
+                await _refuse_direct_on_proxied_only(svc, slug, worker_id)
+                await _confirm_leave_route(request, svc, slug, worker_id, password)
+                await _remove_routed_copies(worker_id, slug, [recorded_route])
+                signed["leave_route"] = True
         held = await _reserve_pending_identities(slug, worker_id, 1, spec.get("env"))
         try:
             result: dict[str, Any] | None = None
             try:
-                result = await _proxy_worker_deploy(worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed)
+                if restore is not None:
+                    result = await _proxy_worker_restore(worker_id, slug, spec, restore)
+                else:
+                    result = await _proxy_worker_deploy(
+                        worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed
+                    )
             except HTTPException as exc:
-                # A route this UI has no record of (a lost record, a worker enrolled
-                # again): the worker remembers it and refuses. Same confirmation.
+                # A restore is never retried off a route: its worker refuses it
+                # with its own answer. A route this UI has no record of (a lost
+                # record, a worker enrolled again): the worker remembers it and
+                # refuses a deploy. Same confirmation as above.
+                if restore is not None:
+                    raise
                 if _worker_error(exc) != "route_locked" or signed.get("leave_route"):
                     await _audit_worker_refusal(request, exc, slug, worker_id)
                     raise
@@ -4573,7 +4609,10 @@ async def _deploy(
                     await _audit_worker_refusal(request, exc, slug, worker_id)
                     raise
         except HTTPException as exc:
-            if not _outcome_unknown(exc):
+            # A restore's worker marks each answer of its own, so only a missing
+            # one leaves the outcome open there (_proxy_to_worker).
+            unknown = isinstance(exc, _WorkerNoAnswer) if restore is not None else _outcome_unknown(exc)
+            if not unknown:
                 # The worker answered no, or nothing was sent. With no answer it
                 # may still finish it, so the hold stays and a deploy waiting on
                 # it is asked first.
@@ -4680,6 +4719,8 @@ async def _deploy(
         response["device_link"] = _device_link_for(auth.get_current_user(request) if request else None, link)
     if divergence:
         response["kept_from_previous_deployment"] = divergence
+    if restore is not None:
+        response["restored"] = {key: result.get(key) for key in ("files", "targets", "started")}
     return response
 
 
@@ -6227,12 +6268,42 @@ async def _svc_restart(request: Request, slug: str, worker_id: int | None, insta
     return result
 
 
+async def _confirm_critical_delete(request: Request, slug: str, worker_id: int) -> None:
+    """The owner's password before a node identity or wallet on ``worker_id`` is deleted for good.
+
+    Restoring one (which only creates) already asks for it; destroying one must
+    not be the easier action for a stolen session. The password comes in the
+    JSON body as ``step_up_password``. Without one the answer is 403
+    ``step_up_required``, which the dashboard turns into a password prompt; the
+    step-up writes its own audit row (deps.require_step_up).
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 - no body, or not JSON: no password
+        body = None
+    password = body.get("step_up_password") if isinstance(body, dict) else None
+    if not isinstance(password, str) or not password:
+        worker = await database.get_worker(worker_id) or {}
+        box = worker.get("name") or f"worker {worker_id}"
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": f"Deleting the data of {slug} on {box} destroys any node identity or wallet in it "
+                "for good. Enter your password to continue.",
+            },
+        )
+    await require_step_up(request, password, action=step_up.ACTION_DELETE_CRITICAL, target=f"{slug}|{worker_id}")
+
+
 async def _svc_remove(
     request: Request,
     slug: str,
     worker_id: int | None,
     delete_volumes: bool,
     allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
+    critical_set: str | None = None,
 ) -> dict[str, Any]:
     _require_writer(request)
     if allow_delete_critical:
@@ -6241,15 +6312,44 @@ async def _svc_remove(
         # owner; permanently destroying the money must not be the easier action.
         _require_owner(request)
     worker_id = await _resolve_worker_id(worker_id)
+    approval: dict[str, str] | None = None
+    if not (delete_volumes and allow_delete_critical):
+        critical_set = None
+    if delete_volumes and allow_delete_critical:
+        await _confirm_critical_delete(request, slug, worker_id)
+        # The worker checks this too (worker_api._check_critical_delete_approval),
+        # so its own key, not the shared fleet key, is what lets the delete go.
+        # critical_set, the volumes the owner reviewed in the worker's refusal,
+        # is in the approval: the worker deletes those or nothing.
+        client_id = (await database.get_worker(worker_id) or {}).get("client_id") or ""
+        approval = {
+            step_up.APPROVAL_HEADER: await _sign_for_worker(
+                worker_id, step_up.ACTION_DELETE_CRITICAL, step_up.delete_target(slug, client_id, critical_set)
+            )
+        }
     params: dict[str, str] | None = None
     if delete_volumes:
         params = {"delete_volumes": "true"}
         if allow_delete_critical:
             params["allow_delete_critical"] = "true"
+        if critical_set is not None:
+            params["critical_set"] = critical_set
+    if only_if_restore_unfinished:
+        # The delete the owner agreed to is of a partial restore: the worker
+        # refuses it once that restore is gone (a later one may have succeeded).
+        params = {**(params or {}), "only_if_restore_unfinished": "true"}
     try:
-        result = await _proxy_worker_command(worker_id, "remove", slug, params=params)
+        result = await _proxy_worker_command(worker_id, "remove", slug, params=params, headers=approval)
     except HTTPException as exc:
-        if exc.status_code != 404 or await _route_on(worker_id, slug) is None:
+        if isinstance(exc.detail, dict) and exc.detail.get("error") == "restore_unfinished":
+            # The data delete the dashboard then offers must reach this box and
+            # no other, even when the box was picked because it was the only
+            # one online, so the refusal names it.
+            worker = await database.get_worker(worker_id)
+            exc.detail = {**exc.detail, "worker_id": worker_id, "worker_name": (worker or {}).get("name") or ""}
+            raise
+        # The delete of a partial restore removes that and nothing else, never a routed copy.
+        if only_if_restore_unfinished or exc.status_code != 404 or await _route_on(worker_id, slug) is None:
             raise
         # A routed service: no container of its own and no volumes, its copy is the service.
         result = await _remove_routed(worker_id, slug)
@@ -6261,8 +6361,21 @@ async def _svc_remove(
         metrics.record_container_lifecycle("remove", slug)
         return result
     if delete_volumes and allow_delete_critical:
+        answer = result if isinstance(result, dict) else {}
+        # "deleted" only when a volume went and none stayed: a removal that
+        # found no volume to delete removed no identity either.
+        if answer.get("failed_volumes") or answer.get("replaced_volumes"):
+            outcome = "partial"
+        elif answer.get("deleted_volumes"):
+            outcome = "deleted"
+        else:
+            outcome = "none_deleted"
         await _audit(
-            "delete_critical_volumes", slug, "deleted", actor=auth.get_current_user(request), worker_id=worker_id
+            "delete_critical_volumes",
+            slug,
+            outcome,
+            actor=auth.get_current_user(request),
+            worker_id=worker_id,
         )
     await _record_removed_copies(slug, worker_id, result)
     await database.remove_deployment(slug, worker_id=worker_id)
@@ -6299,8 +6412,12 @@ async def api_remove(
     worker_id: int | None = None,
     delete_volumes: bool = False,
     allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
+    critical_set: str | None = None,
 ) -> dict[str, Any]:
-    return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
+    return await _svc_remove(
+        request, slug, worker_id, delete_volumes, allow_delete_critical, only_if_restore_unfinished, critical_set
+    )
 
 
 @app.delete("/api/deployments/{slug}")
@@ -6403,6 +6520,8 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
 # and hostnames. Only errors the worker deliberately structures for the operator
 # are passed through, and only the fields we expect.
 _FORWARDABLE_WORKER_ERRORS = {"critical_volume"}
+#: A refusal's critical_set longer than this is cut, so it binds nothing and the worker refuses the delete.
+_CRITICAL_SET_MAX = 4096
 
 
 def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
@@ -6437,6 +6556,10 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "critical_volume_mount",
         "step_up_required",
         "step_up_rejected",
+        # Remove refused: a restore that did not finish left half-written data.
+        "restore_unfinished",
+        # The delete of that data refused: no such restore is on the box now.
+        "restore_cleared",
         # A deploy refused from the worker's own IP (app/route_gate.py).
         "route_locked",
         "proxied_only",
@@ -6451,10 +6574,13 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     blocked = detail.get("blocked")
     if not isinstance(blocked, list):
         return None
+    reviewed = detail.get("critical_set")
     return {
         "error": detail["error"],
         "message": str(detail.get("message") or ""),
         "hint": str(detail.get("hint") or ""),
+        # The volumes the owner reviews here: their confirm sends it back, bound in the approval.
+        "critical_set": reviewed[:_CRITICAL_SET_MAX] if isinstance(reviewed, str) else "",
         "blocked": [
             {
                 "volume": str(b.get("volume", "")),
@@ -6533,12 +6659,33 @@ _GATEWAY_NO_ANSWER = frozenset({502, 504, 520, 524})
 
 
 class _WorkerNoAnswer(HTTPException):
-    """The request may have reached the worker, but its answer never came back."""
+    """The request may have reached the worker, but its answer never came back.
+
+    Also a restore the worker could not fully undo: what it made may be on the box.
+    """
 
 
 def _outcome_unknown(exc: HTTPException) -> bool:
     """Whether the worker may still carry out the request this failure ended: it did not say no."""
     return isinstance(exc, _WorkerNoAnswer) or exc.status_code in _GATEWAY_NO_ANSWER
+
+
+def _worker_restore_answer(resp: Any) -> dict[str, Any]:
+    try:
+        body = resp.json()
+    except (ValueError, AttributeError):
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+def _worker_restored_nothing(resp: Any) -> bool:
+    """Whether this error is the worker's own answer to a restore it refused or undid (``"restored": false``)."""
+    return _worker_restore_answer(resp).get("restored") is False
+
+
+def _worker_left_restore(resp: Any) -> bool:
+    """Whether the worker says its undo of a restore left something on the box (``"left"``)."""
+    return bool(_worker_restore_answer(resp).get("left"))
 
 
 async def _proxy_to_worker(
@@ -6549,6 +6696,9 @@ async def _proxy_to_worker(
     json: dict[str, Any] | None = None,
     params: dict[str, str] | None = None,
     timeout: float = 30,
+    marked: bool = False,
+    allow_plain_http: bool = True,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Proxy one request to a worker's REST API and return its parsed JSON.
 
@@ -6556,10 +6706,26 @@ async def _proxy_to_worker(
     error-mapping sequence the deploy/command/logs paths all repeated. Dispatch uses
     the concrete httpx verbs (never client.request) so per-verb test mocks keep
     landing; the caller owns the timeout (deploy needs 60s, the rest 30s) and any
-    query params (the logs line clamp, remove's delete_volumes).
+    query params (the logs line clamp, remove's delete_volumes). ``marked`` is
+    for a route that marks every answer of its own (the restore), see below.
+    ``allow_plain_http=False`` refuses to send to an http:// worker: decided on
+    the URL this call sends to, not one read earlier (the restore's passphrase).
     """
     worker = await database.get_worker(worker_id)
+    extra = headers
     url, headers = await _get_verified_worker_url(worker)
+    if extra:
+        headers = {**headers, **extra}
+    if not allow_plain_http and urllib.parse.urlparse(url).scheme.lower() != "https":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "restore_plain_http",
+                "message": f"{worker.get('name') or 'This worker'} is reached over plain HTTP now, so the "
+                "passphrase would cross your network unencrypted. Nothing was sent. Tick the box that accepts "
+                "this, or give that worker an HTTPS address.",
+            },
+        )
     # An https worker named by hostname is reached at its pinned IP. httpx takes
     # SNI and the certificate check from the URL's host, so without this the
     # handshake names the IP and every call to the worker fails. The name is
@@ -6585,7 +6751,14 @@ async def _proxy_to_worker(
                 safe: dict[str, Any] | str | None = _safe_worker_detail(resp) or _worker_refusal_text(resp, json)
                 logger.warning("worker proxy error (%s): %s", resp.status_code, safe or "unstructured error body")
                 logger.debug("worker proxy error body (%s): %s", resp.status_code, resp.text)
-                raise HTTPException(
+                # A route that marks every answer of its own (``marked``, the
+                # restore: "restored": false, or "left" when its undo left
+                # something on the box) tells a gateway's error from its own, so
+                # an unmarked 503 there is a gateway's too, and the worker may
+                # still finish it. Elsewhere _outcome_unknown reads the status.
+                gateway = resp.status_code in _GATEWAY_NO_ANSWER or resp.status_code == 503
+                unknown = marked and ((gateway and not _worker_restored_nothing(resp)) or _worker_left_restore(resp))
+                raise (_WorkerNoAnswer if unknown else HTTPException)(
                     status_code=resp.status_code,
                     detail=safe or _worker_failure_text(resp.status_code),
                 )
@@ -6624,12 +6797,19 @@ async def _proxy_to_worker(
 
 
 async def _proxy_worker_command(
-    worker_id: int, command: str, slug: str, *, params: dict[str, str] | None = None, instance: int = 1
+    worker_id: int,
+    command: str,
+    slug: str,
+    *,
+    params: dict[str, str] | None = None,
+    instance: int = 1,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Forward a container command (restart/stop/start/remove) to a worker.
 
     ``instance`` picks one copy of a service that runs more than once; the first
     copy is addressed without it, so an older worker sees the request it always did.
+    ``headers`` go with a remove only: the owner's approval of a critical delete.
     """
     # A stop, restart or removal waits for the container to stop cleanly (300 s
     # for storj). Cut off sooner, a stop that went through answers 504 and is
@@ -6640,7 +6820,9 @@ async def _proxy_worker_command(
         # (orchestrator.GATED_DEPLOY_LOCK), so a Stop sent during one waits for it first.
         timeout += _deploy_timeout(slug)
     if command == "remove":
-        return await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout)
+        return await _proxy_to_worker(
+            worker_id, "DELETE", f"/api/containers/{slug}", params=params, timeout=timeout, headers=headers
+        )
     return await _proxy_to_worker(
         worker_id,
         "POST",
@@ -6702,19 +6884,7 @@ async def _proxy_worker_deploy(
     cover that stop. With a flat 60 s the dashboard reported a failed deploy
     while the worker was still shutting the old node down cleanly.
     """
-    docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
-    # Which build THIS worker runs is decided here, at the edge, from the
-    # architecture in its heartbeat. The deployment record stays on the
-    # catalog's default image: it is one row for the whole fleet, and a
-    # Raspberry Pi's tag must not be replayed onto an x86 box.
-    # A custom image is the operator's choice for this worker and is sent as is.
-    custom = spec.pop("custom_image", None)
-    if not custom and isinstance(docker_conf.get("image_by_arch"), dict):
-        worker = await database.get_worker(worker_id) or {}
-        arch = _safe_json(worker.get("system_info", "{}"), {}).get("arch")
-        image = _image_for_arch(docker_conf, arch)
-        if image:
-            spec = {**spec, "image": image}
+    spec = await _image_for_worker(worker_id, slug, spec)
     if approve:
         # After the image is final: the approval covers the spec as sent.
         spec = await _approve_spec(worker_id, slug, spec)
@@ -6724,6 +6894,73 @@ async def _proxy_worker_deploy(
     return await _proxy_to_worker(
         worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
+
+
+async def _image_for_worker(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """``spec`` with the image this worker runs, and without ``custom_image``.
+
+    Which build THIS worker runs is decided here, at the edge, from the
+    architecture in its heartbeat. The deployment record stays on the
+    catalog's default image: it is one row for the whole fleet, and a
+    Raspberry Pi's tag must not be replayed onto an x86 box.
+    A custom image is the operator's choice for this worker and is sent as is.
+    """
+    docker_conf = (catalog.get_service(slug) or {}).get("docker") or {}
+    spec = dict(spec)
+    custom = spec.pop("custom_image", None)
+    if not custom and isinstance(docker_conf.get("image_by_arch"), dict):
+        worker = await database.get_worker(worker_id) or {}
+        arch = _safe_json(worker.get("system_info", "{}"), {}).get("arch")
+        image = _image_for_arch(docker_conf, arch)
+        if image:
+            spec["image"] = image
+    return spec
+
+
+async def _proxy_worker_restore(
+    worker_id: int, slug: str, spec: dict[str, Any], restore: dict[str, Any]
+) -> dict[str, Any]:
+    """Send a restore to the worker: the deploy spec, the file, its passphrase and a signed approval.
+
+    The approval is minted here, after the owner's password was checked, keyed
+    with that worker's own key and bound to this service, this worker and the
+    file's SHA-256 (step_up.restore_target); the worker recomputes the hash
+    from the bytes it gets. The passphrase goes in this one request body and
+    nowhere else.
+    """
+    spec = await _image_for_worker(worker_id, slug, spec)
+    worker = await database.get_worker(worker_id) or {}
+    client_id = worker.get("client_id") or ""
+    key = await _confirmed_worker_key(client_id)
+    if not key:
+        raise HTTPException(
+            status_code=409,
+            detail="This worker has not finished enrolling, so it cannot check a password confirmation. "
+            "Wait for its next heartbeat and try again.",
+        )
+    target = step_up.restore_target(slug, client_id, restore["sha256"])
+    body = {
+        **spec,
+        "bundle_b64": restore["bundle_b64"],
+        "passphrase": restore["passphrase"],
+        "approval": step_up.sign(key, step_up.ACTION_RESTORE, target),
+    }
+    # The worker pulls the image, creates the container and writes and reads
+    # the backup back before it answers; a deploy's time plus the copy.
+    result = await _proxy_to_worker(
+        worker_id,
+        "POST",
+        f"/api/containers/{slug}/restore",
+        json=body,
+        timeout=_deploy_timeout(slug) + 120,
+        marked=True,
+        # The owner's yes to plain HTTP, checked against the URL the passphrase goes to.
+        allow_plain_http=restore.get("allow_plain_http") is True,
+    )
+    # The worker restored it: whatever fails after this, the restore happened.
+    restore["answered"] = True
+    restore["state_id"] = result.get("state_id") if isinstance(result, dict) else None
+    return result
 
 
 async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50, instance: int = 1) -> dict[str, str]:
@@ -7807,8 +8044,12 @@ async def api_service_remove(
     worker_id: int | None = None,
     delete_volumes: bool = False,
     allow_delete_critical: bool = False,
+    only_if_restore_unfinished: bool = False,
+    critical_set: str | None = None,
 ) -> dict[str, Any]:
-    return await _svc_remove(request, slug, worker_id, delete_volumes, allow_delete_critical)
+    return await _svc_remove(
+        request, slug, worker_id, delete_volumes, allow_delete_critical, only_if_restore_unfinished, critical_set
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -9553,6 +9794,15 @@ async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
     if not isinstance(fingerprint, str) or not fingerprint:
         fingerprint = payout_registry.state_ids(box["workers"]).get((worker_id, slug))
     await database.confirm_state_backup(slug, worker_id, fingerprint, "export")
+    try:
+        # A restore of this file needs no typed confirmation: this CashPilot made it.
+        digest = hashlib.sha256(base64.b64decode(bundle, validate=True)).hexdigest()
+        here = database.backup_origin(worker_id, fingerprint)
+        # A node this box got from a restore keeps the origin it had: one node, one origin.
+        origin = await database.backup_lineage(slug, worker_id, here) or here
+        await database.record_backup(slug, worker_id, digest, "export", origin, here)
+    except Exception:  # noqa: BLE001 - the file is good; only the ledger row is missing
+        logger.warning("Could not record the backup of %s from worker %s in the ledger", slug, worker_id, exc_info=True)
     box_name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(box["name"])).strip("-") or str(worker_id)
     return {
         "filename": f"cashpilot-{slug}-{box_name}-{datetime.now(UTC):%Y%m%d}.cpbackup",
@@ -11455,7 +11705,12 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
         copy = f"copy {instance}"
     else:
         copy = ""
-    label = "Node identity" if row.get("kind") == "node" else labels.get(slug, {}).get(row["name"], row["name"])
+    if row.get("kind") == "node":
+        label = "Node identity"
+    elif row.get("kind") == "backup":
+        label = "Backup file (SHA-256)"
+    else:
+        label = labels.get(slug, {}).get(row["name"], row["name"])
     return {
         "id": row["id"],
         "slug": slug,
@@ -11484,7 +11739,11 @@ def _identity_forgettable(row: dict[str, Any], pending: bool) -> bool:
     """Whether database.delete_identity would delete ``row``: what the Forget button reads."""
     if row.get("status") == "retired" or row.get("kind") == "node":
         return True
-    return pending and float(row.get("age") or 0) >= PENDING_IDENTITY_SECONDS
+    if row.get("kind") == "backup" and row.get("source") != "pending":
+        return True
+    # A deploy's or a restore's hold the worker never answered: once it can no longer land.
+    held = pending or row.get("kind") == "backup"
+    return held and float(row.get("age") or 0) >= PENDING_IDENTITY_SECONDS
 
 
 async def _identity_context() -> tuple[dict[int, str], dict[str, dict[str, str]]]:
@@ -11530,8 +11789,14 @@ async def api_identity_forget(request: Request, identity_id: int) -> dict[str, s
     if not row:
         raise HTTPException(status_code=404, detail="No such device id")
     if not await database.delete_identity(identity_id):
+        hours = PENDING_IDENTITY_SECONDS // 3600
+        if row.get("kind") == "backup" and row.get("source") == "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="The worker did not answer this restore, so it may still finish and start this node there. "
+                f"You can forget it {hours} h after the restore.",
+            )
         if database.pending_copy_number(str(row.get("instance") or "")) is not None:
-            hours = PENDING_IDENTITY_SECONDS // 3600
             raise HTTPException(
                 status_code=409,
                 detail=f"The worker did not confirm this deploy, so the box may still start with this id. "
@@ -11584,6 +11849,519 @@ async def api_identity_reuse(
         view["in_use_on"] = await _worker_names(in_use)
         offers.append(view)
     return offers
+
+
+# ---------------------------------------------------------------------------
+# Restore from a backup file (issue #741; docs/backup.md)
+#
+# Two steps, so the file never travels with the secrets and the owner sees what
+# will happen first. POST /api/restore/upload streams the .cpbackup into a
+# private file under the data folder, capped, and answers what the restore
+# would create where. POST /api/restore then takes the passphrase and the
+# owner's password for that one file on one worker, and the worker does the
+# rest (worker_api.api_restore). The file is deleted once used, or after
+# RESTORE_UPLOAD_TTL. Only the plaintext-free bundle is ever on this disk.
+# ---------------------------------------------------------------------------
+
+#: The largest file the dashboard takes: the worker's export cap
+#: (orchestrator.MAX_BACKUP_BYTES, 64 MB) plus room for the header and the
+#: encryption. Anything bigger was not made by an export.
+RESTORE_UPLOAD_MAX = 65 * 1024 * 1024
+#: How long an uploaded file waits for its restore before it is deleted.
+RESTORE_UPLOAD_TTL = 15 * 60
+#: Files waiting at once, for the whole installation.
+RESTORE_UPLOAD_MAX_PENDING = 4
+#: The longest wait for the next piece of an upload. A connection that stalls
+#: (a laptop asleep mid-upload) would otherwise hold its slot until a restart.
+RESTORE_UPLOAD_IDLE = 60
+#: The longest header a bundle may declare; the real one is a few hundred bytes.
+_RESTORE_HEADER_MAX = 64 * 1024
+
+_restore_uploads: dict[str, dict[str, Any]] = {}
+#: SHA-256 of the file a restore is sending now. One restore at a time for the
+#: whole installation: two exports of one node are two files, and a second
+#: restore checked while the first is between its check and its ledger row
+#: could otherwise put that node on two boxes.
+_restore_inflight: set[str] = set()
+#: Paths of uploads still streaming in, which the sweep must not delete.
+_restore_receiving: set[str] = set()
+
+
+def _restore_dir() -> str:
+    return os.path.join(str(database.DB_DIR), "restore-uploads")
+
+
+def _restore_forget(upload_id: str) -> None:
+    entry = _restore_uploads.pop(upload_id, None)
+    path = entry["path"] if entry else os.path.join(_restore_dir(), upload_id)
+    with contextlib.suppress(OSError):
+        os.remove(path)
+
+
+def _restore_sweep() -> None:
+    """Delete expired uploads, and any file in the folder this process does not know (one from before a restart).
+
+    An upload a restore is sending now stays, as in _restore_expire: that
+    restore deletes it once it used it, and the next sweep or the upload's
+    timer deletes one it refused.
+    """
+    now = time.time()
+    for upload_id, entry in list(_restore_uploads.items()):
+        if entry["sha256"] in _restore_inflight:
+            continue
+        if now - entry["created"] > RESTORE_UPLOAD_TTL or not os.path.exists(entry["path"]):
+            _restore_forget(upload_id)
+    known = {entry["path"] for entry in _restore_uploads.values()} | _restore_receiving
+    try:
+        names = os.listdir(_restore_dir())
+    except OSError:
+        return
+    for name in names:
+        path = os.path.join(_restore_dir(), name)
+        if path not in known:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+
+
+def _restore_expire(upload_id: str) -> None:
+    """Delete an upload no restore used, RESTORE_UPLOAD_TTL after it arrived (api_restore_upload's timer).
+
+    A restore sending that file now deletes it itself once it used it; one it
+    refused before that leaves it, so the check comes back each second until
+    no restore holds it.
+    """
+    entry = _restore_uploads.get(upload_id)
+    if entry is None:
+        return
+    if entry["sha256"] in _restore_inflight:
+        asyncio.get_running_loop().call_later(1, _restore_expire, upload_id)
+        return
+    _restore_forget(upload_id)
+
+
+async def _run_restore_sweep() -> None:
+    """_restore_sweep on the event loop, where the upload and restore routes change what it reads."""
+    _restore_sweep()
+
+
+def _restore_service(slug: Any) -> tuple[dict[str, Any], dict[str, str]]:
+    """The catalog service a backup file is for, and its critical target -> volume map. 400 otherwise."""
+    svc = catalog.get_service(slug) if isinstance(slug, str) else None
+    if not svc or svc.get("custom"):
+        raise HTTPException(status_code=400, detail="This backup is not of a service in this CashPilot's catalog.")
+    docker_conf = svc.get("docker") or {}
+    targets = state_backup.restore_volumes(docker_conf)
+    if not targets:
+        name = svc.get("name") or slug
+        if docker_conf.get("critical_volumes"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{name} keeps its state in a host folder (or more than an export can hold), so the "
+                "dashboard cannot restore it. Use the command line steps in the backup guide.",
+            )
+        raise HTTPException(status_code=400, detail=f"{name} keeps nothing a backup restores.")
+    return svc, targets
+
+
+def _read_bundle_header(path: str) -> dict[str, Any]:
+    """The bundle's header, read from the start of the file only."""
+    with open(path, "rb") as fh:
+        start = fh.read(4)
+        length = int.from_bytes(start, "big") if len(start) == 4 else 0
+        if not 0 < length <= _RESTORE_HEADER_MAX:
+            raise state_backup.BackupError("Not a CashPilot backup bundle.")
+        return state_backup.read_header(start + fh.read(length))
+
+
+async def _runs_on(slug: str, worker_id: int, workers: list[dict[str, Any]]) -> bool:
+    """Whether ``slug`` has a container on ``worker_id``: in its last report, or in a deploy record."""
+    if any(row["worker_id"] == worker_id for row in placement.runs_on(workers).get(slug, [])):
+        return True
+    return await database.get_deployment_spec(slug, worker_id=worker_id) is not None
+
+
+async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
+    """What a restore of this upload would create, where it may go, and what is known about the file.
+
+    Where the file was made comes only from this CashPilot's ledger, never from
+    the file's own header: anyone with the passphrase can write a header. The
+    identity counts as live on a box where the ledger puts this file, or any
+    other file of the same origin (another export of the same node), and the
+    box runs the service; on the box it was exported from, only while the box
+    still runs that same state; and on a box a restore of it was sent to with
+    no answer yet, running or not. The header is used only to refuse more: a
+    file the ledger does not know (made before it) names its box there, and
+    when that box runs the service now, the file may hold the very identity it
+    runs. Sets ``entry["origin"]``, which a restore of it records.
+
+    One node keeps one origin however often it moved: an export from a box
+    whose node came from a restore takes that restore's origin
+    (database.backup_lineage). An export or a restore row holds the identity
+    on its box until a heartbeat sent after it shows that box on another volume.
+    """
+    slug = entry["slug"]
+    svc, targets = _restore_service(slug)
+    workers = await database.list_workers()
+    names = {w["id"]: str(w.get("name") or f"worker {w['id']}") for w in workers}
+    running = [w["id"] for w in workers if await _runs_on(slug, w["id"], workers)]
+    own = [r for r in await database.backup_records(entry["sha256"]) if r["slug"] == slug]
+    origins = {r["origin"] for r in own if r["origin"]}
+    linked = await database.backup_records(entry["sha256"], slug, origins) if origins else own
+    entry["origin"] = min(origins) if origins else None
+    shown = {"export": "made here", "restore": "restored here", "pending": "restore sent here, no answer yet"}
+    history = [
+        {
+            "what": shown.get(r["source"], r["source"])
+            if r["file"]
+            else f"another backup of this node {shown.get(r['source'], r['source'])}",
+            "worker": names.get(r["worker_id"], f"a removed worker (#{r['worker_id']})"),
+            "when": r["first_seen"],
+        }
+        for r in linked
+    ]
+    states = payout_registry.all_state_ids(workers)
+    beats = {w["id"]: placement._sqlite_time(w.get("last_heartbeat")) for w in workers}
+    live_ids: set[int] = set()
+    for r in linked:
+        w = r["worker_id"]
+        if w not in names:
+            continue
+        if r["source"] == "pending":
+            # The worker may still finish it, and a box still pulling the image
+            # reports no container yet.
+            live_ids.add(w)
+        elif w in running:
+            # Every container of the slug on that box counts: one more of the
+            # same image (a copy, an unmanaged node) must not hide this one,
+            # and one with no fingerprint (None) may be this very volume.
+            now = states.get((w, slug))
+            if r["here"] and now and None not in now and r["here"] not in {database.backup_origin(w, s) for s in now}:
+                # Only a heartbeat sent after this row says what the box runs
+                # now: an older one still shows the node it ran before.
+                seen = placement._sqlite_time(r["last_seen"])
+                if beats.get(w) and seen and beats[w] > seen:
+                    continue  # that box runs another volume now: a node made since, not this one
+            live_ids.add(w)
+    if not any(r["source"] != "pending" for r in own):
+        live_ids |= {w for w in running if names[w] == entry.get("made_on")}
+    live = sorted(live_ids, key=lambda w: names[w])
+    boxes = []
+    for w in workers:
+        info = placement.system_info(w)
+        if placement.is_android(info) or placement.is_desktop(info):
+            continue
+        why = ""
+        if w.get("status") != "online":
+            why = "offline"
+        elif "state_restore" not in await _worker_features(w["id"]):
+            why = "its worker is too old to restore; update it"
+        elif w["id"] in running:
+            why = f"it already runs {svc.get('name') or slug}"
+        elif elsewhere := [names[x] for x in live if x != w["id"]]:
+            why = f"this identity already runs on {', '.join(elsewhere)}"
+        boxes.append(
+            {
+                "id": w["id"],
+                "name": names[w["id"]],
+                "ok": not why,
+                "why": why,
+                # The passphrase travels to the worker in this request.
+                "plain_http": str(w.get("url") or "").lower().startswith("http://"),
+            }
+        )
+    return {
+        "upload_id": entry["id"],
+        "slug": slug,
+        "service": svc.get("name") or slug,
+        "bytes": entry["size"],
+        "sha256": entry["sha256"],
+        "known": any(r["source"] != "pending" for r in own),
+        "history": history,
+        "live_on": [names[w] for w in live],
+        "live_ids": live,
+        # Where the service runs now, whatever the file holds: named for a file
+        # this CashPilot does not know, which may be a backup of one of them.
+        "runs_on": sorted(names[w] for w in running),
+        "container": f"{constants.CONTAINER_PREFIX}{slug}",
+        "creates": [{"target": t, "volume": v} for t, v in sorted(targets.items())],
+        "workers": boxes,
+    }
+
+
+class _RestoreStream:
+    """request.stream(), with a deadline on each piece: a stalled upload ends with 408 and gives its slot back."""
+
+    def __init__(self, request: Request) -> None:
+        self._chunks = request.stream().__aiter__()
+
+    def __aiter__(self) -> _RestoreStream:
+        return self
+
+    async def __anext__(self) -> bytes:
+        try:
+            async with asyncio.timeout(RESTORE_UPLOAD_IDLE):
+                return await anext(self._chunks)
+        except TimeoutError:
+            raise HTTPException(
+                status_code=408, detail="The file stopped arriving, so it was not kept. Check the file again."
+            ) from None
+
+
+@app.post("/api/restore/upload")
+async def api_restore_upload(request: Request) -> dict[str, Any]:
+    """Take a .cpbackup file (the raw request body) and say what restoring it would do. Owner, signed in, only.
+
+    Streamed to a private file and counted as it arrives: more than
+    RESTORE_UPLOAD_MAX is refused without being kept. A file sealed to a key
+    is refused here, before any secret is asked for: its private key never
+    goes through the dashboard.
+    """
+    user = _require_owner_session(request)
+    _restore_sweep()
+    # Files still streaming in hold a slot too: each can keep RESTORE_UPLOAD_MAX
+    # on disk. No await between this check and the add to _restore_receiving
+    # below, nor between its release and the add to _restore_uploads, so on
+    # the one event loop the count is never passed.
+    if len(_restore_uploads) + len(_restore_receiving) >= RESTORE_UPLOAD_MAX_PENDING:
+        raise HTTPException(status_code=429, detail="Too many backup files are waiting. Try again in a few minutes.")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > RESTORE_UPLOAD_MAX:
+        raise HTTPException(status_code=413, detail="This file is larger than any backup CashPilot makes.")
+    os.makedirs(_restore_dir(), mode=0o700, exist_ok=True)
+    upload_id = secrets.token_urlsafe(18)
+    path = os.path.join(_restore_dir(), upload_id)
+    digest = hashlib.sha256()
+    size = 0
+    _restore_receiving.add(path)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            async for chunk in _RestoreStream(request):
+                size += len(chunk)
+                if size > RESTORE_UPLOAD_MAX:
+                    raise HTTPException(status_code=413, detail="This file is larger than any backup CashPilot makes.")
+                digest.update(chunk)
+                fh.write(chunk)
+        header = _read_bundle_header(path)
+        if header.get("mode") != state_backup.MODE_PASSPHRASE:
+            raise HTTPException(
+                status_code=400,
+                detail="This file is sealed to a key, not a passphrase. Its private key never goes through the "
+                "dashboard: restore it with the command line steps in the backup guide.",
+            )
+        slug = (header.get("metadata") or {}).get("slug")
+        made_on = (header.get("metadata") or {}).get("worker")
+        _restore_service(slug)
+    except state_backup.BackupError as exc:
+        with contextlib.suppress(OSError):
+            os.remove(path)
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(path)
+        raise
+    finally:
+        _restore_receiving.discard(path)
+    entry = {
+        "id": upload_id,
+        "path": path,
+        "uid": user.get("uid"),
+        "slug": slug,
+        "size": size,
+        "sha256": digest.hexdigest(),
+        "made_on": made_on if isinstance(made_on, str) else None,
+        "created": time.time(),
+    }
+    _restore_uploads[upload_id] = entry
+    # Deleted at the TTL on its own timer, not at the next sweep: the backup
+    # guide promises the file waits no longer than that.
+    asyncio.get_running_loop().call_later(RESTORE_UPLOAD_TTL, _restore_expire, upload_id)
+    return await _restore_preview(entry)
+
+
+#: Refusals the step-up itself writes to the audit table (deps.require_step_up),
+#: or that only ask for the password; the restore route does not write them twice.
+_STEP_UP_ERRORS = frozenset({"step_up_required", "step_up_failed", "step_up_api_key"})
+
+
+@app.post("/api/restore")
+async def api_restore(request: Request) -> dict[str, Any]:
+    """Restore an uploaded backup file into a new container on one worker. Owner, signed in, with the password.
+
+    Refused when the service already has a container on that worker (export
+    it, remove it with its data, then restore), and when the file's identity
+    already runs on another box per the ledger, naming that box. A file this
+    CashPilot did not make needs the service's name typed. Every attempt and
+    outcome is an audit row. The passphrase is passed to the worker in this one
+    request and kept nowhere; the uploaded file is deleted once the restore
+    was tried. To a worker on plain HTTP only with ``allow_plain_http``, the
+    owner's yes to the passphrase crossing the network unencrypted. One
+    restore at a time (_restore_inflight).
+    """
+    user = _require_owner_session(request)
+    body = await _json_object(request)
+    _restore_sweep()
+    upload_id = body.get("upload_id")
+    entry = _restore_uploads.get(upload_id) if isinstance(upload_id, str) else None
+    if not entry or entry["uid"] != user.get("uid"):
+        raise HTTPException(status_code=404, detail="That backup file is no longer here. Choose it again.")
+    sha = entry["sha256"]
+    if _restore_inflight:
+        worker_id = body.get("worker_id")
+        detail = "A backup is already being restored. Wait for that restore to end, then try again."
+        await _audit(
+            "restore",
+            f"{entry['slug']}|worker {worker_id}|{sha[:16]}",
+            "refused",
+            actor=user,
+            worker_id=worker_id if isinstance(worker_id, int) and not isinstance(worker_id, bool) else None,
+            detail=detail,
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    _restore_inflight.add(sha)
+    try:
+        return await _restore_upload(request, user, body, entry)
+    finally:
+        _restore_inflight.discard(sha)
+
+
+async def _restore_upload(
+    request: Request, user: dict[str, Any], body: dict[str, Any], entry: dict[str, Any]
+) -> dict[str, Any]:
+    """api_restore for one file, while it is marked in flight."""
+    slug, sha = entry["slug"], entry["sha256"]
+    worker_id = body.get("worker_id")
+    target = f"{slug}|worker {worker_id}|{sha[:16]}"
+    consumed = False
+    try:
+        if isinstance(worker_id, bool) or not isinstance(worker_id, int):
+            raise HTTPException(status_code=400, detail="worker_id must be a number.")
+        preview = await _restore_preview(entry)
+        box = next((w for w in preview["workers"] if w["id"] == worker_id), None)
+        if box is None:
+            raise HTTPException(status_code=404, detail="No such worker, or it cannot run containers.")
+        elsewhere = [n for i, n in zip(preview["live_ids"], preview["live_on"], strict=True) if i != worker_id]
+        if elsewhere:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This backup's identity already runs on {', '.join(elsewhere)}. Two boxes on one "
+                "identity look to the provider like one node, which it may merge or ban. Remove the service "
+                "there first; if that box is gone for good, delete it on the Fleet page. If you know it runs "
+                "another node now, Forget this backup's rows for it under Settings, Device ids.",
+            )
+        if not box["ok"]:
+            raise HTTPException(status_code=409, detail=f"Cannot restore on {box['name']}: {box['why']}.")
+        if box["plain_http"] and body.get("allow_plain_http") is not True:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "restore_plain_http",
+                    "message": f"{box['name']} is reached over plain HTTP, so the passphrase would cross your "
+                    "network unencrypted. Tick the box that accepts this, or give that worker an HTTPS address.",
+                },
+            )
+        if not preview["known"]:
+            typed = str(body.get("confirm_name") or "").strip().casefold()
+            if typed not in {preview["service"].casefold(), slug.casefold()}:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "restore_confirm_required",
+                        "message": "This CashPilot did not make this file, so it cannot tell whose identity or "
+                        f"wallet is inside. Type {preview['service']} to restore it anyway.",
+                    },
+                )
+        passphrase = body.get("passphrase")
+        if not isinstance(passphrase, str) or not passphrase:
+            raise HTTPException(status_code=400, detail="Enter the passphrase the backup was made with.")
+        password = body.get("step_up_password")
+        if not isinstance(password, str) or not password:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "step_up_required",
+                    "message": f"Restoring {preview['service']} on {box['name']} puts a node identity or wallet "
+                    "there. Enter your password to continue.",
+                },
+            )
+        await require_step_up(request, password, action=step_up.ACTION_RESTORE, target=target)
+        consumed = True
+        with open(entry["path"], "rb") as fh:
+            bundle = fh.read(RESTORE_UPLOAD_MAX + 1)
+        if hashlib.sha256(bundle).hexdigest() != sha:
+            raise HTTPException(status_code=409, detail="The uploaded file changed on disk. Choose it again.")
+        # Written before anything is sent, and kept unless the restore surely did
+        # not happen there: a worker that gets it may finish it whatever the
+        # dashboard sees (no answer, a dropped connection, this process gone),
+        # and until then it reports no container. While the row is 'pending'
+        # a restore of this node on any other box is refused.
+        pending = await database.record_backup(slug, worker_id, sha, "pending", entry.get("origin"))
+        restore = {
+            "sha256": sha,
+            "bundle_b64": base64.b64encode(bundle).decode("ascii"),
+            "passphrase": passphrase,
+            "allow_plain_http": body.get("allow_plain_http") is True,
+        }
+        del bundle, passphrase
+        try:
+            result = await _deploy(
+                slug, DeployRequest(image="", instances=1), worker_id, request=request, restore=restore
+            )
+        except BaseException as exc:
+            answered = restore.get("answered") is True
+            # Refused before it was sent, or by the worker itself, which undoes a
+            # failed restore before it answers. Anything else may have happened.
+            refused = isinstance(exc, HTTPException) and not isinstance(exc, _WorkerNoAnswer) and not answered
+            if answered or refused:
+                with contextlib.suppress(Exception):
+                    landed = database.backup_origin(worker_id, restore.get("state_id"))
+                    await database.settle_backup(pending, applied=answered, here=landed)
+            raise
+        finally:
+            # The volume the restore created, which an export from it later inherits the origin by.
+            landed = database.backup_origin(worker_id, restore.get("state_id"))
+            restore.clear()
+        del restore
+        try:
+            await database.settle_backup(pending, applied=True, here=landed)
+            # An earlier try of this file on this box that got no answer is settled by this one.
+            for row in await database.backup_records(sha):
+                if row["source"] == "pending" and row["worker_id"] == worker_id and row["id"] != pending:
+                    await database.settle_backup(row["id"], applied=False)
+        except Exception:  # noqa: BLE001 - the row stays 'pending', which refuses as much
+            logger.warning("Could not record the restore of %s on worker %s", slug, worker_id, exc_info=True)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {"message": exc.detail}
+        if detail.get("error") not in _STEP_UP_ERRORS:
+            outcome = "failed" if consumed else "refused"
+            await _audit(
+                "restore",
+                target,
+                outcome,
+                actor=user,
+                worker_id=worker_id if isinstance(worker_id, int) else None,
+                detail=str(detail.get("message") or "")[:300],
+            )
+        raise
+    except Exception:
+        await _audit(
+            "restore", target, "failed", actor=user, worker_id=worker_id if isinstance(worker_id, int) else None
+        )
+        raise
+    finally:
+        if consumed:
+            _restore_forget(entry["id"])
+    restored = result.get("restored") or {}
+    await _audit(
+        "restore",
+        target,
+        "restored",
+        actor=user,
+        worker_id=worker_id,
+        detail=f"{restored.get('files')} files; {'started' if restored.get('started') else 'waits for the LAN fence'}"
+        + ("; passphrase sent over plain HTTP, as the owner accepted" if box["plain_http"] else ""),
+    )
+    return {"status": "restored", "service": preview["service"], "worker": box["name"], **restored}
 
 
 # ---------------------------------------------------------------------------
