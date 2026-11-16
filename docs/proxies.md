@@ -163,7 +163,7 @@ The tunnel sets things up in this order:
 2. Name lookups sent to Docker's resolver are redirected into the tunnel, and
    anything else sent to that resolver is dropped.
 3. The routes and the tunnel process: [tun2proxy](https://github.com/tun2proxy/tun2proxy)
-   v0.8.7 for SOCKS5 and HTTP, tailscaled v1.104.4 for Tailscale.
+   v0.8.7 for SOCKS5 and HTTP, tailscaled v1.104.7 for Tailscale.
 4. A probe through the tunnel. The earner is started only after the probe sees
    an exit IP within 45 seconds, and, when the worker knows its own public IP,
    one that is not the box's own. Otherwise the copy is refused and the tunnel
