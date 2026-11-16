@@ -28,6 +28,7 @@ import asyncio
 import base64
 import hashlib
 import io
+import json
 import logging
 import os
 import posixpath
@@ -1761,6 +1762,63 @@ class TestOneMoreContainerOfTheImage:
         ):
             self._beat(ui, 1, "a-fresh-volume", "H")
             assert _upload(ui, f1).json()["live_on"] == []
+
+    def test_a_partial_heartbeat_does_not_free_the_restored_node(self, ui):
+        """The box could not read the restored node's container this beat: a list with only the other one is not proof."""
+        f1 = mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")
+        _runs(ui, None)
+        _restore_ok(ui, f1, 1, "SA")
+        box = next(w for w in ui.workers if w["id"] == 1)
+        box["system_info"] = json.dumps({"containers_listed": False})
+        with (
+            patch.object(main.payout_registry, "state_ids", REAL_STATE_IDS),
+            patch.object(main.payout_registry, "all_state_ids", REAL_ALL_STATE_IDS),
+        ):
+            self._beat(ui, 1, "H")
+            preview = _upload(ui, f1).json()
+            assert preview["live_on"] == ["box-a"]
+            resp = _restore(
+                ui, preview["upload_id"], worker_id=2, step_up_password=OWNER_PASSWORD, allow_plain_http=True
+            )
+        assert resp.status_code == 409 and "box-a" in _detail(resp)
+        assert [s["worker_id"] for s in ui.sent if s["path"].endswith("/restore")] == [1]
+
+    def test_an_export_with_no_fingerprint_does_not_take_another_containers(self, ui):
+        """The worker could not fingerprint the volume it exported: the heartbeat's last container is not that volume."""
+        f1 = mysterium_bundle()
+        ui.state["runs_on"] = {"mysterium": [{"worker_id": 2}]}
+        box_b = next(w for w in ui.workers if w["id"] == 2)
+        answer = {"bundle_b64": base64.b64encode(f1).decode(), "state_id": None, "targets": [], "bytes": 1}
+        with (
+            patch.object(main.payout_registry, "state_ids", REAL_STATE_IDS),
+            patch.object(main.payout_registry, "all_state_ids", REAL_ALL_STATE_IDS),
+        ):
+            # box-b runs the node (S1), and one more container of the image (H) listed after it.
+            self._beat(ui, 2, "S1", "H")
+            with (
+                patch.object(
+                    main,
+                    "_backup_box",
+                    AsyncMock(return_value={"worker_id": 2, "name": "box-b", "workers": ui.workers}),
+                ),
+                patch.object(main, "_worker_features", AsyncMock(return_value={"state_backup"})),
+                patch.object(main, "_proxy_to_worker", AsyncMock(return_value=answer)),
+            ):
+                resp = ui.post(
+                    "/api/payout-registry/mysterium/backup-export",
+                    json={"worker_id": 2, "passphrase": PASSPHRASE, "passphrase_repeat": PASSPHRASE},
+                )
+            assert resp.status_code == 200, resp.text
+            # A newer heartbeat: the other container went, the node still runs on box-b.
+            box_b["containers"] = [{"slug": "mysterium", "state_id": "S1"}]
+            _heartbeat(ui, 2, (datetime.now(UTC) + timedelta(seconds=5)).strftime("%Y-%m-%d %H:%M:%S"))
+            preview = _upload(ui, f1).json()
+            assert preview["live_on"] == ["box-b"]
+            resp = _restore(ui, preview["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 409 and "box-b" in _detail(resp)
+        assert [s["worker_id"] for s in ui.sent if s["path"].endswith("/restore")] == []
 
     def test_a_restore_helper_is_not_listed_as_a_node_of_its_image(self):
         image = MYSTERIUM_DEPLOY["image"]

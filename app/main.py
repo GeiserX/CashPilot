@@ -9790,14 +9790,20 @@ async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
     if not isinstance(bundle, str) or not bundle:
         raise HTTPException(status_code=502, detail="The worker answered without a backup.")
 
-    fingerprint = result.get("state_id")
-    if not isinstance(fingerprint, str) or not fingerprint:
-        fingerprint = payout_registry.state_ids(box["workers"]).get((worker_id, slug))
+    archived = result.get("state_id")
+    fingerprint = (
+        archived
+        if isinstance(archived, str) and archived
+        else payout_registry.state_ids(box["workers"]).get((worker_id, slug))
+    )
     await database.confirm_state_backup(slug, worker_id, fingerprint, "export")
     try:
         # A restore of this file needs no typed confirmation: this CashPilot made it.
         digest = hashlib.sha256(base64.b64decode(bundle, validate=True)).hexdigest()
-        here = database.backup_origin(worker_id, fingerprint)
+        # Only the worker's own answer names the volume it read. The heartbeat's
+        # guess is the last container of the slug, which may be another one of
+        # the image or a volume swapped since: no volume is the safe answer.
+        here = database.backup_origin(worker_id, archived)
         # A node this box got from a restore keeps the origin it had: one node, one origin.
         origin = await database.backup_lineage(slug, worker_id, here) or here
         await database.record_backup(slug, worker_id, digest, "export", origin, here)
@@ -12021,6 +12027,7 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
     ]
     states = payout_registry.all_state_ids(workers)
     beats = {w["id"]: placement._sqlite_time(w.get("last_heartbeat")) for w in workers}
+    partial = {w["id"]: _heartbeat_partial(placement.system_info(w)) for w in workers}
     live_ids: set[int] = set()
     for r in linked:
         w = r["worker_id"]
@@ -12035,7 +12042,15 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
             # same image (a copy, an unmanaged node) must not hide this one,
             # and one with no fingerprint (None) may be this very volume.
             now = states.get((w, slug))
-            if r["here"] and now and None not in now and r["here"] not in {database.backup_origin(w, s) for s in now}:
+            # A heartbeat that could not list every container may leave out the
+            # very one on this volume: only a whole list shows it gone.
+            if (
+                not partial.get(w, True)
+                and r["here"]
+                and now
+                and None not in now
+                and r["here"] not in {database.backup_origin(w, s) for s in now}
+            ):
                 # Only a heartbeat sent after this row says what the box runs
                 # now: an older one still shows the node it ran before.
                 seen = placement._sqlite_time(r["last_seen"])

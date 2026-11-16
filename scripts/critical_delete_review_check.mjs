@@ -138,6 +138,24 @@ check('an unreadable volume is sent back to Remove again, not to a delete by han
   unreadToast.includes('could not read its volume mysterium-data just now') && unreadToast.includes('Try Remove again.')
     && !unreadToast.includes('cannot tell whether') && !unreadToast.includes('could not be deleted and stays'), unreadToast);
 
+// A custom service's Remove reads the box's answer too: a volume that stays is
+// never a plain success, on the first DELETE or on the reviewed retry.
+const customFirst = await run('removeCustomFromBox', ['my-app', 7, 'box-a'],
+  () => ({status: 'removed', deleted_volumes: [], failed_volumes: ['my-app-data']}));
+const customFirstToasts = customFirst.filter((e) => e.kind === 'toast');
+check('a custom Remove whose volume stays is not a success',
+  customFirstToasts.length === 1 && customFirstToasts[0].type === 'error'
+    && customFirstToasts[0].text.includes('my-app-data could not be deleted and stays'), JSON.stringify(customFirstToasts));
+const customRetry = await run('removeCustomFromBox', ['my-app', 7, 'box-a'],
+  removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: ['mysterium-data']}));
+const customRetryToasts = customRetry.filter((e) => e.kind === 'toast');
+check('a custom Remove\'s reviewed retry names the replaced volume, not a success',
+  customRetryToasts.length === 1 && customRetryToasts[0].type === 'error'
+    && customRetryToasts[0].text.includes('another client replaced its volume mysterium-data'), JSON.stringify(customRetryToasts));
+const customClean = await run('removeCustomFromBox', ['my-app', 7, 'box-a'], box(null));
+check('control: a custom Remove that deleted everything is a success',
+  customClean.filter((e) => e.kind === 'toast').map((e) => e.type).join() === 'success', JSON.stringify(customClean));
+
 if (bad) {
   console.error(`\n${bad} check(s) failed`);
   process.exit(1);
