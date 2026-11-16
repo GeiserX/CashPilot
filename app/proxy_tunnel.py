@@ -2141,9 +2141,14 @@ def _stop(slug: str, proxy_id: int) -> bool:
     except OSError as exc:
         raise ProxyTunnelError(f"Could not read which copies are stopped ({exc}); {name} was left as it was") from None
     tunnel_live = tunnel is not None and getattr(tunnel, "status", "") in _LIVE
+    # A copy the owner never stopped counts as running when it is down only for
+    # its tunnel's sake: its tunnel live, or it left mid-move as its halves,
+    # which are always down (the member stops before its rename, and the clone
+    # is not started). Otherwise the cap would not mark it, and its reset would
+    # never start it again.
     was_running = (
         (earner is not None and getattr(earner, "status", "") in _LIVE)
-        or (tunnel_live and not was_held)
+        or ((tunnel_live or bool(halves)) and not was_held)
         or any(getattr(c, "status", "") in _LIVE for c in halves)
     )
     try:
@@ -2163,21 +2168,29 @@ def _halt(
 ) -> bool:
     """_stop's work once the stop is in the marker: the earner down, and its tunnel when no copy in it should run.
 
-    ``halves`` are what a move a worker died in left of the copy (_stop): down too."""
+    ``halves`` are what a move a worker died in left of the copy (_stop): down too.
+    A half that cannot stop never keeps the earner and its tunnel up: the first
+    failure is raised once they are down."""
+    failure = None
     for half in halves:
-        with contextlib.suppress(NotFound):
+        try:
             half.stop(timeout=orchestrator._get_stop_timeout(slug))
+        except NotFound:
+            pass
+        except Exception as exc:  # noqa: BLE001 - raised below, after the earner and the tunnel
+            failure = failure or exc
     if tunnel is not None and not _is_shared(tunnel):
         tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
         if earner is not None:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
+        if failure is not None:
+            raise failure
         return was_running
-    failure = None
     if earner is not None:
         try:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
         except Exception as exc:  # noqa: BLE001 - raised below, after the tunnel
-            failure = exc
+            failure = failure or exc
     if tunnel is not None and tunnel_live:
         # Also when the earner did not stop: with no copy that should run left,
         # stopping the tunnel cuts the earner's way out all the same.

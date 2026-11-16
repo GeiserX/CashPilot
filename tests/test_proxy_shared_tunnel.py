@@ -4818,7 +4818,10 @@ class TestRoundSevenFollowups:
         """With only the two halves left and no legacy tunnel, the Stop was refused as "no proxied copy" before the
         stop was written down: recover_moves gave the copy its name back and the heartbeat started it."""
         self._killed_mid_shared_move(docker)
-        assert proxy_tunnel.stop("honeygain", 3) is False
+        assert proxy_tunnel.held() == set()
+        # The owner never stopped it, so it counts as running, as a stopped copy in a live shared tunnel does: the
+        # cap then marks it, and its monthly reset starts it again (main._release_capped_copies).
+        assert proxy_tunnel.stop("honeygain", 3) is True
         assert proxy_tunnel.held() == {NAME}
         proxy_tunnel.recover_moves(min_age=0)
         for _ in range(3):
@@ -4839,3 +4842,71 @@ class TestRoundSevenFollowups:
         assert NAME not in _running(docker)
         assert not [c.name for c in docker.by_id.values() if c.name.startswith(NAME)]
         assert "cashpilot-earnapp-p3" in _running(docker)
+
+    def test_control_a_stop_of_a_half_moved_copy_the_owner_had_stopped_reports_not_running(self, docker):
+        self._killed_mid_shared_move(docker)
+        proxy_tunnel._set_held(NAME, True, strict=True)
+        assert proxy_tunnel.stop("honeygain", 3) is False
+        assert proxy_tunnel.held() == {NAME}
+
+
+class TestRoundEightFollowups:
+    def test_a_half_that_cannot_stop_never_keeps_the_copy_or_its_tunnel_running(self, docker):
+        """A half's failed stop escaped before the named copy and its tunnel were stopped: the marker said stopped,
+        so the heartbeat left the copy running for good."""
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        earner = docker.named(NAME)
+
+        def cannot_remove(force=False, v=False):
+            raise APIError("500 Server Error: remove timed out")
+
+        earner.remove = cannot_remove  # the move succeeds, its predecessor stays as <name>-moving
+        _heartbeat()
+        clone = docker.named(NAME)
+        moving = docker.named(NAME + proxy_tunnel.MOVING_SUFFIX)
+        assert clone is not earner and clone.status == "running" and moving is earner
+        (tunnel,) = docker.tunnels()
+        assert tunnel.status == "running"
+
+        def cannot_stop(timeout=None):
+            raise APIError("500 Server Error: stop timed out")
+
+        moving.stop = cannot_stop
+        with pytest.raises(APIError, match="stop timed out"):
+            proxy_tunnel.stop("honeygain", 3)
+        assert proxy_tunnel.held() == {NAME}
+        assert clone.status == "exited" and tunnel.status == "exited"
+
+    def test_a_retired_older_tunnel_with_an_unmovable_copy_never_starts_the_tunnel_under_the_name(self, docker):
+        """The refusal comes before the down tunnel under the name is started for the move: after it, _move_members
+        refused the copy, and that tunnel stayed up for copies that were all stopped."""
+        old, current = _older_tunnel_retired_beside_a_current_one(docker)
+        proxy_tunnel.stop("earnfm", 3)  # the only copy in the current tunnel, which goes down with it
+        assert current.status == "exited"
+        docker.named(NAME).attrs["HostConfig"]["Devices"] = [
+            {"PathOnHost": "/dev/dri/renderD128", "PathInContainer": "/dev/dri/card0", "CgroupPermissions": "r"},
+        ]
+        starts = current.starts
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="holds host devices"):
+            proxy_tunnel._replace_restarting(docker, old)
+        assert current.status == "exited" and current.starts == starts
+        assert docker.named(NAME).attrs["HostConfig"]["NetworkMode"] == f"container:{old.id}"
+
+    def test_a_redeploy_of_a_lone_copy_with_host_devices_keeps_it_aside_and_succeeds(self, docker):
+        """The copy a deploy replaces is kept aside, never moved, so its devices are no reason to refuse: only the
+        other copies in its tunnel would move."""
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        earner = docker.named(NAME)
+        earner.attrs["HostConfig"]["Devices"] = [
+            {"PathOnHost": "/dev/dri/renderD128", "PathInContainer": "/dev/dri/card0", "CgroupPermissions": "r"},
+        ]
+        _deploy("honeygain")
+        new = docker.named(NAME)
+        assert new is not earner and new.status == "running"
+        assert not new.attrs["HostConfig"].get("Devices")
+        (tunnel,) = docker.tunnels()
+        assert tunnel is not old and new.attrs["HostConfig"]["NetworkMode"] == f"container:{tunnel.id}"
