@@ -7512,7 +7512,7 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
 
 async def _start_proxied_copy(proxy: dict[str, Any], worker_id: int, slug: str) -> dict[str, Any]:
     """Start one copy with the proxy's current settings."""
-    return await _proxy_worker_call(
+    result = await _proxy_worker_call(
         worker_id,
         "POST",
         f"/api/proxied/{slug}/{proxy['id']}/start",
@@ -7520,6 +7520,10 @@ async def _start_proxied_copy(proxy: dict[str, Any], worker_id: int, slug: str) 
         json={"proxy": proxies.worker_proxy_spec(proxy["definition"])},
         timeout=90,
     )
+    # Started, but the worker could not make its record durable: still a start.
+    if isinstance(result, dict) and result.get("durable") is False:
+        logger.warning("Started %s through proxy %s: %s", slug, proxy["id"], result.get("warning"))
+    return result
 
 
 async def _run_proxy_cap_resets() -> None:

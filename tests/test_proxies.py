@@ -386,6 +386,29 @@ class TestCap:
         new_state = upd.call_args.args[1]
         assert new_state["used_bytes"] == 0 and "capped_at" not in new_state
 
+    def test_a_start_the_worker_could_not_make_durable_still_clears_the_caps_mark(self):
+        """The worker started the copy but its record may not survive a power cut. It answered 409, so the copy ran
+        while the UI kept it marked as stopped by the cap; now it answers 2xx with durable False and a warning."""
+        proxy = {"id": 1, "definition": {"name": "P"}, "state": {"used_bytes": 5, "capped_at": "x", "cap_reason": "y"}}
+        copies = [{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}]
+        answer = {"status": "started", "exit": {}, "durable": False, "warning": "a was started, but ..."}
+        stored = dict(proxy)
+
+        async def update(_pid, state):
+            stored["state"] = state
+
+        with (
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, side_effect=lambda _pid: dict(stored)),
+            patch.object(main.database, "update_proxy_state", new_callable=AsyncMock, side_effect=update),
+            patch.object(main.database, "clear_alerts", new_callable=AsyncMock),
+            patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
+            patch.object(main, "_proxy_worker_call", AsyncMock(return_value=answer)),
+        ):
+            started = asyncio.run(main._reset_proxy(proxy))
+        assert started == ["a on worker 7"]
+        mark.assert_awaited_with(1, 7, "a", False)
+
     def test_crossing_stops_every_copy_and_raises_an_alert(self):
         proxy = {
             "id": 1,

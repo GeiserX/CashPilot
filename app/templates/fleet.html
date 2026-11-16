@@ -1138,7 +1138,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
           // 202: the worker is slow, not failing. The row shows "removing…" until it confirms.
           if (out && out.status === 'removing') CP.toast(`Removing ${slug}… the worker has not confirmed yet; the copy disappears once it does.`, 'info');
         } else {
-          await CP.api(`${base}/${btn.dataset.cmd}`, {method: 'POST'});
+          const out = await CP.api(`${base}/${btn.dataset.cmd}`, {method: 'POST'});
+          // Started, but the worker could not make that last through a power cut.
+          if (out && out.warning) CP.toast(out.warning, 'warning');
         }
       } else {
         const id = btn.dataset.proxy;

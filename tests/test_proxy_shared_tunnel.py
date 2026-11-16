@@ -18,6 +18,7 @@ import io
 import itertools
 import json
 import os
+import re
 import stat
 import tarfile
 import threading
@@ -1696,11 +1697,9 @@ class TestFourthReview:
                     raise OSError("EIO")
             return real(fd)
 
-        with (
-            patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, True)),
-            pytest.raises(proxy_tunnel.ProxyTunnelError, match="was started, but .*Could not record"),
-        ):
-            proxy_tunnel.start("honeygain", 3, _socks(), None)
+        with patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, True)):
+            answer = proxy_tunnel.start("honeygain", 3, _socks(), None)
+        assert answer["durable"] is False and re.search("was started, but .*Could not record", answer["warning"])
         assert docker.named(NAME).status == "running"
         folders.clear()
         with patch.object(proxy_tunnel.os, "fsync", side_effect=lambda fd: fsync(fd, False)):
@@ -4444,17 +4443,37 @@ class TestRoundThreeFollowups:
 
 
 class TestRoundFourFollowups:
-    @pytest.mark.parametrize("path", ["current UI", "older UI", "legacy pair"])
+    @pytest.mark.parametrize("path", ["current UI", "older UI", "legacy pair", "retired tunnel"])
     def test_a_start_that_replaces_an_older_tunnel_gives_up_on_a_pull_that_never_returns(self, docker, path):
         """A start that replaced an older worker's tunnel pulled the image with no deadline, holding the proxy's
-        lock: every Stop through that proxy, the traffic cap's too, waited for as long as the pull hung."""
-        if path == "legacy pair":
-            tunnel = _legacy_pair(docker, "honeygain", proxy=_socks())
-        else:
+        lock: every Stop through that proxy, the traffic cap's too, waited for as long as the pull hung. The same
+        for a start with new settings of a copy a failed redeploy left in its old tunnel under the retired name:
+        the Test tunnel that proves them pulls the image too."""
+        settings = _socks() if path == "current UI" else None
+        if path == "retired tunnel":
             _deploy("honeygain")
-            tunnel = docker.named("cashpilot-tunnel-p3")
-        _made_by_an_older_worker(tunnel)
-        proxy_tunnel.stop("honeygain", 3)
+            _deploy("earnfm")
+            old = docker.named("cashpilot-tunnel-p3")
+            old.rename("cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX)
+            current, _ = proxy_tunnel.start_sidecar(
+                docker,
+                "cashpilot-tunnel-p3",
+                proxy_tunnel.SHARED_SLUG,
+                3,
+                _socks(),
+                None,
+                label=proxy_tunnel.shared_label(3),
+            )
+            proxy_tunnel._clone_into(docker, docker.named("cashpilot-earnfm-p3"), current)
+            settings = _socks(password=NEW_PASSWORD)  # proved in a Test tunnel before the retired one takes them
+        else:
+            if path == "legacy pair":
+                tunnel = _legacy_pair(docker, "honeygain", proxy=_socks())
+            else:
+                _deploy("honeygain")
+                tunnel = docker.named("cashpilot-tunnel-p3")
+            _made_by_an_older_worker(tunnel)
+            proxy_tunnel.stop("honeygain", 3)
         release = threading.Event()
         pulls = []
 
@@ -4470,7 +4489,7 @@ class TestRoundFourFollowups:
             ):
                 began = time.monotonic()
                 try:
-                    proxy_tunnel.start("honeygain", 3, _socks() if path == "current UI" else None, None)
+                    proxy_tunnel.start("honeygain", 3, settings, None)
                 finally:
                     took = time.monotonic() - began
         finally:
@@ -4482,7 +4501,12 @@ class TestRoundFourFollowups:
         assert pulls, "the start never replaced the tunnel"
         assert took < 2, took
         assert not proxy_tunnel._deploy_lock(3).locked()
-        assert docker.named(NAME).status == "exited" and proxy_tunnel.held() == {NAME}
+        if path == "retired tunnel":
+            # Never stopped: it keeps running on the settings it had.
+            assert docker.named(NAME).status == "running" and proxy_tunnel.held() == set()
+            assert old.files["proxy_auth"] == proxy_tunnel.proxy_auth("u1", PASSWORD)
+        else:
+            assert docker.named(NAME).status == "exited" and proxy_tunnel.held() == {NAME}
 
     @pytest.mark.parametrize("pair", ["shared", "legacy"])
     def test_a_start_whose_record_cannot_be_flushed_starts_the_copy_and_says_so(self, docker, pair):
@@ -4494,8 +4518,10 @@ class TestRoundFourFollowups:
             _deploy("honeygain")
         proxy_tunnel.stop("honeygain", 3)
         assert docker.named(NAME).status == "exited"
-        with _folder_fsync(errno.EIO), pytest.raises(proxy_tunnel.ProxyTunnelError, match="was started, but"):
-            proxy_tunnel.start("honeygain", 3, _socks() if pair == "shared" else None, None)
+        with _folder_fsync(errno.EIO):
+            answer = proxy_tunnel.start("honeygain", 3, _socks() if pair == "shared" else None, None)
+        # Started, so a 2xx: an error would have the UI keep the copy recorded as stopped (by the cap, too).
+        assert answer["durable"] is False and "was started, but" in answer["warning"]
         assert proxy_tunnel.held() == set()
         assert docker.named(NAME).status == "running"
         _heartbeat()
@@ -4716,3 +4742,100 @@ class TestRoundSixFollowups:
         assert not proxy_tunnel._deploy_lock(3).locked()
         assert docker.named(NAME).status == "running"
         assert docker.named(proxy_tunnel.tunnel_name("honeygain", 3)).status == "running"
+
+
+class TestRoundSevenFollowups:
+    def test_a_moved_copy_never_keeps_dockers_default_capabilities(self, docker):
+        """The move carried the member's recorded CapDrop: one that dropped only MKNOD, with no CapAdd, kept Docker's
+        default NET_RAW inside the tunnel's namespace, where raw frames skip its firewall. Every proxied copy gets
+        every capability dropped (orchestrator.deploy_raw), the moved one too."""
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        earner = docker.named(NAME)
+        earner.attrs["HostConfig"]["CapDrop"] = ["MKNOD"]
+        earner.attrs["HostConfig"]["CapAdd"] = None
+        _heartbeat()
+        clone = docker.named(NAME)
+        assert clone is not earner and clone.status == "running"
+        assert clone.attrs["HostConfig"]["NetworkMode"] != f"container:{old.id}"
+        assert clone.kw["cap_drop"] == ["ALL"] and clone.kw.get("cap_add") is None
+
+    def test_a_copy_that_can_never_move_is_refused_before_any_tunnel_is_built(self, docker):
+        """The refusal ran only once a whole new tunnel was pulled, started and logged in: one such copy made every
+        start through the proxy, and every heartbeat try, build one and throw it away. And the error did not say
+        what to do."""
+        _deploy("earnapp")
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        docker.named("cashpilot-earnapp-p3").attrs["HostConfig"]["Devices"] = [
+            {"PathOnHost": "/dev/dri/renderD128", "PathInContainer": "/dev/dri/card0", "CgroupPermissions": "r"},
+        ]
+        proxy_tunnel.stop("honeygain", 3)
+        docker.events.clear()  # the first deploy built the shared tunnel under the staged name
+        for proxy in (_socks(), None):
+            with pytest.raises(proxy_tunnel.ProxyTunnelError) as err:
+                proxy_tunnel.start("honeygain", 3, proxy, None)
+            assert "cashpilot-earnapp-p3 holds host devices" in str(err.value)
+            assert "Remove cashpilot-earnapp-p3" in str(err.value)
+        for _ in range(3):
+            proxy_tunnel._replace_failed.clear()
+            _heartbeat()
+        assert ("create", "cashpilot-tunnel-p3" + proxy_tunnel.STAGED_SUFFIX) not in docker.events
+        assert docker.tunnels() == [old]
+        assert docker.named("cashpilot-earnapp-p3").attrs["HostConfig"]["NetworkMode"] == f"container:{old.id}"
+
+    @staticmethod
+    def _killed_mid_shared_move(docker):
+        """earnapp and honeygain in an older worker's shared tunnel, whose replacement a worker died in just after
+        honeygain was renamed aside: only cashpilot-honeygain-p3-moving (stopped) and -next are left of it."""
+        _deploy("earnapp")
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        real_create = docker.create
+
+        def killed(*_a, **_kw):
+            raise SystemExit("worker killed")
+
+        def create(**kw):
+            c = real_create(**kw)
+            if kw["name"] == NAME + proxy_tunnel.STAGED_SUFFIX:
+                c.rename = killed
+            return c
+
+        with patch.object(docker, "create", side_effect=create), pytest.raises(SystemExit):
+            proxy_tunnel._replace_restarting(docker, old)
+        for c in docker.by_id.values():
+            c.__dict__.pop("rename", None)
+        assert docker.named(NAME) is None
+        assert docker.named(NAME + proxy_tunnel.MOVING_SUFFIX).status == "exited"
+        assert docker.named(NAME + proxy_tunnel.STAGED_SUFFIX) is not None
+        assert docker.named(proxy_tunnel.tunnel_name("honeygain", 3)) is None  # no legacy tunnel to find it by
+
+    def test_a_stop_of_a_copy_left_half_moved_in_a_shared_tunnel_holds(self, docker):
+        """With only the two halves left and no legacy tunnel, the Stop was refused as "no proxied copy" before the
+        stop was written down: recover_moves gave the copy its name back and the heartbeat started it."""
+        self._killed_mid_shared_move(docker)
+        assert proxy_tunnel.stop("honeygain", 3) is False
+        assert proxy_tunnel.held() == {NAME}
+        proxy_tunnel.recover_moves(min_age=0)
+        for _ in range(3):
+            proxy_tunnel._replace_failed.clear()
+            _heartbeat()
+        assert NAME not in _running(docker)
+        assert "cashpilot-earnapp-p3" in _running(docker)
+
+    def test_a_remove_of_a_copy_left_half_moved_in_a_shared_tunnel_leaves_nothing_to_restore(self, docker):
+        """_remove deletes <name>-moving too: left behind, recover_moves gave it the name back, and in a shared
+        tunnel, which the remove keeps for the other copies, the heartbeat started it again."""
+        self._killed_mid_shared_move(docker)
+        proxy_tunnel.remove("honeygain", 3)
+        proxy_tunnel.recover_moves(min_age=0)
+        for _ in range(3):
+            proxy_tunnel._replace_failed.clear()
+            _heartbeat()
+        assert NAME not in _running(docker)
+        assert not [c.name for c in docker.by_id.values() if c.name.startswith(NAME)]
+        assert "cashpilot-earnapp-p3" in _running(docker)

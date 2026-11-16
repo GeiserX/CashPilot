@@ -949,9 +949,10 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
     leaves both, and recover_moves() finishes or undoes the move.
 
     A member with host devices or a capability that reaches its tunnel's
-    firewall (PROXIED_FORBIDDEN_CAPS) is never moved: the worker API gives a
-    proxied copy neither. The clone gets the one security option every
-    proxied copy gets (no-new-privileges), whatever the member recorded.
+    firewall (PROXIED_FORBIDDEN_CAPS) is never moved (_refuse_unmovable):
+    the worker API gives a proxied copy neither. The clone gets what every
+    proxied copy gets, whatever the member recorded: every capability dropped
+    but its own CapAdd, and no-new-privileges.
 
     The clone starts only in a run of ``tunnel`` that is ready, as every
     earner does (_start_in_ready_run); in one that is not, it stays stopped
@@ -964,17 +965,7 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
     name = str(member.name)
     service = _labels(member).get(LABEL_SERVICE)
     was_running = getattr(member, "status", "") in _LIVE
-    if hc.get("Devices"):
-        # The worker API gives a proxied copy no host devices (_validate_proxied
-        # in app/worker_api.py), so one that has any was not made through it.
-        # It is never carried into a tunnel's namespace: the move is refused
-        # before anything changed, and the copy stays as it is.
-        raise ProxyTunnelError(f"{name} has host devices, which a proxied copy never gets, so it was not moved")
-    caps = {str(c).upper().removeprefix("CAP_") for c in hc.get("CapAdd") or []}
-    if risky := sorted(caps & PROXIED_FORBIDDEN_CAPS):
-        # The same refusal as _validate_proxied: in the tunnel's namespace these
-        # could change or bypass its firewall, for every copy that shares it.
-        raise ProxyTunnelError(f"{name} holds {', '.join(risky)}, which a proxied copy never gets, so it was not moved")
+    _refuse_unmovable(member)
     staged = name + STAGED_SUFFIX
     aside = name + MOVING_SUFFIX
     for leftover_name in (staged, aside):
@@ -1012,10 +1003,14 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         environment=cfg.get("Env") or [],
         labels=dict(cfg.get("Labels") or _labels(member)),
         network_mode=f"container:{tunnel.id}",
-        cap_drop=hc.get("CapDrop") or ["ALL"],
+        # What orchestrator.deploy_raw gives every proxied copy: every
+        # capability dropped, then only the member's own CapAdd, which
+        # _refuse_unmovable checked. A recorded partial CapDrop is never
+        # carried: it would keep Docker's default NET_RAW, which can send
+        # frames past the tunnel's firewall. Nor is a recorded
+        # seccomp=unconfined or apparmor=unconfined.
+        cap_drop=["ALL"],
         cap_add=hc.get("CapAdd") or None,
-        # What orchestrator.deploy_raw gives every proxied copy: a recorded
-        # seccomp=unconfined or apparmor=unconfined is never carried.
         security_opt=["no-new-privileges:true"],
         privileged=False,
         # Never started by Docker on its own: see orchestrator.deploy_raw.
@@ -1050,6 +1045,32 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         logger.warning("Could not remove %s after it moved: %s", aside, exc)
     clone.reload()
     return clone
+
+
+def _refuse_unmovable(member: Any) -> None:
+    """Refuse to move ``member`` into a tunnel when it holds what a proxied copy never gets.
+
+    The worker API gives a proxied copy no host devices and none of
+    PROXIED_FORBIDDEN_CAPS (_validate_proxied in app/worker_api.py), so one
+    that has any was not made through it. In a tunnel's namespace they could
+    change or bypass its firewall, for every copy that shares it. The move is
+    refused before anything changed, and the copy stays as it is. So do the
+    other copies in its tunnel, which move only with it: the owner removes
+    that copy, and deploys it again if they want it."""
+    hc = (getattr(member, "attrs", None) or {}).get("HostConfig") or {}
+    name = str(member.name)
+    what = ""
+    if hc.get("Devices"):
+        what = "host devices"
+    elif risky := sorted(
+        {str(c).upper().removeprefix("CAP_") for c in hc.get("CapAdd") or []} & PROXIED_FORBIDDEN_CAPS
+    ):
+        what = ", ".join(risky)
+    if what:
+        raise ProxyTunnelError(
+            f"{name} holds {what}, which a proxied copy never gets, so it was not moved, and neither was any other "
+            f"copy in its tunnel. Remove {name}, then deploy it again from CashPilot if you want it."
+        )
 
 
 def _put_back(client: Any, member: Any, name: str, was_running: bool) -> None:
@@ -1180,6 +1201,13 @@ def _ensure_tunnel(
     elif current is not None:
         _refuse_foreign_retired_name(client, current, final, keep, proxy_id, slug)
     if current is not None:
+        members = _members(client, current)
+        if keep is None or any(str(m.name) != keep for m in members):
+            # Refused before a new tunnel is pulled, started and logged in: a
+            # copy that can never move (_refuse_unmovable) would only have it
+            # thrown away, on every try.
+            for member in members:
+                _refuse_unmovable(member)
         # Before anything changes: the replacement must carry the recorded address.
         files = _carry_own_ip(current, files, replacing=True, broken=broken)
     # Left by a deploy that died midway, on this name only if it is ours. A young
@@ -2097,28 +2125,48 @@ def _stop(slug: str, proxy_id: int) -> bool:
     earner = _get(client, name)
     earner = earner if _is_ours(earner, slug, proxy_id) else None
     tunnel = _tunnel_of(client, earner, slug, proxy_id)
-    if earner is None and tunnel is None:
+    # A worker that died mid-move (_clone_into) may leave the copy only as its
+    # two halves, aside and staged, with no tunnel of its own to find it by.
+    # recover_moves gives one of them the name later, and the heartbeat would
+    # start it: the stop is written down for it all the same, and the halves stop.
+    halves = tuple(
+        c
+        for c in (_get(client, name + MOVING_SUFFIX), _get(client, name + STAGED_SUFFIX))
+        if _is_ours(c, slug, proxy_id) and _is_earner(c)
+    )
+    if earner is None and tunnel is None and not halves:
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
     try:
         was_held = name in held()
     except OSError as exc:
         raise ProxyTunnelError(f"Could not read which copies are stopped ({exc}); {name} was left as it was") from None
     tunnel_live = tunnel is not None and getattr(tunnel, "status", "") in _LIVE
-    was_running = (earner is not None and getattr(earner, "status", "") in _LIVE) or (tunnel_live and not was_held)
+    was_running = (
+        (earner is not None and getattr(earner, "status", "") in _LIVE)
+        or (tunnel_live and not was_held)
+        or any(getattr(c, "status", "") in _LIVE for c in halves)
+    )
     try:
         _set_held(name, True, strict=True)
     except _RecordNotFlushed as exc:
         # The marker says stopped, but a power cut may lose it: the copy is
         # stopped all the same, the safe way, and the stop then reports it.
-        _halt(client, slug, earner, tunnel, tunnel_live, was_running)
+        _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves)
         raise ProxyTunnelError(
             f"{name} was stopped, but the stop may not survive a power cut. {exc}. Stop it again once the disk is healthy."
         ) from None
-    return _halt(client, slug, earner, tunnel, tunnel_live, was_running)
+    return _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves)
 
 
-def _halt(client: Any, slug: str, earner: Any, tunnel: Any, tunnel_live: bool, was_running: bool) -> bool:
-    """_stop's work once the stop is in the marker: the earner down, and its tunnel when no copy in it should run."""
+def _halt(
+    client: Any, slug: str, earner: Any, tunnel: Any, tunnel_live: bool, was_running: bool, halves: tuple[Any, ...] = ()
+) -> bool:
+    """_stop's work once the stop is in the marker: the earner down, and its tunnel when no copy in it should run.
+
+    ``halves`` are what a move a worker died in left of the copy (_stop): down too."""
+    for half in halves:
+        with contextlib.suppress(NotFound):
+            half.stop(timeout=orchestrator._get_stop_timeout(slug))
     if tunnel is not None and not _is_shared(tunnel):
         tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
         if earner is not None:
@@ -2280,9 +2328,7 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
             _started_or_raise(earner, current, slug, restart=True)
     else:
         _started_or_raise(earner, current, slug)
-    if not_durable is not None:
-        raise _started_not_durable(name, not_durable)
-    return {"exit": exit_info}
+    return _started(exit_info, name, not_durable)
 
 
 def _pull_deadline() -> float:
@@ -2297,7 +2343,7 @@ def _clear_held_for_start(name: str) -> _RecordNotFlushed | None:
 
     The marker then already says the copy runs, so the heartbeat would start it
     anyway: the start goes ahead, as a stop does (_stop), and reports it after
-    (_started_not_durable), never a failure for a copy that runs."""
+    (_started), never a failure for a copy that runs."""
     try:
         _set_held(name, False, strict=True)
     except _RecordNotFlushed as exc:
@@ -2305,12 +2351,20 @@ def _clear_held_for_start(name: str) -> _RecordNotFlushed | None:
     return None
 
 
-def _started_not_durable(name: str, exc: _RecordNotFlushed) -> ProxyTunnelError:
-    """The error of a start that went ahead although its record may not survive a power cut (_RecordNotFlushed)."""
-    return ProxyTunnelError(
-        f"{name} was started, but the start may not survive a power cut. {exc}. Start it again once the disk is "
-        "healthy."
-    )
+def _started(exit_info: dict[str, Any], name: str, not_durable: _RecordNotFlushed | None) -> dict[str, Any]:
+    """The answer of a start that went ahead. One whose record may not survive a power cut (_RecordNotFlushed)
+    still says it started, never a failure: ``durable`` False and a ``warning`` the UI shows. An error would have
+    the UI keep it recorded as stopped (by the cap, too) while it runs."""
+    if not_durable is None:
+        return {"exit": exit_info}
+    return {
+        "exit": exit_info,
+        "durable": False,
+        "warning": (
+            f"{name} was started, but the start may not survive a power cut. {not_durable}. Start it again once the "
+            "disk is healthy."
+        ),
+    }
 
 
 def _stop_if_unwanted(client: Any, tunnel: Any) -> None:
@@ -2370,9 +2424,7 @@ def _start_legacy(slug: str, earner: Any, sidecar: Any, name: str) -> dict[str, 
         _started_or_raise(earner, sidecar, slug)
     elif not moved or earner_action(earner, sidecar, True) == "restart":
         _started_or_raise(earner, sidecar, slug, restart=True)
-    if not_durable is not None:
-        raise _started_not_durable(name, not_durable)
-    return {"exit": exit_info}
+    return _started(exit_info, name, not_durable)
 
 
 def logs(slug: str, proxy_id: int, lines: int = 50) -> str:
@@ -3200,6 +3252,8 @@ def _replace_restarting(client: Any, tunnel: Any, *, deadline: float | None = No
         target = _get(client, final)
         if not _is_tunnel_for(target, pid, key) or _restarts_by_itself(target):
             raise ProxyTunnelError(f"{tunnel.name} is replaced once {final} runs on this worker's terms")
+        for member in _members(client, tunnel):
+            _refuse_unmovable(member)  # before the target is started for them
         if target.status != "running":
             # Down, as when every copy in it was stopped: started on the
             # settings it holds, as a start does, since a copy moving in should

@@ -252,9 +252,13 @@ inside it under its own name, with its settings and its volumes, and starts
 again only once the new tunnel is ready. Host devices and the capabilities
 that reach a tunnel's firewall (`NET_ADMIN`, `NET_RAW`, `SYS_ADMIN`) are never
 carried: a proxied copy gets none, so a copy that has one was not made by
-CashPilot, and its move is refused with the copy left as it was. The new
-container gets `no-new-privileges`, as every proxied copy does, whatever
-security options the old one had. Recreating a
+CashPilot. Its move is refused before a new tunnel is built, and the error
+names that copy. The other copies in its tunnel stay as they were too, because
+they move only together. To unblock them, remove the copy the error names,
+then deploy it again from CashPilot if you want it. The new container gets
+every capability dropped except the ones the old one added, and
+`no-new-privileges`, as every proxied copy does, whatever the old one had.
+Recreating a
 copy loses its writable layer, as moving a legacy pair does, so a provider
 that keeps its device id there sees a new device once. No earner starts in
 the old tunnel meanwhile. Each copy stops before its new container is given
