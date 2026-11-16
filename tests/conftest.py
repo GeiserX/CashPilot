@@ -1,6 +1,8 @@
 import contextlib
+import gc
 import os
 import tempfile
+import warnings
 from pathlib import Path
 
 import pytest
@@ -164,10 +166,22 @@ def close_shared_conns(conns, wait: float = 5.0) -> None:
 
     ``stop()`` closes the sqlite connection on that thread and needs no loop,
     and ``join`` with a limit returns at once when the thread is already gone.
+
+    A dead thread never runs that close, so the sqlite handle stays open, and a
+    write cancelled before its commit keeps its lock: the next test to write
+    that file gets "database is locked". Python refuses ``close()`` and
+    ``rollback()`` from any thread but the one that opened the handle, and that
+    one is gone. Its finaliser has no such check, and closing the handle rolls
+    the open write back, so drop the last reference and collect it.
     """
     for conn in conns:
         conn.stop()
         conn._thread.join(timeout=wait)
+        if not conn._thread.is_alive() and conn._connection is not None:
+            conn._connection = None
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", ResourceWarning)  # unclosed on purpose
+                gc.collect()
 
 
 @pytest.fixture(autouse=True)
