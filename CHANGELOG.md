@@ -10,6 +10,25 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.6.0] - 2026-11-16
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#767)
+
+### Features
+
+- Put a lost node identity back from the dashboard, checked before it starts (#755)
+
+### Fixes
+
+- Never let one node identity be restored onto a second box (#768)
+- Keep a routed copy's ids and running earner through failed redeploys and races (#765)
+
+### Maintenance
+
+- Pin the examples to 2.5 (#766)
+
 ## [2.5.0] - 2026-11-15
 
 ### Documentation
