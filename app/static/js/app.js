@@ -5056,6 +5056,9 @@ const CP = (() => {
   }
 
   async function addIdentity() {
+    // The form this save came from: a Cancel and a new form while it saves must
+    // keep the new one and what the owner is typing in it.
+    const field = document.getElementById('identity-add-value');
     const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
     const body = {
       slug: val('identity-add-service'),
@@ -5067,7 +5070,7 @@ const CP = (() => {
     try {
       await api('/api/identities', { method: 'POST', body });
       toast('Device id saved', 'success');
-      closeIdentityForm();
+      if (field && field.isConnected) closeIdentityForm();
       loadIdentities();
     } catch (err) {
       toast(`Could not save the id: ${err.message}`, 'error');

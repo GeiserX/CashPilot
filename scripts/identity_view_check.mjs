@@ -261,5 +261,47 @@ await loadSettings();
 check('a failed /api/config still loads the device ids', settingsCalls.includes('identities')
   && settingsCalls.includes('failed'), JSON.stringify(settingsCalls));
 
+// --- a slow save never closes a newer form -----------------------------------
+// The owner saves, then Cancels and opens the form again while the save runs.
+// The answer must close only the form it came from, never the new one with
+// what the owner is typing in it.
+{
+  const saveFn = slice('function closeIdentityForm(', '// Every id in full, as a file.');
+  const ids = ['identity-add-service', 'identity-add-worker', 'identity-add-copy', 'identity-add-label', 'identity-add-value'];
+  let inputs = {};
+  const box = {
+    html: '',
+    get innerHTML() { return this.html; },
+    set innerHTML(h) {
+      for (const el of Object.values(inputs)) el.isConnected = false;
+      inputs = {};
+      this.html = h;
+      if (h) for (const id of ids) inputs[id] = {value: '', isConnected: true};
+    },
+  };
+  const doc = {getElementById: id => (id === 'identity-add' ? box : inputs[id] || null)};
+  const fill = values => { box.innerHTML = 'form'; ids.forEach((id, i) => { inputs[id].value = values[i]; }); };
+  const answers = [];
+  const toasts = [];
+  const {addIdentity} = new Function('document', 'api', 'toast', 'loadIdentities',
+    `${saveFn}; return {addIdentity, closeIdentityForm};`)(
+    doc, () => new Promise(res => answers.push(res)), (msg, kind) => toasts.push(kind), () => {});
+
+  fill(['earnapp', '1', '1', 'Node UUID', 'first-id']);
+  const slow = addIdentity();
+  box.innerHTML = '';                                   // Cancel while it saves
+  fill(['earnapp', '2', '1', 'Node UUID', 'typing']);   // a new form, half typed
+  answers[0]({id: 1});
+  await slow;
+  check('a slow save leaves a newer form and what is typed in it', box.innerHTML === 'form'
+    && inputs['identity-add-value'] && inputs['identity-add-value'].value === 'typing', box.innerHTML);
+
+  // The positive control: a save from the form still on screen closes it.
+  const quick = addIdentity();
+  answers[1]({id: 2});
+  await quick;
+  check('a save from the form on screen closes it', box.innerHTML === '', box.innerHTML);
+}
+
 console.log(bad ? `\nRESULT: FAIL (${bad})` : '\nRESULT: PASS');
 process.exit(bad ? 1 : 0);
