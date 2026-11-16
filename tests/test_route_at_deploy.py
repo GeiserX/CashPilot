@@ -55,11 +55,15 @@ def marker(tmp_path, monkeypatch):
 
 
 def _client_with(container=None):
+    """A Docker client holding ``container`` under every name but a restore helper's, as Docker answers."""
     client = MagicMock()
-    if container is None:
-        client.containers.get.side_effect = Exception("no such container")
-    else:
-        client.containers.get.return_value = container
+
+    def get(name):
+        if container is None or str(name).endswith(orchestrator.RESTORE_HELPER_SUFFIX):
+            raise NotFound("no such container")
+        return container
+
+    client.containers.get.side_effect = get
     return client
 
 

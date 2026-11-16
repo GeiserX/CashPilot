@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import tarfile
+import time
 
 import docker
 from docker.errors import APIError, NotFound
@@ -57,6 +58,30 @@ def check(name: str, fn) -> object:
         return None
     result(True, name)
     return value
+
+
+def remove_with_data(slug: str) -> dict:
+    """Remove ``slug`` with its volumes as the dashboard's owner does: review what the box names, confirm that set.
+
+    The override alone reviewed nothing, so it deletes no critical volume: the
+    first call names them (critical_set), the second confirms exactly those.
+    A volume made in the last 2 seconds names no time ("?"), which no approval
+    binds, and here the remove follows the deploy within a second: review
+    again once it is older, as the owner's next Remove reviews afresh.
+    """
+    from app import orchestrator
+
+    for _ in range(5):
+        try:
+            return orchestrator.remove_service(slug, delete_volumes=True)
+        except orchestrator.CriticalVolumeError as refusal:
+            reviewed = refusal.critical_set
+        if "@?" not in reviewed:
+            break
+        time.sleep(orchestrator._CREATED_BINDS_AFTER_S + 0.5)
+    return orchestrator.remove_service(
+        slug, delete_volumes=True, allow_delete_critical=True, approved_critical=reviewed
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +204,7 @@ def phase_allowed() -> None:
     for slug in (["cplive-earner"] if TUNNEL_IMAGE else []) + ["cplive-host", plain]:
         check(
             f"remove {slug} and its volumes",
-            lambda slug=slug: orchestrator.remove_service(slug, delete_volumes=True, allow_delete_critical=True),
+            lambda slug=slug: remove_with_data(slug),
         )
     for c in client.containers.list(all=True, filters={"label": "cashpilot.live-test=1"}):
         check(f"remove {c.name}", lambda c=c: c.remove(force=True, v=True))
@@ -397,8 +422,8 @@ def phase_migrated() -> None:
         return
     check("restart it through the proxy", lambda: orchestrator.restart_service(slug))
 
-    def back_up() -> tuple[bytes, str, list[str]]:
-        data, source = orchestrator.read_critical_state(slug)
+    def back_up() -> tuple[bytes, list[str], list[str]]:
+        data, source, _state_id = orchestrator.read_critical_state(slug)
         # Opened here, so an empty or broken archive fails this check, not the next.
         with tarfile.open(fileobj=io.BytesIO(data)) as tar:
             names = tar.getnames()
@@ -443,7 +468,7 @@ def phase_fresh() -> None:
     )
     check(
         "remove it and its volume",
-        lambda: orchestrator.remove_service("cplive-fresh", delete_volumes=True, allow_delete_critical=True),
+        lambda: remove_with_data("cplive-fresh"),
     )
     try:
         docker.from_env().volumes.get("cplive-fresh-data")

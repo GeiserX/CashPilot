@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import re
+import secrets
 import sqlite3
 import time
 from collections.abc import Collection, Mapping, Sequence
@@ -5440,7 +5441,11 @@ async def _retire_identity_rows(
     worker's answer (release_pending_identities) or main._settle_pending_identities
     ends them (delete_worker retires them too).
     """
-    sql = "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') WHERE slug = ? AND status = 'active'"
+    # Backup files are a record of what was made, not an id a copy runs with.
+    sql = (
+        "UPDATE device_identities SET status = 'retired', retired_at = datetime('now') "
+        "WHERE slug = ? AND status = 'active' AND kind != 'backup'"
+    )
     args: list[Any] = [slug]
     if worker_id is not None:
         sql += " AND worker_id = ?"
@@ -5555,12 +5560,15 @@ async def get_identity(identity_id: int) -> dict[str, Any] | None:
 
 
 async def delete_identity(identity_id: int) -> bool:
-    """Delete one row (the owner's "forget"): a retired one, one a node reported, or an unconfirmed hold.
+    """Delete one row (the owner's "forget"): a retired one, one a node reported, a backup file's, or an unconfirmed hold.
 
     An active row CashPilot deployed with is never deleted: the shared-id check
     reads it. A node-reported row is only shown, so the owner may drop it while
-    its node runs; the next read brings it back if the node still says so. The
-    hold of a deploy the worker never answered (``u<n>``) may never be proven
+    its node runs; the next read brings it back if the node still says so. A
+    backup row records a file, never an id a copy runs with; one still
+    'pending' is the hold of a restore the worker never answered, which may
+    still finish (settle_backup then needs the row), so it waits as long as a
+    deploy's hold. The hold of a deploy the worker never answered (``u<n>``) may never be proven
     or run out on its own (a worker with no deploy deadline, a catalog that no
     longer marks the key), so the owner may end it, but only once it is older
     than PENDING_IDENTITY_SECONDS. Before that the worker may still create the
@@ -5571,7 +5579,8 @@ async def delete_identity(identity_id: int) -> bool:
     try:
         cursor = await db.execute(
             "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node' "
-            f"OR (instance LIKE '{PENDING_COPY_PREFIX}%' AND last_seen <= datetime('now', ?)))",
+            "OR (kind = 'backup' AND COALESCE(source, '') != 'pending') "
+            f"OR ((instance LIKE '{PENDING_COPY_PREFIX}%' OR kind = 'backup') AND last_seen <= datetime('now', ?)))",
             (identity_id, f"-{PENDING_IDENTITY_SECONDS} seconds"),
         )
         await db.commit()
@@ -5682,6 +5691,189 @@ async def record_node_identity(slug: str, worker_id: int, value: str, instance: 
         return True
     finally:
         await db.close()
+
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+#: ``name`` of a backup row whose origin is not known (none is written since every row gets one).
+_BACKUP_NO_ORIGIN = "backup file"
+
+
+def _backup_new_origin(worker_id: int) -> str:
+    """A lineage of its own for a file nothing links yet. The ':' in it never matches a backup_origin."""
+    return f"state:{int(worker_id)}:file:{secrets.token_hex(8)}"
+
+
+def backup_origin(worker_id: int, state_id: Any) -> str | None:
+    """The origin of a file exported from ``worker_id`` with this state fingerprint, or None.
+
+    Every export seals with a fresh salt and nonce, so two files of one node
+    share no hash. They share the volume they were read from, which the
+    worker's state fingerprint names (orchestrator.state_id).
+    """
+    if not isinstance(state_id, str) or not state_id or ":" in state_id or any(c.isspace() for c in state_id):
+        return None
+    return f"state:{int(worker_id)}:{state_id}"
+
+
+def _backup_name(origin: str | None, here: str | None) -> str:
+    """``name`` of a backup row: its lineage origin, then the volume it names on its own box, space-separated."""
+    if here:
+        return f"{origin or here} {here}"
+    return origin or _BACKUP_NO_ORIGIN
+
+
+def _backup_parse(name: Any, source: Any) -> tuple[str | None, str | None]:
+    """(origin, here) from a backup row's ``name``. A row written as its origin alone names no volume."""
+    parts = str(name or "").split(" ")
+    origin = parts[0] if parts[0].startswith("state:") else None
+    if len(parts) == 2 and parts[1].startswith("state:"):
+        return origin, parts[1]
+    return origin, None
+
+
+async def record_backup(
+    slug: str,
+    worker_id: int,
+    sha256: str,
+    source: str = "export",
+    origin: str | None = None,
+    here: str | None = None,
+) -> int:
+    """Keep the SHA-256 of a backup file this CashPilot made (``kind`` 'backup', issue #741). Returns the row id.
+
+    ``source`` is 'export' for a file downloaded from ``worker_id``, 'restore'
+    for one restored onto it, and 'pending' for a restore sent there whose
+    outcome is not known yet (the worker may still finish it). ``origin`` is
+    the node's lineage: the backup_origin of the first export of that node,
+    kept by every later file and restore of it however often it moved (see
+    backup_lineage), so one node has one origin. ``here`` is the volume the
+    row is about on its own box (backup_origin of ``worker_id``): the one an
+    export was read from, the one a restore created. Both are kept in
+    ``name``. A restore looks a file up here: one this CashPilot made, or
+    already restored, needs no typed confirmation, and the boxes listed for
+    its origin are where its identity may run. A row with neither starts a
+    lineage of its own, so a later file of the same node can still join it.
+    """
+    sha256 = str(sha256 or "").lower()
+    if not _SHA256.fullmatch(sha256) or source not in ("export", "restore", "pending"):
+        raise ValueError("not a backup hash")
+    origin = origin or here or _backup_new_origin(worker_id)
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source) "
+            "VALUES (?, ?, '1', 'backup', ?, ?, ?)",
+            (slug, worker_id, _backup_name(origin, here), encrypt_value(sha256), source),
+        )
+        await db.commit()
+        return int(cursor.lastrowid or 0)
+    finally:
+        await db.close()
+
+
+async def backup_lineage(slug: str, worker_id: int, here: str | None) -> str | None:
+    """The origin of the node ``worker_id`` runs on volume ``here``, when a restore or an export already named it.
+
+    An export from a box whose node came from a restore is a file of that
+    restored node: it takes the restore's origin, not a new one, so every file
+    of a node stays linked however many times it moved. When the volume is not
+    known on one side, the newest row of that box counts (an export, a restore
+    or one still 'pending'): the box runs that node, or one made since that no
+    file names yet. Joining the newest lineage can only hold more boxes, never
+    split one node across two lineages. Not when both volumes are known and
+    differ: the box runs a node made since. None when the ledger knows nothing
+    of that volume.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT worker_id, source, name FROM device_identities WHERE kind = 'backup' AND slug = ? ORDER BY id",
+            (slug,),
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    newest: tuple[str, str | None] | None = None
+    for row in rows:
+        origin, at = _backup_parse(row["name"], row["source"])
+        if not origin:
+            continue
+        if here and at == here:
+            return origin
+        if int(row["worker_id"]) == int(worker_id):
+            newest = (origin, at)
+    if newest is not None and (newest[1] is None or here is None):
+        return newest[0]
+    return None
+
+
+async def settle_backup(row_id: int, applied: bool, here: str | None = None) -> None:
+    """A 'pending' restore row once its outcome is known: 'restore' when it happened, gone when it did not.
+
+    ``here`` is the volume the restore created (backup_origin of its box). A
+    file with no origin starts its lineage there.
+    """
+    db = await _get_db()
+    try:
+        if applied:
+            cursor = await db.execute(
+                "SELECT name FROM device_identities WHERE id = ? AND kind = 'backup' AND source = 'pending'",
+                (row_id,),
+            )
+            row = await cursor.fetchone()
+            origin = _backup_parse(row["name"], "pending")[0] if row else None
+            await db.execute(
+                "UPDATE device_identities SET source = 'restore', name = ?, last_seen = datetime('now') "
+                "WHERE id = ? AND kind = 'backup' AND source = 'pending'",
+                (_backup_name(origin, here), row_id),
+            )
+        else:
+            await db.execute(
+                "DELETE FROM device_identities WHERE id = ? AND kind = 'backup' AND source = 'pending'", (row_id,)
+            )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def backup_records(
+    sha256: str | None, slug: str | None = None, origins: set[str] | None = None
+) -> list[dict[str, Any]]:
+    """Ledger rows for this backup file, and with ``slug`` and ``origins`` for every file of those origins.
+
+    Each row: ``id``, ``slug``, ``worker_id``, ``source``, ``origin`` (None
+    when not known), ``here`` (the volume it names on its box, None when not
+    known), ``first_seen``, ``last_seen`` (when the row was last written, the
+    restore's outcome for a settled one), ``file`` (True for this file's own rows).
+    Oldest first.
+    """
+    sha256 = str(sha256 or "").lower()
+    origins = origins or set()
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, slug, worker_id, source, name, first_seen, last_seen, value_encrypted FROM device_identities "
+            "WHERE kind = 'backup' ORDER BY id"
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+    out = []
+    for row in rows:
+        origin, here = _backup_parse(row["name"], row["source"])
+        own = bool(sha256) and decrypt_value(row["value_encrypted"] or "") == sha256
+        if own or (origin is not None and origin in origins and row["slug"] == slug):
+            out.append(
+                {
+                    **{k: row[k] for k in ("id", "slug", "worker_id", "source", "first_seen", "last_seen")},
+                    "origin": origin,
+                    "here": here,
+                    "file": own,
+                }
+            )
+    return out
 
 
 async def identity_backfill_specs() -> list[dict[str, Any]]:

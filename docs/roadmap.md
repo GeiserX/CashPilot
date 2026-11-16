@@ -219,7 +219,10 @@ read.
 
 **Status: export and verify shipped in 1.10.0, on the Worker API, with both modes
 and the constraints above.** The bundle is ChaCha20-Poly1305; the passphrase mode
-derives its key with scrypt. Restore and migration between machines are not built.
+derives its key with scrypt. Restore from the dashboard (issue #741) takes passphrase
+files only, creates a new container and volume on a box without the service, and
+checks the files before it starts; key-sealed files and Storj stay on the command line
+([backup.md](backup.md#restore-from-the-dashboard)).
 
 ### D. Keep the catalog honest automatically
 

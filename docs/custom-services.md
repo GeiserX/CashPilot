@@ -66,9 +66,9 @@ belongs in the catalog, where those grants are reviewed: open an issue or a pull
 
 1. Open the service and choose **Remove from this box** on each box. You are asked whether to
    delete its data volume too; cancelling keeps the data for a later deploy. Deleting it needs
-   an owner account and cannot be undone. CashPilot asks this itself because the worker cannot
-   tell whether data of a service it does not know is irreplaceable, so it only deletes it when
-   explicitly told to.
+   an owner account and your password, and cannot be undone. CashPilot asks this itself because
+   the worker cannot tell whether data of a service it does not know is irreplaceable, so it
+   only deletes it when explicitly told to.
 2. When no box runs it any more, choose **Delete**. CashPilot refuses while any box still runs or
    holds a record of it. A data volume you kept in step 1 stays on that box; a new custom service
    never gets the same internal name, so it never mounts it. Delete it by hand when you no longer

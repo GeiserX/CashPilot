@@ -318,7 +318,7 @@ class TestTheWorkerReadsOnlyIrreplaceableState:
             patch.object(orchestrator, "_critical_volume_targets", return_value=targets),
             patch.object(orchestrator, "_find_container", return_value=container),
         ):
-            payload, read = orchestrator.read_critical_state("mysterium")
+            payload, read, _state = orchestrator.read_critical_state("mysterium")
         assert read == ["/var/lib/mysterium/keystore"]
         assert payload == b"tar-bytes"
         container.get_archive.assert_called_once_with("/var/lib/mysterium/keystore")
@@ -389,7 +389,7 @@ class TestTheWorkerEndpoints:
         body = worker_api.BackupRequest(passphrase=PASSPHRASE)
         with (
             patch.object(worker_api, "_verify_api_key", lambda r: None),
-            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(STATE_TAR, ["/data"])),
+            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(STATE_TAR, ["/data"], None)),
         ):
             out = self._call(worker_api.api_backup("mysterium", body, self._request()))
 
@@ -408,7 +408,7 @@ class TestTheWorkerEndpoints:
         body = worker_api.BackupRequest(passphrase="short")
         with (
             patch.object(worker_api, "_verify_api_key", lambda r: None),
-            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(STATE_TAR, ["/data"])),
+            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(STATE_TAR, ["/data"], None)),
             pytest.raises(HTTPException) as exc,
         ):
             self._call(worker_api.api_backup("mysterium", body, self._request()))
@@ -429,7 +429,7 @@ class TestTheWorkerEndpoints:
             patch.object(
                 worker_api.orchestrator,
                 "read_critical_state",
-                return_value=(_state_tar(sb.MAX_ARCHIVE_ENTRIES), ["/data"]),
+                return_value=(_state_tar(sb.MAX_ARCHIVE_ENTRIES), ["/data"], None),
             ),
             pytest.raises(HTTPException) as exc,
         ):
@@ -461,7 +461,7 @@ class TestTheWorkerEndpoints:
         body = worker_api.VerifyRequest(passphrase=PASSPHRASE, bundle_b64=base64.b64encode(bundle).decode())
         with (
             patch.object(worker_api, "_verify_api_key", lambda r: None),
-            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(PAYLOAD, ["/data"])),
+            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(PAYLOAD, ["/data"], None)),
         ):
             out = self._call(worker_api.api_backup_verify("mysterium", body, self._request()))
         assert out["matches"] is True
@@ -477,7 +477,7 @@ class TestTheWorkerEndpoints:
         body = worker_api.VerifyRequest(passphrase=PASSPHRASE, bundle_b64=base64.b64encode(bundle).decode())
         with (
             patch.object(worker_api, "_verify_api_key", lambda r: None),
-            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(b"moved on", ["/data"])),
+            patch.object(worker_api.orchestrator, "read_critical_state", return_value=(b"moved on", ["/data"], None)),
         ):
             out = self._call(worker_api.api_backup_verify("mysterium", body, self._request()))
         assert out["ok"] is True and out["matches"] is False
@@ -587,7 +587,7 @@ class TestAFailedUnpauseIsNeverReportedAsSuccess:
 
     def test_the_ordinary_path_is_untouched(self):
         container = self._container()
-        payload, read = self._read(container)
+        payload, read, _state = self._read(container)
         assert payload == b"data" and read == ["/data"]
         container.unpause.assert_called_once()
 
@@ -651,3 +651,39 @@ class TestAnUnusableKeyIsRejectedNotCrashed:
         recipient = X25519PrivateKey.generate()
         bundle = state_backup.seal(b"payload", recipient_public_key=recipient.public_key().public_bytes_raw().hex())
         assert state_backup.open_bundle(bundle, recipient_private_key=recipient.private_bytes_raw().hex()) == b"payload"
+
+
+class TestTheLiveDriverBacksUpWithTheCurrentReturn:
+    """scripts/socket_proxy_live_driver.py calls read_critical_state on a real worker; its unpacking must match."""
+
+    def test_the_migrated_phase_backs_up_and_checks_the_archive(self, capsys):
+        import importlib.util
+        import io
+        import pathlib
+        import tarfile
+        from unittest.mock import MagicMock, patch
+
+        from app import orchestrator
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            info = tarfile.TarInfo("var/lib/mysterium-node/keystore/UTC--node-key")
+            info.size = len(PAYLOAD)
+            tar.addfile(info, io.BytesIO(PAYLOAD))
+        path = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "socket_proxy_live_driver.py"
+        spec = importlib.util.spec_from_file_location("socket_proxy_live_driver", path)
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        with (
+            patch.object(orchestrator, "_find_container", return_value=MagicMock(id="old")),
+            patch.object(orchestrator, "restart_service"),
+            patch.object(
+                orchestrator, "read_critical_state", return_value=(buf.getvalue(), ["/var/lib/mysterium-node"], "s1")
+            ),
+            patch.object(orchestrator, "deploy_raw", return_value="new"),
+        ):
+            driver.phase_migrated()
+        out = capsys.readouterr().out
+        assert "FAIL" not in out, out
+        assert "PASS  the backup holds the node's keystore" in out
+        assert driver.FAILS == 0

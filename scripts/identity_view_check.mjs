@@ -71,6 +71,14 @@ check('an unconfirmed hold past its time is forgotten with the hold\'s warning',
 const fresh = owner.identityRowsHtml([{...rows[4], id: 6, forgettable: false}]);
 check('a fresh unconfirmed hold offers no Forget', !fresh.includes('forgetIdentity'), fresh);
 check('a fresh unconfirmed hold says the box may still start it', fresh.includes('may still start with this id'), fresh);
+const backupRow = {id: 7, service: 'Mysterium', label: 'Backup file (SHA-256)', masked: '...', worker: 'box-a', copy: '',
+  status: 'active', kind: 'backup', source: 'pending', readable: true};
+const sentRestore = owner.identityRowsHtml([{...backupRow, forgettable: false}]);
+check('a restore with no answer yet offers no Forget and says why', !sentRestore.includes('forgetIdentity')
+  && sentRestore.includes('may still finish') && sentRestore.includes('6 h after the restore'), sentRestore);
+const agedRestore = owner.identityRowsHtml([{...backupRow, forgettable: true}]);
+check('once its time is up it can be forgotten', agedRestore.includes('data-a1="7">Forget')
+  && !agedRestore.includes('may still finish'), agedRestore);
 const removedHold = owner.identityRowsHtml([{...rows[4], id: 9, status: 'retired', forgettable: true}]);
 check('a retired hold is forgotten like any removed id', removedHold.includes('data-a1="9">Forget')
   && !removedHold.includes('may still start'), removedHold);

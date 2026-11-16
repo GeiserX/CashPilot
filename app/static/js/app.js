@@ -45,8 +45,10 @@ const CP = (() => {
         // detail can be a structured refusal ({error, message, ...}); surface
         // its message instead of the useless "[object Object]".
         let detail = data && data.detail;
+        const refusal = detail && typeof detail === 'object' ? detail : {};
         if (detail && typeof detail === 'object') detail = detail.message || JSON.stringify(detail);
-        throw new Error(detail || `Error ${res.status}`);
+        // The refusal's code and fields go with it, for a caller that offers a way out.
+        throw Object.assign(new Error(detail || `Error ${res.status}`), { code: refusal.error, refusal });
       }
       return data;
     } catch (err) {
@@ -2968,14 +2970,120 @@ const CP = (() => {
     }
   }
 
-  async function removeService(slug) {
-    if (!confirm(`Remove ${slug}? This will stop and delete the container.`)) return;
+  // The critical volumes a box's refusal named, each with the time Docker made
+  // it (its critical_set reads "name@time,..."), shown to the owner before the
+  // password. Their yes returns that set as a query parameter, which the
+  // approval binds: the box deletes those or nothing, never a volume mounted or
+  // made again since. Null when the owner cancels.
+  function confirmCriticalVolumes(slug, place, refusal) {
+    const reviewed = String(refusal?.critical_set || '');
+    const made = new Map(reviewed.split(',').filter(Boolean).map((entry) => {
+      const at = entry.lastIndexOf('@');
+      return at < 0 ? [entry, ''] : [entry.slice(0, at), entry.slice(at + 1)];
+    }));
+    const when = (at) => (at === '' ? 'not on the box now' : at === '?' || at == null ? 'made at a time Docker did not give' : `made ${at}`);
+    const lines = (Array.isArray(refusal?.blocked) ? refusal.blocked : []).map((b) =>
+      `- ${b.volume}, ${when(made.get(b.volume))}: ${b.holds}`);
+    if (!confirm(`These volumes of ${slug} on ${place} hold data that cannot be made again: a node identity, a wallet or a partial restore.\n\n${lines.join('\n')}\n\nDelete exactly these? This cannot be undone.`)) return null;
+    return `critical_set=${encodeURIComponent(reviewed)}`;
+  }
+
+  // Remove a service. From a box's row (workerId, boxName) it goes to that box
+  // only; from the service page it goes to the one online box, and never
+  // takes the data with it. A row a restore that did not finish left
+  // (leftover) removes only while that partial restore is still there.
+  // Deleting the data asks for the owner's password only when it holds a
+  // node identity or wallet: the box's own catalog decides that (it answers
+  // critical_volume), then the critical delete goes, the server answers
+  // step_up_required and api() asks, as for a restore.
+  async function removeService(slug, workerId, boxName, leftover) {
+    const pinned = workerId != null && workerId !== '';
+    const where = pinned ? ` from ${boxName || `worker #${workerId}`}` : '';
+    if (!confirm(`Remove ${slug}${where}? This will stop and delete the container.`)) return;
+    const box = (id) => `?worker_id=${encodeURIComponent(id)}`;
+    // Its data goes only when the owner says so, never by default: the same
+    // owner-only, audited delete a custom service's Remove offers. It is the
+    // way to free the box for a restore of a backup. Only from a box's own
+    // row: the service page names no box, and the server would pick the one
+    // online box, which may not be the one the owner means.
+    const params = pinned ? [`worker_id=${encodeURIComponent(workerId)}`] : [];
+    const withData = pinned && _isOwner && confirm(`Also delete the data of ${slug} on ${boxName || `worker #${workerId}`}? A node identity or wallet in it is gone for good unless you have its backup file. Cancel keeps the data for a later deploy.`);
+    if (withData) params.push('delete_volumes=true');
+    // That row was drawn for a partial restore: a restore that finished since,
+    // in another tab, is not what was meant, with its data or without, by the
+    // owner or a writer. The worker then removes nothing.
+    if (leftover === 'leftover') params.push('only_if_restore_unfinished=true');
+    const path = (list) => `/api/services/${slug}${list.length ? `?${list.join('&')}` : ''}`;
     try {
-      await api(`/api/services/${slug}`, { method: 'DELETE' });
-      toast(`${slug} removed`, 'success');
-      loadServicesTable();
+      let result;
+      try {
+        result = await api(path(params), { method: 'DELETE' });
+      } catch (err) {
+        // The box kept everything: its data holds a node identity or wallet.
+        // The owner's yes above was to that; the critical delete asks for the
+        // password, as for a restore. It names the critical volumes this
+        // refusal reported, and the approval binds them: the box deletes
+        // those or nothing, never one mounted since.
+        if (withData && err.code === 'critical_volume') {
+          const reviewed = confirmCriticalVolumes(slug, boxName || `worker #${workerId}`, err.refusal);
+          if (!reviewed) return;
+          return removed(await api(path([...params, 'allow_delete_critical=true', reviewed]), { method: 'DELETE', body: {} }));
+        }
+        // A restore that did not finish left a half-written data volume, and
+        // the worker keeps it marked until it goes. The way out is the same
+        // owner-only, audited critical delete a custom service's Remove uses.
+        if (err.code !== 'restore_unfinished') throw err;
+        if (!_isOwner) throw new Error(`${err.message} Only the owner can delete that data.`);
+        // The delete goes to the box that refused and to no other, even if
+        // the online boxes changed while the owner read the question.
+        const refused = pinned ? workerId : err.refusal.worker_id;
+        if (refused == null) throw err;
+        const name = err.refusal.worker_name || boxName || `worker #${refused}`;
+        if (!confirm(`A restore of ${slug} on ${name} did not finish, so its data volume there holds a partial restore. Remove now deletes that volume on ${name}, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
+        // Only while that partial restore is still there: one restored since,
+        // in another tab, is not what the owner agreed to delete. The box first
+        // names the volumes it finds critical (the partial restore's always),
+        // the owner reviews exactly those, and the approval binds them.
+        const retry = `/api/services/${slug}${box(refused)}&delete_volumes=true&only_if_restore_unfinished=true`;
+        try {
+          result = await api(retry, { method: 'DELETE' });
+        } catch (again) {
+          if (again.code !== 'critical_volume') throw again;
+          const reviewed = confirmCriticalVolumes(slug, name, again.refusal);
+          if (!reviewed) return;
+          result = await api(`${retry}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
+        }
+      }
+      removed(result);
     } catch (err) {
       toast(err.message, 'error');
+    }
+
+    function removed(result) {
+      // A volume the box could not delete stays, and stays marked half-written.
+      // One another client replaced since the owner's review (or since the
+      // restore made it) is that client's: the box keeps it, and Remove again
+      // would not delete it either. A leftover row's first Remove can report
+      // one with no review at all, so the text names no confirmation.
+      const list = (v) => (Array.isArray(v) ? v : []);
+      const replaced = list(result?.replaced_volumes);
+      // Named by a restore record from an older worker with nothing that
+      // proves it is the restore's: the box keeps it and the service stays
+      // held until the owner deletes it.
+      const unverified = list(result?.unverified_volumes);
+      // Named on that record but unreadable just now: not known to be there,
+      // so the owner is not sent to delete it by hand; Remove again reads it.
+      const unread = list(result?.unread_volumes);
+      const kept = list(result?.failed_volumes).filter((v) => !replaced.includes(v) && !unverified.includes(v) && !unread.includes(v));
+      const notes = [];
+      if (kept.length) notes.push(`its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`);
+      if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')}, so the box kept that volume. Check it yourself.`);
+      if (unverified.length) notes.push(`the box cannot tell whether its volume ${unverified.join(', ')} holds the partial restore, so it kept that volume, and the service stays held until that volume is gone. No Remove deletes it: check it yourself, copy out anything you want to keep, delete it, then Remove again.`);
+      if (unread.length) notes.push(`the box could not read its volume ${unread.join(', ')} just now, so the service stays held. Try Remove again.`);
+      if (notes.length) toast(`${slug} removed${where}, but ${notes.join(' And ')}`, 'error');
+      else toast(`${slug} removed${where}`, 'success');
+      loadServicesTable();
+      if (pinned) openServiceDetail(slug);
     }
   }
 
@@ -4329,13 +4437,14 @@ const CP = (() => {
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Stop</button>
             <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">Logs</button>
-            ${svc.custom && (inst.container.instance || 1) === 1 ? `<button class="btn btn-danger btn-sm" data-action="removeCustomFromBox" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Remove from this box</button>` : ''}
+            ${(inst.container.instance || 1) === 1 ? `<button class="btn btn-danger btn-sm" data-action="${svc.custom ? 'removeCustomFromBox' : 'removeService'}" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Remove from this box</button>` : ''}
           </div>` : ''}
         </div>
         <div class="log-viewer log-viewer-inline" id="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" style="display:none;"></div>`;
       }
       html += `</div>`;
     }
+    html += restoreLeftoverRows(svc, onlineWorkers, instances);
 
     const instancesHtml = html;
     if (isDeployed && instancesHtml) {
@@ -4343,6 +4452,31 @@ const CP = (() => {
         + (deployHtml ? `<details class="sd-more"><summary>${svc.custom ? 'Deploy to more boxes' : 'Deploy to more boxes, or change the image'}</summary>${deployHtml}</details>` : '');
     }
     return infoHtml + deployHtml + instancesHtml;
+  }
+
+  // A restore that did not finish can leave only its half-written volume on a
+  // box, with no container of the service to list. The worker names those
+  // services in its heartbeat, so each such box still gets its Remove from this
+  // box, which offers the owner the delete of that data.
+  function restoreLeftoverRows(svc, onlineWorkers, instances) {
+    const listed = new Set(instances.map(i => i.worker.id));
+    const boxes = onlineWorkers.filter((w) => {
+      const left = (w.system_info || {}).restore_unfinished;
+      return !listed.has(w.id) && Array.isArray(left) && left.includes(svc.slug);
+    });
+    if (!boxes.length) return '';
+    return `
+      <div class="sd-block sd-instances">
+        <h4 class="sd-h">A restore did not finish</h4>${boxes.map(w => `
+        <div class="sd-inst">
+          <span class="cell cell-warn"></span>
+          <strong class="sd-inst-box">${escapeHtml(w.name)}</strong>
+          <span class="state state-warn">partial restore, no container</span>
+          ${_canWrite ? `<div class="sd-inst-actions">
+            <button class="btn btn-danger btn-sm" data-action="removeService" data-a1="${escapeHtml(svc.slug)}" data-a2="${w.id}" data-a3="${escapeHtml(w.name)}" data-a4="leftover">Remove from this box</button>
+          </div>` : ''}
+        </div>`).join('')}
+      </div>`;
   }
 
   // -----------------------------------------------------------
@@ -4569,15 +4703,26 @@ const CP = (() => {
   // Removing a custom container from a box. Its data volume stays unless the
   // owner asks for it to go too: the worker cannot judge whether a volume of
   // a service its catalog does not know is irreplaceable, so it only deletes
-  // one with allow_delete_critical, which is owner-only on the server too.
+  // one with allow_delete_critical and the set of volumes it named, which is
+  // owner-only on the server too and asks for the owner's password (api()
+  // shows the prompt) after the owner reviewed that set.
   async function removeCustomFromBox(slug, workerId, boxName) {
     if (!window.confirm(`Remove ${slug} from ${boxName}? Its container is stopped and deleted.`)) return;
     let query = `?worker_id=${encodeURIComponent(workerId)}`;
-    if (_isOwner && window.confirm(`Also delete its data volume on ${boxName}? This cannot be undone. Cancel keeps the data for a later deploy.`)) {
-      query += '&delete_volumes=true&allow_delete_critical=true';
-    }
+    const withData = _isOwner && window.confirm(`Also delete its data volume on ${boxName}? This cannot be undone. Cancel keeps the data for a later deploy.`);
+    if (withData) query += '&delete_volumes=true';
+    const path = `/api/services/${encodeURIComponent(slug)}${query}`;
     try {
-      await api(`/api/services/${encodeURIComponent(slug)}${query}`, { method: 'DELETE' });
+      try {
+        await api(path, { method: 'DELETE' });
+      } catch (err) {
+        // The box names the volumes it cannot judge (its catalog does not know
+        // this service): the owner reviews exactly those, then the password.
+        if (!withData || err.code !== 'critical_volume') throw err;
+        const reviewed = confirmCriticalVolumes(slug, boxName, err.refusal);
+        if (!reviewed) return;
+        await api(`${path}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
+      }
       toast(`${slug} removed from ${boxName}`, 'success');
     } catch (err) {
       toast(`Remove failed: ${err.message}`, 'error');
@@ -4774,9 +4919,14 @@ const CP = (() => {
     }
     return rows.map(r => {
       const where = [r.worker, r.copy].filter(Boolean).join(', ');
-      const state = r.status === 'active' ? 'In use' : 'Removed';
+      const backup = r.kind === 'backup';
+      const state = backup ? ({ restore: 'Restored here', pending: 'Restore sent here, no answer yet' }[r.source]
+          || 'Downloaded from here')
+        : (r.status === 'active' ? 'In use' : 'Removed');
       const reported = r.source === 'node'
-        ? '<div class="credential-health-hint">Reported by the node itself, not checked by CashPilot.</div>' : '';
+        ? '<div class="credential-health-hint">Reported by the node itself, not checked by CashPilot.</div>'
+        : (backup ? '<div class="credential-health-hint">A backup file this CashPilot made or restored. '
+          + 'Restoring it again needs no typed confirmation.</div>' : '');
       const id = escapeHtml(String(r.id));
       const buttons = r.readable
         ? `<button class="btn btn-ghost btn-sm" data-action="revealIdentity" data-a1="${id}">Show</button>
@@ -4788,7 +4938,9 @@ const CP = (() => {
       const forget = r.forgettable
         ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}"${held ? ' data-a2="pending"' : ''}>Forget</button>` : '';
       const unconfirmed = held && !r.forgettable
-        ? '<div class="credential-health-hint">The worker did not confirm this deploy, so the box may still start with this id. You can forget it 6 h after the deploy.</div>' : '';
+        ? '<div class="credential-health-hint">The worker did not confirm this deploy, so the box may still start with this id. You can forget it 6 h after the deploy.</div>'
+        : (backup && r.source === 'pending' && !r.forgettable
+          ? '<div class="credential-health-hint">The worker did not answer this restore, so it may still finish and start this node there. You can forget it 6 h after the restore.</div>' : '');
       return `
         <div class="credential-health-item identity-row" data-identity="${id}">
           <div>
@@ -4924,6 +5076,158 @@ const CP = (() => {
       if (before.has(input) && before.get(input) === input.value) input.value = value;
     });
     _identityPicks(slug, key).forEach(el => { el.innerHTML = ''; });
+  }
+
+  // --- Restore from a backup file (issue #741, docs/backup.md) ---------------
+
+  // What the restore will create and where it may go, as HTML. Pure, so the
+  // harness can run it. Everything in it is text: the service and box names
+  // come from the catalog and the fleet, and where the file was made only from
+  // this CashPilot's own ledger, never from the file.
+  function restorePreviewHtml(p) {
+    const creates = (p.creates || []).map(c =>
+      `<li>volume <code>${escapeHtml(c.volume)}</code> at <code>${escapeHtml(c.target)}</code></li>`).join('');
+    const history = (p.history || []).map(h =>
+      `<li>${escapeHtml(h.what)} on ${escapeHtml(h.worker)}, ${escapeHtml(fmtTimestamp(h.when).text)}</li>`).join('');
+    const origin = p.known
+      ? `<p>This CashPilot knows this file:</p><ul>${history}</ul>`
+      : `<p class="text-warn">This CashPilot did not make this file, so it cannot tell whose identity or wallet is
+          inside. Restore only a file you made yourself. To go on, type <strong>${escapeHtml(p.service)}</strong>:</p>
+         <input type="text" class="form-input" id="restore-confirm" autocomplete="off" spellcheck="false">`;
+    const live = (p.live_on || []).length
+      ? `<p class="text-fail">This identity runs, or may be starting, on ${escapeHtml(p.live_on.join(', '))}. Two
+          boxes on one identity look like one node to the provider, which may merge or ban them. Remove it there
+          first.</p>` : '';
+    // A file from before CashPilot recorded its backups is unknown too: it may
+    // be a backup of a node that runs now.
+    const elsewhere = !p.known && !(p.live_on || []).length && (p.runs_on || []).length
+      ? `<p class="text-warn">${escapeHtml(p.service)} runs now on ${escapeHtml(p.runs_on.join(', '))}. If this
+          file is a backup of that node, restoring it puts one identity on two boxes: remove it there first.</p>` : '';
+    const plain = (p.workers || []).some(w => w.ok && w.plain_http)
+      ? `<label class="form-hint"><input type="checkbox" id="restore-plain-http"> Send the passphrase to a box
+          on plain HTTP anyway: anyone on the network between can read it.</label>` : '';
+    const options = (p.workers || []).map(w =>
+      `<option value="${escapeHtml(String(w.id))}"${w.ok ? '' : ' disabled'}>${escapeHtml(w.name)}${
+        w.ok ? (w.plain_http ? ' (plain HTTP: the passphrase crosses your network unencrypted)' : '')
+          : ` (${escapeHtml(w.why)})`}</option>`).join('');
+    // A box the identity may already be on is disabled with its reason; the one
+    // a restore was sent to with no answer may take it again.
+    const usable = (p.workers || []).some(w => w.ok);
+    return `
+      <p>Restoring <strong>${escapeHtml(p.service)}</strong> creates a new container
+        <code>${escapeHtml(p.container)}</code> with:</p>
+      <ul>${creates}</ul>
+      <p class="form-hint">It never writes over anything: the box must not run ${escapeHtml(p.service)} and these
+        volumes must not exist. The backup is written and read back before the container first starts.</p>
+      ${origin}${live}${elsewhere}
+      <label class="form-label" for="restore-worker">Box</label>
+      <select class="form-input" id="restore-worker">${options || '<option disabled>No box</option>'}</select>
+      <label class="form-label" for="restore-passphrase">Passphrase of the backup</label>
+      <input type="password" class="form-input" id="restore-passphrase" autocomplete="off">
+      ${plain}
+      <div class="credential-health-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-action="submitRestore"
+          data-a1="${escapeHtml(p.upload_id)}"${usable ? '' : ' disabled'}>Restore</button>
+      </div>`;
+  }
+
+  // Which file check is the newest: a slower answer for a file chosen before
+  // must not replace the preview of the one chosen after it.
+  let restoreCheckSeq = 0;
+  // The File object behind the preview on screen: Restore sends that
+  // preview's upload, so it goes only while the picker still holds that very
+  // object. Two files can share a name, a size and a date.
+  let previewedFile = null;
+
+  // A file picked in the picker: the preview on screen is of another one, so
+  // it goes, and a check or a restore of the old file still running no longer
+  // writes the page or clears the picker.
+  function restoreFileChanged() {
+    restoreCheckSeq++;
+    previewedFile = null;
+    const out = document.getElementById('restore-preview');
+    if (out) out.innerHTML = '';
+  }
+
+  async function checkRestoreFile() {
+    const input = document.getElementById('restore-file');
+    const out = document.getElementById('restore-preview');
+    const file = input && input.files && input.files[0];
+    if (!file || !out) return;
+    const seq = ++restoreCheckSeq;
+    previewedFile = null;
+    out.innerHTML = '<p class="loading-line">Checking the file...</p>';
+    let html;
+    let checked = null;
+    try {
+      // The raw file as the body: never JSON, never base64 in the page.
+      const res = await fetch('/api/restore/upload', {
+        method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        let detail = data && data.detail;
+        if (detail && typeof detail === 'object') detail = detail.message;
+        throw new Error(detail || `Error ${res.status}`);
+      }
+      html = restorePreviewHtml(data);
+      checked = file;
+    } catch (err) {
+      html = `<p class="text-fail">${escapeHtml(err.message)}</p>`;
+    }
+    if (seq === restoreCheckSeq) {
+      out.innerHTML = html;
+      previewedFile = checked;
+    }
+  }
+
+  async function submitRestore(uploadId) {
+    const picker = document.getElementById('restore-file');
+    const sent = picker && picker.files && picker.files[0];
+    if (!previewedFile || sent !== previewedFile) {
+      toast('The file chosen now is not the one checked. Press Check file again before you restore.', 'error');
+      return;
+    }
+    const pass = document.getElementById('restore-passphrase');
+    const worker = document.getElementById('restore-worker');
+    const confirmBox = document.getElementById('restore-confirm');
+    const body = {
+      upload_id: uploadId,
+      worker_id: Number(worker && worker.value),
+      passphrase: pass ? pass.value : '',
+    };
+    if (confirmBox) body.confirm_name = confirmBox.value;
+    const plain = document.getElementById('restore-plain-http');
+    if (plain && plain.checked) body.allow_plain_http = true;
+    // Out of the page as soon as it is sent; the server keeps it nowhere either.
+    if (pass) pass.value = '';
+    const out = document.getElementById('restore-preview');
+    // The file this restore is for: if the owner checks another one while it
+    // runs, its success must not wipe that newer preview and file choice.
+    const seq = restoreCheckSeq;
+    // One click, one restore: a second one while the worker works could put
+    // the file on a second box (the server refuses it too).
+    const button = document.querySelector('[data-action="submitRestore"]');
+    if (button) button.disabled = true;
+    try {
+      // api() asks for the owner's password when the server answers step_up_required.
+      const res = await api('/api/restore', { method: 'POST', body });
+      toast(`${res.service} restored on ${res.worker}: ${res.files} files checked`
+        + (res.started ? ', started.' : '. It starts once the LAN fence is confirmed.'), 'success');
+      // Only while the picker still holds the file sent and nothing was
+      // checked or picked since: a newer choice keeps its file and preview.
+      const input = document.getElementById('restore-file');
+      if (seq === restoreCheckSeq && input && input.files && input.files[0] === sent) {
+        if (out) out.innerHTML = '';
+        input.value = '';
+        previewedFile = null;
+      }
+      loadIdentities();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
 
   // Exported for the harness: the message is the whole point of the fix, so it
@@ -5846,12 +6150,15 @@ const CP = (() => {
         loadCatalog();
         initCatalogFilters();
         break;
-      case 'settings':
+      case 'settings': {
         loadSettings();
+        const restoreFile = document.getElementById('restore-file');
+        if (restoreFile) restoreFile.addEventListener('change', restoreFileChanged);
         // Auto-open collector section if ?highlight= param present
         const hl = new URLSearchParams(window.location.search).get('highlight');
         if (hl) setTimeout(() => openCollectorSection(hl), 300);
         break;
+      }
     }
   });
 
@@ -5938,6 +6245,8 @@ const CP = (() => {
     revealIdentity,
     copyIdentity,
     forgetIdentity,
+    checkRestoreFile,
+    submitRestore,
     pickPreviousIdentity,
     useIdentity,
     loadPayoutProgress,
