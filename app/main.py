@@ -5446,6 +5446,74 @@ async def _stored_proxied_digests(worker_id: int, slug: str) -> dict[int, str]:
     return digests
 
 
+async def _record_proven_proxied_copy(
+    slug: str,
+    worker_id: int,
+    copy: Mapping[str, Any],
+    digest: Any,
+    spec: dict[str, Any] | None,
+    keys: list[str],
+    *,
+    if_record: dict[str, Any] | None = None,
+) -> bool:
+    """Record proxied copy ``copy``'s ids when its box's ``digest`` proves it runs what ``spec`` derives.
+
+    A copy is built from the record of when it was added, and a later redeploy
+    of the main copy does not rebuild it: only its box's digest of what it runs
+    proves this record still derives it. A rename-pending copy was not rebuilt:
+    it still runs its old ids, which the renamed record no longer derives, so a
+    rebuild records it. A routed service's earner is its copy 1
+    (_ledger_containers), never a copy of its own. No proof, no row.
+    ``if_record`` is record_identities'. False only when that write found
+    ``if_record`` no longer the record; raises on a failed read or write.
+    """
+    svc = catalog.get_service(slug)
+    proxy_id = int(copy["proxy_id"])
+    if (
+        not svc
+        or not isinstance(spec, dict)
+        or not isinstance(digest, str)
+        or not digest
+        or copy.get("rename_pending")
+        or proxies.route_of(spec) == proxy_id
+    ):
+        return True
+    try:
+        env = proxies.earner_spec(spec, svc.get("docker") or {}, proxy_id)["env"]
+    except ValueError:
+        return True
+    if not _digest_proves(svc, env, digest, keys):
+        return True
+    return await database.record_identities(slug, worker_id, {f"p{proxy_id}": env}, scope="given", if_record=if_record)
+
+
+async def _record_removed_proxied_copy(proxy_id: int, worker_id: int, slug: str) -> None:
+    """Before a proxied copy's record goes: record its ids when it has no row and its last heartbeat proves them.
+
+    delete_proxied_copy then retires them with the record, so the ledger keeps
+    the ids the copy ran with and a later deploy elsewhere is asked about them.
+    Bookkeeping: never raises.
+    """
+    try:
+        if f"p{int(proxy_id)}" in await database.active_identity_copies(slug, worker_id):
+            return
+        copy = next(
+            (
+                c
+                for c in await database.list_proxied_copies(proxy_id)
+                if c["worker_id"] == worker_id and c["slug"] == slug
+            ),
+            None,
+        )
+        digest = (await _stored_proxied_digests(worker_id, slug)).get(int(proxy_id))
+        if copy is None or not digest:
+            return
+        spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+        await _record_proven_proxied_copy(slug, worker_id, copy, digest, spec, await _identity_digest_keys(worker_id))
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not record the %s copy through proxy %s", slug, proxy_id, exc_info=True)
+
+
 async def _record_removed_copies(slug: str, worker_id: int, result: Any) -> None:
     """Before a removal retires a service's rows: record each removed copy that has none.
 
@@ -5513,10 +5581,16 @@ _IDENTITIES_CHECKED: dict[int, set[tuple[str, int, str, str]]] = {}
 _IDENTITIES_LISTED: dict[int, set[tuple[str, int]]] = {}
 
 
+# (slug, proxy id, container id, digest) per worker of the proxied copies a
+# heartbeat already found, wrote or could not prove, as _IDENTITIES_CHECKED.
+_PROXIED_CHECKED: dict[int, set[tuple[str, int, str, str]]] = {}
+
+
 def _forget_checked_copies(worker_id: int, slug: str) -> None:
     """A new record for ``slug`` on this worker: its copies are checked again on the next heartbeat."""
-    if worker_id in _IDENTITIES_CHECKED:
-        _IDENTITIES_CHECKED[worker_id] = {k for k in _IDENTITIES_CHECKED[worker_id] if k[0] != slug}
+    for checked in (_IDENTITIES_CHECKED, _PROXIED_CHECKED):
+        if worker_id in checked:
+            checked[worker_id] = {k for k in checked[worker_id] if k[0] != slug}
 
 
 #: How long an unanswered deploy's ids stay claimed with no proof (database.PENDING_IDENTITY_SECONDS).
@@ -5729,6 +5803,64 @@ async def _reconcile_running_identities(
         checked.update(keys)
 
 
+async def _reconcile_proxied_identities(worker_id: int, info: Mapping[str, Any]) -> None:
+    """Record each proxied copy a heartbeat proves runs ids the ledger has no active row for.
+
+    The same proof as the startup backfill (_record_proven_proxied_copy), from
+    the digest the box reports for each copy under ``proxied``. A routed
+    service is its copy 1 and is checked with the containers
+    (_ledger_containers). A copy whose removal or deploy holds its lock is
+    left for the next heartbeat; under the lock, its record is read again, so a
+    removal that finished meanwhile keeps the ids it retired. A copy found,
+    written or not proven is not read again until its container, its digest
+    or the record changes (_forget_checked_copies). Bookkeeping: never raises.
+    """
+    entries = info.get("proxied")
+    listed = {
+        (e["slug"], e["proxy_id"], str(e.get("container_id") or ""), e["identity_digest"])
+        for e in (entries if isinstance(entries, list) else [])
+        if isinstance(e, dict)
+        and e.get("routed") is not True
+        and isinstance(e.get("slug"), str)
+        and isinstance(e.get("proxy_id"), int)
+        and not isinstance(e.get("proxy_id"), bool)
+        and isinstance(e.get("identity_digest"), str)
+        and e["identity_digest"]
+    }
+    checked = _PROXIED_CHECKED.get(worker_id, set()) & listed
+    _PROXIED_CHECKED[worker_id] = checked
+    keys: list[str] | None = None
+    for key in sorted(listed - checked):
+        slug, proxy_id, _, digest = key
+        try:
+            lock = _proxy_copy_lock(proxy_id, worker_id, slug)
+            if lock.locked():
+                continue
+            async with lock:
+                copy = next(
+                    (
+                        c
+                        for c in await database.list_proxied_copies(proxy_id)
+                        if c["worker_id"] == worker_id and c["slug"] == slug
+                    ),
+                    None,
+                )
+                if copy is not None and copy.get("removing_since"):
+                    # Its removal records it (_record_removed_proxied_copy); one
+                    # that fails leaves the copy running, so it is read again.
+                    continue
+                if copy is None or f"p{proxy_id}" in await database.active_identity_copies(slug, worker_id):
+                    checked.add(key)
+                    continue
+                spec = await database.get_deployment_spec(slug, worker_id=worker_id)
+                if keys is None:
+                    keys = await _identity_digest_keys(worker_id)
+                if await _record_proven_proxied_copy(slug, worker_id, copy, digest, spec, keys, if_record=spec):
+                    checked.add(key)
+        except Exception:  # noqa: BLE001
+            logger.warning("Could not check the %s copy through proxy %s", slug, proxy_id, exc_info=True)
+
+
 async def _retire_dropped_copies(slug: str, worker_id: int, gone: set[int]) -> bool:
     """Retire the rows of extra copies the last heartbeat listed and this one does not, above the record's count.
 
@@ -5780,7 +5912,6 @@ async def _backfill_identities() -> None:
         svc = catalog.get_service(slug)
         if not svc or not catalog.identity_keys(svc):
             continue
-        docker_conf = svc.get("docker") or {}
         # The record's own copy ran: its record is saved after its deploy. An
         # extra copy needs the proof the heartbeat gives (_record_unrecorded_copies);
         # one with none yet is written by a later heartbeat.
@@ -5799,28 +5930,14 @@ async def _backfill_identities() -> None:
         proxied_digests: dict[int, str] | None = None
         keys: list[str] = []
         for copy in proxied:
-            # A rename-pending copy was not rebuilt: it still runs its old ids,
-            # which the renamed record no longer derives. A rebuild records it.
-            if (
-                (copy.get("slug"), copy.get("worker_id")) != (slug, worker_id)
-                or f"p{copy['proxy_id']}" in have
-                or copy.get("rename_pending")
-            ):
+            if (copy.get("slug"), copy.get("worker_id")) != (slug, worker_id) or f"p{copy['proxy_id']}" in have:
                 continue
             try:
                 if proxied_digests is None:
                     proxied_digests = await _stored_proxied_digests(worker_id, slug)
                     keys = await _identity_digest_keys(worker_id)
-                env = proxies.earner_spec(spec, docker_conf, int(copy["proxy_id"]))["env"]
-                # A copy is built from the record of when it was added, and a
-                # later redeploy of the main copy does not rebuild it: only its
-                # box's digest of what it runs proves this record still derives it.
                 reported = proxied_digests.get(int(copy["proxy_id"]))
-                if not reported or not any(
-                    hmac.compare_digest(catalog.identity_digest(svc, env, k) or "", reported) for k in keys
-                ):
-                    continue
-                await database.record_identities(slug, worker_id, {f"p{int(copy['proxy_id'])}": env}, scope="given")
+                await _record_proven_proxied_copy(slug, worker_id, copy, reported, spec, keys)
             except Exception:  # noqa: BLE001
                 logger.warning(
                     "Could not record the %s copy through proxy %s", slug, copy.get("proxy_id"), exc_info=True
@@ -7526,6 +7643,9 @@ _copy_removals_running: set[tuple[int, int, str]] = set()
 async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str, *, leaving_route: bool = False) -> None:
     """The worker confirmed the copy is gone: drop its record and its device's pending link.
 
+    The ids the copy ran with stay in the identity ledger, retired: one with no
+    row gets it first when its last heartbeat proves them (_record_removed_proxied_copy).
+
     A service routed at deploy runs only as its copy through its route, so
     its deployment record goes too once that copy is gone and no other copy
     of it on the worker is still being removed: a removal still waiting for
@@ -7536,6 +7656,7 @@ async def _finish_copy_removal(proxy_id: int, worker_id: int, slug: str, *, leav
     IP (_deploy): its record stays, without the route, so a direct deploy
     that fails can be tried again with the same settings.
     """
+    await _record_removed_proxied_copy(proxy_id, worker_id, slug)
     await database.delete_proxied_copy(proxy_id, worker_id, slug)
     if leaving_route:
         spec = await database.get_deployment_spec(slug, worker_id=worker_id)
@@ -11086,6 +11207,7 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         await _reconcile_running_identities(
             worker_id, _ledger_containers(body.containers, info), complete=complete, deadline=deadline
         )
+        await _reconcile_proxied_identities(worker_id, info)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not check the device ids of worker %s: %s", worker_id, type(exc).__name__)
     # Activity: the switch is read on every heartbeat, because the reply is
