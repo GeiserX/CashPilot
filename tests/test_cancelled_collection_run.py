@@ -5,6 +5,10 @@ asyncio.run tearing down in tests). CancelledError is not an Exception, so the
 run's ``except Exception`` branch does not run, and the ``finally`` block used
 to read ``platforms_ok`` before anything had set it. That raised
 UnboundLocalError, which replaced the cancel and logged a misleading error.
+
+A cancelled run also never completed, so it must be recorded as unsuccessful:
+recording it as a success would refresh collection_last_success_timestamp and
+hold off the staleness alerts.
 """
 
 import asyncio
@@ -30,7 +34,7 @@ async def test_a_run_cancelled_during_get_deployments_ends_cleanly():
     ends = []
 
     def _capture_end(start, success, platforms_ok=0, collectors_configured=0):
-        ends.append((platforms_ok, collectors_configured))
+        ends.append((success, platforms_ok, collectors_configured))
 
     started = asyncio.Event()
 
@@ -54,6 +58,7 @@ async def test_a_run_cancelled_during_get_deployments_ends_cleanly():
         assert main._collection_has_run is True
         assert main._last_collection_finished is not None
 
-    assert ends == [(0, 0)]
+    # Recorded as a failed run, never as a success.
+    assert ends == [(False, 0, 0)]
     # The lock is released, so the next run is not skipped.
     assert not main._collection_lock.locked()

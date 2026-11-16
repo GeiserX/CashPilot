@@ -2154,6 +2154,11 @@ async def _run_collection() -> None:
                 *(a for a in _collector_alerts if a.get("platform") != "collection"),
                 {"platform": "collection", "error": "Collection run failed — see server logs"},
             ]
+        except asyncio.CancelledError:
+            # A cancelled run never completed: recording it as a success would
+            # refresh the last-success stamp and hold off the staleness alerts.
+            success = False
+            raise
         finally:
             metrics.record_collection_end(start_time, success, platforms_ok, len(collectors))
             # Set even on a failed run: the bell's question is "has anything
