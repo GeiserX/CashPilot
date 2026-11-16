@@ -1,8 +1,11 @@
 import contextlib
 import os
+import sqlite3
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
+import aiosqlite
 import pytest
 
 # Point the suite at a writable data directory BEFORE any app module is imported:
@@ -137,8 +140,13 @@ def _reset_shared_db():
     any surviving connections and clear the cache so the next test binds fresh.
 
     Closed on their own threads, with no event loop: see ``close_shared_conns``.
+    Opened so the drain may close one from its own thread, for a worker that
+    died: see ``connect_closable_from_any_thread``. The patch sits on
+    ``aiosqlite`` itself, not on ``app.database``, so it also holds for a
+    connection opened after a test reloads ``app.database``.
     """
-    yield
+    with patch.object(aiosqlite, "connect", connect_closable_from_any_thread):
+        yield
 
     from app import database
 
@@ -146,6 +154,21 @@ def _reset_shared_db():
     conns = list(database._shared_conns.values())
     database._shared_conns.clear()
     close_shared_conns(conns)
+
+
+_aiosqlite_connect = aiosqlite.connect
+
+
+def connect_closable_from_any_thread(*args, **kwargs):
+    """``aiosqlite.connect``, with a handle any thread may close.
+
+    Python refuses ``close()`` from any thread but the one that opened the
+    handle, and when an aiosqlite worker dies that thread is gone. aiosqlite
+    still runs every query on its own one thread, so lifting the check changes
+    nothing else.
+    """
+    kwargs.setdefault("check_same_thread", False)
+    return _aiosqlite_connect(*args, **kwargs)
 
 
 def close_shared_conns(conns, wait: float = 5.0) -> None:
@@ -164,10 +187,26 @@ def close_shared_conns(conns, wait: float = 5.0) -> None:
 
     ``stop()`` closes the sqlite connection on that thread and needs no loop,
     and ``join`` with a limit returns at once when the thread is already gone.
+
+    A dead thread never runs that close, so the sqlite handle stays open, and a
+    write cancelled before its commit keeps its lock: the next test to write
+    that file gets "database is locked". So the drain rolls the write back and
+    closes the handle itself. Freeing it by dropping references is not enough:
+    a request still queued for the dead thread, or a logged traceback pytest
+    keeps until the test ends, holds it alive. Nor is ``close()`` alone: while
+    a cursor somewhere still holds a statement, SQLite keeps the handle, and
+    its open write, until that statement goes. A handle opened with
+    Python's same-thread check (a test that asks for it) refuses the close; it
+    gets the old way, dropped for its finaliser to close.
     """
     for conn in conns:
         conn.stop()
         conn._thread.join(timeout=wait)
+        if not conn._thread.is_alive() and conn._connection is not None:
+            raw, conn._connection = conn._connection, None
+            with contextlib.suppress(sqlite3.ProgrammingError):
+                raw.rollback()
+                raw.close()
 
 
 @pytest.fixture(autouse=True)
