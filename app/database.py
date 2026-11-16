@@ -825,7 +825,12 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_created
 -- `instance` is the copy: '1' the service, '2'.. its extra copies, 'p<id>' the
 -- copy through proxy <id>. `kind` is 'env' (`name` is the env key); a later
 -- kind keeps the hashes of exported state backups here too (#741), so one
--- ledger answers "which identities did this box ever have".
+-- ledger answers "which identities did this box ever have". Kind 'manual' is an
+-- id the owner typed in (source and status 'manual'): never active, so nothing
+-- that reads which box runs which id ever sees it.
+-- `holders` counts the deploys in flight that share an unconfirmed hold
+-- ('u<n>'): two deploys of the same ids to one copy write one hold, and the
+-- hold ends with the last answer, not the first (issue #759). 1 elsewhere.
 CREATE TABLE IF NOT EXISTS device_identities (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     slug            TEXT    NOT NULL,
@@ -838,7 +843,8 @@ CREATE TABLE IF NOT EXISTS device_identities (
     status          TEXT    NOT NULL DEFAULT 'active',
     first_seen      TEXT    NOT NULL DEFAULT (datetime('now')),
     last_seen       TEXT    NOT NULL DEFAULT (datetime('now')),
-    retired_at      TEXT
+    retired_at      TEXT,
+    holders         INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE INDEX IF NOT EXISTS idx_device_identities_slug
@@ -1156,7 +1162,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 
 async def init_db() -> None:
@@ -1367,6 +1373,14 @@ async def init_db() -> None:
             # NULL is the honest value, and both consumers already handle it:
             # get_config_updated_at filters WHERE updated_at IS NOT NULL, and
             # the health endpoint skips unstamped keys.
+
+        # 1 is the truthful backfill: a hold written before this column ended
+        # with the first answer, as if one deploy shared it (issue #759).
+        cursor = await db.execute("PRAGMA table_info(device_identities)")
+        identity_cols = {row["name"] for row in await cursor.fetchall()}
+        if identity_cols and "holders" not in identity_cols:
+            applied.append("device_identities.holders")
+            await db.execute("ALTER TABLE device_identities ADD COLUMN holders INTEGER NOT NULL DEFAULT 1")
 
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")
@@ -3022,17 +3036,23 @@ async def list_session_revocations() -> list[dict[str, Any]]:
         await db.close()
 
 
-async def update_user_password(user_id: int, hashed_password: str) -> None:
-    """Update a user's password and record the change timestamp."""
+async def update_user_password(user_id: int, hashed_password: str, *, unless_owner: bool = False) -> bool:
+    """Update a user's password and record the change timestamp.
+
+    With ``unless_owner`` the row is left alone if it is an owner at the moment of
+    the write, so a role change made after the caller's check still counts (issue
+    #762). Returns whether a row changed.
+    """
     import time
 
+    sql = "UPDATE users SET password = ?, password_changed_at = ? WHERE id = ?"
+    if unless_owner:
+        sql += " AND role != 'owner'"
     db = await _get_db()
     try:
-        await db.execute(
-            "UPDATE users SET password = ?, password_changed_at = ? WHERE id = ?",
-            (hashed_password, time.time(), user_id),
-        )
+        cursor = await db.execute(sql, (hashed_password, time.time(), user_id))
         await db.commit()
+        return cursor.rowcount > 0
     finally:
         await db.close()
 
@@ -5000,7 +5020,7 @@ def _identity_value(value: Any) -> str:
 
 async def _active_identity_rows(db: Any, slug: str, worker_id: int) -> list[dict[str, Any]]:
     cursor = await db.execute(
-        "SELECT id, instance, name, value_encrypted FROM device_identities "
+        "SELECT id, instance, name, value_encrypted, holders FROM device_identities "
         "WHERE slug = ? AND worker_id = ? AND kind = 'env' AND status = 'active'",
         (slug, worker_id),
     )
@@ -5169,10 +5189,12 @@ async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Map
 
     Each attempt with other ids gets its own ledger copy, so a second
     unanswered deploy never drops the first one's ids: the worker may still
-    land either. The same ids again refresh their row. Returns the ledger copy
-    this call created, which release_pending_identities ends once the worker
-    answered; None when it created none (no ids, or an earlier attempt that the
-    worker never answered holds them, which an answer to this one must not end).
+    land either. The same ids again refresh their row and count one more
+    deploy on it (``holders``), in the same step: an earlier deploy of them may
+    still be in flight or unanswered, so the hold must outlast this deploy's
+    answer too (issue #759). Returns the ledger copy, which
+    release_pending_identities lets go of once the worker answered; None when
+    there are no ids.
     """
     keys = _identity_keys(slug)
     ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
@@ -5198,12 +5220,19 @@ async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Map
             await _record_identities_locked(
                 db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
             )
+            # A new hold (or a revived one, whose old count belongs to a deploy
+            # that is over) starts at one deploy; a shared one counts this one too.
+            await db.execute(
+                f"UPDATE device_identities SET holders = {'1' if created else 'holders + 1'} "
+                "WHERE slug = ? AND worker_id = ? AND instance = ? AND kind = 'env' AND status = 'active'",
+                (slug, worker_id, instance),
+            )
             await _retire_if_worker_gone(db, slug, worker_id)
             await db.commit()
         except BaseException:
             await db.rollback()
             raise
-    return instance if created else None
+    return instance
 
 
 async def release_pending_identities(slug: str, worker_id: int, instance: str, env: Mapping[str, Any]) -> None:
@@ -5214,7 +5243,9 @@ async def release_pending_identities(slug: str, worker_id: int, instance: str, e
     and one a heartbeat already made the copy's row leaves only that row. Only
     while ``instance`` still holds exactly those ids, read and deleted in one
     step: once the hold has ended another way, a second deploy to the same copy
-    may reuse the name for its own ids, which this answer must not end.
+    may reuse the name for its own ids, which this answer must not end. While
+    another deploy of the same ids is still in flight (``holders`` above one)
+    the rows stay and count one deploy fewer, in that same step (issue #759).
     """
     keys = _identity_keys(slug)
     ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
@@ -5227,7 +5258,12 @@ async def release_pending_identities(slug: str, worker_id: int, instance: str, e
         try:
             rows = [r for r in await _active_identity_rows(db, slug, worker_id) if r["instance"] == instance]
             if {r["name"]: decrypt_value(r["value_encrypted"]) for r in rows} == ids:
-                await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
+                if max(int(r["holders"]) for r in rows) > 1:
+                    await db.executemany(
+                        "UPDATE device_identities SET holders = holders - 1 WHERE id = ?", [(r["id"],) for r in rows]
+                    )
+                else:
+                    await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
             await db.commit()
         except BaseException:
             await db.rollback()
@@ -5563,7 +5599,7 @@ async def delete_identity(identity_id: int) -> bool:
     """Delete one row (the owner's "forget"): a retired one, one a node reported, a backup file's, or an unconfirmed hold.
 
     An active row CashPilot deployed with is never deleted: the shared-id check
-    reads it. A node-reported row is only shown, so the owner may drop it while
+    reads it. One the owner typed in (add_manual_identity) is theirs to drop. A node-reported row is only shown, so the owner may drop it while
     its node runs; the next read brings it back if the node still says so. A
     backup row records a file, never an id a copy runs with; one still
     'pending' is the hold of a restore the worker never answered, which may
@@ -5578,7 +5614,7 @@ async def delete_identity(identity_id: int) -> bool:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node' "
+            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind IN ('node', 'manual') "
             "OR (kind = 'backup' AND COALESCE(source, '') != 'pending') "
             f"OR ((instance LIKE '{PENDING_COPY_PREFIX}%' OR kind = 'backup') AND last_seen <= datetime('now', ?)))",
             (identity_id, f"-{PENDING_IDENTITY_SECONDS} seconds"),
@@ -5587,6 +5623,63 @@ async def delete_identity(identity_id: int) -> bool:
         return (cursor.rowcount or 0) > 0
     finally:
         await db.close()
+
+
+#: What an id the owner types in may look like: a plain token, as a node's is,
+#: up to IDENTITY_VALUE_MAX. UUIDs, hex, 0x addresses and device names without
+#: spaces fit; markup, spaces and line breaks do not.
+_MANUAL_IDENTITY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:@+=/-]*")
+
+#: The field name the owner gives a typed-in id: short words, nothing else.
+_MANUAL_LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}")
+
+
+def manual_identity_error(label: str, value: str) -> str | None:
+    """Why ``label`` and ``value`` cannot be an id the owner types in, or None when they can."""
+    if not _MANUAL_LABEL.fullmatch(label):
+        return "The field name must be 1 to 64 letters, digits, spaces or _ . : -"
+    if len(value) > IDENTITY_VALUE_MAX or not _MANUAL_IDENTITY.fullmatch(value):
+        return f"The id must be one word of up to {IDENTITY_VALUE_MAX} letters, digits or _ . : @ + = / -"
+    return None
+
+
+async def add_manual_identity(slug: str, worker_id: int, instance: str, name: str, value: str) -> int | None:
+    """Keep an id the owner typed in (``kind``, ``source`` and ``status`` 'manual'). Returns its row id.
+
+    No box is known to run it, so it is never active: the shared-id check
+    (identity_in_use), the retirements and the heartbeat repairs read only
+    ``kind`` 'env' rows and never see it. The deploy form offers it only when
+    the owner asks for an earlier id of that field. Returns None, keeping
+    nothing, when that service, box and copy already have this id under this
+    name (letter case ignored), or when manual_identity_error refuses it.
+    """
+    if manual_identity_error(name, value):
+        return None
+    # One step, as record_identities: two clicks at once must not both insert.
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT value_encrypted FROM device_identities WHERE slug = ? AND worker_id = ? AND instance = ? "
+                "AND name = ? AND kind IN ('env', 'manual')",
+                (slug, worker_id, instance, name),
+            )
+            if any(decrypt_value(r["value_encrypted"]).casefold() == value.casefold() for r in await cursor.fetchall()):
+                await db.rollback()
+                return None
+            cursor = await db.execute(
+                "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source, status) "
+                "VALUES (?, ?, ?, 'manual', ?, ?, 'manual', 'manual')",
+                (slug, worker_id, instance, name, encrypt_value(value)),
+            )
+            row_id = int(cursor.lastrowid or 0)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    return row_id
 
 
 async def identity_in_use(slug: str, name: str, value: str, *, except_worker: int | None = None) -> list[int]:
