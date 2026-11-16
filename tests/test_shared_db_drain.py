@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import sqlite3
 import sys
 import threading
@@ -158,14 +159,20 @@ def _assert_the_next_writer_writes_at_once(path) -> None:
 
 # The worker's death is the point of the setup, so its traceback is expected.
 @pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
-def test_a_shared_connection_held_by_a_logged_traceback_does_not_keep_the_lock(tmp_path, monkeypatch, caplog):
+@pytest.mark.parametrize("reloaded", [False, True], ids=["as-imported", "after-reload"])
+def test_a_shared_connection_held_by_a_logged_traceback_does_not_keep_the_lock(tmp_path, monkeypatch, caplog, reloaded):
     """The path CI takes: a fire-and-forget task through ``_get_db`` dies at shutdown.
 
     The task raises while ``asyncio.run`` cancels it, asyncio logs that with its
     traceback, and pytest keeps the record until the test ends. The traceback
     reaches the borrowed ``execute`` frame, whose ``raw`` is the sqlite handle.
+    Several tests reload ``app.database``; a connection opened after that must
+    drain the same way.
     """
     from app import database
+
+    if reloaded:
+        importlib.reload(database)
 
     path = tmp_path / "logged.db"
     monkeypatch.setattr(database, "DB_PATH", path)
@@ -236,8 +243,14 @@ def test_a_death_pytest_keeps_on_record_does_not_keep_the_lock(tmp_path):
 
 
 def test_control_a_handle_with_pythons_thread_check_still_drains(tmp_path):
-    """A test that reloads ``app.database`` opens one the plain way; it must not fail the drain."""
-    with _connection_whose_thread_died_on_a_closed_loop(tmp_path / "plain.db", connect=aiosqlite.connect) as conn:
+    """A handle opened with Python's thread check refuses the close; it must not fail the drain."""
+
+    def connect_with_thread_check(path):
+        return aiosqlite.connect(path, check_same_thread=True)
+
+    with _connection_whose_thread_died_on_a_closed_loop(
+        tmp_path / "plain.db", connect=connect_with_thread_check
+    ) as conn:
         assert not conn._thread.is_alive()
         close_shared_conns([conn])
         assert conn._connection is None

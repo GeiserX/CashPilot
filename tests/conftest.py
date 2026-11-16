@@ -141,18 +141,14 @@ def _reset_shared_db():
 
     Closed on their own threads, with no event loop: see ``close_shared_conns``.
     Opened so the drain may close one from its own thread, for a worker that
-    died: see ``connect_closable_from_any_thread``.
+    died: see ``connect_closable_from_any_thread``. The patch sits on
+    ``aiosqlite`` itself, not on ``app.database``, so it also holds for a
+    connection opened after a test reloads ``app.database``.
     """
-    from app import database
-
-    real_open = database._open_connection
-
-    def open_closable():
-        with patch.object(aiosqlite, "connect", connect_closable_from_any_thread):
-            return real_open()
-
-    with patch.object(database, "_open_connection", open_closable):
+    with patch.object(aiosqlite, "connect", connect_closable_from_any_thread):
         yield
+
+    from app import database
 
     database._forget_health_scores()
     conns = list(database._shared_conns.values())
@@ -200,8 +196,8 @@ def close_shared_conns(conns, wait: float = 5.0) -> None:
     keeps until the test ends, holds it alive. Nor is ``close()`` alone: while
     a cursor somewhere still holds a statement, SQLite keeps the handle, and
     its open write, until that statement goes. A handle opened with
-    Python's same-thread check (a test that reloads ``app.database`` opens one)
-    refuses the close; it gets the old way, dropped for its finaliser to close.
+    Python's same-thread check (a test that asks for it) refuses the close; it
+    gets the old way, dropped for its finaliser to close.
     """
     for conn in conns:
         conn.stop()
