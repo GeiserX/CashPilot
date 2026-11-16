@@ -12037,7 +12037,10 @@ async def _restore_preview(entry: dict[str, Any]) -> dict[str, Any]:
             # The worker may still finish it, and a box still pulling the image
             # reports no container yet.
             live_ids.add(w)
-        elif w in running:
+        elif w in running or partial.get(w, True):
+            # A box whose heartbeat could not list every container may run the
+            # service with no container of it listed and no deploy record: only
+            # a whole list, or a later volume (below), lets its row go.
             # Every container of the slug on that box counts: one more of the
             # same image (a copy, an unmanaged node) must not hide this one,
             # and one with no fingerprint (None) may be this very volume.

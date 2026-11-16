@@ -1785,6 +1785,38 @@ class TestOneMoreContainerOfTheImage:
         assert resp.status_code == 409 and "box-a" in _detail(resp)
         assert [s["worker_id"] for s in ui.sent if s["path"].endswith("/restore")] == [1]
 
+    def test_a_partial_heartbeat_that_lists_no_container_of_the_service_does_not_free_it(self, ui):
+        """With no deploy record and a heartbeat that could not list its containers, the box looked like it ran no
+        Mysterium at all: the export row stopped holding the identity, so a second box was offered it."""
+        f1 = mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")
+        _runs(ui, None)  # the deploy record is gone, and no runs_on lists box-b
+        box = next(w for w in ui.workers if w["id"] == 2)
+        box["system_info"] = json.dumps({"containers_listed": False})
+        with (
+            patch.object(main.payout_registry, "state_ids", REAL_STATE_IDS),
+            patch.object(main.payout_registry, "all_state_ids", REAL_ALL_STATE_IDS),
+        ):
+            self._beat(ui, 2)  # no container of the slug listed, and the list is partial
+            preview = _upload(ui, f1).json()
+            assert preview["live_on"] == ["box-b"]
+            resp = _restore(ui, preview["upload_id"], worker_id=1, step_up_password=OWNER_PASSWORD)
+        assert resp.status_code == 409 and "box-b" in _detail(resp)
+        assert [s["worker_id"] for s in ui.sent if s["path"].endswith("/restore")] == []
+
+    def test_control_a_whole_heartbeat_with_no_container_of_the_service_frees_it(self, ui):
+        f1 = mysterium_bundle()
+        _runs(ui, 2, "S1")
+        _export_route(ui, f1, 2, "S1")
+        _runs(ui, None)
+        with (
+            patch.object(main.payout_registry, "state_ids", REAL_STATE_IDS),
+            patch.object(main.payout_registry, "all_state_ids", REAL_ALL_STATE_IDS),
+        ):
+            self._beat(ui, 2)
+            assert _upload(ui, f1).json()["live_on"] == []
+
     def test_an_export_with_no_fingerprint_does_not_take_another_containers(self, ui):
         """The worker could not fingerprint the volume it exported: the heartbeat's last container is not that volume."""
         f1 = mysterium_bundle()
