@@ -3586,6 +3586,10 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "fatal": inst.get("fatal"),
                 "held": inst.get("held"),
             }
+            # A copy routed through a proxy from its deploy: the row shows
+            # the exit IP and country it leaves from.
+            if inst.get("route"):
+                detail["route"] = inst["route"]
             # Only containers CashPilot made (constants.CASHPILOT_DEPLOYED): a
             # container the user runs by hand is theirs to shape, even when it
             # carries CashPilot's labels or a catalog image.

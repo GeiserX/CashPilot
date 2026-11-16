@@ -2347,6 +2347,16 @@ class TestTheDashboardCountsIt:
         assert [r["slug"] for r in rows] == ["honeygain"]
         assert rows[0]["route"]["exit_ip"] == "203.0.113.9" and rows[0]["instance"] == 1
 
+    def test_the_services_table_rows_carry_its_route(self, db):
+        """The dashboard row shows where a routed copy leaves from, so its detail must carry the route."""
+        with (
+            patch.object(main.database, "list_workers", AsyncMock(return_value=[_worker_row(proxied=[self.ROUTED])])),
+            patch.object(main, "_require_reader", lambda request: None),
+        ):
+            (row,) = _run(lambda: main.api_services_deployed(_request()))
+        (detail,) = row["instance_details"]
+        assert detail["route"]["exit_ip"] == "203.0.113.9" and detail["route"]["proxy_id"] == 3
+
     def test_the_status_rows_carry_its_image_so_an_outdated_one_is_flagged(self, db):
         """A worker older than the field sends no image: the row keeps "" as before."""
         sent = {**self.ROUTED, "image": "honeygain/honeygain:1.0"}

@@ -307,6 +307,15 @@ class TestThePayoutPage:
         with self._as(None):
             assert client.get("/payouts", follow_redirects=False).status_code == 303
 
+    def test_the_backup_card_links_to_the_restore_on_settings(self):
+        """The anchor must exist on the page it points at, or the link lands at the top of Settings."""
+        client = self._client()
+        with self._as("owner"):
+            payouts = client.get("/payouts").text
+            settings = client.get("/settings").text
+        assert 'href="/settings#set-restore"' in payouts
+        assert 'id="set-restore"' in settings
+
     def test_the_nav_link_is_owner_only(self):
         """Rendered OUTPUT, not the template source: a viewer loading a page they
         ARE allowed to see must not be shown a link to this one."""

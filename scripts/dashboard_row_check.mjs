@@ -81,6 +81,43 @@ rows.sortServices(services, bmap);
 const order = services.map(s => s.slug).join(',');
 check('sorting by Payout puts the closest to its minimum first', order === 'close,mid,far', order);
 
+// ---------------------------------------------------------------- route
+// A service routed through a proxy from its deploy shows where it leaves
+// from, as the service page does: on the row itself for one copy, and on the
+// copy's own row once there are several. docs/proxies.md promises it.
+const routedRows = new Function(
+  'escapeHtml', 'formatCurrency', 'formatNative', 'diskCell', 'gpuCell', 'diskCellForHosts', 'gpuCellForHosts',
+  'hostForWorker', 'fmtNetBytes', '_isOwner', '_canWrite', 'ICON_RESTART', 'ICON_STOP', 'ICON_LOGS',
+  `${grab('instanceState')}
+   ${grab('routeBadge')}
+   ${src.includes('  function cashoutFor(') ? grab('cashoutFor') : ''}
+   ${grab('renderServiceRow')}
+   return renderServiceRow;`,
+)(escapeHtml, formatCurrency, () => '', () => '', () => '', () => '', () => '', () => [], () => '', true, true, '', '', '');
+const copy = (node, workerId, route) => ({
+  node, worker_id: workerId, status: 'running', cpu: '1.00', memory: '10.0 MB', container_name: '',
+  has_docker: true, is_android: false, instance: 1, ...(route ? {route} : {}),
+});
+const routedSvc = details => ({
+  slug: 'honeygain', name: 'Honeygain', container_status: 'running', instances: details.length,
+  cpu: '1.00', memory: '10.0 MB', instance_details: details, cashout: {},
+});
+const exit = {proxy_id: 3, exit_ip: '203.0.113.9', exit_country: 'DE'};
+
+const single = routedRows(routedSvc([copy('box', 1, exit)]), undefined);
+check('a routed service with one copy shows its exit on the row', /badge-routed[^>]*>via proxy 203\.0\.113\.9 \(DE\)</.test(single), 'no "via proxy 203.0.113.9 (DE)" badge');
+
+const multi = routedRows(routedSvc([copy('box', 1, exit), copy('other', 2)]), undefined);
+const subRowsHtml = multi.split('class="instance-row"').slice(1);
+check('the routed copy row shows its exit', subRowsHtml.length === 2 && /via proxy 203\.0\.113\.9 \(DE\)/.test(subRowsHtml[0]), subRowsHtml[0] || 'no instance rows');
+check('the direct copy row shows none', subRowsHtml.length === 2 && !/badge-routed/.test(subRowsHtml[1]), subRowsHtml[1] || 'no instance rows');
+
+const direct = routedRows(routedSvc([copy('box', 1)]), undefined);
+check('a direct service shows no route', !/badge-routed/.test(direct), 'rendered a route badge without a route');
+
+const hostile = routedRows(routedSvc([copy('box', 1, {proxy_id: 3, exit_ip: '<img src=x onerror=alert(1)>', exit_country: '"><b>'})]), undefined);
+check('the exit is escaped', !/<img|<b>/.test(hostile) && /&lt;img/.test(hostile), 'an exit IP reached the row as HTML');
+
 // ---------------------------------------------------------------- expand
 // Load the real delegate.js against a document that records its listener.
 const listeners = {};

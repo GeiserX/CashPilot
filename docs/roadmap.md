@@ -201,13 +201,14 @@ constraints below mean anything:
   the installation cannot read past exports. This is the stronger guarantee and the
   reason the mode exists.
 
-Neither mode may send the passphrase or private key anywhere, and neither may persist
-it. A compromised installation must be able to produce new exports it cannot itself
-read.
+Neither mode may persist the passphrase or private key. The passphrase crosses once,
+from the UI to the Worker, in the export or restore request that uses it, and is never
+stored or logged. A compromised installation must be able to produce new exports it
+cannot itself read.
 
 **Design constraints, non-negotiable if we build it:**
 
-- Encryption happens on the Worker. The UI handles ciphertext only.
+- Encryption happens on the Worker. The UI handles the bundle as ciphertext only.
 - The user supplies the encryption target: a public key, or a passphrase. **The
   installation must not be able to decrypt its own exports.**
 - No scheduled or automatic export. A timer needs a stored secret, which

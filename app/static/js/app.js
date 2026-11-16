@@ -2294,7 +2294,7 @@ const CP = (() => {
       <td class="c-name">${nameHtml}<div class="cell-sub cell-mono c-name-image">${subtitle}</div></td>
       <td class="c-status">${partialDown
         ? `<span class="badge badge-stopped" title="${downCount} of ${details.length} instances are not running"><span class="status-dot stopped"></span> ${details.length - downCount} of ${details.length} up</span>`
-        : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${customLabel}${outdatedBadge}</td>
+        : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${customLabel}${outdatedBadge}${!isMulti && details[0] ? ` ${routeBadge(details[0])}` : ''}</td>
       <td class="c-health c-num" data-label="Health">${healthBadge}</td>
       <td class="c-bal c-num">${balanceHtml}</td>
       <td class="c-chg c-num"><span class="delta">${deltaStr}</span></td>
@@ -2345,7 +2345,7 @@ const CP = (() => {
             <span class="instance-node-label">${nodeLabel}</span>
             ${subLabel ? `<span class="instance-ctr">${subLabel}</span>` : ''}
           </td>
-          <td class="c-status"><span class="badge badge-${iStatus}"><span class="status-dot ${iStatus}"></span> ${iStatusLabel}</span></td>
+          <td class="c-status"><span class="badge badge-${iStatus}"><span class="status-dot ${iStatus}"></span> ${iStatusLabel}</span> ${routeBadge(inst)}</td>
           <td class="c-health c-empty"></td>
           <td class="c-bal c-empty"></td>
           <td class="c-chg c-empty"></td>
