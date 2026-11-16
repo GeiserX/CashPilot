@@ -4933,3 +4933,13 @@ def test_backup_doc_does_not_deny_the_passphrase_trip_it_describes():
     assert ". Plaintext key material never crosses" not in doc
     assert "Apart from the passphrase below, plaintext key material never crosses the fleet network" in doc
     assert "A passphrase is the one secret that crosses" in doc
+
+
+def test_backup_doc_says_the_bundle_header_is_readable():
+    """encrypt() writes the header as plain JSON (authenticated, not encrypted),
+    so the doc must not call the whole bundle ciphertext."""
+    root = Path(__file__).resolve().parents[1]
+    doc = " ".join((root / "docs" / "backup.md").read_text("utf-8").split())
+    assert "The bundle is ciphertext" not in doc
+    assert "The bundle header is readable JSON, authenticated but not encrypted" in doc
+    assert "header_bytes = json.dumps(header" in (root / "app" / "state_backup.py").read_text("utf-8")
