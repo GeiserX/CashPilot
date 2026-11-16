@@ -2160,12 +2160,13 @@ def _stop(slug: str, proxy_id: int) -> dict[str, Any]:
     # shared tunnel (in its own legacy tunnel, or one that is gone) is the
     # exception: an older worker's stop left no marker, the heartbeat never
     # starts it, and Docker restarts a legacy tunnel unless its owner stopped
-    # it (_status), so down and unheld means stopped by its owner. It counts
-    # only live, or its tunnel live and the copy not held. Halves and an aside
-    # with no named earner keep the rule: migrate_legacy moves only a pair
-    # that was wanted running.
+    # it (_status), so down and unheld means stopped by its owner. So is a
+    # legacy tunnel left with no earner. They count only live, or the tunnel
+    # live and the copy not held. A copy with halves or an aside keeps the
+    # rule, named earner or not: migrate_legacy moves only a pair that was
+    # wanted running.
     live = any(getattr(c, "status", "") in _LIVE for c in (earner, *halves) if c is not None)
-    if earner is not None and not _is_shared(tunnel):
+    if not halves and not _is_shared(tunnel):  # a named earner or a legacy tunnel: _stop raised on neither
         was_running = live or (tunnel_live and not was_held)
     else:
         was_running = not was_held or live

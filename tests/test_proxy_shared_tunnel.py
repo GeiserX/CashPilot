@@ -5053,6 +5053,25 @@ class TestRoundTenFollowups:
         assert proxy_tunnel.stop("honeygain", 3) == {"was_running": False}
         assert proxy_tunnel.held() == {NAME}
 
+    def test_a_legacy_pair_killed_mid_move_with_its_named_earner_still_counts_as_running(self, docker):
+        """migrate_legacy moves only a pair the owner wanted running. Killed after the clone was made and before the
+        member was renamed aside, the named earner and its -next clone are both left: the legacy rule (live only)
+        answered was_running False for them, so the cap never marked the copy and its reset never started it."""
+        TestRoundFiveFollowups._killed_mid_move(docker, "member rename")
+        assert docker.named(NAME) is not None and docker.named(NAME + proxy_tunnel.STAGED_SUFFIX) is not None
+        docker.named(proxy_tunnel.tunnel_name("honeygain", 3)).stop()
+        assert proxy_tunnel.held() == set()
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
+
+    def test_a_down_legacy_tunnel_left_with_no_earner_counts_as_stopped(self, docker):
+        """Docker restarts a legacy tunnel unless its owner stopped it. Left down with no earner, it answered
+        was_running True, so the cap marked a copy that can never start, and its reset retried the start on every
+        heartbeat."""
+        _legacy_pair(docker, "honeygain", running=False)
+        docker.named(NAME).remove(force=True)
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": False}
+        assert proxy_tunnel.held() == {NAME}
+
     def test_control_a_live_legacy_earner_whose_tunnel_is_gone_counts_as_running(self, docker):
         tunnel = _legacy_pair(docker, "honeygain")
         tunnel.remove(force=True)
