@@ -4923,3 +4923,13 @@ def test_the_roadmap_never_lets_the_private_key_leave_the_owner():
     roadmap = " ".join((root / "docs" / "roadmap.md").read_text("utf-8").split())
     assert "The private key never leaves the owner's machine." in roadmap
     assert "never goes through the" in (root / "app" / "main.py").read_text("utf-8")
+
+
+def test_backup_doc_does_not_deny_the_passphrase_trip_it_describes():
+    """The passphrase is key material and does cross UI to worker, so the doc's
+    "never crosses" claim must carve it out instead of contradicting itself."""
+    root = Path(__file__).resolve().parents[1]
+    doc = " ".join((root / "docs" / "backup.md").read_text("utf-8").split())
+    assert ". Plaintext key material never crosses" not in doc
+    assert "Apart from the passphrase below, plaintext key material never crosses the fleet network" in doc
+    assert "A passphrase is the one secret that crosses" in doc
