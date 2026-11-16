@@ -2357,6 +2357,17 @@ class TestTheDashboardCountsIt:
         (detail,) = row["instance_details"]
         assert detail["route"]["exit_ip"] == "203.0.113.9" and detail["route"]["proxy_id"] == 3
 
+    def test_the_read_only_widget_key_does_not_see_the_route(self, db):
+        """The reader key feeds Grafana and Home Assistant; an exit IP can be a home WAN address, so it stays out."""
+        with (
+            patch.object(main.database, "list_workers", AsyncMock(return_value=[_worker_row(proxied=[self.ROUTED])])),
+            patch.object(main, "_require_reader", lambda request: {"uid": 0, "u": "readonly", "r": "reader"}),
+        ):
+            (row,) = _run(lambda: main.api_services_deployed(_request()))
+        (detail,) = row["instance_details"]
+        assert "route" not in detail
+        assert "203.0.113.9" not in repr(row)
+
     def test_the_status_rows_carry_its_image_so_an_outdated_one_is_flagged(self, db):
         """A worker older than the field sends no image: the row keeps "" as before."""
         sent = {**self.ROUTED, "image": "honeygain/honeygain:1.0"}
