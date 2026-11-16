@@ -272,6 +272,42 @@ It answers three ways:
 | does not match | It opens fine but is **out of date**: the node has moved on. |
 | cannot open | Wrong passphrase or key, or the file has been altered. |
 
+## The Device ids list
+
+Some services do not keep their identity in a volume. They take it from the
+deploy: a device UUID (EarnApp, ProxyRack, Spide, SpeedShare) or a device name.
+CashPilot keeps these values in **Settings > Device ids**, so you can find the
+device at the provider later or give a new box the same id. Only a signed-in
+owner sees this section. An API key cannot read it.
+
+- **The list.** Each row shows the service, the field, the box, the copy and
+  the state: in use, removed, or entered by you. It also shows when CashPilot
+  first and last saw the id. A row stays after you remove or redeploy the
+  service. Only **Forget** deletes it. The list also holds the Mysterium node
+  identity that the node reports, and the SHA-256 of each `.cpbackup` file
+  CashPilot made or restored.
+- **Show and Copy.** A value stays hidden until you press Show or Copy. Each
+  press writes a row to the audit log before the value leaves the server. If
+  that row cannot be written, you get an error and no value.
+- **Add an id.** Use this for an id that CashPilot did not deploy with, for
+  example one from before you used CashPilot. Pick the service, the box, the
+  copy and the field, and paste the id. The id must be one word of up to 256
+  letters, digits or `_ . : @ + = / -`. The row says "Entered by you", and its
+  creation goes to the audit log. CashPilot does not treat this id as running
+  on the box. So it never makes a deploy ask about an id that another box
+  uses. When you deploy that service again, **Use one this service had before**
+  offers it for that field.
+- **Download all.** This gives you a JSON file with every row in full: the
+  service, the field, the value, the box, the copy, the state, and the first
+  seen, last seen and removed times. CashPilot asks for your password first.
+  It writes an `identity_export` row to the audit log before the file leaves
+  the server. If that row cannot be written, you get an error and no file.
+  The file holds ids that let whoever has them claim the device, so store it
+  as you store your passwords.
+
+The list is also in `cashpilot.db`, so a backup of the database and
+`.fernet_key` keeps it too. See [Backup and Restore](backup-restore.md).
+
 ## What is not covered
 
 - **State over 64 MB is refused.** Identities, keystores and wallets are

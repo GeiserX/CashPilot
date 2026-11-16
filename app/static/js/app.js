@@ -4938,14 +4938,17 @@ const CP = (() => {
   // arrives masked, and the full one only ever comes from the reveal route.
   function identityRowsHtml(rows) {
     if (!Array.isArray(rows) || !rows.length) {
-      return '<p class="muted">No device ids yet. They appear here once you deploy a service that has one.</p>';
+      return '<p class="muted">No device ids yet. They appear here once you deploy a service that has one, or add one below.</p>';
     }
     return rows.map(r => {
       const where = [r.worker, r.copy].filter(Boolean).join(', ');
       const backup = r.kind === 'backup';
       const state = backup ? ({ restore: 'Restored here', pending: 'Restore sent here, no answer yet' }[r.source]
           || 'Downloaded from here')
-        : (r.status === 'active' ? 'In use' : 'Removed');
+        : (r.kind === 'manual' ? 'Entered by you' : (r.status === 'active' ? 'In use' : 'Removed'));
+      // The ledger's times are UTC, "YYYY-MM-DD HH:MM:SS"; minutes are enough here.
+      const when = t => (t ? `${escapeHtml(String(t).slice(0, 16))} UTC` : 'unknown');
+      const seen = `<div class="credential-health-hint">First seen ${when(r.first_seen)} · last seen ${when(r.last_seen)}</div>`;
       const reported = r.source === 'node'
         ? '<div class="credential-health-hint">Reported by the node itself, not checked by CashPilot.</div>'
         : (backup ? '<div class="credential-health-hint">A backup file this CashPilot made or restored. '
@@ -4970,11 +4973,50 @@ const CP = (() => {
             <div class="credential-health-name">${escapeHtml(r.service)} <span class="optional">${escapeHtml(r.label)}</span></div>
             <div class="credential-health-detail"><code class="identity-value" id="identity-value-${id}">${escapeHtml(r.masked)}</code>
               · ${escapeHtml(where)} · ${escapeHtml(state)}</div>
-            ${reported}${unconfirmed}
+            ${seen}${reported}${unconfirmed}
           </div>
           <div class="credential-health-actions">${buttons}${forget}</div>
         </div>`;
     }).join('');
+  }
+
+  // The form for an id CashPilot did not deploy with. Pure, so the harness can
+  // run it: service and box names come from the catalog and the fleet, as text.
+  function identityFieldOptions(svc) {
+    const env = ((svc && svc.docker && svc.docker.env) || []).filter(isIdentityField);
+    return env.map(e => `<option value="${escapeHtml(e.key)}">${escapeHtml(e.label || e.key)}</option>`).join('');
+  }
+
+  function identityFormHtml(services, workers) {
+    const svcs = (Array.isArray(services) ? services : []).filter(s => s && s.slug)
+      .sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
+    const boxes = (Array.isArray(workers) ? workers : []).filter(w => w && w.id !== undefined);
+    if (!svcs.length || !boxes.length) {
+      return '<p class="form-hint">Add a box and a service to CashPilot first.</p>';
+    }
+    const svcOptions = svcs.map(s =>
+      `<option value="${escapeHtml(s.slug)}">${escapeHtml(s.name || s.slug)}</option>`).join('');
+    const boxOptions = boxes.map(w =>
+      `<option value="${escapeHtml(String(w.id))}">${escapeHtml(w.name || `worker ${w.id}`)}</option>`).join('');
+    return `
+      <p class="form-hint">An id CashPilot did not deploy with, such as one from before you used CashPilot. It is
+        kept here and offered when you deploy this service again. CashPilot does not treat it as running on the box.</p>
+      <label class="form-label" for="identity-add-service">Service</label>
+      <select class="form-input" id="identity-add-service">${svcOptions}</select>
+      <label class="form-label" for="identity-add-worker">Box</label>
+      <select class="form-input" id="identity-add-worker">${boxOptions}</select>
+      <label class="form-label" for="identity-add-copy">Copy</label>
+      <input type="number" class="form-input" id="identity-add-copy" min="1" max="32" value="1">
+      <label class="form-label" for="identity-add-label">Field</label>
+      <input type="text" class="form-input" id="identity-add-label" list="identity-add-fields" maxlength="64"
+        autocomplete="off" placeholder="Pick one, or type a name">
+      <datalist id="identity-add-fields">${identityFieldOptions(svcs[0])}</datalist>
+      <label class="form-label" for="identity-add-value">Id</label>
+      <input type="text" class="form-input" id="identity-add-value" maxlength="256" autocomplete="off" spellcheck="false">
+      <div class="credential-health-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-action="addIdentity">Save</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="closeIdentityForm">Cancel</button>
+      </div>`;
   }
 
   async function loadIdentities() {
@@ -4985,6 +5027,73 @@ const CP = (() => {
     } catch (err) {
       body.innerHTML = `<p class="text-fail">Could not load device ids: ${escapeHtml(err.message)}</p>`;
     }
+  }
+
+  async function openIdentityForm() {
+    const box = document.getElementById('identity-add');
+    if (!box) return;
+    let services;
+    let workers;
+    try {
+      [services, workers] = await Promise.all([api('/api/services/available'), api('/api/workers')]);
+    } catch (err) {
+      toast(`Could not load the services and boxes: ${err.message}`, 'error');
+      return;
+    }
+    box.innerHTML = identityFormHtml(services, workers);
+    const select = document.getElementById('identity-add-service');
+    const list = document.getElementById('identity-add-fields');
+    if (select && list) {
+      select.addEventListener('change', () => {
+        list.innerHTML = identityFieldOptions((services || []).find(s => s.slug === select.value));
+      });
+    }
+  }
+
+  function closeIdentityForm() {
+    const box = document.getElementById('identity-add');
+    if (box) box.innerHTML = '';
+  }
+
+  async function addIdentity() {
+    const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    const body = {
+      slug: val('identity-add-service'),
+      worker_id: Number(val('identity-add-worker')),
+      copy: Number(val('identity-add-copy') || 1),
+      label: val('identity-add-label'),
+      value: val('identity-add-value'),
+    };
+    try {
+      await api('/api/identities', { method: 'POST', body });
+      toast('Device id saved', 'success');
+      closeIdentityForm();
+      loadIdentities();
+    } catch (err) {
+      toast(`Could not save the id: ${err.message}`, 'error');
+    }
+  }
+
+  // Every id in full, as a file. The server asks for the password first (api()
+  // shows the prompt) and writes the download to the audit log before it answers.
+  async function exportIdentities() {
+    let data;
+    try {
+      data = await api('/api/identities/export', { method: 'POST', body: {} });
+    } catch (err) {
+      toast(`Could not download the ids: ${err.message}`, 'error');
+      return;
+    }
+    const name = `cashpilot-device-ids-${new Date().toISOString().slice(0, 10)}.json`;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`Downloaded ${name}. It holds every id in full: keep it somewhere safe.`, 'success');
   }
 
   // Every reveal is written to the audit log by the server before it answers.
@@ -6268,6 +6377,10 @@ const CP = (() => {
     revealIdentity,
     copyIdentity,
     forgetIdentity,
+    openIdentityForm,
+    closeIdentityForm,
+    addIdentity,
+    exportIdentities,
     checkRestoreFile,
     submitRestore,
     pickPreviousIdentity,
