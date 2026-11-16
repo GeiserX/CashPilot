@@ -849,6 +849,33 @@ class TestServiceManagement:
             resp = client.post("/api/services/honeygain/start")
             assert resp.status_code == 200
 
+    @pytest.mark.parametrize(
+        ("path", "answer"),
+        [
+            (
+                "/api/services/honeygain/start",
+                {"status": "started", "exit": {"ip": "93.184.215.14"}, "durable": False, "warning": "w"},
+            ),
+            ("/api/services/honeygain/restart", {"status": "started", "exit": {"ip": "93.184.215.14"}}),
+            ("/api/services/honeygain/stop", {"status": "stopped", "was_running": True, "durable": False}),
+            ("/api/restart/honeygain", {"status": "started", "exit": {"ip": "93.184.215.14"}}),
+            ("/api/stop/honeygain", {"status": "stopped", "was_running": True}),
+        ],
+    )
+    def test_a_routed_service_answers_its_copys_reply(self, client, path, answer):
+        """A routed service's command returns the worker's proxied answer, whose ``exit`` is a dict and whose
+        ``was_running`` and ``durable`` are booleans: a ``dict[str, str]`` response model turned every one into a
+        500 after the worker had done it."""
+        with (
+            _auth_writer(),
+            patch("app.main._resolve_worker_id", new_callable=AsyncMock, return_value=1),
+            patch("app.main._or_routed", new_callable=AsyncMock, return_value=answer),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+        ):
+            resp = client.post(path)
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == answer
+
     def test_remove_service(self, client):
         worker, mock_client = self._setup_proxy()
         with (

@@ -1063,14 +1063,41 @@ class TestTheHeartbeat:
             {"slug": "honeygain", "proxy_id": 4},
             {"slug": "traffmonetizer", "proxy_id": 3},
         ]
-        worker_api._mark_routed(entries)
+        assert worker_api._mark_routed(entries) is True
         assert [e.get("routed") for e in entries] == [True, None, None]
 
     def test_an_unreadable_marker_flags_nothing(self, marker):
         marker.write_text("{")
         entries = [{"slug": "honeygain", "proxy_id": 3}]
-        worker_api._mark_routed(entries)
+        # Said, so the UI does not read the list as whole (main.api_worker_heartbeat).
+        assert worker_api._mark_routed(entries) is False
         assert "routed" not in entries[0]
+
+    @pytest.mark.parametrize("readable", [False, True], ids=["unreadable", "readable-control"])
+    def test_the_worker_says_whether_it_read_its_routes(self, marker, readable):
+        if readable:
+            route_gate.mark("honeygain", 3)
+        else:
+            marker.write_text("{")
+        resp = MagicMock()
+        resp.json = MagicMock(return_value={"status": "ok"})
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.post = AsyncMock(return_value=resp)
+        with (
+            patch.object(worker_api, "UI_URL", "http://ui:8080"),
+            patch.object(worker_api.orchestrator, "get_status", return_value=[]),
+            patch.object(worker_api.orchestrator, "status_listed", return_value=True),
+            patch.object(worker_api.orchestrator, "docker_available", return_value=True),
+            patch.object(worker_api.proxy_tunnel, "status", return_value=[{"slug": "honeygain", "proxy_id": 3}]),
+            patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+            patch.object(worker_api.httpx, "AsyncClient", return_value=client),
+        ):
+            asyncio.run(worker_api._send_heartbeat())
+        info = client.post.await_args.kwargs["json"]["system_info"]
+        assert info["routes_read"] is readable
+        assert info["proxied"][0].get("routed") is (True if readable else None)
 
 
 # ---------------------------------------------------------------------------
@@ -1449,6 +1476,36 @@ class TestARemovalAfterTheUiGaveUpOnTheDeploy:
         # The UI's next heartbeat asks again, and now removes the earner the deploy made.
         assert worker("DELETE", "/api/proxied/honeygain/3").status_code == 200
         assert removed == [(4, []), (3, [3])]
+
+    def test_a_deploy_that_arrives_during_the_removal_is_refused(self, worker, monkeypatch):
+        """Counted but never made: an earner it made after the removal answered would run with no record in the UI."""
+        monkeypatch.setattr(worker_api, "_validate_proxied", lambda slug, spec: None)
+        monkeypatch.setattr(worker_api, "_own_egress_ip", AsyncMock(return_value="198.51.100.1"))
+        created, during = [], []
+        monkeypatch.setattr(
+            worker_api.proxy_tunnel, "deploy", lambda slug, pid, *a, **k: created.append(pid) or {"container_id": "e"}
+        )
+        body = {"earner": BODY, "proxy": PROXY}
+
+        def remove(slug, pid):
+            during.append(worker("POST", f"/api/proxied/honeygain/{pid}/deploy", body))
+            # Control: a copy through another proxy is not held up by it.
+            during.append(worker("POST", "/api/proxied/honeygain/4/deploy", body))
+            if pid == 5:
+                raise proxy_tunnel.ProxyTunnelError("Docker did not remove it", status_code=409)
+            return ["e"]
+
+        monkeypatch.setattr(worker_api.proxy_tunnel, "remove", remove)
+        assert worker("DELETE", "/api/proxied/honeygain/3").status_code == 200
+        assert during[0].status_code == 409, during[0].text
+        assert "removal" in _detail(during[0])
+        assert during[1].status_code == 200, during[1].text
+        assert created == [4]
+        # The mark ends with the removal, failed or not: later deploys go through.
+        assert worker("DELETE", "/api/proxied/honeygain/5").status_code == 409
+        assert worker("POST", "/api/proxied/honeygain/3/deploy", body).status_code == 200
+        assert worker("POST", "/api/proxied/honeygain/5/deploy", body).status_code == 200
+        assert worker_api._copy_removals == {}
 
     def test_removing_the_service_keeps_the_copy_records_while_a_copy_deploy_runs(self, worker, monkeypatch):
         """remove_all sees only copies that exist, so the one still deploying is reported, not dropped."""
@@ -2298,6 +2355,14 @@ class TestTheDashboardCountsIt:
                 (row,) = asyncio.run(main._get_all_worker_containers())
             assert row["image"] == image
 
+    def test_its_cpu_and_memory_are_unknown_until_the_worker_measures_them(self, db):
+        """Not 0: a zero counts as a measured idle copy in the services table, the dashboard and the power cost."""
+        measured = {**self.ROUTED, "cpu_percent": 12.5, "memory_mb": 80.0}
+        for entry, cpu, mem in ((self.ROUTED, None, None), (measured, 12.5, 80.0)):
+            with patch.object(main.database, "list_workers", AsyncMock(return_value=[_worker_row(proxied=[entry])])):
+                (row,) = asyncio.run(main._get_all_worker_containers())
+            assert (row["cpu_percent"], row["memory_mb"]) == (cpu, mem)
+
     def test_a_held_routed_copy_is_not_a_down_container(self, db, monkeypatch):
         """Stopped by the owner or the cap and kept so: _proxied_copy_check judges it, not the container-down alert."""
         monkeypatch.setattr(main, "CONTAINER_DOWN_GRACE", timedelta(0))
@@ -2920,6 +2985,66 @@ class TestARoutedDeployKeepsTheIdentityLedger:
         # Proven: the ids become copy 1's row, the hold stays beside it until the deadline.
         assert rows == ({**held, **mine} if routed else held)
 
+    @pytest.mark.parametrize(
+        ("proxied", "held", "routes_read"),
+        [
+            # Listed with no digest: it may still run its ids, so they stay held.
+            ([{"routed": True, "status": "running", "container_id": "e1"}], True, None),
+            # The box could not read its proxied copies: nothing says copy 1 is gone.
+            (None, True, None),
+            # The box could not read which copies are routed, so none says routed.
+            ([{"status": "running", "container_id": "e1"}], True, False),
+            # Control: the same list from a box that read its routes shows copy 1 gone.
+            ([{"status": "running", "container_id": "e1"}], False, True),
+            # Control: a full list that leaves it out shows it gone, so the hold ends.
+            ([], False, None),
+            # Control: its tunnel is listed with no earner beside it, so nothing runs the ids.
+            ([{"routed": True, "status": "missing", "container_id": ""}], False, None),
+        ],
+        ids=[
+            "no-digest",
+            "unreadable-list",
+            "unreadable-routes",
+            "routes-read-control",
+            "gone-control",
+            "missing-earner-control",
+        ],
+    )
+    def test_a_routed_copy_without_proof_keeps_its_hold_past_the_deadline(
+        self, db, monkeypatch, proxied, held, routes_read
+    ):
+        monkeypatch.setattr(main, "PENDING_IDENTITY_SECONDS", 0)
+        monkeypatch.setattr(database, "PENDING_IDENTITY_SECONDS", 0)
+        ui = _Ui()
+
+        async def go():
+            await self._boxes()
+            await database.set_worker_key("client-a", WORKER_KEY)
+            pid = await ui.proxy()
+            timeout = HTTPException(status_code=504, detail="the worker did not answer in time")
+            ui.worker_reply = lambda method, path, body: timeout if path.endswith("/deploy") else {}
+            with pytest.raises(HTTPException):
+                await self._deploy(ui, main.DeployRequest(env=PR_ENV, route=pid))
+            entries = None if proxied is None else [{"slug": "proxyrack", "proxy_id": pid, **e} for e in proxied]
+            info = {"containers_listed": True, "features": ["deploy_deadline"], "proxied": entries}
+            if routes_read is not None:
+                info["routes_read"] = routes_read
+            body = main.WorkerHeartbeat(
+                name="box",
+                client_id="client-a",
+                containers=[{"slug": "other", "instance": 1, "container_id": "o1"}],
+                system_info=info,
+            )
+            with (
+                patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+                patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+            ):
+                await main.api_worker_heartbeat(MagicMock(), body)
+            return await _ledger()
+
+        rows = _run(go)
+        assert rows == ({(1, "u1", "UUID"): PR_UUID, (1, "u1", "DEVICE_NAME"): "box-proxyrack"} if held else {})
+
 
 class TestAnUncertainRoutedRedeployKeepsItsCopyRecord:
     """A routed redeploy whose copy record was already gone (a removal still pending elsewhere kept the deployment)."""
@@ -3079,6 +3204,7 @@ class TestARoutedDeployEndsByTheDeadlineCountedAtItsArrival:
         proxy_tunnel._remove.assert_not_called()
 
     def test_the_earner_image_is_pulled_once_before_the_old_copy_goes(self, worker, monkeypatch):
+        """Once, before the tunnel; deploy_raw then replaces the old copy itself, keeping it until the new one runs."""
         thread, answer, pulls = self._routed_deploy(worker, monkeypatch)
         steps = []
         self._deploy_raw_that_pulls(worker, monkeypatch, steps)
@@ -3086,4 +3212,5 @@ class TestARoutedDeployEndsByTheDeadlineCountedAtItsArrival:
         thread.start()
         thread.join(10)
         assert answer["resp"].status_code == 200, answer["resp"].text
-        assert steps == [("pull", BODY["image"]), "old copy removed", "earner"]
+        assert steps == [("pull", BODY["image"]), "earner"]
+        proxy_tunnel._remove.assert_not_called()

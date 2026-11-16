@@ -527,7 +527,7 @@ async def _detect_egress_ip() -> str | None:
     """
     global _egress_cache
 
-    if os.getenv("CASHPILOT_EGRESS_DETECT", "").strip().lower() in {"0", "off", "false", "no"}:
+    if egress.detection_off():
         return None
 
     cached, fetched_at = _egress_cache
@@ -719,8 +719,7 @@ async def _send_heartbeat() -> None:
         except Exception as exc:  # noqa: BLE001 - one missed reading, not a missed heartbeat
             logger.warning("Failed to read proxied copies for heartbeat: %s", exc)
             proxied = None
-    if proxied:
-        _mark_routed(proxied)
+    routes_read = _mark_routed(proxied) if proxied else True
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -759,6 +758,10 @@ async def _send_heartbeat() -> None:
             # Kept out of "containers": they are on another exit IP and are not
             # copies of the service, so nothing that counts copies may see them.
             "proxied": proxied,
+            # False when the routes could not be read: no entry above says
+            # routed, so the list shows no routed service's copy 1, which
+            # may still run (main.api_worker_heartbeat).
+            "routes_read": routes_read,
             # Set by the operator (app/route_gate.py): no earner runs from this
             # box's own IP, so the UI offers only routed deploys here.
             "proxied_only": route_gate.proxied_only(),
@@ -903,20 +906,22 @@ async def _send_heartbeat() -> None:
         _log_link_failure_hint(exc)
 
 
-def _mark_routed(entries: list[dict[str, Any]]) -> None:
+def _mark_routed(entries: list[dict[str, Any]]) -> bool:
     """Flag the proxied entries that are a routed service, not a copy beside a direct one.
 
     The UI counts those as the service running on this box (app/placement.py)
     and shows them on the dashboard; a copy keeps its own list on the Proxies page.
+    False when the routes could not be read, so nothing is flagged.
     """
     try:
         lock = route_gate.routed()
     except (OSError, ValueError) as exc:
         logger.warning("Could not read which services are routed: %s", exc)
-        return
+        return False
     for entry in entries:
         if lock.get(str(entry.get("slug"))) == entry.get("proxy_id"):
             entry["routed"] = True
+    return True
 
 
 async def _heartbeat_loop() -> None:
@@ -2082,6 +2087,11 @@ _copy_deploys: dict[tuple[str, int], int] = {}
 #: How many deploys of each copy ever started here. A removal compares it before
 #: and after, so a deploy that started and ended inside it is not missed.
 _copy_starts: dict[tuple[str, int], int] = {}
+#: How many removals of each copy, by (slug, proxy id), are running here. A
+#: deploy of that copy is refused meanwhile: it would wait on the proxy's lock
+#: and make its earner after the removal answered, and the UI then drops the
+#: copy's record, leaving that earner running with none.
+_copy_removals: dict[tuple[str, int], int] = {}
 
 
 @app.post("/api/proxied/{slug}/{proxy_id}/deploy")
@@ -2093,6 +2103,12 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
     # outlast it, however long this one waits for locks or a tunnel pull.
     deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     key = (slug, int(proxy_id))
+    if _copy_removals.get(key):
+        raise HTTPException(
+            status_code=409,
+            detail=f"A removal of {slug} through proxy {proxy_id} is running on this worker; "
+            "deploy it again once it ends",
+        )
     _copy_deploys[key] = _copy_deploys.get(key, 0) + 1
     _copy_starts[key] = _copy_starts.get(key, 0) + 1
     try:
@@ -2140,10 +2156,10 @@ async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec, dea
 async def api_proxied_stop(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
     _verify_api_key(request)
     try:
-        was_running = await asyncio.to_thread(proxy_tunnel.stop, slug, proxy_id)
+        result = await asyncio.to_thread(proxy_tunnel.stop, slug, proxy_id)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
-    return {"status": "stopped", "was_running": bool(was_running)}
+    return {"status": "stopped", **result}
 
 
 @app.post("/api/proxied/{slug}/{proxy_id}/start")
@@ -2180,7 +2196,8 @@ async def api_proxied_logs(request: Request, slug: str, proxy_id: int, lines: in
 @app.delete("/api/proxied/{slug}/{proxy_id}")
 async def api_proxied_remove(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
     _verify_api_key(request)
-    if _copy_deploys.get((slug, int(proxy_id))):
+    key = (slug, int(proxy_id))
+    if _copy_deploys.get(key):
         # 503 keeps the removal pending in the UI, which asks again with each
         # heartbeat (main._resume_copy_removals) and then removes what it made.
         raise HTTPException(
@@ -2188,10 +2205,17 @@ async def api_proxied_remove(request: Request, slug: str, proxy_id: int) -> dict
             detail=f"A deploy of {slug} through proxy {proxy_id} is still running on this worker; "
             "the removal waits for it",
         )
+    # Marked in the same step as the check, with no await between: from here
+    # until the removal ends, a deploy of this copy is refused.
+    _copy_removals[key] = _copy_removals.get(key, 0) + 1
     try:
         removed = await asyncio.to_thread(proxy_tunnel.remove, slug, proxy_id)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
+    finally:
+        _copy_removals[key] -= 1
+        if not _copy_removals[key]:
+            del _copy_removals[key]
     return {"status": "removed", "containers": removed}
 
 

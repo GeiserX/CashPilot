@@ -2900,8 +2900,10 @@ const CP = (() => {
   async function restartService(slug, workerId, instance) {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
-      await api(`/api/services/${slug}/restart${q}`, { method: 'POST' });
+      const out = await api(`/api/services/${slug}/restart${q}`, { method: 'POST' });
       toast(`${slug} restarting...`, 'success');
+      // A routed copy the worker started, but could not make that last through a power cut.
+      if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
@@ -2911,8 +2913,10 @@ const CP = (() => {
   async function stopService(slug, workerId, instance) {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
-      await api(`/api/services/${slug}/stop${q}`, { method: 'POST' });
+      const out = await api(`/api/services/${slug}/stop${q}`, { method: 'POST' });
       toast(`${slug} stopped`, 'success');
+      // A routed copy the worker stopped, but could not make that last through a power cut.
+      if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
@@ -2933,23 +2937,29 @@ const CP = (() => {
     if (!copies.length) { toast(`${slug} is not running anywhere`, 'success'); return; }
     if (!confirm(`Stop ${svc.name} on ${copies.length} container${copies.length > 1 ? 's' : ''}? Nothing is removed; you can start them again later.`)) return;
     const failed = [];
+    const warnings = [];
     for (const inst of copies) {
       try {
-        await api(`/api/services/${encodeURIComponent(slug)}/stop?worker_id=${encodeURIComponent(inst.worker_id)}${_instanceQuery(inst.instance)}`, { method: 'POST' });
+        const out = await api(`/api/services/${encodeURIComponent(slug)}/stop?worker_id=${encodeURIComponent(inst.worker_id)}${_instanceQuery(inst.instance)}`, { method: 'POST' });
+        // A routed copy the worker stopped, but could not make that last through a power cut.
+        if (out && out.warning) warnings.push(`${inst.node}: ${out.warning}`);
       } catch (err) {
         failed.push(`${inst.node}: ${err.message}`);
       }
     }
     if (failed.length) toast(`Could not stop ${slug} on ${failed.join('; ')}`, 'error');
     else toast(`${slug} stopped on ${copies.length} container${copies.length > 1 ? 's' : ''}`, 'success');
+    if (warnings.length) toast(warnings.join('; '), 'warning');
     loadServicesTable();
   }
 
   async function startService(slug, workerId, instance) {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
-      await api(`/api/services/${slug}/start${q}`, { method: 'POST' });
+      const out = await api(`/api/services/${slug}/start${q}`, { method: 'POST' });
       toast(`${slug} starting...`, 'success');
+      // A routed copy the worker started, but could not make that last through a power cut.
+      if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
@@ -4144,10 +4154,11 @@ const CP = (() => {
     }
   }
 
-  // The boxes that run `slug` now, from the workers the detail modal loaded.
+  // The boxes that run `slug` now, from the workers the detail modal loaded,
+  // a box that runs it only through its route included.
   function _runningWorkerIds(slug) {
     return (_detailWorkers || [])
-      .filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug))
+      .filter(w => w.status === 'online' && runsOn(w, slug))
       .map(w => w.id);
   }
 
@@ -4756,7 +4767,9 @@ const CP = (() => {
 
   async function workerAction(slug, action, workerId, instance) {
     try {
-      await api(`/api/services/${slug}/${action}?worker_id=${workerId}${_instanceQuery(instance)}`, { method: 'POST' });
+      const out = await api(`/api/services/${slug}/${action}?worker_id=${workerId}${_instanceQuery(instance)}`, { method: 'POST' });
+      // A routed copy the worker started or stopped, but could not make that last through a power cut.
+      if (out && out.warning) toast(out.warning, 'warning');
       // Refresh the modal
       openServiceDetail(slug);
     } catch (err) {

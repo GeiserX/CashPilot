@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import re
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -386,6 +387,29 @@ class TestCap:
         new_state = upd.call_args.args[1]
         assert new_state["used_bytes"] == 0 and "capped_at" not in new_state
 
+    def test_a_start_the_worker_could_not_make_durable_still_clears_the_caps_mark(self):
+        """The worker started the copy but its record may not survive a power cut. It answered 409, so the copy ran
+        while the UI kept it marked as stopped by the cap; now it answers 2xx with durable False and a warning."""
+        proxy = {"id": 1, "definition": {"name": "P"}, "state": {"used_bytes": 5, "capped_at": "x", "cap_reason": "y"}}
+        copies = [{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}]
+        answer = {"status": "started", "exit": {}, "durable": False, "warning": "a was started, but ..."}
+        stored = dict(proxy)
+
+        async def update(_pid, state):
+            stored["state"] = state
+
+        with (
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, side_effect=lambda _pid: dict(stored)),
+            patch.object(main.database, "update_proxy_state", new_callable=AsyncMock, side_effect=update),
+            patch.object(main.database, "clear_alerts", new_callable=AsyncMock),
+            patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
+            patch.object(main, "_proxy_worker_call", AsyncMock(return_value=answer)),
+        ):
+            started = asyncio.run(main._reset_proxy(proxy))
+        assert started == ["a on worker 7"]
+        mark.assert_awaited_with(1, 7, "a", False)
+
     def test_crossing_stops_every_copy_and_raises_an_alert(self):
         proxy = {
             "id": 1,
@@ -422,6 +446,24 @@ class TestCap:
         ):
             asyncio.run(main._stop_capped_proxy(proxy, {(7, "a"), (8, "b")}))
         assert [c.args[:4] for c in mark.call_args_list] == [(1, 7, "a", True)]
+        main._drop_proxy_cap_bell(1)
+
+    def test_a_stop_the_worker_could_not_make_durable_is_still_the_caps(self, caplog):
+        """A stop whose record may not survive a power cut is a stop: marked, so the reset starts it again, and
+        the worker's warning is logged rather than lost."""
+        proxy = {"id": 1, "definition": dict(CAPPED), "state": {"capped_at": "x", "cap_reason": "P reached 90%"}}
+        answer = {"status": "stopped", "was_running": True, "durable": False, "warning": "a stopped, but maybe not"}
+        with (
+            caplog.at_level(logging.WARNING, logger=main.logger.name),
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=proxy),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
+            patch.object(main.database, "record_alert", new_callable=AsyncMock, return_value=None) as alert,
+            patch.object(main, "_proxy_worker_call", AsyncMock(return_value=answer)),
+        ):
+            asyncio.run(main._stop_capped_proxy(proxy, {(7, "a")}))
+        assert [c.args[:4] for c in mark.call_args_list] == [(1, 7, "a", True)]
+        assert alert.call_args.args[2] == "Stopped: P reached 90%."
+        assert "a stopped, but maybe not" in caplog.text
         main._drop_proxy_cap_bell(1)
 
     def test_a_cap_lifted_while_the_stop_ran_starts_the_copy_again(self):
@@ -1061,6 +1103,54 @@ class TestStorageAndRoutes:
 
         notes, marks = _run(go)
         assert notes == [] and marks == [1], "rebuilt from the older record, so it is still on the old name"
+
+    def test_retrying_a_rename_skips_a_copy_a_routed_deploy_made_the_service_meanwhile(self, db):
+        """The retry picks copy B; a routed deploy through B's proxy lands before the retry takes B's lock.
+
+        B is the service's own routed earner now, built from the service's own
+        ids: rebuilding it as a copy would put the copy's ids over them.
+        """
+        svc = {"slug": "honeygain", "name": "Honeygain", "status": "active", "docker": {"image": "x"}}
+        old = {"image": "x", "env": {"DEVICE": "cashpilot-a"}}
+
+        async def go():
+            created = await main.api_create_proxy(_Req(_socks()), {})
+            pid = created["id"]
+            await database.save_deployment("honeygain", "c1", spec=old, worker_id=7)
+            await database.save_proxied_copy(pid, 7, "honeygain")
+            await database.set_proxied_copy_rename_pending(pid, 7, "honeygain", True)
+            worker = {
+                "id": 7,
+                "status": "online",
+                "system_info": json.dumps(
+                    {
+                        "docker_available": True,
+                        "features": ["proxy_tunnel", "proxied_if_running"],
+                        "proxied": [{"proxy_id": pid, "slug": "honeygain", "held": False, "status": "running"}],
+                    }
+                ),
+            }
+            real_earner = main._proxied_earner
+
+            async def routed_lands(*args, **kwargs):
+                # Before the retry takes the copy's lock: the routed deploy saves its record.
+                routed = {**old, "route": {"proxy_id": pid}}
+                await database.save_deployment("honeygain", "c1", spec=routed, worker_id=7)
+                return await real_earner(*args, **kwargs)
+
+            call = AsyncMock(return_value={"status": "deployed"})
+            with (
+                patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value=worker),
+                patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxied_if_running"}),
+                patch.object(main, "_proxied_earner", side_effect=routed_lands),
+                patch.object(main, "_proxy_worker_call", call),
+            ):
+                notes = await main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], old, pending_only=True)
+            return notes, call.await_count
+
+        notes, sent = _run(go)
+        assert sent == 0, "the service's routed earner is never rebuilt as a copy"
+        assert notes == []
 
     def test_the_checked_clear_follows_the_record_the_copy_was_built_from(self, db):
         spec = {"image": "x", "env": {"DEVICE": "cashpilot-a"}}

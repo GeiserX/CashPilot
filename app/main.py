@@ -323,8 +323,11 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                         "status": str(e.get("status") or "unknown"),
                         # A worker older than the field sends none.
                         "image": str(e.get("image") or ""),
-                        "cpu_percent": 0,
-                        "memory_mb": 0,
+                        # Unknown, not idle, until the worker measures it: a 0
+                        # counts as a measured copy in the services table and
+                        # the running-costs card.
+                        "cpu_percent": e.get("cpu_percent"),
+                        "memory_mb": e.get("memory_mb"),
                         "net_rx_bytes": e.get("net_rx_bytes"),
                         "net_tx_bytes": e.get("net_tx_bytes"),
                         "category": "",
@@ -423,7 +426,11 @@ async def _run_health_check() -> None:
     have no container and are excluded since no worker ever reports them.
     """
     try:
-        statuses = await _get_all_worker_containers()
+        # One read of the workers for both the statuses and the completeness
+        # checks below: a heartbeat landing between two reads would pair an
+        # older, partial list with a newer, complete flag.
+        workers = await database.list_workers()
+        statuses = await _get_all_worker_containers(workers)
         # Aggregate: slug -> best status (running wins)
         slug_best: dict[str, str] = {}
         for s in statuses:
@@ -446,7 +453,6 @@ async def _run_health_check() -> None:
             else:
                 events.append((slug, "check_down", status))
 
-        workers = await database.list_workers()
         online = [w for w in workers if w.get("status") == "online"]
         # "Missing from a heartbeat" is only evidence of being DOWN if every
         # online worker could actually look. A worker whose Docker socket became
@@ -469,8 +475,12 @@ async def _run_health_check() -> None:
         # A paired Desktop reports its containers and sends no docker_available
         # either; counting it as blind did the same to every fleet with one.
         blind = [w for w in online if placement.is_blind(w)]
-        _report_blind_workers(blind)
-        if online and not blind:
+        # Nor if one that can see Docker said its lists are not whole: a routed
+        # service's copy is left out of a heartbeat whose routes were not read,
+        # and may still run there.
+        partial = [w for w in online if placement.can_see_docker(w) and _heartbeat_partial(placement.system_info(w))]
+        _report_blind_workers(blind, partial)
+        if online and not blind and not partial:
             deployments = await database.get_deployments()
             for d in deployments:
                 slug = d["slug"]
@@ -487,27 +497,54 @@ async def _run_health_check() -> None:
         logger.warning("Health check skipped: %s", exc)
 
 
-# The blind workers the last warning named. The health check runs every five
-# minutes, so warning on each run repeated one fact hundreds of times a day; it
-# now speaks when the set changes and once when every worker can see again.
-_blind_workers_logged: frozenset[str] | None = None
+def _heartbeat_partial(info: dict[str, Any]) -> bool:
+    """Whether a worker's heartbeat said it could not list everything: its
+    containers, its proxied copies, or which of those are routed services."""
+    return (
+        info.get("containers_listed") is False
+        or ("proxied" in info and info["proxied"] is None)
+        or info.get("routes_read") is False
+    )
 
 
-def _report_blind_workers(blind: list[dict[str, Any]]) -> None:
+# The blind and the partial workers the last warning named. The health check
+# runs every five minutes, so warning on each run repeated one fact hundreds of
+# times a day; it now speaks when either set changes and once when every worker
+# sends a whole list again.
+_blind_workers_logged: tuple[frozenset[str], frozenset[str]] | None = None
+
+
+def _report_blind_workers(blind: list[dict[str, Any]], partial: list[dict[str, Any]]) -> None:
+    """Say, by name, which workers turn the missing-container check off for the whole fleet."""
     global _blind_workers_logged
-    names = frozenset(str(w.get("name") or w.get("id")) for w in blind)
-    if names == (_blind_workers_logged or frozenset()):
+
+    def names_of(workers: list[dict[str, Any]]) -> frozenset[str]:
+        return frozenset(str(w.get("name") or w.get("id")) for w in workers)
+
+    names = (names_of(blind), names_of(partial))
+    if names == (_blind_workers_logged or (frozenset(), frozenset())):
         return
     _blind_workers_logged = names
-    if names:
+    if names[0]:
         logger.warning(
             "Not recording missing-container downtime: %d online worker(s) cannot read Docker (%s). "
             "Their containers may be running; recording them as down would be a guess.",
-            len(names),
-            ", ".join(sorted(names)),
+            len(names[0]),
+            ", ".join(sorted(names[0])),
         )
-    else:
-        logger.info("Every online worker can read Docker again; missing-container downtime is recorded again.")
+    if names[1]:
+        logger.warning(
+            "Not recording missing-container downtime: %d online worker(s) sent a heartbeat that does not list "
+            "everything (%s): their containers, their proxied copies or which of those are routed could not be "
+            "read. A container their list leaves out may be running; recording it as down would be a guess.",
+            len(names[1]),
+            ", ".join(sorted(names[1])),
+        )
+    if not any(names):
+        logger.info(
+            "Every online worker can read Docker again and lists everything; missing-container downtime is "
+            "recorded again."
+        )
 
 
 # How long a managed container may stay exited before it is an alert. Long
@@ -5342,16 +5379,23 @@ def _copy_digests(containers: Any, slug: str) -> dict[int, str]:
 
     A copy listed twice with two digests (a redeploy keeps the old container
     aside under the same copy until the new one runs) proves neither: left out.
+    So is one also listed without a digest (a direct copy read before its
+    removal beside the routed earner that replaces it, which reports none): that
+    listing proves nothing, so the other digest may not be the copy's.
     """
     digests: dict[int, str] = {}
     twice: set[int] = set()
     for entry in containers if isinstance(containers, list) else []:
-        if isinstance(entry, dict) and entry.get("slug") == slug and isinstance(entry.get("identity_digest"), str):
-            n = _copy_number(entry)
-            if n is not None and n >= 1 and entry["identity_digest"]:
-                if digests.get(n, entry["identity_digest"]) != entry["identity_digest"]:
-                    twice.add(n)
-                digests[n] = entry["identity_digest"]
+        if not isinstance(entry, dict) or entry.get("slug") != slug:
+            continue
+        n = _copy_number(entry)
+        if n is None or n < 1:
+            continue
+        digest = entry.get("identity_digest")
+        if not isinstance(digest, str) or not digest or digests.get(n, digest) != digest:
+            twice.add(n)
+        else:
+            digests[n] = digest
     return {n: d for n, d in digests.items() if n not in twice}
 
 
@@ -5573,7 +5617,10 @@ def _ledger_containers(containers: Any, info: Mapping[str, Any]) -> Any:
     copy through its route, which the worker lists under ``proxied``, flagged
     ``routed`` (worker_api._mark_routed), with the digest of the ids it runs.
     Its ledger row and its unconfirmed hold are copy 1's (_deploy_routed), so
-    the same digest proof confirms or repairs them as for a direct copy.
+    the same digest proof confirms or repairs them as for a direct copy. One
+    listed with no digest is still listed: it may run its ids, so it proves
+    nothing either way. One whose earner is missing (only its tunnel is left)
+    runs nothing, so it is not listed.
     """
     if not isinstance(containers, list):
         return containers
@@ -5584,14 +5631,13 @@ def _ledger_containers(containers: Any, info: Mapping[str, Any]) -> Any:
             "slug": entry["slug"],
             "instance": 1,
             "container_id": str(entry.get("container_id") or ""),
-            "identity_digest": entry["identity_digest"],
+            "identity_digest": entry.get("identity_digest"),
         }
         for entry in entries
         if isinstance(entry, dict)
         and entry.get("routed") is True
         and isinstance(entry.get("slug"), str)
-        and isinstance(entry.get("identity_digest"), str)
-        and entry["identity_digest"]
+        and entry.get("status") != "missing"
     ]
     return containers + routed if routed else containers
 
@@ -6176,7 +6222,7 @@ async def _remove_routed(worker_id: int, slug: str) -> dict[str, Any]:
     return out
 
 
-async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
+async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _or_routed(
@@ -6214,7 +6260,7 @@ async def _command_and_record(worker_id: int, command: str, slug: str, instance:
     return result
 
 
-async def _svc_restart(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
+async def _svc_restart(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _command_and_record(worker_id, "restart", slug, instance)
@@ -6350,12 +6396,12 @@ async def _svc_remove(
 
 
 @app.post("/api/stop/{slug}")
-async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
     return await _svc_stop(request, slug, worker_id)
 
 
 @app.post("/api/restart/{slug}")
-async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
     return await _svc_restart(request, slug, worker_id)
 
 
@@ -7254,6 +7300,11 @@ async def _refresh_proxied_copies(
                 )
                 if current is None or current.get("removing_since"):
                     raise ValueError("it was removed meanwhile")
+                # A routed deploy through this proxy that finished while this
+                # waited made this copy the service's own earner, named from its
+                # own ids: rebuilt as a copy, it would run the copy's ids instead.
+                if proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == pid:
+                    continue
                 if proxy["state"].get("capped_at") or current.get("stopped_by_cap"):
                     raise ValueError("its proxy reached its traffic cap")
                 await _proxy_worker_call(
@@ -7698,7 +7749,7 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
 
 async def _start_proxied_copy(proxy: dict[str, Any], worker_id: int, slug: str) -> dict[str, Any]:
     """Start one copy with the proxy's current settings."""
-    return await _proxy_worker_call(
+    result = await _proxy_worker_call(
         worker_id,
         "POST",
         f"/api/proxied/{slug}/{proxy['id']}/start",
@@ -7706,6 +7757,10 @@ async def _start_proxied_copy(proxy: dict[str, Any], worker_id: int, slug: str) 
         json={"proxy": proxies.worker_proxy_spec(proxy["definition"])},
         timeout=90,
     )
+    # Started, but the worker could not make its record durable: still a start.
+    if isinstance(result, dict) and result.get("durable") is False:
+        logger.warning("Started %s through proxy %s: %s", slug, proxy["id"], result.get("warning"))
+    return result
 
 
 async def _run_proxy_cap_resets() -> None:
@@ -7835,6 +7890,9 @@ async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]
                         worker_id, "POST", f"/api/proxied/{slug}/{pid}/stop", proxy["definition"], timeout=60
                     )
                     unstopped.pop((worker_id, slug), None)
+                    # Stopped, but the worker could not make its record durable: still a stop.
+                    if isinstance(answer, dict) and answer.get("durable") is False:
+                        logger.warning("Stopped %s at proxy %s's cap: %s", slug, pid, answer.get("warning"))
                     # An older worker does not say; it is taken as running, as before.
                     if isinstance(answer, dict) and answer.get("was_running") is False:
                         continue
@@ -7932,21 +7990,21 @@ async def _proxy_cap_alerts() -> list[dict[str, Any]]:
 @app.post("/api/services/{slug}/restart")
 async def api_service_restart(
     request: Request, slug: str, worker_id: int | None = None, instance: int = 1
-) -> dict[str, str]:
+) -> dict[str, Any]:
     return await _svc_restart(request, slug, worker_id, _instance_param(instance))
 
 
 @app.post("/api/services/{slug}/stop")
 async def api_service_stop(
     request: Request, slug: str, worker_id: int | None = None, instance: int = 1
-) -> dict[str, str]:
+) -> dict[str, Any]:
     return await _svc_stop(request, slug, worker_id, _instance_param(instance))
 
 
 @app.post("/api/services/{slug}/start")
 async def api_service_start(
     request: Request, slug: str, worker_id: int | None = None, instance: int = 1
-) -> dict[str, str]:
+) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     instance = _instance_param(instance)
@@ -11012,6 +11070,11 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         info = body.system_info if isinstance(body.system_info, dict) else {}
         flag = info.get("containers_listed")
         complete = flag is True or (flag is None and bool(body.containers))
+        # A box that could not read its proxied copies (None) lists no routed
+        # service, whose copy 1 may still run: the list is not whole. Nor one
+        # that could not read which of them are routed services.
+        if _heartbeat_partial(info):
+            complete = False
         features = info.get("features")
         deadline = isinstance(features, list) and "deploy_deadline" in features
         await _reconcile_running_identities(

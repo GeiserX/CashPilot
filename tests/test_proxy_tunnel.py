@@ -22,7 +22,7 @@ import pytest  # noqa: E402
 
 pytest.importorskip("docker")
 
-from docker.errors import NotFound  # noqa: E402
+from docker.errors import APIError, NotFound  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import orchestrator, proxy_tunnel, worker_api  # noqa: E402
@@ -42,8 +42,13 @@ AUTH_KEY = "tskey-auth-kTEST-0123456789"
 
 @pytest.fixture(autouse=True)
 def _own_held_marker(tmp_path):
-    """Each test gets its own record of stopped copies (proxy_tunnel.HELD_MARKER)."""
-    with patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")):
+    """Each test gets its own record of stopped copies and failed replacements (proxy_tunnel.HELD_MARKER)."""
+    with (
+        patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")),
+        patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / ".proxied_failed")),
+        patch.object(proxy_tunnel, "KEPT_MARKER", str(tmp_path / ".proxied_kept")),
+        patch.object(proxy_tunnel, "NEW_MARKER", str(tmp_path / ".proxied_new")),
+    ):
         yield
 
 
@@ -175,6 +180,49 @@ class TestDeployRawJoined:
         # Docker never starts it on its own (after a reboot it would join the
         # tunnel before the tunnel's firewall is loaded); the worker does.
         assert kwargs["restart_policy"] == {"Name": "no"}
+
+    @pytest.mark.parametrize("joined", [True, False], ids=["joined", "direct-control"])
+    def test_a_failed_replacement_puts_a_joined_earner_back_stopped(self, joined):
+        """Never straight into a tunnel's namespace, which may not have loaded its firewall yet."""
+        client = MagicMock()
+        tunnel = MagicMock(labels={"cashpilot.managed": "true", "cashpilot.role": "tunnel"})
+        old = MagicMock(status="running", labels={"cashpilot.service": "honeygain", "cashpilot.proxy": "3"})
+        old.attrs = {"Mounts": [], "HostConfig": {}}
+        name = "cashpilot-honeygain-p3"
+        names = {"sidecar-id": tunnel, name: old}
+
+        def get(key):
+            if key in names:
+                return names[key]
+            raise NotFound("none")
+
+        def rename(to):
+            names.pop(next(k for k, v in names.items() if v is old))
+            names[to] = old
+
+        old.rename.side_effect = rename
+        client.containers.get.side_effect = get
+        client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/app/run"], "Cmd": []}}
+        client.containers.run.side_effect = APIError("500 Server Error: create failed")
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "container_network", return_value=None),
+            patch.object(orchestrator, "container_dns", return_value=None),
+            patch.object(orchestrator, "_ensure_volumes"),
+            pytest.raises(orchestrator.ContainerRuntimeError) as err,
+        ):
+            orchestrator.deploy_raw(
+                slug="honeygain",
+                image="honeygain/honeygain:1",
+                network_mode="container:sidecar-id" if joined else None,
+                name=name,
+            )
+        assert names.get(name) is old
+        if joined:
+            old.start.assert_not_called()
+            assert "until its proxy tunnel is ready" in str(err.value)
+        else:
+            old.start.assert_called_once()
 
     def test_a_normal_container_keeps_its_restart_policy(self):
         client = MagicMock()
@@ -706,7 +754,7 @@ class TestWorkerProxiedOps:
     def test_stop_start_and_remove_reach_the_tunnel_module(self):
         with (
             patch.object(worker_api, "_verify_api_key"),
-            patch.object(proxy_tunnel, "stop", return_value=True) as stop,
+            patch.object(proxy_tunnel, "stop", return_value={"was_running": True}) as stop,
             patch.object(proxy_tunnel, "start", return_value={"exit": {"ip": "93.184.215.14"}}) as start,
             patch.object(proxy_tunnel, "remove", return_value=["cashpilot-x-p1", "cashpilot-tunnel-x-p1"]) as remove,
         ):
@@ -881,7 +929,9 @@ class TestPairOps:
                 proxy_tunnel, "_wait_ready", side_effect=lambda c: (order("ready"), {"ip": "93.184.215.14"})[1]
             ),
         ):
-            tunnel.start.side_effect = lambda: order("tunnel")
+            tunnel.start.side_effect = lambda: (order("tunnel"), setattr(tunnel, "status", "running"))
+            # The earner starts only in the run that wrote /run/ready, read again just before it.
+            tunnel.exec_run.return_value = (0, b'{"ip": "93.184.215.14"}')
             earner.start.side_effect = lambda: order("earner")
             out = proxy_tunnel.start("x", 1)
         assert [c.args[0] for c in order.call_args_list] == ["refresh", "tunnel", "ready", "earner"]
@@ -891,6 +941,7 @@ class TestPairOps:
 
     def test_start_restarts_an_earner_still_running_in_the_old_namespace(self):
         earner, tunnel = self._pair()
+        tunnel.exec_run.return_value = (0, b'{"ip": "93.184.215.14"}')
         with (
             patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
             patch.object(proxy_tunnel, "refresh_proxy_ip") as refresh,
@@ -900,6 +951,20 @@ class TestPairOps:
         refresh.assert_not_called()
         earner.restart.assert_called_once()
         earner.start.assert_not_called()
+
+    def test_a_legacy_start_whose_tunnel_has_no_exit_now_starts_no_earner(self):
+        """_wait_ready saw /run/ready, then the tunnel restarted: the run the earner would join is not proven.
+        The start says so instead of answering as if the copy started."""
+        earner, tunnel = self._pair(earner_status="exited")
+        tunnel.exec_run.return_value = (1, b"")
+        with (
+            patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "_wait_ready", return_value={"ip": "93.184.215.14"}),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="was not started"),
+        ):
+            proxy_tunnel.start("x", 1)
+        earner.start.assert_not_called()
+        earner.restart.assert_not_called()
 
     def test_remove_takes_only_our_containers_and_their_volumes(self):
         earner, _ = self._pair()
@@ -963,18 +1028,30 @@ class TestStartAppliesTheStoredProxy:
 
 class TestReviewFollowUps:
     def test_stop_says_whether_the_copy_was_running(self):
-        for earner_status, tunnel_status, expected in (("running", "running", True), ("exited", "exited", False)):
+        """A legacy pair (its own tunnel) counts as running only live: an older worker's stop left no marker, so
+        down and unheld means its owner stopped it, and the cap must not mark it for its reset to start."""
+        for earner_status, tunnel_status, was_held, expected in (
+            ("running", "running", False, True),
+            ("exited", "running", False, True),
+            ("exited", "exited", False, False),
+            ("exited", "exited", True, False),
+        ):
             earner = _container("cashpilot-x-p1", "x", proxy=1, status=earner_status)
             tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel", status=tunnel_status)
-            with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
-                assert proxy_tunnel.stop("x", 1) is expected
+            with (
+                patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+                patch.object(proxy_tunnel, "held", return_value={"cashpilot-x-p1"} if was_held else set()),
+                patch.object(proxy_tunnel, "_set_held"),
+            ):
+                assert proxy_tunnel.stop("x", 1) == {"was_running": expected}
 
-    def test_a_test_tunnel_does_not_restart_with_docker(self):
+    def test_no_tunnel_restarts_with_docker(self):
+        """A tunnel Docker starts on its own has a namespace open before cp-tunnel's first command (sidecar_kwargs)."""
         with patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": "drumsergio/cashpilot-tunnel:1.64.0"}):
             test_kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-test-ab", proxy_tunnel.TEST_SLUG, None, None, "t")
-            copy_kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-x-p1", "x", 1, None, "x-p1")
+            copy_kw = proxy_tunnel.sidecar_kwargs("cashpilot-tunnel-p1", proxy_tunnel.SHARED_SLUG, 1, None, "p1")
         assert test_kw["restart_policy"] == {"Name": "no"}
-        assert copy_kw["restart_policy"] == {"Name": "unless-stopped"}
+        assert copy_kw["restart_policy"] == {"Name": "no"}
 
     def test_leftover_test_tunnels_are_swept_and_copies_are_not(self):
         leftover = _container("cashpilot-tunnel-test-ab", proxy_tunnel.TEST_SLUG, role="tunnel")
@@ -1193,6 +1270,93 @@ class TestTheTunnelFirewallFallsBack:
         code, out, err = _run_firewall_step(tmp_path, "refuse")
         assert code != 0 and "RULES_LOADED" not in out
         assert "refusing to start" in err
+
+
+def _run_until_rules_logged(tmp_path: Path) -> tuple[int, list[str], str]:
+    """Run cp-tunnel up to its rules being loaded, logging every settings read, route read and nft load in order."""
+    import shutil
+    import subprocess
+
+    run = tmp_path / "run"
+    secret = run / "cashpilot-secret"
+    secret.mkdir(parents=True)
+    for key, value in {"kind": "socks5", "proxy_ip": "203.0.113.5", "proxy_port": "1080"}.items():
+        (secret / key).write_text(value)
+    events = tmp_path / "events"
+    real_cat = shutil.which("cat")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stubs = {
+        "cat": f'case "$*" in *cashpilot-secret*) echo "read $*" >>{events} ;; esac\nexec {real_cat} "$@"',
+        "ip": f'echo "ip $*" >>{events}\necho "default via 172.17.0.1 dev eth0"',
+        "stat": "echo tmpfs",
+        "nft": f'if [ "$1" = -f ]; then echo "nft-load" >>{events}; {real_cat} "$2" >>{events}; fi',
+    }
+    for name, body in stubs.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    head = _CP_TUNNEL.split("probe_until_ready() {")[0]
+    script = head.replace("/run/", f"{run}/").replace("/run\n", f"{run}\n")
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    proc = subprocess.run(["sh", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    return proc.returncode, events.read_text().splitlines() if events.exists() else [], proc.stderr
+
+
+def _first_ruleset(lines: list[str]) -> str:
+    start = lines.index("nft-load") + 1
+    end = next((i for i in range(start, len(lines)) if lines[i] == "nft-load"), len(lines))
+    return "\n".join(lines[start:end])
+
+
+class TestTheTunnelClosesItsNamespaceFirst:
+    """A tunnel run started by hand (Docker starts none by itself any more): an earner started into it before
+    cp-tunnel had read its settings, set its routes and loaded its rules could send from the box's own address."""
+
+    def test_the_first_thing_loaded_is_a_table_that_lets_nothing_out(self, tmp_path):
+        code, lines, err = _run_until_rules_logged(tmp_path)
+        assert code == 0, err
+        assert lines and lines[0] == "nft-load", f"something ran before the first nft load: {lines[:3]}"
+        first = _first_ruleset(lines)
+        out = first.split("chain out {", 1)[1].split("}", 1)[0]
+        assert "policy drop;" in out and "accept" not in out
+        inbound = first.split("chain in {", 1)[1].split("}", 1)[0]
+        assert "policy drop;" in inbound and "accept" not in inbound
+        # The real rules replace it in one transaction, on the same table.
+        assert "delete table inet cashpilot" in first
+        assert lines.count("nft-load") == 2
+        real = "\n".join(lines[len(lines) - lines[::-1].index("nft-load") :])
+        assert 'oifname "eth0" ip daddr 203.0.113.5 tcp dport 1080 accept' in real
+
+    def test_no_setting_or_route_is_read_before_it(self, tmp_path):
+        _code, lines, _err = _run_until_rules_logged(tmp_path)
+        before = lines[: lines.index("nft-load")]
+        assert not [e for e in before if e.startswith(("read ", "ip "))]
+        # Control: the settings and the routes are read, after it.
+        assert any(e.startswith("read ") for e in lines) and any(e.startswith("ip ") for e in lines)
+
+    def test_ready_is_written_only_after_the_real_rules(self):
+        """/run/ready is written by the probe alone, which starts after the real rules are loaded."""
+        assert _CP_TUNNEL.count("/run/ready.tmp /run/ready") == 1
+        assert _CP_TUNNEL.index("nft -f /run/cp-tunnel-closed.nft") < _CP_TUNNEL.index("KIND=$(read_key kind)")
+        probe = _CP_TUNNEL.index("(probe_until_ready ||")
+        assert _CP_TUNNEL.rindex("load_rules ||") < probe
+
+    def test_a_closing_table_nft_refuses_keeps_the_tunnel_down(self, tmp_path):
+        """Not closed, never started: nothing below may run on an open namespace."""
+        import subprocess
+
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "nft").write_text("#!/bin/sh\nexit 1\n")
+        (bin_dir / "nft").chmod(0o755)
+        (bin_dir / "ip").write_text(f"#!/bin/sh\ntouch {tmp_path}/routes-read\n")
+        (bin_dir / "ip").chmod(0o755)
+        (tmp_path / "run").mkdir()
+        head = _CP_TUNNEL.split("probe_until_ready() {")[0].replace("/run/", f"{tmp_path}/run/")
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        proc = subprocess.run(["sh", "-c", head], env=env, capture_output=True, text=True, timeout=30)
+        assert proc.returncode != 0 and "refusing to start" in proc.stderr
+        assert not (tmp_path / "routes-read").exists()
 
 
 # ---------------------------------------------------------------------------

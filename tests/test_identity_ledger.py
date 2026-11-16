@@ -2072,6 +2072,16 @@ class TestACopyListedTwice:
         ]
         assert main._copy_digests(both, "earnapp") == {2: "z"}
 
+    def test_a_digest_beside_a_listing_of_the_same_copy_with_none_counts_for_nothing(self):
+        """A direct copy read before its removal beside the routed earner replacing it, which reports no digest."""
+        both = [
+            {"slug": "earnapp", "instance": 1, "container_id": "direct", "identity_digest": "x"},
+            {"slug": "earnapp", "instance": 1, "container_id": "routed"},
+            {"slug": "earnapp", "instance": 2, "container_id": "two", "identity_digest": "z"},
+        ]
+        assert main._copy_digests(both, "earnapp") == {2: "z"}
+        assert main._copy_digests(list(reversed(both)), "earnapp") == {2: "z"}
+
     def test_the_stale_row_is_still_repaired_once_the_old_one_is_gone(self, db):
         wid = TestAStaleActiveRow()._stale()
         old, new = (

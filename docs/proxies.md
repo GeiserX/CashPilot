@@ -150,15 +150,16 @@ changes.
 
 The tunnel sets things up in this order:
 
-1. Firewall rules first (nftables, inside its own namespace only). Every
-   outgoing packet is dropped unless it goes into the tunnel, or it is the
-   tunnel's own connection to the proxy (for Tailscale: a packet tailscaled
-   marked as its own). Packets into the tunnel addressed to a private or
-   tailnet range are dropped too, so the earner cannot ask the proxy to
-   connect to the proxy's own LAN by address. The rule checks addresses
-   only. A name the proxy resolves to a private address, or a request sent
-   straight to the proxy's port, is up to the proxy's own rules, so use a
-   proxy that refuses private destinations.
+1. Firewall rules first (nftables, inside its own namespace only). Before
+   the tunnel reads its settings, it drops every packet in or out. Then the
+   real rules replace that in one step: every outgoing packet is dropped unless it goes into the
+   tunnel, or it is the tunnel's own connection to the proxy (for Tailscale:
+   a packet tailscaled marked as its own). Packets into the tunnel addressed
+   to a private or tailnet range are dropped too, so the earner cannot ask
+   the proxy to connect to the proxy's own LAN by address. The rule checks
+   addresses only. A name the proxy resolves to a private address, or a
+   request sent straight to the proxy's port, is up to the proxy's own
+   rules, so use a proxy that refuses private destinations.
 2. Name lookups sent to Docker's resolver are redirected into the tunnel, and
    anything else sent to that resolver is dropped.
 3. The routes and the tunnel process: [tun2proxy](https://github.com/tun2proxy/tun2proxy)
@@ -166,9 +167,21 @@ The tunnel sets things up in this order:
 4. A probe through the tunnel. The earner is started only after the probe sees
    an exit IP within 45 seconds, and, when the worker knows its own public IP,
    one that is not the box's own. Otherwise the copy is refused and the tunnel
-   removed. A copy added through a proxy whose tunnel already runs on the
-   same settings skips all four steps: its earner is created inside the
-   running tunnel, and no other copy is touched.
+   removed. When the worker cannot tell its own IP (the lookup failed, or
+   `CASHPILOT_EGRESS_DETECT=off`), the tunnel keeps the IP it recorded
+   before, and a new tunnel that replaces it (a new tunnel image) carries
+   it over. If that IP cannot be read, the start or deploy is refused and
+   the old tunnel kept, so try again in a few minutes. One exception: a
+   tunnel Docker can no longer start or read, on a worker with
+   `CASHPILOT_EGRESS_DETECT=off`, is replaced with no IP to compare, since
+   no later try would ever know it. With none recorded (that case, or a
+   first deploy), nothing compares the exit with the box's own IP: the
+   firewall forces traffic through the proxy, but it cannot see a proxy
+   whose exit is your own IP. A later start that knows the IP restarts the
+   tunnel with the check. A copy added through a proxy whose
+   tunnel already runs on the same settings skips all four steps: its
+   earner is created inside the running tunnel, and no other copy is
+   touched.
 
 The tunnel joins the same network as every other earner. With
 [LAN isolation](isolation.md#lan-isolation-by-default) on, that network is fenced
@@ -206,14 +219,84 @@ SOCKS5 and HTTP, each with and without a password:
 earners in one tunnel, and drives the worker's own code with 1 and 7 copies;
 see [One tunnel per proxy](#one-tunnel-per-proxy).
 
-After a reboot or a Docker restart, Docker starts the tunnel but never the
-earners: a container that shares another's namespace could join it before the
-tunnel's firewall is loaded. The worker starts the earners on its next
-heartbeat, once the tunnel has written its ready file, which happens only
-after the firewall is in and an exit through the tunnel was seen. The same
-happens when an earner itself crashes. A copy you stopped, or the traffic cap
+Docker never starts a tunnel or an earner on its own: neither has a restart
+policy (an older worker's tunnel is replaced, see below). When Docker starts a container, its namespace already has an
+interface and a default route before the container's first command runs, so
+an earner that joined a tunnel Docker had just restarted could send from your
+own IP before the drop-all table is in. So only the worker starts a tunnel,
+and every start of a tunnel or an earner through a proxy holds that proxy's
+lock. An earner starts only after the worker has read the tunnel's ready
+file in that same lock, which the tunnel writes only after its firewall is in
+and an exit through it was seen. Nothing can start a new tunnel run between
+that read and the earner's start, so no earner ever joins a run that has not
+proved its exit. The worker still reads the tunnel's run again after each
+start, and stops the earner if it changed.
+
+After a reboot, a Docker restart or a crash of the tunnel process, the
+worker's next heartbeat starts the tunnel again when a copy in it should run,
+and the heartbeat after it starts the earners, once the ready file is there.
+That is up to a minute more than Docker's own restart took. The same happens
+when an earner itself crashes. A copy you stopped, or the traffic cap
 stopped, stays stopped: the worker writes each stop down in its data folder
 (`.proxied_held`), because the tunnel keeps running for the other copies.
+
+Older workers gave every tunnel Docker's `unless-stopped` restart policy. The
+worker cannot take it away: the socket proxy refuses a container update on
+purpose (see [security defaults](security-defaults.md)). So a shared tunnel
+that still has the policy is replaced once, by the first deploy or start
+through its proxy, or by the first heartbeat while a copy in it should run.
+The heartbeat does this in the background, so a slow replacement never
+delays the heartbeat itself. The new tunnel, on the same settings and the
+current tunnel image, proves its exit first. Then each copy is recreated
+inside it under its own name, with its settings and its volumes, and starts
+again only once the new tunnel is ready. Host devices and the capabilities
+that reach a tunnel's firewall (`NET_ADMIN`, `NET_RAW`, `SYS_ADMIN`) are never
+carried: a proxied copy gets none, so a copy that has one was not made by
+CashPilot. Its move is refused before a new tunnel is built, and the error
+names that copy. The other copies in its tunnel stay as they were too, because
+they move only together. To unblock them, remove the copy the error names,
+then deploy it again from CashPilot if you want it. The new container gets
+every capability dropped except the ones the old one added, and
+`no-new-privileges`, as every proxied copy does, whatever the old one had.
+Recreating a
+copy loses its writable layer, as moving a legacy pair does, so a provider
+that keeps its device id there sees a new device once. No earner starts in
+the old tunnel meanwhile. Each copy stops before its new container is given
+its name, so two of one copy never run at once, also when the worker dies
+mid-move. If one copy cannot move, the copies already moved keep running in
+the new tunnel, and the copy that failed stays stopped in the old one until
+the next try moves it; the heartbeat then starts it in the new tunnel. The
+worker tries to finish the move again about five minutes later. That is a
+retry, not a promise: while Docker keeps refusing (a container it cannot
+create, a full disk), the move stays half done and the worker log says why,
+so fix the cause and the next try finishes it. A copy left in such a tunnel
+by a redeploy that did not finish (`cashpilot-tunnel-p<id>.old`) moves into
+the proxy's current tunnel.
+
+A copy still in a legacy one-tunnel-per-copy pair never starts in its old
+tunnel either. When the worker starts, it moves the running pairs of each
+proxy into the shared tunnel at once (see the upgrade note below), so a
+running copy can be recreated then. That does not happen for a proxy with no
+ready tunnel to copy the settings from, or with an older worker's shared
+tunnel whose copies are not settled, or when the move fails: those pairs stay
+as they are. After that, the heartbeat leaves a running pair where it is: an
+older worker wrote no stop down, so only Docker knows whether its owner
+stopped it. When the copy must start (after its own crash, or a start from a
+UI that sends no settings), the pair moves into the shared tunnel first, and
+the earner starts there. A routed service's pair moves into that service's
+own tunnel through the proxy instead, never the shared one. Either move
+recreates the copy, so a provider that keeps its device id inside the
+container sees a new device once.
+
+What this cannot cover: someone who starts a tunnel container by hand
+(`docker start`), or a second CashPilot worker on the same Docker daemon,
+which does not share the lock. The check after the start then stops an
+earner that joined the new run, but packets it sent before that check have
+left. The tests in `tests/test_proxy_tunnel_real_docker.py` show the rest on
+a real daemon: a tunnel killed while an earner starts many times over, with
+no packet leaving outside a proved run, and the same test with Docker's
+restart policy back on, and the worker's refusal to start an earner in such
+a tunnel taken away, must see packets leave.
 
 Every leak check is first run against a namespace opened on purpose (the
 firewall table deleted and a default route put back) and must see the leak
@@ -285,10 +368,16 @@ hardening of both containers and everything you set up. What changes:
 - **Copies are recreated as rarely as possible.** A copy keeps whatever its
   provider wrote inside the container (several write a device id there), and a
   recreated container starts without it, so the provider sees a new device. An
-  edit, a worker update and a reboot never recreate a copy. The tunnel keeps
+  edit or a reboot by itself never recreates a copy. A worker update does so
+  once, on the first update from a worker that gave its tunnels a restart
+  policy (see [It fails closed](#it-fails-closed)): the first heartbeat,
+  start or deploy that finds such a tunnel replaces it and recreates its
+  copies. That can be the first heartbeat after a reboot, or the start that
+  carries an edit, when the tunnel was not replaced before. The tunnel keeps
   the image it was created with until it is replaced, which happens only when
-  you redeploy the only copy in it, or when Docker can no longer start it at
-  all. In that last case a new tunnel proves its exit first, then every copy is
+  you redeploy the only copy in it, when Docker can no longer start it at
+  all, or once when an older worker made it with a restart policy. In the
+  last two cases a new tunnel proves its exit first, then every copy is
   recreated inside it (same image, environment, labels and limits, from what
   Docker recorded), because a container's network namespace is fixed when it
   is created.
@@ -496,9 +585,8 @@ settings into it and starts it. If it is running for other copies, the worker
 tests the new settings in a throwaway tunnel, then writes them into the running
 one and restarts it with its copies (see
 [One tunnel per proxy](#one-tunnel-per-proxy)). To apply an edit now, press
-**Stop**, then **Start** on one copy on each box. A restart that Docker does on
-its own, after a reboot or a Docker restart, uses the settings of the last
-start.
+**Stop**, then **Start** on one copy on each box. A restart the heartbeat does,
+after a reboot or a Docker restart, uses the settings of the last start.
 
 This needs a worker at least as new as the UI; an older worker only looks the
 host name up again, and a copy on it keeps the rest until you remove it and run
