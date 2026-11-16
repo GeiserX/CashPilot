@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import re
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -445,6 +446,24 @@ class TestCap:
         ):
             asyncio.run(main._stop_capped_proxy(proxy, {(7, "a"), (8, "b")}))
         assert [c.args[:4] for c in mark.call_args_list] == [(1, 7, "a", True)]
+        main._drop_proxy_cap_bell(1)
+
+    def test_a_stop_the_worker_could_not_make_durable_is_still_the_caps(self, caplog):
+        """A stop whose record may not survive a power cut is a stop: marked, so the reset starts it again, and
+        the worker's warning is logged rather than lost."""
+        proxy = {"id": 1, "definition": dict(CAPPED), "state": {"capped_at": "x", "cap_reason": "P reached 90%"}}
+        answer = {"status": "stopped", "was_running": True, "durable": False, "warning": "a stopped, but maybe not"}
+        with (
+            caplog.at_level(logging.WARNING, logger=main.logger.name),
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=proxy),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
+            patch.object(main.database, "record_alert", new_callable=AsyncMock, return_value=None) as alert,
+            patch.object(main, "_proxy_worker_call", AsyncMock(return_value=answer)),
+        ):
+            asyncio.run(main._stop_capped_proxy(proxy, {(7, "a")}))
+        assert [c.args[:4] for c in mark.call_args_list] == [(1, 7, "a", True)]
+        assert alert.call_args.args[2] == "Stopped: P reached 90%."
+        assert "a stopped, but maybe not" in caplog.text
         main._drop_proxy_cap_bell(1)
 
     def test_a_cap_lifted_while_the_stop_ran_starts_the_copy_again(self):

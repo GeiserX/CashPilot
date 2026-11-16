@@ -34,8 +34,9 @@ import pytest  # noqa: E402
 pytest.importorskip("docker")
 
 from docker.errors import APIError, NotFound  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from app import orchestrator, proxies, proxy_tunnel  # noqa: E402
+from app import orchestrator, proxies, proxy_tunnel, worker_api  # noqa: E402
 from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_SERVICE  # noqa: E402
 
 IMAGE = "drumsergio/cashpilot-tunnel:2.2.0"
@@ -527,7 +528,7 @@ class TestOneTunnelPerProxy:
     def test_a_failed_redeploy_of_a_stopped_copy_keeps_it_stopped(self, docker):
         """The deploy clears the stop before it begins; a failure puts it back, so the heartbeat never starts it."""
         _deploy("honeygain")
-        assert proxy_tunnel.stop("honeygain", 3) is True
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
         earner = docker.named("cashpilot-honeygain-p3")
         real_create = docker.create
 
@@ -579,7 +580,7 @@ class TestOneTunnelPerProxy:
     def test_a_failed_redeploy_of_a_stopped_copy_keeps_it_stopped_when_the_rename_back_fails(self, docker):
         """The stop is recorded again before anything else is tried, so a failed step cannot skip it."""
         _deploy("honeygain")
-        assert proxy_tunnel.stop("honeygain", 3) is True
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
         earner = docker.named("cashpilot-honeygain-p3")
         real_create, real_rename = docker.create, earner.rename
         refusals = iter(range(2))  # deploy_raw's rename back, then _put_old_back's
@@ -750,7 +751,7 @@ class TestStopStartRemove:
     def test_stopping_one_copy_leaves_the_tunnel_and_the_others_running(self, docker):
         _deploy("honeygain")
         _deploy("earnfm")
-        assert proxy_tunnel.stop("honeygain", 3) is True
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
         tunnel = docker.named("cashpilot-tunnel-p3")
         assert tunnel.status == "running"
         assert docker.named("cashpilot-earnfm-p3").status == "running"
@@ -768,14 +769,14 @@ class TestStopStartRemove:
     def test_a_second_stop_says_the_copy_was_not_running(self, docker):
         _deploy("honeygain")
         _deploy("earnfm")
-        assert proxy_tunnel.stop("honeygain", 3) is True
-        assert proxy_tunnel.stop("honeygain", 3) is False
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": False}
 
     def test_a_crashed_copy_beside_a_running_tunnel_counts_as_running_for_the_cap(self, docker):
         _deploy("honeygain")
         _deploy("earnfm")
         docker.named("cashpilot-honeygain-p3").status = "exited"  # crashed, never stopped by the owner
-        assert proxy_tunnel.stop("honeygain", 3) is True
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
 
     def test_the_heartbeat_starts_no_held_copy_and_starts_a_crashed_one(self, docker):
         _deploy("honeygain")
@@ -1413,7 +1414,7 @@ class TestStopsAgainstTheHeartbeat:
         def decide_then_stop(earner, sidecar, ready):
             action = real(earner, sidecar, ready)
             if earner.name == "cashpilot-earnfm-p3" and not stopped:
-                stopped.append(proxy_tunnel.stop("earnfm", 3))
+                stopped.append(proxy_tunnel.stop("earnfm", 3)["was_running"])
             return action
 
         with patch.object(proxy_tunnel, "earner_action", side_effect=decide_then_stop):
@@ -2249,7 +2250,7 @@ class TestAroundDeployRaw:
     def test_a_failed_read_before_deploy_raw_keeps_a_stopped_copy_stopped(self, docker):
         """The stop is cleared only once nothing before deploy_raw can fail: the heartbeat never starts the copy."""
         _deploy("honeygain")
-        assert proxy_tunnel.stop("honeygain", 3) is True
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
         earner = docker.named("cashpilot-honeygain-p3")
         reads = {"n": 0}
 
@@ -2342,7 +2343,7 @@ class TestReplacementSafety:
     def test_a_worker_that_dies_mid_redeploy_never_starts_a_stopped_copy(self, docker):
         """The stop stays recorded until the new earner runs, so recovery gives the old one its name back, stopped."""
         _deploy("honeygain")
-        assert proxy_tunnel.stop("honeygain", 3) is True
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
         earner = docker.named("cashpilot-honeygain-p3")
 
         def dies_after_the_move_aside(*, name, **_kw):
@@ -2490,7 +2491,7 @@ class TestFailedRedeployLeftovers:
             _deploy("honeygain")
         assert old_tunnel.name == "cashpilot-tunnel-p3" + proxy_tunnel.RETIRED_SUFFIX
         _heartbeat()
-        assert proxy_tunnel.stop("honeygain", 3) is True
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
         proxy_tunnel.start("honeygain", 3, _socks())
         assert docker.named("cashpilot-honeygain-p3") is earner and earner.status == "running"
         assert old_tunnel.name == "cashpilot-tunnel-p3" and _member_ids(docker, old_tunnel) == [
@@ -4319,17 +4320,33 @@ class TestARecordThatCannotBeFlushed:
         _deploy("honeygain")
         tunnel = docker.named("cashpilot-tunnel-p3")
         with _folder_fsync(errno.EIO):
-            for _ in range(3):  # the owner, then the cap on every heartbeat
-                with pytest.raises(proxy_tunnel.ProxyTunnelError, match="was stopped, but"):
-                    proxy_tunnel.stop("honeygain", 3)
+            first = proxy_tunnel.stop("honeygain", 3)
+            again = proxy_tunnel.stop("honeygain", 3)
         assert proxy_tunnel.held() == {NAME}
         assert docker.named(NAME).status == "exited" and tunnel.status == "exited"
-        proxy_tunnel.stop("honeygain", 3)  # control: once the folder flushes, the stop is acknowledged
+        assert first["was_running"] is True and first["durable"] is False
+        assert "was stopped, but the stop may not survive a power cut" in first["warning"]
+        assert again["was_running"] is False and again["durable"] is False
+        # Control: once the folder flushes, the stop is durable again.
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": False}
+
+    def test_a_stop_whose_record_cannot_be_flushed_is_a_stop_for_the_cap(self, docker):
+        """The stop answered 409 although it had stopped the copy: the cap read that as "could not stop" and never
+        marked the copy, and its second try found it already held (was_running False) and skipped the mark too, so
+        the monthly reset never started it again."""
+        _deploy("honeygain")
+        with _folder_fsync(errno.EIO), patch.object(worker_api, "_verify_api_key"):
+            resp = TestClient(worker_api.app, raise_server_exceptions=False).post("/api/proxied/honeygain/3/stop")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "stopped" and body["was_running"] is True and body["durable"] is False
+        assert docker.named(NAME).status == "exited"
 
     def test_a_legacy_stop_whose_record_cannot_be_flushed_still_stops_the_pair(self, docker):
         legacy = _legacy_pair(docker, "honeygain")
-        with _folder_fsync(errno.EIO), pytest.raises(proxy_tunnel.ProxyTunnelError, match="was stopped, but"):
-            proxy_tunnel.stop("honeygain", 3)
+        with _folder_fsync(errno.EIO):
+            out = proxy_tunnel.stop("honeygain", 3)
+        assert out["was_running"] is True and out["durable"] is False
         assert legacy.status == "exited" and docker.named(NAME).status == "exited"
 
     def test_a_filesystem_that_never_flushes_a_folder_still_deploys_starts_and_stops(self, docker):
@@ -4644,11 +4661,9 @@ class TestRoundFiveFollowups:
                 raise OSError(errno.EMFILE, os.strerror(errno.EMFILE))
             return real(path, flags, *args, **kwargs)
 
-        with (
-            patch.object(proxy_tunnel.os, "open", side_effect=open_),
-            pytest.raises(proxy_tunnel.ProxyTunnelError, match="was stopped, but"),
-        ):
-            proxy_tunnel.stop("honeygain", 3)
+        with patch.object(proxy_tunnel.os, "open", side_effect=open_):
+            out = proxy_tunnel.stop("honeygain", 3)
+        assert out["was_running"] is True and out["durable"] is False
         assert proxy_tunnel.held() == {NAME}
         assert docker.named(NAME).status == "exited"
 
@@ -4821,7 +4836,7 @@ class TestRoundSevenFollowups:
         assert proxy_tunnel.held() == set()
         # The owner never stopped it, so it counts as running, as a stopped copy in a live shared tunnel does: the
         # cap then marks it, and its monthly reset starts it again (main._release_capped_copies).
-        assert proxy_tunnel.stop("honeygain", 3) is True
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
         assert proxy_tunnel.held() == {NAME}
         proxy_tunnel.recover_moves(min_age=0)
         for _ in range(3):
@@ -4846,7 +4861,7 @@ class TestRoundSevenFollowups:
     def test_control_a_stop_of_a_half_moved_copy_the_owner_had_stopped_reports_not_running(self, docker):
         self._killed_mid_shared_move(docker)
         proxy_tunnel._set_held(NAME, True, strict=True)
-        assert proxy_tunnel.stop("honeygain", 3) is False
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": False}
         assert proxy_tunnel.held() == {NAME}
 
 

@@ -754,7 +754,7 @@ class TestWorkerProxiedOps:
     def test_stop_start_and_remove_reach_the_tunnel_module(self):
         with (
             patch.object(worker_api, "_verify_api_key"),
-            patch.object(proxy_tunnel, "stop", return_value=True) as stop,
+            patch.object(proxy_tunnel, "stop", return_value={"was_running": True}) as stop,
             patch.object(proxy_tunnel, "start", return_value={"exit": {"ip": "93.184.215.14"}}) as start,
             patch.object(proxy_tunnel, "remove", return_value=["cashpilot-x-p1", "cashpilot-tunnel-x-p1"]) as remove,
         ):
@@ -1032,7 +1032,7 @@ class TestReviewFollowUps:
             earner = _container("cashpilot-x-p1", "x", proxy=1, status=earner_status)
             tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel", status=tunnel_status)
             with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
-                assert proxy_tunnel.stop("x", 1) is expected
+                assert proxy_tunnel.stop("x", 1) == {"was_running": expected}
 
     def test_no_tunnel_restarts_with_docker(self):
         """A tunnel Docker starts on its own has a namespace open before cp-tunnel's first command (sidecar_kwargs)."""

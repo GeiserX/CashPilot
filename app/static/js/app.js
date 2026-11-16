@@ -2898,8 +2898,10 @@ const CP = (() => {
   async function restartService(slug, workerId, instance) {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
-      await api(`/api/services/${slug}/restart${q}`, { method: 'POST' });
+      const out = await api(`/api/services/${slug}/restart${q}`, { method: 'POST' });
       toast(`${slug} restarting...`, 'success');
+      // A routed copy the worker started, but could not make that last through a power cut.
+      if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
@@ -2909,8 +2911,10 @@ const CP = (() => {
   async function stopService(slug, workerId, instance) {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
-      await api(`/api/services/${slug}/stop${q}`, { method: 'POST' });
+      const out = await api(`/api/services/${slug}/stop${q}`, { method: 'POST' });
       toast(`${slug} stopped`, 'success');
+      // A routed copy the worker stopped, but could not make that last through a power cut.
+      if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');
@@ -2946,8 +2950,10 @@ const CP = (() => {
   async function startService(slug, workerId, instance) {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
-      await api(`/api/services/${slug}/start${q}`, { method: 'POST' });
+      const out = await api(`/api/services/${slug}/start${q}`, { method: 'POST' });
       toast(`${slug} starting...`, 'success');
+      // A routed copy the worker started, but could not make that last through a power cut.
+      if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
     } catch (err) {
       toast(err.message, 'error');

@@ -1139,7 +1139,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
           if (out && out.status === 'removing') CP.toast(`Removing ${slug}… the worker has not confirmed yet; the copy disappears once it does.`, 'info');
         } else {
           const out = await CP.api(`${base}/${btn.dataset.cmd}`, {method: 'POST'});
-          // Started, but the worker could not make that last through a power cut.
+          // Started or stopped, but the worker could not make that last through a power cut.
           if (out && out.warning) CP.toast(out.warning, 'warning');
         }
       } else {

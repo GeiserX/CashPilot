@@ -2145,10 +2145,10 @@ async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec, dea
 async def api_proxied_stop(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
     _verify_api_key(request)
     try:
-        was_running = await asyncio.to_thread(proxy_tunnel.stop, slug, proxy_id)
+        result = await asyncio.to_thread(proxy_tunnel.stop, slug, proxy_id)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
-    return {"status": "stopped", "was_running": bool(was_running)}
+    return {"status": "stopped", **result}
 
 
 @app.post("/api/proxied/{slug}/{proxy_id}/start")

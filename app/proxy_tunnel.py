@@ -1003,9 +1003,11 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         environment=cfg.get("Env") or [],
         labels=dict(cfg.get("Labels") or _labels(member)),
         network_mode=f"container:{tunnel.id}",
-        # What orchestrator.deploy_raw gives every proxied copy: every
-        # capability dropped, then only the member's own CapAdd, which
-        # _refuse_unmovable checked. A recorded partial CapDrop is never
+        # As orchestrator.deploy_raw does for every proxied copy: every
+        # capability dropped, then the member's own CapAdd, which
+        # _refuse_unmovable checked against PROXIED_FORBIDDEN_CAPS only (the
+        # catalog allowlist gated it when the copy was deployed; a move never
+        # adds a capability the copy did not hold). A recorded partial CapDrop is never
         # carried: it would keep Docker's default NET_RAW, which can send
         # frames past the tunnel's firewall. Nor is a recorded
         # seccomp=unconfined or apparmor=unconfined.
@@ -2105,11 +2107,13 @@ def _remove_anonymous_volumes(client: Any, container: Any) -> None:
                 client.volumes.get(name).remove()
 
 
-def stop(slug: str, proxy_id: int) -> bool:
-    """Stop one copy. Returns whether it was running.
+def stop(slug: str, proxy_id: int) -> dict[str, Any]:
+    """Stop one copy. The answer says whether it was running (``was_running``).
 
     Docker answers a stop of a stopped container with success, so the cap asks
     this to tell a copy it stopped from one the owner had already stopped.
+    A stop whose record may not survive a power cut still answers, as a start
+    does (_started): ``durable`` False and a ``warning``.
 
     The stop is written down first (HELD_MARKER), so a stop that fails halfway
     is never undone by the heartbeat. The shared tunnel stops too once no copy
@@ -2119,7 +2123,7 @@ def stop(slug: str, proxy_id: int) -> bool:
         return _stop(slug, proxy_id)
 
 
-def _stop(slug: str, proxy_id: int) -> bool:
+def _stop(slug: str, proxy_id: int) -> dict[str, Any]:
     client = orchestrator._get_client()
     name = earner_name(slug, proxy_id)
     earner = _get(client, name)
@@ -2155,12 +2159,19 @@ def _stop(slug: str, proxy_id: int) -> bool:
         _set_held(name, True, strict=True)
     except _RecordNotFlushed as exc:
         # The marker says stopped, but a power cut may lose it: the copy is
-        # stopped all the same, the safe way, and the stop then reports it.
-        _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves)
-        raise ProxyTunnelError(
-            f"{name} was stopped, but the stop may not survive a power cut. {exc}. Stop it again once the disk is healthy."
-        ) from None
-    return _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves)
+        # stopped all the same, the safe way, and the answer says so. Never an
+        # error: the cap would read it as "could not stop" and never mark the
+        # copy, and a second stop finds it held (was_running False), so its
+        # reset would never start it again.
+        return {
+            "was_running": _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves),
+            "durable": False,
+            "warning": (
+                f"{name} was stopped, but the stop may not survive a power cut. {exc}. Stop it again once the disk "
+                "is healthy."
+            ),
+        }
+    return {"was_running": _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves)}
 
 
 def _halt(

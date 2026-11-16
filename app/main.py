@@ -6181,7 +6181,7 @@ async def _remove_routed(worker_id: int, slug: str) -> dict[str, Any]:
     return out
 
 
-async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
+async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _or_routed(
@@ -6219,7 +6219,7 @@ async def _command_and_record(worker_id: int, command: str, slug: str, instance:
     return result
 
 
-async def _svc_restart(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, str]:
+async def _svc_restart(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     result = await _command_and_record(worker_id, "restart", slug, instance)
@@ -6283,12 +6283,12 @@ async def _svc_remove(
 
 
 @app.post("/api/stop/{slug}")
-async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_stop(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
     return await _svc_stop(request, slug, worker_id)
 
 
 @app.post("/api/restart/{slug}")
-async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, str]:
+async def api_restart(request: Request, slug: str, worker_id: int | None = None) -> dict[str, Any]:
     return await _svc_restart(request, slug, worker_id)
 
 
@@ -7653,6 +7653,9 @@ async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]
                         worker_id, "POST", f"/api/proxied/{slug}/{pid}/stop", proxy["definition"], timeout=60
                     )
                     unstopped.pop((worker_id, slug), None)
+                    # Stopped, but the worker could not make its record durable: still a stop.
+                    if isinstance(answer, dict) and answer.get("durable") is False:
+                        logger.warning("Stopped %s at proxy %s's cap: %s", slug, pid, answer.get("warning"))
                     # An older worker does not say; it is taken as running, as before.
                     if isinstance(answer, dict) and answer.get("was_running") is False:
                         continue
@@ -7750,21 +7753,21 @@ async def _proxy_cap_alerts() -> list[dict[str, Any]]:
 @app.post("/api/services/{slug}/restart")
 async def api_service_restart(
     request: Request, slug: str, worker_id: int | None = None, instance: int = 1
-) -> dict[str, str]:
+) -> dict[str, Any]:
     return await _svc_restart(request, slug, worker_id, _instance_param(instance))
 
 
 @app.post("/api/services/{slug}/stop")
 async def api_service_stop(
     request: Request, slug: str, worker_id: int | None = None, instance: int = 1
-) -> dict[str, str]:
+) -> dict[str, Any]:
     return await _svc_stop(request, slug, worker_id, _instance_param(instance))
 
 
 @app.post("/api/services/{slug}/start")
 async def api_service_start(
     request: Request, slug: str, worker_id: int | None = None, instance: int = 1
-) -> dict[str, str]:
+) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
     instance = _instance_param(instance)
