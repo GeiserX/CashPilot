@@ -146,6 +146,12 @@ const customFirstToasts = customFirst.filter((e) => e.kind === 'toast');
 check('a custom Remove whose volume stays is not a success',
   customFirstToasts.length === 1 && customFirstToasts[0].type === 'error'
     && customFirstToasts[0].text.includes('my-app-data could not be deleted and stays'), JSON.stringify(customFirstToasts));
+// The Remove already deleted the container and its record, so the box row and
+// its Remove button are gone, and a DELETE again finds nothing: the toast sends
+// the owner to the box, never back to Remove.
+check('a custom Remove whose volume stays is not sent back to Remove again',
+  customFirstToasts.length === 1 && !customFirstToasts[0].text.includes('Remove again')
+    && customFirstToasts[0].text.includes('Delete it on box-a by hand'), JSON.stringify(customFirstToasts));
 const customRetry = await run('removeCustomFromBox', ['my-app', 7, 'box-a'],
   removedWith({failed_volumes: ['mysterium-data'], replaced_volumes: ['mysterium-data']}));
 const customRetryToasts = customRetry.filter((e) => e.kind === 'toast');
