@@ -5025,3 +5025,36 @@ class TestRoundNineFollowups:
         ):
             asyncio.run(main._settle_pending_identities(7, containers, complete=True, deadline=True))
         settle.assert_not_awaited()
+
+
+class TestRoundTenFollowups:
+    def test_a_legacy_copy_left_only_as_its_halves_with_its_tunnel_down_counts_as_running(self, docker):
+        """migrate_legacy moves only a pair the owner wanted running, so its halves are a copy never stopped. With
+        no named earner, its legacy tunnel down by name took the legacy rule (live only): the halves are always
+        down, so the stop answered was_running False, the cap never marked the copy it held, and its monthly
+        reset never started it again."""
+        TestRoundFiveFollowups._killed_mid_move(docker, "clone rename")
+        assert docker.named(NAME) is None
+        legacy = docker.named(proxy_tunnel.tunnel_name("honeygain", 3))
+        assert legacy is not None
+        legacy.stop()
+        assert proxy_tunnel.held() == set()
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
+        assert proxy_tunnel.held() == {NAME}
+
+    def test_a_legacy_earner_whose_tunnel_is_gone_counts_only_live(self, docker):
+        """An older worker's stop left no marker, and nothing starts an earner with no tunnel: down and unheld, it
+        was stopped by its owner. With its tunnel gone the stop took the shared rule and answered was_running
+        True, so the cap marked it and its monthly reset started a copy its owner had stopped."""
+        tunnel = _legacy_pair(docker, "honeygain", running=False)
+        tunnel.remove(force=True)
+        earner = docker.named(NAME)
+        assert earner.status == "exited" and proxy_tunnel._tunnel_of(docker, earner, "honeygain", 3) is None
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": False}
+        assert proxy_tunnel.held() == {NAME}
+
+    def test_control_a_live_legacy_earner_whose_tunnel_is_gone_counts_as_running(self, docker):
+        tunnel = _legacy_pair(docker, "honeygain")
+        tunnel.remove(force=True)
+        assert docker.named(NAME).status == "running"
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
