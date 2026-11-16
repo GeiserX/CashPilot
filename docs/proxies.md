@@ -249,22 +249,25 @@ The heartbeat does this in the background, so a slow replacement never
 delays the heartbeat itself. The new tunnel, on the same settings and the
 current tunnel image, proves its exit first. Then each copy is recreated
 inside it under its own name, with its settings and its volumes, and starts
-again only once the new tunnel is ready. Host devices are never carried: a
-proxied copy gets none, so a copy that has one was not made by CashPilot, and
-its move is refused with the copy left as it was. Recreating a
+again only once the new tunnel is ready. Host devices and the capabilities
+that reach a tunnel's firewall (`NET_ADMIN`, `NET_RAW`, `SYS_ADMIN`) are never
+carried: a proxied copy gets none, so a copy that has one was not made by
+CashPilot, and its move is refused with the copy left as it was. The new
+container gets `no-new-privileges`, as every proxied copy does, whatever
+security options the old one had. Recreating a
 copy loses its writable layer, as moving a legacy pair does, so a provider
 that keeps its device id there sees a new device once. No earner starts in
-the old tunnel meanwhile. Each copy stops only once its new container holds
-its name, and a new container never starts while the old one still runs
-(as after a worker that died mid-move, until the move is settled). If one copy cannot move, the copies already moved keep running in
-the new tunnel, and the copy that failed keeps running in the old one; only
-when its new container could not start, after it stopped, does it stay
-stopped until the next try. The worker tries to finish the move again
-about five minutes later. That is a retry, not a promise: while Docker keeps
-refusing (a container it cannot create, a full disk), the move stays half
-done and the worker log says why, so fix the cause and the next try finishes
-it. A copy left in such a tunnel by a redeploy that did not
-finish (`cashpilot-tunnel-p<id>.old`) moves into the proxy's current tunnel.
+the old tunnel meanwhile. Each copy stops before its new container is given
+its name, so two of one copy never run at once, also when the worker dies
+mid-move. If one copy cannot move, the copies already moved keep running in
+the new tunnel, and the copy that failed stays stopped in the old one until
+the next try moves it; the heartbeat then starts it in the new tunnel. The
+worker tries to finish the move again about five minutes later. That is a
+retry, not a promise: while Docker keeps refusing (a container it cannot
+create, a full disk), the move stays half done and the worker log says why,
+so fix the cause and the next try finishes it. A copy left in such a tunnel
+by a redeploy that did not finish (`cashpilot-tunnel-p<id>.old`) moves into
+the proxy's current tunnel.
 
 A copy still in a legacy one-tunnel-per-copy pair never starts in its old
 tunnel either. When the worker starts, it moves the running pairs of each

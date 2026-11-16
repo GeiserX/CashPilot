@@ -75,6 +75,7 @@ from app.constants import (
     LABEL_ROLE,
     LABEL_SERVICE,
     LABEL_VERSION,
+    PROXIED_FORBIDDEN_CAPS,
     ROLE_TUNNEL,
     TUNNEL_PREFIX,
 )
@@ -936,16 +937,21 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
     defaults to whether the member was running.
 
     Nothing is removed before its replacement holds the name: the clone is
-    created under a staged name, the member is renamed aside (MOVING_SUFFIX),
-    the clone takes the name, the member stops, the clone starts, and only
-    then is the member removed. A failure on the way puts the member back
-    under its name. One before the member stopped leaves it running where it
-    was. One after (the clone could not start) leaves it stopped when its
-    tunnel is an older worker's, where nothing starts it (_put_back): it
-    moves on the next try. A worker that dies on the way leaves both, and
-    recover_moves() finishes or undoes the move.
+    created under a staged name, the member stops and is renamed aside
+    (MOVING_SUFFIX), the clone takes the name and starts, and only then is the
+    member removed. The member stops first, so the one aside never runs: no
+    Stop, Remove or deploy has to look for a second running copy of it. A
+    failure on the way puts the member back under its name, started again in
+    a ready run of its own tunnel when it ran (_put_back). In a tunnel an older
+    worker made no earner starts, so there it stays stopped until the next try
+    moves it, STAGED_STALE_SECONDS later (_replace_restarting_tunnels), and the
+    heartbeat starts it in the new tunnel. A worker that dies on the way
+    leaves both, and recover_moves() finishes or undoes the move.
 
-    A member with host devices is never moved: a proxied copy gets none.
+    A member with host devices or a capability that reaches its tunnel's
+    firewall (PROXIED_FORBIDDEN_CAPS) is never moved: the worker API gives a
+    proxied copy neither. The clone gets the one security option every
+    proxied copy gets (no-new-privileges), whatever the member recorded.
 
     The clone starts only in a run of ``tunnel`` that is ready, as every
     earner does (_start_in_ready_run); in one that is not, it stays stopped
@@ -964,6 +970,11 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         # It is never carried into a tunnel's namespace: the move is refused
         # before anything changed, and the copy stays as it is.
         raise ProxyTunnelError(f"{name} has host devices, which a proxied copy never gets, so it was not moved")
+    caps = {str(c).upper().removeprefix("CAP_") for c in hc.get("CapAdd") or []}
+    if risky := sorted(caps & PROXIED_FORBIDDEN_CAPS):
+        # The same refusal as _validate_proxied: in the tunnel's namespace these
+        # could change or bypass its firewall, for every copy that shares it.
+        raise ProxyTunnelError(f"{name} holds {', '.join(risky)}, which a proxied copy never gets, so it was not moved")
     staged = name + STAGED_SUFFIX
     aside = name + MOVING_SUFFIX
     for leftover_name in (staged, aside):
@@ -1003,13 +1014,21 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         network_mode=f"container:{tunnel.id}",
         cap_drop=hc.get("CapDrop") or ["ALL"],
         cap_add=hc.get("CapAdd") or None,
-        security_opt=hc.get("SecurityOpt") or ["no-new-privileges:true"],
+        # What orchestrator.deploy_raw gives every proxied copy: a recorded
+        # seccomp=unconfined or apparmor=unconfined is never carried.
+        security_opt=["no-new-privileges:true"],
         privileged=False,
         # Never started by Docker on its own: see orchestrator.deploy_raw.
         restart_policy={"Name": "no"},
         **{k: v for k, v in optional.items() if v is not None},
     )
     try:
+        with contextlib.suppress(Exception):
+            member.stop(timeout=orchestrator._get_stop_timeout(service or ""))
+        member.reload()
+        if getattr(member, "status", "") in _LIVE:
+            # Never two of one copy at once: the provider would see one device twice.
+            raise ProxyTunnelError(f"{name} did not stop, so it was not moved")
         member.rename(aside)
     except Exception:
         _remove_quietly(clone, 2, volumes=False)
@@ -1017,15 +1036,6 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         raise
     try:
         clone.rename(name)
-        # Stopped only once the clone holds the name, so a move that fails
-        # before this leaves the member running where it was: in a tunnel an
-        # older worker made, nothing could start it again (_put_back).
-        with contextlib.suppress(Exception):
-            member.stop(timeout=orchestrator._get_stop_timeout(service or ""))
-        member.reload()
-        if getattr(member, "status", "") in _LIVE:
-            # Never two of one copy at once: the provider would see one device twice.
-            raise ProxyTunnelError(f"{name} did not stop, so it was not moved")
         if start if start is not None else was_running:
             _start_in_ready_run(clone, tunnel, service or "")
     except Exception:
@@ -1510,14 +1520,6 @@ def _start_in_ready_run(earner: Any, tunnel: Any, slug: str, *, restart: bool = 
         return False
     if tunnel.status != "running" or _read_exit(tunnel) is None:
         logger.warning("The tunnel of %s is not ready; not starting it", earner.name)
-        return False
-    aside = _get(orchestrator._get_client(), f"{earner.name}{MOVING_SUFFIX}")
-    if aside is not None and getattr(aside, "status", "") in _LIVE:
-        # A worker died in a move after the clone took the name but before the
-        # old container stopped (_clone_into): the aside one is still the copy,
-        # and two of one copy would show the provider one device twice.
-        # recover_moves removes it once the move is settled; the clone starts then.
-        logger.warning("%s is still running aside from a move a worker died in; not starting it", earner.name)
         return False
     same = False
     try:
@@ -2324,8 +2326,8 @@ def _started_or_raise(earner: Any, tunnel: Any, slug: str, *, restart: bool = Fa
     if not _start_in_ready_run(earner, tunnel, slug, restart=restart):
         raise ProxyTunnelError(
             f"{earner.name} was not started: its tunnel was not ready, restarted or could not be read just as it "
-            "started, an older worker made it and it is replaced first, or its old container still runs aside from "
-            "a move a worker died in. It stays marked to run, so the heartbeat starts it once that is settled."
+            "started, or an older worker made it and it is replaced first. It stays marked to run, so the heartbeat "
+            "starts it once its tunnel is ready."
         )
 
 
@@ -2394,13 +2396,18 @@ def _remove(slug: str, proxy_id: int, *, drop_shared: bool = True) -> list[str]:
     name = earner_name(slug, proxy_id)
     earner = _get(client, name)
     earner = earner if _is_ours(earner, slug, proxy_id) else None
-    # And the old earner a redeploy left aside (see _settle_replaced), with the tunnel it lives in.
-    aside = _get(client, name + orchestrator.REPLACED_SUFFIX)
-    aside = aside if _is_ours(aside, slug, proxy_id) and _is_earner(aside) else None
+    # And the old earner a redeploy left aside (see _settle_replaced), and both
+    # halves of a move a worker died in (see recover_moves), each with the
+    # tunnel it lives in: left behind, recover_moves would give one of them the
+    # name back and the heartbeat would start the removed copy again.
+    asides = [
+        aside
+        for suffix in (orchestrator.REPLACED_SUFFIX, MOVING_SUFFIX, STAGED_SUFFIX)
+        if _is_ours(aside := _get(client, name + suffix), slug, proxy_id) and _is_earner(aside)
+    ]
     tunnels = [_tunnel_of(client, earner, slug, proxy_id)]
-    if aside is not None:
-        tunnels.append(_tunnel_of(client, aside, slug, proxy_id))
-    for container in (earner, aside):
+    tunnels += [_tunnel_of(client, aside, slug, proxy_id) for aside in asides]
+    for container in (earner, *asides):
         if container is not None:
             _remove_quietly(container, orchestrator._get_stop_timeout(slug))
             removed.append(container.name)
@@ -2683,7 +2690,9 @@ def migrate_legacy() -> list[str]:
     for proxy_id, tunnels in sorted(legacy.items()):
         with _deploy_lock(proxy_id):
             try:
-                moved += _migrate_proxy(client, proxy_id, tunnels)
+                # Bounded like a start's pull (_pull_deadline): a Stop through
+                # this proxy, the traffic cap's too, waits for this lock.
+                moved += _migrate_proxy(client, proxy_id, tunnels, deadline=_pull_deadline())
             except Exception as exc:  # noqa: BLE001 - the pairs left are valid; the next start tries again
                 logger.warning("Could not move the copies of proxy %s into one tunnel: %s", proxy_id, redact(str(exc)))
     return moved
@@ -3166,10 +3175,10 @@ def _replace_restarting(client: Any, tunnel: Any, *, deadline: float | None = No
     they were. One while they move leaves the copies already moved running in
     the new tunnel, under its staged name, and the rest in the old one: in the
     old one none of them could start again (_move_members). The copy whose own
-    move failed keeps running in the old one, unless it failed after that copy
-    stopped (its clone could not start): it stays stopped then (_clone_into).
-    The heartbeat finishes that change once it is STAGED_STALE_SECONDS old
-    (_finish_staged).
+    move failed stays stopped in the old one, since it stops before its move
+    (_clone_into): the next try, STAGED_STALE_SECONDS later, moves it, and the
+    heartbeat starts it in the new tunnel. The heartbeat finishes that change
+    once it is STAGED_STALE_SECONDS old (_finish_staged).
 
     One kept under RETIRED_SUFFIX by a redeploy that did not finish gets its
     name back when that name is free or empty (_reclaim_retired). When
