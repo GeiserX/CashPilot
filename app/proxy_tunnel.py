@@ -2163,45 +2163,68 @@ def _stop(slug: str, proxy_id: int) -> dict[str, Any]:
         # error: the cap would read it as "could not stop" and never mark the
         # copy, and a second stop finds it held (was_running False), so its
         # reset would never start it again.
-        return {
-            "was_running": _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves),
-            "durable": False,
-            "warning": (
-                f"{name} was stopped, but the stop may not survive a power cut. {exc}. Stop it again once the disk "
-                "is healthy."
-            ),
-        }
-    return {"was_running": _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves)}
+        ran, half_failure = _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves)
+        warning = (
+            f"{name} was stopped, but the stop may not survive a power cut. {exc}. Stop it again once the disk "
+            "is healthy."
+        )
+        return _stopped(name, ran, half_failure, warning, durable=False)
+    ran, half_failure = _halt(client, slug, earner, tunnel, tunnel_live, was_running, halves)
+    return _stopped(name, ran, half_failure)
+
+
+def _stopped(
+    name: str, was_running: bool, half_failure: Exception | None, warning: str | None = None, *, durable: bool = True
+) -> dict[str, Any]:
+    """The answer of a stop that stopped the copy: ``was_running``, and ``durable`` False and a ``warning`` when due.
+
+    A half of an interrupted move that could not stop (_halt) is a warning, never
+    an error: the copy and its tunnel are down and the stop is in the marker, so
+    an error would make the cap read "could not stop" and never mark the copy,
+    and a second stop finds it held (was_running False), so its reset would
+    never start it again."""
+    out: dict[str, Any] = {"was_running": was_running}
+    notes = [warning] if warning else []
+    if half_failure is not None:
+        notes.append(
+            f"{name} was stopped, but what an interrupted move left of it could not be stopped ({half_failure}). "
+            "Stop it again."
+        )
+    if not durable:
+        out["durable"] = False
+    if notes:
+        out["warning"] = " ".join(notes)
+    return out
 
 
 def _halt(
     client: Any, slug: str, earner: Any, tunnel: Any, tunnel_live: bool, was_running: bool, halves: tuple[Any, ...] = ()
-) -> bool:
+) -> tuple[bool, Exception | None]:
     """_stop's work once the stop is in the marker: the earner down, and its tunnel when no copy in it should run.
 
     ``halves`` are what a move a worker died in left of the copy (_stop): down too.
-    A half that cannot stop never keeps the earner and its tunnel up: the first
-    failure is raised once they are down."""
-    failure = None
+    A half that cannot stop never keeps the earner and its tunnel up, and never
+    makes the stop an error: its first failure is returned with ``was_running``,
+    for the answer's warning (_stopped). A failure to stop the earner is raised."""
+    half_failure = None
     for half in halves:
         try:
             half.stop(timeout=orchestrator._get_stop_timeout(slug))
         except NotFound:
             pass
-        except Exception as exc:  # noqa: BLE001 - raised below, after the earner and the tunnel
-            failure = failure or exc
+        except Exception as exc:  # noqa: BLE001 - a warning in the answer, once the earner and the tunnel are down
+            half_failure = half_failure or exc
     if tunnel is not None and not _is_shared(tunnel):
         tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
         if earner is not None:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
-        if failure is not None:
-            raise failure
-        return was_running
+        return was_running, half_failure
+    failure = None
     if earner is not None:
         try:
             earner.stop(timeout=orchestrator._get_stop_timeout(slug))
         except Exception as exc:  # noqa: BLE001 - raised below, after the tunnel
-            failure = failure or exc
+            failure = exc
     if tunnel is not None and tunnel_live:
         # Also when the earner did not stop: with no copy that should run left,
         # stopping the tunnel cuts the earner's way out all the same.
@@ -2213,7 +2236,7 @@ def _halt(
             tunnel.stop(timeout=SIDECAR_STOP_SECONDS)
     if failure is not None:
         raise failure
-    return was_running
+    return was_running, half_failure
 
 
 def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip: str | None = None) -> dict[str, Any]:

@@ -347,3 +347,29 @@ console.log('Two forms: each deploy and each fill uses the Route box of its own 
   assert.deepEqual(_runningWorkerIds('honeygain'), [1, 2], 'a routed-only box is checked for device names');
 }
 console.log('Device names: a box that runs only the routed service is checked too.');
+
+// ---- A routed start or stop the worker could not make durable shows its warning --
+// The worker answers 2xx with a warning when the copy started or stopped but its
+// record may not survive a power cut. Every Start, Stop and Restart path shows it.
+{
+  const warning = 'cashpilot-honeygain-p3 was stopped, but the stop may not survive a power cut.';
+  const names = ['startService', 'stopService', 'restartService', 'workerAction', 'stopEverywhere'];
+  for (const name of names) {
+    const toasts = [];
+    const api = async url => (url === '/api/services/deployed'
+      ? [{ slug: 'honeygain', name: 'Honeygain' }]
+      : { status: 'stopped', durable: false, warning });
+    const { [name]: fn } = fns(
+      [name],
+      ['api', 'toast', 'loadServicesTable', 'openServiceDetail', '_instanceQuery', 'stoppableCopies', 'confirm'],
+      [api, (msg, kind) => toasts.push([kind, msg]), () => {}, () => {}, () => '',
+        () => [{ worker_id: 1, instance: 1, node: 'box1' }], () => true],
+    );
+    await (name === 'workerAction' ? fn('honeygain', 'stop', 1, 1) : fn('honeygain', 1, 1));
+    assert.ok(
+      toasts.some(([kind, msg]) => kind === 'warning' && msg.includes(warning)),
+      `${name} shows the worker's warning (got ${JSON.stringify(toasts)})`,
+    );
+  }
+}
+console.log('Durable warnings: every routed Start, Stop and Restart path shows the worker warning.');

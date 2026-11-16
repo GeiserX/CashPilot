@@ -4889,10 +4889,41 @@ class TestRoundEightFollowups:
             raise APIError("500 Server Error: stop timed out")
 
         moving.stop = cannot_stop
-        with pytest.raises(APIError, match="stop timed out"):
-            proxy_tunnel.stop("honeygain", 3)
+        answer = proxy_tunnel.stop("honeygain", 3)
         assert proxy_tunnel.held() == {NAME}
         assert clone.status == "exited" and tunnel.status == "exited"
+        # A stop, never an error: the cap marks the copy it stopped, so its reset starts it again.
+        assert answer["was_running"] is True
+        assert "durable" not in answer
+        assert "could not be stopped" in answer["warning"] and "stop timed out" in answer["warning"]
+
+    def test_a_half_that_cannot_stop_still_leaves_a_capped_copy_marked_for_its_reset(self, docker):
+        """A half's failed stop raised after the copy and its tunnel were down and the marker held: the cap read
+        "could not stop", a second stop found the copy held and down (was_running False), so it was never marked
+        and the monthly reset never started it again."""
+        _deploy("honeygain")
+        _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+        earner = docker.named(NAME)
+
+        def cannot_remove(force=False, v=False):
+            raise APIError("500 Server Error: remove timed out")
+
+        earner.remove = cannot_remove
+        _heartbeat()
+        moving = docker.named(NAME + proxy_tunnel.MOVING_SUFFIX)
+        calls = {"n": 0}
+
+        def stop_fails_once(timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise APIError("500 Server Error: stop timed out")
+
+        moving.stop = stop_fails_once
+        with patch.object(worker_api, "_verify_api_key"):
+            answer = TestClient(worker_api.app, raise_server_exceptions=False).post("/api/proxied/honeygain/3/stop")
+        assert answer.status_code == 200, answer.text
+        body = answer.json()
+        assert body["status"] == "stopped" and body["was_running"] is True and "stop timed out" in body["warning"]
 
     def test_a_retired_older_tunnel_with_an_unmovable_copy_never_starts_the_tunnel_under_the_name(self, docker):
         """The refusal comes before the down tunnel under the name is started for the move: after it, _move_members
