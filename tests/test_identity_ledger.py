@@ -2010,6 +2010,30 @@ class TestAProxiedCopyWithNoRow:
         assert asyncio.run(database.list_proxied_copies(7)) == []
         assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME") not in _active()
 
+    def test_a_copy_removed_while_the_service_is_removed_leaves_no_active_row(self, db):
+        """The copy's own removal finishes between the service removal's read of the copies and its write."""
+        wid = self._setup()
+        _proxied_heartbeat(wid, "honeygain", 7, {"HONEYGAIN_DEVICE_NAME": "boxB-p7"})
+        keys = main._identity_digest_keys
+        inside = []
+
+        async def copy_removed_meanwhile(worker_id):
+            if not inside:
+                inside.append(True)
+                with (
+                    patch.object(main, "_proxy_or_404", AsyncMock(return_value={"definition": {}})),
+                    patch.object(main, "_proxy_worker_call", AsyncMock(return_value={"status": "removed"})),
+                ):
+                    await main._remove_copy(7, worker_id, "honeygain")
+            return await keys(worker_id)
+
+        with patch.object(main, "_identity_digest_keys", copy_removed_meanwhile):
+            asyncio.run(main._record_removed_proxied_copies(wid, "honeygain"))
+        assert inside
+        assert asyncio.run(database.list_proxied_copies(7)) == []
+        assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME", "boxB-p7") in _retired()
+        assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME") not in _active()
+
     def test_a_record_removed_between_the_read_and_the_write_makes_no_row(self, db):
         wid = self._setup()
         keys = main._identity_digest_keys

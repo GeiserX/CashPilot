@@ -5498,7 +5498,10 @@ async def _record_removed_proxied_copies(worker_id: int, slug: str, proxy_id: in
     is asked about them. Written only while the service's record is the one
     read: a service removal in between (which does not take the copy's lock)
     has retired the copies, and a row written after it would stay active with
-    nothing left to retire it. Bookkeeping: never raises.
+    nothing left to retire it. With no ``proxy_id`` (a service removal), each
+    copy is read again under its lock: its own removal may have retired it
+    meanwhile. With one, the caller holds that copy's lock (not reentrant).
+    Bookkeeping: never raises.
     """
     try:
         have = await database.active_identity_copies(slug, worker_id)
@@ -5518,12 +5521,28 @@ async def _record_removed_proxied_copies(worker_id: int, slug: str, proxy_id: in
         logger.warning("Could not read the proxied copies of %s on worker %s", slug, worker_id, exc_info=True)
         return
     for copy in copies:
+        pid = int(copy["proxy_id"])
         try:
-            await _record_proven_proxied_copy(
-                slug, worker_id, copy, digests.get(int(copy["proxy_id"])), spec, keys, if_record=spec
-            )
+            if proxy_id is not None:
+                # The caller holds this copy's lock.
+                await _record_proven_proxied_copy(slug, worker_id, copy, digests.get(pid), spec, keys, if_record=spec)
+                continue
+            # A service removal holds no copy's lock: the copy's own removal may
+            # have finished and retired its row since the read above.
+            async with _proxy_copy_lock(pid, worker_id, slug):
+                fresh = next(
+                    (
+                        c
+                        for c in await database.list_proxied_copies(pid)
+                        if c["worker_id"] == worker_id and c["slug"] == slug
+                    ),
+                    None,
+                )
+                if fresh is None or f"p{pid}" in await database.active_identity_copies(slug, worker_id):
+                    continue
+                await _record_proven_proxied_copy(slug, worker_id, fresh, digests.get(pid), spec, keys, if_record=spec)
         except Exception:  # noqa: BLE001
-            logger.warning("Could not record the %s copy through proxy %s", slug, copy["proxy_id"], exc_info=True)
+            logger.warning("Could not record the %s copy through proxy %s", slug, pid, exc_info=True)
 
 
 async def _record_removed_copies(slug: str, worker_id: int, result: Any) -> None:
