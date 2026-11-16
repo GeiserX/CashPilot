@@ -1,13 +1,11 @@
 import contextlib
-import gc
 import os
 import sqlite3
 import tempfile
-import threading
-import traceback
-import warnings
 from pathlib import Path
+from unittest.mock import patch
 
+import aiosqlite
 import pytest
 
 # Point the suite at a writable data directory BEFORE any app module is imported:
@@ -142,70 +140,39 @@ def _reset_shared_db():
     any surviving connections and clear the cache so the next test binds fresh.
 
     Closed on their own threads, with no event loop: see ``close_shared_conns``.
-    A worker thread can die at any moment of the test, the drain included, so
-    the hook that frees its handle covers all of it.
+    Opened so the drain may close one from its own thread, for a worker that
+    died: see ``connect_closable_from_any_thread``.
     """
-    pytest_hook = threading.excepthook
-    threading.excepthook = hook_that_frees_dead_aiosqlite_handles(pytest_hook)
-    try:
+    from app import database
+
+    real_open = database._open_connection
+
+    def open_closable():
+        with patch.object(aiosqlite, "connect", connect_closable_from_any_thread):
+            return real_open()
+
+    with patch.object(database, "_open_connection", open_closable):
         yield
 
-        from app import database
-
-        database._forget_health_scores()
-        conns = list(database._shared_conns.values())
-        database._shared_conns.clear()
-        close_shared_conns(conns)
-    finally:
-        threading.excepthook = pytest_hook
+    database._forget_health_scores()
+    conns = list(database._shared_conns.values())
+    database._shared_conns.clear()
+    close_shared_conns(conns)
 
 
-def hook_that_frees_dead_aiosqlite_handles(outer):
-    """Report a dead aiosqlite worker as ``outer`` does, then clear its frames.
+_aiosqlite_connect = aiosqlite.connect
 
-    pytest keeps each thread's exception until its test phase ends, and the
-    traceback reaches the worker's frame, whose locals still hold the query it
-    ran and the cursor it got. Both hold the sqlite handle, so a thread that
-    dies in teardown, before or during the drain, keeps the handle and its
-    lock past the drain. The report is already written when ``outer``
-    returns; only the dead frames' locals go.
+
+def connect_closable_from_any_thread(*args, **kwargs):
+    """``aiosqlite.connect``, with a handle any thread may close.
+
+    Python refuses ``close()`` from any thread but the one that opened the
+    handle, and when an aiosqlite worker dies that thread is gone. aiosqlite
+    still runs every query on its own one thread, so lifting the check changes
+    nothing else.
     """
-    from aiosqlite.core import _connection_worker_thread
-
-    def hook(args) -> None:
-        try:
-            outer(args)
-        finally:
-            if _died_in(args.exc_value, _connection_worker_thread.__code__):
-                _clear_frames_of_chain(args.exc_value)
-
-    hook.frees_dead_aiosqlite_handles = True
-    return hook
-
-
-def _chain(exc):
-    seen = set()
-    while exc is not None and id(exc) not in seen:
-        seen.add(id(exc))
-        yield exc
-        exc = exc.__cause__ or exc.__context__
-
-
-def _died_in(exc, code) -> bool:
-    for e in _chain(exc):
-        tb = e.__traceback__
-        while tb is not None:
-            if tb.tb_frame.f_code is code:
-                return True
-            tb = tb.tb_next
-    return False
-
-
-def _clear_frames_of_chain(exc) -> None:
-    # The worker caught the first failure and failed again handing it over, so
-    # the cursor also sits in the first exception's own frames.
-    for e in _chain(exc):
-        traceback.clear_frames(e.__traceback__)
+    kwargs.setdefault("check_same_thread", False)
+    return _aiosqlite_connect(*args, **kwargs)
 
 
 def close_shared_conns(conns, wait: float = 5.0) -> None:
@@ -227,38 +194,23 @@ def close_shared_conns(conns, wait: float = 5.0) -> None:
 
     A dead thread never runs that close, so the sqlite handle stays open, and a
     write cancelled before its commit keeps its lock: the next test to write
-    that file gets "database is locked". Python refuses ``close()`` and
-    ``rollback()`` from any thread but the one that opened the handle, and that
-    one is gone. Its finaliser has no such check, and closing the handle rolls
-    the open write back, so drop the last reference and collect it.
-
-    sqlite3 connections take no weak reference, so the drain then looks for
-    the handle among the live objects. One still alive keeps its lock, and the
-    drain fails here rather than leave a later test "database is locked" with
-    no clue why. That look walks every live object, which is fine: a thread
-    dies this way rarely.
+    that file gets "database is locked". So the drain rolls the write back and
+    closes the handle itself. Freeing it by dropping references is not enough:
+    a request still queued for the dead thread, or a logged traceback pytest
+    keeps until the test ends, holds it alive. Nor is ``close()`` alone: while
+    a cursor somewhere still holds a statement, SQLite keeps the handle, and
+    its open write, until that statement goes. A handle opened with
+    Python's same-thread check (a test that reloads ``app.database`` opens one)
+    refuses the close; it gets the old way, dropped for its finaliser to close.
     """
-    held = []
     for conn in conns:
         conn.stop()
         conn._thread.join(timeout=wait)
         if not conn._thread.is_alive() and conn._connection is not None:
-            handle_id = id(conn._connection)
-            conn._connection = None
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", ResourceWarning)  # unclosed on purpose
-                gc.collect()
-            live = gc.get_objects()
-            for obj in live:
-                if id(obj) == handle_id and isinstance(obj, sqlite3.Connection):
-                    holders = {type(r).__name__ for r in gc.get_referrers(obj) if r is not live}
-                    held.append(f"{conn!r}, referred to by {sorted(holders)}")
-            del live
-    if held:
-        raise AssertionError(
-            "a dead aiosqlite thread's sqlite handle was not freed, so its lock stays; "
-            "something still holds it: " + "; ".join(held)
-        )
+            raw, conn._connection = conn._connection, None
+            with contextlib.suppress(sqlite3.ProgrammingError):
+                raw.rollback()
+                raw.close()
 
 
 @pytest.fixture(autouse=True)
