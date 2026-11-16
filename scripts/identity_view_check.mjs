@@ -37,7 +37,7 @@ const check = (label, cond, detail) => {
 };
 
 const build = (isOwner) => new Function('_isOwner', `${escape}\n${fields}\n${rowsFn}\n${offersFn}\n`
-  + 'return {isIdentityField, identityPickButton, identityRowsHtml, identityOffersHtml};')(isOwner);
+  + 'return {isIdentityField, identityPickButton, identityRowsHtml, identityOffersHtml, identityFormHtml};')(isOwner);
 const owner = build(true);
 const viewer = build(false);
 
@@ -87,6 +87,37 @@ check('markup in a label stays text', !html.includes('<img') && html.includes('&
 check('markup in a worker name stays text', !html.includes('<b>w</b>'), html);
 check('an unreadable value offers no Show', !html.includes('data-a1="4">Show'), html);
 check('an empty list says what fills it', owner.identityRowsHtml([]).includes('No device ids yet'), owner.identityRowsHtml([]));
+
+// --- when each id was seen, and an id the owner typed in --------------------
+const seenHtml = owner.identityRowsHtml([{...rows[1], first_seen: '2026-11-01 10:20:30', last_seen: '2026-11-16 09:08:07'}]);
+check('each row says when the id was first and last seen', seenHtml.includes('First seen 2026-11-01 10:20 UTC')
+  && seenHtml.includes('last seen 2026-11-16 09:08 UTC'), seenHtml);
+const typed = owner.identityRowsHtml([{id: 11, service: 'EarnApp', label: 'Node UUID', masked: '...7777', worker: 'box-a',
+  copy: '', kind: 'manual', source: 'manual', status: 'manual', forgettable: true, readable: true,
+  first_seen: '2026-11-16 09:00:00', last_seen: '2026-11-16 09:00:00'}]);
+check('an id the owner typed in says so', typed.includes('Entered by you') && !typed.includes('In use')
+  && !typed.includes('Removed'), typed);
+check('an id the owner typed in can be shown and forgotten', typed.includes('data-a1="11">Show')
+  && typed.includes('data-a1="11">Forget') && !typed.includes('data-a2="pending"'), typed);
+
+// --- the form for an id CashPilot did not deploy with -------------------------
+const form = owner.identityFormHtml(
+  [
+    {slug: 'earnapp', name: 'EarnApp', docker: {env: [
+      {key: 'EARNAPP_UUID', label: 'Node UUID', per_device: true},
+      {key: 'EARNAPP_PASSWORD', label: 'Password', secret: true, identifier: true},
+      {key: 'EARNAPP_EMAIL', label: 'Email'},
+    ]}},
+    {slug: 'x', name: 'Zeta <img src=x onerror=alert(1)>', docker: {env: []}},
+  ],
+  [{id: 1, name: 'box-a'}, {id: 2, name: '<b>w</b>'}],
+);
+check('the form offers each service and box', form.includes('value="earnapp"') && form.includes('value="2"'), form);
+check('the field list holds only the id fields, never a secret', form.includes('value="EARNAPP_UUID"')
+  && !form.includes('EARNAPP_PASSWORD') && !form.includes('EARNAPP_EMAIL'), form);
+check('markup in a service or box name stays text', !form.includes('<img') && !form.includes('<b>w</b>'), form);
+check('the form saves through addIdentity', form.includes('data-action="addIdentity"'), form);
+check('with no box the form says what to do first', owner.identityFormHtml([{slug: 'earnapp'}], []).includes('first'), '');
 
 // --- the Forget confirm -----------------------------------------------------
 // A hold's Forget names the risk the shared-id 409 names: the box may still
@@ -229,6 +260,48 @@ const loadSettings = new Function(
 await loadSettings();
 check('a failed /api/config still loads the device ids', settingsCalls.includes('identities')
   && settingsCalls.includes('failed'), JSON.stringify(settingsCalls));
+
+// --- a slow save never closes a newer form -----------------------------------
+// The owner saves, then Cancels and opens the form again while the save runs.
+// The answer must close only the form it came from, never the new one with
+// what the owner is typing in it.
+{
+  const saveFn = slice('function closeIdentityForm(', '// Every id in full, as a file.');
+  const ids = ['identity-add-service', 'identity-add-worker', 'identity-add-copy', 'identity-add-label', 'identity-add-value'];
+  let inputs = {};
+  const box = {
+    html: '',
+    get innerHTML() { return this.html; },
+    set innerHTML(h) {
+      for (const el of Object.values(inputs)) el.isConnected = false;
+      inputs = {};
+      this.html = h;
+      if (h) for (const id of ids) inputs[id] = {value: '', isConnected: true};
+    },
+  };
+  const doc = {getElementById: id => (id === 'identity-add' ? box : inputs[id] || null)};
+  const fill = values => { box.innerHTML = 'form'; ids.forEach((id, i) => { inputs[id].value = values[i]; }); };
+  const answers = [];
+  const toasts = [];
+  const {addIdentity} = new Function('document', 'api', 'toast', 'loadIdentities',
+    `${saveFn}; return {addIdentity, closeIdentityForm};`)(
+    doc, () => new Promise(res => answers.push(res)), (msg, kind) => toasts.push(kind), () => {});
+
+  fill(['earnapp', '1', '1', 'Node UUID', 'first-id']);
+  const slow = addIdentity();
+  box.innerHTML = '';                                   // Cancel while it saves
+  fill(['earnapp', '2', '1', 'Node UUID', 'typing']);   // a new form, half typed
+  answers[0]({id: 1});
+  await slow;
+  check('a slow save leaves a newer form and what is typed in it', box.innerHTML === 'form'
+    && inputs['identity-add-value'] && inputs['identity-add-value'].value === 'typing', box.innerHTML);
+
+  // The positive control: a save from the form still on screen closes it.
+  const quick = addIdentity();
+  answers[1]({id: 2});
+  await quick;
+  check('a save from the form on screen closes it', box.innerHTML === '', box.innerHTML);
+}
 
 console.log(bad ? `\nRESULT: FAIL (${bad})` : '\nRESULT: PASS');
 process.exit(bad ? 1 : 0);

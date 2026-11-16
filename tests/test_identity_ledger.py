@@ -235,6 +235,8 @@ ROUTES = [
     ("POST", "/api/identities/1/reveal"),
     ("DELETE", "/api/identities/1"),
     ("GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID"),
+    ("POST", "/api/identities"),
+    ("POST", "/api/identities/export"),
 ]
 
 
@@ -3735,3 +3737,175 @@ class TestANewHoldOnIdsAnOldHoldOnceHeld:
                 (wid,),
             ).fetchone()
         assert fresh == (1,)
+
+
+# ---------------------------------------------------------------------------
+# Ids the owner types in, the export, and when each id was seen (issue #740)
+# ---------------------------------------------------------------------------
+
+
+def _post(user, path, body):
+    client = TestClient(main.app, raise_server_exceptions=False)
+    with patch.object(auth, "get_current_user", return_value=user):
+        return client.post(path, json=body)
+
+
+def _enter(**fields):
+    body = {"slug": "earnapp", "worker_id": 1, "label": "EARNAPP_UUID", "value": UUID_A, **fields}
+    return _post(OWNER, "/api/identities", body)
+
+
+def _owner_with_password():
+    if asyncio.run(database.get_user_by_id(OWNER["uid"])) is None:
+        asyncio.run(database.create_user("owner", auth.hash_password("right-password"), "owner"))
+
+
+class TestAnIdTheOwnerEnters:
+    def test_it_is_kept_masked_and_labelled_as_entered_by_the_owner(self, db):
+        response = _enter(copy=2)
+        assert response.status_code == 200, response.text
+        assert UUID_A not in response.text
+        [row] = _call(OWNER, "GET", "/api/identities").json()
+        assert (row["kind"], row["source"], row["status"]) == ("manual", "manual", "manual")
+        assert (row["service"], row["label"], row["copy"], row["worker"]) == ("EarnApp", "Node UUID", "copy 2", "box-1")
+        assert row["masked"] == "..." + UUID_A[-4:] and row["forgettable"] is True
+        assert row["first_seen"] and row["last_seen"]
+        [stored] = _rows()
+        assert stored["value"] == UUID_A
+
+    def test_its_creation_is_audited_without_the_value(self, db):
+        assert _enter().status_code == 200
+        [event] = asyncio.run(database.get_audit_events())
+        assert (event["action"], event["outcome"], event["actor"], event["worker_id"]) == (
+            "identity_add",
+            "added",
+            "owner",
+            1,
+        )
+        assert UUID_A not in str(event)
+
+    def test_a_label_the_catalog_does_not_know_is_kept_as_typed(self, db):
+        assert _enter(slug="mysterium", label="Old node address", value="0x" + "ab" * 20).status_code == 200
+        [row] = _call(OWNER, "GET", "/api/identities").json()
+        assert (row["service"], row["label"], row["copy"]) == ("MystNodes", "Old node address", "")
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"value": ""},
+            {"value": "x" * (database.IDENTITY_VALUE_MAX + 1)},
+            {"value": "two words"},
+            {"value": "line\nbreak"},
+            {"value": "<img src=x>"},
+            {"value": 1234},
+            {"label": ""},
+            {"label": "<b>x</b>"},
+            {"label": "x" * 65},
+            {"copy": 0},
+            {"copy": database.NODE_IDENTITY_MAX_COPY + 1},
+            {"copy": "two"},
+            {"copy": True},
+        ],
+    )
+    def test_a_value_that_is_not_a_plain_token_is_refused(self, db, fields):
+        response = _enter(**fields)
+        assert response.status_code == 400, response.text
+        assert _rows() == []
+
+    @pytest.mark.parametrize("fields", [{"slug": "no-such-service"}, {"worker_id": 99}, {"worker_id": True}])
+    def test_an_unknown_service_or_box_is_refused(self, db, fields):
+        assert _enter(**fields).status_code in (400, 404)
+        assert _rows() == []
+
+    def test_the_same_id_twice_is_refused(self, db):
+        assert _enter().status_code == 200
+        assert _enter().status_code == 409
+        assert len(_rows()) == 1
+
+    def test_it_never_counts_as_running(self, db):
+        """Typed in, so no box is known to run it: it must not make a deploy ask about a shared id."""
+        assert _enter().status_code == 200
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A)) == []
+        error, _ = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error is None
+
+    def test_a_removal_leaves_it_and_the_owner_can_forget_it(self, db):
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_B}, 1)[0] is None
+        assert _enter().status_code == 200
+        asyncio.run(database.remove_deployment("earnapp", worker_id=1))
+        manual = [r for r in _rows() if r["kind"] == "manual"]
+        assert [(r["status"], r["value"]) for r in manual] == [("manual", UUID_A)]
+        assert _call(OWNER, "DELETE", f"/api/identities/{manual[0]['id']}").status_code == 200
+        assert [r for r in _rows() if r["kind"] == "manual"] == []
+
+    def test_the_deploy_form_offers_it_only_for_its_own_field(self, db):
+        assert _enter().status_code == 200
+        assert _enter(label="Some other id", value=UUID_B).status_code == 200
+        offers = _call(OWNER, "GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID").json()
+        assert [o["masked"] for o in offers] == ["..." + UUID_A[-4:]]
+        assert offers[0]["in_use_on"] == []
+
+    @pytest.mark.parametrize("label", ["Node UUID", "node uuid", "earnapp_uuid", "  EarnApp_UUID "])
+    def test_the_field_shown_by_its_label_or_in_other_letter_case_is_kept_under_its_key(self, db, label):
+        """The list names the field 'Node UUID': typing that, or the key in any case, must still be offered."""
+        assert _enter(label=label).status_code == 200, label
+        [row] = _call(OWNER, "GET", "/api/identities").json()
+        assert (row["key"], row["label"]) == ("EARNAPP_UUID", "Node UUID")
+        offers = _call(OWNER, "GET", "/api/identities/reuse/earnapp?key=EARNAPP_UUID").json()
+        assert [o["masked"] for o in offers] == ["..." + UUID_A[-4:]]
+
+    def test_the_label_and_the_key_of_one_field_are_one_id(self, db):
+        assert _enter(label="Node UUID").status_code == 200
+        assert _enter(label="EARNAPP_UUID").status_code == 409
+        assert len(_rows()) == 1
+
+
+class TestTheExport:
+    def test_without_a_password_it_asks_for_one(self, db):
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        response = _post(OWNER, "/api/identities/export", {})
+        assert response.status_code == 403 and response.json()["detail"]["error"] == "step_up_required"
+        assert UUID_A not in response.text
+        assert not [e for e in asyncio.run(database.get_audit_events()) if e["action"] == "identity_export"]
+
+    def test_a_wrong_password_exports_nothing(self, db):
+        _owner_with_password()
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        response = _post(OWNER, "/api/identities/export", {"step_up_password": "wrong"})
+        assert response.status_code == 403 and response.json()["detail"]["error"] == "step_up_failed"
+        assert UUID_A not in response.text
+        assert not [e for e in asyncio.run(database.get_audit_events()) if e["action"] == "identity_export"]
+
+    def test_the_right_password_gets_every_row_unmasked_and_audited(self, db):
+        _owner_with_password()
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        asyncio.run(database.remove_deployment("earnapp", worker_id=1))
+        asyncio.run(database.record_identities("earnapp", 2, {"1": {"EARNAPP_UUID": UUID_B}}))
+        assert _enter(value=UUID_C, copy=3).status_code == 200
+        response = _post(OWNER, "/api/identities/export", {"step_up_password": "right-password"})
+        assert response.status_code == 200, response.text
+        assert response.headers["cache-control"] == "no-store"
+        rows = {r["value"]: r for r in response.json()["identities"]}
+        assert set(rows) == {UUID_A, UUID_B, UUID_C}
+        retired = rows[UUID_A]
+        assert (retired["service"], retired["field"], retired["worker"], retired["status"]) == (
+            "EarnApp",
+            "Node UUID",
+            "box-1",
+            "retired",
+        )
+        assert retired["first_seen"] and retired["last_seen"] and retired["retired_at"]
+        assert (rows[UUID_C]["copy"], rows[UUID_C]["status"], rows[UUID_C]["retired_at"]) == ("copy 3", "manual", None)
+        events = asyncio.run(database.get_audit_events())
+        [export] = [e for e in events if e["action"] == "identity_export"]
+        assert (export["outcome"], export["actor"]) == ("exported", "owner")
+        assert not any(u in str(events) for u in (UUID_A, UUID_B, UUID_C))
+
+    def test_no_audit_row_no_export(self, db):
+        asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
+        with (
+            patch.object(main, "require_step_up", AsyncMock(return_value=OWNER)),
+            patch.object(database, "add_audit_event", AsyncMock(side_effect=sqlite3.OperationalError("full"))),
+        ):
+            response = _post(OWNER, "/api/identities/export", {"step_up_password": "pw"})
+        assert response.status_code == 500 and UUID_A not in response.text
