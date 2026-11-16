@@ -825,7 +825,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_created
 -- `instance` is the copy: '1' the service, '2'.. its extra copies, 'p<id>' the
 -- copy through proxy <id>. `kind` is 'env' (`name` is the env key); a later
 -- kind keeps the hashes of exported state backups here too (#741), so one
--- ledger answers "which identities did this box ever have".
+-- ledger answers "which identities did this box ever have". Kind 'manual' is an
+-- id the owner typed in (source and status 'manual'): never active, so nothing
+-- that reads which box runs which id ever sees it.
 -- `holders` counts the deploys in flight that share an unconfirmed hold
 -- ('u<n>'): two deploys of the same ids to one copy write one hold, and the
 -- hold ends with the last answer, not the first (issue #759). 1 elsewhere.
@@ -3034,17 +3036,23 @@ async def list_session_revocations() -> list[dict[str, Any]]:
         await db.close()
 
 
-async def update_user_password(user_id: int, hashed_password: str) -> None:
-    """Update a user's password and record the change timestamp."""
+async def update_user_password(user_id: int, hashed_password: str, *, unless_owner: bool = False) -> bool:
+    """Update a user's password and record the change timestamp.
+
+    With ``unless_owner`` the row is left alone if it is an owner at the moment of
+    the write, so a role change made after the caller's check still counts (issue
+    #762). Returns whether a row changed.
+    """
     import time
 
+    sql = "UPDATE users SET password = ?, password_changed_at = ? WHERE id = ?"
+    if unless_owner:
+        sql += " AND role != 'owner'"
     db = await _get_db()
     try:
-        await db.execute(
-            "UPDATE users SET password = ?, password_changed_at = ? WHERE id = ?",
-            (hashed_password, time.time(), user_id),
-        )
+        cursor = await db.execute(sql, (hashed_password, time.time(), user_id))
         await db.commit()
+        return cursor.rowcount > 0
     finally:
         await db.close()
 
@@ -5591,7 +5599,7 @@ async def delete_identity(identity_id: int) -> bool:
     """Delete one row (the owner's "forget"): a retired one, one a node reported, a backup file's, or an unconfirmed hold.
 
     An active row CashPilot deployed with is never deleted: the shared-id check
-    reads it. A node-reported row is only shown, so the owner may drop it while
+    reads it. One the owner typed in (add_manual_identity) is theirs to drop. A node-reported row is only shown, so the owner may drop it while
     its node runs; the next read brings it back if the node still says so. A
     backup row records a file, never an id a copy runs with; one still
     'pending' is the hold of a restore the worker never answered, which may
@@ -5606,7 +5614,7 @@ async def delete_identity(identity_id: int) -> bool:
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind = 'node' "
+            "DELETE FROM device_identities WHERE id = ? AND (status = 'retired' OR kind IN ('node', 'manual') "
             "OR (kind = 'backup' AND COALESCE(source, '') != 'pending') "
             f"OR ((instance LIKE '{PENDING_COPY_PREFIX}%' OR kind = 'backup') AND last_seen <= datetime('now', ?)))",
             (identity_id, f"-{PENDING_IDENTITY_SECONDS} seconds"),
@@ -5615,6 +5623,63 @@ async def delete_identity(identity_id: int) -> bool:
         return (cursor.rowcount or 0) > 0
     finally:
         await db.close()
+
+
+#: What an id the owner types in may look like: a plain token, as a node's is,
+#: up to IDENTITY_VALUE_MAX. UUIDs, hex, 0x addresses and device names without
+#: spaces fit; markup, spaces and line breaks do not.
+_MANUAL_IDENTITY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:@+=/-]*")
+
+#: The field name the owner gives a typed-in id: short words, nothing else.
+_MANUAL_LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}")
+
+
+def manual_identity_error(label: str, value: str) -> str | None:
+    """Why ``label`` and ``value`` cannot be an id the owner types in, or None when they can."""
+    if not _MANUAL_LABEL.fullmatch(label):
+        return "The field name must be 1 to 64 letters, digits, spaces or _ . : -"
+    if len(value) > IDENTITY_VALUE_MAX or not _MANUAL_IDENTITY.fullmatch(value):
+        return f"The id must be one word of up to {IDENTITY_VALUE_MAX} letters, digits or _ . : @ + = / -"
+    return None
+
+
+async def add_manual_identity(slug: str, worker_id: int, instance: str, name: str, value: str) -> int | None:
+    """Keep an id the owner typed in (``kind``, ``source`` and ``status`` 'manual'). Returns its row id.
+
+    No box is known to run it, so it is never active: the shared-id check
+    (identity_in_use), the retirements and the heartbeat repairs read only
+    ``kind`` 'env' rows and never see it. The deploy form offers it only when
+    the owner asks for an earlier id of that field. Returns None, keeping
+    nothing, when that service, box and copy already have this id under this
+    name (letter case ignored), or when manual_identity_error refuses it.
+    """
+    if manual_identity_error(name, value):
+        return None
+    # One step, as record_identities: two clicks at once must not both insert.
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "SELECT value_encrypted FROM device_identities WHERE slug = ? AND worker_id = ? AND instance = ? "
+                "AND name = ? AND kind IN ('env', 'manual')",
+                (slug, worker_id, instance, name),
+            )
+            if any(decrypt_value(r["value_encrypted"]).casefold() == value.casefold() for r in await cursor.fetchall()):
+                await db.rollback()
+                return None
+            cursor = await db.execute(
+                "INSERT INTO device_identities (slug, worker_id, instance, kind, name, value_encrypted, source, status) "
+                "VALUES (?, ?, ?, 'manual', ?, ?, 'manual', 'manual')",
+                (slug, worker_id, instance, name, encrypt_value(value)),
+            )
+            row_id = int(cursor.lastrowid or 0)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    return row_id
 
 
 async def identity_in_use(slug: str, name: str, value: str, *, except_worker: int | None = None) -> list[int]:

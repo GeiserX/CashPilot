@@ -10653,15 +10653,22 @@ async def api_admin_set_password(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     uid = _auth.get("uid")
-    if target.get("role") == "owner" and (not isinstance(uid, int) or uid <= 0):
+    admin_key = not isinstance(uid, int) or uid <= 0
+    owner_refused = HTTPException(status_code=403, detail="Sign in to the dashboard to set an owner's password")
+    if target.get("role") == "owner" and admin_key:
         # With an owner's new password the admin API key would become an owner
         # session, which reads the claimable device ids and passes the password
         # step-ups the key alone is refused (issue #740).
-        raise HTTPException(status_code=403, detail="Sign in to the dashboard to set an owner's password")
+        raise owner_refused
     if len(body.new_password) < 10:
         raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
     hashed = await auth.hash_password_async(body.new_password)
-    await database.update_user_password(user_id, hashed)
+    # The check above ran before the bcrypt await; an owner may have promoted the
+    # account since. The write itself refuses an owner row for the key (issue #762).
+    if not await database.update_user_password(user_id, hashed, unless_owner=admin_key):
+        if await database.get_user_by_id(user_id) is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        raise owner_refused
     changed = await database.get_user_by_id(user_id)
     auth.set_user_pwd_epoch(user_id, changed["password_changed_at"])
     return {"status": "password_set"}
@@ -11743,7 +11750,7 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
 
 def _identity_forgettable(row: dict[str, Any], pending: bool) -> bool:
     """Whether database.delete_identity would delete ``row``: what the Forget button reads."""
-    if row.get("status") == "retired" or row.get("kind") == "node":
+    if row.get("status") == "retired" or row.get("kind") in ("node", "manual"):
         return True
     if row.get("kind") == "backup" and row.get("source") != "pending":
         return True
@@ -11764,6 +11771,110 @@ async def api_identities(request: Request) -> list[dict[str, Any]]:
     _require_owner_session(request)
     names, labels = await _identity_context()
     return [_identity_view(r, names, labels) for r in await database.list_identities()]
+
+
+async def _json_body(request: Request) -> dict[str, Any]:
+    """The JSON object a request carries, read after its auth check; {} for none or anything else."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 - no body, or not JSON
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+@app.post("/api/identities")
+async def api_identity_add(request: Request) -> dict[str, Any]:
+    """Keep an id the owner types in: one CashPilot did not deploy with. Owner, signed in, only.
+
+    The body names the service (``slug``), the box (``worker_id``), the copy
+    (``copy``, 1 when left out), the field (``label``) and the ``value``. It is
+    kept as kind 'manual': shown and offered in the deploy form's "use one this
+    service had before" for that field, never counted as running on a box.
+    """
+    user = _require_owner_session(request)
+    body = await _json_body(request)
+    slug, worker_id, copy = body.get("slug"), body.get("worker_id"), body.get("copy")
+    label, value = body.get("label"), body.get("value")
+    if not isinstance(slug, str) or not isinstance(label, str) or not isinstance(value, str):
+        raise HTTPException(status_code=400, detail="Give the service, the field name and the id")
+    if not isinstance(worker_id, int) or isinstance(worker_id, bool):
+        raise HTTPException(status_code=400, detail="Pick a box")
+    if copy in (None, ""):
+        copy = 1
+    if not isinstance(copy, int) or isinstance(copy, bool) or not 1 <= copy <= database.NODE_IDENTITY_MAX_COPY:
+        raise HTTPException(status_code=400, detail=f"The copy must be 1 to {database.NODE_IDENTITY_MAX_COPY}")
+    label, value = label.strip(), value.strip()
+    problem = database.manual_identity_error(label, value)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+    svc = catalog.get_service(slug)
+    if not (svc or await _custom_service(slug, reveal=False)):
+        raise HTTPException(status_code=404, detail="No such service")
+    # The list and the form name a field by its label ('Node UUID'), the reuse
+    # picker by its env key: keep a field the owner names either way, in any
+    # letter case, under its key, or "use one this service had before" never finds it.
+    wanted = " ".join(label.split()).casefold()
+    for key, key_label in catalog.identity_keys(svc).items():
+        if wanted in (key.casefold(), " ".join(key_label.split()).casefold()):
+            label = key
+            break
+    if not await database.get_worker(worker_id):
+        raise HTTPException(status_code=404, detail="No such box")
+    row_id = await database.add_manual_identity(slug, worker_id, str(copy), label, value)
+    if row_id is None:
+        raise HTTPException(status_code=409, detail="This id is already in the list for that service, box and copy")
+    await _audit("identity_add", f"{slug}|{label}|copy {copy}", "added", actor=user, worker_id=worker_id)
+    return {"id": row_id}
+
+
+@app.post("/api/identities/export")
+async def api_identity_export(request: Request) -> JSONResponse:
+    """Every row of the ledger with its full value, as a download. Owner, signed in, with the password.
+
+    The password comes in the JSON body as ``step_up_password``; without one
+    the answer is 403 ``step_up_required``, which the dashboard turns into a
+    password prompt. Fails closed like a reveal: no audit row, no body.
+    """
+    user = _require_owner_session(request)
+    password = (await _json_body(request)).get("step_up_password")
+    if not isinstance(password, str) or not password:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": "The download holds every device id in full, and these ids let whoever has them "
+                "claim the device. Enter your password to continue.",
+            },
+        )
+    await require_step_up(request, password, action=step_up.ACTION_EXPORT_IDENTITIES, target="device ids")
+    names, labels = await _identity_context()
+    rows = []
+    for row in await database.list_identities():
+        view = _identity_view(row, names, labels)
+        rows.append(
+            {
+                "service": view["service"],
+                "slug": view["slug"],
+                "field": view["label"],
+                "key": view["key"],
+                "value": row.get("value") or "",
+                "worker": view["worker"],
+                "worker_id": view["worker_id"],
+                "copy": view["copy"],
+                "kind": view["kind"],
+                "source": view["source"],
+                "status": view["status"],
+                "first_seen": view["first_seen"],
+                "last_seen": view["last_seen"],
+                "retired_at": view["retired_at"],
+            }
+        )
+    # Before the body leaves, and not best effort: a failed write answers 500.
+    await database.add_audit_event("identity_export", "device ids", "exported", actor=user, detail=f"{len(rows)} rows")
+    return JSONResponse(
+        {"exported_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"), "identities": rows},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/identities/{identity_id}/reveal")
@@ -11825,7 +11936,8 @@ async def api_identity_reuse(
 ) -> list[dict[str, Any]]:
     """The retired values of one field of ``slug`` the deploy form may offer again, masked.
 
-    Only values CashPilot itself deployed with (never a node-reported one), and
+    Only values CashPilot itself deployed with or the owner typed in for this
+    field (never a node-reported one), and
     for each the boxes that run with it now (``in_use_on``), ``worker_id`` (the
     box being deployed to) left out, so the form can warn before two boxes
     share one device.
@@ -11838,12 +11950,10 @@ async def api_identity_reuse(
     seen: set[str] = set()
     offers: list[dict[str, Any]] = []
     for row in await database.list_identities():
-        if (row["slug"], row["name"], row["kind"], row["source"], row["status"]) != (
-            slug,
-            key,
-            "env",
-            "deploy",
-            "retired",
+        # A removed id CashPilot deployed with, or one the owner typed in for this field.
+        if (row["slug"], row["name"]) != (slug, key) or (row["kind"], row["source"], row["status"]) not in (
+            ("env", "deploy", "retired"),
+            ("manual", "manual", "manual"),
         ):
             continue
         value = row.get("value") or ""

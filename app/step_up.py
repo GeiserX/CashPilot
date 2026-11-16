@@ -59,6 +59,10 @@ ACTION_LEAVE_ROUTE = "leave-route"
 #: the UI's own audit row names the box by its id instead (``slug|worker_id``).
 ACTION_DELETE_CRITICAL = "delete-critical-volumes"
 
+#: Downloading every device id in the ledger unmasked (Settings > Device ids).
+#: The UI checks the password alone: no worker takes part. Target: "device ids".
+ACTION_EXPORT_IDENTITIES = "export-device-ids"
+
 #: The request header that carries an approval on a request with no JSON body
 #: (the DELETE of a service with its critical data).
 APPROVAL_HEADER = "X-CashPilot-Step-Up"
