@@ -3740,6 +3740,75 @@ class TestANewHoldOnIdsAnOldHoldOnceHeld:
 
 
 # ---------------------------------------------------------------------------
+# Issue #759: two deploys of the same ids to the same copy share one hold. The
+# first answer must not end it while the other deploy is still in flight.
+# ---------------------------------------------------------------------------
+
+
+class TestASharedHoldWithASecondDeployInFlight:
+    """Box-a runs UUID_B. Deploy A of UUID_A is in flight when deploy B of UUID_A to the same copy starts."""
+
+    def test_the_first_answer_keeps_the_hold_for_the_other(self, db):
+        """The worker refuses A; B may still land UUID_A, so another box must still be asked first."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        second = []
+
+        async def hop(worker_id, slug, spec, **kwargs):
+            # Deploy B (allow_shared_identity, so no claim puts it after A) writes its hold and waits on the worker.
+            second.append(await main._reserve_pending_identities(slug, worker_id, 1, {"EARNAPP_UUID": UUID_A}))
+            raise HTTPException(status_code=500, detail="worker failed")
+
+        with patch.object(main, "_proxy_worker_deploy", hop):
+            assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, allow=True)[0].status_code == 500
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A, except_worker=2)) == [wid]
+        error, sent = _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 2)
+        assert error.status_code == 409 and sent == []
+        # B's answer ends the hold: nothing else is in flight.
+        asyncio.run(main._release_pending_identities("earnapp", wid, second[0]))
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A, except_worker=2)) == []
+
+    def test_one_deploy_alone_still_ends_its_hold(self, db):
+        """The positive control: with no second deploy the answer ends the hold."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        held = asyncio.run(main._reserve_pending_identities("earnapp", wid, 1, {"EARNAPP_UUID": UUID_A}))
+        asyncio.run(main._release_pending_identities("earnapp", wid, held))
+        assert asyncio.run(database.identity_in_use("earnapp", "EARNAPP_UUID", UUID_A, except_worker=2)) == []
+
+    def test_an_unanswered_deploy_keeps_the_hold_after_a_retry_is_answered(self, db):
+        """A times out, the same ids are sent again and confirmed: A may still land, so the hold stays."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        timed_out = TestADeployTheWorkerDidNotAnswer._timed_out
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=timed_out, fail_status=504)[0].status_code == 504
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        assert _active()[("earnapp", wid, "u1", "EARNAPP_UUID")] == UUID_A
+
+    def test_a_hold_that_ended_starts_its_count_again(self, db):
+        """Two unanswered deploys run out and are retired; a later deploy of the same ids ends its hold with its answer."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        timed_out = TestADeployTheWorkerDidNotAnswer._timed_out
+        for _ in range(2):
+            _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid, fail=timed_out, fail_status=504)
+        TestADeployTheWorkerDidNotAnswer._age_pending()
+        _heartbeat("box-a", {1: {"EARNAPP_UUID": UUID_B}}, slug="earnapp", listed=True)
+        assert ("earnapp", wid, "u1", "EARNAPP_UUID", UUID_A) in _retired()
+        assert _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, wid)[0] is None
+        assert ("earnapp", wid, "u1", "EARNAPP_UUID") not in _active()
+
+    def test_an_upgraded_volume_gets_the_count_and_its_holds_still_end(self, db):
+        """A ledger from before the count: the column is added, each old hold counts one deploy."""
+        wid = TestADeployTheWorkerDidNotAnswer._box_on_b()
+        held = asyncio.run(main._reserve_pending_identities("earnapp", wid, 1, {"EARNAPP_UUID": UUID_A}))
+        with sqlite3.connect(database.DB_PATH) as conn:
+            conn.execute("ALTER TABLE device_identities DROP COLUMN holders")
+        asyncio.run(database.init_db())
+        with sqlite3.connect(database.DB_PATH) as conn:
+            counts = conn.execute("SELECT holders FROM device_identities WHERE instance = 'u1'").fetchall()
+        assert counts == [(1,)]
+        asyncio.run(main._release_pending_identities("earnapp", wid, held))
+        assert ("earnapp", wid, "u1", "EARNAPP_UUID") not in _active()
+
+
+# ---------------------------------------------------------------------------
 # Ids the owner types in, the export, and when each id was seen (issue #740)
 # ---------------------------------------------------------------------------
 

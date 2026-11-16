@@ -828,6 +828,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_created
 -- ledger answers "which identities did this box ever have". Kind 'manual' is an
 -- id the owner typed in (source and status 'manual'): never active, so nothing
 -- that reads which box runs which id ever sees it.
+-- `holders` counts the deploys in flight that share an unconfirmed hold
+-- ('u<n>'): two deploys of the same ids to one copy write one hold, and the
+-- hold ends with the last answer, not the first (issue #759). 1 elsewhere.
 CREATE TABLE IF NOT EXISTS device_identities (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     slug            TEXT    NOT NULL,
@@ -840,7 +843,8 @@ CREATE TABLE IF NOT EXISTS device_identities (
     status          TEXT    NOT NULL DEFAULT 'active',
     first_seen      TEXT    NOT NULL DEFAULT (datetime('now')),
     last_seen       TEXT    NOT NULL DEFAULT (datetime('now')),
-    retired_at      TEXT
+    retired_at      TEXT,
+    holders         INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE INDEX IF NOT EXISTS idx_device_identities_slug
@@ -1158,7 +1162,7 @@ async def _encrypt_legacy_plaintext_credentials(db: Any) -> int:
 #: missing a column -- an interrupted upgrade, a restored backup, a hand-edited
 #: file -- could never be repaired, because the gate would say there was nothing
 #: to do. The guards are idempotent and cheap; the version is for the operator.
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 
 async def init_db() -> None:
@@ -1369,6 +1373,14 @@ async def init_db() -> None:
             # NULL is the honest value, and both consumers already handle it:
             # get_config_updated_at filters WHERE updated_at IS NOT NULL, and
             # the health endpoint skips unstamped keys.
+
+        # 1 is the truthful backfill: a hold written before this column ended
+        # with the first answer, as if one deploy shared it (issue #759).
+        cursor = await db.execute("PRAGMA table_info(device_identities)")
+        identity_cols = {row["name"] for row in await cursor.fetchall()}
+        if identity_cols and "holders" not in identity_cols:
+            applied.append("device_identities.holders")
+            await db.execute("ALTER TABLE device_identities ADD COLUMN holders INTEGER NOT NULL DEFAULT 1")
 
         # Migrate users table: add password_changed_at for session invalidation
         cursor = await db.execute("PRAGMA table_info(users)")
@@ -5008,7 +5020,7 @@ def _identity_value(value: Any) -> str:
 
 async def _active_identity_rows(db: Any, slug: str, worker_id: int) -> list[dict[str, Any]]:
     cursor = await db.execute(
-        "SELECT id, instance, name, value_encrypted FROM device_identities "
+        "SELECT id, instance, name, value_encrypted, holders FROM device_identities "
         "WHERE slug = ? AND worker_id = ? AND kind = 'env' AND status = 'active'",
         (slug, worker_id),
     )
@@ -5177,10 +5189,12 @@ async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Map
 
     Each attempt with other ids gets its own ledger copy, so a second
     unanswered deploy never drops the first one's ids: the worker may still
-    land either. The same ids again refresh their row. Returns the ledger copy
-    this call created, which release_pending_identities ends once the worker
-    answered; None when it created none (no ids, or an earlier attempt that the
-    worker never answered holds them, which an answer to this one must not end).
+    land either. The same ids again refresh their row and count one more
+    deploy on it (``holders``), in the same step: an earlier deploy of them may
+    still be in flight or unanswered, so the hold must outlast this deploy's
+    answer too (issue #759). Returns the ledger copy, which
+    release_pending_identities lets go of once the worker answered; None when
+    there are no ids.
     """
     keys = _identity_keys(slug)
     ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
@@ -5206,12 +5220,19 @@ async def hold_pending_identities(slug: str, worker_id: int, copy: int, env: Map
             await _record_identities_locked(
                 db, slug, worker_id, keys, values, _wanted_identities(keys, values), "given"
             )
+            # A new hold (or a revived one, whose old count belongs to a deploy
+            # that is over) starts at one deploy; a shared one counts this one too.
+            await db.execute(
+                f"UPDATE device_identities SET holders = {'1' if created else 'holders + 1'} "
+                "WHERE slug = ? AND worker_id = ? AND instance = ? AND kind = 'env' AND status = 'active'",
+                (slug, worker_id, instance),
+            )
             await _retire_if_worker_gone(db, slug, worker_id)
             await db.commit()
         except BaseException:
             await db.rollback()
             raise
-    return instance if created else None
+    return instance
 
 
 async def release_pending_identities(slug: str, worker_id: int, instance: str, env: Mapping[str, Any]) -> None:
@@ -5222,7 +5243,9 @@ async def release_pending_identities(slug: str, worker_id: int, instance: str, e
     and one a heartbeat already made the copy's row leaves only that row. Only
     while ``instance`` still holds exactly those ids, read and deleted in one
     step: once the hold has ended another way, a second deploy to the same copy
-    may reuse the name for its own ids, which this answer must not end.
+    may reuse the name for its own ids, which this answer must not end. While
+    another deploy of the same ids is still in flight (``holders`` above one)
+    the rows stay and count one deploy fewer, in that same step (issue #759).
     """
     keys = _identity_keys(slug)
     ids = {key: value for (_, key), value in _wanted_identities(keys, {"": env}).items()}
@@ -5235,7 +5258,12 @@ async def release_pending_identities(slug: str, worker_id: int, instance: str, e
         try:
             rows = [r for r in await _active_identity_rows(db, slug, worker_id) if r["instance"] == instance]
             if {r["name"]: decrypt_value(r["value_encrypted"]) for r in rows} == ids:
-                await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
+                if max(int(r["holders"]) for r in rows) > 1:
+                    await db.executemany(
+                        "UPDATE device_identities SET holders = holders - 1 WHERE id = ?", [(r["id"],) for r in rows]
+                    )
+                else:
+                    await db.executemany("DELETE FROM device_identities WHERE id = ?", [(r["id"],) for r in rows])
             await db.commit()
         except BaseException:
             await db.rollback()
