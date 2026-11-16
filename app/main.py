@@ -5495,7 +5495,10 @@ async def _record_removed_proxied_copies(worker_id: int, slug: str, proxy_id: in
     time a slow removal is confirmed, it may not. The removal then retires the
     rows with the records (delete_proxied_copy, delete_proxied_copies_of), so
     the ledger keeps the ids the copies ran with and a later deploy elsewhere
-    is asked about them. Bookkeeping: never raises.
+    is asked about them. Written only while the service's record is the one
+    read: a service removal in between (which does not take the copy's lock)
+    has retired the copies, and a row written after it would stay active with
+    nothing left to retire it. Bookkeeping: never raises.
     """
     try:
         have = await database.active_identity_copies(slug, worker_id)
@@ -5516,7 +5519,9 @@ async def _record_removed_proxied_copies(worker_id: int, slug: str, proxy_id: in
         return
     for copy in copies:
         try:
-            await _record_proven_proxied_copy(slug, worker_id, copy, digests.get(int(copy["proxy_id"])), spec, keys)
+            await _record_proven_proxied_copy(
+                slug, worker_id, copy, digests.get(int(copy["proxy_id"])), spec, keys, if_record=spec
+            )
         except Exception:  # noqa: BLE001
             logger.warning("Could not record the %s copy through proxy %s", slug, copy["proxy_id"], exc_info=True)
 
@@ -5526,12 +5531,13 @@ async def _record_removed_copies(slug: str, worker_id: int, result: Any) -> None
 
     The first copy goes with the service and its record is its proof. An extra
     copy needs its digest: from the worker's answer (``identity_digests``, read
-    before it removed them), else from its last heartbeat. The worker removed
-    the proxied copies with the service unless it says some remain
-    (``proxied_error``): each is proved by its last heartbeat.
+    before it removed them), else from its last heartbeat. Each proxied copy
+    is proved by its last heartbeat, even when the worker says some remain
+    (``proxied_error``): it may have removed the others, and no later heartbeat
+    lists them. Their records stay then, and each copy's own removal retires
+    its row.
     """
-    if not (isinstance(result, dict) and result.get("proxied_error")):
-        await _record_removed_proxied_copies(worker_id, slug)
+    await _record_removed_proxied_copies(worker_id, slug)
     try:
         spec = await database.get_deployment_spec(slug, worker_id=worker_id)
         digests = await _stored_copy_digests(worker_id, slug)

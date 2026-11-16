@@ -922,13 +922,14 @@ def _heartbeat(name, copies, *, slug="honeygain", containers=None, listed=None, 
         return asyncio.run(main.api_worker_heartbeat(MagicMock(), body))
 
 
-def _remove(slug, wid, ran=None):
+def _remove(slug, wid, ran=None, **answered):
     """Remove ``slug`` from box ``wid`` through the route.
 
     ``ran``: {copy: the ids it ran with} for the extra copies the worker removed,
-    which it answers with as digests, as worker_api does.
+    which it answers with as digests, as worker_api does. ``answered``: more
+    of the worker's answer (``proxied_error``).
     """
-    answer = {"status": "removed", "container": f"cashpilot-{slug}"}
+    answer = {"status": "removed", "container": f"cashpilot-{slug}", **answered}
     if ran:
         answer["extra_instances"] = [f"cashpilot-{slug}-{n}" for n in ran]
         answer["identity_digests"] = {str(n): _digest(slug, ids) for n, ids in ran.items()}
@@ -1920,6 +1921,40 @@ class TestAProxiedCopyWithNoRow:
         _remove("honeygain", wid)
         assert asyncio.run(database.list_proxied_copies(7)) == []
         assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME", "boxB-p7") in _retired()
+
+    def test_removing_the_service_with_copies_left_keeps_the_ids_of_those_it_removed(self, db):
+        """The worker removed some copies and failed on others: the next heartbeat lists only those left."""
+        wid = self._setup()
+        _proxied_heartbeat(wid, "honeygain", 7, {"HONEYGAIN_DEVICE_NAME": "boxB-p7"})
+        _remove("honeygain", wid, proxied_error="could not remove cashpilot-honeygain-p8")
+        self._forget_the_copy(wid)
+        # The copy's record stays, so it can be removed again; its row stays active until then.
+        assert asyncio.run(database.list_proxied_copies(7))
+        assert _active()[("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME")] == "boxB-p7"
+        self._remove(wid)
+        assert asyncio.run(database.list_proxied_copies(7)) == []
+        assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME", "boxB-p7") in _retired()
+
+    def test_a_service_removed_while_its_copy_is_removed_leaves_no_active_row(self, db):
+        """The service's removal retires the copy between the copy removal's read and its write."""
+        wid = self._setup()
+        _proxied_heartbeat(wid, "honeygain", 7, {"HONEYGAIN_DEVICE_NAME": "boxB-p7"})
+        keys = main._identity_digest_keys
+
+        async def service_removed_meanwhile(worker_id):
+            await database.remove_deployment("honeygain", worker_id=worker_id)
+            await database.delete_proxied_copies_of(worker_id, "honeygain")
+            return await keys(worker_id)
+
+        with (
+            patch.object(main, "_identity_digest_keys", service_removed_meanwhile),
+            patch.object(main, "_proxy_or_404", AsyncMock(return_value={"definition": {}})),
+            patch.object(main, "_proxy_worker_call", AsyncMock(side_effect=HTTPException(status_code=404))),
+            pytest.raises(HTTPException),
+        ):
+            asyncio.run(main._remove_copy(7, wid, "honeygain"))
+        assert asyncio.run(database.list_proxied_copies(7)) == []
+        assert ("honeygain", wid, "p7", "HONEYGAIN_DEVICE_NAME") not in _active()
 
     def test_a_record_removed_between_the_read_and_the_write_makes_no_row(self, db):
         wid = self._setup()
