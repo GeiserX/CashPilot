@@ -2130,12 +2130,18 @@ def _stop(slug: str, proxy_id: int) -> dict[str, Any]:
     earner = earner if _is_ours(earner, slug, proxy_id) else None
     tunnel = _tunnel_of(client, earner, slug, proxy_id)
     # A worker that died mid-move (_clone_into) may leave the copy only as its
-    # two halves, aside and staged, with no tunnel of its own to find it by.
-    # recover_moves gives one of them the name later, and the heartbeat would
-    # start it: the stop is written down for it all the same, and the halves stop.
+    # two halves, aside and staged, with no tunnel of its own to find it by, and
+    # a failed redeploy only as its old earner aside (<name>-replaced). The
+    # heartbeat gives one of them the name later (recover_moves,
+    # _settle_replaced) and would start it: the stop is written down for it all
+    # the same, and they stop.
     halves = tuple(
         c
-        for c in (_get(client, name + MOVING_SUFFIX), _get(client, name + STAGED_SUFFIX))
+        for c in (
+            _get(client, name + MOVING_SUFFIX),
+            _get(client, name + STAGED_SUFFIX),
+            _get(client, name + orchestrator.REPLACED_SUFFIX),
+        )
         if _is_ours(c, slug, proxy_id) and _is_earner(c)
     )
     if earner is None and tunnel is None and not halves:
@@ -2145,16 +2151,13 @@ def _stop(slug: str, proxy_id: int) -> dict[str, Any]:
     except OSError as exc:
         raise ProxyTunnelError(f"Could not read which copies are stopped ({exc}); {name} was left as it was") from None
     tunnel_live = tunnel is not None and getattr(tunnel, "status", "") in _LIVE
-    # A copy the owner never stopped counts as running when it is down only for
-    # its tunnel's sake: its tunnel live, or it left mid-move as its halves,
-    # which are always down (the member stops before its rename, and the clone
-    # is not started). Otherwise the cap would not mark it, and its reset would
-    # never start it again.
-    was_running = (
-        (earner is not None and getattr(earner, "status", "") in _LIVE)
-        or ((tunnel_live or bool(halves)) and not was_held)
-        or any(getattr(c, "status", "") in _LIVE for c in halves)
-    )
+    # was_running is "the owner wanted this copy running", for the cap to mark
+    # it for its reset. A copy the owner never stopped is wanted in any form
+    # and state: down for its tunnel, after a reboot, or left as a half or an
+    # aside, the heartbeat would start it. A held one is not, unless it still
+    # runs: a stop that failed halfway (an error, so the cap did not mark it)
+    # and is tried again must still be marked.
+    was_running = not was_held or any(getattr(c, "status", "") in _LIVE for c in (earner, *halves) if c is not None)
     try:
         _set_held(name, True, strict=True)
     except _RecordNotFlushed as exc:
@@ -2178,7 +2181,7 @@ def _stopped(
 ) -> dict[str, Any]:
     """The answer of a stop that stopped the copy: ``was_running``, and ``durable`` False and a ``warning`` when due.
 
-    A half of an interrupted move that could not stop (_halt) is a warning, never
+    A half of an interrupted move, or an old earner aside, that could not stop (_halt) is a warning, never
     an error: the copy and its tunnel are down and the stop is in the marker, so
     an error would make the cap read "could not stop" and never mark the copy,
     and a second stop finds it held (was_running False), so its reset would
@@ -2187,7 +2190,7 @@ def _stopped(
     notes = [warning] if warning else []
     if half_failure is not None:
         notes.append(
-            f"{name} was stopped, but what an interrupted move left of it could not be stopped ({half_failure}). "
+            f"{name} was stopped, but what an interrupted move or redeploy left of it could not be stopped ({half_failure}). "
             "Stop it again."
         )
     if not durable:
@@ -2202,7 +2205,7 @@ def _halt(
 ) -> tuple[bool, Exception | None]:
     """_stop's work once the stop is in the marker: the earner down, and its tunnel when no copy in it should run.
 
-    ``halves`` are what a move a worker died in left of the copy (_stop): down too.
+    ``halves`` are what a move a worker died in, or a failed redeploy, left of the copy (_stop): down too.
     A half that cannot stop never keeps the earner and its tunnel up, and never
     makes the stop an error: its first failure is returned with ``was_running``,
     for the answer's warning (_stopped). A failure to stop the earner is raised."""
@@ -3095,8 +3098,16 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
     tunnels: dict[str, Any] = {}
     earners: list[Any] = []
     asides: dict[tuple[str, str], Any] = {}
+    halves: dict[tuple[str, str], Any] = {}
     for container in found:
         if str(getattr(container, "name", "")).endswith((STAGED_SUFFIX, MOVING_SUFFIX)):
+            if _is_earner(container):
+                # A half of a move recover_moves left alone (still young, or it
+                # failed): the aside one first, the copy recover_moves restores.
+                labels = _labels(container)
+                key = (labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, ""))
+                if key not in halves or str(container.name).endswith(MOVING_SUFFIX):
+                    halves[key] = container
             continue
         if _labels(container).get(LABEL_ROLE) == ROLE_TUNNEL:
             tunnels[container.id] = container
@@ -3144,6 +3155,15 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
             if tunnel is not None:
                 used.add(tunnel.id)
             pairs[key] = (aside, tunnel)
+            unproven.add(key)
+    # A copy left only as the halves of a move is still the copy, and may run its
+    # ids once recovered: listed as an aside is, so the UI keeps its holds.
+    for key, half in halves.items():
+        if pairs.get(key, (None, None))[0] is None:
+            tunnel = tunnels.get(_tunnel_id_of(half))
+            if tunnel is not None:
+                used.add(tunnel.id)
+            pairs[key] = (half, tunnel)
             unproven.add(key)
     for tunnel in list(tunnels.values()):
         # A shared tunnel no copy lives in holds the proxy login (and a tailnet

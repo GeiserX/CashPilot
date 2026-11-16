@@ -4956,3 +4956,72 @@ class TestRoundEightFollowups:
         assert not new.attrs["HostConfig"].get("Devices")
         (tunnel,) = docker.tunnels()
         assert tunnel is not old and new.attrs["HostConfig"]["NetworkMode"] == f"container:{tunnel.id}"
+
+
+class TestRoundNineFollowups:
+    def test_a_stop_of_a_copy_left_only_as_its_old_earner_aside_holds(self, docker):
+        """With the name free, a failed redeploy's old earner aside (<name>-replaced) is the copy. The Stop did not
+        look it up and was refused as "no proxied copy" before the stop was written down: the heartbeat gave it
+        its name back and started the copy the owner had stopped."""
+        aside = _left_aside(docker)
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}  # never stopped by the owner: wanted
+        assert proxy_tunnel.held() == {NAME}
+        for _ in range(3):
+            _heartbeat()
+        assert aside.name == NAME and aside.status == "exited"
+
+    def test_control_a_stop_of_an_aside_the_owner_had_stopped_reports_not_running(self, docker):
+        _left_aside(docker)
+        proxy_tunnel._set_held(NAME, True, strict=True)
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": False}
+
+    def test_a_copy_and_its_tunnel_down_after_a_reboot_count_as_running_for_the_cap(self, docker):
+        """Both exited and never stopped by the owner: the stop answered was_running False, so the cap never marked
+        the copy it held, and its monthly reset never started it again."""
+        _deploy("honeygain")
+        for c in docker.by_id.values():
+            c.status = "exited"
+        with patch.object(worker_api, "_verify_api_key"):
+            answer = TestClient(worker_api.app, raise_server_exceptions=False).post("/api/proxied/honeygain/3/stop")
+        assert answer.status_code == 200, answer.text
+        assert answer.json()["was_running"] is True
+        assert proxy_tunnel.held() == {NAME}
+        # Held now, so a second stop of the same copy is the owner's own stop: not marked again.
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": False}
+
+    def test_a_held_copy_that_still_runs_counts_as_running(self, docker):
+        """A stop that wrote the marker and then failed is tried again: the copy still runs, so the cap marks it."""
+        _deploy("honeygain")
+        proxy_tunnel._set_held(NAME, True, strict=True)
+        assert docker.named(NAME).status == "running"
+        assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
+
+    def test_a_copy_left_only_as_young_halves_is_listed_so_its_hold_stays(self, docker):
+        """recover_moves leaves a young pair alone, and status skipped both halves: the heartbeat said the routes
+        were read and listed no copy, so the UI let go of the copy's unconfirmed ids past their time while the
+        copy could still be recovered and run them."""
+        from app import main
+
+        TestRoundSevenFollowups._killed_mid_shared_move(docker)
+        clone = docker.named(NAME + proxy_tunnel.STAGED_SUFFIX)
+        clone.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")  # a move still young
+        with patch.object(orchestrator, "_identity_entry", return_value={"identity_digest": "d"}):
+            entries = _heartbeat()
+        (entry,) = [e for e in entries if e["slug"] == "honeygain"]
+        assert entry["name"] == NAME and "identity_digest" not in entry
+        moving = docker.named(NAME + proxy_tunnel.MOVING_SUFFIX)
+        assert moving is not None and moving.status == "exited"  # listed, never started or recovered here
+        assert docker.named(NAME) is None
+        for e in entries:
+            e["routed"] = True  # worker_api._mark_routed, for a routed service
+        containers = main._ledger_containers([], {"proxied": entries})
+        hold = {"slug": "honeygain", "copy": 1, "env": {"K": "new"}, "age": 10**9, "instance": "pending-1"}
+        settle = AsyncMock()
+        with (
+            patch.object(main.database, "pending_identities", AsyncMock(return_value=[hold])),
+            patch.object(main, "_identity_digest_keys", AsyncMock(return_value=["k"])),
+            patch.object(main.database, "active_identity_values", AsyncMock(return_value={"1": {"K": "old"}})),
+            patch.object(main.database, "settle_pending_identities", settle),
+        ):
+            asyncio.run(main._settle_pending_identities(7, containers, complete=True, deadline=True))
+        settle.assert_not_awaited()

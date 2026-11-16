@@ -1028,10 +1028,20 @@ class TestStartAppliesTheStoredProxy:
 
 class TestReviewFollowUps:
     def test_stop_says_whether_the_copy_was_running(self):
-        for earner_status, tunnel_status, expected in (("running", "running", True), ("exited", "exited", False)):
+        """Whether the owner wanted it running: a copy never stopped counts, even down (after a reboot), so the
+        cap marks it for its reset; one already held does not."""
+        for earner_status, tunnel_status, was_held, expected in (
+            ("running", "running", False, True),
+            ("exited", "exited", False, True),
+            ("exited", "exited", True, False),
+        ):
             earner = _container("cashpilot-x-p1", "x", proxy=1, status=earner_status)
             tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel", status=tunnel_status)
-            with patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)):
+            with (
+                patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+                patch.object(proxy_tunnel, "held", return_value={"cashpilot-x-p1"} if was_held else set()),
+                patch.object(proxy_tunnel, "_set_held"),
+            ):
                 assert proxy_tunnel.stop("x", 1) == {"was_running": expected}
 
     def test_no_tunnel_restarts_with_docker(self):
