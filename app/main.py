@@ -1884,6 +1884,9 @@ async def _run_collection() -> None:
     async with _collection_lock:
         success = True
         start_time = 0.0
+        # Set before the try: a cancel is not an Exception, so neither branch
+        # below sets it, and the finally block still reads it.
+        platforms_ok = 0
         collectors: list = []
         try:
             start_time = metrics.record_collection_start()
