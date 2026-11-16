@@ -3022,17 +3022,23 @@ async def list_session_revocations() -> list[dict[str, Any]]:
         await db.close()
 
 
-async def update_user_password(user_id: int, hashed_password: str) -> None:
-    """Update a user's password and record the change timestamp."""
+async def update_user_password(user_id: int, hashed_password: str, *, unless_owner: bool = False) -> bool:
+    """Update a user's password and record the change timestamp.
+
+    With ``unless_owner`` the row is left alone if it is an owner at the moment of
+    the write, so a role change made after the caller's check still counts (issue
+    #762). Returns whether a row changed.
+    """
     import time
 
+    sql = "UPDATE users SET password = ?, password_changed_at = ? WHERE id = ?"
+    if unless_owner:
+        sql += " AND role != 'owner'"
     db = await _get_db()
     try:
-        await db.execute(
-            "UPDATE users SET password = ?, password_changed_at = ? WHERE id = ?",
-            (hashed_password, time.time(), user_id),
-        )
+        cursor = await db.execute(sql, (hashed_password, time.time(), user_id))
         await db.commit()
+        return cursor.rowcount > 0
     finally:
         await db.close()
 

@@ -10653,15 +10653,22 @@ async def api_admin_set_password(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     uid = _auth.get("uid")
-    if target.get("role") == "owner" and (not isinstance(uid, int) or uid <= 0):
+    admin_key = not isinstance(uid, int) or uid <= 0
+    owner_refused = HTTPException(status_code=403, detail="Sign in to the dashboard to set an owner's password")
+    if target.get("role") == "owner" and admin_key:
         # With an owner's new password the admin API key would become an owner
         # session, which reads the claimable device ids and passes the password
         # step-ups the key alone is refused (issue #740).
-        raise HTTPException(status_code=403, detail="Sign in to the dashboard to set an owner's password")
+        raise owner_refused
     if len(body.new_password) < 10:
         raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
     hashed = await auth.hash_password_async(body.new_password)
-    await database.update_user_password(user_id, hashed)
+    # The check above ran before the bcrypt await; an owner may have promoted the
+    # account since. The write itself refuses an owner row for the key (issue #762).
+    if not await database.update_user_password(user_id, hashed, unless_owner=admin_key):
+        if await database.get_user_by_id(user_id) is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        raise owner_refused
     changed = await database.get_user_by_id(user_id)
     auth.set_user_pwd_epoch(user_id, changed["password_changed_at"])
     return {"status": "password_set"}

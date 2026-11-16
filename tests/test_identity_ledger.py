@@ -669,6 +669,47 @@ class TestTheAdminKeyCannotMintAnOwner:
             response = client.post(f"/api/users/{uid}/password", json={"new_password": "n" * 12})
         assert response.status_code == 403
 
+    def test_it_cannot_set_the_password_of_an_account_promoted_while_it_hashes(self, db):
+        """An owner promotes the account during the bcrypt await: the write must still refuse (issue #762)."""
+        uid = self._user("viewer")
+        before = asyncio.run(database.get_user_by_id(uid))["password"]
+
+        async def promote_then_hash(password):
+            await database.update_user_role(uid, "owner")
+            return "hashed-by-the-key"
+
+        client = TestClient(main.app)
+        with (
+            patch.object(auth, "get_current_user", return_value=ADMIN_KEY),
+            patch.object(auth, "hash_password_async", promote_then_hash),
+        ):
+            response = client.post(f"/api/users/{uid}/password", json={"new_password": "n" * 12})
+        assert response.status_code == 403
+        assert asyncio.run(database.get_user_by_id(uid))["password"] == before
+
+    def test_an_account_deleted_while_it_hashes_answers_404(self, db):
+        uid = self._user("viewer")
+
+        async def delete_then_hash(password):
+            await database.delete_user(uid)
+            return "hashed-by-the-key"
+
+        client = TestClient(main.app)
+        with (
+            patch.object(auth, "get_current_user", return_value=ADMIN_KEY),
+            patch.object(auth, "hash_password_async", delete_then_hash),
+        ):
+            response = client.post(f"/api/users/{uid}/password", json={"new_password": "n" * 12})
+        assert response.status_code == 404
+
+    def test_the_key_still_sets_a_viewers_password(self, db):
+        uid = self._user("viewer")
+        client = TestClient(main.app)
+        with patch.object(auth, "get_current_user", return_value=ADMIN_KEY):
+            response = client.post(f"/api/users/{uid}/password", json={"new_password": "n" * 12})
+        assert response.status_code == 200
+        assert auth.verify_password("n" * 12, asyncio.run(database.get_user_by_id(uid))["password"])
+
     def test_a_signed_in_owner_still_can(self, db):
         self._user("owner")
         uid = self._user("viewer")

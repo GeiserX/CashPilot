@@ -1428,7 +1428,7 @@ class TestAdminResetPassword:
             resp = client.post("/api/users/2/password", json={"new_password": "newpassword123"})
             assert resp.status_code == 200
             assert resp.json()["status"] == "password_set"
-            mock_upd.assert_called_once_with(2, "hashed-new")
+            mock_upd.assert_called_once_with(2, "hashed-new", unless_owner=False)
             mock_epoch.assert_called_once_with(2, 456.0)
 
     def test_admin_reset_password_non_owner_403(self, client):
