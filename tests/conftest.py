@@ -1,7 +1,10 @@
 import contextlib
 import gc
 import os
+import sqlite3
 import tempfile
+import threading
+import traceback
 import warnings
 from pathlib import Path
 
@@ -139,15 +142,70 @@ def _reset_shared_db():
     any surviving connections and clear the cache so the next test binds fresh.
 
     Closed on their own threads, with no event loop: see ``close_shared_conns``.
+    A worker thread can die at any moment of the test, the drain included, so
+    the hook that frees its handle covers all of it.
     """
-    yield
+    pytest_hook = threading.excepthook
+    threading.excepthook = hook_that_frees_dead_aiosqlite_handles(pytest_hook)
+    try:
+        yield
 
-    from app import database
+        from app import database
 
-    database._forget_health_scores()
-    conns = list(database._shared_conns.values())
-    database._shared_conns.clear()
-    close_shared_conns(conns)
+        database._forget_health_scores()
+        conns = list(database._shared_conns.values())
+        database._shared_conns.clear()
+        close_shared_conns(conns)
+    finally:
+        threading.excepthook = pytest_hook
+
+
+def hook_that_frees_dead_aiosqlite_handles(outer):
+    """Report a dead aiosqlite worker as ``outer`` does, then clear its frames.
+
+    pytest keeps each thread's exception until its test phase ends, and the
+    traceback reaches the worker's frame, whose locals still hold the query it
+    ran and the cursor it got. Both hold the sqlite handle, so a thread that
+    dies in teardown, before or during the drain, keeps the handle and its
+    lock past the drain. The report is already written when ``outer``
+    returns; only the dead frames' locals go.
+    """
+    from aiosqlite.core import _connection_worker_thread
+
+    def hook(args) -> None:
+        try:
+            outer(args)
+        finally:
+            if _died_in(args.exc_value, _connection_worker_thread.__code__):
+                _clear_frames_of_chain(args.exc_value)
+
+    hook.frees_dead_aiosqlite_handles = True
+    return hook
+
+
+def _chain(exc):
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        yield exc
+        exc = exc.__cause__ or exc.__context__
+
+
+def _died_in(exc, code) -> bool:
+    for e in _chain(exc):
+        tb = e.__traceback__
+        while tb is not None:
+            if tb.tb_frame.f_code is code:
+                return True
+            tb = tb.tb_next
+    return False
+
+
+def _clear_frames_of_chain(exc) -> None:
+    # The worker caught the first failure and failed again handing it over, so
+    # the cursor also sits in the first exception's own frames.
+    for e in _chain(exc):
+        traceback.clear_frames(e.__traceback__)
 
 
 def close_shared_conns(conns, wait: float = 5.0) -> None:
@@ -173,15 +231,34 @@ def close_shared_conns(conns, wait: float = 5.0) -> None:
     ``rollback()`` from any thread but the one that opened the handle, and that
     one is gone. Its finaliser has no such check, and closing the handle rolls
     the open write back, so drop the last reference and collect it.
+
+    sqlite3 connections take no weak reference, so the drain then looks for
+    the handle among the live objects. One still alive keeps its lock, and the
+    drain fails here rather than leave a later test "database is locked" with
+    no clue why. That look walks every live object, which is fine: a thread
+    dies this way rarely.
     """
+    held = []
     for conn in conns:
         conn.stop()
         conn._thread.join(timeout=wait)
         if not conn._thread.is_alive() and conn._connection is not None:
+            handle_id = id(conn._connection)
             conn._connection = None
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", ResourceWarning)  # unclosed on purpose
                 gc.collect()
+            live = gc.get_objects()
+            for obj in live:
+                if id(obj) == handle_id and isinstance(obj, sqlite3.Connection):
+                    holders = {type(r).__name__ for r in gc.get_referrers(obj) if r is not live}
+                    held.append(f"{conn!r}, referred to by {sorted(holders)}")
+            del live
+    if held:
+        raise AssertionError(
+            "a dead aiosqlite thread's sqlite handle was not freed, so its lock stays; "
+            "something still holds it: " + "; ".join(held)
+        )
 
 
 @pytest.fixture(autouse=True)
