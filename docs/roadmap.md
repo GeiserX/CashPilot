@@ -201,7 +201,8 @@ constraints below mean anything:
   the installation cannot read past exports. This is the stronger guarantee and the
   reason the mode exists.
 
-Neither mode may persist the passphrase or private key. The passphrase crosses once,
+Neither mode may persist the passphrase or private key. The private key never leaves
+the owner's machine. The passphrase crosses once,
 from the UI to the Worker, in the export or restore request that uses it, and is never
 stored or logged. A compromised installation must be able to produce new exports it
 cannot itself read.

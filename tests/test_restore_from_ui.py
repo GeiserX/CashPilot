@@ -4914,3 +4914,12 @@ class TestALegacyRecordWhoseHelperIsLost:
         assert result["unverified_volumes"] == []
         assert result["unread_volumes"] == ["mysterium-data"]
         assert "mysterium-data" in result["failed_volumes"]
+
+
+def test_the_roadmap_never_lets_the_private_key_leave_the_owner():
+    """Only the passphrase crosses to the worker. The private key of a key-sealed
+    bundle never goes anywhere: the dashboard refuses such a file for that reason."""
+    root = Path(__file__).resolve().parents[1]
+    roadmap = " ".join((root / "docs" / "roadmap.md").read_text("utf-8").split())
+    assert "The private key never leaves the owner's machine." in roadmap
+    assert "never goes through the" in (root / "app" / "main.py").read_text("utf-8")
