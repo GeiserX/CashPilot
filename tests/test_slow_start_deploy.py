@@ -166,6 +166,26 @@ class TestASlowStartIsNotAFailedDeploy:
         docker.created.start.assert_not_called()
         docker.created.reload.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "error", [requests.exceptions.ReadTimeout("Read timed out."), _gateway(504)], ids=["read-timeout", "gateway"]
+    )
+    def test_a_restores_create_with_no_answer_is_not_waited_on(self, markers, fast_poll, monkeypatch, error):
+        # A restore only creates: nothing asked Docker to start the container,
+        # so there is no start to wait for, and a wait would only hold the
+        # restore's locks for the settle time and then blame a start.
+        monkeypatch.setattr(orchestrator, "START_SETTLE_SECONDS", 1)
+        docker = _FakeDocker()
+        docker.create_error = error
+        docker.created.status = "created"
+        docker.created.attrs = {**_up_on(running=False), "State": {"Running": False, "Error": ""}}
+        with pytest.raises(orchestrator.ContainerRuntimeError) as failed:
+            _raw_deploy(client=docker.client, slug="honeygain", start=False)
+        docker.created.reload.assert_not_called()
+        docker.created.start.assert_not_called()
+        assert "not running" not in str(failed.value) and "asked to start it" not in str(failed.value)
+        # Docker never answered with it, so it is not known to be this deploy's: left in place.
+        assert not docker.created.removed
+
     def test_the_ui_waits_as_long_as_the_worker_may(self):
         import asyncio
         from unittest.mock import AsyncMock

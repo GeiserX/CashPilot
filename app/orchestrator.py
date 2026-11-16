@@ -1357,9 +1357,10 @@ def deploy_raw(
         except ContainerNetworkError:
             raise
         except Exception as exc:
-            # No answer is not a refusal: Docker may still be starting it. A gated
-            # create that got none was never started, so there is nothing to wait for.
-            if not _outcome_unknown(exc) or (gated and created is None):
+            # No answer is not a refusal: Docker may still be starting it. A
+            # create-only (restore) or gated create that got none was never
+            # started, so there is nothing to wait for.
+            if not _outcome_unknown(exc) or not start or (gated and created is None):
                 raise
             container = created = _await_start(client, name, created, began, exc)
         if gated:

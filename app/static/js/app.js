@@ -2998,6 +2998,36 @@ const CP = (() => {
     return `critical_set=${encodeURIComponent(reviewed)}`;
   }
 
+  // What a Remove's answer says about the volumes it was asked to delete:
+  // success only when none stayed. byHandOn names the box when a Remove again
+  // cannot reach a volume that stays: a custom service's Remove already
+  // deleted its container and its record, so its row and button are gone and
+  // a DELETE again finds nothing (no restore keeps a custom service held).
+  function _removeToast(done, result, byHandOn) {
+    // A volume the box could not delete stays, and stays marked half-written.
+    // One another client replaced since the owner's review (or since the
+    // restore made it) is that client's: the box keeps it, and Remove again
+    // would not delete it either. A leftover row's first Remove can report
+    // one with no review at all, so the text names no confirmation.
+    const list = (v) => (Array.isArray(v) ? v : []);
+    const replaced = list(result?.replaced_volumes);
+    // Named by a restore record from an older worker with nothing that
+    // proves it is the restore's: the box keeps it and the service stays
+    // held until the owner deletes it.
+    const unverified = list(result?.unverified_volumes);
+    // Named on that record but unreadable just now: not known to be there,
+    // so the owner is not sent to delete it by hand; Remove again reads it.
+    const unread = list(result?.unread_volumes);
+    const kept = list(result?.failed_volumes).filter((v) => !replaced.includes(v) && !unverified.includes(v) && !unread.includes(v));
+    const notes = [];
+    if (kept.length) notes.push(`its volume ${kept.join(', ')} could not be deleted and stays. ${byHandOn ? `Delete it on ${byHandOn} by hand.` : 'Try Remove again.'}`);
+    if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')}, so the box kept that volume. Check it yourself.`);
+    if (unverified.length) notes.push(`the box cannot tell whether its volume ${unverified.join(', ')} holds the partial restore, so it kept that volume, and the service stays held until that volume is gone. No Remove deletes it: check it yourself, copy out anything you want to keep, delete it, then Remove again.`);
+    if (unread.length) notes.push(`the box could not read its volume ${unread.join(', ')} just now, so the service stays held. Try Remove again.`);
+    if (notes.length) toast(`${done}, but ${notes.join(' And ')}`, 'error');
+    else toast(done, 'success');
+  }
+
   // Remove a service. From a box's row (workerId, boxName) it goes to that box
   // only; from the service page it goes to the one online box, and never
   // takes the data with it. A row a restore that did not finish left
@@ -3070,28 +3100,7 @@ const CP = (() => {
     }
 
     function removed(result) {
-      // A volume the box could not delete stays, and stays marked half-written.
-      // One another client replaced since the owner's review (or since the
-      // restore made it) is that client's: the box keeps it, and Remove again
-      // would not delete it either. A leftover row's first Remove can report
-      // one with no review at all, so the text names no confirmation.
-      const list = (v) => (Array.isArray(v) ? v : []);
-      const replaced = list(result?.replaced_volumes);
-      // Named by a restore record from an older worker with nothing that
-      // proves it is the restore's: the box keeps it and the service stays
-      // held until the owner deletes it.
-      const unverified = list(result?.unverified_volumes);
-      // Named on that record but unreadable just now: not known to be there,
-      // so the owner is not sent to delete it by hand; Remove again reads it.
-      const unread = list(result?.unread_volumes);
-      const kept = list(result?.failed_volumes).filter((v) => !replaced.includes(v) && !unverified.includes(v) && !unread.includes(v));
-      const notes = [];
-      if (kept.length) notes.push(`its volume ${kept.join(', ')} could not be deleted and stays. Try Remove again.`);
-      if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')}, so the box kept that volume. Check it yourself.`);
-      if (unverified.length) notes.push(`the box cannot tell whether its volume ${unverified.join(', ')} holds the partial restore, so it kept that volume, and the service stays held until that volume is gone. No Remove deletes it: check it yourself, copy out anything you want to keep, delete it, then Remove again.`);
-      if (unread.length) notes.push(`the box could not read its volume ${unread.join(', ')} just now, so the service stays held. Try Remove again.`);
-      if (notes.length) toast(`${slug} removed${where}, but ${notes.join(' And ')}`, 'error');
-      else toast(`${slug} removed${where}`, 'success');
+      _removeToast(`${slug} removed${where}`, result);
       loadServicesTable();
       if (pinned) openServiceDetail(slug);
     }
@@ -4724,17 +4733,18 @@ const CP = (() => {
     if (withData) query += '&delete_volumes=true';
     const path = `/api/services/${encodeURIComponent(slug)}${query}`;
     try {
+      let result;
       try {
-        await api(path, { method: 'DELETE' });
+        result = await api(path, { method: 'DELETE' });
       } catch (err) {
         // The box names the volumes it cannot judge (its catalog does not know
         // this service): the owner reviews exactly those, then the password.
         if (!withData || err.code !== 'critical_volume') throw err;
         const reviewed = confirmCriticalVolumes(slug, boxName, err.refusal);
         if (!reviewed) return;
-        await api(`${path}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
+        result = await api(`${path}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
       }
-      toast(`${slug} removed from ${boxName}`, 'success');
+      _removeToast(`${slug} removed from ${boxName}`, result, boxName);
     } catch (err) {
       toast(`Remove failed: ${err.message}`, 'error');
     }
