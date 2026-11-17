@@ -113,11 +113,11 @@ jobs:
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
       # The pin-drift test is left out here, and only here. A minor release
-      # opens the PR that moves the compose pins to its series, and until that
-      # PR merges the pins are one series behind. Any app/ merge in that window
-      # ran this job against the old pins, failed, and shipped nothing (#574
-      # waited for v1.70.0). The release fixes the drift itself, so gating the
-      # release on it blocks the fix; test.yml still runs it on every PR.
+      # moves the compose pins to its series in its publish job, after the tag,
+      # and when that push fails it only warns, so the pins can stay one series
+      # behind until the next release. Gating the release on the drift would
+      # block the release that fixes it (#574 waited for v1.70.0 when the pins
+      # moved through a PR); test.yml still runs it on every PR.
       - name: Test
         run: >-
           uv run pytest
@@ -367,6 +367,10 @@ jobs:
     if: needs.release.outputs.new_tag
     name: Tag and announce
     runs-on: ubuntu-latest
+    # RELEASE_DEPLOY_KEY lives in this environment, not in the repository's
+    # secrets, and the environment admits only main. A workflow pushed on any
+    # other branch, by anyone with write access, cannot read the key.
+    environment: release
     permissions:
       # The tag and the GitHub Release. The commit to main is pushed with the
       # deploy key (see the last step), not with this token.
@@ -428,11 +432,31 @@ jobs:
 
       # The changelog and the pins land on main itself, not on the tagged commit:
       # main may have moved while the images were building.
+      #
+      # Only while this tag is the newest release. "Re-run failed jobs" on an old
+      # run, after a newer release shipped, would otherwise render the old tag's
+      # shorter changelog and move the pins back a series, and the push below
+      # passes no check. A fetch that fails also stops the delivery with a
+      # warning: the release is out, and the next one brings main up to date.
       - name: Start from the newest main
+        id: main
+        env:
+          TAG: ${{ needs.release.outputs.new_tag }}
         run: |
           set -euo pipefail
-          git fetch origin main
+          if ! git fetch --tags origin main; then
+            echo "::warning::could not fetch main; the changelog and pins for $TAG stay off main until the next release"
+            echo "deliver=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NEWEST=$(git tag -l 'v*.*.*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+          if [ "$NEWEST" != "$TAG" ]; then
+            echo "::warning::$TAG is not the newest release ($NEWEST), so main keeps the changelog and pins of $NEWEST"
+            echo "deliver=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git checkout -B release-main FETCH_HEAD
+          echo "deliver=true" >> "$GITHUB_OUTPUT"
 
       # The example compose files pin the major.minor series, and nothing moved
       # them. So every minor release left docker-compose.yml and
@@ -446,6 +470,7 @@ jobs:
       # a guard on the release. Now the release moves the pin itself, straight
       # after the tag it is pinning to. (CashPilot-9fg.)
       - name: Bump the example compose pins to this series
+        if: steps.main.outputs.deliver == 'true'
         run: |
           set -euo pipefail
           TAG="${{ needs.release.outputs.new_tag }}"
@@ -533,10 +558,14 @@ jobs:
       # the GitHub Release are published and correct, and the next release
       # brings the changelog and the pins up to date anyway.
       - name: Push the changelog and the pins to main
+        if: steps.main.outputs.deliver == 'true'
         env:
           TAG: ${{ needs.release.outputs.new_tag }}
           DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
           RENDERED: ${{ runner.temp }}/CHANGELOG.md
+          # Only to read GitHub's host keys: unauthenticated, that call shares
+          # the hosted runner's IP-wide limit of 60 an hour.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -568,7 +597,7 @@ jobs:
           (umask 077; printf '%s\n' "$DEPLOY_KEY" > "$key")
           # GitHub's own published host keys, fetched over HTTPS, so ssh checks
           # the host instead of trusting the first key it is shown.
-          if ! curl -fsS https://api.github.com/meta | jq -er '.ssh_keys[] | "github.com " + .' > "$hosts"; then
+          if ! curl -fsS --retry 3 -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/meta | jq -er '.ssh_keys[] | "github.com " + .' > "$hosts"; then
             echo "::warning::could not read GitHub's SSH host keys; the changelog and pins for $TAG stay off main until the next release"
             exit 0
           fi
@@ -582,7 +611,7 @@ jobs:
               exit 0
             fi
             echo "push $attempt was refused; replaying the commit on the newest main"
-            git fetch origin main
+            git fetch origin main || break
             if ! git rebase FETCH_HEAD; then
               git rebase --abort || true
               break

@@ -223,6 +223,41 @@ class TestTheReleaseMovesThePin:
         assert "git fetch origin main" in loop and "git rebase FETCH_HEAD" in loop, loop
         assert "git rebase --abort" in loop, "a conflicted replay is left half-applied"
 
+    def test_the_delivery_waits_for_the_newest_main_and_the_newest_tag(self):
+        """A late "Re-run failed jobs" on an older release must not push its
+        shorter changelog and older pins over a newer release's: the push passes
+        no check. Both steps that write main are gated on the guard."""
+        start = next(s for s in publish_steps() if s.get("name") == "Start from the newest main")
+        assert start.get("id") == "main"
+        run = start["run"]
+        assert "--sort=-v:refname" in run and '[ "$NEWEST" != "$TAG" ]' in run, run
+        assert run.count("deliver=false") == 2 and "deliver=true" in run, run
+        for step in (bump_step(), push_step()):
+            assert step.get("if") == "steps.main.outputs.deliver == 'true'", step.get("name")
+
+    def test_a_failed_fetch_warns_rather_than_failing_the_release(self):
+        start = next(s for s in publish_steps() if s.get("name") == "Start from the newest main")
+        assert "if ! git fetch" in start["run"]
+        assert "git fetch origin main || break" in push_step()["run"]
+
+    def test_the_host_key_call_is_authenticated(self):
+        """Unauthenticated, /meta shares the runner IP's limit of 60 an hour."""
+        step = push_step()
+        assert step["env"]["GH_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
+        assert '-H "Authorization: Bearer $GH_TOKEN" https://api.github.com/meta' in step["run"]
+
+    def test_only_main_can_read_the_deploy_key(self):
+        """The key bypasses the PR and check rules on main. It sits in the
+        `release` environment, which admits main only, so a workflow pushed on
+        another branch by a write collaborator cannot read it."""
+        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+        assert doc["jobs"]["publish"].get("environment") == "release"
+        users = [name for name, job in doc["jobs"].items() if "RELEASE_DEPLOY_KEY" in yaml.safe_dump(job)]
+        assert users == ["publish"], users
+        for wf in (ROOT / ".github" / "workflows").glob("*.yml"):
+            if wf.name != "release.yml":
+                assert "RELEASE_DEPLOY_KEY" not in wf.read_text(encoding="utf-8"), wf.name
+
     def test_the_series_is_read_from_both_files(self):
         """Reading only docker-compose.yml made partial drift invisible.
 
