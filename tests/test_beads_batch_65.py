@@ -79,6 +79,13 @@ def path_filter_matches(paths: list[str], filename: str) -> bool:
     return matched
 
 
+def push_step() -> dict:
+    for step in publish_steps():
+        if step.get("name") == "Push the changelog and the pins to main":
+            return step
+    raise AssertionError(f"no push step: {[s.get('name') for s in publish_steps()]}")
+
+
 def bump_step() -> dict:
     for step in publish_steps():
         if "compose pins" in (step.get("name") or ""):
@@ -160,122 +167,61 @@ class TestTheReleaseMovesThePin:
             f"release.yml fires on {compose} (paths: {paths}), so every release would trigger another one"
         )
 
+    def test_it_edits_the_newest_main(self):
+        """main may have moved while the images were building. Editing the
+        tagged commit and pushing it would be refused, or undo those merges."""
+        names = [s.get("name") or s.get("uses") or "" for s in publish_steps()]
+        assert names.index("Start from the newest main") < names.index("Bump the example compose pins to this series")
+        assert names.index("Bump the example compose pins to this series") < names.index(push_step()["name"])
+
+    def test_the_bump_step_itself_never_pushes(self):
+        """One commit, one push: the pins go out with the changelog."""
+        assert "git push" not in bump_step()["run"]
+        assert "git commit" not in bump_step()["run"]
+
     def test_the_commit_carries_no_skip_marker(self):
-        """A skipped run never reports, and `test` is required on main.
-
-        With `[skip ci]` the pin-bump PR produced zero Actions checks (#347 ran
-        one, and it was GitGuardian). Under a required check that PR could never
-        merge: the check sits "Expected" forever.
-        """
-        commits = [ln for ln in bump_step()["run"].splitlines() if ln.strip().startswith("git commit")]
+        """A skipped run never reports. `test` must still run on this commit on
+        main, and the docs must rebuild for the new compose pins."""
+        commits = [ln for ln in push_step()["run"].splitlines() if ln.strip().startswith("git commit")]
         assert commits, "the step no longer commits anything"
-        offenders = [ln.strip() for ln in commits if "[skip ci]" in ln]
-        assert not offenders, (
-            f"the pin-bump commit skips CI, so the required `test` check can never report on its PR: {offenders}"
-        )
+        offenders = [ln.strip() for ln in commits if "[skip ci]" in ln or "[ci skip]" in ln]
+        assert not offenders, offenders
 
-    def test_the_merge_waits_for_the_required_check(self):
-        """An immediate merge is rejected while `test` is still running."""
-        merges = [ln.strip() for ln in bump_step()["run"].splitlines() if "gh pr merge" in ln]
-        assert merges, "the step no longer merges anything"
-        assert all("--auto" in ln for ln in merges), (
-            f"the pin-bump merge does not use --auto, so it fires before `test` finishes and is rejected: {merges}"
-        )
+    def test_the_commit_subject_is_one_the_changelog_skips(self):
+        """`chore(release):` is skipped by cliff.toml, so the changelog never
+        lists its own commit."""
+        commit = next(ln for ln in push_step()["run"].splitlines() if ln.strip().startswith("git commit"))
+        assert '-m "chore(release): ' in commit, commit
 
-    def test_the_held_checks_are_approved_before_the_merge_is_queued(self):
-        """The PR is opened with GITHUB_TOKEN, so GitHub holds its runs at
-        action_required and `test` never reports until they are approved; the
-        pin PR sat BLOCKED after every minor release until this existed."""
-        run = bump_step()["run"]
-        assert "status=action_required" in run
-        approve = run.index('/actions/runs/$id/approve"')
-        assert approve < run.index("gh pr merge"), "the merge is queued before the runs are approved"
-        # The release has shipped by now: a refused approval warns, never fails.
-        assert "could not approve run" in run
-
-    def test_the_squash_message_is_spelled_out_so_github_adds_no_trailer(self):
-        """Left to GitHub, the default squash message appends
-        "Co-authored-by: github-actions[bot]" to every pin commit on main (#347,
-        #371). No commit in this repository carries a trailer, so the merge
-        names its own subject and body, and the body it names is the PR's own.
-        """
-        run = bump_step()["run"]
-        merge = run[run.index("gh pr merge") :]
-        merge = merge[: merge.index("; then")]
-        assert '--subject "chore(compose): pin the examples to $SERIES (#$PR_NUMBER)"' in merge, merge
-        assert 'PR_NUMBER="${PR_URL##*/}"' in run, "the PR number must come from the URL gh pr create printed"
-        assert "Co-authored-by" not in run
-        # The body is the same text the PR was opened with, not a second draft.
-        assert '--body "$PR_BODY"' in merge, merge
-        assert run.count('"$PR_BODY"') == 2, "PR body and squash body must be one variable"
-
-    def test_it_goes_through_a_pull_request(self):
-        """main is PROTECTED: "Changes must be made through a pull request".
-
-        The first version pushed straight to main and was rejected three times
-        with GH006 in the v1.16.0 run — which shipped green only because the
-        failure warns instead of failing. Branch protection is not going away,
-        so the mechanism had to change rather than the retry count.
-        """
-        run = bump_step()["run"]
-        assert "gh pr create" in run, run
-        assert "gh pr merge" in run, run
-
-    def test_every_push_targets_the_delivery_branch(self):
-        """The regression that matters: reintroducing a direct push would be
-        rejected on every release, silently, behind a warning.
-
-        Asserted POSITIVELY -- every `git push` must name "$BRANCH". The first
-        version filtered for lines mentioning GITHUB_REF_NAME, which meant a
-        hardcoded `git push origin main` -- the likeliest regression of all --
-        matched nothing and passed. (CodeRabbit, PR #260.)
-        """
-        pushes = [ln.strip() for ln in bump_step()["run"].splitlines() if "git push" in ln]
+    def test_every_push_goes_to_main(self):
+        """Asserted POSITIVELY: a push anywhere else is the old PR branch coming
+        back, which is what needed a person to merge it."""
+        pushes = [ln.strip() for ln in push_step()["run"].splitlines() if "git push" in ln]
         assert pushes, "the step no longer pushes anything"
-        offenders = [ln for ln in pushes if '"$BRANCH"' not in ln]
-        assert not offenders, f"a push does not target the delivery branch: {offenders}"
-
-    def test_the_pr_targets_the_branch_the_release_ran_on(self):
-        """Never a hardcoded 'main'."""
-        run = bump_step()["run"]
-        create = next(ln for ln in run.splitlines() if "gh pr create" in ln)
-        assert "GITHUB_REF_NAME" in create, create
-
-    def test_the_step_has_a_token_to_talk_to_the_api(self):
-        """`gh` without GH_TOKEN fails with an auth error that reads like a
-        permissions bug.
-
-        The EXACT mapping, not just the presence of the name: `GH_TOKEN: ""` and
-        `GH_TOKEN: ${{ secrets.SOMETHING_ELSE }}` both satisfied the first
-        version, and both would fail at run time in a way that looks like a
-        permissions problem rather than a typo. (CodeRabbit, PR #260.)
-        """
-        env = bump_step().get("env", {})
-        assert env.get("GH_TOKEN") == "${{ secrets.GITHUB_TOKEN }}", env
-
-    def test_the_job_may_open_a_pull_request(self):
-        """contents: write is not enough to open a PR; the API returns 403."""
-        import yaml as _yaml
-
-        doc = _yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
-        perms = doc["jobs"]["publish"]["permissions"]
-        assert perms.get("pull-requests") == "write", perms
+        offenders = [ln for ln in pushes if "HEAD:main" not in ln]
+        assert not offenders, offenders
 
     def test_every_delivery_failure_warns_rather_than_failing_the_release(self):
-        """The tag and the images are already published and correct by this
-        point. Failing here would turn a cosmetic miss into a red release — and
-        that is not hypothetical: the v1.16.0 run hit exactly this path.
+        """The tag, the images and the GitHub Release are published by this point.
+        Failing here would turn a cosmetic miss into a red release.
 
-        Scoped to the DELIVERY half (push, PR, merge). The validation above it
-        still uses ::error:: for a sed that did not do what it claims, which is a
-        real defect rather than an environment refusal.
+        Scoped to the DELIVERY half (key, host keys, push). A truncated render
+        above it is a real defect and stays an ::error::, without failing.
         """
-        run = bump_step()["run"]
-        delivery = run[run.index('BRANCH="chore/compose-pins') :]
+        run = push_step()["run"]
+        delivery = run[run.index('if [ -z "$DEPLOY_KEY" ]') :]
         assert "::warning::" in delivery
         assert "::error::" not in delivery, "a delivery failure is escalated to an error"
-        # Each of the three ways delivery can fail must exit 0, not fall through.
+        assert "exit 1" not in run
+        # A missing key, unreadable host keys, and every push refused.
         assert delivery.count("exit 0") >= 3, delivery
+
+    def test_a_refused_push_is_replayed_on_the_newest_main(self):
+        """A merge between the fetch and the push must not cost the commit."""
+        run = push_step()["run"]
+        loop = run[run.index("for attempt in") :]
+        assert "git fetch origin main" in loop and "git rebase FETCH_HEAD" in loop, loop
+        assert "git rebase --abort" in loop, "a conflicted replay is left half-applied"
 
     def test_the_series_is_read_from_both_files(self):
         """Reading only docker-compose.yml made partial drift invisible.

@@ -82,6 +82,10 @@ sort_commits = "newest"
 
 commit_parsers = [
   # Ordered: the first match wins, so the specific patterns precede the generic.
+  # The release's own bookkeeping, from when the changelog re-render and the
+  # compose-pin bump were pull requests of their own (until Nov 2026). They say
+  # nothing a reader needs, and they must precede ^docs and ^chore to be skipped.
+  { message = "^(docs: regenerate CHANGELOG\\.md|chore\\(compose\\): pin the examples to )", skip = true },
   { message = "^feat", group = "Features" },
   { message = "^fix", group = "Fixes" },
   { message = "^security", group = "Security" },

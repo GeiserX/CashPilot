@@ -368,14 +368,9 @@ jobs:
     name: Tag and announce
     runs-on: ubuntu-latest
     permissions:
+      # The tag and the GitHub Release. The commit to main is pushed with the
+      # deploy key (see the last step), not with this token.
       contents: write
-      # For the compose-pin bump, which must go through a PR because main is
-      # protected. Nothing else in this job needs it.
-      pull-requests: write
-      # To dispatch changelog.yml (the tag pushed below is made with
-      # GITHUB_TOKEN, so its tag trigger never fires) and to approve the pin
-      # PR's held workflow runs.
-      actions: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -400,6 +395,45 @@ jobs:
             git push origin "$TAG"
           fi
 
+      # Announced as soon as the tag exists: the images were built and pushed
+      # before this job started, so nothing below can leave a version announced
+      # without them.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          tag_name: ${{ needs.release.outputs.new_tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # CHANGELOG.md is the aggregate: "what changed between the version I run
+      # and the one I want" in one file, where GitHub's release pages hold one
+      # version each. Rendered here, at the tagged commit, so it lists released
+      # versions only and never an "Unreleased" section for what merged while
+      # the images were building. Written outside the tree and copied onto main
+      # by the last step. Full history and tags: the checkout above has both, and
+      # a shallow clone renders only the newest release, without an error.
+      - name: Render CHANGELOG.md
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
+        # The release has shipped. A failed render must not turn it red: the
+        # last step finds no whole file and leaves the changelog alone.
+        continue-on-error: true
+        with:
+          config: cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: ${{ runner.temp }}/CHANGELOG.md
+
+      # The changelog and the pins land on main itself, not on the tagged commit:
+      # main may have moved while the images were building.
+      - name: Start from the newest main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B release-main FETCH_HEAD
+
       # The example compose files pin the major.minor series, and nothing moved
       # them. So every minor release left docker-compose.yml and
       # docker-compose.fleet.yml a series behind, and
@@ -412,10 +446,6 @@ jobs:
       # a guard on the release. Now the release moves the pin itself, straight
       # after the tag it is pinning to. (CashPilot-9fg.)
       - name: Bump the example compose pins to this series
-        env:
-          # gh needs a token; the job already holds contents: write, and
-          # pull-requests: write is added on the job below for the PR itself.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${{ needs.release.outputs.new_tag }}"
@@ -469,98 +499,94 @@ jobs:
             echo "::error::a pin did not move to $SERIES (still on: $STRAY)"; exit 1
           fi
 
+          # Staged only. The last step commits it together with the changelog.
+          git add docker-compose.yml docker-compose.fleet.yml docker-compose.worker.yml
+          echo "Pins moved [$CURRENT] -> $SERIES"
+
+      # STRAIGHT TO MAIN, with a deploy key on the "Protect main" ruleset's
+      # bypass list.
+      #
+      # This used to be two pull requests per release: one for the compose pins
+      # and one for the changelog (changelog.yml). main refuses a push from
+      # GITHUB_TOKEN, and GitHub holds the runs of a PR that token opens, so
+      # each PR needed its runs approved by the job and then auto-merge. They
+      # still stalled: the changelog PR ran `test` before the pin PR had merged,
+      # failed tests/test_compose_image_pins.py, and nothing re-ran it, so a
+      # person had to update the branch and merge. A commit made only of a
+      # re-render and a pin edit gains nothing from a review, so it no longer
+      # goes through one.
+      #
+      # The deploy key (secret RELEASE_DEPLOY_KEY) writes to this repository
+      # only, and only this step reads it. A push made with it starts workflows,
+      # unlike one made with GITHUB_TOKEN, so `test` and the docs still run on
+      # this commit on main. It cannot start another release: release.yml has no
+      # push trigger, and RELEASE_PATHS lists neither CHANGELOG.md nor the
+      # compose files.
+      #
+      # No skip-CI marker in the message, and do not write the marker out in
+      # full anywhere it can reach a commit message: GitHub reads it anywhere in
+      # the message and skips every workflow for that commit. The
+      # `chore(release):` subject is one cliff.toml skips, so the changelog does
+      # not list its own commit.
+      #
+      # Every failure past this point warns and exits 0: the tag, the images and
+      # the GitHub Release are published and correct, and the next release
+      # brings the changelog and the pins up to date anyway.
+      - name: Push the changelog and the pins to main
+        env:
+          TAG: ${{ needs.release.outputs.new_tag }}
+          DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          RENDERED: ${{ runner.temp }}/CHANGELOG.md
+        run: |
+          set -euo pipefail
+
+          # A render from an incomplete tag graph is empty or truncated, and
+          # committing it would silently delete the changelog. Refusing that
+          # file is a real defect, so it is an error, but the pins still go out.
+          releases=$(grep -c '^## \[' "$RENDERED" 2>/dev/null || true)
+          if [ "${releases:-0}" -lt 100 ] || ! grep -q 'UPGRADING.md' "$RENDERED"; then
+            echo "::error::the rendered changelog has ${releases:-0} release sections or lost its UPGRADING.md link. Refusing to commit it."
+          else
+            cp "$RENDERED" CHANGELOG.md
+            git add CHANGELOG.md
+          fi
+
+          if git diff --cached --quiet; then
+            echo "main already has this changelog and these pins; nothing to push."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docker-compose.yml docker-compose.fleet.yml docker-compose.worker.yml
-          # No skip-CI marker, deliberately. `test` is a required check on
-          # main now, and a skipped run never reports -- the check would sit
-          # "Expected" forever and this PR could never merge. What stops a
-          # second release is the paths filter at the top of this workflow,
-          # which does not list the compose files. Keep it that way: widening it
-          # to cover them would make every pin bump cut a release.
-          #
-          # And do not write the marker out in full anywhere it can reach a
-          # commit message, not even to explain it. GitHub reads the string
-          # ANYWHERE in a HEAD commit message, body included, and skips every
-          # workflow for that commit -- no runs, no annotation, nothing to
-          # notice. A commit explaining the removal of the marker skipped all
-          # three checks on this branch and left the PR permanently BLOCKED on a
-          # required check that could never report.
-          git commit -m "chore(compose): pin the examples to $SERIES"
+          git commit -m "chore(release): changelog and compose pins for $TAG"
 
-          # THROUGH A PULL REQUEST, because main is protected.
-          #
-          # The first version pushed straight to main and was rejected three
-          # times with "Changes must be made through a pull request" (GH006) --
-          # observed in the v1.16.0 run, which shipped green only because the
-          # failure warns instead of failing. Branch protection is not going
-          # away, so the mechanism has to change rather than the retry count.
-          #
-          # Merged with --auto, not immediately: main requires `test` to pass,
-          # and an immediate merge would be rejected while it is still running.
-          # Auto-merge lands the PR the moment the check goes green. If merging
-          # fails for any other reason the warning fires and the release still
-          # ships -- which is the behaviour to keep.
-          BRANCH="chore/compose-pins-$SERIES"
-          git checkout -b "$BRANCH"
-          # --force-with-lease so a re-run reuses the branch instead of dying on
-          # it. Protection covers main, not this branch.
-          if ! git push --force-with-lease origin "$BRANCH"; then
-            echo "::warning::could not push $BRANCH; bump the compose pins to $SERIES by hand"
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::warning::secret RELEASE_DEPLOY_KEY is not set, so the changelog and pins for $TAG stay off main until the next release"
             exit 0
           fi
-
-          PR_BODY="Automated by the $TAG release. The example compose files pin the major.minor series, and tests/test_compose_image_pins.py compares that pin against the newest released series -- so without this every open branch goes red until someone bumps them by hand."
-          if ! PR_URL=$(gh pr create --base "${GITHUB_REF_NAME}" --head "$BRANCH" \
-                 --title "chore(compose): pin the examples to $SERIES" \
-                 --body "$PR_BODY"); then
-            echo "::warning::could not open the pin-bump PR for $SERIES; merge $BRANCH by hand"
+          key="$RUNNER_TEMP/deploy_key"
+          hosts="$RUNNER_TEMP/known_hosts"
+          (umask 077; printf '%s\n' "$DEPLOY_KEY" > "$key")
+          # GitHub's own published host keys, fetched over HTTPS, so ssh checks
+          # the host instead of trusting the first key it is shown.
+          if ! curl -fsS https://api.github.com/meta | jq -er '.ssh_keys[] | "github.com " + .' > "$hosts"; then
+            echo "::warning::could not read GitHub's SSH host keys; the changelog and pins for $TAG stay off main until the next release"
             exit 0
           fi
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$hosts -o StrictHostKeyChecking=yes"
 
-          # The squash message is spelled out. Left to GitHub, the default
-          # message appends a co-author trailer naming the Actions bot to every
-          # pin commit on main (#347, #371), and no commit here carries a trailer.
-          PR_NUMBER="${PR_URL##*/}"
-
-          # This PR is opened with GITHUB_TOKEN, so GitHub holds the runs its
-          # push started at "action_required" and `test` never reports; the PR
-          # sat BLOCKED after every minor release until someone approved them.
-          # Approve the runs held on the commit just pushed (they only test
-          # this compose edit). Warn rather than fail: the release has shipped.
-          SHA=$(git rev-parse HEAD)
-          IDS=""
-          for _ in $(seq 1 12); do
-            IDS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&status=action_required" \
-                    --jq '.workflow_runs[].id' || true)
-            [ -n "$IDS" ] && break
-            sleep 10
+          # A merge can land between the fetch above and this push. Replay the
+          # one commit on top of it and try again.
+          for attempt in 1 2 3; do
+            if git push "git@github.com:${GITHUB_REPOSITORY}.git" HEAD:main; then
+              echo "Pushed the changelog and pins for $TAG to main."
+              exit 0
+            fi
+            echo "push $attempt was refused; replaying the commit on the newest main"
+            git fetch origin main
+            if ! git rebase FETCH_HEAD; then
+              git rebase --abort || true
+              break
+            fi
           done
-          for id in $IDS; do
-            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/approve" >/dev/null \
-              || echo "::warning::could not approve run $id; approve it on the PR by hand"
-          done
-          echo "approved: ${IDS:-none}"
-
-          if ! gh pr merge "$BRANCH" --squash --delete-branch --auto \
-                 --subject "chore(compose): pin the examples to $SERIES (#$PR_NUMBER)" \
-                 --body "$PR_BODY"; then
-            echo "::warning::opened the pin-bump PR for $SERIES but could not merge it; merge it by hand"
-            exit 0
-          fi
-          echo "Pins bumped to $SERIES via $BRANCH (auto-merges when tests pass)."
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
-        with:
-          tag_name: ${{ needs.release.outputs.new_tag }}
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Regenerate the changelog
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run changelog.yml --ref main
+          echo "::warning::could not push the changelog and pins for $TAG to main; the next release brings them"
+          exit 0

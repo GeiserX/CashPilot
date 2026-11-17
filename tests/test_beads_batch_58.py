@@ -36,7 +36,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CHANGELOG = ROOT / "CHANGELOG.md"
 ARCHIVE = ROOT / "docs" / "changelog-0.x-handwritten.md"
 CONFIG = ROOT / "cliff.toml"
-WORKFLOW = ROOT / ".github" / "workflows" / "changelog.yml"
 RELEASE = ROOT / ".github" / "workflows" / "release.yml"
 
 
@@ -133,12 +132,32 @@ class TestItDoesNotOversellWhatItKnows:
 
 
 class TestRegenerationCannotLoopOrLoseTheFile:
+    """The release renders the changelog and pushes it to main itself.
+
+    It used to be a pull request of its own (changelog.yml, branch
+    chore/changelog), and it stalled: its `test` ran before the release's
+    compose-pin PR had merged, failed the pin check, and waited for a person to
+    update the branch and merge it. Now one commit carries the changelog and the
+    pins, pushed by the release with a deploy key on the ruleset's bypass list.
+    """
+
+    def _release(self) -> dict:
+        return yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
+
     def _release_paths(self) -> list[str]:
-        doc = yaml.safe_load(RELEASE.read_text(encoding="utf-8"))
-        return doc["jobs"]["pending"]["env"]["RELEASE_PATHS"].split()
+        return self._release()["jobs"]["pending"]["env"]["RELEASE_PATHS"].split()
+
+    def _steps(self) -> list[dict]:
+        return self._release()["jobs"]["publish"]["steps"]
+
+    def _step(self, name: str) -> dict:
+        return next(s for s in self._steps() if s.get("name") == name)
+
+    def _names(self) -> list[str]:
+        return [s.get("name") or s.get("uses") or "" for s in self._steps()]
 
     def test_merging_the_changelog_does_not_trigger_a_release(self):
-        """Otherwise: release -> regenerate -> merge -> release, forever."""
+        """Otherwise: release -> regenerate -> push -> release, forever."""
         paths = self._release_paths()
         assert paths, "release.yml lost its path filter, so ANY merge now releases"
         for never in ("CHANGELOG.md", "cliff.toml"):
@@ -147,59 +166,68 @@ class TestRegenerationCannotLoopOrLoseTheFile:
     def test_the_docs_path_is_not_in_the_filter_either(self):
         assert not any(p.startswith("docs/") for p in self._release_paths())
 
-    def test_the_workflow_opens_a_pull_request_rather_than_pushing(self):
-        """`main` requires a PR, so a push would simply fail."""
-        doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-        steps = doc["jobs"]["regenerate"]["steps"]
-        assert any("create-pull-request" in str(s.get("uses", "")) for s in steps)
+    def test_release_yml_has_no_push_trigger(self):
+        """The deploy-key push to main starts workflows, unlike a GITHUB_TOKEN
+        push. A push trigger here would make that commit cut a release."""
+        doc = self._release()
+        triggers = doc.get("on", doc.get(True))
+        assert "push" not in triggers, triggers
 
-    def test_it_reuses_one_branch_instead_of_spamming(self):
-        doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-        step = next(s for s in doc["jobs"]["regenerate"]["steps"] if "create-pull-request" in str(s.get("uses", "")))
-        assert step["with"]["branch"] == "chore/changelog", (
-            "without a fixed branch this files one PR per release, and releases are ~2 commits apart"
-        )
+    def test_there_is_one_mechanism_not_two(self):
+        """changelog.yml opened the PR that needed a person; it must not come back
+        next to the release's own push."""
+        assert not (ROOT / ".github" / "workflows" / "changelog.yml").exists()
 
-    def test_it_checks_out_full_history(self):
-        """A shallow clone yields a changelog with one release and no error."""
-        doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-        checkout = next(s for s in doc["jobs"]["regenerate"]["steps"] if "actions/checkout" in str(s.get("uses", "")))
+    def test_it_renders_at_the_tag_from_full_history(self):
+        """A shallow clone yields a changelog with one release and no error, and
+        rendering on main would add an "Unreleased" section for whatever merged
+        while the images were building."""
+        checkout = next(s for s in self._steps() if "actions/checkout" in str(s.get("uses", "")))
         assert checkout["with"]["fetch-depth"] == 0
+        names = self._names()
+        assert (
+            names.index("Create and push tag")
+            < names.index("Render CHANGELOG.md")
+            < names.index("Start from the newest main")
+        ), names
+
+    def test_a_failed_render_does_not_turn_the_release_red(self):
+        """The tag, the images and the GitHub Release exist by then."""
+        assert self._step("Render CHANGELOG.md").get("continue-on-error") is True
 
     def test_it_refuses_to_commit_a_truncated_changelog(self):
         """Committing an empty render would silently delete the file."""
-        text = WORKFLOW.read_text(encoding="utf-8")
-        assert "Refusing" in text
-        assert "-lt 100" in text
+        run = self._step("Push the changelog and the pins to main")["run"]
+        assert "Refusing" in run
+        assert "-lt 100" in run
+        assert "UPGRADING.md" in run
+
+    def test_it_pushes_to_main_with_the_deploy_key(self):
+        """GITHUB_TOKEN cannot bypass the ruleset; the deploy key can."""
+        step = self._step("Push the changelog and the pins to main")
+        assert step["env"]["DEPLOY_KEY"] == "${{ secrets.RELEASE_DEPLOY_KEY }}", step["env"]
+        pushes = [ln.strip() for ln in step["run"].splitlines() if "git push" in ln]
+        assert pushes, "the step no longer pushes anything"
+        assert all("HEAD:main" in ln for ln in pushes), pushes
+
+    def test_ssh_checks_the_host_key(self):
+        """Fetched from GitHub's API over HTTPS, never accept-new."""
+        run = self._step("Push the changelog and the pins to main")["run"]
+        assert "StrictHostKeyChecking=yes" in run
+        assert "api.github.com/meta" in run
+        assert "accept-new" not in run and "StrictHostKeyChecking=no" not in run
 
     def test_every_third_party_action_is_pinned_to_a_sha(self):
         """These get write access to the repository."""
-        doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-        for step in doc["jobs"]["regenerate"]["steps"]:
+        for step in self._steps():
             uses = str(step.get("uses", ""))
-            if not uses:
+            if not uses or uses.startswith("actions/"):
                 continue
             assert re.search(r"@[0-9a-f]{40}$", uses.split()[0]), f"{uses} is not SHA-pinned"
 
     def test_the_job_asks_for_no_more_permission_than_it_needs(self):
-        doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-        assert doc["permissions"] == {"contents": "read"}, "the workflow-level default should stay read-only"
-        # actions: write is for approving the PR's own held workflow runs.
-        assert set(doc["jobs"]["regenerate"]["permissions"]) == {"contents", "pull-requests", "actions"}
-
-    def test_a_release_starts_the_regeneration(self):
-        """Tags pushed with GITHUB_TOKEN start no workflows, so the tag trigger
-        alone never ran this once; release.yml has to dispatch it."""
-        release = (WORKFLOW.parent / "release.yml").read_text(encoding="utf-8")
-        assert "gh workflow run changelog.yml --ref main" in release
-
-    def test_the_changelog_pr_gets_its_required_checks(self):
-        """A PR opened with GITHUB_TOKEN gets its runs held at action_required;
-        without approving them it sits blocked forever (#549 did)."""
-        text = WORKFLOW.read_text(encoding="utf-8")
-        assert "status=action_required" in text
-        assert '/actions/runs/$id/approve"' in text
-        assert 'gh pr merge "$PR" --auto --squash' in text
+        """No PR to open, no run to approve, no workflow to dispatch."""
+        assert self._release()["jobs"]["publish"]["permissions"] == {"contents": "write"}
 
 
 class TestTheConfigIsHonestAboutItsLimits:
