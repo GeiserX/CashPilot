@@ -72,6 +72,9 @@ from app.constants import (  # noqa: E402
 
 # Cached Docker availability (checked once at startup, refreshed on demand)
 _docker_available: bool | None = None
+# When the current Docker outage began (time.monotonic()), None while Docker
+# answers. /api/health reads it to tell a blip from a worker gone blind.
+_docker_unreachable_since: float | None = None
 
 # In-memory status cache — populated by health check, served instantly to UI
 _status_cache: list[dict[str, Any]] = []
@@ -90,23 +93,40 @@ def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
     debug covers it) so a dead daemon does not warn once per probe forever.
     Only True -> False warns: None -> False is startup discovering a
     monitor-only worker, which lifespan already announces.
+
+    The outage clock starts at the first failure, at startup too, and only a
+    successful call stops it, so a repeated failure does not move it.
     """
-    global _docker_available
+    global _docker_available, _docker_unreachable_since
     if _docker_available is True:
         logger.warning(
             "Docker became unreachable (%s): %s — degrading to monitor-only until it returns",
             reason,
             exc,
         )
+    if _docker_unreachable_since is None:
+        _docker_unreachable_since = time.monotonic()
     _docker_available = False
 
 
 def _mark_docker_available() -> None:
     """Flip the availability memo to True, announcing a recovery."""
-    global _docker_available
+    global _docker_available, _docker_unreachable_since
     if _docker_available is False:
         logger.warning("Docker is reachable again — container management restored")
     _docker_available = True
+    _docker_unreachable_since = None
+
+
+def docker_unreachable_for() -> float | None:
+    """Seconds Docker has failed every call without a break, or None while it answers.
+
+    Memory only, never a call to Docker, so /api/health can ask it while the
+    socket hangs. The heartbeat (every minute) and the fence check (every five)
+    call Docker for real, which keeps the answer current.
+    """
+    since = _docker_unreachable_since
+    return None if since is None else time.monotonic() - since
 
 
 def docker_available() -> bool:
@@ -154,7 +174,9 @@ def _docker_unreachable_text() -> str:
         return (
             "The Docker socket proxy is not answering. Check that the "
             f"{PROXY_SERVICE} container is running (docker compose ps) and "
-            f"read its log (docker logs {PROXY_SERVICE})."
+            f"read its log (docker logs {PROXY_SERVICE}). If the log says the "
+            "upstream Docker socket is unreachable, Docker replaced its socket "
+            f"(a Docker update does this): docker restart {PROXY_SERVICE}."
         )
     return (
         "Docker socket not available. Mount /var/run/docker.sock to "

@@ -154,6 +154,13 @@ _HEARTBEAT_FAILURES_UNHEALTHY_AFTER = 12
 # supervisor) during the worker's own self-heal. Four extra nominal cycles
 # tolerate ~36s of per-cycle overhead before that ordering could invert.
 _HEARTBEAT_STALE_AFTER = (_HEARTBEAT_FAILURES_UNHEALTHY_AFTER + 4) * HEARTBEAT_INTERVAL
+# How long Docker may fail every call before /api/health says so. A daemon
+# restart or a docker-ce upgrade (live-restore keeps the containers) takes a
+# minute or two; the shipped compose files bind the socket FILE into the proxy,
+# and when the host replaces that socket the proxy never sees the new one, so
+# the outage lasts until someone restarts the proxy. On 2026-11-17 that was 17
+# hours of a worker answering 200 here while it could not manage a container.
+_DOCKER_UNHEALTHY_AFTER = 10 * 60
 # The name-resolution hint is logged ONCE per outage, not every cycle. A warning
 # repeated every 60 seconds for 42 hours is precisely how the last one was missed.
 _link_hint_logged = False
@@ -767,6 +774,9 @@ async def _send_heartbeat() -> None:
             "proxied_only": route_gate.proxied_only(),
         },
     }
+    # "proxy" or "socket": what to restart when Docker stops answering, so the
+    # UI's alert can name it (main._worker_docker_check).
+    payload["system_info"]["docker_access"] = orchestrator.docker_access()
     if docker_ok:
         # This worker fences its earners off the LAN by itself and takes
         # POST /api/isolation to switch an upgraded install over (app/lan_fence.py).
@@ -3094,22 +3104,37 @@ async def api_health(response: Response) -> dict[str, Any]:
     NOT degraded when no UI_URL is configured: a worker with nowhere to report
     is doing exactly what it was told to.
 
+    Docker that has failed every call for _DOCKER_UNHEALTHY_AFTER degrades it
+    too, with or without a UI: a worker that cannot reach Docker manages
+    nothing, while its heartbeat goes on landing. The outage clock is read from
+    memory (orchestrator.docker_unreachable_for), never by calling Docker here,
+    so a hung socket cannot hang this endpoint; the heartbeat and the fence
+    check do the calls. The fix text is fixed: nothing of Docker's own answer.
+
     The annotation is dict[str, Any] on purpose: FastAPI validates the response
     against it AFTER the work is done, and a stricter type turns a future
     non-str field into a 500 exactly when the endpoint has news (the api_deploy
     lesson). Every value is still deliberately built as a str.
     """
     body: dict[str, Any] = {"status": "ok", "worker": WORKER_NAME}
+    reasons: list[str] = []
     success_age = time.monotonic() - _last_heartbeat_ok
     if UI_URL and (
         _consecutive_heartbeat_failures >= _HEARTBEAT_FAILURES_UNHEALTHY_AFTER or success_age > _HEARTBEAT_STALE_AFTER
     ):
-        response.status_code = 503
-        body["status"] = "degraded"
-        body["reason"] = "not reporting to the UI"
+        reasons.append("not reporting to the UI")
         body["last_heartbeat"] = _last_heartbeat
         body["consecutive_failures"] = str(_consecutive_heartbeat_failures)
         body["last_success_age"] = f"{int(success_age)}s"
         if _last_error:
             body["error"] = _last_error
+    docker_down = orchestrator.docker_unreachable_for()
+    if docker_down is not None and docker_down > _DOCKER_UNHEALTHY_AFTER:
+        reasons.append("cannot reach Docker")
+        body["docker_unreachable_for"] = f"{int(docker_down)}s"
+        body["docker"] = orchestrator._docker_unreachable_text()
+    if reasons:
+        response.status_code = 503
+        body["status"] = "degraded"
+        body["reason"] = "; ".join(reasons)
     return body

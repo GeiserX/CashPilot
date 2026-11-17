@@ -139,3 +139,46 @@ The proxy may refuse to connect to that earner's servers, or allow only ports 80
 **Which services are heavy, and where should they run?**
 
 Storage nodes, relays and VPN exits, and GPU work use the most. [Budgeting a small box](fleet.md#budgeting-a-small-box) lists them and shows how to measure each container before you decide.
+
+<a id="worker-lost-docker"></a>
+
+### The worker lost Docker after a Docker update
+
+**What you see.** The worker stays online on the Fleet page, but CashPilot cannot start, stop or update its containers. The Fleet page shows **Docker unreachable** next to the worker. After 10 minutes the worker's healthcheck fails (`docker ps` shows the worker as `unhealthy`). After 30 minutes the bell and your notifications say that the worker cannot reach Docker. `docker logs cashpilot-socket-proxy` shows `upstream Docker socket unreachable`. Your earners keep running.
+
+**Cause.** The shipped compose files bind the socket file `/var/run/docker.sock` into `cashpilot-socket-proxy`. A file bind holds that one file. A Docker update (for example `unattended-upgrades` installing a new `docker-ce`) restarts Docker, and Docker makes a new socket file at the same path. With Docker's live-restore on, the proxy keeps running through that restart and keeps the old file. Nothing answers on the old file.
+
+**Quick fix.** On that machine, restart the proxy:
+
+```bash
+docker restart cashpilot-socket-proxy
+```
+
+The restart binds the new socket, and the worker finds Docker again at its next heartbeat. You do not have to restart the worker. On Unraid and TrueNAS the worker holds the socket itself, so restart the worker.
+
+**Lasting fix.** Bind the socket's folder, not the socket file. A folder bind shows a replaced socket at once. In the `cashpilot-socket-proxy` service of your compose file, replace the line `- /var/run/docker.sock:/var/run/docker.sock:ro` with the bind below, and add the `SOCKGUARD_UPSTREAM_SOCKET` line to its `environment`:
+
+```yaml
+    volumes:
+      - type: bind
+        source: /var/run
+        target: /host-run
+        read_only: true
+        bind:
+          recursive: disabled
+      - cashpilot_docker_api:/run/cashpilot-docker
+    environment:
+      # Keep the lines that are already there, and add this one:
+      - SOCKGUARD_UPSTREAM_SOCKET=/host-run/docker.sock
+```
+
+Then run `docker compose up -d`. The same change works in `docker-compose.worker.yml` and `docker-compose.fleet.yml`.
+
+- `recursive: disabled` is necessary. `/var/run` holds other mounts, for example Docker's network namespaces under `/run/docker/netns` and `/run/user/...`. A recursive bind brings them all into the proxy. A non-recursive bind shows only the folder itself.
+- `SOCKGUARD_UPSTREAM_SOCKET` sends the proxy to the new path. The policy block and its fingerprint stay as they are, because the environment variable overrides `upstream.socket` in the policy. Without the variable the proxy does not start (`upstream socket not found (/var/run/docker.sock)`).
+- It needs Docker Compose 2.30.0 or newer. Older releases refuse the whole file with `Additional property recursive is not allowed`. Run `docker compose version` to check. Debian 13 packages Compose 2.26.1, so on Debian install Compose from Docker's own repository. The in-app update uses its own Compose 2.33, so it reads the changed file.
+- It works only on Linux. Docker Desktop on macOS and Windows maps only `/var/run/docker.sock` into its virtual machine. There, `/var/run` is a folder on your Mac or PC, with no Docker socket in it.
+- With rootless Docker the socket is in `/run/user/<your uid>`, which is a separate mount. Use that folder as `source`.
+- On Podman, keep the file bind. We have not tested the folder bind there.
+
+The shipped files keep the file bind, because the folder bind needs Compose 2.30 and Linux, and CashPilot also supports older Compose releases and Docker Desktop. A newer compose file that you download does not have your change, so make it again after you replace the file.
