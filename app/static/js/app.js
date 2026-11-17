@@ -4963,6 +4963,9 @@ const CP = (() => {
       const held = r.pending && r.status !== 'retired';
       const forget = r.forgettable
         ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}"${held ? ' data-a2="pending"' : ''}>Forget</button>` : '';
+      // An id a deploy set that the box runs now: the server decides (r.changeable).
+      const change = r.changeable
+        ? `<button class="btn btn-ghost btn-sm" data-action="openIdentityChange" data-a1="${id}">Change</button>` : '';
       const unconfirmed = held && !r.forgettable
         ? '<div class="credential-health-hint">The worker did not confirm this deploy, so the box may still start with this id. You can forget it 6 h after the deploy.</div>'
         : (backup && r.source === 'pending' && !r.forgettable
@@ -4974,10 +4977,34 @@ const CP = (() => {
             <div class="credential-health-detail"><code class="identity-value" id="identity-value-${id}">${escapeHtml(r.masked)}</code>
               · ${escapeHtml(where)} · ${escapeHtml(state)}</div>
             ${seen}${reported}${unconfirmed}
+            ${r.changeable ? `<div class="identity-change" id="identity-change-${id}"></div>` : ''}
           </div>
-          <div class="credential-health-actions">${buttons}${forget}</div>
+          <div class="credential-health-actions">${buttons}${change}${forget}</div>
         </div>`;
     }).join('');
+  }
+
+  // The Change form of one row. Pure, so the harness can run it. Its input and
+  // its pick box carry the deploy form's data attributes, so "Use one this
+  // service had before" and its Use buttons fill it as they fill the deploy form.
+  function identityChangeHtml(r) {
+    const id = escapeHtml(String(r.id));
+    const slug = escapeHtml(r.slug);
+    const key = escapeHtml(r.key);
+    return `
+      <label class="form-label" for="identity-change-value-${id}">New ${escapeHtml(r.label)}</label>
+      <button type="button" class="btn btn-link btn-sm" data-action="pickPreviousIdentity" data-a1="${slug}" data-a2="${key}" data-a3="${escapeHtml(String(r.worker_id))}">Use one this service had before</button>
+      <input type="text" class="form-input" id="identity-change-value-${id}" data-slug="${slug}" data-key="${key}"
+        maxlength="256" autocomplete="off" spellcheck="false">
+      <div class="identity-pick" data-pick-slug="${slug}" data-pick-key="${key}"></div>
+      <p class="form-hint">CashPilot makes the ${escapeHtml(r.service)} container on ${escapeHtml(r.worker)} again with
+        the new id, and changes nothing else. To the provider it is a new device. Its extra copies and its
+        proxied copies on this box take ids made from the new one: running ones change now, and a stopped
+        proxied copy keeps its old id until you rebuild it on the service page.</p>
+      <div class="credential-health-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-action="changeIdentity" data-a1="${id}">Change</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="closeIdentityChange">Cancel</button>
+      </div>`;
   }
 
   // The form for an id CashPilot did not deploy with. Pure, so the harness can
@@ -5019,11 +5046,16 @@ const CP = (() => {
       </div>`;
   }
 
+  // The rows last listed, by id, for the Change form.
+  let _identityRows = {};
+
   async function loadIdentities() {
     const body = document.getElementById('identities-container');
     if (!body) return;
     try {
-      body.innerHTML = identityRowsHtml(await api('/api/identities'));
+      const rows = await api('/api/identities');
+      _identityRows = Object.fromEntries((Array.isArray(rows) ? rows : []).map(r => [String(r.id), r]));
+      body.innerHTML = identityRowsHtml(rows);
     } catch (err) {
       body.innerHTML = `<p class="text-fail">Could not load device ids: ${escapeHtml(err.message)}</p>`;
     }
@@ -5074,6 +5106,45 @@ const CP = (() => {
       loadIdentities();
     } catch (err) {
       toast(`Could not save the id: ${err.message}`, 'error');
+    }
+  }
+
+  // One Change form at a time: "Use" fills every input of its service and field.
+  function closeIdentityChange() {
+    document.querySelectorAll('.identity-change').forEach(el => { el.innerHTML = ''; });
+  }
+
+  function openIdentityChange(id) {
+    const row = _identityRows[String(id)];
+    const box = document.getElementById(`identity-change-${id}`);
+    if (!row || !box) return;
+    closeIdentityChange();
+    box.innerHTML = identityChangeHtml(row);
+    const input = document.getElementById(`identity-change-value-${id}`);
+    if (input) input.focus();
+  }
+
+  // A redeploy of that one service on that one box. The server checks the value
+  // and asks first when another box runs it (api() shows that question).
+  async function changeIdentity(id) {
+    const row = _identityRows[String(id)];
+    const input = document.getElementById(`identity-change-value-${id}`);
+    const value = input ? input.value.trim() : '';
+    if (!row || !value) { toast('Type the new id first', 'warning'); return; }
+    if (!window.confirm(`Change the ${row.label} of ${row.service} on ${row.worker}? CashPilot makes this one `
+      + 'container again with the new id, and the provider sees a new device.')) return;
+    try {
+      const res = await api(`/api/identities/${encodeURIComponent(id)}/change`, { method: 'POST', body: { value } });
+      // The notes a redeploy shows: what it kept, a proxied copy left on its old
+      // id, and a device the provider still needs linked, or it earns for nobody.
+      const kept = res && res.kept_from_previous_deployment;
+      if (Array.isArray(kept) && kept.length) toast(`${row.service}: change notes: ${kept.join('; ')}`, 'warning');
+      const link = res && res.device_link;
+      if (link && link.id && !link.registered) toast(`${row.service}: link device ${link.id} to your account. ${link.steps || ''}`, 'warning');
+      toast(`${row.service} on ${row.worker} now runs with the new ${row.label}`, 'success');
+      loadIdentities();
+    } catch (err) {
+      toast(`Could not change the id: ${err.message}`, 'error');
     }
   }
 
@@ -5161,11 +5232,12 @@ const CP = (() => {
       .filter(el => el.dataset.pickSlug === slug && el.dataset.pickKey === key);
   }
 
-  async function pickPreviousIdentity(slug, key) {
+  async function pickPreviousIdentity(slug, key, workerId) {
     let offers;
     // The box this form deploys to, when exactly one is picked: the server leaves
-    // it out of "in use on", as the deploy's shared-id check leaves it out.
-    const target = _identityTargetWorker(slug);
+    // it out of "in use on", as the deploy's shared-id check leaves it out. The
+    // Change form names its box itself.
+    const target = workerId !== undefined && workerId !== '' ? Number(workerId) : _identityTargetWorker(slug);
     const query = `?key=${encodeURIComponent(key)}${target === null ? '' : `&worker_id=${target}`}`;
     try {
       offers = await api(`/api/identities/reuse/${encodeURIComponent(slug)}${query}`);
@@ -6380,6 +6452,9 @@ const CP = (() => {
     revealIdentity,
     copyIdentity,
     forgetIdentity,
+    openIdentityChange,
+    closeIdentityChange,
+    changeIdentity,
     openIdentityForm,
     closeIdentityForm,
     addIdentity,

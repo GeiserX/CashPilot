@@ -296,6 +296,21 @@ owner sees this section. An API key cannot read it.
 - **Show and Copy.** A value stays hidden until you press Show or Copy. Each
   press writes a row to the audit log before the value leaves the server. If
   that row cannot be written, you get an error and no value.
+- **Change an id.** A row that is in use and that a deploy set has a
+  **Change** button. Use it to give a running service a new device UUID or
+  device name on one box, without removing it. Type the new id, or press
+  **Use one this service had before** to pick an earlier one. CashPilot checks
+  the id as the deploy form does: the shape the service needs, such as
+  `sdk-node-` and 32 hex characters for EarnApp, and one word with no spaces.
+  If another box runs that id, CashPilot asks first. Docker sets a container's
+  settings when it creates it, so CashPilot makes that one container again with
+  the new id and keeps every other setting. Nothing else on the box changes.
+  The old id stays in the list as removed. The provider sees a new device, so
+  link it to your account if the service asks for that (EarnApp:
+  `earnapp.com/r/<new UUID>`). Extra copies and proxied copies on that box use
+  ids made from the box's id. The running ones change with it. A stopped
+  proxied copy keeps its old id until you rebuild it on the service page. Each
+  change writes an `identity_change` row to the audit log, without the id.
 - **Add an id.** Use this for an id that CashPilot did not deploy with, for
   example one from before you used CashPilot. Pick the service, the box, the
   copy and the field, and paste the id. The id must be one word of up to 256

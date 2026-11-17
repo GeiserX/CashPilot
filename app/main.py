@@ -11933,6 +11933,7 @@ def _identity_view(row: dict[str, Any], names: dict[int, str], labels: dict[str,
         # once its deploy can no longer land (database.delete_identity).
         "pending": pending is not None,
         "forgettable": _identity_forgettable(row, pending is not None),
+        "changeable": _identity_changeable(row, labels),
         "first_seen": row.get("first_seen"),
         "last_seen": row.get("last_seen"),
         "retired_at": row.get("retired_at"),
@@ -11948,6 +11949,22 @@ def _identity_forgettable(row: dict[str, Any], pending: bool) -> bool:
     # A deploy's or a restore's hold the worker never answered: once it can no longer land.
     held = pending or row.get("kind") == "backup"
     return held and float(row.get("age") or 0) >= PENDING_IDENTITY_SECONDS
+
+
+def _identity_changeable(row: dict[str, Any], labels: dict[str, dict[str, str]]) -> bool:
+    """Whether the owner may change ``row``'s value on its box: what the Change button reads.
+
+    Only an id a deploy set that the box's own copy runs now (not a proxied
+    copy's or an extra copy's, which are made from it, nor an unconfirmed
+    hold), for a field the catalog marks as an identifier of a catalog service.
+    ``labels`` is _identity_context's: the catalog's identity keys per service.
+    """
+    return (row.get("kind"), row.get("source"), row.get("status"), str(row.get("instance") or "")) == (
+        "env",
+        "deploy",
+        "active",
+        "1",
+    ) and row.get("name") in labels.get(row.get("slug") or "", {})
 
 
 async def _identity_context() -> tuple[dict[int, str], dict[str, dict[str, str]]]:
@@ -12119,6 +12136,75 @@ async def api_identity_forget(request: Request, identity_id: int) -> dict[str, s
         worker_id=row["worker_id"],
     )
     return {"status": "deleted"}
+
+
+@app.post("/api/identities/{identity_id}/change")
+async def api_identity_change(request: Request, identity_id: int) -> dict[str, Any]:
+    """Give one box's running service a new device id or name. Owner, signed in, only.
+
+    Docker fixes a container's env when it is made, so the change is a redeploy
+    of that one service on that one box with ``{key: value}`` typed, through
+    the deploy path: the record, the route, the image, the fence, the ledger
+    and the shared-id check all apply as on any redeploy, and nothing else on
+    the box moves. The body carries ``value`` and, once the owner saw that
+    another box runs it, ``allow_shared_identity``. The proxied copies of the
+    service on that box take ids made from the new one: running ones are
+    rebuilt now and the rest are marked, as after a device rename
+    (_refresh_proxied_copies), so none changes id later unseen. Answers what
+    the deploy answers, its notes included.
+    """
+    user = _require_owner_session(request)
+    body = await _json_body(request)
+    row = await database.get_identity(identity_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="No such device id")
+    _, labels = await _identity_context()
+    if not _identity_changeable(row, labels):
+        raise HTTPException(
+            status_code=409,
+            detail="Only an id a deploy set and the box runs now can be changed; a copy's id follows its box's",
+        )
+    slug, key, worker_id = row["slug"], row["name"], int(row["worker_id"])
+    svc = catalog.get_service(slug) or {}
+    var = next((v for v in (svc.get("docker") or {}).get("env", []) if v.get("key") == key), {})
+    label = str(var.get("label") or key)
+    value = body.get("value")
+    value = value.strip() if isinstance(value, str) else ""
+    # One word: a device name reaches the provider's command line, which the
+    # worker splits on whitespace. Then the catalog's own shape, as on a deploy.
+    # A {hostname} template or the catalog default would not count as typed
+    # (_deploy's typed_env), so the record would win and nothing would change.
+    if (
+        not value
+        or database.manual_identity_error(key, value)
+        or (var.get("pattern") and not re.fullmatch(var["pattern"], value))
+        or value == str(var.get("default", "")).strip()
+    ):
+        raise HTTPException(status_code=400, detail=f"Invalid value for: {label}")
+    if value == row.get("value"):
+        raise HTTPException(status_code=400, detail=f"The box already runs with this {label}")
+    recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
+    if not recorded:
+        raise HTTPException(status_code=409, detail=f"{svc.get('name') or slug} is not deployed on this box any more")
+    allow = body.get("allow_shared_identity") is True
+    if not allow and (others := await database.identity_in_use(slug, key, value, except_worker=worker_id)):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "identity_in_use",
+                "message": f"This {label} for {svc.get('name') or slug} already runs on "
+                f"{', '.join(await _worker_names(others))}. Two boxes on one device look to the provider like one "
+                "device, which it may merge or ban.",
+            },
+        )
+    deploy = DeployRequest(env={key: value}, allow_shared_identity=allow)
+    response = await _deploy(slug, deploy, worker_id, request=request)
+    await _audit("identity_change", f"{slug}|{key}|copy 1", "changed", actor=user, worker_id=worker_id)
+    # The proxied copies' ids are made from this one: rebuilt from the new record now.
+    fresh = await database.get_deployment_spec(slug, worker_id=worker_id)
+    if fresh and (notes := await _refresh_proxied_copies(slug, worker_id, svc, svc.get("docker") or {}, fresh)):
+        response["kept_from_previous_deployment"] = [*response.get("kept_from_previous_deployment", []), *notes]
+    return response
 
 
 @app.get("/api/identities/reuse/{slug}")
