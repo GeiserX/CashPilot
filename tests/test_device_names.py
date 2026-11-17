@@ -855,6 +855,14 @@ class TestCopiesThatKeptTheOldNameAreOfferedAgain:
         assert 'data-action="renameDevices"' in note["innerHTML"]
         assert confirms == [] and deploys == []
 
+    def test_a_box_with_only_a_pending_copy_is_not_called_a_shared_device_name(self):
+        """A copy is pending after a device rename and after a changed id (Settings > Device ids) alike."""
+        _, _, note = _form(
+            run="page", page=True, detailWorkers=_RUNNING, workers=[], renames={}, copies=self.COPY, answer=True
+        )
+        assert "every box got" not in note["innerHTML"] and "Give each box its own" not in note["innerHTML"]
+        assert "device name or id" in note["innerHTML"] and "Rebuild the running proxied copies" in note["innerHTML"]
+
     def test_the_button_rebuilds_only_the_copies_never_the_original(self):
         result = _run_form(
             run="page",
@@ -872,7 +880,8 @@ class TestCopiesThatKeptTheOldNameAreOfferedAgain:
         assert urls == ["/api/deploy/iproyal/device-names/copies?worker_id=3"]
         assert (
             len(result["confirms"]) == 1
-            and "• local: proxied copy p4 still has the old device name" in result["confirms"][0]
+            and "• local: proxied copy p4 still has the old device name or id" in result["confirms"][0]
+            and "when their box was renamed" not in result["confirms"][0]
         )
         assert any(t["kind"] == "warning" and "proxied copy p4: stopped" in t["text"] for t in result["toasts"])
 
