@@ -10,25 +10,23 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.8.2] - 2026-11-17
+
+### CI
+
+- Stop opening a PR per release; push the changelog and pins to main (#790)
+
+### Fixes
+
+- Let a catalog limit change reach a service that is already deployed (#789)
+
 ## [2.8.1] - 2026-11-17
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#786)
 
 ### Fixes
 
 - Give the client room for a burst of proxy connections (#787)
 
-### Maintenance
-
-- Pin the examples to 2.8 (#785)
-
 ## [2.8.0] - 2026-11-17
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#782)
 
 ### Features
 
@@ -38,19 +36,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Stop warning that the command changed when only a value in it did (#784)
 
-### Maintenance
-
-- Pin the examples to 2.7 (#781)
-
 ## [2.7.0] - 2026-11-16
 
 ### Dependencies
 
 - Bump the minor-and-patch group with 4 updates (#780)
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#770)
 
 ### Features
 
@@ -64,10 +54,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Keep a shared hold until every deploy of its ids has an answer (#774)
 - Refuse an admin-key password reset on an account promoted to owner mid-request (#772)
 
-### Maintenance
-
-- Pin the examples to 2.6 (#769)
-
 ### Packaging
 
 - Bump astral-sh/uv from 0.11.16 to 0.13.8 (#778)
@@ -79,10 +65,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.6.0] - 2026-11-16
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#767)
-
 ### Features
 
 - Put a lost node identity back from the dashboard, checked before it starts (#755)
@@ -92,15 +74,10 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Never let one node identity be restored onto a second box (#768)
 - Keep a routed copy's ids and running earner through failed redeploys and races (#765)
 
-### Maintenance
-
-- Pin the examples to 2.5 (#766)
-
 ## [2.5.0] - 2026-11-15
 
 ### Documentation
 
-- Regenerate CHANGELOG.md (#744)
 - Fix the 4050 commands that always fail and explain a WebUI that never loads (#752)
 - Show how to free the disk that old images take, without giving the worker image delete (#746)
 
@@ -118,19 +95,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Stop a backup file from unpacking 100 MB or file capabilities on restore (#750)
 - Never send a stored proxy secret to a new server (#747)
 
-### Maintenance
-
-- Pin the examples to 2.4 (#743)
-
 ### Testing
 
 - Fail a hung test in minutes instead of holding a runner for six hours (#757)
 
 ## [2.4.0] - 2026-11-14
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#737)
 
 ### Features
 
@@ -138,19 +107,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.3.3] - 2026-11-13
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#735)
-
 ### Fixes
 
 - List Wipter again, with the referral link (#736)
 
 ## [2.3.2] - 2026-11-12
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#733)
 
 ### Fixes
 
@@ -165,17 +126,12 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Documentation
 
 - How to remove CashPilot completely, so a fresh install starts clean (#725)
-- Regenerate CHANGELOG.md (#728)
 - Make the backup save the database and the restore reach the volume the UI mounts (#726)
 
 ### Fixes
 
 - Stop the shared fleet key and worker deploys from reaching the owner's data and the host (#731)
 - Stop password guessing past the login limit and cross-site actions as the owner (#730)
-
-### Maintenance
-
-- Pin the examples to 2.3 (#727)
 
 ### Performance
 
@@ -187,10 +143,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - One release a day at most, so a busy day is not nine version bumps (#719)
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#718)
-
 ### Features
 
 - Sign out a forged session by replacing the session key (#724)
@@ -201,11 +153,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Cap the socket proxy at 256 MB so a leak cannot starve the host (#720)
 
 ## [2.2.9] - 2026-11-10
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#716)
-- Regenerate CHANGELOG.md (#714)
 
 ### Fixes
 
@@ -219,19 +166,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.2.7] - 2026-11-10
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#711)
-
 ### Fixes
 
 - Say a proxy's tunnel change is stuck, and why, instead of calling its tunnel gone (#712)
 
 ## [2.2.6] - 2026-11-10
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#710)
 
 ### Fixes
 
@@ -239,29 +178,17 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.2.5] - 2026-11-10
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#709)
-
 ### Fixes
 
 - Stop the UI log printing the Telegram bot token on every alert (#706)
 
 ## [2.2.4] - 2026-11-10
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#708)
-
 ### Fixes
 
 - Alert when a proxied copy or its tunnel disappears from a box (#707)
 
 ## [2.2.3] - 2026-11-10
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#704)
 
 ### Fixes
 
@@ -272,11 +199,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Dependencies
 
 - Bump ruff from 0.17.3 to 0.17.4 in the minor-and-patch group (#702)
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#700)
-- Regenerate CHANGELOG.md (#698)
 
 ### Packaging
 
@@ -292,15 +214,7 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Let a tag-only upgrade take a new socket proxy policy in one step (#699)
 
-### Maintenance
-
-- Pin the examples to 2.2 (#697)
-
 ## [2.2.0] - 2026-11-09
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#695)
 
 ### Features
 
@@ -311,8 +225,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Documentation
 
 - Warn operators about the traps that stop Mysterium and proxied copies from earning (#672)
-- Regenerate CHANGELOG.md (#694)
-- Regenerate CHANGELOG.md (#692)
 
 ### Fixes
 
@@ -326,10 +238,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.1.7] - 2026-11-09
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#691)
-
 ### Fixes
 
 - Keep a dashboard stop quiet on its own box until the next action there (#687)
@@ -339,7 +247,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Documentation
 
 - Plan to make every CashPilot task doable by click or keyboard (#680)
-- Regenerate CHANGELOG.md (#688)
 
 ### Fixes
 
@@ -350,7 +257,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Documentation
 
 - Warn that a later sysctl file or a DOCKER-USER drop can silently undo the port setup (#684)
-- Regenerate CHANGELOG.md (#685)
 
 ### Fixes
 
@@ -358,19 +264,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.1.4] - 2026-11-08
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#681)
-
 ### Fixes
 
 - Stop warning that a redeploy is a second copy of the node it replaces (#682)
 
 ## [2.1.3] - 2026-11-08
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#678)
 
 ### Fixes
 
@@ -378,33 +276,17 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.1.2] - 2026-11-08
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#676)
-
 ### Fixes
 
 - Give each isolation mode the one step that moves a host-network node (#677)
 
 ## [2.1.1] - 2026-11-08
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#674)
-
 ### Fixes
 
 - Keep the running node when Docker refuses its replacement (#675)
 
-### Maintenance
-
-- Pin the examples to 2.1 (#673)
-
 ## [2.1.0] - 2026-11-08
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#671)
 
 ### Features
 
@@ -412,19 +294,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.0.7] - 2026-11-08
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#669)
-
 ### Fixes
 
 - Fence Mysterium like every other earner, so a compromised node cannot rewrite the host firewall (#665)
 
 ## [2.0.6] - 2026-11-08
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#667)
 
 ### Fixes
 
@@ -432,20 +306,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [2.0.5] - 2026-11-08
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#666)
-
 ### Fixes
 
 - Keep adding a new ProxyRack device until the account accepts it, instead of dropping it (#664)
 
 ## [2.0.4] - 2026-11-08
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#662)
-- Regenerate CHANGELOG.md (#661)
 
 ### Fixes
 
@@ -462,7 +327,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Documentation
 
 - Warn that commercial proxies can refuse earners, so a passing Test does not mean a copy earns (#657)
-- Regenerate CHANGELOG.md (#655)
 
 ### Fixes
 
@@ -478,15 +342,7 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Retry a refused release check within the hour, so a rate-limited startup no longer hides updates for a day (#656)
 
-### Maintenance
-
-- Pin the examples to 2.0 (#654)
-
 ## [2.0.0] - 2026-11-07
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#651)
 
 ### Features
 
@@ -508,19 +364,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Move the socket proxy to sockguard 2.4.6, which stops a malformed zstd frame crashing it (#631)
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#647)
-
 ## [1.73.2] - 2026-11-07
 
 ### CI
 
 - Bump github/codeql-action (#624)
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#627)
 
 ### Fixes
 
@@ -540,7 +388,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Maintenance
 
 - Ship the store packages on 1.73.0, which carries the migrator (#628)
-- Pin the examples to 1.73 (#626)
 
 ## [1.73.0] - 2026-11-07
 
@@ -551,7 +398,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Documentation
 
 - Say a worker on the UI's host can read the stored logins' key (#618)
-- Regenerate CHANGELOG.md (#620)
 
 ### Features
 
@@ -572,11 +418,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Bump python-multipart (#612)
 - Bump pytest-asyncio from 1.4.1 to 1.4.1.post1 (#613)
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#617)
-- Regenerate CHANGELOG.md (#616)
-
 ## [1.72.6] - 2026-11-06
 
 ### Documentation
@@ -584,10 +425,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - Say what a first payout really asks for, before users request one (#584)
 
 ## [1.72.5] - 2026-11-06
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#615)
 
 ### Fixes
 
@@ -602,8 +439,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Documentation
 
 - Warn that a fixed egress IP goes stale on a dynamic line and leaves NAT loopback open (#608)
-- Regenerate CHANGELOG.md (#611)
-- Regenerate CHANGELOG.md (#610)
 
 ## [1.72.3] - 2026-11-06
 
@@ -618,7 +453,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Stop telling users the worker holds the Docker socket and nothing fences the LAN (#603)
 - Stop saying CashPilot has no proxies and no default LAN fence (#596)
-- Regenerate CHANGELOG.md (#600)
 
 ### Fixes
 
@@ -631,15 +465,7 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Let fresh installs behind the socket proxy deploy bridge earners again (#598)
 
-### Maintenance
-
-- Pin the examples to 1.72 (#599)
-
 ## [1.72.0] - 2026-11-06
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#595)
 
 ### Features
 
@@ -647,31 +473,15 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [1.71.1] - 2026-11-06
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#593)
-
 ### Fixes
 
 - Keep a worker isolated after a reboot that took its network (#594)
 
-### Maintenance
-
-- Pin the examples to 1.71 (#592)
-
 ## [1.71.0] - 2026-11-06
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#588)
 
 ### Features
 
 - Take the raw Docker socket, which is root on the host, away from the worker (#583)
-
-### Maintenance
-
-- Pin the examples to 1.70 (#591)
 
 ## [1.70.0] - 2026-11-06
 
@@ -688,15 +498,7 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Fence earners in Docker's "default" network mode and count a second network as exposed (#590)
 
-### Maintenance
-
-- Pin the examples to 1.69 (#587)
-
 ## [1.69.0] - 2026-11-06
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#581)
 
 ### Features
 
@@ -714,26 +516,17 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Grade every provider on published criteria so its real cons are visible before you sign up (#572)
 
-### Maintenance
-
-- Pin the examples to 1.67 (#582)
-
 ## [1.67.0] - 2026-11-05
 
 ### Features
 
 - Bring logins over from money4band, CashFactory and InternetIncome without retyping them (#571)
 
-### Maintenance
-
-- Pin the examples to 1.66 (#580)
-
 ## [1.66.0] - 2026-11-05
 
 ### Documentation
 
 - Let home-server users install CashPilot from their app store (#567)
-- Regenerate CHANGELOG.md (#579)
 
 ### Features
 
@@ -741,19 +534,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 ## [1.65.3] - 2026-11-05
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#578)
-
 ### Fixes
 
 - Stop redeploys piling up anonymous volumes and deletes orphaning a deploying container (#570)
 
 ## [1.65.2] - 2026-11-05
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#564)
 
 ### Testing
 
@@ -765,20 +550,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Open a collector card without leaving a gap in the other column (#575)
 
-### Maintenance
-
-- Pin the examples to 1.65 (#569)
-
 ## [1.65.0] - 2026-11-04
 
 ### Features
 
 - Show what each earner container does on the network, opt-in (#560)
-
-### Maintenance
-
-- Pin the examples to 1.64 (#566)
-- Pin the examples to 1.63 (#565)
 
 ## [1.64.0] - 2026-11-04
 
@@ -796,25 +572,13 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Let the dashboard move off a taken port 8080 and still update itself (#561)
 
-### Maintenance
-
-- Pin the examples to 1.62 (#563)
-
 ## [1.62.0] - 2026-11-04
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#557)
 
 ### Features
 
 - Show the new user's sign-up bonus next to every Sign Up button (#558)
 
 ## [1.61.3] - 2026-11-04
-
-### Documentation
-
-- Regenerate CHANGELOG.md (#555)
 
 ### Fixes
 
@@ -832,10 +596,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Bump the minor-and-patch group with 6 updates (#553)
 
-### Documentation
-
-- Regenerate CHANGELOG.md (#551)
-
 ## [1.61.1] - 2026-11-01
 
 ### CI
@@ -847,29 +607,17 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Close the opentelemetry-api advisory by moving to 1.45.2 (#547)
 
-### Maintenance
-
-- Pin the examples to 1.61 (#544)
-
 ## [1.61.0] - 2026-10-31
 
 ### Features
 
 - Let every user pick from five built-in themes, adding Sunrise and Warm
 
-### Maintenance
-
-- Pin the examples to 1.60 (#542)
-
 ## [1.60.0] - 2026-10-31
 
 ### Features
 
 - Make Classic night the default theme, with Dark and Light one click away (#541)
-
-### Maintenance
-
-- Pin the examples to 1.59 (#540)
 
 ## [1.59.0] - 2026-10-31
 
@@ -906,10 +654,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Clear a removed service's disabled-account alert without a restart (#535)
 
-### Maintenance
-
-- Pin the examples to 1.58 (#534)
-
 ## [1.58.0] - 2026-10-31
 
 ### Features
@@ -920,10 +664,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - Keep every page inside the window at any width, wrapping before cutting
-
-### Maintenance
-
-- Pin the examples to 1.57 (#531)
 
 ## [1.57.0] - 2026-10-31
 
@@ -955,11 +695,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Keep the runs-nowhere and container-down checks on when a Desktop is paired (#523)
 
-### Maintenance
-
-- Pin the examples to 1.56 (#522)
-- Pin the examples to 1.56 (#521)
-
 ## [1.56.1] - 2026-10-30
 
 ### Fixes
@@ -977,10 +712,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - Stop counting a timed-out collection as a $0 success (#520)
-
-### Maintenance
-
-- Pin the examples to 1.55 so new installs get the current release (#519)
 
 ## [1.55.0] - 2026-10-30
 
@@ -1018,10 +749,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Keep phones out of the resource-use panel (#510)
 
-### Maintenance
-
-- Pin the examples to 1.54 (#509)
-
 ## [1.54.0] - 2026-10-30
 
 ### Features
@@ -1052,19 +779,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Keep warning about containers CashPilot made before workers existed (#507)
 
-### Maintenance
-
-- Pin the examples to 1.53 (#506)
-
 ## [1.53.0] - 2026-10-30
 
 ### Features
 
 - Never warn about containers you made by hand, and let you mute or switch off drift warnings (#505)
-
-### Maintenance
-
-- Pin the examples to 1.52 (#504)
 
 ## [1.52.0] - 2026-10-30
 
@@ -1083,10 +802,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - Keep the dashboard inside the screen on a real fleet with long device and image names (#494)
-
-### Maintenance
-
-- Pin the examples to 1.51 (#493)
 
 ## [1.51.0] - 2026-10-29
 
@@ -1139,10 +854,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Run one ProxyRack copy per worker, since copies would share its device UUID (#481)
 
-### Maintenance
-
-- Pin the examples to 1.50 (#484)
-
 ## [1.50.0] - 2026-10-29
 
 ### Features
@@ -1154,10 +865,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Reclaim space freed by retention on installs that restart weekly (#482)
 - Purge old data on every start, so an install that updates daily still purges (#477)
-
-### Maintenance
-
-- Pin the examples to 1.49 (#479)
 
 ## [1.49.1] - 2026-10-29
 
@@ -1208,10 +915,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Refuse a malformed EarnApp UUID at deploy instead of letting the node exit on every restart (#462)
 
-### Maintenance
-
-- Pin the examples to 1.48 (#461)
-
 ## [1.48.0] - 2026-10-28
 
 ### Features
@@ -1228,19 +931,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Deploy Anyone relays from our image, so a fresh deploy runs instead of crash-looping (#459)
 
-### Maintenance
-
-- Pin the examples to 1.47 (#458)
-
 ## [1.47.0] - 2026-10-28
 
 ### Features
 
 - Run Anyone relays with no capabilities, so a fresh deploy stops crash-looping (#457)
-
-### Maintenance
-
-- Pin the examples to 1.46 (#456)
 
 ## [1.46.0] - 2026-10-28
 
@@ -1275,19 +970,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Bump the minor-and-patch group with 2 updates (#448)
 
-### Maintenance
-
-- Pin the examples to 1.45 (#446)
-
 ## [1.45.0] - 2026-10-24
 
 ### Features
 
 - Run a service more than once per worker where the provider pays per device (#444)
-
-### Maintenance
-
-- Pin the examples to 1.44 (#445)
 
 ## [1.44.0] - 2026-10-24
 
@@ -1325,19 +1012,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Stop reporting Salad as a referral programme with no code, the programme is gone (#436)
 
-### Maintenance
-
-- Pin the examples to 1.43 (#437)
-
 ## [1.43.0] - 2026-10-15
 
 ### Features
 
 - Lead every list with the services that pay the project best (#435)
-
-### Maintenance
-
-- Pin the examples to 1.42 (#434)
 
 ## [1.42.0] - 2026-10-15
 
@@ -1387,10 +1066,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Reject a malformed port when the catalog loads, instead of a 500 at deploy (#425)
 
-### Maintenance
-
-- Pin the examples to 1.41 (#424)
-
 ## [1.41.0] - 2026-10-09
 
 ### Features
@@ -1408,10 +1083,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - Stop 4 s DNS stalls on the isolated bridge by giving its containers their own resolvers (#421)
-
-### Maintenance
-
-- Pin the examples to 1.40 (#420)
 
 ## [1.40.0] - 2026-10-07
 
@@ -1505,10 +1176,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Stop flagging a digest-pinned service as outdated (#390)
 
-### Maintenance
-
-- Pin the examples to 1.39 (#389)
-
 ## [1.39.0] - 2026-09-27
 
 ### Documentation
@@ -1519,10 +1186,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Features
 
 - Keep services under gVisor across dashboard redeploys (#388)
-
-### Maintenance
-
-- Pin the examples to 1.38 (#385)
 
 ## [1.38.0] - 2026-09-26
 
@@ -1593,10 +1256,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - Stop re-flagging dead services whose sites merely stay up (#373)
-
-### Maintenance
-
-- Pin the examples to 1.37 (#371)
 
 ## [1.37.0] - 2026-09-20
 
@@ -1700,10 +1359,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - One offline push per episode, not one per phone nap (#348)
 
-### Maintenance
-
-- Pin the examples to 1.36 [skip ci] (#347)
-
 ## [1.36.0] - 2026-08-19
 
 ### Features
@@ -1722,10 +1377,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Tell the truth about Presearch, PassiveApp and Bytelixir (#340)
 
-### Maintenance
-
-- Pin the examples to 1.35 [skip ci] (#336)
-
 ## [1.35.0] - 2026-08-13
 
 ### Features
@@ -1743,10 +1394,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - Make the alert pipeline able to report its own failures (#332)
-
-### Maintenance
-
-- Pin the examples to 1.34 [skip ci] (#335)
 
 ## [1.34.0] - 2026-08-13
 
@@ -1772,19 +1419,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Export docker.resources instead of silently dropping it (CashPilot-65q4) (#327)
 
-### Maintenance
-
-- Pin the examples to 1.33 [skip ci] (#329)
-
 ## [1.33.0] - 2026-08-10
 
 ### Features
 
 - Give collector notices the same dedupe and push that errors get (CashPilot-vb78) (#326)
-
-### Maintenance
-
-- Pin the examples to 1.32 [skip ci] (#325)
 
 ## [1.32.0] - 2026-08-10
 
@@ -1796,29 +1435,17 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Add cpu_shares resource control to protect earners under host contention (#317)
 
-### Maintenance
-
-- Pin the examples to 1.31 [skip ci] (#324)
-
 ## [1.31.0] - 2026-08-10
 
 ### Features
 
 - Storj warns when satellites cannot reach the node (CashPilot-1gmy) (#321)
 
-### Maintenance
-
-- Pin the examples to 1.30 [skip ci] (#322)
-
 ## [1.30.0] - 2026-08-10
 
 ### Features
 
 - Flag a dial-back service whose advertised address the machine no longer has (#320)
-
-### Maintenance
-
-- Pin the examples to 1.29 [skip ci] (#319)
 
 ## [1.29.0] - 2026-08-10
 
@@ -1830,19 +1457,11 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - The nightly live check never ran — a fabricated action pin killed it at setup (#315)
 
-### Maintenance
-
-- Pin the examples to 1.28 [skip ci] (#314)
-
 ## [1.28.0] - 2026-08-08
 
 ### Features
 
 - A 401 and a timeout are different problems — failure taxonomy end to end (CashPilot-5bdm) (#313)
-
-### Maintenance
-
-- Pin the examples to 1.27 [skip ci] (#312)
 
 ## [1.27.0] - 2026-08-07
 
@@ -1855,10 +1474,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Salad and deeper-network verifiably run referral programs — two new action items (#311)
 
-### Maintenance
-
-- Pin the examples to 1.26 [skip ci] (#310)
-
 ## [1.26.0] - 2026-08-07
 
 ### Features
@@ -1868,10 +1483,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - A name hit without the managed label is not ours — the worker could be told to force-remove itself (CashPilot-o4uw) (#306)
-
-### Maintenance
-
-- Pin the examples to 1.25 [skip ci] (#308)
 
 ## [1.25.0] - 2026-08-07
 
@@ -1897,10 +1508,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - The update banner was always visible, empty, and linked nowhere (#301)
 
-### Maintenance
-
-- Pin the examples to 1.24 [skip ci] (#300)
-
 ## [1.24.0] - 2026-08-07
 
 ### Features
@@ -1919,10 +1526,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Answer 401 before parsing an unauthenticated request body (#297)
 
-### Maintenance
-
-- Pin the examples to 1.23 [skip ci] (#296)
-
 ## [1.23.0] - 2026-08-07
 
 ### Features
@@ -1939,10 +1542,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Say which ProxyBase holds the wallet (#294)
 
-### Maintenance
-
-- Pin the examples to 1.22 [skip ci] (#292)
-
 ## [1.22.0] - 2026-08-07
 
 ### Documentation
@@ -1952,10 +1551,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Features
 
 - A read-only API token, so a dashboard need not hold the keys (#291)
-
-### Maintenance
-
-- Pin the examples to 1.21 [skip ci] (#289)
 
 ## [1.21.0] - 2026-08-07
 
@@ -1976,10 +1571,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 - One official mark, with the sun touching all four edges (#288)
 - Stop telling people to publish the worker API on every interface (#280)
 - Proxybase pays to an account, not a minted wallet (#276)
-
-### Maintenance
-
-- Pin the examples to 1.20 [skip ci] (#285)
 
 ### Testing
 
@@ -2004,10 +1595,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Highlight the sidebar link for the page you are on (#272)
 
-### Maintenance
-
-- Pin the examples to 1.19 [skip ci] (#268)
-
 ## [1.19.0] - 2026-08-06
 
 ### Documentation
@@ -2018,10 +1605,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 
 - Declare where every service actually pays out (#267)
 
-### Maintenance
-
-- Pin the examples to 1.18 [skip ci] (#266)
-
 ## [1.18.0] - 2026-08-06
 
 ### Documentation
@@ -2031,10 +1614,6 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Features
 
 - Tell the operator when a newer release exists (#263)
-
-### Maintenance
-
-- Pin the examples to 1.17 (#264)
 
 ## [1.17.0] - 2026-08-06
 
