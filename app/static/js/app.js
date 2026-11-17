@@ -362,6 +362,8 @@ const CP = (() => {
   // never a drop to 0: a host-network container has no traffic counters, and
   // a worker that was offline sent nothing.
   const USAGE_DASH = '—';
+  // Where a worker that lost Docker finds the cause and the lasting fix (main.DOCKER_LOST_DOC).
+  const DOCKER_LOST_DOC = 'https://geiserx.github.io/CashPilot/faq/#worker-lost-docker';
   const usageState = { days: '7', worker: null, container: '', step: 3600 };
   const usageCharts = {};
 
@@ -1701,8 +1703,9 @@ const CP = (() => {
           continue;
         }
         // A box that reports in but cannot reach Docker: it looks online and manages nothing.
+        // The message is cut at 200 characters, so the doc link is a button of its own.
         if (a.kind === 'docker') {
-          items.push({ level: 'fail', tag: 'Docker unreachable', what: a.platform, why: escapeHtml(a.error), actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+          items.push({ level: 'fail', tag: 'Docker unreachable', what: a.platform, why: escapeHtml(a.error), actions: `<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a> <a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>` });
           continue;
         }
         if (a.kind !== 'missing') continue;
@@ -6185,6 +6188,7 @@ const CP = (() => {
             ${notifyDevicesHtml(a)}
           </div>
           ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}">${isAuth ? 'Fix credential' : 'Update'}</button>` : ''}
+          ${isDocker ? `<a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>` : ''}
         </div>
       `;
       }).join('');

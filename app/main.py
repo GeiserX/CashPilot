@@ -1191,7 +1191,8 @@ async def _worker_docker_check(workers: list[dict[str, Any]] | None = None) -> N
         if workers is None:
             workers = await database.list_workers()
         now = datetime.now(UTC)
-        stored = await database.get_alert_subjects("docker")
+        stored_at = await database.get_alert_first_times("docker")
+        stored = set(stored_at)
         blind: dict[str, dict[str, Any]] = {}
         unjudged: set[str] = set()
         for w in workers:
@@ -1201,7 +1202,8 @@ async def _worker_docker_check(workers: list[dict[str, Any]] | None = None) -> N
             elif placement.system_info(w).get("docker_available") is False and placement.is_blind(w):
                 blind[cid] = w
         for cid in blind:
-            _docker_first_seen.setdefault(cid, now)
+            if cid not in _docker_first_seen:
+                _docker_first_seen[cid] = _docker_outage_start(stored_at.get(cid), now)
         for cid in list(_docker_first_seen):
             if cid not in blind and cid not in unjudged:
                 _docker_first_seen.pop(cid)
@@ -1233,24 +1235,39 @@ async def _worker_docker_check(workers: list[dict[str, Any]] | None = None) -> N
         logger.warning("Worker Docker check failed: %s", exc)
 
 
+def _docker_outage_start(alerted_at: str | None, now: datetime) -> datetime:
+    """When an outage this check first sees began.
+
+    A new one began now. One that already holds a stored alert is one the UI
+    forgot by restarting: it was alerted at the first check past the grace, so
+    it began a grace before that, not at the restart.
+    """
+    with contextlib.suppress(TypeError, ValueError):
+        return datetime.strptime(str(alerted_at), "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC) - CONTAINER_DOWN_GRACE
+    return now
+
+
 def _docker_alert_text(name: str, worker: dict[str, Any], since: datetime) -> tuple[str, str]:
     """The push title and the message for a worker that cannot reach Docker.
 
     The fix comes first: the bell shows only the first _MAX_ALERT_ERROR_LEN
     characters, and the push carries the rest.
     """
-    if placement.system_info(worker).get("docker_access") == "socket":
-        fix = (
-            "Fix: on that machine, restart the worker (docker restart cashpilot-worker, or its name on Unraid "
-            "and TrueNAS), because it holds the Docker socket itself."
-        )
+    access = placement.system_info(worker).get("docker_access")
+    cause = (
+        " A Docker update that replaces its socket causes this. Mounting the socket's folder in the proxy, "
+        "not the socket file, stops it from happening again."
+    )
+    if access == "socket":
+        fix = "Fix: on that machine, restart the worker container. It holds the Docker socket itself."
         cause = ""
-    else:
-        # "proxy", or a worker too old to say: the shipped compose files use the proxy.
+    elif access == "proxy":
         fix = "Fix: on that machine, run docker restart cashpilot-socket-proxy."
-        cause = (
-            " A Docker update that replaces its socket causes this. Mounting the socket's folder in the proxy, "
-            "not the socket file, stops it from happening again."
+    else:
+        # A worker from before docker_access: a compose install has the proxy
+        # since 2026-11-06, an Unraid or older one holds the socket itself.
+        fix = (
+            "Fix: on that machine, run docker restart cashpilot-socket-proxy, or restart the worker if it has no proxy."
         )
     return (
         f"CashPilot: worker '{name}' cannot reach Docker",

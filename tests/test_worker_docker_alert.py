@@ -44,20 +44,25 @@ class _Alerts:
 
     def __init__(self):
         self.rows: dict[str, str] = {}
+        # created_at of each row, as SQLite writes it (UTC).
+        self.created: dict[str, str] = {}
         self.pushes: list[tuple[str, str]] = []
 
     async def record(self, kind, subject, message, **_):
         assert kind == "docker"
         fresh = subject not in self.rows
         self.rows[subject] = message
+        if fresh:
+            self.created[subject] = f"{datetime.now(UTC):%Y-%m-%d %H:%M:%S}"
         return len(self.rows) if fresh else None
 
-    async def subjects(self, kind):
-        return set(self.rows) if kind == "docker" else set()
+    async def first_times(self, kind):
+        return {s: self.created.get(s, "") for s in self.rows} if kind == "docker" else {}
 
     async def clear(self, kind=None, subject=None):
         assert kind == "docker"
         self.rows.pop(subject, None)
+        self.created.pop(subject, None)
 
     def run(self, workers, *, age=None):
         def spawn(coro):
@@ -67,7 +72,7 @@ class _Alerts:
 
         with (
             patch.object(main.database, "record_alert", self.record),
-            patch.object(main.database, "get_alert_subjects", self.subjects),
+            patch.object(main.database, "get_alert_first_times", self.first_times),
             patch.object(main.database, "clear_alerts", self.clear),
             patch.object(main, "_spawn", spawn),
         ):
@@ -119,13 +124,14 @@ class TestABlindWorkerIsAnAlert:
         assert "restart the worker" in message
         assert "cashpilot-socket-proxy" not in message
 
-    def test_an_older_worker_gets_the_proxy_fix(self):
-        """A worker from before docker_access: the shipped compose files use the proxy."""
+    def test_an_older_worker_gets_both_fixes(self):
+        """A worker from before docker_access may hold the socket itself (Unraid, or older than the proxy)."""
         alerts = _Alerts()
         alerts.run([_worker(access=None)])
         alerts.run([_worker(access=None)], age=PAST_GRACE)
         [(_, message)] = alerts.pushes
         assert "docker restart cashpilot-socket-proxy" in message
+        assert "restart the worker if it has no proxy" in message
 
 
 class TestTheBellShowsTheFix:
@@ -133,9 +139,16 @@ class TestTheBellShowsTheFix:
 
     @pytest.mark.parametrize(
         ("access", "fix"),
-        [("proxy", "docker restart cashpilot-socket-proxy"), ("socket", "docker restart cashpilot-worker")],
+        [
+            ("proxy", "Fix: on that machine, run docker restart cashpilot-socket-proxy."),
+            ("socket", "Fix: on that machine, restart the worker container. It holds the Docker socket itself."),
+            (
+                None,
+                "Fix: on that machine, run docker restart cashpilot-socket-proxy, or restart the worker if it has no proxy.",
+            ),
+        ],
     )
-    def test_the_fix_fits_in_the_bell_for_a_long_name(self, access, fix):
+    def test_the_whole_fix_fits_in_the_bell_for_a_long_name(self, access, fix):
         name = "a-worker-name-of-thirty-chars"
         _, message = main._docker_alert_text(name, _worker(access=access), datetime.now(UTC))
         assert fix in message[: main._MAX_ALERT_ERROR_LEN]
@@ -207,6 +220,26 @@ class TestRecovery:
         alerts.run([_worker()])
         assert len(_bell()) == 1
 
+    def test_a_ui_restart_keeps_when_the_outage_began(self):
+        """The stored row was written a grace after the outage began; the restart time is not the start."""
+        alerted = datetime.now(UTC) - timedelta(hours=6)
+        alerts = _Alerts()
+        alerts.rows["cid-ct"] = "stored before the restart"
+        alerts.created["cid-ct"] = f"{alerted:%Y-%m-%d %H:%M:%S}"
+        alerts.run([_worker()])
+        began = alerted - main.CONTAINER_DOWN_GRACE
+        [entry] = _bell()
+        assert f"since {began:%Y-%m-%d %H:%M} UTC" in entry["error"]
+        assert f"since {began:%Y-%m-%d %H:%M} UTC" in alerts.rows["cid-ct"], "the stored row keeps it too"
+        assert alerts.pushes == [], "the outage was already pushed"
+
+    def test_an_unreadable_stored_time_falls_back_to_now(self):
+        alerts = _Alerts()
+        alerts.rows["cid-ct"] = "stored before the restart"
+        alerts.created["cid-ct"] = "not a time"
+        alerts.run([_worker()])
+        assert len(_bell()) == 1
+
 
 class TestWiring:
     def test_runs_in_the_health_check(self):
@@ -253,9 +286,51 @@ class TestEveryScreenShowsIt:
         assert "|| a.kind === 'docker')" in js, "a change redraws the attention list"
         assert "!isProxied && !isDocker;" in js, "no credential fixes Docker"
 
+    def test_the_doc_link_is_a_button_because_the_message_is_cut(self):
+        """The 200-character cap always cuts the link off the end of the message."""
+        from pathlib import Path
+
+        _, message = main._docker_alert_text("local", _worker(), datetime.now(UTC))
+        assert main.DOCKER_LOST_DOC not in message[: main._MAX_ALERT_ERROR_LEN]
+        js = (Path(main.__file__).parent / "static" / "js" / "app.js").read_text()
+        assert f"const DOCKER_LOST_DOC = '{main.DOCKER_LOST_DOC}';" in js
+        assert js.count('href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>') == 2, (
+            "the attention card and the bell"
+        )
+        html = (Path(main.__file__).parent / "templates" / "fleet.html").read_text()
+        assert main.DOCKER_LOST_DOC in html, "the fleet flag names where the lasting fix is"
+
     def test_fleet_page_flags_the_worker_at_once(self):
         from pathlib import Path
 
         html = (Path(main.__file__).parent / "templates" / "fleet.html").read_text()
         assert "sysInfo.docker_available === false" in html
         assert "'Docker unreachable')" in html
+
+
+class TestTheStoredStartTime:
+    """The real alerts table: the first time a subject was alerted, in a form _docker_outage_start reads."""
+
+    def test_first_times_reads_the_oldest_row_of_each_subject(self, tmp_path):
+        async def run():
+            await main.database.init_db()
+            await main.database.record_alert("docker", "cid-ct", "first")
+            db = await main.database._get_db()
+            try:
+                await db.execute("UPDATE alerts SET created_at = '2026-11-17 06:40:00' WHERE subject = 'cid-ct'")
+                await db.commit()
+            finally:
+                await db.close()
+            # The daily re-notify after the cooldown adds a newer row for the same outage.
+            await main.database.record_alert("docker", "cid-ct", "again", cooldown_hours=0)
+            await main.database.record_alert("container", "cid-ct", "another kind")
+            return await main.database.get_alert_first_times("docker")
+
+        with (
+            patch.object(main.database, "DB_DIR", tmp_path),
+            patch.object(main.database, "DB_PATH", tmp_path / "cashpilot.db"),
+        ):
+            times = asyncio.run(run())
+        assert times == {"cid-ct": "2026-11-17 06:40:00"}
+        began = main._docker_outage_start(times["cid-ct"], datetime.now(UTC))
+        assert began == datetime(2026, 11, 17, 6, 40, tzinfo=UTC) - main.CONTAINER_DOWN_GRACE

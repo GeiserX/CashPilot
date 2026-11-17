@@ -75,6 +75,10 @@ _docker_available: bool | None = None
 # When the current Docker outage began (time.monotonic()), None while Docker
 # answers. /api/health reads it to tell a blip from a worker gone blind.
 _docker_unreachable_since: float | None = None
+# True from a failed container listing until a listing works again. A daemon
+# that answers /_ping but cannot list containers (containerd wedged) would
+# otherwise have its outage cleared by the next ping, once a minute.
+_docker_listing_failed = False
 
 # In-memory status cache — populated by health check, served instantly to UI
 _status_cache: list[dict[str, Any]] = []
@@ -98,7 +102,9 @@ def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
     successful call stops it, so a repeated failure does not move it.
     """
     global _docker_available, _docker_unreachable_since
-    if _docker_available is True:
+    # Warn once per outage: a ping that works between two failed listings
+    # flips the memo back to True, and must not repeat the warning each minute.
+    if _docker_available is True and _docker_unreachable_since is None:
         logger.warning(
             "Docker became unreachable (%s): %s — degrading to monitor-only until it returns",
             reason,
@@ -109,13 +115,35 @@ def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
     _docker_available = False
 
 
-def _mark_docker_available() -> None:
-    """Flip the availability memo to True, announcing a recovery."""
-    global _docker_available, _docker_unreachable_since
-    if _docker_available is False:
-        logger.warning("Docker is reachable again — container management restored")
-    _docker_available = True
+def _mark_listing_failed(exc: BaseException) -> None:
+    """A container listing failed: an outage that only a working listing ends."""
+    global _docker_listing_failed
+    _mark_docker_unavailable("container listing failed", exc)
+    _docker_listing_failed = True
+
+
+def _mark_docker_listed() -> None:
+    """A container listing worked: whatever the outage was, it is over."""
+    global _docker_listing_failed, _docker_unreachable_since
+    if _docker_listing_failed:
+        logger.warning("Docker lists containers again — container management restored")
+    _docker_listing_failed = False
     _docker_unreachable_since = None
+
+
+def _mark_docker_available() -> None:
+    """Flip the availability memo to True, announcing a recovery.
+
+    A working ping ends a ping outage. It does not end a listing outage
+    (_mark_listing_failed): there the daemon answers the ping and still cannot
+    list a container, and only a working listing ends it (_mark_docker_listed).
+    """
+    global _docker_available, _docker_unreachable_since
+    if not _docker_listing_failed:
+        if _docker_available is False:
+            logger.warning("Docker is reachable again — container management restored")
+        _docker_unreachable_since = None
+    _docker_available = True
 
 
 def docker_unreachable_for() -> float | None:
@@ -180,8 +208,8 @@ def _docker_unreachable_text() -> str:
         )
     return (
         "Docker socket not available. Mount /var/run/docker.sock to "
-        "enable container management, or use CashPilot in monitor-only "
-        "mode for earnings tracking and compose file export."
+        "enable container management. If it is mounted, Docker may have "
+        "replaced it (a Docker update does this): restart this worker."
     )
 
 
@@ -5164,7 +5192,7 @@ def get_status() -> list[dict[str, Any]]:
         # check_down for every deployment it can no longer see. Flag the
         # outage so the SAME heartbeat reports blind, and the UI's guard
         # skips the false downtime.
-        _mark_docker_unavailable("container listing failed", exc)
+        _mark_listing_failed(exc)
         return []
     seen_ids: set[str] = set()
 
@@ -5221,7 +5249,7 @@ def get_status() -> list[dict[str, Any]]:
             # Same rule as the labeled list: a partial result with the flag
             # still true would show EXTERNAL deployments as down instead of
             # Docker-blind — the exact lie this change removes.
-            _mark_docker_unavailable("container listing failed", exc)
+            _mark_listing_failed(exc)
             return []
         # Resolve which externally-deployed containers we actually care about
         # BEFORE fetching stats, so nothing is paid for a container we skip.
@@ -5273,6 +5301,7 @@ def get_status() -> list[dict[str, Any]]:
     _status_cache = results
     _status_cache_time = time.monotonic()
     _status_listed = listed
+    _mark_docker_listed()
 
     return results
 
@@ -5440,7 +5469,7 @@ def get_status_light() -> list[dict[str, Any]]:
     except Exception as exc:
         # Mirror of get_status: "ping works, list fails" must flag the outage,
         # not serve an empty-but-healthy answer.
-        _mark_docker_unavailable("container listing failed", exc)
+        _mark_listing_failed(exc)
         return []
     seen_ids: set[str] = {c.id for c in labeled if is_proxied(c)}
     labeled = [c for c in labeled if not is_proxied(c)]
@@ -5483,7 +5512,7 @@ def get_status_light() -> list[dict[str, Any]]:
             # Same rule as the labeled list: a partial result with the flag
             # still true would show EXTERNAL deployments as down instead of
             # Docker-blind — the exact lie this change removes.
-            _mark_docker_unavailable("container listing failed", exc)
+            _mark_listing_failed(exc)
             return []
         for c in all_containers:
             try:
@@ -5527,6 +5556,7 @@ def get_status_light() -> list[dict[str, Any]]:
             except Exception as exc:
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
+    _mark_docker_listed()
     return results
 
 

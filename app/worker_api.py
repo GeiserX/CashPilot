@@ -704,7 +704,9 @@ async def _send_heartbeat() -> None:
 
     # The isolation check needs the Docker socket, so a worker without one
     # does not offer it in "features": the button could only fail.
-    docker_ok = await asyncio.to_thread(orchestrator.docker_available)
+    # A daemon that answers the ping but would not list the containers above
+    # is blind too: its outage clock is still running (orchestrator._mark_listing_failed).
+    docker_ok = await asyncio.to_thread(orchestrator.docker_available) and orchestrator.docker_unreachable_for() is None
     egress_ip = await _detect_egress_ip()
     # The fence drops this address too, so the router's NAT loopback cannot
     # carry an earner back into the LAN. A new address is fenced at once,

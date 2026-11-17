@@ -13,10 +13,11 @@ calling Docker itself.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -46,6 +47,7 @@ def _client():
 def _docker_state(monkeypatch):
     monkeypatch.setattr(orchestrator, "_docker_available", None)
     monkeypatch.setattr(orchestrator, "_docker_unreachable_since", None)
+    monkeypatch.setattr(orchestrator, "_docker_listing_failed", False)
 
 
 def _outage_for(seconds: float) -> None:
@@ -71,6 +73,69 @@ class TestOutageClock:
         _outage_for(3600)
         orchestrator._mark_docker_available()
         assert orchestrator.docker_unreachable_for() is None
+
+
+def _ping_ok_listing_fails():
+    """A daemon that answers /_ping but cannot list containers (containerd wedged)."""
+    client = MagicMock()
+    client.ping.return_value = True
+    client.containers.list.side_effect = RuntimeError("Read timed out")
+    return client
+
+
+class TestAListingOutage:
+    """The ping works and every listing fails: still an outage, and only a listing ends it."""
+
+    def _cycle(self, client):
+        """What one heartbeat does with Docker: list, then ask whether Docker is there."""
+        with (
+            patch.object(orchestrator.docker, "from_env", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={}),
+        ):
+            assert orchestrator.get_status() == []
+            orchestrator.docker_available()
+
+    def test_a_working_ping_does_not_end_it(self):
+        client = _ping_ok_listing_fails()
+        self._cycle(client)
+        orchestrator._docker_unreachable_since = started = time.monotonic() - 3600
+        for _ in range(3):
+            self._cycle(client)
+        assert orchestrator._docker_unreachable_since == started
+        assert orchestrator.docker_unreachable_for() > worker_api._DOCKER_UNHEALTHY_AFTER
+        assert _client().get("/api/health").status_code == 503
+
+    def test_a_working_listing_ends_it(self):
+        client = _ping_ok_listing_fails()
+        self._cycle(client)
+        client.containers.list.side_effect = None
+        client.containers.list.return_value = []
+        self._cycle(client)
+        assert orchestrator.docker_unreachable_for() is None
+        assert orchestrator._docker_listing_failed is False
+
+    def test_a_ping_still_ends_a_ping_outage(self):
+        """Negative control: a worker without a UI has no listing to end it."""
+        _outage_for(3600)
+        client = MagicMock()
+        client.ping.return_value = True
+        with patch.object(orchestrator.docker, "from_env", return_value=client):
+            assert orchestrator.docker_available() is True
+        assert orchestrator.docker_unreachable_for() is None
+
+    def test_warns_once_per_outage(self, caplog):
+        orchestrator._docker_available = True
+        client = _ping_ok_listing_fails()
+        with caplog.at_level(logging.WARNING, logger=orchestrator.logger.name):
+            for _ in range(5):
+                self._cycle(client)
+            client.containers.list.side_effect = None
+            client.containers.list.return_value = []
+            self._cycle(client)
+        said = [r.getMessage() for r in caplog.records]
+        assert len([m for m in said if "became unreachable" in m]) == 1
+        assert len([m for m in said if "reachable again" in m]) == 0
+        assert len([m for m in said if "lists containers again" in m]) == 1
 
 
 class TestHealthReportsALostDocker:
@@ -120,55 +185,99 @@ class TestHealthReportsALostDocker:
         assert resp.json() == {"status": "ok", "worker": worker_api.WORKER_NAME}
 
     def test_never_calls_docker(self):
-        """A hung socket must not hang the healthcheck: the clock is read from memory."""
+        """A hung socket must not hang the healthcheck: the clock is read from memory.
+
+        The calls are recorded, not raised: docker_available() swallows any
+        exception from from_env, so a raising stub would let a call through.
+        """
         _outage_for(worker_api._DOCKER_UNHEALTHY_AFTER + 60)
+        calls: list[str] = []
 
-        def hang(*_a, **_k):
-            raise AssertionError("/api/health called Docker")
+        def record(name):
+            def stub(*_a, **_k):
+                calls.append(name)
+                return MagicMock()
 
-        with patch.object(orchestrator.docker, "from_env", hang):
+            return stub
+
+        with (
+            patch.object(orchestrator.docker, "from_env", record("from_env")),
+            patch.object(orchestrator, "docker_available", record("docker_available")),
+            patch.object(orchestrator, "_get_client", record("_get_client")),
+        ):
             resp = _client().get("/api/health")
         assert resp.status_code == 503
+        assert calls == []
+
+    def test_a_raw_socket_worker_is_told_to_restart_itself(self, monkeypatch):
+        """Unraid and TrueNAS bind the socket into the worker: it is mounted, and the fix is a restart."""
+        monkeypatch.delenv("DOCKER_HOST", raising=False)
+        _outage_for(worker_api._DOCKER_UNHEALTHY_AFTER + 60)
+        body = _client().get("/api/health").json()
+        assert "restart this worker" in body["docker"]
+        assert "monitor-only" not in body["docker"], "a worker without Docker is unhealthy now, not a mode"
+
+
+def _heartbeat_payload(monkeypatch) -> dict:
+    """Run one heartbeat against a fake UI and return what it sent."""
+    captured: dict = {}
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json=None, headers=None):
+            captured.update(json or {})
+            return _Resp()
+
+    monkeypatch.setattr(worker_api, "UI_URL", "http://cashpilot-ui:8080")
+    with (
+        patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+        patch.object(worker_api, "_disk_usage", return_value=None),
+        patch.object(worker_api, "_gpu_info", return_value={}),
+        patch.object(worker_api.httpx, "AsyncClient", _Client),
+    ):
+        asyncio.run(worker_api._send_heartbeat())
+    return captured
 
 
 class TestHeartbeatSaysHowDockerIsReached:
     def test_heartbeat_carries_docker_access(self, monkeypatch):
         """The UI's alert names what to restart: the proxy, or the worker itself."""
-        captured: dict = {}
-
-        class _Resp:
-            status_code = 200
-
-            def raise_for_status(self):
-                return None
-
-            def json(self):
-                return {}
-
-        class _Client:
-            def __init__(self, *a, **k):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *a):
-                return False
-
-            async def post(self, url, json=None, headers=None):
-                captured.update(json or {})
-                return _Resp()
-
         monkeypatch.setenv("DOCKER_HOST", PROXY_HOST)
-        monkeypatch.setattr(worker_api, "UI_URL", "http://cashpilot-ui:8080")
         monkeypatch.setattr(orchestrator, "get_status", lambda: [])
         monkeypatch.setattr(orchestrator, "docker_available", lambda: False)
-        with (
-            patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
-            patch.object(worker_api, "_disk_usage", return_value=None),
-            patch.object(worker_api, "_gpu_info", return_value={}),
-            patch.object(worker_api.httpx, "AsyncClient", _Client),
-        ):
-            asyncio.run(worker_api._send_heartbeat())
+        captured = _heartbeat_payload(monkeypatch)
         assert captured["system_info"]["docker_access"] == "proxy"
+        assert captured["system_info"]["docker_available"] is False
+
+    def test_a_listing_outage_is_reported_blind(self, monkeypatch):
+        """The ping works and the listing fails: the heartbeat must not say Docker is there.
+
+        Saying it was there with containers=[] kept the UI's alert and the
+        fleet flag quiet for as long as the daemon stayed wedged.
+        """
+        monkeypatch.setenv("DOCKER_HOST", PROXY_HOST)
+        client = _ping_ok_listing_fails()
+        with (
+            patch.object(orchestrator.docker, "from_env", return_value=client),
+            patch.object(orchestrator, "_build_image_slug_map", return_value={}),
+        ):
+            captured = _heartbeat_payload(monkeypatch)
+        assert captured["containers"] == []
         assert captured["system_info"]["docker_available"] is False
