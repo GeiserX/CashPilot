@@ -523,6 +523,34 @@ class TestProxiedCopies:
         marked = {c["proxy_id"]: c["rename_pending"] for c in asyncio.run(database.list_proxied_copies())}
         assert marked == {running: 0, stopped: 1}
 
+    def test_a_copy_list_that_cannot_be_read_is_a_note_not_an_error(self, db):
+        """The new id is already deployed when the copies are looked up.
+
+        If the copy list, its marks or the worker cannot be read then, the
+        change stands, so the answer must be the deploy's, with a note that the
+        proxied copies may keep the old id, never an error.
+        """
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)
+        broken = patch.object(main.database, "list_proxied_copies", AsyncMock(side_effect=RuntimeError("db locked")))
+        answer, sent = _change(_row("earnapp", 1, "EARNAPP_UUID", UUID_A)["id"], UUID_B, extra=(broken,))
+        assert not isinstance(answer, Exception), answer
+        assert _deploys(sent)[0]["json"]["env"]["EARNAPP_UUID"] == UUID_B
+        assert _active()[("earnapp", 1, "1", "EARNAPP_UUID")] == UUID_B
+        [note] = [n for n in answer["kept_from_previous_deployment"] if "proxied copies" in n]
+        assert "old device name or id" in note and UUID_A not in note and UUID_B not in note
+
+    @pytest.mark.parametrize("fails", ["set_proxied_copy_rename_pending", "get_worker"])
+    def test_the_helper_never_raises_while_it_prepares(self, db, fails):
+        record = {"image": "proxyrack/pop", "env": {"UUID": RACK_A, "DEVICE_NAME": "rack"}}
+
+        async def go():
+            await database.save_proxied_copy(5, 1, "proxyrack")
+            with patch.object(main.database, fails, AsyncMock(side_effect=RuntimeError("db locked"))):
+                return await main._refresh_proxied_copies("proxyrack", 1, {"slug": "proxyrack"}, {}, record)
+
+        [note] = asyncio.run(go())
+        assert "proxied copies" in note and "old device name or id" in note
+
 
 class _ProxyReq:
     def __init__(self, body):
@@ -609,3 +637,79 @@ class TestTheListUi:
     def test_names_are_escaped(self):
         html = _render("identityChangeHtml", {**_VIEW, "service": "<b>x</b>", "worker": "<i>y</i>"})
         assert "<b>x</b>" not in html and "<i>y</i>" not in html and "&lt;b&gt;" in html
+
+
+# A tiny DOM: each id="..." in the HTML an element gets becomes a fresh element,
+# and redrawing a parent drops its old children, as the browser does.
+_REFRESH_HARNESS = r"""
+const src = require('fs').readFileSync(process.argv[process.argv.length - 1], 'utf8');
+const cut = (a, b) => {
+  const from = src.indexOf(a); const to = src.indexOf(b);
+  if (from < 0 || to <= from) { console.log(JSON.stringify({error: 'block moved'})); process.exit(0); }
+  return src.slice(from, to);
+};
+const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+const els = new Map();
+function el(id) {
+  const e = { id, value: '', kids: [], _html: '', focus() {}, get isConnected() { return els.get(id) === e; },
+    get innerHTML() { return this._html; },
+    set innerHTML(h) {
+      const drop = k => { const c = els.get(k); if (c) { c.kids.forEach(drop); els.delete(k); } };
+      this.kids.forEach(drop);
+      this._html = h;
+      this.kids = [...h.matchAll(/id="([^"]+)"/g)].map(m => m[1]);
+      this.kids.forEach(k => els.set(k, el(k)));
+    } };
+  return e;
+}
+els.set('identities-container', el('identities-container'));
+const document = {
+  getElementById: id => els.get(id) || null,
+  querySelectorAll: sel => sel === '.identity-change'
+    ? [...els.values()].filter(e => /^identity-change-\d+$/.test(e.id)) : [],
+};
+const rows = [1, 2].map(id => ({ id, slug: 'earnapp', service: 'EarnApp', worker_id: id, worker: `box-${id}`,
+  copy: '', kind: 'env', key: 'EARNAPP_UUID', label: 'Node UUID', masked: '...', readable: true,
+  source: 'deploy', status: 'active', pending: false, forgettable: false, changeable: true }));
+let release;
+const api = (path) => path === '/api/identities'
+  ? Promise.resolve(rows) : new Promise(r => { release = () => r({ status: 'deployed' }); });
+const window = { confirm: () => true };
+const toast = () => {};
+const fns = new Function('escapeHtml', 'document', 'api', 'window', 'toast',
+  `${cut('  function identityRowsHtml(rows) {', '  // The form for an id CashPilot did not deploy with.')}
+   ${cut('  // The rows last listed, by id, for the Change form', '  // Every id in full, as a file.')}
+   return { loadIdentities, openIdentityChange, closeIdentityChange, changeIdentity };`
+)(escapeHtml, document, api, window, toast);
+(async () => {
+  await fns.loadIdentities();
+  // Change box 1, then open box 2's form and type in it while box 1 redeploys.
+  fns.openIdentityChange(1);
+  document.getElementById('identity-change-value-1').value = 'sdk-node-new';
+  const pending = fns.changeIdentity(1);
+  fns.openIdentityChange(2);
+  document.getElementById('identity-change-value-2').value = 'half typed';
+  release();
+  await pending;
+  await new Promise(r => setTimeout(r, 0));
+  const one = document.getElementById('identity-change-1');
+  const two = document.getElementById('identity-change-value-2');
+  console.log(JSON.stringify({ oneOpen: !!(one && one.innerHTML), two: two ? two.value : null }));
+})();
+"""
+
+
+def test_a_finished_change_keeps_the_form_open_on_another_row():
+    """Box 1's change redraws the list when it ends; box 2's open form and what was typed in it stay."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    out = subprocess.run(
+        [node, "-e", _REFRESH_HARNESS, str(ROOT / "app/static/js/app.js")],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    result = json.loads(out.stdout)
+    assert result == {"oneOpen": False, "two": "half typed"}, result

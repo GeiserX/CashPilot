@@ -7427,19 +7427,23 @@ async def _refresh_proxied_copies(
     # ids (proxies.routed_spec), never this copy rebuild, which would give it
     # a copy's names.
     route = proxies.route_of(recorded)
-    copies = [
-        c
-        for c in await database.list_proxied_copies()
-        if c["worker_id"] == worker_id and c["slug"] == slug and c["proxy_id"] != route
-    ]
-    if pending_only:
-        copies = [c for c in copies if c.get("rename_pending")]
-    else:
-        for copy in copies:
-            await database.set_proxied_copy_rename_pending(copy["proxy_id"], worker_id, slug, True)
-    if not copies:
-        return []
-    entries = _proxied_reportable(await database.get_worker(worker_id))
+    try:
+        copies = [
+            c
+            for c in await database.list_proxied_copies()
+            if c["worker_id"] == worker_id and c["slug"] == slug and c["proxy_id"] != route
+        ]
+        if pending_only:
+            copies = [c for c in copies if c.get("rename_pending")]
+        else:
+            for copy in copies:
+                await database.set_proxied_copy_rename_pending(copy["proxy_id"], worker_id, slug, True)
+        if not copies:
+            return []
+        entries = _proxied_reportable(await database.get_worker(worker_id))
+    except Exception:  # noqa: BLE001 - the original already runs its new id: report, never raise
+        logger.exception("Could not look up the proxied copies of %s on worker %s to rebuild them", slug, worker_id)
+        return ["proxied copies on this box: could not be looked up, so some may keep their old device name or id"]
     notes: list[str] = []
     for copy in copies:
         pid = copy["proxy_id"]

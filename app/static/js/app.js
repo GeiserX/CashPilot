@@ -5052,16 +5052,24 @@ const CP = (() => {
       </div>`;
   }
 
-  // The rows last listed, by id, for the Change form.
+  // The rows last listed, by id, for the Change form, and the row whose Change form is open.
   let _identityRows = {};
+  let _identityChangeOpen = null;
 
   async function loadIdentities() {
     const body = document.getElementById('identities-container');
     if (!body) return;
     try {
       const rows = await api('/api/identities');
+      // The list is drawn again when a change, a save or a forget ends: a Change
+      // form opened meanwhile, and what the owner typed in it, stay.
+      const open = _identityChangeOpen;
+      const input = open === null ? null : document.getElementById(`identity-change-value-${open}`);
+      const typed = input ? input.value : '';
       _identityRows = Object.fromEntries((Array.isArray(rows) ? rows : []).map(r => [String(r.id), r]));
       body.innerHTML = identityRowsHtml(rows);
+      _identityChangeOpen = null;
+      if (open !== null && _identityRows[open] && _identityRows[open].changeable) openIdentityChange(open, typed);
     } catch (err) {
       body.innerHTML = `<p class="text-fail">Could not load device ids: ${escapeHtml(err.message)}</p>`;
     }
@@ -5118,16 +5126,21 @@ const CP = (() => {
   // One Change form at a time: "Use" fills every input of its service and field.
   function closeIdentityChange() {
     document.querySelectorAll('.identity-change').forEach(el => { el.innerHTML = ''; });
+    _identityChangeOpen = null;
   }
 
-  function openIdentityChange(id) {
+  function openIdentityChange(id, typed = '') {
     const row = _identityRows[String(id)];
     const box = document.getElementById(`identity-change-${id}`);
     if (!row || !box) return;
     closeIdentityChange();
     box.innerHTML = identityChangeHtml(row);
+    _identityChangeOpen = String(id);
     const input = document.getElementById(`identity-change-value-${id}`);
-    if (input) input.focus();
+    if (input) {
+      input.value = typed;
+      input.focus();
+    }
   }
 
   // A redeploy of that one service on that one box. The server checks the value
@@ -5148,6 +5161,8 @@ const CP = (() => {
       const link = res && res.device_link;
       if (link && link.id && !link.registered) toast(`${row.service}: link device ${link.id} to your account. ${link.steps || ''}`, 'warning');
       toast(`${row.service} on ${row.worker} now runs with the new ${row.label}`, 'success');
+      // This row's form is done; another one opened meanwhile stays open.
+      if (_identityChangeOpen === String(id)) closeIdentityChange();
       loadIdentities();
     } catch (err) {
       toast(`Could not change the id: ${err.message}`, 'error');
