@@ -4260,6 +4260,13 @@ _custom_deploying: collections.Counter[str] = collections.Counter()
 _custom_deleting: collections.Counter[str] = collections.Counter()
 
 
+def _filled_command(template: str | None, env: dict[str, Any]) -> str | None:
+    """The catalog's command template with each ``${VAR}`` taken from ``env`` (an unknown one is left as written)."""
+    if not template:
+        return None
+    return re.sub(r"\$\{(\w+)\}", lambda m: str(env.get(m.group(1), m.group(0))), template)
+
+
 async def _deploy(
     slug: str,
     body: DeployRequest,
@@ -4498,14 +4505,18 @@ async def _deploy(
         spec = await _fence_gated_spec(spec, docker_conf, merged_env, worker_id, slug, divergence, custom_image)
 
     if raw_command:
-        spec["command"] = re.sub(r"\$\{(\w+)\}", lambda m: merged_env.get(m.group(1), m.group(0)), raw_command)
+        spec["command"] = _filled_command(raw_command, merged_env)
     else:
         spec.pop("command", None)
     if is_custom:
         # What the worker labels the container with, so it reads as user-supplied
         # wherever it shows up. _instance_spec carries it to every copy.
         spec["labels"] = {constants.LABEL_CUSTOM: "true"}
-    elif recorded and "command" in recorded and recorded.get("command") != spec.get("command"):
+    elif recorded and "command" in recorded and recorded.get("command") != _filled_command(raw_command, recorded_env):
+        # Only a catalog command that changed since the last deploy. Compared
+        # with the current template filled from the RECORDED env, so a value on
+        # the command line that changed on purpose (a device name, a retyped
+        # password) is not reported as a different command.
         # Never the command itself: it carries credentials.
         divergence.append("command: using the catalog's current command; this service last ran a different one")
     # The image is the catalog's unless the operator chose another; the choice is

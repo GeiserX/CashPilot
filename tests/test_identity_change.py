@@ -819,3 +819,37 @@ def test_a_finished_change_keeps_the_form_open_on_another_row():
 def test_a_failed_reload_keeps_the_list_and_its_open_form():
     """A reload that fails says so and leaves the list, so the form and its text stay."""
     assert _refresh("failed") == {"two": "half typed", "toasts": ["error"]}
+
+
+# ---------------------------------------------------------------------------
+# The command note: only a changed catalog command, never a changed value in it
+# ---------------------------------------------------------------------------
+
+
+def _command_notes(answer):
+    return [n for n in answer.get("kept_from_previous_deployment", []) if n.startswith("command:")]
+
+
+class TestTheCommandNote:
+    def test_a_new_device_name_on_the_command_line_is_not_a_changed_command(self, db):
+        """Honeygain takes its device name on the command line, so the filled command always differs after a change.
+
+        The note is for a catalog command that changed since the last deploy; a
+        warning toast for the change the owner just asked for is noise.
+        """
+        _deploy("honeygain", {**HONEYGAIN, "HONEYGAIN_DEVICE_NAME": "box"}, 1)
+        answer, sent = _change(_row("honeygain", 1, "HONEYGAIN_DEVICE_NAME", "box")["id"], "attic")
+        assert answer["status"] == "deployed"
+        [deploy] = _deploys(sent)
+        assert "-device attic" in deploy["json"]["command"]
+        assert _command_notes(answer) == []
+
+    def test_a_command_the_catalog_no_longer_writes_still_gets_the_note(self, db):
+        """The other side: a record whose command is not the current template filled with its own values."""
+        env = {**HONEYGAIN, "HONEYGAIN_DEVICE_NAME": "box"}
+        record = {"image": "honeygain/honeygain", "env": env, "command": "-email me@example.com -pass pw -device box"}
+        asyncio.run(database.save_deployment("honeygain", "c1", spec=record, worker_id=1))
+        asyncio.run(database.record_identities("honeygain", 1, {"1": env}))
+        answer, _ = _change(_row("honeygain", 1, "HONEYGAIN_DEVICE_NAME", "box")["id"], "attic")
+        assert answer["status"] == "deployed"
+        assert len(_command_notes(answer)) == 1
