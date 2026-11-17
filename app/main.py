@@ -7492,6 +7492,13 @@ async def _refresh_proxied_copies(
                     continue
                 if proxy["state"].get("capped_at") or current.get("stopped_by_cap"):
                     raise ValueError("its proxy reached its traffic cap")
+                # Its id is made from the original's new one, so it can match an
+                # id another box runs: refused, as a deploy refuses a shared one.
+                for key in _per_device_keys(svc):
+                    if others := await database.identity_in_use(
+                        slug, key, str(earner["env"].get(key) or ""), except_worker=worker_id
+                    ):
+                        raise ValueError(f"its new device id already runs on {', '.join(await _worker_names(others))}")
                 await _proxy_worker_call(
                     worker_id,
                     "POST",
@@ -12218,9 +12225,15 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
     )
     response = await _deploy(slug, deploy, worker_id, request=request)
     await _audit("identity_change", f"{slug}|{key}|copy 1", "changed", actor=user, worker_id=worker_id)
-    # The proxied copies' ids are made from this one: rebuilt from the new record now.
-    fresh = await database.get_deployment_spec(slug, worker_id=worker_id)
-    if fresh and (notes := await _refresh_proxied_copies(slug, worker_id, svc, svc.get("docker") or {}, fresh)):
+    # The proxied copies' ids are made from this one: rebuilt from the new record
+    # now. The new id already runs, so a failure here is a note, never an error.
+    try:
+        fresh = await database.get_deployment_spec(slug, worker_id=worker_id)
+        notes = await _refresh_proxied_copies(slug, worker_id, svc, svc.get("docker") or {}, fresh) if fresh else []
+    except Exception:  # noqa: BLE001 - the change already deployed
+        logger.exception("Could not rebuild the proxied copies of %s on worker %s after a change", slug, worker_id)
+        notes = ["proxied copies on this box: could not be rebuilt, so some may keep their old device name or id"]
+    if notes:
         response["kept_from_previous_deployment"] = [*response.get("kept_from_previous_deployment", []), *notes]
     return response
 

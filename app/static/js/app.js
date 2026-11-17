@@ -5071,6 +5071,11 @@ const CP = (() => {
       _identityChangeOpen = null;
       if (open !== null && _identityRows[open] && _identityRows[open].changeable) openIdentityChange(open, typed);
     } catch (err) {
+      // A list already drawn stays, with any Change form open on it.
+      if (Object.keys(_identityRows).length) {
+        toast(`Could not reload device ids: ${err.message}`, 'error');
+        return;
+      }
       body.innerHTML = `<p class="text-fail">Could not load device ids: ${escapeHtml(err.message)}</p>`;
     }
   }

@@ -551,6 +551,81 @@ class TestProxiedCopies:
         [note] = asyncio.run(go())
         assert "proxied copies" in note and "old device name or id" in note
 
+    def test_a_copy_whose_new_id_runs_on_another_box_keeps_its_old_one(self, db):
+        """The copy's id is made from the new one, so it can match an id another box already runs.
+
+        Two boxes on one device id look to the provider like one device, so the
+        rebuild is refused for that copy as a deploy would be: it keeps its old
+        id, stays marked, and the answer says why.
+        """
+        worker_calls: list[dict] = []
+
+        async def go():
+            created = await main.api_create_proxy(
+                _ProxyReq({"name": "a.example.net", "kind": "socks5", "host": "a.example.net", "port": 7777}), {}
+            )
+            pid = created["id"]
+            record = {"image": "proxyrack/pop", "env": {"UUID": RACK_A, "DEVICE_NAME": "rack"}}
+            await database.save_deployment("proxyrack", "c1", spec=record, worker_id=1)
+            await database.record_identities("proxyrack", 1, {"1": record["env"]})
+            await database.save_proxied_copy(pid, 1, "proxyrack")
+            earner = proxies.earner_spec(record, {"env": [{"key": "UUID", "per_device": True}]}, pid)
+            await database.record_identities("proxyrack", 1, {f"p{pid}": earner["env"]}, scope="given")
+            # Box 2 already runs the id box 1's copy would get from RACK_B.
+            taken = proxies.copy_device_id(RACK_B, pid)
+            await database.record_identities("proxyrack", 2, {"1": {"UUID": taken, "DEVICE_NAME": "other"}})
+            worker = await database.get_worker(1)
+            worker["system_info"] = json.dumps(
+                {
+                    "docker_available": True,
+                    "features": ["instances", "proxy_tunnel", "proxied_if_running"],
+                    "proxied": [{"proxy_id": pid, "slug": "proxyrack", "held": False, "status": "running"}],
+                }
+            )
+            [row] = [
+                r
+                for r in await database.list_identities()
+                if (r["worker_id"], r["instance"], r["name"], r["status"]) == (1, "1", "UUID", "active")
+            ]
+
+            async def worker_call(worker_id, method, path, definition, *, json=None, timeout=30):
+                worker_calls.append({"path": path, "json": json})
+                return {"status": "deployed", "exit": {}}
+
+            sent: list[dict] = []
+            patches = [
+                patch.object(auth, "get_current_user", return_value=OWNER),
+                *_worker_mocks(sent),
+                patch.object(
+                    main,
+                    "_worker_features",
+                    AsyncMock(return_value={"instances", "proxy_tunnel", "proxied_if_running"}),
+                ),
+                patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
+                patch.object(main, "_proxy_worker_call", side_effect=worker_call),
+            ]
+            answer = await _with(patches, lambda: main.api_identity_change(_Req({"value": RACK_B}), row["id"]))
+            return answer, sent, pid
+
+        answer, sent, pid = asyncio.run(go())
+        assert _deploys(sent)[0]["json"]["env"]["UUID"] == RACK_B
+        assert worker_calls == []
+        assert _active()[("proxyrack", 1, f"p{pid}", "UUID")] == proxies.copy_device_id(RACK_A, pid)
+        [note] = [n for n in answer["kept_from_previous_deployment"] if f"p{pid}" in n]
+        assert "already runs on box-2" in note, note
+        [copy] = asyncio.run(database.list_proxied_copies())
+        assert copy["rename_pending"] == 1
+
+    def test_a_refresh_that_fails_after_the_change_is_a_note_not_an_error(self, db):
+        """The new id already runs: a copy rebuild that fails in a way the helper does not expect is a note."""
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)
+        broken = patch.object(main, "_refresh_proxied_copies", AsyncMock(side_effect=RuntimeError("db locked")))
+        answer, _ = _change(_row("earnapp", 1, "EARNAPP_UUID", UUID_A)["id"], UUID_B, extra=(broken,))
+        assert not isinstance(answer, Exception), answer
+        assert _active()[("earnapp", 1, "1", "EARNAPP_UUID")] == UUID_B
+        [note] = [n for n in answer["kept_from_previous_deployment"] if "proxied copies" in n]
+        assert "old device name or id" in note
+
 
 class _ProxyReq:
     def __init__(self, body):
@@ -642,7 +717,8 @@ class TestTheListUi:
 # A tiny DOM: each id="..." in the HTML an element gets becomes a fresh element,
 # and redrawing a parent drops its old children, as the browser does.
 _REFRESH_HARNESS = r"""
-const src = require('fs').readFileSync(process.argv[process.argv.length - 1], 'utf8');
+const src = require('fs').readFileSync(process.argv[process.argv.length - 2], 'utf8');
+const scenario = process.argv[process.argv.length - 1];
 const cut = (a, b) => {
   const from = src.indexOf(a); const to = src.indexOf(b);
   if (from < 0 || to <= from) { console.log(JSON.stringify({error: 'block moved'})); process.exit(0); }
@@ -672,16 +748,30 @@ const rows = [1, 2].map(id => ({ id, slug: 'earnapp', service: 'EarnApp', worker
   copy: '', kind: 'env', key: 'EARNAPP_UUID', label: 'Node UUID', masked: '...', readable: true,
   source: 'deploy', status: 'active', pending: false, forgettable: false, changeable: true }));
 let release;
+let listFails = false;
 const api = (path) => path === '/api/identities'
-  ? Promise.resolve(rows) : new Promise(r => { release = () => r({ status: 'deployed' }); });
+  ? (listFails ? Promise.reject(new Error('offline')) : Promise.resolve(rows))
+  : new Promise(r => { release = () => r({ status: 'deployed' }); });
 const window = { confirm: () => true };
-const toast = () => {};
+const toasts = [];
+const toast = (msg, kind) => toasts.push(kind);
 const fns = new Function('escapeHtml', 'document', 'api', 'window', 'toast',
   `${cut('  function identityRowsHtml(rows) {', '  // The form for an id CashPilot did not deploy with.')}
    ${cut('  // The rows last listed, by id, for the Change form', '  // Every id in full, as a file.')}
    return { loadIdentities, openIdentityChange, closeIdentityChange, changeIdentity };`
 )(escapeHtml, document, api, window, toast);
-(async () => {
+const scenarios = {};
+scenarios.failed = async () => {
+  await fns.loadIdentities();
+  // A list reload that fails keeps the list drawn, and the form open on it.
+  fns.openIdentityChange(2);
+  document.getElementById('identity-change-value-2').value = 'half typed';
+  listFails = true;
+  await fns.loadIdentities();
+  const two = document.getElementById('identity-change-value-2');
+  console.log(JSON.stringify({ two: two ? two.value : null, toasts }));
+};
+scenarios.change = async () => {
   await fns.loadIdentities();
   // Change box 1, then open box 2's form and type in it while box 1 redeploys.
   fns.openIdentityChange(1);
@@ -695,21 +785,32 @@ const fns = new Function('escapeHtml', 'document', 'api', 'window', 'toast',
   const one = document.getElementById('identity-change-1');
   const two = document.getElementById('identity-change-value-2');
   console.log(JSON.stringify({ oneOpen: !!(one && one.innerHTML), two: two ? two.value : null }));
-})();
+};
+scenarios[scenario]();
 """
 
 
-def test_a_finished_change_keeps_the_form_open_on_another_row():
-    """Box 1's change redraws the list when it ends; box 2's open form and what was typed in it stay."""
+def _refresh(scenario):
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _REFRESH_HARNESS, str(ROOT / "app/static/js/app.js")],
+        [node, "-e", _REFRESH_HARNESS, str(ROOT / "app/static/js/app.js"), scenario],
         capture_output=True,
         text=True,
         check=True,
         timeout=30,
     )
     result = json.loads(out.stdout)
-    assert result == {"oneOpen": False, "two": "half typed"}, result
+    assert "error" not in result, result
+    return result
+
+
+def test_a_finished_change_keeps_the_form_open_on_another_row():
+    """Box 1's change redraws the list when it ends; box 2's open form and what was typed in it stay."""
+    assert _refresh("change") == {"oneOpen": False, "two": "half typed"}
+
+
+def test_a_failed_reload_keeps_the_list_and_its_open_form():
+    """A reload that fails says so and leaves the list, so the form and its text stay."""
+    assert _refresh("failed") == {"two": "half typed", "toasts": ["error"]}

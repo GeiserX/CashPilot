@@ -309,7 +309,9 @@ owner sees this section. An API key cannot read it.
   link it to your account if the service asks for that (EarnApp:
   `earnapp.com/r/<new UUID>`). Extra copies and proxied copies on that box use
   ids made from the box's id. The running ones change with it. A stopped
-  proxied copy keeps its old id until you add it to its proxy again. A service
+  proxied copy keeps its old id until you add it to its proxy again. A proxied
+  copy whose new id already runs on another box keeps its old id too, and
+  CashPilot says so. A service
   the catalog marks broken, dead or dropped has no **Change** button, because
   CashPilot no longer deploys it. Each change writes an `identity_change` row
   to the audit log, without the id.
