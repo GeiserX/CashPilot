@@ -10,6 +10,24 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.8.0] - 2026-11-17
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#782)
+
+### Features
+
+- Let the owner change a deployed box's device id without removing the service (#783)
+
+### Fixes
+
+- Stop warning that the command changed when only a value in it did (#784)
+
+### Maintenance
+
+- Pin the examples to 2.7 (#781)
+
 ## [2.7.0] - 2026-11-16
 
 ### Dependencies
