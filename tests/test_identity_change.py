@@ -17,6 +17,7 @@ copies, whose ids are made from the box's id.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -486,7 +487,8 @@ class TestProxiedCopies:
             ]
 
             async def worker_call(worker_id, method, path, definition, *, json=None, timeout=30):
-                worker_calls.append({"path": path, "json": json})
+                # The ids in flight while the worker answers: a deploy of the same id elsewhere waits.
+                worker_calls.append({"path": path, "json": json, "claims": set(main._DEVICE_ID_CLAIMS)})
                 return {"status": "deployed", "exit": {}}
 
             sent: list[dict] = []
@@ -511,6 +513,9 @@ class TestProxiedCopies:
         [rebuilt] = worker_calls
         assert rebuilt["path"] == f"/api/proxied/proxyrack/{running}/deploy"
         assert rebuilt["json"]["earner"]["env"]["UUID"] == proxies.copy_device_id(RACK_B, running)
+        derived = hashlib.sha256(proxies.copy_device_id(RACK_B, running).casefold().encode()).hexdigest()
+        assert ("proxyrack", "UUID", derived) in rebuilt["claims"]
+        assert main._DEVICE_ID_CLAIMS == {}
         active = _active()
         assert active[("proxyrack", 1, "1", "UUID")] == RACK_B
         assert active[("proxyrack", 1, f"p{running}", "UUID")] == proxies.copy_device_id(RACK_B, running)

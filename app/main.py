@@ -7470,7 +7470,9 @@ async def _refresh_proxied_copies(
             if "proxied_if_running" not in await _worker_features(worker_id):
                 raise ValueError("its worker is too old to rebuild it without starting a stopped copy; update it")
             earner = await _proxied_earner(recorded, docker_conf, worker_id, pid)
-            async with _proxy_copy_lock(pid, worker_id, slug):
+            # Its new ids are held from the shared-id check until the ledger row is
+            # written, and taken before the copy lock, as a deploy takes them.
+            async with _device_id_claim(slug, svc, earner["env"]), _proxy_copy_lock(pid, worker_id, slug):
                 # Under the lock, as a start: the record read above is older
                 # than a removal or a cap stop that took this lock since. A
                 # removal the worker has not confirmed keeps the record, marked.
