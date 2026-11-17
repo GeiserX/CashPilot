@@ -324,19 +324,31 @@ class TestMergeRecordedSpec:
         # Nothing was kept over the catalog, so nothing may be reported as kept.
         assert not any("resources" in d for d in divergence)
 
-    def test_a_resource_value_the_deployment_ran_with_still_wins_per_key(self):
-        """Control for the test above: per-key must not mean catalog-clobbers.
+    def test_a_limit_the_catalog_changed_reaches_a_deployed_service(self):
+        """EarnFM's cap went from 128m to 256m after the kernel killed it at 128m.
 
-        The record's own mem_limit survives — that is the value this container
-        verifiably ran with — while the catalog's new key still lands beside it.
+        The record used to win per key, so a redeploy kept 128m forever and the
+        fix reached only new installs. Nobody types a limit (the deploy form and
+        DeployRequest have none), so a recorded limit is only an older catalog
+        value: the catalog wins, as it does for capabilities and the command,
+        and CashPilot-Desktop already applies the catalog's limits on every deploy.
         """
         merged, divergence = _merge_recorded_spec(
-            {"image": "i", "env": {}, "resources": {"mem_limit": "2g", "cpu_shares": 4096}},
-            {"image": "i", "env": {}, "resources": {"mem_limit": "1g"}},
+            {"image": "i", "env": {}, "resources": {"mem_limit": "256m", "oom_score_adj": 200}},
+            {"image": "i", "env": {}, "resources": {"mem_limit": "128m", "oom_score_adj": 200}},
             user_env={},
         )
-        assert merged["resources"] == {"mem_limit": "1g", "cpu_shares": 4096}
-        assert any("resources" in d for d in divergence)
+        assert merged["resources"] == {"mem_limit": "256m", "oom_score_adj": 200}
+        assert any(d.startswith("resources:") and "catalog" in d for d in divergence)
+
+    def test_an_unchanged_limit_reports_nothing(self):
+        merged, divergence = _merge_recorded_spec(
+            {"image": "i", "env": {}, "resources": {"mem_limit": "256m"}},
+            {"image": "i", "env": {}, "resources": {"mem_limit": "256m"}},
+            user_env={},
+        )
+        assert merged["resources"] == {"mem_limit": "256m"}
+        assert not any("resources" in d for d in divergence)
 
     def test_a_recorded_resources_block_survives_a_catalog_that_dropped_its_own(self):
         merged, divergence = _merge_recorded_spec(

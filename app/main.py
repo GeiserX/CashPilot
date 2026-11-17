@@ -6300,23 +6300,26 @@ def _merge_recorded_spec(
     if "cap_add" in recorded and _caps(recorded) != _caps(catalog_spec):
         divergence.append("cap_add: using the capabilities the catalog declares now, not the ones it was deployed with")
 
-    # resources is merged per KEY, unlike the runtime-shape fields above, and
-    # for the env reason: limits carry no deployment identity, and the catalog
-    # is where NEW tuning keys land (a value change to a key the record
-    # already set still keeps the recorded value, reported as a divergence).
-    # Whole-dict recorded-wins made every catalog
-    # resource change unreachable for a deployed service — the record predating
-    # a new key (cpu_shares) beat the catalog forever, and the only escape was
-    # remove-and-redeploy, which for storj is the identity-loss operation the
-    # recorded spec exists to prevent. A key the record already set still wins:
-    # that is the value this deployment verifiably ran with.
+    # resources: the catalog wins for every key it declares, like cap_add and the
+    # command. Nobody types a limit (the deploy form and DeployRequest have no
+    # field for one), so a recorded limit is only an older catalog value, and
+    # the catalog is where a limit gets fixed. Recorded-wins kept every such
+    # fix away from deployed services: EarnFM's cap went from 128m to 256m after
+    # the kernel killed it at 128m, and a redeploy kept 128m; before that a new
+    # key (cpu_shares) never landed, and the only escape was remove-and-redeploy,
+    # which for storj is the identity-loss operation the recorded spec exists
+    # to prevent. A key only the record has (the catalog dropped it) is kept, so
+    # a cap is never removed silently. CashPilot-Desktop applies the catalog's
+    # limits on every deploy too.
     stored_res = recorded.get("resources")
     if isinstance(stored_res, dict):
         catalog_res = catalog_spec.get("resources")
-        merged_res = dict(catalog_res) if isinstance(catalog_res, dict) else {}
-        merged_res.update(stored_res)
-        if merged_res != (catalog_res or {}):
-            divergence.append("resources: keeping the limits this service was deployed with")
+        catalog_res = catalog_res if isinstance(catalog_res, dict) else {}
+        merged_res = {**stored_res, **catalog_res}
+        if any(k in catalog_res and stored_res[k] != catalog_res[k] for k in stored_res):
+            divergence.append("resources: using the limits the catalog declares now, not the ones it was deployed with")
+        if any(k not in catalog_res for k in stored_res):
+            divergence.append("resources: keeping a limit the catalog no longer declares")
         if merged_res:
             merged["resources"] = merged_res
 
