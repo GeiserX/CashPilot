@@ -10,6 +10,41 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.7.0] - 2026-11-16
+
+### Dependencies
+
+- Bump the minor-and-patch group with 4 updates (#780)
+
+### Documentation
+
+- Regenerate CHANGELOG.md (#770)
+
+### Features
+
+- Keep ids CashPilot did not deploy with, and download the whole list (#777)
+
+### Fixes
+
+- Keep a proxied copy's ids when its ledger row was never written (#776)
+- Show where a routed service leaves from on the dashboard, and fix the restore and Tailscale hints (#775)
+- Stop a cancelled collection run from logging a false UnboundLocalError (#771)
+- Keep a shared hold until every deploy of its ids has an answer (#774)
+- Refuse an admin-key password reset on an account promoted to owner mid-request (#772)
+
+### Maintenance
+
+- Pin the examples to 2.6 (#769)
+
+### Packaging
+
+- Bump astral-sh/uv from 0.11.16 to 0.13.8 (#778)
+- Bump tailscale/tailscale from v1.104.4 to v1.104.7 (#779)
+
+### Testing
+
+- Roll back a dead test connection's open write so it cannot lock the next test's database (#773)
+
 ## [2.6.0] - 2026-11-16
 
 ### Documentation
