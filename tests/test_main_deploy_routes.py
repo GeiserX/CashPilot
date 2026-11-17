@@ -1562,9 +1562,16 @@ class TestRedeployTakesTheCatalogCommand:
         )
         assert sent["command"] == "-tou-accept -email me@example.com -pass pw2"
 
+    def test_a_retyped_password_is_not_a_changed_command(self, client):
+        """The filled command differs, but the catalog's command did not change: nothing to report."""
+        data, _ = self._redeploy(client, self.CREDENTIAL_SVC, self.CREDENTIAL_RECORD, {"env": {"HG_PASSWORD": "pw2"}})
+        assert not any(line.startswith("command:") for line in data.get("kept_from_previous_deployment", []))
+
     def test_the_report_never_repeats_the_command(self, client):
         """Commands carry credentials; the toast and the log line must not."""
-        data, _ = self._redeploy(client, self.CREDENTIAL_SVC, self.CREDENTIAL_RECORD, {"env": {"HG_PASSWORD": "pw2"}})
+        # An older catalog command (no -tou-accept), so the report has a command line.
+        recorded = {**self.CREDENTIAL_RECORD, "command": "-email me@example.com -pass pw1"}
+        data, _ = self._redeploy(client, self.CREDENTIAL_SVC, recorded, {"env": {"HG_PASSWORD": "pw2"}})
         report = " ".join(data["kept_from_previous_deployment"])
         assert "command:" in report
         for secret in ("pw2", "pw1", "me@example.com"):
