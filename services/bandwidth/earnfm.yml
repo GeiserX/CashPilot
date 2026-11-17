@@ -18,7 +18,10 @@ docker:
   image: earnfm/earnfm-client
   platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
-    mem_limit: "128m"
+    # It idles at 12-25 MB, but a burst of proxy connections took it past 123 MB
+    # twice in two minutes on one box (Nov 2026). At 128m the kernel killed it
+    # each time; 256m leaves room for the burst and still caps a runaway.
+    mem_limit: "256m"
     oom_score_adj: 200
   env:
     - key: EARNFM_TOKEN
