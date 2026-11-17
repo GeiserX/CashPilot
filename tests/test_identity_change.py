@@ -127,10 +127,10 @@ def _deploy(slug, env, worker_id, *, instances=None):
     return sent
 
 
-def _change(row_id, value, *, allow=False, user=OWNER, extra=()):
+def _change(row_id, value, *, allow=False, user=OWNER, extra=(), body=None):
     """POST a change through the handler. Returns (answer or HTTPException, what reached the worker)."""
     sent: list[dict] = []
-    body = {"value": value, **({"allow_shared_identity": True} if allow else {})}
+    body = {"value": value, **({"allow_shared_identity": True} if allow else {}), **(body or {})}
 
     async def run():
         try:
@@ -205,6 +205,22 @@ class TestWhichRows:
         assert isinstance(answer, HTTPException) and answer.status_code == 409, answer
         assert _deploys(sent) == []
 
+    def test_a_service_the_catalog_no_longer_deploys_has_no_change(self, db):
+        """SpeedShare is dead in the catalog: _deploy refuses it, so a Change button could only ever fail."""
+        record = {"image": "speedshare/speedshare", "env": {"CODE": "abc", "SPEEDSHARE_UUID": UUID_A}}
+        asyncio.run(database.save_deployment("speedshare", "c1", spec=record, worker_id=1))
+        asyncio.run(database.record_identities("speedshare", 1, {"1": record["env"]}))
+        row = _row("speedshare", 1, "SPEEDSHARE_UUID", UUID_A)
+        assert main.catalog.get_service("speedshare")["status"] in main._UNDEPLOYABLE_STATUSES
+
+        with patch.object(auth, "get_current_user", return_value=OWNER):
+            listed = TestClient(main.app).get("/api/identities").json()
+        [view] = [r for r in listed if r["id"] == row["id"]]
+        assert view["changeable"] is False
+        answer, sent = _change(row["id"], UUID_B)
+        assert answer.status_code == 409 and "Only an id" in answer.detail, answer.detail
+        assert _deploys(sent) == []
+
     def test_an_unknown_row_is_404(self, db):
         answer, sent = _change(999, UUID_B)
         assert answer.status_code == 404 and sent == []
@@ -246,9 +262,14 @@ class TestTheNewValue:
         ["sdk-node-XYZ", "sdk-node-" + "a" * 31, "", "   ", "sdk-node-" + "b" * 32 + " extra"],
     )
     def test_a_value_the_catalog_pattern_refuses_is_refused(self, db, value):
+        """Refused by the change itself, before the deploy path (and its route and instance checks) runs."""
         _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)
-        answer, sent = _change(_row("earnapp", 1, "EARNAPP_UUID", UUID_A)["id"], value)
-        assert answer.status_code == 400 and _deploys(sent) == []
+        deploy = AsyncMock(return_value={"status": "deployed"})
+        answer, sent = _change(
+            _row("earnapp", 1, "EARNAPP_UUID", UUID_A)["id"], value, extra=[patch.object(main, "_deploy", deploy)]
+        )
+        assert isinstance(answer, HTTPException) and answer.status_code == 400, answer
+        assert deploy.await_count == 0 and _deploys(sent) == []
         assert _active()[("earnapp", 1, "1", "EARNAPP_UUID")] == UUID_A
 
     @pytest.mark.parametrize("value", ["living room", "box;reboot", "cashpilot-{hostname}", "$(id)", "x" * 300])
@@ -375,6 +396,41 @@ class TestTheChange:
         assert deploy["json"]["env"]["IPROYALPAWNS_DEVICE_NAME"] == "living-room"
         assert deploy["json"]["env"]["IPROYALPAWNS_DEVICE_ID"] == legacy
 
+    def test_a_route_the_worker_remembers_asks_for_the_password_and_then_goes_through(self, db):
+        """The UI lost the box's route record; the worker still refuses a direct deploy (route_locked).
+
+        _deploy asks for the owner's password, the dashboard sends it with the
+        change again, and the change must hand it on, or the same 403 comes back
+        and the change can never finish.
+        """
+        _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)
+        row_id = _row("earnapp", 1, "EARNAPP_UUID", UUID_A)["id"]
+        calls: list[bool] = []
+
+        async def worker(worker_id, slug, spec, *, approve=False, leave_route=False):
+            calls.append(leave_route)
+            if not leave_route:
+                raise HTTPException(status_code=403, detail={"error": "route_locked", "message": "routed"})
+            return {"container_id": "c1"}
+
+        step_up_check = AsyncMock()
+        extra = [
+            patch.object(main, "_proxy_worker_deploy", worker),
+            patch.object(main, "require_step_up", step_up_check),
+            patch.object(main, "_routes_on", AsyncMock(return_value=[])),
+            patch.object(main, "_refuse_direct_on_proxied_only", AsyncMock()),
+        ]
+        answer, _ = _change(row_id, UUID_B, extra=extra)
+        assert answer.status_code == 403 and answer.detail["error"] == "step_up_required"
+        assert _active()[("earnapp", 1, "1", "EARNAPP_UUID")] == UUID_A
+
+        calls.clear()
+        answer, _ = _change(row_id, UUID_B, extra=extra, body={"step_up_password": "pw"})
+        assert answer["status"] == "deployed", answer
+        assert calls == [False, True]
+        assert step_up_check.await_args.args[1] == "pw"
+        assert _active()[("earnapp", 1, "1", "EARNAPP_UUID")] == UUID_B
+
     def test_a_service_no_longer_deployed_there_is_refused(self, db):
         """An active row whose deployment record is gone: there is nothing to redeploy."""
         asyncio.run(database.record_identities("earnapp", 1, {"1": {"EARNAPP_UUID": UUID_A}}))
@@ -461,7 +517,9 @@ class TestProxiedCopies:
         # The stopped one keeps its old id until the owner rebuilds it, and is told so.
         assert active[("proxyrack", 1, f"p{stopped}", "UUID")] == proxies.copy_device_id(RACK_A, stopped)
         notes = answer["kept_from_previous_deployment"]
-        assert any(f"p{stopped}" in n for n in notes)
+        [note] = [n for n in notes if f"p{stopped}" in n]
+        # The change was to a UUID: the note says so, and how to give the copy the new one.
+        assert "device name or id" in note and "add it again" in note, note
         marked = {c["proxy_id"]: c["rename_pending"] for c in asyncio.run(database.list_proxied_copies())}
         assert marked == {running: 0, stopped: 1}
 
@@ -545,6 +603,8 @@ class TestTheListUi:
         assert 'data-slug="earnapp" data-key="EARNAPP_UUID"' in html
         assert 'data-action="changeIdentity" data-a1="7"' in html
         assert "proxied copies" in html and "nothing else" in html
+        # The service page's button skips a stopped copy: adding it to its proxy again is what rebuilds it.
+        assert "add it to its proxy again" in html and "rebuild it on the service page" not in html
 
     def test_names_are_escaped(self):
         html = _render("identityChangeHtml", {**_VIEW, "service": "<b>x</b>", "worker": "<i>y</i>"})

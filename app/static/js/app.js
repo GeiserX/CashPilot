@@ -3697,7 +3697,7 @@ const CP = (() => {
       const copies = (a && a.copies) || [];
       if (!renames.length && copies.length) {
         copyIds.push(workerIds[i]);
-        copies.forEach(c => copyLines.push(`• ${box}: ${c} still has the old device name`));
+        copies.forEach(c => copyLines.push(`• ${box}: ${c} still has the old device name or id`));
         return;
       }
       if (!renames.length) return;
@@ -4192,7 +4192,13 @@ const CP = (() => {
     // A box the one-click redeploy cannot rename gets a note, not the button,
     // and its own redeploy that sends the values typed in the deploy form: the
     // form cannot tick a box that already runs the service.
-    el.innerHTML = `${lines.length + skipped.length + copyLines.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
+    // Only proxied copies left: their box's device name or id changed (a
+    // rename, or Change in Settings > Device ids), not the old shared name.
+    const onlyCopies = !lines.length && !skipped.length;
+    el.innerHTML = onlyCopies
+      ? `Some proxied copies of ${escapeHtml(slug)} still use the device name or id made from their box's old one.
+        <button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Rebuild the running proxied copies</button>`
+      : `${lines.length + skipped.length + copyLines.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
       before CashPilot gave each box its own, so ${escapeHtml(slug)} may count them as one device.
       ${lines.length || copyLines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Give each box its own device name</button>` : ''}
       ${skipped.map((line, i) => `<br>${escapeHtml(line)}
@@ -4210,7 +4216,7 @@ const CP = (() => {
     }
     const base = ids.length && await _confirmDeviceRenames(slug, ids, {});
     const copies = copyIds.length && window.confirm(
-      `${slug}: these proxied copies kept the old device name when their box was renamed.\n\n${copyLines.join('\n')}\n\n` +
+      `${slug}: these proxied copies still use the device name or id made from their box's old one.\n\n${copyLines.join('\n')}\n\n` +
       'OK rebuilds each running copy under its own name; a stopped copy stays as it is. Cancel keeps them.'
     );
     if (!base && !copies) return;
@@ -5000,7 +5006,7 @@ const CP = (() => {
       <p class="form-hint">CashPilot makes the ${escapeHtml(r.service)} container on ${escapeHtml(r.worker)} again with
         the new id, and changes nothing else. To the provider it is a new device. Its extra copies and its
         proxied copies on this box take ids made from the new one: running ones change now, and a stopped
-        proxied copy keeps its old id until you rebuild it on the service page.</p>
+        proxied copy keeps its old id until you add it to its proxy again.</p>
       <div class="credential-health-actions">
         <button type="button" class="btn btn-primary btn-sm" data-action="changeIdentity" data-a1="${id}">Change</button>
         <button type="button" class="btn btn-ghost btn-sm" data-action="closeIdentityChange">Cancel</button>

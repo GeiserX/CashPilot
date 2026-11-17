@@ -7455,10 +7455,10 @@ async def _refresh_proxied_copies(
             or held is True
             or (held is False and str(entry.get("status") or "") not in _LIVE_STATES)
         ):
-            notes.append(f"{label}: stopped, so it keeps its old device name; add it again to rename it")
+            notes.append(f"{label}: stopped, so it keeps its old device name or id; add it again to change it")
             continue
         if entry is None or held is not False:
-            notes.append(f"{label}: its box did not report it, so it keeps its old device name; add it again")
+            notes.append(f"{label}: its box did not report it, so it keeps its old device name or id; add it again")
             continue
         try:
             if why := proxies.refusal(svc):
@@ -7513,7 +7513,7 @@ async def _refresh_proxied_copies(
                     logger.exception("Could not record the device ids of the %s copy through proxy %s", slug, pid)
         except (HTTPException, ValueError) as exc:
             detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-            notes.append(f"{label}: keeps its old device name ({detail})")
+            notes.append(f"{label}: keeps its old device name or id ({detail})")
             continue
         if step := catalog.device_link_step(svc, earner["env"]):
             await _register_device(slug, step["id"], earner["env"])
@@ -11956,15 +11956,22 @@ def _identity_changeable(row: dict[str, Any], labels: dict[str, dict[str, str]])
 
     Only an id a deploy set that the box's own copy runs now (not a proxied
     copy's or an extra copy's, which are made from it, nor an unconfirmed
-    hold), for a field the catalog marks as an identifier of a catalog service.
-    ``labels`` is _identity_context's: the catalog's identity keys per service.
+    hold), for a field the catalog marks as an identifier of a catalog service
+    it still deploys: _deploy refuses a broken, dead or dropped one, so its
+    button could only fail. ``labels`` is _identity_context's: the catalog's
+    identity keys per service.
     """
-    return (row.get("kind"), row.get("source"), row.get("status"), str(row.get("instance") or "")) == (
+    slug = row.get("slug") or ""
+    if (row.get("kind"), row.get("source"), row.get("status"), str(row.get("instance") or "")) != (
         "env",
         "deploy",
         "active",
         "1",
-    ) and row.get("name") in labels.get(row.get("slug") or "", {})
+    ):
+        return False
+    if row.get("name") not in labels.get(slug, {}):
+        return False
+    return (catalog.get_service(slug) or {}).get("status") not in _UNDEPLOYABLE_STATUSES
 
 
 async def _identity_context() -> tuple[dict[int, str], dict[str, dict[str, str]]]:
@@ -12197,7 +12204,14 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
                 "device, which it may merge or ban.",
             },
         )
-    deploy = DeployRequest(env={key: value}, allow_shared_identity=allow)
+    # The password too: _deploy asks for it before the service leaves a route
+    # the worker remembers (route_locked), and api() sends it with the change again.
+    password = body.get("step_up_password")
+    deploy = DeployRequest(
+        env={key: value},
+        allow_shared_identity=allow,
+        step_up_password=password if isinstance(password, str) else None,
+    )
     response = await _deploy(slug, deploy, worker_id, request=request)
     await _audit("identity_change", f"{slug}|{key}|copy 1", "changed", actor=user, worker_id=worker_id)
     # The proxied copies' ids are made from this one: rebuilt from the new record now.
