@@ -150,7 +150,7 @@ class TestThePagesDeployRetries:
 
 class TestTheSiteRedeploysDaily:
     def test_docs_runs_on_a_schedule(self):
-        # The release bot's pin and changelog merges start no Docs run.
+        # Repairs a failed deploy, and a release whose pin push did not land.
         # PyYAML reads the bare `on:` key as True.
         triggers = _load(DOCS).get(True) or _load(DOCS).get("on")
         assert triggers.get("schedule"), triggers

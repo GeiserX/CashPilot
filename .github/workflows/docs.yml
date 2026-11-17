@@ -38,10 +38,9 @@ on:
   # (repos.md step 5 makes green checks required). The build takes seconds.
   pull_request:
   workflow_dispatch:
-  # A daily redeploy of main. Pushes by the release bot (the compose pin PR,
-  # the changelog PR) start no workflow, so without it the site kept showing
-  # the previous release's compose file until a person pushed a docs change.
-  # It also repairs a deploy that failed all three tries.
+  # A daily redeploy of main. It repairs a deploy that failed all three tries,
+  # and a release whose push of the compose pins to main did not land. (That
+  # push is made with a deploy key, so when it lands it starts this workflow.)
   schedule:
     - cron: '41 8 * * *'
 
