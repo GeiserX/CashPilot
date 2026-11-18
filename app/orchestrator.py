@@ -5272,7 +5272,10 @@ def get_status() -> list[dict[str, Any]]:
     image_map = _build_image_slug_map()
     if image_map:
         try:
-            all_containers = _external_candidates(client, image_map)
+            skipped: list[Any] = []
+            all_containers = _external_candidates(client, image_map, skipped)
+            if skipped:
+                listed = False
         except Exception as exc:
             # Same rule as the labeled list: a partial result with the flag
             # still true would show EXTERNAL deployments as down instead of
@@ -5375,7 +5378,7 @@ def get_status_cached(max_age: int = 600) -> list[dict[str, Any]]:
     return get_status_light()
 
 
-def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
+def _external_candidates(client: Any, image_map: dict[str, str], skipped: list[Any] | None = None) -> list[Any]:
     """Every container on the host that may run a catalog image, inspected.
 
     A plain list inspects each container it returns, and on a direct socket
@@ -5385,8 +5388,11 @@ def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
     set of names the match below reads, whatever the container was created
     from: a tag, a local alias of the image, or a bare ID. Each image is read
     once. A container whose image cannot be read, or has no name left, is
-    inspected as before. Raises what the list or an inspect raises, except a
-    container removed in between.
+    inspected as before. Raises what the list raises, and an inspect that
+    Docker did not answer (_docker_read_failed). An inspect Docker answered
+    with an error is about that container only: it is left out and added to
+    ``skipped``, so the caller knows its list is not whole. A container
+    removed in between is left out.
     """
     repos = {_image_repository(k).lower() for k in image_map} - {""}
     names_by_image: dict[str, str | None] = {}
@@ -5417,9 +5423,18 @@ def _external_candidates(client: Any, image_map: dict[str, str]) -> list[Any]:
             try:
                 c.reload()
             except NotFound:
-                # Removed between the list and the inspect. Any other error is
-                # the daemon's and propagates, so the caller marks Docker blind.
+                # Removed between the list and the inspect.
                 logger.debug("Container %s is gone", getattr(c, "short_id", "?"))
+                continue
+            except Exception as exc:
+                # Docker did not answer: the caller marks Docker blind. An
+                # answer about this one container is no outage; it may still
+                # be a copy, so the caller's list is partial.
+                if _docker_read_failed(exc):
+                    raise
+                logger.warning("Skipping container %s, its inspect failed: %s", getattr(c, "short_id", "?"), exc)
+                if skipped is not None:
+                    skipped.append(c)
                 continue
         try:
             labels = c.labels

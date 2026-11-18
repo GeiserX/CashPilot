@@ -315,6 +315,47 @@ def test_a_candidate_created_from_a_local_alias_marks_the_heartbeat_partial_and_
     assert _client().get("/api/health").status_code == 200
 
 
+@pytest.mark.parametrize(
+    ("error", "outcome"),
+    [
+        (lambda: docker_errors.APIError("500 Server Error: inspect failed"), "skipped"),
+        (lambda: docker_errors.NotFound("No such container"), "gone"),
+        (lambda: requests.exceptions.ConnectionError("Connection refused"), "raises"),
+        (lambda: requests.exceptions.ReadTimeout("Read timed out"), "raises"),
+    ],
+)
+def test_a_candidate_inspect_error_is_about_that_container_unless_docker_did_not_answer(error, outcome):
+    """One container whose inspect Docker answers with an error must not make the worker Docker-blind."""
+    c = MagicMock(attrs={}, short_id="abc123")
+    c.reload.side_effect = error()
+    client = MagicMock()
+    client.containers.list.return_value = [c]
+    skipped: list = []
+    if outcome == "raises":
+        with pytest.raises(requests.exceptions.RequestException):
+            orchestrator._external_candidates(client, {"example/earner:1": "earner"}, skipped)
+        return
+    assert orchestrator._external_candidates(client, {"example/earner:1": "earner"}, skipped) == []
+    assert skipped == ([c] if outcome == "skipped" else [])
+
+
+def test_a_candidate_left_out_on_an_inspect_error_marks_the_heartbeat_partial():
+    """The left-out container may be a running copy: the UI must not record it as down."""
+    c = MagicMock()
+
+    def candidates(_client, _image_map, skipped=None):
+        if skipped is not None:
+            skipped.append(c)
+        return []
+
+    client = _ext_listing_fails()
+    a, b, d, e = _status_patches(client, candidates)
+    with a, b, d, e:
+        assert orchestrator.get_status() == []
+    assert orchestrator.status_listed() is False
+    assert orchestrator.docker_unreachable_for() is None
+
+
 def test_a_fence_failure_during_a_status_outage_keeps_the_wider_scope():
     """A fence listing failure must not narrow a status outage: the next fence success would end it."""
     from app import lan_fence

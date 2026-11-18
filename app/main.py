@@ -1202,8 +1202,14 @@ async def _worker_docker_check(workers: list[dict[str, Any]] | None = None) -> N
             elif placement.system_info(w).get("docker_available") is False and placement.is_blind(w):
                 blind[cid] = w
         for cid, w in blind.items():
-            if cid not in _docker_first_seen:
-                _docker_first_seen[cid] = _docker_reported_start(w) or _docker_outage_start(stored_at.get(cid), now)
+            # The worker's own clock wins when it reports one: it runs on through
+            # a UI restart and starts over when Docker came back and failed
+            # again between two checks, so a new outage gets its own grace.
+            reported = _docker_reported_start(w)
+            if reported is not None:
+                _docker_first_seen[cid] = reported
+            elif cid not in _docker_first_seen:
+                _docker_first_seen[cid] = _docker_outage_start(stored_at.get(cid), now)
         for cid in list(_docker_first_seen):
             if cid not in blind and cid not in unjudged:
                 _docker_first_seen.pop(cid)

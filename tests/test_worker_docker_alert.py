@@ -249,6 +249,19 @@ class TestRecovery:
         assert f"since {began:%Y-%m-%d %H:%M} UTC" in entry["error"]
         assert len(alerts.pushes) == 1
 
+    def test_a_new_outage_between_two_checks_gets_its_own_grace(self):
+        """Docker came back and failed again between two checks: the worker's new start wins.
+
+        Keeping the first outage's start let a six-minute outage alert at once.
+        """
+        main._docker_first_seen["cid-ct"] = datetime.now(UTC) - PAST_GRACE - timedelta(minutes=20)
+        worker = _worker(docker_unreachable_for=6 * 60)
+        worker["last_heartbeat"] = f"{datetime.now(UTC):%Y-%m-%d %H:%M:%S}"
+        alerts = _Alerts()
+        alerts.run([worker])
+        assert alerts.rows == {} and _bell() == []
+        assert datetime.now(UTC) - main._docker_first_seen["cid-ct"] < timedelta(minutes=8)
+
     def test_a_reported_start_inside_the_grace_stays_quiet(self):
         worker = _worker(docker_unreachable_for=20 * 60)
         worker["last_heartbeat"] = f"{datetime.now(UTC):%Y-%m-%d %H:%M:%S}"

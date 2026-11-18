@@ -131,14 +131,11 @@ def test_a_container_removed_before_its_inspect_is_skipped():
     assert orchestrator._external_candidates(client, IMAGE_MAP) == []
 
 
-@pytest.mark.parametrize("fn", ["get_status", "get_status_light"])
-def test_a_daemon_error_on_inspect_marks_docker_blind_instead_of_hiding_the_container(fn):
-    # A timeout or a proxy refusal on one inspect must not quietly drop an
-    # earner from the status; the caller reports Docker as unavailable.
+def _status_with_a_broken_inspect(fn, error):
     broken = _Sparse("hg" + "7" * 62, "honeygain/honeygain:latest", ["honeygain/honeygain:latest"])
 
     def reload():
-        raise orchestrator.APIError("500 Server Error")
+        raise error
 
     broken.reload = reload
     client = MagicMock()
@@ -151,4 +148,23 @@ def test_a_daemon_error_on_inspect_marks_docker_blind_instead_of_hiding_the_cont
         patch.object(orchestrator, "_mark_docker_unavailable") as blind,
     ):
         assert getattr(orchestrator, fn)() == []
-    blind.assert_called_once()
+    return blind
+
+
+@pytest.mark.parametrize("fn", ["get_status", "get_status_light"])
+def test_an_inspect_docker_did_not_answer_marks_docker_blind_instead_of_hiding_the_container(fn):
+    # A timeout or a refused connection on one inspect must not quietly drop an
+    # earner from the status; the caller reports Docker as unavailable.
+    import requests
+
+    _status_with_a_broken_inspect(fn, requests.exceptions.ReadTimeout("Read timed out")).assert_called_once()
+
+
+def test_an_inspect_error_answer_marks_the_status_partial_not_docker_blind():
+    # Docker answered, about that one container: blind would turn the worker's
+    # health red for as long as that container stays broken. The earner is
+    # still not dropped quietly: the heartbeat says its list is not whole, so
+    # the UI records no copy as down.
+    blind = _status_with_a_broken_inspect("get_status", orchestrator.APIError("500 Server Error"))
+    blind.assert_not_called()
+    assert orchestrator.status_listed() is False
