@@ -2238,14 +2238,17 @@ async def _run_collection() -> None:
             # Offline workers re-derived every rebuild, or the hourly wholesale
             # replacement of this list would silently un-report a dead machine.
             alerts.extend(await _offline_worker_alerts())
+            alerts.extend(await _proxy_cap_alerts())
             # Kept by the health check, which runs every five minutes; without
             # this the hourly rebuild would drop a down container from the bell.
+            # Read after the last await and assigned with none in between: the
+            # health check can clear an entry while this coroutine waits, and a
+            # copy taken before the wait would put the cleared alert back.
             alerts.extend(_container_down_bell.values())
             alerts.extend(_missing_bell.values())
             alerts.extend(_proxied_bell.values())
             alerts.extend(_docker_bell.values())
             alerts.extend(_activity_bell)
-            alerts.extend(await _proxy_cap_alerts())
             _collector_alerts = _with_account_disabled(alerts)
             if collectors and platforms_ok == 0:
                 # A run in which EVERY collector failed used to be recorded as

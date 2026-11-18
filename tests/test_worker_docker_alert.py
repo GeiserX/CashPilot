@@ -278,6 +278,39 @@ class TestEveryScreenShowsIt:
 
         assert "_docker_bell.values()" in inspect.getsource(main._run_collection)
 
+    def test_an_alert_cleared_during_the_rebuild_stays_cleared(self):
+        """The health check can clear the entry while the rebuild awaits; a copy taken first restored it."""
+        from app.collectors.base import EarningsResult
+
+        main._docker_bell["cid-ct"] = {"kind": "docker", "platform": "geiserct", "error": "cannot reach Docker"}
+
+        async def health_check_clears_it():
+            main._docker_bell.pop("cid-ct", None)
+            return []
+
+        async def run():
+            with (
+                patch.object(main.database, "get_deployments", AsyncMock(return_value=[{"slug": "honeygain"}])),
+                patch.object(main.database, "get_config", AsyncMock(return_value={})),
+                patch.object(main.database, "upsert_earnings", AsyncMock()),
+                patch.object(main.database, "record_alert", AsyncMock(return_value=False)),
+                patch.object(main.database, "list_alerts", AsyncMock(return_value=[])),
+                patch.object(main, "_detect_payout", AsyncMock(return_value=None)),
+                patch.object(main, "_flatline_check", AsyncMock(return_value=[])),
+                patch.object(main, "_pending_payout_alerts", AsyncMock(return_value=[])),
+                patch.object(main, "_proxy_cap_alerts", health_check_clears_it),
+                patch.object(
+                    main, "_collect_bounded", AsyncMock(return_value=EarningsResult(platform="honeygain", balance=1.0))
+                ),
+                patch("app.collectors.make_collectors", lambda deployments, config: [object()]),
+                patch("app.collectors._close_stale", AsyncMock()),
+                patch.object(main, "_spawn", lambda coro: coro.close()),
+            ):
+                await main._run_collection()
+
+        asyncio.run(run())
+        assert _bell() == []
+
     def test_dashboard_and_bell_draw_it_without_a_credential_button(self):
         from pathlib import Path
 
