@@ -75,10 +75,13 @@ _docker_available: bool | None = None
 # When the current Docker outage began (time.monotonic()), None while Docker
 # answers. /api/health reads it to tell a blip from a worker gone blind.
 _docker_unreachable_since: float | None = None
-# True from a failed container listing until a listing works again. A daemon
+# Set from a failed container listing until a listing works again. A daemon
 # that answers /_ping but cannot list containers (containerd wedged) would
-# otherwise have its outage cleared by the next ping, once a minute.
-_docker_listing_failed = False
+# otherwise have its outage cleared by the next ping, once a minute. The value
+# is the listing that failed: "managed" (the fence's labeled list) or "status"
+# (get_status and get_status_light, which also list and read every external
+# candidate). Only a listing of the same scope or wider ends it.
+_docker_listing_failed: str | None = None
 
 # In-memory status cache — populated by health check, served instantly to UI
 _status_cache: list[dict[str, Any]] = []
@@ -115,20 +118,41 @@ def _mark_docker_unavailable(reason: str, exc: BaseException) -> None:
     _docker_available = False
 
 
-def _mark_listing_failed(exc: BaseException) -> None:
-    """A container listing failed: an outage that only a working listing ends."""
+def _mark_listing_failed(exc: BaseException, scope: str = "status") -> None:
+    """A container listing failed: an outage that only a working listing of that scope ends."""
     global _docker_listing_failed
     _mark_docker_unavailable("container listing failed", exc)
-    _docker_listing_failed = True
+    if _docker_listing_failed != "status":
+        _docker_listing_failed = scope
 
 
-def _mark_docker_listed() -> None:
-    """A container listing worked: whatever the outage was, it is over."""
+def _mark_docker_listed(scope: str = "status") -> None:
+    """A container listing worked: the outage is over, unless a wider listing still fails.
+
+    The fence lists only the managed containers. Its success says nothing of
+    the external listing or an image read in get_status, so it does not end
+    an outage one of those recorded: the next heartbeat's get_status does.
+    """
     global _docker_listing_failed, _docker_unreachable_since
+    if scope == "managed" and _docker_listing_failed == "status":
+        return
     if _docker_listing_failed:
         logger.warning("Docker lists containers again — container management restored")
-    _docker_listing_failed = False
+    _docker_listing_failed = None
     _docker_unreachable_since = None
+
+
+def _docker_read_failed(exc: BaseException) -> bool:
+    """Whether a per-container read failed in Docker, rather than on a container gone since the list.
+
+    Such a skip leaves a running deployment out of the status, so the listing
+    must count as failed: a status that says Docker is fine while it misses a
+    copy makes the UI record that copy as down. A NotFound (the container or
+    its image removed after the list) and an unreadable field are still skipped.
+    """
+    if isinstance(exc, NotFound):
+        return False
+    return isinstance(exc, (DockerException, requests.exceptions.RequestException))
 
 
 def _mark_docker_available() -> None:
@@ -5237,6 +5261,9 @@ def get_status() -> list[dict[str, Any]]:
                 entry["advertised_address"] = advertised
             results.append(entry)
         except Exception as exc:
+            if _docker_read_failed(exc):
+                _mark_listing_failed(exc)
+                return []
             listed = False
             logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
@@ -5266,6 +5293,9 @@ def get_status() -> list[dict[str, Any]]:
                     seen_ids.add(c.id)
                     matched.append((c, slug, image_name))
             except Exception as exc:
+                if _docker_read_failed(exc):
+                    _mark_listing_failed(exc)
+                    return []
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
         matched_stats = _collect_stats_bulk([c for c, _, _ in matched])
@@ -5295,6 +5325,9 @@ def get_status() -> list[dict[str, Any]]:
                     entry["advertised_address"] = advertised
                 results.append(entry)
             except Exception as exc:
+                if _docker_read_failed(exc):
+                    _mark_listing_failed(exc)
+                    return []
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Update the cache
@@ -5501,6 +5534,9 @@ def get_status_light() -> list[dict[str, Any]]:
                 entry["advertised_address"] = advertised
             results.append(entry)
         except Exception as exc:
+            if _docker_read_failed(exc):
+                _mark_listing_failed(exc)
+                return []
             logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Second: scan all containers and match by image name
@@ -5554,6 +5590,9 @@ def get_status_light() -> list[dict[str, Any]]:
                         entry["advertised_address"] = advertised
                     results.append(entry)
             except Exception as exc:
+                if _docker_read_failed(exc):
+                    _mark_listing_failed(exc)
+                    return []
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     _mark_docker_listed()

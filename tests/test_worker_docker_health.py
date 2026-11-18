@@ -17,11 +17,13 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest  # noqa: E402
+import requests  # noqa: E402
+from docker import errors as docker_errors  # noqa: E402
 
 try:
     from fastapi.testclient import TestClient  # noqa: E402
@@ -47,7 +49,7 @@ def _client():
 def _docker_state(monkeypatch):
     monkeypatch.setattr(orchestrator, "_docker_available", None)
     monkeypatch.setattr(orchestrator, "_docker_unreachable_since", None)
-    monkeypatch.setattr(orchestrator, "_docker_listing_failed", False)
+    monkeypatch.setattr(orchestrator, "_docker_listing_failed", None)
 
 
 def _outage_for(seconds: float) -> None:
@@ -112,7 +114,7 @@ class TestAListingOutage:
         client.containers.list.return_value = []
         self._cycle(client)
         assert orchestrator.docker_unreachable_for() is None
-        assert orchestrator._docker_listing_failed is False
+        assert orchestrator._docker_listing_failed is None
 
     def test_a_ping_still_ends_a_ping_outage(self):
         """Negative control: a worker without a UI has no listing to end it."""
@@ -153,6 +155,105 @@ class TestTheFenceFeedsTheClock:
         client.containers.list.side_effect = None
         client.containers.list.return_value = []
         assert lan_fence._managed(client) == []
+        assert orchestrator.docker_unreachable_for() is None
+
+
+def _ext_listing_fails():
+    """The managed list works; listing the external candidates fails."""
+    client = MagicMock()
+    client.ping.return_value = True
+    client.containers.list.return_value = []
+    return client
+
+
+def _status_patches(client, external):
+    return (
+        patch.object(orchestrator.docker, "from_env", return_value=client),
+        patch.object(orchestrator, "_build_image_slug_map", return_value={"example/earner:1": "earner"}),
+        patch.object(orchestrator, "_external_candidates", side_effect=external),
+        patch.object(orchestrator, "_collect_stats_bulk", return_value={}),
+    )
+
+
+class TestAFenceListingDoesNotEndAStatusOutage:
+    """The fence lists only the managed containers; it cannot say the external listing works again."""
+
+    def _status(self, client, external):
+        a, b, c, d = _status_patches(client, external)
+        with a, b, c, d:
+            return orchestrator.get_status()
+
+    def test_a_fence_success_leaves_an_external_listing_outage_running(self):
+        from app import lan_fence
+
+        client = _ext_listing_fails()
+        assert self._status(client, RuntimeError("Read timed out")) == []
+        orchestrator._docker_unreachable_since = started = time.monotonic() - 3600
+        assert lan_fence._managed(client) == []
+        assert orchestrator._docker_unreachable_since == started
+        assert _client().get("/api/health").status_code == 503
+
+        # Only a status read that lists everything again ends it.
+        assert self._status(client, lambda *_a: []) == []
+        assert orchestrator.docker_unreachable_for() is None
+
+    def test_a_status_success_ends_a_fence_outage(self):
+        """The reverse: get_status makes the fence's list and more, so it ends the fence's outage."""
+        from app import lan_fence
+
+        client = MagicMock()
+        client.containers.list.side_effect = RuntimeError("500 Server Error")
+        with pytest.raises(RuntimeError):
+            lan_fence._managed(client)
+        assert orchestrator.docker_unreachable_for() is not None
+        client.containers.list.side_effect = None
+        client.containers.list.return_value = []
+        assert self._status(client, lambda *_a: []) == []
+        assert orchestrator.docker_unreachable_for() is None
+
+
+def _candidate(image_error: BaseException, managed: bool):
+    """A container whose image read raises: the list named it, the read failed."""
+    c = MagicMock()
+    c.id = c.short_id = "c0ffee"
+    c.name = "cashpilot-earner" if managed else "earner"
+    c.status = "running"
+    c.labels = {"cashpilot.managed": "true", "cashpilot.service": "earner"} if managed else {}
+    c.attrs = {"Config": {"Image": "example/earner:1"}, "Created": ""}
+    type(c).image = PropertyMock(side_effect=image_error)
+    return c
+
+
+DOCKER_FAILURES = [
+    pytest.param(lambda: docker_errors.APIError("500 Server Error: Internal Server Error"), id="api-500"),
+    pytest.param(lambda: requests.exceptions.ConnectionError("Connection aborted"), id="connection"),
+    pytest.param(lambda: requests.exceptions.ReadTimeout("Read timed out"), id="timeout"),
+]
+
+
+@pytest.mark.parametrize("read", ["get_status", "get_status_light"])
+@pytest.mark.parametrize("managed", [True, False], ids=["managed", "external"])
+class TestADockerErrorOnOneContainerIsAListingOutage:
+    """A copy skipped on a Docker error is not gone: the status must not say Docker is fine."""
+
+    def _run(self, read, managed, error):
+        c = _candidate(error, managed)
+        client = _ext_listing_fails()
+        client.containers.list.return_value = [c] if managed else []
+        orchestrator._docker_available = True
+        a, b, d, e = _status_patches(client, lambda *_a: [] if managed else [c])
+        with a, b, d, e:
+            return getattr(orchestrator, read)()
+
+    @pytest.mark.parametrize("error", DOCKER_FAILURES)
+    def test_keeps_the_outage(self, read, managed, error):
+        assert self._run(read, managed, error()) == []
+        assert orchestrator.docker_unreachable_for() is not None
+        assert orchestrator._docker_listing_failed == "status"
+
+    def test_a_container_removed_after_the_list_is_still_skipped(self, read, managed):
+        """NotFound: its image or the container went away in between, which is no outage."""
+        assert self._run(read, managed, docker_errors.ImageNotFound("No such image")) == []
         assert orchestrator.docker_unreachable_for() is None
 
 

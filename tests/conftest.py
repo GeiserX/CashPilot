@@ -277,7 +277,7 @@ def _reset_process_wide_caches():
         # An outage clock left running by one test turns /api/health in
         # another into a 503 once the run is older than the grace.
         orchestrator._docker_unreachable_since = None
-        orchestrator._docker_listing_failed = False
+        orchestrator._docker_listing_failed = None
     with contextlib.suppress(Exception):
         # test_worker_keys drives _send_heartbeat through 401/ConnectError paths
         # and leaves the heartbeat-failure counter nonzero; with CASHPILOT_UI_URL

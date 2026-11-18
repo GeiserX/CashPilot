@@ -584,7 +584,9 @@ def _managed(client: Any) -> list[Any]:
 
     The fence runs every five minutes even on a worker with no heartbeat, so
     without this a daemon that answers its ping but cannot list containers
-    left /api/health green until some request happened to list them.
+    left /api/health green until some request happened to list them. It is a
+    "managed" listing: its success does not end an outage get_status recorded
+    on the external listing or an image read, which this list never makes.
     """
     from app import orchestrator
     from app.constants import LABEL_MANAGED
@@ -592,9 +594,9 @@ def _managed(client: Any) -> list[Any]:
     try:
         managed = client.containers.list(all=True, filters={"label": f"{LABEL_MANAGED}=true"})
     except Exception as exc:
-        orchestrator._mark_listing_failed(exc)
+        orchestrator._mark_listing_failed(exc, "managed")
         raise
-    orchestrator._mark_docker_listed()
+    orchestrator._mark_docker_listed("managed")
     return managed
 
 
