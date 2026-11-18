@@ -9,7 +9,9 @@
 //   response;
 // - on the first load, a bell poll that lands while the services response
 //   waits on credential health is drawn once that response commits (it was
-//   lost: the first poll only recorded its alerts, and the list stayed empty).
+//   lost: the first poll only recorded its alerts, and the list stayed empty);
+// - a poll sent before a services read is older: its alerts do not overwrite
+//   that read's list, whichever answers first.
 //
 //   node scripts/attention_race_check.mjs
 //
@@ -35,10 +37,15 @@ const document = {getElementById: id => (id === 'attention-list' ? list : null)}
 
 // Every request waits until the test answers it, in the order the test picks.
 const pending = [];
-const api = path => new Promise(resolve => pending.push({path, resolve}));
+const api = path => new Promise((resolve, reject) => pending.push({path, resolve, reject}));
 const answer = async (index, value) => {
   const [req] = pending.splice(index, 1);
   req.resolve(value);
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+};
+const fail = async index => {
+  const [req] = pending.splice(index, 1);
+  req.reject(new Error('down'));
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 const settle = async () => {
@@ -47,7 +54,7 @@ const settle = async () => {
 
 const run = new Function(
   'document', 'escapeHtml', 'api', 'fmtTimestamp',
-  `let _attentionSeq = 0; let _attentionDrawSeq = 0; let _attentionLatestAlerts = null; let _attentionDrawnKey = null;
+  `let _attentionSeq = 0; let _attentionDrawSeq = 0; let _attentionReads = 0; let _attentionLatestAlerts = null; let _attentionLatestRead = 0; let _attentionDrawnKey = null; let _attentionDrawnRead = 0;
    let _canWrite = true; let _isOwner = true;
    const DOCKER_LOST_DOC = 'https://example.invalid/doc';
    const _attentionCount = {problems: 0, payouts: 0, services: null, workers: null};
@@ -65,7 +72,8 @@ const run = new Function(
      services: (s, w) => renderAttention(s, w, ++_attentionSeq),
      snapshot: () => _attentionCount.services,
      drawn: () => _attentionDrawnKey,
-     reset: () => { _attentionSeq = 0; _attentionDrawSeq = 0; _attentionLatestAlerts = null; _attentionDrawnKey = null;
+     reset: () => { _attentionSeq = 0; _attentionDrawSeq = 0; _attentionReads = 0; _attentionLatestAlerts = null; _attentionLatestRead = 0;
+                    _attentionDrawnKey = null; _attentionDrawnRead = 0;
                     _attentionCount.services = null; _attentionCount.workers = null; },
    };`,
 )(document, escapeHtml, api, () => ({text: ''}));
@@ -202,6 +210,59 @@ if (pending.length) await answer(0, []);
 check('the alert the first poll saw is drawn once the services response commits', list.innerHTML.includes('Docker unreachable'));
 // And a later identical poll leaves the list as it is.
 check('an identical later poll does not redraw', run.refreshAttentionOnAlertChange(docker) === null);
+
+// 6. The bell last saw a docker alert, which then cleared. A services refresh
+// (after a start, say) reads no alerts: its fresh list is not redrawn with the
+// older poll's alert.
+await start();
+const shown = run.refreshAttentionOnAlertChange(docker);
+await settle();
+await answer(0, []);
+await shown;
+const after = run.services(NEW, workers);
+await settle();
+await answer(0, {alerts: []});
+await answer(0, []);
+await after;
+await settle();
+while (pending.length) await answer(0, []);
+check('a fresh services read is not overwritten by an older bell poll (a cleared alert stays gone)', !list.innerHTML.includes('Docker unreachable'));
+
+// 7. The reverse: the services read finds a new alert the last poll did not have.
+await start();
+const found = run.services(NEW, workers);
+await settle();
+await answer(0, {alerts: docker});
+await answer(0, []);
+await found;
+await settle();
+while (pending.length) await answer(0, []);
+check('a new alert the services read found is not hidden by an older bell poll', list.innerHTML.includes('Docker unreachable'));
+
+// 8. A poll sent before the services read but answered after it commits is older: it does not redraw.
+await start();
+const late = run.services(NEW, workers);
+await settle();
+await answer(0, {alerts: []});
+await answer(0, []);
+await late;
+await settle();
+check('a poll older than the drawn list starts no redraw', run.refreshAttentionOnAlertChange(docker, 0) === null && pending.length === 0);
+
+// 9. The services read of the alerts fails: the list falls back to what the bell saw last.
+await start();
+const seen = run.refreshAttentionOnAlertChange(docker);
+await settle();
+await answer(0, []);
+await seen;
+const blind = run.services(NEW, workers);
+await settle();
+await fail(0);
+await answer(0, []);
+await blind;
+await settle();
+while (pending.length) await answer(0, []);
+check('a services draw that could not read the alerts draws the ones the bell saw last', list.innerHTML.includes('Docker unreachable'));
 
 if (bad) {
   console.error(`${bad} check(s) failed`);

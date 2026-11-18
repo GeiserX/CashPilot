@@ -467,4 +467,8 @@ const tagsNow = () => [...els['attention-list'].innerHTML.matchAll(/class="attn-
 
         src = (ROOT / "app/static/js/app.js").read_text()
         poll = src[src.index("  async function loadCollectorAlerts() {") :]
-        assert "refreshAttentionOnAlertChange(alerts);" in poll[: poll.index("\n  }\n")]
+        body = poll[: poll.index("\n  }\n")]
+        assert "refreshAttentionOnAlertChange(alerts, read);" in body
+        # Numbered when sent, not when answered: a poll in flight while a
+        # services refresh reads newer alerts must not count as the newer read.
+        assert body.index("const read = ++_attentionReads;") < body.index("api('/api/collector-alerts')")

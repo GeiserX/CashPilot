@@ -1568,8 +1568,9 @@ const CP = (() => {
   async function renderAttention(services, workers, seq, knownAlerts, draw) {
     const list = document.getElementById('attention-list');
     if (!list) return;
-    // The alerts this draw read, null when it could not read them.
+    // The alerts this draw read and the number of that read, null when it could not read them.
     let alertsUsed = null;
+    let alertsRead = null;
     const items = [];
     if (workers === null) {
       items.push({ level: 'warn', tag: 'Unknown', what: 'Boxes', why: 'CashPilot could not load the worker list, so it cannot tell which boxes are reporting.' });
@@ -1696,8 +1697,10 @@ const CP = (() => {
     // is the way out when the container was removed on purpose.
     try {
       // The bell poll passes the alerts it just read, so its redraw cannot fail on a second fetch.
+      const read = knownAlerts ? _attentionLatestRead : ++_attentionReads;
       const bell = knownAlerts ? { alerts: knownAlerts } : await api('/api/collector-alerts');
       alertsUsed = attentionAlertsKey(bell.alerts);
+      alertsRead = read;
       for (const a of (bell.alerts || [])) {
         // A proxied copy or its tunnel gone or down: the per-service rows
         // never list proxied copies, so without this the list says nothing is wrong.
@@ -1753,6 +1756,7 @@ const CP = (() => {
       _attentionDrawSeq++;
     }
     _attentionDrawnKey = alertsUsed;
+    _attentionDrawnRead = alertsRead || 0;
     const order = { fail: 0, warn: 1, unknown: 2 };
     items.sort((a, b) => order[a.level] - order[b.level]);
     list.innerHTML = items.map(i => `
@@ -1768,8 +1772,8 @@ const CP = (() => {
     updateAttentionSummary(services, workers);
     // The bell saw other alerts than the ones this services response read
     // (it polled while this one waited, or a redraw it ended had newer ones):
-    // draw again with what the bell saw last.
-    if (seq !== undefined && _attentionLatestAlerts) refreshAttentionOnAlertChange(_attentionLatestAlerts);
+    // draw again with what the bell saw last, unless this read is the newer.
+    if (seq !== undefined && _attentionLatestAlerts) refreshAttentionOnAlertChange(_attentionLatestAlerts, _attentionLatestRead);
   }
 
   // The copies "Stop on all servers" would act on: CashPilot's own containers
@@ -1832,8 +1836,13 @@ const CP = (() => {
   // The latest bell poll and the drawn list are tracked apart: a poll that
   // lands while a services response is on its way is drawn once that response
   // commits (renderAttention), not lost because it was the first poll.
+  // Every alert read, the bell's and the services draw's, is numbered when it
+  // is sent, so the newer of two reads wins whichever answers first.
+  let _attentionReads = 0;
   let _attentionLatestAlerts = null;
+  let _attentionLatestRead = 0;
   let _attentionDrawnKey = null;
+  let _attentionDrawnRead = 0;
   // Bell redraws have their own generation, so a redraw never discards a
   // services response still in flight (renderAttention): the newest services
   // response commits, and only it or a newer redraw ends a redraw.
@@ -1843,8 +1852,11 @@ const CP = (() => {
       .filter(a => a.kind === 'missing' || a.kind === 'proxied' || a.kind === 'docker')
       .map(a => [a.kind, a.platform, a.error]));
   }
-  function refreshAttentionOnAlertChange(alerts) {
+  function refreshAttentionOnAlertChange(alerts, read = ++_attentionReads) {
+    // A poll sent before the alerts the list or the bell already has: older news.
+    if (read < _attentionLatestRead || read < _attentionDrawnRead) return null;
     _attentionLatestAlerts = (alerts || []).slice();
+    _attentionLatestRead = read;
     if (attentionAlertsKey(alerts) === _attentionDrawnKey) {
       // The list already shows these: a redraw still in flight has older alerts.
       _attentionDrawSeq++;
@@ -6093,12 +6105,13 @@ const CP = (() => {
       // gets its OWN category ('expiring') — it is a prediction, not an
       // observed rejection, and the bell must not assert a 401 that never
       // happened.
+      const read = ++_attentionReads;
       const [payload, health] = await Promise.all([
         api('/api/collector-alerts'),
         api('/api/credentials/health').catch(() => []),
       ]);
       const alerts = payload.alerts || [];
-      refreshAttentionOnAlertChange(alerts);
+      refreshAttentionOnAlertChange(alerts, read);
       for (const row of (Array.isArray(health) ? health : [])) {
         if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
         if (alerts.some(a => a.platform === row.service && a.kind === 'collector')) continue;
