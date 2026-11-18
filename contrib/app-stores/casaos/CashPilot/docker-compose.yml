@@ -114,6 +114,15 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+    # `sockguard verify` asks the host's Docker through the socket this proxy
+    # holds, so a stale or missing host socket (a Docker update replaced it,
+    # docs/faq.md) turns it unhealthy. Exec form: the image has no shell.
+    healthcheck:
+      test: ["CMD", "/sockguard", "verify"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - cashpilot_docker_api:/run/cashpilot-docker

@@ -977,3 +977,87 @@ def test_a_stranger_in_a_direct_containers_namespace_is_named_with_it(tmp_path, 
     (message,) = [r.getMessage() for r in caplog.records if "my-sidecar" in r.getMessage()]
     assert "shares a network namespace with cashpilot-honeygain and was not deployed" in message
     assert d.containers.get("cashpilot-honeygain") is hg
+
+
+class _StopMain(Exception):
+    """Ends main() right after it made its Docker client."""
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        (None, "unix:///var/run/docker.sock"),
+        ("", "unix:///var/run/docker.sock"),
+        ("unix:///host-run/docker.sock", "unix:///host-run/docker.sock"),
+    ],
+    ids=["unset", "empty", "folder-bind"],
+)
+def test_the_migrator_reaches_docker_at_docker_host_when_set(monkeypatch, env, expected):
+    """A folder bind of /var/run puts the host socket at /host-run/docker.sock (docs/faq.md)."""
+    import docker
+
+    if env is None:
+        monkeypatch.delenv("DOCKER_HOST", raising=False)
+    else:
+        monkeypatch.setenv("DOCKER_HOST", env)
+    made = {}
+
+    def client(**kwargs):
+        made.update(kwargs)
+        raise _StopMain
+
+    monkeypatch.setattr(docker, "DockerClient", client)
+    with pytest.raises(_StopMain):
+        om.main()
+    assert made == {"base_url": expected, "version": "auto", "timeout": 900}
+
+
+class _Hidden:
+    """A Docker that cannot see the migrator's own container, as through the socket proxy."""
+
+    class containers:  # noqa: N801 - docker-py's attribute name
+        @staticmethod
+        def get(name):
+            raise NotFound(f"No such container: {name}")
+
+
+def test_through_the_proxys_socket_the_migrator_says_it_needs_the_hosts_own(monkeypatch, caplog):
+    monkeypatch.setenv("DOCKER_HOST", "unix:///run/cashpilot-docker/docker.sock")
+    with caplog.at_level("ERROR", logger=om.logger.name), pytest.raises(NotFound):
+        om._self_container(_Hidden())
+    (message,) = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    assert "DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock" in message
+    assert "host's own Docker socket, not the socket proxy's" in message
+
+
+def test_without_docker_host_a_missing_self_container_raises_as_before(monkeypatch, caplog):
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    with caplog.at_level("ERROR", logger=om.logger.name), pytest.raises(NotFound):
+        om._self_container(_Hidden())
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+@pytest.mark.parametrize("env", [None, "unix:///run/cashpilot-docker/docker.sock"], ids=["unset", "proxy-socket"])
+def test_a_docker_host_socket_that_is_not_there_is_named_before_main_dies(monkeypatch, caplog, env):
+    """version="auto" asks the daemon in the constructor, so a missing socket fails before _self_container."""
+    import docker
+    from docker.errors import DockerException
+
+    if env is None:
+        monkeypatch.delenv("DOCKER_HOST", raising=False)
+    else:
+        monkeypatch.setenv("DOCKER_HOST", env)
+
+    def client(**_kwargs):
+        raise DockerException("Error while fetching server API version: No such file or directory")
+
+    monkeypatch.setattr(docker, "DockerClient", client)
+    with caplog.at_level("ERROR", logger=om.logger.name), pytest.raises(DockerException):
+        om.main()
+    errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    if env is None:
+        assert not errors
+    else:
+        (message,) = errors
+        assert f"Cannot reach Docker through DOCKER_HOST={env}" in message
+        assert "host's own Docker socket, not the socket proxy's" in message

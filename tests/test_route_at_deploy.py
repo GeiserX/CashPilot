@@ -1040,6 +1040,12 @@ class TestAWorkerThatStartsWithoutDocker:
             patch.object(worker_api, "_check_fence", AsyncMock()),
             patch.object(worker_api, "_fence_loop", AsyncMock()),
             patch.object(worker_api, "UI_URL", ""),
+            # What the worker runs once Docker answers (tests/test_worker_docker_comes_back.py).
+            patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+            patch.object(worker_api.lan_fence, "guard", return_value={}),
+            patch.object(worker_api.proxy_tunnel, "recover_moves", return_value=[]),
+            patch.object(worker_api.proxy_tunnel, "sweep_test_tunnels", return_value=[]),
+            patch.object(worker_api, "_migrate_proxied"),
         ):
             asyncio.run(run())
         return hold.call_count
@@ -1052,7 +1058,8 @@ class TestAWorkerThatStartsWithoutDocker:
         assert self._start(monkeypatch, True, docker_comes_up=False) == 1
 
     def test_any_other_worker_starts_no_hold(self, monkeypatch):
-        assert self._start(monkeypatch, False) == 0
+        """Until Docker answers; then the guard passes call it, and it returns at once on such a worker."""
+        assert self._start(monkeypatch, False, docker_comes_up=False) == 0
 
 
 class TestTheHeartbeat:

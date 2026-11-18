@@ -2590,11 +2590,14 @@ def remove_all(slug: str) -> list[str]:
     return removed
 
 
-def sweep_test_tunnels() -> list[str]:
+def sweep_test_tunnels(min_age: float = 0.0) -> list[str]:
     """Remove Test tunnels a worker that stopped mid-test left behind, and staged
     tunnels of a deploy it stopped in.
 
-    Run at worker start, when no test of this worker can be in flight.
+    Run at worker start, when no test of this worker can be in flight. A worker
+    that started without Docker runs it once Docker answers, with the API
+    already serving: it passes ``min_age``, the seconds since it started, so a
+    Test tunnel younger than that (a test of this worker, in flight) is kept.
     """
     client = orchestrator._get_client()
     found = client.containers.list(
@@ -2604,6 +2607,8 @@ def sweep_test_tunnels() -> list[str]:
     swept: list[str] = []
     for container in found:
         if LABEL_PROXY in (container.labels or {}):
+            continue
+        if min_age and _age_seconds(container) < min_age:
             continue
         _remove_quietly(container, SIDECAR_STOP_SECONDS)
         swept.append(container.name)
