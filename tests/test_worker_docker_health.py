@@ -293,17 +293,23 @@ def test_a_matched_external_copy_that_cannot_be_read_marks_the_heartbeat_partial
     assert orchestrator.docker_unreachable_for() is None
 
 
-def test_a_broken_container_that_is_not_ours_leaves_the_worker_healthy_and_its_list_whole():
-    """Another image's container whose image inspect answers 500 every time, over many heartbeats."""
+def test_a_candidate_created_from_a_local_alias_marks_the_heartbeat_partial_and_the_worker_healthy():
+    """Created as a local alias of a catalog image: the name it was created from says nothing.
+
+    _external_candidates keeps it because its image's tags name a catalog
+    repository. Its image read answers 500 every time, over many heartbeats:
+    the list is partial, so the UI records no copy as down, and Docker answered,
+    so the worker stays healthy.
+    """
     from app import lan_fence
 
-    c = _candidate(_broken_image(), managed=False, created_from="someone/else:2")
+    c = _candidate(_broken_image(), managed=False, created_from="my-local-earner:latest")
     client = _ext_listing_fails()
     a, b, d, e = _status_patches(client, lambda *_a: [c])
     with a, b, d, e:
         for _ in range(3):
             assert orchestrator.get_status() == []
-            assert orchestrator.status_listed() is True
+            assert orchestrator.status_listed() is False
             assert lan_fence._managed(client) == []
     assert orchestrator.docker_unreachable_for() is None
     assert _client().get("/api/health").status_code == 200

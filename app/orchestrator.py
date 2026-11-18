@@ -156,21 +156,6 @@ def _docker_read_failed(exc: BaseException) -> bool:
     return isinstance(exc, requests.exceptions.RequestException) and not isinstance(exc, requests.exceptions.HTTPError)
 
 
-def _may_run_catalog_image(c: Any, image_map: dict[str, str]) -> bool:
-    """Whether a container whose image could not be read may run a catalog image, by the name it was created from.
-
-    A container created from another image is not a copy the status can miss,
-    so skipping it leaves the list whole. A bare image ID says nothing.
-    """
-    try:
-        name = str(((c.attrs or {}).get("Config") or {}).get("Image") or "")
-    except Exception:  # noqa: BLE001 - nothing to read: it may be one
-        return True
-    if not name or name.startswith("sha256:"):
-        return True
-    return name in image_map or _image_repository(name) in image_map
-
-
 def _mark_docker_available() -> None:
     """Flip the availability memo to True, announcing a recovery.
 
@@ -5312,8 +5297,10 @@ def get_status() -> list[dict[str, Any]]:
                 if _docker_read_failed(exc):
                     _mark_listing_failed(exc)
                     return []
-                # Gone since the list, or created from another image: no copy is missed.
-                if not isinstance(exc, NotFound) and _may_run_catalog_image(c, image_map):
+                # Gone since the list: no copy is missed. Anything else may be a
+                # copy: _external_candidates kept only containers whose image names
+                # a catalog repository (an alias included) or cannot be read.
+                if not isinstance(exc, NotFound):
                     listed = False
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
