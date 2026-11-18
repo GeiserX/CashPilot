@@ -10,6 +10,12 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.8.3] - 2026-11-18
+
+### Fixes
+
+- Stop a worker that lost Docker from reporting healthy for hours (#791)
+
 ## [2.8.2] - 2026-11-17
 
 ### CI
