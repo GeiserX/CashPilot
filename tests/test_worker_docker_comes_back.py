@@ -185,10 +185,15 @@ class TestDockerAtStart:
             wait_loop=never,
         )
         before = events[: events.index("--docker-up--")]
-        assert before[: len(ONE_TIME)] == ONE_TIME
+        head = ONE_TIME[: ONE_TIME.index("recover")]
+        assert before[: len(head)] == head
         for once in ("egress", "set-egress", "fence", "recover", "sweep", "migrate"):
             assert events.count(once) == 1, (once, events)
-        assert [e for e in before[len(ONE_TIME) :] if e != "migrate"][:2] == ["guard", "hold"]
+        # The guard loop starts before the proxied-copy steps, and GUARD_SECONDS is
+        # 10 ms here, so a periodic pass may land before recover: only their order counts.
+        assert [e for e in events if e in ("recover", "sweep", "migrate")] == ["recover", "sweep", "migrate"]
+        after_sweep = [e for e in _after(events, "sweep") if e not in ("migrate", "--docker-up--", "--stopped--")]
+        assert after_sweep[:2] == ["guard", "hold"]
         # Nothing can be in flight before the API serves: every leftover goes.
         assert SWEEP_MIN_AGES == [0.0]
         assert not any(COME_BACK_LOG in r.getMessage() for r in caplog.records)

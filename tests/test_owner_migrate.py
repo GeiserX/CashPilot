@@ -1061,3 +1061,25 @@ def test_a_docker_host_socket_that_is_not_there_is_named_before_main_dies(monkey
         (message,) = errors
         assert f"Cannot reach Docker through DOCKER_HOST={env}" in message
         assert "host's own Docker socket, not the socket proxy's" in message
+
+
+@pytest.mark.parametrize(
+    "env",
+    ["tcp://admin:s3cret@docker.example:2376", "ssh://admin:s3cret@docker.example", "/host-run/docker.sock"],
+    ids=["tcp-with-login", "ssh-with-login", "bare-path"],
+)
+def test_a_docker_host_that_is_not_a_unix_socket_is_refused_without_repeating_it(monkeypatch, caplog, env):
+    """A tcp:// or ssh:// URL can carry a login; docker-py's error would print it, so the SDK never sees it."""
+    import docker
+
+    monkeypatch.setenv("DOCKER_HOST", env)
+
+    def client(**_kwargs):
+        raise AssertionError("the Docker SDK got a DOCKER_HOST that is not a Unix socket")
+
+    monkeypatch.setattr(docker, "DockerClient", client)
+    with caplog.at_level("DEBUG"), pytest.raises(ValueError) as refused:
+        om.main()
+    assert "must name a Unix socket" in str(refused.value)
+    assert env not in str(refused.value)
+    assert "s3cret" not in caplog.text

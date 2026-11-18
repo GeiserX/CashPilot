@@ -883,8 +883,21 @@ DEFAULT_DOCKER_HOST = "unix:///var/run/docker.sock"
 
 
 def _docker_host() -> str:
-    """DOCKER_HOST when set (a folder bind puts the socket elsewhere), else the host's usual socket."""
-    return os.environ.get("DOCKER_HOST", "").strip() or DEFAULT_DOCKER_HOST
+    """DOCKER_HOST when set (a folder bind puts the socket elsewhere), else the host's usual socket.
+
+    Only a Unix socket path is accepted. Any other value (tcp://, ssh://) is refused
+    without repeating it, because such a URL can carry a login, and docker-py's own
+    invalid-address error would print it.
+    """
+    host = os.environ.get("DOCKER_HOST", "").strip()
+    if not host:
+        return DEFAULT_DOCKER_HOST
+    if not host.startswith("unix:///"):
+        raise ValueError(
+            "DOCKER_HOST must name a Unix socket (unix:///path/to/docker.sock): the migrator needs the "
+            "host's own Docker socket. The value is not shown, because it can hold a login."
+        )
+    return host
 
 
 def _say_docker_host_is_wrong(what: str) -> None:
