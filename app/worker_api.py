@@ -706,7 +706,9 @@ async def _send_heartbeat() -> None:
     # does not offer it in "features": the button could only fail.
     # A daemon that answers the ping but would not list the containers above
     # is blind too: its outage clock is still running (orchestrator._mark_listing_failed).
-    docker_ok = await asyncio.to_thread(orchestrator.docker_available) and orchestrator.docker_unreachable_for() is None
+    docker_ok = await asyncio.to_thread(orchestrator.docker_available)
+    docker_down = orchestrator.docker_unreachable_for()
+    docker_ok = docker_ok and docker_down is None
     egress_ip = await _detect_egress_ip()
     # The fence drops this address too, so the router's NAT loopback cannot
     # carry an earner back into the LAN. A new address is fenced at once,
@@ -779,6 +781,10 @@ async def _send_heartbeat() -> None:
     # "proxy" or "socket": what to restart when Docker stops answering, so the
     # UI's alert can name it (main._worker_docker_check).
     payload["system_info"]["docker_access"] = orchestrator.docker_access()
+    if docker_down is not None:
+        # How long Docker has failed, so the UI's alert grace counts from the
+        # outage's start and not from the UI's own restart.
+        payload["system_info"]["docker_unreachable_for"] = int(docker_down)
     if docker_ok:
         # This worker fences its earners off the LAN by itself and takes
         # POST /api/isolation to switch an upgraded install over (app/lan_fence.py).

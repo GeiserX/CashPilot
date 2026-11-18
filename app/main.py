@@ -1201,9 +1201,9 @@ async def _worker_docker_check(workers: list[dict[str, Any]] | None = None) -> N
                 unjudged.add(cid)
             elif placement.system_info(w).get("docker_available") is False and placement.is_blind(w):
                 blind[cid] = w
-        for cid in blind:
+        for cid, w in blind.items():
             if cid not in _docker_first_seen:
-                _docker_first_seen[cid] = _docker_outage_start(stored_at.get(cid), now)
+                _docker_first_seen[cid] = _docker_reported_start(w) or _docker_outage_start(stored_at.get(cid), now)
         for cid in list(_docker_first_seen):
             if cid not in blind and cid not in unjudged:
                 _docker_first_seen.pop(cid)
@@ -1233,6 +1233,21 @@ async def _worker_docker_check(workers: list[dict[str, Any]] | None = None) -> N
         _collector_alerts.extend(_docker_bell.values())
     except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
         logger.warning("Worker Docker check failed: %s", exc)
+
+
+def _docker_reported_start(worker: dict[str, Any]) -> datetime | None:
+    """When the worker says its outage began: its last heartbeat less the seconds it reported.
+
+    The worker's own clock, so a UI restart does not start the grace again.
+    None for a worker from before docker_unreachable_for.
+    """
+    seconds = placement.system_info(worker).get("docker_unreachable_for")
+    at = placement._sqlite_time(worker.get("last_heartbeat"))
+    if at is None or isinstance(seconds, bool) or not isinstance(seconds, int) or seconds < 0:
+        return None
+    with contextlib.suppress(OverflowError):
+        return at - timedelta(seconds=seconds)
+    return None
 
 
 def _docker_outage_start(alerted_at: str | None, now: datetime) -> datetime:

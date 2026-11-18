@@ -233,6 +233,38 @@ class TestRecovery:
         assert f"since {began:%Y-%m-%d %H:%M} UTC" in alerts.rows["cid-ct"], "the stored row keeps it too"
         assert alerts.pushes == [], "the outage was already pushed"
 
+    def test_a_ui_restart_inside_the_grace_keeps_the_worker_reported_start(self):
+        """No alert row yet, so only the worker knows: it reports how long Docker has failed.
+
+        Counting from the restart instead postponed the alert by a whole grace
+        on each restart, and forever on a UI that restarts more often than that.
+        """
+        heartbeat = datetime.now(UTC) - timedelta(seconds=40)
+        worker = _worker(docker_unreachable_for=int(PAST_GRACE.total_seconds()))
+        worker["last_heartbeat"] = f"{heartbeat:%Y-%m-%d %H:%M:%S}"
+        alerts = _Alerts()
+        alerts.run([worker])
+        began = heartbeat - PAST_GRACE
+        [entry] = _bell()
+        assert f"since {began:%Y-%m-%d %H:%M} UTC" in entry["error"]
+        assert len(alerts.pushes) == 1
+
+    def test_a_reported_start_inside_the_grace_stays_quiet(self):
+        worker = _worker(docker_unreachable_for=20 * 60)
+        worker["last_heartbeat"] = f"{datetime.now(UTC):%Y-%m-%d %H:%M:%S}"
+        alerts = _Alerts()
+        alerts.run([worker])
+        assert alerts.rows == {} and _bell() == []
+
+    @pytest.mark.parametrize("seconds", ["1200", -5, True, 10**30, None])
+    def test_an_unusable_reported_age_falls_back_to_now(self, seconds):
+        worker = _worker(docker_unreachable_for=seconds)
+        worker["last_heartbeat"] = f"{datetime.now(UTC):%Y-%m-%d %H:%M:%S}"
+        alerts = _Alerts()
+        alerts.run([worker])
+        assert alerts.rows == {} and _bell() == []
+        assert datetime.now(UTC) - main._docker_first_seen["cid-ct"] < timedelta(minutes=1)
+
     def test_an_unreadable_stored_time_falls_back_to_now(self):
         alerts = _Alerts()
         alerts.rows["cid-ct"] = "stored before the restart"

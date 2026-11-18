@@ -400,3 +400,18 @@ class TestHeartbeatSaysHowDockerIsReached:
             captured = _heartbeat_payload(monkeypatch)
         assert captured["containers"] == []
         assert captured["system_info"]["docker_available"] is False
+
+    def test_heartbeat_carries_how_long_docker_has_failed(self, monkeypatch):
+        """The UI counts its alert grace from this, so a UI restart does not start it again."""
+        monkeypatch.setattr(orchestrator, "get_status", lambda: [])
+        monkeypatch.setattr(orchestrator, "docker_available", lambda: False)
+        _outage_for(1200)
+        captured = _heartbeat_payload(monkeypatch)
+        assert 1200 <= captured["system_info"]["docker_unreachable_for"] < 1260
+        assert isinstance(captured["system_info"]["docker_unreachable_for"], int)
+
+    def test_a_worker_that_reaches_docker_sends_no_outage_age(self, monkeypatch):
+        monkeypatch.setattr(orchestrator, "get_status", lambda: [])
+        monkeypatch.setattr(orchestrator, "docker_available", lambda: True)
+        captured = _heartbeat_payload(monkeypatch)
+        assert "docker_unreachable_for" not in captured["system_info"]
