@@ -390,6 +390,17 @@ class TestEveryScreenShowsIt:
         assert "sysInfo.docker_available === false" in html
         assert "'Docker unreachable')" in html
 
+    def test_the_fleet_flag_links_the_fix_for_keyboard_and_touch(self):
+        """A title shows to a mouse only; the fix and the doc must be a visible, focusable link."""
+        from pathlib import Path
+
+        html = (Path(main.__file__).parent / "templates" / "fleet.html").read_text()
+        branch = html[html.index("        dockerLost\n") : html.index("nameCounts[String(w.name")]
+        assert (
+            f'<a class="flag-link" href="{main.DOCKER_LOST_DOC}" target="_blank" rel="noopener noreferrer">How to fix</a>'
+            in branch
+        )
+
 
 class TestTheStoredStartTime:
     """The real alerts table: the first time a subject was alerted, in a form _docker_outage_start reads."""
