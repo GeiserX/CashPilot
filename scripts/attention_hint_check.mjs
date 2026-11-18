@@ -28,12 +28,13 @@ const document = {getElementById: id => (id === 'attention-list' ? list : null)}
 
 const run = new Function(
   'document', 'escapeHtml', 'api', 'fmtTimestamp',
-  `let _attentionSeq = 0; let _attentionDrawSeq = 0; let _attentionAlertsKey = null; let _canWrite = true; let _isOwner = false;
+  `let _attentionSeq = 0; let _attentionDrawSeq = 0; let _attentionLatestAlerts = null; let _attentionDrawnKey = null; let _canWrite = true; let _isOwner = false;
    const _attentionCount = {problems: 0, payouts: 0};
    function updateAttentionSummary() {}
    ${grab('function instanceState')}
    ${grab('function copyState')}
    ${grab('function copyWords')}
+   ${grab('function attentionAlertsKey')}
    ${grab('async function renderAttention')}
    return {renderAttention, count: () => _attentionCount.problems};`,
 )(document, escapeHtml, async () => [], () => ({text: ''}));

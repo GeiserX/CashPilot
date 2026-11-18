@@ -1568,7 +1568,8 @@ const CP = (() => {
   async function renderAttention(services, workers, seq, knownAlerts, draw) {
     const list = document.getElementById('attention-list');
     if (!list) return;
-    const drawAtStart = _attentionDrawSeq;
+    // The alerts this draw read, null when it could not read them.
+    let alertsUsed = null;
     const items = [];
     if (workers === null) {
       items.push({ level: 'warn', tag: 'Unknown', what: 'Boxes', why: 'CashPilot could not load the worker list, so it cannot tell which boxes are reporting.' });
@@ -1696,6 +1697,7 @@ const CP = (() => {
     try {
       // The bell poll passes the alerts it just read, so its redraw cannot fail on a second fetch.
       const bell = knownAlerts ? { alerts: knownAlerts } : await api('/api/collector-alerts');
+      alertsUsed = attentionAlertsKey(bell.alerts);
       for (const a of (bell.alerts || [])) {
         // A proxied copy or its tunnel gone or down: the per-service rows
         // never list proxied copies, so without this the list says nothing is wrong.
@@ -1748,11 +1750,9 @@ const CP = (() => {
     if (draw !== undefined && draw !== _attentionDrawSeq) return;
     if (seq !== undefined) {
       if (seq !== _attentionSeq) return;
-      // A bell redraw ran while this response was on its way, with alerts
-      // newer than the ones this read: let the next bell poll draw again.
-      if (drawAtStart !== _attentionDrawSeq) _attentionAlertsKey = '';
       _attentionDrawSeq++;
     }
+    _attentionDrawnKey = alertsUsed;
     const order = { fail: 0, warn: 1, unknown: 2 };
     items.sort((a, b) => order[a.level] - order[b.level]);
     list.innerHTML = items.map(i => `
@@ -1766,6 +1766,10 @@ const CP = (() => {
     // problem to count: nothing is known to be wrong.
     _attentionCount.problems = items.filter(i => i.level !== 'unknown').length;
     updateAttentionSummary(services, workers);
+    // The bell saw other alerts than the ones this services response read
+    // (it polled while this one waited, or a redraw it ended had newer ones):
+    // draw again with what the bell saw last.
+    if (seq !== undefined && _attentionLatestAlerts) refreshAttentionOnAlertChange(_attentionLatestAlerts);
   }
 
   // The copies "Stop on all servers" would act on: CashPilot's own containers
@@ -1823,20 +1827,30 @@ const CP = (() => {
 
   // The attention list and the bell read the same alerts, but the list is
   // drawn only when the services refresh. When the alerts it shows (missing,
-  // proxied) change between two bell polls, draw it again, or it can say
-  // nothing needs you while the bell reports a failure.
-  let _attentionAlertsKey = null;
+  // proxied, docker) differ from the ones the list was drawn with, draw it
+  // again, or it can say nothing needs you while the bell reports a failure.
+  // The latest bell poll and the drawn list are tracked apart: a poll that
+  // lands while a services response is on its way is drawn once that response
+  // commits (renderAttention), not lost because it was the first poll.
+  let _attentionLatestAlerts = null;
+  let _attentionDrawnKey = null;
   // Bell redraws have their own generation, so a redraw never discards a
   // services response still in flight (renderAttention): the newest services
   // response commits, and only it or a newer redraw ends a redraw.
   let _attentionDrawSeq = 0;
-  function refreshAttentionOnAlertChange(alerts) {
-    const key = JSON.stringify((alerts || [])
+  function attentionAlertsKey(alerts) {
+    return JSON.stringify((alerts || [])
       .filter(a => a.kind === 'missing' || a.kind === 'proxied' || a.kind === 'docker')
       .map(a => [a.kind, a.platform, a.error]));
-    const changed = _attentionAlertsKey !== null && key !== _attentionAlertsKey;
-    _attentionAlertsKey = key;
-    if (!changed || !_attentionCount.services || !document.getElementById('attention-list')) return null;
+  }
+  function refreshAttentionOnAlertChange(alerts) {
+    _attentionLatestAlerts = (alerts || []).slice();
+    if (attentionAlertsKey(alerts) === _attentionDrawnKey) {
+      // The list already shows these: a redraw still in flight has older alerts.
+      _attentionDrawSeq++;
+      return null;
+    }
+    if (!_attentionCount.services || !document.getElementById('attention-list')) return null;
     // Its own generation: two redraws can be in flight at once, and only the
     // newest may write. A services response in flight still commits.
     return renderAttention(_attentionCount.services, _attentionCount.workers, undefined, alerts.slice(), ++_attentionDrawSeq);
