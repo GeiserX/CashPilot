@@ -172,7 +172,7 @@ The restart binds the new socket, and the worker finds Docker again at its next 
       - SOCKGUARD_UPSTREAM_SOCKET=/host-run/docker.sock
 ```
 
-Then run `docker compose up -d`. The same change works in `docker-compose.worker.yml` and `docker-compose.fleet.yml`.
+Then run `docker compose up -d`. The same change works in `docker-compose.worker.yml` and `docker-compose.fleet.yml`. Compose reads those files only when you name them, so run `docker compose -f docker-compose.worker.yml up -d` or `docker compose -f docker-compose.fleet.yml up -d`, unless `COMPOSE_FILE` already names the file.
 
 - `recursive: disabled` is necessary. `/var/run` holds other mounts, for example Docker's network namespaces under `/run/docker/netns` and `/run/user/...`. A recursive bind brings them all into the proxy. A non-recursive bind shows only the folder itself.
 - `SOCKGUARD_UPSTREAM_SOCKET` sends the proxy to the new path. The policy block and its fingerprint stay as they are, because the environment variable overrides `upstream.socket` in the policy. Without the variable the proxy does not start (`upstream socket not found (/var/run/docker.sock)`).

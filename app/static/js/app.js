@@ -1825,7 +1825,9 @@ const CP = (() => {
     const changed = _attentionAlertsKey !== null && key !== _attentionAlertsKey;
     _attentionAlertsKey = key;
     if (!changed || !_attentionCount.services || !document.getElementById('attention-list')) return null;
-    return renderAttention(_attentionCount.services, _attentionCount.workers, _attentionSeq, alerts.slice());
+    // Its own generation: two bell redraws, or a redraw and a services
+    // refresh, can be in flight at once, and only the newest may write.
+    return renderAttention(_attentionCount.services, _attentionCount.workers, ++_attentionSeq, alerts.slice());
   }
 
   // Action-button icons, extracted so the single-instance row and the per-node sub-row

@@ -319,11 +319,26 @@ class TestEveryScreenShowsIt:
         assert "|| a.kind === 'docker')" in js, "a change redraws the attention list"
         assert "!isProxied && !isDocker;" in js, "no credential fixes Docker"
 
+    @pytest.mark.parametrize("access", ["proxy", "socket", None])
+    def test_the_push_keeps_the_whole_link(self, access):
+        """notify cuts a push at its own limit; a link at the end lost its tail for a long name."""
+        from app import notify
+
+        _, message = main._docker_alert_text("a-worker-name-of-thirty-chars", _worker(access=access), datetime.now(UTC))
+        assert main.DOCKER_LOST_DOC in notify.redact(message)
+
+    def test_a_bell_redraw_takes_its_own_generation(self):
+        """Two redraws in flight shared one generation, so the older could write last."""
+        from pathlib import Path
+
+        js = (Path(main.__file__).parent / "static" / "js" / "app.js").read_text()
+        assert "_attentionCount.workers, ++_attentionSeq, alerts.slice())" in js
+
     def test_the_doc_link_is_a_button_because_the_message_is_cut(self):
         """The 200-character cap always cuts the link off the end of the message."""
         from pathlib import Path
 
-        _, message = main._docker_alert_text("local", _worker(), datetime.now(UTC))
+        _, message = main._docker_alert_text("a-worker-name-of-thirty-chars", _worker(access=None), datetime.now(UTC))
         assert main.DOCKER_LOST_DOC not in message[: main._MAX_ALERT_ERROR_LEN]
         js = (Path(main.__file__).parent / "static" / "js" / "app.js").read_text()
         assert f"const DOCKER_LOST_DOC = '{main.DOCKER_LOST_DOC}';" in js

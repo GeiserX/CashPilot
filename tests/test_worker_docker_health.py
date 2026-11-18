@@ -138,6 +138,24 @@ class TestAListingOutage:
         assert len([m for m in said if "lists containers again" in m]) == 1
 
 
+class TestTheFenceFeedsTheClock:
+    """The fence lists containers every five minutes, also on a worker with no heartbeat."""
+
+    def test_a_failed_fence_listing_starts_the_outage_and_a_working_one_ends_it(self):
+        from app import lan_fence
+
+        client = MagicMock()
+        client.containers.list.side_effect = RuntimeError("500 Server Error")
+        with pytest.raises(RuntimeError):
+            lan_fence._managed(client)
+        assert orchestrator.docker_unreachable_for() is not None
+
+        client.containers.list.side_effect = None
+        client.containers.list.return_value = []
+        assert lan_fence._managed(client) == []
+        assert orchestrator.docker_unreachable_for() is None
+
+
 class TestHealthReportsALostDocker:
     def test_a_short_outage_stays_healthy(self):
         """A daemon restart or a docker-ce upgrade must not flap the container."""

@@ -1251,7 +1251,9 @@ def _docker_alert_text(name: str, worker: dict[str, Any], since: datetime) -> tu
     """The push title and the message for a worker that cannot reach Docker.
 
     The fix comes first: the bell shows only the first _MAX_ALERT_ERROR_LEN
-    characters, and the push carries the rest.
+    characters, and the push carries the rest. The link follows the fix, before
+    the optional cause: notify cuts a push at its own limit, and a link at the
+    end lost its tail for a long worker name.
     """
     access = placement.system_info(worker).get("docker_access")
     cause = (
@@ -1271,8 +1273,8 @@ def _docker_alert_text(name: str, worker: dict[str, Any], since: datetime) -> tu
         )
     return (
         f"CashPilot: worker '{name}' cannot reach Docker",
-        f"Worker '{name}' cannot reach Docker since {since:%Y-%m-%d %H:%M} UTC. {fix} Its containers keep "
-        f"running, but CashPilot cannot start, stop or update them.{cause} How: {DOCKER_LOST_DOC}",
+        f"Worker '{name}' cannot reach Docker since {since:%Y-%m-%d %H:%M} UTC. {fix} How: {DOCKER_LOST_DOC} "
+        f"Its containers keep running, but CashPilot cannot start, stop or update them.{cause}",
     )
 
 
