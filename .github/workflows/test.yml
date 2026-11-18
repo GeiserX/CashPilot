@@ -108,6 +108,11 @@ jobs:
       - name: Attention list health hints
         run: node scripts/attention_hint_check.mjs
 
+      # Bell redraws and services refreshes race: only the newest draw writes,
+      # and a redraw never discards a services response still in flight.
+      - name: Attention list draw order
+        run: node scripts/attention_race_check.mjs
+
       # Themes: the pre-paint key and fallback, the picker, the server's theme
       # winning on a new browser, for every theme in app/themes.json.
       - name: Theme behaviour

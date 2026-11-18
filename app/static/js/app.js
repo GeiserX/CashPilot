@@ -1565,9 +1565,10 @@ const CP = (() => {
       </div>`;
   }
 
-  async function renderAttention(services, workers, seq, knownAlerts) {
+  async function renderAttention(services, workers, seq, knownAlerts, draw) {
     const list = document.getElementById('attention-list');
     if (!list) return;
+    const drawAtStart = _attentionDrawSeq;
     const items = [];
     if (workers === null) {
       items.push({ level: 'warn', tag: 'Unknown', what: 'Boxes', why: 'CashPilot could not load the worker list, so it cannot tell which boxes are reporting.' });
@@ -1744,7 +1745,14 @@ const CP = (() => {
       }
     }
 
-    if (seq !== undefined && seq !== _attentionSeq) return;
+    if (draw !== undefined && draw !== _attentionDrawSeq) return;
+    if (seq !== undefined) {
+      if (seq !== _attentionSeq) return;
+      // A bell redraw ran while this response was on its way, with alerts
+      // newer than the ones this read: let the next bell poll draw again.
+      if (drawAtStart !== _attentionDrawSeq) _attentionAlertsKey = '';
+      _attentionDrawSeq++;
+    }
     const order = { fail: 0, warn: 1, unknown: 2 };
     items.sort((a, b) => order[a.level] - order[b.level]);
     list.innerHTML = items.map(i => `
@@ -1818,6 +1826,10 @@ const CP = (() => {
   // proxied) change between two bell polls, draw it again, or it can say
   // nothing needs you while the bell reports a failure.
   let _attentionAlertsKey = null;
+  // Bell redraws have their own generation, so a redraw never discards a
+  // services response still in flight (renderAttention): the newest services
+  // response commits, and only it or a newer redraw ends a redraw.
+  let _attentionDrawSeq = 0;
   function refreshAttentionOnAlertChange(alerts) {
     const key = JSON.stringify((alerts || [])
       .filter(a => a.kind === 'missing' || a.kind === 'proxied' || a.kind === 'docker')
@@ -1825,9 +1837,9 @@ const CP = (() => {
     const changed = _attentionAlertsKey !== null && key !== _attentionAlertsKey;
     _attentionAlertsKey = key;
     if (!changed || !_attentionCount.services || !document.getElementById('attention-list')) return null;
-    // Its own generation: two bell redraws, or a redraw and a services
-    // refresh, can be in flight at once, and only the newest may write.
-    return renderAttention(_attentionCount.services, _attentionCount.workers, ++_attentionSeq, alerts.slice());
+    // Its own generation: two redraws can be in flight at once, and only the
+    // newest may write. A services response in flight still commits.
+    return renderAttention(_attentionCount.services, _attentionCount.workers, undefined, alerts.slice(), ++_attentionDrawSeq);
   }
 
   // Action-button icons, extracted so the single-instance row and the per-node sub-row

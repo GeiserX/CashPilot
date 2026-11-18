@@ -328,11 +328,14 @@ class TestEveryScreenShowsIt:
         assert main.DOCKER_LOST_DOC in notify.redact(message)
 
     def test_a_bell_redraw_takes_its_own_generation(self):
-        """Two redraws in flight shared one generation, so the older could write last."""
+        """Two redraws in flight shared one generation, so the older could write last.
+
+        The interleavings run for real in scripts/attention_race_check.mjs.
+        """
         from pathlib import Path
 
         js = (Path(main.__file__).parent / "static" / "js" / "app.js").read_text()
-        assert "_attentionCount.workers, ++_attentionSeq, alerts.slice())" in js
+        assert "alerts.slice(), ++_attentionDrawSeq);" in js
 
     def test_the_doc_link_is_a_button_because_the_message_is_cut(self):
         """The 200-character cap always cuts the link off the end of the message."""
