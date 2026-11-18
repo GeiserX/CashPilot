@@ -3782,6 +3782,18 @@ async def get_alert_subjects(kind: str) -> set[str]:
         await db.close()
 
 
+async def get_alert_first_times(kind: str) -> dict[str, str]:
+    """When each subject holding a stored alert of this kind was first alerted (UTC, SQLite format)."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT subject, MIN(created_at) AS first_at FROM alerts WHERE kind = ? GROUP BY subject", (kind,)
+        )
+        return {row["subject"]: row["first_at"] for row in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
 async def clear_alerts(kind: str | None = None, subject: str | None = None) -> None:
     """Drop stored alerts (all, one kind, or one subject within a kind).
 

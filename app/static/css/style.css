@@ -1747,6 +1747,7 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .fleet-table .worker-detail td { background: none; padding: 0 0 12px 17px; }
 .flag { font-size: var(--fs-1); margin-left: 8px; padding: 0 4px; border: 1px solid var(--border-light); border-radius: 2px; color: var(--text-secondary); font-weight: 400; }
 .flag-warn { color: var(--warning); border-color: var(--warning); }
+.flag-link { font-size: var(--fs-1); margin-left: 6px; }
 .ctr-list { display: flex; flex-wrap: wrap; gap: 3px 14px; max-width: 520px; }
 /* A chip is inline text, not a flex row, so a long slug wraps like a word,
    its "exited, exit code 137" note drops to the next line at the space, and

@@ -362,6 +362,8 @@ const CP = (() => {
   // never a drop to 0: a host-network container has no traffic counters, and
   // a worker that was offline sent nothing.
   const USAGE_DASH = '—';
+  // Where a worker that lost Docker finds the cause and the lasting fix (main.DOCKER_LOST_DOC).
+  const DOCKER_LOST_DOC = 'https://geiserx.github.io/CashPilot/faq/#worker-lost-docker';
   const usageState = { days: '7', worker: null, container: '', step: 3600 };
   const usageCharts = {};
 
@@ -1563,9 +1565,12 @@ const CP = (() => {
       </div>`;
   }
 
-  async function renderAttention(services, workers, seq, knownAlerts) {
+  async function renderAttention(services, workers, seq, knownAlerts, draw) {
     const list = document.getElementById('attention-list');
     if (!list) return;
+    // The alerts this draw read and the number of that read, null when it could not read them.
+    let alertsUsed = null;
+    let alertsRead = null;
     const items = [];
     if (workers === null) {
       items.push({ level: 'warn', tag: 'Unknown', what: 'Boxes', why: 'CashPilot could not load the worker list, so it cannot tell which boxes are reporting.' });
@@ -1692,12 +1697,21 @@ const CP = (() => {
     // is the way out when the container was removed on purpose.
     try {
       // The bell poll passes the alerts it just read, so its redraw cannot fail on a second fetch.
+      const read = knownAlerts ? _attentionLatestRead : ++_attentionReads;
       const bell = knownAlerts ? { alerts: knownAlerts } : await api('/api/collector-alerts');
+      alertsUsed = attentionAlertsKey(bell.alerts);
+      alertsRead = read;
       for (const a of (bell.alerts || [])) {
         // A proxied copy or its tunnel gone or down: the per-service rows
         // never list proxied copies, so without this the list says nothing is wrong.
         if (a.kind === 'proxied') {
           items.push({ level: 'fail', tag: 'Proxied copy down', what: a.platform, why: escapeHtml(a.error), actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+          continue;
+        }
+        // A box that reports in but cannot reach Docker: it looks online and manages nothing.
+        // The message is cut at 200 characters, so the doc link is a button of its own.
+        if (a.kind === 'docker') {
+          items.push({ level: 'fail', tag: 'Docker unreachable', what: a.platform, why: escapeHtml(a.error), actions: `<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a> <a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>` });
           continue;
         }
         if (a.kind !== 'missing') continue;
@@ -1736,7 +1750,13 @@ const CP = (() => {
       }
     }
 
-    if (seq !== undefined && seq !== _attentionSeq) return;
+    if (draw !== undefined && draw !== _attentionDrawSeq) return;
+    if (seq !== undefined) {
+      if (seq !== _attentionSeq) return;
+      _attentionDrawSeq++;
+    }
+    _attentionDrawnKey = alertsUsed;
+    _attentionDrawnRead = alertsRead || 0;
     const order = { fail: 0, warn: 1, unknown: 2 };
     items.sort((a, b) => order[a.level] - order[b.level]);
     list.innerHTML = items.map(i => `
@@ -1750,6 +1770,10 @@ const CP = (() => {
     // problem to count: nothing is known to be wrong.
     _attentionCount.problems = items.filter(i => i.level !== 'unknown').length;
     updateAttentionSummary(services, workers);
+    // The bell saw other alerts than the ones this services response read
+    // (it polled while this one waited, or a redraw it ended had newer ones):
+    // draw again with what the bell saw last, unless this read is the newer.
+    if (seq !== undefined && _attentionLatestAlerts) refreshAttentionOnAlertChange(_attentionLatestAlerts, _attentionLatestRead);
   }
 
   // The copies "Stop on all servers" would act on: CashPilot's own containers
@@ -1807,17 +1831,41 @@ const CP = (() => {
 
   // The attention list and the bell read the same alerts, but the list is
   // drawn only when the services refresh. When the alerts it shows (missing,
-  // proxied) change between two bell polls, draw it again, or it can say
-  // nothing needs you while the bell reports a failure.
-  let _attentionAlertsKey = null;
-  function refreshAttentionOnAlertChange(alerts) {
-    const key = JSON.stringify((alerts || [])
-      .filter(a => a.kind === 'missing' || a.kind === 'proxied')
+  // proxied, docker) differ from the ones the list was drawn with, draw it
+  // again, or it can say nothing needs you while the bell reports a failure.
+  // The latest bell poll and the drawn list are tracked apart: a poll that
+  // lands while a services response is on its way is drawn once that response
+  // commits (renderAttention), not lost because it was the first poll.
+  // Every alert read, the bell's and the services draw's, is numbered when it
+  // is sent, so the newer of two reads wins whichever answers first.
+  let _attentionReads = 0;
+  let _attentionLatestAlerts = null;
+  let _attentionLatestRead = 0;
+  let _attentionDrawnKey = null;
+  let _attentionDrawnRead = 0;
+  // Bell redraws have their own generation, so a redraw never discards a
+  // services response still in flight (renderAttention): the newest services
+  // response commits, and only it or a newer redraw ends a redraw.
+  let _attentionDrawSeq = 0;
+  function attentionAlertsKey(alerts) {
+    return JSON.stringify((alerts || [])
+      .filter(a => a.kind === 'missing' || a.kind === 'proxied' || a.kind === 'docker')
       .map(a => [a.kind, a.platform, a.error]));
-    const changed = _attentionAlertsKey !== null && key !== _attentionAlertsKey;
-    _attentionAlertsKey = key;
-    if (!changed || !_attentionCount.services || !document.getElementById('attention-list')) return null;
-    return renderAttention(_attentionCount.services, _attentionCount.workers, _attentionSeq, alerts.slice());
+  }
+  function refreshAttentionOnAlertChange(alerts, read = ++_attentionReads) {
+    // A poll sent before the alerts the list or the bell already has: older news.
+    if (read < _attentionLatestRead || read < _attentionDrawnRead) return null;
+    _attentionLatestAlerts = (alerts || []).slice();
+    _attentionLatestRead = read;
+    if (attentionAlertsKey(alerts) === _attentionDrawnKey) {
+      // The list already shows these: a redraw still in flight has older alerts.
+      _attentionDrawSeq++;
+      return null;
+    }
+    if (!_attentionCount.services || !document.getElementById('attention-list')) return null;
+    // Its own generation: two redraws can be in flight at once, and only the
+    // newest may write. A services response in flight still commits.
+    return renderAttention(_attentionCount.services, _attentionCount.workers, undefined, alerts.slice(), ++_attentionDrawSeq);
   }
 
   // Action-button icons, extracted so the single-instance row and the per-node sub-row
@@ -6057,12 +6105,13 @@ const CP = (() => {
       // gets its OWN category ('expiring') — it is a prediction, not an
       // observed rejection, and the bell must not assert a 401 that never
       // happened.
+      const read = ++_attentionReads;
       const [payload, health] = await Promise.all([
         api('/api/collector-alerts'),
         api('/api/credentials/health').catch(() => []),
       ]);
       const alerts = payload.alerts || [];
-      refreshAttentionOnAlertChange(alerts);
+      refreshAttentionOnAlertChange(alerts, read);
       for (const row of (Array.isArray(health) ? health : [])) {
         if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
         if (alerts.some(a => a.platform === row.service && a.kind === 'collector')) continue;
@@ -6138,6 +6187,8 @@ const CP = (() => {
         const isProxyCap = a.kind === 'proxy_cap';
         // A proxied copy or its tunnel is gone or down: start or re-add it on the fleet page.
         const isProxied = a.kind === 'proxied';
+        // A worker that cannot reach Docker: the fix is on that machine, never a credential.
+        const isDocker = a.kind === 'docker';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -6155,6 +6206,7 @@ const CP = (() => {
           : isContainer ? ' — not running'
           : isProxyCap ? ' — traffic cap'
           : isProxied ? ' — proxied copy down'
+          : isDocker ? ' — Docker unreachable'
           : isDisabled ? ' — account disabled'
           : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
           : isQuiet ? ' — gone quiet'
@@ -6165,7 +6217,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isProxied;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isProxied && !isDocker;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">
@@ -6177,6 +6229,7 @@ const CP = (() => {
             ${notifyDevicesHtml(a)}
           </div>
           ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}">${isAuth ? 'Fix credential' : 'Update'}</button>` : ''}
+          ${isDocker ? `<a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>` : ''}
         </div>
       `;
       }).join('');

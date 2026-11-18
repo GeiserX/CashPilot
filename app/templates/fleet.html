@@ -382,9 +382,21 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const sysInfo = w.system_info || {};
       const isAndroid = (sysInfo.device_type === 'android' || String(sysInfo.os || '').trim().toLowerCase() === 'android');
       const items = isAndroid ? (w.apps || []) : (w.containers || []);
+      // Reports in but cannot reach Docker: green dot, nothing managed. A phone
+      // or a Desktop sends no docker_available, so only an explicit false counts.
+      const dockerLost = isOnline && !isAndroid && sysInfo.device_type !== 'desktop' && sysInfo.docker_available === false;
       const cid = esc(w.client_id || w.id);
       const flags = [
         isAndroid ? flag('plain', '', 'Android') : '',
+        dockerLost
+          ? flag('warn', 'This worker reports in but cannot reach Docker, so CashPilot cannot start, stop or see its containers. '
+              + (sysInfo.docker_access === 'socket' ? 'Restart the worker container on that machine.'
+                : sysInfo.docker_access === 'proxy' ? 'Restart the socket proxy on that machine: docker restart cashpilot-socket-proxy.'
+                : 'Restart the socket proxy on that machine (docker restart cashpilot-socket-proxy), or the worker if it has no proxy.'),
+              'Docker unreachable')
+            // The fix as a link anyone can reach: a title shows to a mouse only.
+            + ' <a class="flag-link" href="https://geiserx.github.io/CashPilot/faq/#worker-lost-docker" target="_blank" rel="noopener noreferrer">How to fix</a>'
+          : '',
         nameCounts[String(w.name || '')] > 1 ? flag('warn', 'More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.', 'duplicate name') : '',
         w.enrollment === 'incomplete'
           ? flag('warn', 'This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key: an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.', 'enrollment incomplete')

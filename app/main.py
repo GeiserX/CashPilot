@@ -493,6 +493,7 @@ async def _run_health_check() -> None:
         await _account_disabled_check(statuses)
         await _missing_deployment_check(workers)
         await _proxied_copy_check(workers)
+        await _worker_docker_check(workers)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
 
@@ -1164,6 +1165,140 @@ def _proxied_alert_text(fault: dict[str, Any], since: datetime) -> tuple[str, st
     )
 
 
+# When each worker was first seen unable to reach Docker, keyed by client_id.
+_docker_first_seen: dict[str, datetime] = {}
+# The bell entries the Docker check stands behind, keyed by client_id and
+# re-added after every collection like the container-down ones.
+_docker_bell: dict[str, dict[str, str]] = {}
+#: Where the alert sends the owner for the cause and the lasting fix.
+DOCKER_LOST_DOC = "https://geiserx.github.io/CashPilot/faq/#worker-lost-docker"
+
+
+async def _worker_docker_check(workers: list[dict[str, Any]] | None = None) -> None:
+    """Alert when an online worker has not been able to reach Docker for CONTAINER_DOWN_GRACE.
+
+    Such a worker heartbeats on time and stays green on the fleet page, while
+    it can start, stop or see nothing: on 2026-11-17 one ran like that for 17
+    hours after a Docker update replaced the socket its proxy had bound, and the
+    only trace was a log line here (_report_blind_workers). One alert per
+    worker, keyed by client_id, cleared when it reports Docker again or is
+    removed. An offline worker has its own alert and its last heartbeat says
+    nothing about now, so it neither raises nor clears. A phone or a Desktop
+    has no Docker to lose. Never raises.
+    """
+    global _collector_alerts
+    try:
+        if workers is None:
+            workers = await database.list_workers()
+        now = datetime.now(UTC)
+        stored_at = await database.get_alert_first_times("docker")
+        stored = set(stored_at)
+        blind: dict[str, dict[str, Any]] = {}
+        unjudged: set[str] = set()
+        for w in workers:
+            cid = str(w.get("client_id") or w.get("name"))
+            if w.get("status") != "online":
+                unjudged.add(cid)
+            elif placement.system_info(w).get("docker_available") is False and placement.is_blind(w):
+                blind[cid] = w
+        for cid, w in blind.items():
+            # The worker's own clock wins when it reports one: it runs on through
+            # a UI restart and starts over when Docker came back and failed
+            # again between two checks, so a new outage gets its own grace.
+            reported = _docker_reported_start(w)
+            if reported is not None:
+                _docker_first_seen[cid] = reported
+            elif cid not in _docker_first_seen:
+                _docker_first_seen[cid] = _docker_outage_start(stored_at.get(cid), now)
+        for cid in list(_docker_first_seen):
+            if cid not in blind and cid not in unjudged:
+                _docker_first_seen.pop(cid)
+
+        alerting: dict[str, tuple[str, str, str]] = {}
+        for cid, w in blind.items():
+            # A stored alert (a UI restart) stands at once; a new outage waits out the grace.
+            if cid not in stored and now - _docker_first_seen[cid] < CONTAINER_DOWN_GRACE:
+                continue
+            name = str(w.get("name") or cid)
+            alerting[cid] = (name, *_docker_alert_text(name, w, _docker_first_seen[cid]))
+
+        for cid in stored:
+            if cid in blind or cid in unjudged:
+                continue
+            await database.clear_alerts("docker", cid)
+            logger.info("Worker %s reaches Docker again, or is gone; cleared its Docker alert", cid)
+        for cid in list(_docker_bell):
+            if cid not in alerting and cid not in unjudged:
+                _docker_bell.pop(cid)
+
+        for cid, (name, title, message) in alerting.items():
+            _docker_bell[cid] = {"kind": "docker", "platform": name, "client_id": cid, "error": message}
+            if alert_id := await database.record_alert("docker", cid, message):
+                _spawn(_push_alert("docker", cid, title, message, alert_id))
+        _collector_alerts = [a for a in _collector_alerts if a.get("kind") != "docker"]
+        _collector_alerts.extend(_docker_bell.values())
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
+        logger.warning("Worker Docker check failed: %s", exc)
+
+
+def _docker_reported_start(worker: dict[str, Any]) -> datetime | None:
+    """When the worker says its outage began: its last heartbeat less the seconds it reported.
+
+    The worker's own clock, so a UI restart does not start the grace again.
+    None for a worker from before docker_unreachable_for.
+    """
+    seconds = placement.system_info(worker).get("docker_unreachable_for")
+    at = placement._sqlite_time(worker.get("last_heartbeat"))
+    if at is None or isinstance(seconds, bool) or not isinstance(seconds, int) or seconds < 0:
+        return None
+    with contextlib.suppress(OverflowError):
+        return at - timedelta(seconds=seconds)
+    return None
+
+
+def _docker_outage_start(alerted_at: str | None, now: datetime) -> datetime:
+    """When an outage this check first sees began.
+
+    A new one began now. One that already holds a stored alert is one the UI
+    forgot by restarting: it was alerted at the first check past the grace, so
+    it began a grace before that, not at the restart.
+    """
+    with contextlib.suppress(TypeError, ValueError):
+        return datetime.strptime(str(alerted_at), "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC) - CONTAINER_DOWN_GRACE
+    return now
+
+
+def _docker_alert_text(name: str, worker: dict[str, Any], since: datetime) -> tuple[str, str]:
+    """The push title and the message for a worker that cannot reach Docker.
+
+    The fix comes first: the bell shows only the first _MAX_ALERT_ERROR_LEN
+    characters, and the push carries the rest. The link follows the fix, before
+    the optional cause: notify cuts a push at its own limit, and a link at the
+    end lost its tail for a long worker name.
+    """
+    access = placement.system_info(worker).get("docker_access")
+    cause = (
+        " A Docker update that replaces its socket causes this. Mounting the socket's folder in the proxy, "
+        "not the socket file, stops it from happening again."
+    )
+    if access == "socket":
+        fix = "Fix: on that machine, restart the worker container. It holds the Docker socket itself."
+        cause = ""
+    elif access == "proxy":
+        fix = "Fix: on that machine, run docker restart cashpilot-socket-proxy."
+    else:
+        # A worker from before docker_access: a compose install has the proxy
+        # since 2026-11-06, an Unraid or older one holds the socket itself.
+        fix = (
+            "Fix: on that machine, run docker restart cashpilot-socket-proxy, or restart the worker if it has no proxy."
+        )
+    return (
+        f"CashPilot: worker '{name}' cannot reach Docker",
+        f"Worker '{name}' cannot reach Docker since {since:%Y-%m-%d %H:%M} UTC. {fix} How: {DOCKER_LOST_DOC} "
+        f"Its containers keep running, but CashPilot cannot start, stop or update them.{cause}",
+    )
+
+
 async def _push_alert(kind: str, subject: str, title: str, message: str, alert_id: int) -> None:
     """Push an alert out-of-band, and make a total delivery failure retryable.
 
@@ -1535,6 +1670,7 @@ async def _warm_collector_alerts() -> None:
             "missing",
             "account_disabled",
             "proxied",
+            "docker",
         ):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
@@ -1554,7 +1690,7 @@ async def _warm_collector_alerts() -> None:
     # people a NAME. Resolve display names in one pass, keeping the client_id
     # beside it for recovery matching. A worker deleted since the alert was
     # stored keeps the raw id — still actionable, never wrong.
-    worker_entries = [e for e in restored if e["kind"] == "worker"]
+    worker_entries = [e for e in restored if e["kind"] in ("worker", "docker")]
     if worker_entries:
         with contextlib.suppress(Exception):
             names = {w.get("client_id"): w["name"] for w in await database.list_workers()}
@@ -1578,6 +1714,10 @@ async def _warm_collector_alerts() -> None:
         if e["kind"] == "missing":
             name = (catalog.get_service(e["platform"]) or {}).get("name") or e["platform"]
             _missing_bell.setdefault(e["platform"], {**e, "name": name})
+    # And a worker's Docker alert, under its client_id, so the next check owns it.
+    for e in restored:
+        if e["kind"] == "docker":
+            _docker_bell.setdefault(e.get("client_id") or e["platform"], e)
     # Likewise a proxied-copy alert, under the container name its subject carries.
     for e in restored:
         if e["kind"] == "proxied":
@@ -2121,13 +2261,17 @@ async def _run_collection() -> None:
             # Offline workers re-derived every rebuild, or the hourly wholesale
             # replacement of this list would silently un-report a dead machine.
             alerts.extend(await _offline_worker_alerts())
+            alerts.extend(await _proxy_cap_alerts())
             # Kept by the health check, which runs every five minutes; without
             # this the hourly rebuild would drop a down container from the bell.
+            # Read after the last await and assigned with none in between: the
+            # health check can clear an entry while this coroutine waits, and a
+            # copy taken before the wait would put the cleared alert back.
             alerts.extend(_container_down_bell.values())
             alerts.extend(_missing_bell.values())
             alerts.extend(_proxied_bell.values())
+            alerts.extend(_docker_bell.values())
             alerts.extend(_activity_bell)
-            alerts.extend(await _proxy_cap_alerts())
             _collector_alerts = _with_account_disabled(alerts)
             if collectors and platforms_ok == 0:
                 # A run in which EVERY collector failed used to be recorded as

@@ -261,6 +261,8 @@ def _reset_process_wide_caches():
         ("app.main", "_net_baselines"),
         ("app.main", "_worker_online_streak"),
         ("app.main", "_worker_last_offline_push"),
+        ("app.main", "_docker_first_seen"),
+        ("app.main", "_docker_bell"),
         ("app.credential_test", "_last_attempt"),
     ):
         with contextlib.suppress(Exception):
@@ -272,6 +274,10 @@ def _reset_process_wide_caches():
 
         orchestrator._status_cache = []
         orchestrator._status_cache_time = 0.0
+        # An outage clock left running by one test turns /api/health in
+        # another into a 503 once the run is older than the grace.
+        orchestrator._docker_unreachable_since = None
+        orchestrator._docker_listing_failed = None
     with contextlib.suppress(Exception):
         # test_worker_keys drives _send_heartbeat through 401/ConnectError paths
         # and leaves the heartbeat-failure counter nonzero; with CASHPILOT_UI_URL

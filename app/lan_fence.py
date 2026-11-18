@@ -580,9 +580,24 @@ def _on_default_bridge(container: Any) -> bool:
 
 
 def _managed(client: Any) -> list[Any]:
+    """The managed containers, with the result fed to the worker's Docker outage clock.
+
+    The fence runs every five minutes even on a worker with no heartbeat, so
+    without this a daemon that answers its ping but cannot list containers
+    left /api/health green until some request happened to list them. It is a
+    "managed" listing: its success does not end an outage get_status recorded
+    on the external listing or an image read, which this list never makes.
+    """
+    from app import orchestrator
     from app.constants import LABEL_MANAGED
 
-    return client.containers.list(all=True, filters={"label": f"{LABEL_MANAGED}=true"})
+    try:
+        managed = client.containers.list(all=True, filters={"label": f"{LABEL_MANAGED}=true"})
+    except Exception as exc:
+        orchestrator._mark_listing_failed(exc, "managed")
+        raise
+    orchestrator._mark_docker_listed("managed")
+    return managed
 
 
 def default_bridge_earners(client: Any) -> list[Any]:
