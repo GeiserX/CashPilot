@@ -917,6 +917,40 @@ def test_each_compose_file_recreates_the_proxy_when_the_policy_changes(name):
     assert f"CASHPILOT_PROXY_POLICY={socket_policy.digest()}" in env
 
 
+PROXY_HEALTHCHECK = {
+    # Exec form: the image is distroless, so CMD-SHELL has no shell to run.
+    "test": ["CMD", "/sockguard", "verify"],
+    "interval": "60s",
+    "timeout": "10s",
+    "retries": 3,
+    "start_period": "20s",
+}
+
+
+def _files_with_the_proxy() -> list[str]:
+    found = []
+    for path in sorted((*ROOT.glob("docker-compose*.yml"), *(ROOT / "contrib").rglob("docker-compose*.yml"))):
+        services = (yaml.safe_load(path.read_text()) or {}).get("services") or {}
+        if "cashpilot-socket-proxy" in services:
+            found.append(str(path.relative_to(ROOT)))
+    return found
+
+
+def test_every_compose_file_with_the_proxy_is_checked():
+    """A new file that ships the proxy cannot skip the checks below by not being listed."""
+    found = _files_with_the_proxy()
+    assert len(found) >= 6
+    assert sorted(found) == sorted((*COMPOSE_FILES, *spp.TWICE_INTERPOLATED))
+
+
+@pytest.mark.parametrize("name", (*COMPOSE_FILES, *spp.TWICE_INTERPOLATED))
+def test_the_proxy_turns_unhealthy_when_it_cannot_reach_docker(name):
+    """`sockguard verify` probes the upstream daemon, so a stale host socket
+    (docs/faq.md, worker-lost-docker) shows as an unhealthy proxy."""
+    proxy = _compose(name)["services"]["cashpilot-socket-proxy"]
+    assert proxy["healthcheck"] == PROXY_HEALTHCHECK
+
+
 def _stale(text: str, passes: int = 1, proxy_line: bool = True) -> str:
     """A compose file as an older release shipped it: another policy, another
     fingerprint and, before this release, no fingerprint on the proxy."""

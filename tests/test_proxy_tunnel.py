@@ -1063,6 +1063,17 @@ class TestReviewFollowUps:
         leftover.remove.assert_called_once_with(force=True, v=True)
         copy_tunnel.remove.assert_not_called()
 
+    def test_a_test_tunnel_younger_than_the_worker_is_left_to_its_test(self):
+        """A worker that started without Docker sweeps with its API serving (worker_api._wait_for_docker_loop)."""
+        leftover = _container("cashpilot-tunnel-test-ab", proxy_tunnel.TEST_SLUG, role="tunnel")
+        in_flight = _container("cashpilot-tunnel-test-cd", proxy_tunnel.TEST_SLUG, role="tunnel")
+        in_flight.attrs["Created"] = (datetime.now(UTC) - timedelta(seconds=5)).isoformat().replace("+00:00", "Z")
+        client = MagicMock()
+        client.containers.list.side_effect = [[leftover, in_flight], []]
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            assert proxy_tunnel.sweep_test_tunnels(min_age=600) == ["cashpilot-tunnel-test-ab"]
+        in_flight.remove.assert_not_called()
+
     def test_a_staged_sidecar_of_a_deploy_that_died_is_swept(self):
         staged = _container("cashpilot-tunnel-x-p1-next", "x", proxy=1, role="tunnel")
         live = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")

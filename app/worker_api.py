@@ -1022,6 +1022,8 @@ async def _recheck_status_listing() -> None:
 
 
 _guard_task: asyncio.Task | None = None
+#: time.monotonic() when lifespan began: what the sweep's min_age counts from.
+_started_at = time.monotonic()
 
 
 async def _guard_once() -> None:
@@ -1048,16 +1050,58 @@ async def _guard_loop() -> None:
         await _guard_once()
 
 
-async def _hold_loop() -> None:
-    """Every GUARD_SECONDS: the proxied-only hold alone, for a worker that started without Docker.
+async def _wait_for_docker_loop() -> None:
+    """Every GUARD_SECONDS until Docker answers, for a worker that started without it; then the guard loop.
 
-    A pass runs only once Docker answers: without it there is no earner to
-    hold, and each pass would log the same failure forever.
+    Docker starts containers by their restart policy after a reboot and ignores
+    compose depends_on, so the worker can come up before cashpilot-socket-proxy
+    (or the proxy is recreated under it). /api/health turns OK as soon as Docker
+    answers, so without this the steps below never ran for the life of the
+    process and nothing said so: a fence-gated node (Mysterium) has no restart
+    policy, and only the guard starts it.
+
+    A pass does nothing until Docker answers: without it there is no earner to
+    hold, and each pass would log the same failure forever. The first pass that
+    sees Docker runs the start's steps in the start's order, then this becomes
+    the guard loop, which holds direct earners on every pass.
     """
     while True:
         await asyncio.sleep(lan_fence.GUARD_SECONDS)
         if await asyncio.to_thread(orchestrator.docker_available):
-            await _hold_direct_earners()
+            break
+    logger.info(
+        "Docker: direct (%s, came back after start)",
+        "through the socket proxy" if orchestrator.proxied() else "direct socket",
+    )
+    await _hold_direct_earners()
+    lan_fence.set_egress_ip(await _detect_egress_ip())
+    # The fence before the guard pass that may start a fence-gated node.
+    await _check_fence(startup=True)
+    await _guard_once()
+    # The API has been serving since the start, so a proxy test can be in flight:
+    # the sweep keeps every Test tunnel younger than this process.
+    await _resume_proxied_work(sweep_min_age=time.monotonic() - _started_at)
+    await _guard_loop()
+
+
+async def _resume_proxied_work(sweep_min_age: float = 0.0) -> None:
+    """The start's proxied-copy steps, once Docker answers. Never raises."""
+    global _migrate_task
+    # A proxied copy this worker was moving into another tunnel when it
+    # stopped: finished or put back before anything else looks at it.
+    try:
+        await asyncio.to_thread(proxy_tunnel.recover_moves)
+    except Exception as exc:  # noqa: BLE001 - never block the start on it; the heartbeat tries again
+        logger.warning("Could not look for half-done proxied copy moves: %s", exc)
+    # A proxy Test tunnel this worker left behind when it stopped mid-test.
+    try:
+        if swept := await asyncio.to_thread(proxy_tunnel.sweep_test_tunnels, min_age=sweep_min_age):
+            logger.info("Removed %d leftover proxy test tunnel(s)", len(swept))
+    except Exception as exc:  # noqa: BLE001 - never block the start on it
+        logger.warning("Could not look for leftover proxy test tunnels: %s", exc)
+    # Copies an older worker ran with one tunnel each join one shared
+    # tunnel per proxy. In the background: it proves an exit per proxy.
+    _migrate_task = asyncio.create_task(asyncio.to_thread(_migrate_proxied))
 
 
 def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
@@ -1182,8 +1226,9 @@ def _get_local_ip() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _heartbeat_task, _fence_task, _activity_task, _guard_task, _migrate_task
+    global _heartbeat_task, _fence_task, _activity_task, _guard_task, _started_at
 
+    _started_at = time.monotonic()
     logger.info("CashPilot Worker '%s' starting", WORKER_NAME)
     docker_mode = "direct" if await asyncio.to_thread(orchestrator.docker_available) else "monitor-only"
     logger.info(
@@ -1211,27 +1256,16 @@ async def lifespan(app: FastAPI):
         # policy, so after a reboot this is what starts it, and only now.
         await _guard_once()
         _guard_task = asyncio.create_task(_guard_loop())
-    elif route_gate.proxied_only():
-        # Docker can come up after this worker, and start the direct earners
-        # again: on a proxied-only worker they are held all the same.
-        await _hold_direct_earners()
-        _guard_task = asyncio.create_task(_hold_loop())
+    else:
+        if route_gate.proxied_only():
+            # Docker can come up after this worker, and start the direct earners
+            # again: on a proxied-only worker they are held all the same.
+            await _hold_direct_earners()
+        # Docker answers later (the socket proxy lost the start race after a
+        # reboot, or was recreated): the steps above and below run then.
+        _guard_task = asyncio.create_task(_wait_for_docker_loop())
     if docker_mode == "direct":
-        # A proxied copy this worker was moving into another tunnel when it
-        # stopped: finished or put back before anything else looks at it.
-        try:
-            await asyncio.to_thread(proxy_tunnel.recover_moves)
-        except Exception as exc:  # noqa: BLE001 - never block the start on it; the heartbeat tries again
-            logger.warning("Could not look for half-done proxied copy moves: %s", exc)
-        # A proxy Test tunnel this worker left behind when it stopped mid-test.
-        try:
-            if swept := await asyncio.to_thread(proxy_tunnel.sweep_test_tunnels):
-                logger.info("Removed %d leftover proxy test tunnel(s)", len(swept))
-        except Exception as exc:  # noqa: BLE001 - never block the start on it
-            logger.warning("Could not look for leftover proxy test tunnels: %s", exc)
-        # Copies an older worker ran with one tunnel each join one shared
-        # tunnel per proxy. In the background: it proves an exit per proxy.
-        _migrate_task = asyncio.create_task(asyncio.to_thread(_migrate_proxied))
+        await _resume_proxied_work()
 
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())

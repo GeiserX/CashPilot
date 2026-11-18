@@ -878,8 +878,61 @@ def _namespace_of(info: dict[str, Any]) -> str | None:
     return mode.split(":", 1)[1] if mode.startswith("container:") else None
 
 
+#: Where the migrator finds Docker unless DOCKER_HOST names another socket.
+DEFAULT_DOCKER_HOST = "unix:///var/run/docker.sock"
+
+
+def _docker_host() -> str:
+    """DOCKER_HOST when set (a folder bind puts the socket elsewhere), else the host's usual socket.
+
+    Only a Unix socket path is accepted. Any other value (tcp://, ssh://) is refused
+    without repeating it, because such a URL can carry a login, and docker-py's own
+    invalid-address error would print it.
+    """
+    host = os.environ.get("DOCKER_HOST", "").strip()
+    if not host:
+        return DEFAULT_DOCKER_HOST
+    if not host.startswith("unix:///"):
+        raise ValueError(
+            "DOCKER_HOST must name a Unix socket (unix:///path/to/docker.sock): the migrator needs the "
+            "host's own Docker socket. The value is not shown, because it can hold a login."
+        )
+    return host
+
+
+def _say_docker_host_is_wrong(what: str) -> None:
+    """When DOCKER_HOST is set, say it is the likely cause of ``what``, and what it must name."""
+    if host := os.environ.get("DOCKER_HOST", "").strip():
+        logger.error(
+            "%s through DOCKER_HOST=%s. The migrator needs the host's own Docker socket, not the "
+            "socket proxy's: point DOCKER_HOST at the host socket you bind into cashpilot-migrate, "
+            "or remove it to use %s.",
+            what,
+            host,
+            DEFAULT_DOCKER_HOST,
+        )
+
+
+def _connect(docker: Any) -> Any:
+    """The Docker client. version="auto" asks the daemon at once, so a socket that is not there fails here."""
+    try:
+        # Stops wait for each container's own timeout (Storj asks 300 s).
+        return docker.DockerClient(base_url=_docker_host(), version="auto", timeout=900)
+    except docker.errors.DockerException:
+        _say_docker_host_is_wrong("Cannot reach Docker")
+        raise
+
+
 def _self_container(client: Any) -> Any:
-    return client.containers.get(socket.gethostname())
+    from docker.errors import DockerException
+
+    try:
+        return client.containers.get(socket.gethostname())
+    except DockerException:
+        # The proxy's filtered socket hides this container (it has no owner
+        # label), and the migration needs the unfiltered one anyway.
+        _say_docker_host_is_wrong("Cannot find this container")
+        raise
 
 
 def _pairs(raw: str) -> list[tuple[str, str]]:
@@ -895,8 +948,7 @@ def main() -> int:
     import docker
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
-    # Stops wait for each container's own timeout (Storj asks 300 s).
-    client = docker.DockerClient(base_url="unix:///var/run/docker.sock", version="auto", timeout=900)
+    client = _connect(docker)
     me = _self_container(client)
     project = (me.labels or {}).get("com.docker.compose.project", "")
     # The records hold each migrated container's settings, earner credentials

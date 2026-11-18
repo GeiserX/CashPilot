@@ -177,7 +177,9 @@ The shipped compose files (`docker-compose.yml`, `docker-compose.fleet.yml`,
 It holds the socket read-only, runs as root with every capability dropped and no
 network, and serves a filtered socket in the `cashpilot-docker-api-owned` volume. The
 worker mounts that volume and sets `DOCKER_HOST` to it. It has no Docker socket
-of its own.
+of its own. Its healthcheck runs `sockguard verify` every 60 s, which asks the
+host's Docker through the socket the proxy holds, so a stale or missing host
+socket shows as an unhealthy `cashpilot-socket-proxy` in `docker ps`.
 
 The proxy reads each request, including its JSON body, so it refuses
 dangerous containers, not only dangerous URLs:
