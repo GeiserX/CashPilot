@@ -1002,6 +1002,23 @@ async def _fence_loop() -> None:
     while True:
         await asyncio.sleep(lan_fence.RECHECK_SECONDS)
         await _check_fence()
+        await _recheck_status_listing()
+
+
+async def _recheck_status_listing() -> None:
+    """Read the whole status again while an outage get_status recorded is open. Never raises.
+
+    The fence lists only the managed containers, so its success cannot end
+    that outage (orchestrator._mark_docker_listed), and a worker with no UI
+    runs no get_status of its own. Without this, one failed read on a page
+    load kept /api/health 503 until the next page load.
+    """
+    if orchestrator._docker_listing_failed != "status":
+        return
+    try:
+        await asyncio.wait_for(asyncio.to_thread(orchestrator.get_status_light), FENCE_STARTUP_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001 - the next pass tries again
+        logger.debug("Status recheck did not finish: %s", _reason(exc))
 
 
 _guard_task: asyncio.Task | None = None

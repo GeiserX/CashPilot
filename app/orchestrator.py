@@ -86,7 +86,7 @@ _docker_listing_failed: str | None = None
 # In-memory status cache — populated by health check, served instantly to UI
 _status_cache: list[dict[str, Any]] = []
 _status_cache_time: float = 0.0
-# Whether the last get_status listed every managed container (status_listed).
+# Whether the last get_status listed every container it reports on (status_listed).
 _status_listed = False
 
 
@@ -143,16 +143,32 @@ def _mark_docker_listed(scope: str = "status") -> None:
 
 
 def _docker_read_failed(exc: BaseException) -> bool:
-    """Whether a per-container read failed in Docker, rather than on a container gone since the list.
+    """Whether a per-container read failed because Docker did not answer: a timeout or a dropped connection.
 
-    Such a skip leaves a running deployment out of the status, so the listing
-    must count as failed: a status that says Docker is fine while it misses a
-    copy makes the UI record that copy as down. A NotFound (the container or
-    its image removed after the list) and an unreadable field are still skipped.
+    That is the daemon, not the container, so the listing counts as failed.
+    An answer with an error (an APIError, NotFound included) is about that
+    one container: get_status skips it and marks its list partial
+    (status_listed), so the UI records no copy as down from it. Counting
+    such an answer as an outage made one container with broken image
+    metadata, even one that is not CashPilot's, a worker-wide outage that
+    never ended.
     """
-    if isinstance(exc, NotFound):
-        return False
-    return isinstance(exc, (DockerException, requests.exceptions.RequestException))
+    return isinstance(exc, requests.exceptions.RequestException) and not isinstance(exc, requests.exceptions.HTTPError)
+
+
+def _may_run_catalog_image(c: Any, image_map: dict[str, str]) -> bool:
+    """Whether a container whose image could not be read may run a catalog image, by the name it was created from.
+
+    A container created from another image is not a copy the status can miss,
+    so skipping it leaves the list whole. A bare image ID says nothing.
+    """
+    try:
+        name = str(((c.attrs or {}).get("Config") or {}).get("Image") or "")
+    except Exception:  # noqa: BLE001 - nothing to read: it may be one
+        return True
+    if not name or name.startswith("sha256:"):
+        return True
+    return name in image_map or _image_repository(name) in image_map
 
 
 def _mark_docker_available() -> None:
@@ -5296,6 +5312,9 @@ def get_status() -> list[dict[str, Any]]:
                 if _docker_read_failed(exc):
                     _mark_listing_failed(exc)
                     return []
+                # Gone since the list, or created from another image: no copy is missed.
+                if not isinstance(exc, NotFound) and _may_run_catalog_image(c, image_map):
+                    listed = False
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
         matched_stats = _collect_stats_bulk([c for c, _, _ in matched])
@@ -5328,6 +5347,8 @@ def get_status() -> list[dict[str, Any]]:
                 if _docker_read_failed(exc):
                     _mark_listing_failed(exc)
                     return []
+                if not isinstance(exc, NotFound):
+                    listed = False
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
     # Update the cache
@@ -5340,7 +5361,7 @@ def get_status() -> list[dict[str, Any]]:
 
 
 def status_listed() -> bool:
-    """Whether the last get_status listed every managed container.
+    """Whether the last get_status listed every container it reports on, managed and external.
 
     get_status answers an empty list when Docker would not list them, and
     skips a container it could not read. Neither means those copies are gone.

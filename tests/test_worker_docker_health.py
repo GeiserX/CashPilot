@@ -212,32 +212,35 @@ class TestAFenceListingDoesNotEndAStatusOutage:
         assert orchestrator.docker_unreachable_for() is None
 
 
-def _candidate(image_error: BaseException, managed: bool):
+def _candidate(image_error: BaseException, managed: bool, created_from: str = "example/earner:1"):
     """A container whose image read raises: the list named it, the read failed."""
     c = MagicMock()
     c.id = c.short_id = "c0ffee"
     c.name = "cashpilot-earner" if managed else "earner"
     c.status = "running"
     c.labels = {"cashpilot.managed": "true", "cashpilot.service": "earner"} if managed else {}
-    c.attrs = {"Config": {"Image": "example/earner:1"}, "Created": ""}
+    c.attrs = {"Config": {"Image": created_from}, "Created": ""}
     type(c).image = PropertyMock(side_effect=image_error)
     return c
 
 
 DOCKER_FAILURES = [
-    pytest.param(lambda: docker_errors.APIError("500 Server Error: Internal Server Error"), id="api-500"),
     pytest.param(lambda: requests.exceptions.ConnectionError("Connection aborted"), id="connection"),
     pytest.param(lambda: requests.exceptions.ReadTimeout("Read timed out"), id="timeout"),
 ]
 
 
+def _broken_image():
+    return docker_errors.APIError("500 Server Error: layer does not exist")
+
+
 @pytest.mark.parametrize("read", ["get_status", "get_status_light"])
 @pytest.mark.parametrize("managed", [True, False], ids=["managed", "external"])
 class TestADockerErrorOnOneContainerIsAListingOutage:
-    """A copy skipped on a Docker error is not gone: the status must not say Docker is fine."""
+    """A copy skipped because Docker did not answer is not gone: the status must not say Docker is fine."""
 
-    def _run(self, read, managed, error):
-        c = _candidate(error, managed)
+    def _run(self, read, managed, error, created_from="example/earner:1"):
+        c = _candidate(error, managed, created_from)
         client = _ext_listing_fails()
         client.containers.list.return_value = [c] if managed else []
         orchestrator._docker_available = True
@@ -255,6 +258,104 @@ class TestADockerErrorOnOneContainerIsAListingOutage:
         """NotFound: its image or the container went away in between, which is no outage."""
         assert self._run(read, managed, docker_errors.ImageNotFound("No such image")) == []
         assert orchestrator.docker_unreachable_for() is None
+
+    def test_an_error_answer_about_one_container_is_no_outage(self, read, managed):
+        """Docker answered, about that container only: it is skipped and the worker stays healthy."""
+        assert self._run(read, managed, _broken_image()) == []
+        assert orchestrator.docker_unreachable_for() is None
+        assert orchestrator._docker_listing_failed is None
+
+
+@pytest.mark.parametrize("managed", [True, False], ids=["managed", "external"])
+def test_a_catalog_copy_skipped_on_an_error_answer_marks_the_heartbeat_partial(managed):
+    """The skipped copy may be running: the UI must not record it as down or gone."""
+    c = _candidate(_broken_image(), managed)
+    client = _ext_listing_fails()
+    client.containers.list.return_value = [c] if managed else []
+    a, b, d, e = _status_patches(client, lambda *_a: [] if managed else [c])
+    with a, b, d, e:
+        assert orchestrator.get_status() == []
+    assert orchestrator.status_listed() is False
+    assert orchestrator.docker_unreachable_for() is None
+
+
+def test_a_matched_external_copy_that_cannot_be_read_marks_the_heartbeat_partial():
+    """Matched by its image, then a field read fails: the copy is left out, so the list is not whole."""
+    c = _candidate(_broken_image(), managed=False)
+    image = MagicMock(tags=["example/earner:1"])
+    type(c).image = PropertyMock(return_value=image)
+    type(c).status = PropertyMock(side_effect=KeyError("State"))
+    client = _ext_listing_fails()
+    a, b, d, e = _status_patches(client, lambda *_a: [c])
+    with a, b, d, e:
+        assert orchestrator.get_status() == []
+    assert orchestrator.status_listed() is False
+    assert orchestrator.docker_unreachable_for() is None
+
+
+def test_a_broken_container_that_is_not_ours_leaves_the_worker_healthy_and_its_list_whole():
+    """Another image's container whose image inspect answers 500 every time, over many heartbeats."""
+    from app import lan_fence
+
+    c = _candidate(_broken_image(), managed=False, created_from="someone/else:2")
+    client = _ext_listing_fails()
+    a, b, d, e = _status_patches(client, lambda *_a: [c])
+    with a, b, d, e:
+        for _ in range(3):
+            assert orchestrator.get_status() == []
+            assert orchestrator.status_listed() is True
+            assert lan_fence._managed(client) == []
+    assert orchestrator.docker_unreachable_for() is None
+    assert _client().get("/api/health").status_code == 200
+
+
+def test_a_fence_failure_during_a_status_outage_keeps_the_wider_scope():
+    """A fence listing failure must not narrow a status outage: the next fence success would end it."""
+    from app import lan_fence
+
+    client = _ext_listing_fails()
+    a, b, d, e = _status_patches(client, RuntimeError("Read timed out"))
+    with a, b, d, e:
+        assert orchestrator.get_status() == []
+    started = orchestrator._docker_unreachable_since
+    client.containers.list.side_effect = RuntimeError("500 Server Error")
+    with pytest.raises(RuntimeError):
+        lan_fence._managed(client)
+    client.containers.list.side_effect = None
+    assert lan_fence._managed(client) == []
+    assert orchestrator._docker_listing_failed == "status"
+    assert orchestrator._docker_unreachable_since == started
+
+
+def test_the_fence_loop_ends_a_status_outage_on_a_worker_with_no_ui(monkeypatch):
+    """No heartbeat runs get_status, so the fence pass reads the status again once Docker works."""
+    monkeypatch.setattr(worker_api, "UI_URL", "")
+    client = _ext_listing_fails()
+    a, b, d, e = _status_patches(client, RuntimeError("Read timed out"))
+    with a, b, d, e:
+        assert orchestrator.get_status_light() == []
+    orchestrator._docker_unreachable_since = time.monotonic() - 3600
+    assert _client().get("/api/health").status_code == 503
+
+    sleeps = iter([None])
+
+    async def one_pass(_seconds):
+        if next(sleeps, "stop") == "stop":
+            raise asyncio.CancelledError
+
+    a, b, d, e = _status_patches(client, lambda *_a: [])
+    with (
+        a,
+        b,
+        d,
+        e,
+        patch.object(worker_api.asyncio, "sleep", side_effect=one_pass),
+        patch.object(worker_api, "_check_fence", AsyncMock()),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        asyncio.run(worker_api._fence_loop())
+    assert orchestrator.docker_unreachable_for() is None
+    assert _client().get("/api/health").status_code == 200
 
 
 class TestHealthReportsALostDocker:
