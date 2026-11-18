@@ -26,7 +26,7 @@ from typing import Any
 
 import docker
 import requests
-from docker.errors import APIError, DockerException, NotFound
+from docker.errors import APIError, DockerException, ImageNotFound, NotFound
 
 # docker-py's run() and create() refuse stop_timeout although the Engine API and
 # the low-level create_container() accept it, so a container could only ever
@@ -154,6 +154,17 @@ def _docker_read_failed(exc: BaseException) -> bool:
     never ended.
     """
     return isinstance(exc, requests.exceptions.RequestException) and not isinstance(exc, requests.exceptions.HTTPError)
+
+
+def _container_gone(exc: BaseException) -> bool:
+    """Whether a per-container read failed because the container itself is gone.
+
+    Only that leaves a status list whole when the container is skipped.
+    ImageNotFound is a NotFound too, but it says the IMAGE lookup failed
+    (Container.image calls images.get): the container is still there and may
+    be a copy, so skipping it makes the list partial.
+    """
+    return isinstance(exc, NotFound) and not isinstance(exc, ImageNotFound)
 
 
 def _mark_docker_available() -> None:
@@ -5303,7 +5314,7 @@ def get_status() -> list[dict[str, Any]]:
                 # Gone since the list: no copy is missed. Anything else may be a
                 # copy: _external_candidates kept only containers whose image names
                 # a catalog repository (an alias included) or cannot be read.
-                if not isinstance(exc, NotFound):
+                if not _container_gone(exc):
                     listed = False
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 
@@ -5337,7 +5348,7 @@ def get_status() -> list[dict[str, Any]]:
                 if _docker_read_failed(exc):
                     _mark_listing_failed(exc)
                     return []
-                if not isinstance(exc, NotFound):
+                if not _container_gone(exc):
                     listed = False
                 logger.warning("Skipping corrupted container %s: %s", getattr(c, "short_id", "?"), exc)
 

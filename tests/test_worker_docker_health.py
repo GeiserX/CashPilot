@@ -256,7 +256,7 @@ class TestADockerErrorOnOneContainerIsAListingOutage:
 
     def test_a_container_removed_after_the_list_is_still_skipped(self, read, managed):
         """NotFound: its image or the container went away in between, which is no outage."""
-        assert self._run(read, managed, docker_errors.ImageNotFound("No such image")) == []
+        assert self._run(read, managed, docker_errors.NotFound("No such container")) == []
         assert orchestrator.docker_unreachable_for() is None
 
     def test_an_error_answer_about_one_container_is_no_outage(self, read, managed):
@@ -276,6 +276,31 @@ def test_a_catalog_copy_skipped_on_an_error_answer_marks_the_heartbeat_partial(m
     with a, b, d, e:
         assert orchestrator.get_status() == []
     assert orchestrator.status_listed() is False
+    assert orchestrator.docker_unreachable_for() is None
+
+
+@pytest.mark.parametrize("managed", [True, False], ids=["managed", "external"])
+@pytest.mark.parametrize(
+    ("error", "whole"),
+    [
+        (lambda: docker_errors.NotFound("No such container"), True),
+        (lambda: docker_errors.ImageNotFound("No such image"), False),
+    ],
+    ids=["container-gone", "image-lookup-failed"],
+)
+def test_only_a_container_that_is_gone_leaves_the_heartbeat_whole(managed, error, whole):
+    """ImageNotFound is a NotFound, but the container is still there and may be a running copy.
+
+    The labeled loop marks any skip partial, a container gone included: one
+    partial heartbeat costs nothing, and a CashPilot container is always a copy.
+    """
+    c = _candidate(error(), managed)
+    client = _ext_listing_fails()
+    client.containers.list.return_value = [c] if managed else []
+    a, b, d, e = _status_patches(client, lambda *_a: [] if managed else [c])
+    with a, b, d, e:
+        assert orchestrator.get_status() == []
+    assert orchestrator.status_listed() is (whole and not managed)
     assert orchestrator.docker_unreachable_for() is None
 
 
