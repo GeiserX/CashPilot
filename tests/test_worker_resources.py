@@ -254,6 +254,20 @@ class TestDeployRawHardening:
         # Nothing declared any capability, so none is added back.
         assert kwargs["cap_add"] is None
 
+    def test_init_reaps_orphans_on_every_path(self):
+        # Without an init the earner is PID 1 and the exec probes' orphans pile
+        # up as zombies until pids_limit is reached. The fence-gated create path
+        # (mysterium) must get it as well as the plain run path.
+        assert self._run_kwargs(slug="honeygain", image="img")["init"] is True
+        client = self._mock_client()
+        client.containers.create.return_value = client.containers.run.return_value
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch("app.lan_fence.fence_problem", return_value=None),
+        ):
+            orchestrator.deploy_raw(slug="mysterium", image="img", cap_add=["NET_ADMIN"])
+        assert client.containers.create.call_args.kwargs["init"] is True
+
     def test_catalog_declared_capability_is_added_back(self):
         # mysterium is the only catalog service declaring a cap; dropping ALL must not
         # break it — NET_ADMIN is re-added on top of the drop. It is fence-gated, so

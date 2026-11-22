@@ -1395,6 +1395,12 @@ def deploy_raw(
         security_opt=["no-new-privileges:true"],
         privileged=False,
         pids_limit=_PIDS_LIMIT,
+        # Docker's init (tini) as PID 1, so orphans are reaped. Without it the
+        # earner is PID 1, and most never wait on children they did not start:
+        # each `timeout` watchdog our health probe leaves behind through docker
+        # exec stays a zombie, and Mysterium filled pids_limit at two an hour.
+        # No catalog image runs s6-overlay, the one init that must be PID 1.
+        init=True,
         # From the worker's own catalog (see _get_entrypoint), like the stop
         # timeout below: neither is something the deploy request can set.
         entrypoint=entrypoint,
