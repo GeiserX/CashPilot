@@ -1399,8 +1399,8 @@ def deploy_raw(
         # earner is PID 1, and most never wait on children they did not start:
         # each `timeout` watchdog our health probe leaves behind through docker
         # exec stays a zombie, and Mysterium filled pids_limit at two an hour.
-        # No catalog image runs s6-overlay, the one init that must be PID 1.
-        init=True,
+        # An image that starts its own init already reaps; see _brings_own_init.
+        init=not _brings_own_init(image_config, entrypoint, command),
         # From the worker's own catalog (see _get_entrypoint), like the stop
         # timeout below: neither is something the deploy request can set.
         entrypoint=entrypoint,
@@ -1818,23 +1818,38 @@ _INIT_SYSTEMS = frozenset(
 )
 
 
-def _boots_init_system(image_config: dict[str, Any], entrypoint: list[str] | None, command: str | None) -> bool:
-    """True when the container would start an init system as PID 1.
+def _main_program(image_config: dict[str, Any], entrypoint: list[str] | None, command: str | None) -> str:
+    """The first word of what the container runs as its main process.
 
     The catalog's entrypoint, when it declares one, replaces the image's; the
-    request's command replaces the image's CMD but never its ENTRYPOINT. Only
-    the first word of what finally runs matters.
+    request's command replaces the image's CMD but never its ENTRYPOINT.
     """
     if entrypoint:
-        first = entrypoint[0]
-    elif image_config.get("Entrypoint"):
-        first = str(image_config["Entrypoint"][0])
-    elif command:
-        first = command.split()[0]
-    else:
-        cmd = image_config.get("Cmd") or []
-        first = str(cmd[0]) if cmd else ""
-    return first in _INIT_SYSTEMS
+        return entrypoint[0]
+    if image_config.get("Entrypoint"):
+        return str(image_config["Entrypoint"][0])
+    if command and command.split():
+        return command.split()[0]
+    cmd = image_config.get("Cmd") or []
+    return str(cmd[0]) if cmd else ""
+
+
+def _boots_init_system(image_config: dict[str, Any], entrypoint: list[str] | None, command: str | None) -> bool:
+    """True when the container would start an init system as PID 1."""
+    return _main_program(image_config, entrypoint, command) in _INIT_SYSTEMS
+
+
+# Small inits an image may start as its own main process. Each one already
+# reaps orphans, and s6-overlay's /init (linuxserver images, and any custom
+# service built on them) exits at once when it is not PID 1, so these images
+# do not get Docker's init in front of them.
+_OWN_INITS = frozenset({"tini", "tini-static", "dumb-init", "s6-svscan"})
+
+
+def _brings_own_init(image_config: dict[str, Any], entrypoint: list[str] | None, command: str | None) -> bool:
+    """True when the image starts an init of its own (s6-overlay, tini, dumb-init) as PID 1."""
+    first = _main_program(image_config, entrypoint, command)
+    return first == "/init" or first.rsplit("/", 1)[-1] in _OWN_INITS
 
 
 def _refuse_init_image(
