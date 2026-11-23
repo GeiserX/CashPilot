@@ -257,7 +257,7 @@ class TestHowOftenItTries:
 
 
 class TestTheWorkerRunsIt:
-    def test_every_guard_pass_runs_it_and_never_raises(self, monkeypatch):
+    def test_every_guard_pass_runs_it_and_never_raises(self, monkeypatch, caplog):
         calls = []
         monkeypatch.setattr(worker_api.lan_fence, "guard", lambda: {})
         monkeypatch.setattr(worker_api.orchestrator, "hold_direct_earners", lambda: [])
@@ -267,7 +267,9 @@ class TestTheWorkerRunsIt:
         monkeypatch.setattr(
             worker_api.orchestrator, "start_failed_starts", MagicMock(side_effect=RuntimeError("docker is down"))
         )
-        asyncio.run(worker_api._guard_once())  # never raises
+        with caplog.at_level(logging.WARNING, logger="app.worker_api"):
+            asyncio.run(worker_api._guard_once())  # never raises
+        assert "Could not look for earners whose start failed: docker is down" in caplog.text
 
     def test_it_runs_after_the_proxied_only_hold(self, monkeypatch):
         """The hold stops direct earners first; the start then refuses them by the same rule."""

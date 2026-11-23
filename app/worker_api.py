@@ -1041,7 +1041,7 @@ async def _start_failed_starts() -> None:
     try:
         await asyncio.wait_for(asyncio.to_thread(orchestrator.start_failed_starts), FENCE_STARTUP_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
-        logger.debug("Could not look for earners whose start failed: %s", _reason(exc))
+        logger.warning("Could not look for earners whose start failed: %s", _reason(exc))
 
 
 async def _hold_direct_earners() -> None:
