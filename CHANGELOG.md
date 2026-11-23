@@ -10,6 +10,13 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.9.1] - 2026-11-23
+
+### Fixes
+
+- Deploy EarnApp 1.665.73-r3, so a busy node restarts EarnApp instead of swapping for days (#798)
+- Restart EarnApp before its memory reaches the limit, so busy nodes stop swapping for hours (#797)
+
 ## [2.9.0] - 2026-11-23
 
 ### Features
