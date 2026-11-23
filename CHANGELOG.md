@@ -10,6 +10,16 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.9.0] - 2026-11-23
+
+### Features
+
+- Restart a ProxyBase copy stuck on a dead relay, so it earns again without a manual restart (#796)
+
+### Fixes
+
+- Bring earners back after a power loss when Docker's one boot start fails (#795)
+
 ## [2.8.5] - 2026-11-22
 
 ### Fixes
