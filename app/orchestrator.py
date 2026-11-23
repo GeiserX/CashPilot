@@ -4411,7 +4411,6 @@ def start_failed_starts() -> list[str]:
     """
     client = _get_client()
     started: list[str] = []
-    seen: set[str] = set()
     for container in client.containers.list(all=True, filters={"label": f"{LABEL_MANAGED}=true", "status": "exited"}):
         attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
         state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
@@ -4428,7 +4427,6 @@ def start_failed_starts() -> list[str]:
         ):
             continue
         cid = str(getattr(container, "id", "") or container.name)
-        seen.add(cid)
         with _start_retry_lock:
             now = time.monotonic()
             if now - _start_retried_at.get(cid, now - START_RETRY_SECONDS) < START_RETRY_SECONDS:
@@ -4445,9 +4443,13 @@ def start_failed_starts() -> list[str]:
         else:
             started.append(container.name)
             logger.warning("Started %s again: Docker could not start it (%s)", container.name, error[:300])
+    # Only stamps whose wait is over go: a pass that listed the containers before
+    # another one stamped a new try must not drop that stamp.
     with _start_retry_lock:
-        for cid in set(_start_retried_at) - seen:
-            _start_retried_at.pop(cid, None)
+        now = time.monotonic()
+        for cid, at in list(_start_retried_at.items()):
+            if now - at >= START_RETRY_SECONDS:
+                _start_retried_at.pop(cid, None)
     return started
 
 

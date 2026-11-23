@@ -235,12 +235,25 @@ class TestHowOftenItTries:
         assert "Could not start cashpilot-honeygain again (still broken)" in caplog.text
         assert "gofer filestore" in caplog.text
 
-    def test_a_container_that_runs_again_is_forgotten(self):
+    def test_a_try_is_forgotten_once_its_wait_is_over(self):
+        earner = _earner()
+        clock = {"now": 1000.0}
+        with patch.object(orchestrator.time, "monotonic", side_effect=lambda: clock["now"]):
+            _pass(earner)
+            assert set(orchestrator._start_retried_at) == {earner.id}
+            _pass()
+            assert set(orchestrator._start_retried_at) == {earner.id}, "kept while its wait runs"
+            clock["now"] += orchestrator.START_RETRY_SECONDS
+            _pass()
+        assert orchestrator._start_retried_at == {}
+
+    def test_a_pass_that_did_not_list_a_container_keeps_its_stamp(self):
+        """A pass that listed before another stamped a try must not drop that stamp."""
         earner = _earner()
         _pass(earner)
-        assert set(orchestrator._start_retried_at) == {earner.id}
-        _pass()
-        assert orchestrator._start_retried_at == {}
+        _pass()  # an older listing, without the earner
+        assert _pass(earner) == []
+        earner.start.assert_called_once()
 
 
 class TestTheWorkerRunsIt:
