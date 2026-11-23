@@ -50,6 +50,7 @@ logs_have() {
 	grep -qF -- "$2" <<<"$out"
 }
 exit_code() { docker inspect -f '{{.State.ExitCode}}' "$1"; }
+exited_with() { test "$(docker inspect -f '{{.State.Running}} {{.State.ExitCode}}' "$1")" = "false $2"; }
 
 echo "== $IMAGE"
 
@@ -61,6 +62,13 @@ echo "-- fails closed"
 docker run --name "$P-nouuid" "${HARDEN[@]}" -v "$P-nouuid:/etc/earnapp" "$IMAGE" >/dev/null 2>&1
 check "exits 1 without EARNAPP_UUID" test "$(exit_code "$P-nouuid")" = 1
 check "says EARNAPP_UUID is not set" logs_have "$P-nouuid" "EARNAPP_UUID is not set"
+
+# Detached and waited on: an image that ignores the cap would run EarnApp and
+# never exit.
+docker run -d --name "$P-badcap" "${HARDEN[@]}" -e EARNAPP_UUID="sdk-node-$(printf '0%.0s' {1..32})" -e EARNAPP_MEMORY_CAP_MB=lots \
+	-v "$P-badcap:/etc/earnapp" "$IMAGE" >/dev/null
+check "exits 1 on a memory cap that is not a number" wait_for 30 exited_with "$P-badcap" 1
+check "says the memory cap must be a number" logs_have "$P-badcap" "EARNAPP_MEMORY_CAP_MB must be a whole number"
 
 docker run --rm --entrypoint cat "$IMAGE" /opt/cashpilot-earnapp/SHA256SUMS |
 	sed -E 's/^[0-9a-f]{8}/00000000/' >"$TMP/SHA256SUMS"
@@ -89,6 +97,7 @@ check "downloads the binary and the sha256 matches" wait_for 120 logs_have "$P-r
 check "earnapp start ran (status enabled)" \
 	wait_for 120 docker exec "$P-run" grep -q enabled /etc/earnapp/status
 check "writes the given device id" test "$(docker exec "$P-run" cat /etc/earnapp/uuid)" = "$uuid"
+check "caps EarnApp at three quarters of the 256 MB limit" logs_have "$P-run" "restarted if it uses more than 192 MB"
 sleep 20
 check "earnapp run is still up after 20 s" bash -c "docker exec $P-run sh -c 'cat /proc/[0-9]*/cmdline 2>/dev/null | tr \"\\0\" \" \"' | grep -q 'earnapp run'"
 check "container still running" test "$(docker inspect -f '{{.State.Running}}' "$P-run")" = true
@@ -139,6 +148,16 @@ docker run -d --name "$P-run2" "${HARDEN[@]}" -e EARNAPP_UUID="$uuid" -v "$P-dat
 check "uses the cached copy" wait_for 30 logs_have "$P-run2" "Using cached"
 check "does not download again" bash -c "! docker logs $P-run2 2>&1 | grep -q Downloading"
 docker rm -f "$P-run2" >/dev/null
+
+echo "-- restarts earnapp run once it passes its memory cap"
+# EarnApp's memory grows with its traffic and never shrinks; a 1 MB cap stands
+# in for a node that has run for a day. The check runs every 60 s.
+docker run -d --name "$P-cap" "${HARDEN[@]}" -e EARNAPP_UUID="$uuid" -e EARNAPP_MEMORY_CAP_MB=1 -v "$P-data:/etc/earnapp" "$IMAGE" >/dev/null
+check "stops earnapp run once it passes the cap" wait_for 100 logs_have "$P-cap" "over its 1 MB cap"
+check "starts it again inside the container" wait_for 30 logs_have "$P-cap" "Restarting it inside this container in"
+check "earnapp run is back" wait_for 60 docker exec "$P-cap" /usr/local/bin/cashpilot-earnapp-health
+check "container kept running" test "$(docker inspect -f '{{.State.Running}}' "$P-cap")" = true
+docker rm -f "$P-cap" >/dev/null
 
 echo "-- a cached binary that lost its execute bit still runs"
 docker run --rm -v "$P-data:/etc/earnapp" --entrypoint sh "$IMAGE" -c 'chmod 644 /etc/earnapp/bin/earnapp-*'

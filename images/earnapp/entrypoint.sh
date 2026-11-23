@@ -13,6 +13,9 @@
 #
 #   cashpilot-earnapp           run EarnApp (needs EARNAPP_UUID)
 #   cashpilot-earnapp verify    fetch and check the binary, print its version, exit
+#
+# EARNAPP_MEMORY_CAP_MB (optional) sets the memory at which `earnapp run` is
+# restarted; the default is three quarters of the container's memory limit.
 set -euo pipefail
 
 CONFIG_DIR=/etc/earnapp
@@ -134,18 +137,46 @@ fi
 [[ -n "${EARNAPP_UUID:-}" ]] || die "EARNAPP_UUID is not set. Generate one with: echo sdk-node-\$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \\n')"
 [[ "$EARNAPP_UUID" =~ ^sdk-node-[0-9a-f]{32}$ ]] || die "EARNAPP_UUID must be sdk-node- followed by 32 lowercase hex characters"
 
+# EarnApp keeps memory it no longer uses, and the more traffic a node carries,
+# the faster it grows: about 10 MB an hour on a busy node, while an idle one
+# stays near 40 MB. It passes a 256 MB limit within a day. With swap, it then
+# goes on swapping its own code in and out for hours, until the host's swap is
+# full and the kernel kills it. So restart it once it uses three quarters of
+# the container's memory limit, before it reaches the limit.
+# The limit as cgroup v2 shows it, or cgroup v1 (which gVisor shows); empty
+# when there is none.
+memory_limit_mb() {
+	local raw
+	raw=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null) || return 0
+	# cgroup v1 reports "no limit" as a number near 2^63.
+	[[ "$raw" =~ ^[0-9]+$ ]] && ((${#raw} < 16)) && echo $((raw / 1048576))
+	return 0
+}
+if [[ -n "${EARNAPP_MEMORY_CAP_MB:-}" ]]; then
+	[[ "$EARNAPP_MEMORY_CAP_MB" =~ ^[1-9][0-9]*$ ]] || die "EARNAPP_MEMORY_CAP_MB must be a whole number of megabytes"
+	MEMORY_CAP_MB=$EARNAPP_MEMORY_CAP_MB
+else
+	limit_mb=$(memory_limit_mb)
+	# 192 MB is three quarters of the 256 MB CashPilot gives EarnApp.
+	MEMORY_CAP_MB=$((${limit_mb:-256} * 3 / 4))
+fi
+MEMORY_CHECK_SECS=60
+
 fetch_binary
 
 printf %s "$EARNAPP_UUID" >"$CONFIG_DIR/uuid"
 touch "$CONFIG_DIR/status"
 log "EarnApp $RUNNING, device $EARNAPP_UUID"
 log "Link this device once, while logged in: https://earnapp.com/r/$EARNAPP_UUID"
+log "EarnApp is restarted if it uses more than $MEMORY_CAP_MB MB"
 
 # Bash is PID 1 and only handles a signal between foreground commands, so
 # every long-running command runs in the background and is waited on.
 child=""
+watcher=""
 shutdown() {
 	log "Stopping EarnApp"
+	[[ -n "$watcher" ]] && kill "$watcher" 2>/dev/null || true
 	[[ -n "$child" ]] && kill "$child" 2>/dev/null || true
 	"$EARNAPP" stop >/dev/null 2>&1 || true
 	exit 0
@@ -161,13 +192,36 @@ wait_child() {
 	return "$rc"
 }
 
+# watch_memory <pid>: stop `earnapp run` once its memory, in RAM and in swap,
+# passes the cap. The loop below then starts it again after 5 s.
+watch_memory() {
+	local pid=$1 kb
+	while sleep "$MEMORY_CHECK_SECS"; do
+		kb=$(awk '/^(VmRSS|VmSwap):/ { kb += $2 } END { print kb + 0 }' "/proc/$pid/status" 2>/dev/null) || return 0
+		if ((kb / 1024 > MEMORY_CAP_MB)); then
+			log "earnapp run uses $((kb / 1024)) MB, over its $MEMORY_CAP_MB MB cap. Stopping it, so it starts again before it reaches the container's memory limit."
+			kill "$pid" 2>/dev/null || return 0
+			sleep 10
+			kill -9 "$pid" 2>/dev/null || true
+			return 0
+		fi
+	done
+}
+
 backoff=5
 MAX_BACKOFF=300
 while true; do
 	"$EARNAPP" start || log "earnapp start exited with $?"
 	started=$(date +%s)
+	"$EARNAPP" run &
+	child=$!
+	watch_memory "$child" &
+	watcher=$!
 	rc=0
-	wait_child "$EARNAPP" run || rc=$?
+	wait "$child" || rc=$?
+	child=""
+	kill "$watcher" 2>/dev/null || true
+	watcher=""
 	ran=$(($(date +%s) - started))
 	# A run that lasted a minute started fine, so restart it after 5 s. EarnApp
 	# 1.665.73 exits after about 100 s whenever one of the agents Bright Data

@@ -12,7 +12,9 @@ At first start the entrypoint downloads the pinned build straight from Bright Da
 
 It then runs EarnApp in lite mode: no systemd, no installer, no shims. Bash is PID 1, writes `EARNAPP_UUID` to `/etc/earnapp/uuid`, runs `earnapp start`, then keeps `earnapp run` in the foreground. If `earnapp run` exits, the entrypoint starts it again inside the same container after 5 s, and says so in the log. A run that dies within a minute of starting backs off, doubling up to 5 minutes; the container itself is not restarted. `docker stop` stops it cleanly.
 
-It runs under the hardening CashPilot gives every earner: all capabilities dropped, `no-new-privileges`, not privileged, 512 pids and 256 MB of memory. EarnApp uses about 80 MB.
+It runs under the hardening CashPilot gives every earner: all capabilities dropped, `no-new-privileges`, not privileged, 512 pids and 256 MB of memory.
+
+EarnApp starts at about 80 MB and never gives memory back. An idle node stays near 40 MB, but a busy one grows about 10 MB an hour and passes 256 MB within a day. It then swaps its own code in and out for hours, until the host's swap fills and the kernel kills it. So the entrypoint checks `earnapp run` every minute and restarts it once its memory, in RAM and swap, passes three quarters of the container's memory limit: 192 MB under 256 MB. Without a limit, the cap is 192 MB. The restart works like any other and takes 5 s.
 
 ## Use
 
@@ -24,7 +26,7 @@ docker run -d --name earnapp \
   -e EARNAPP_UUID=sdk-node-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n') \
   -v earnapp-data:/etc/earnapp \
   --restart unless-stopped \
-  drumsergio/cashpilot-earnapp:1.665.73-r2
+  drumsergio/cashpilot-earnapp:1.665.73-r3
 ```
 
 Then open `https://earnapp.com/r/<your EARNAPP_UUID>` once while logged in to link the device. The log prints that link. Keep the same `EARNAPP_UUID` and volume when you recreate the container.
@@ -32,6 +34,7 @@ Then open `https://earnapp.com/r/<your EARNAPP_UUID>` once while logged in to li
 | Variable | Required | What it is |
 |---|---|---|
 | `EARNAPP_UUID` | yes | `sdk-node-` followed by 32 lowercase hex characters |
+| `EARNAPP_MEMORY_CAP_MB` | no | Memory in MB at which `earnapp run` is restarted. Default: three quarters of the memory limit |
 
 The health check passes while `/etc/earnapp/status` reads `enabled` and an `earnapp run` process is alive. It does not prove the device registered or is online: `earnapp start` writes `enabled` even when registration fails, and EarnApp's log is encrypted. Check the device on the EarnApp dashboard.
 
