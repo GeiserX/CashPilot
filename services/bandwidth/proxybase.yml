@@ -51,15 +51,19 @@ docker:
     # retrying in 5 seconds.", split over two lines), so 240 an hour, logged no
     # balance, and earned nothing while its container stayed healthy, until the
     # hosts rebooted. A working copy logs "Balance: $..." every 30 seconds and
-    # never this line. 120 lines is half an hour of retries.
+    # never this line. 120 lines is half an hour of retries. The client asks
+    # for a relay once, at its start; when that ask fails it falls back to a
+    # default relay that no longer answers and never asks again, and a
+    # restart is what clears it, so CashPilot restarts the copy (restart).
     - pattern: "retrying in 5 seconds"
       unless: "Balance: \\$"
       window_hours: 1
       min_matches: 120
+      restart: true
       means: >-
         ProxyBase has not reached its relay for at least half an hour, so it
-        earns nothing. Restart this copy; if that does not help, check that this
-        box can reach the internet.
+        earns nothing. A restart clears this; if it stays after a restart,
+        check that this box can reach the internet.
       state: failing
 
 requirements:

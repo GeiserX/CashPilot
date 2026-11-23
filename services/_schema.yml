@@ -122,6 +122,10 @@
 #                                         means is filled from that copy's env, ${HOST_ADDRESS}
 #                                         with the box's LAN address, ${WORKER_NAME} with
 #                                         the worker's name
+#         restart: false                  (optional) with window_hours, state failing: CashPilot
+#                                         restarts a copy it deployed while the signal holds, at
+#                                         most once every 6 hours per copy. Only for a state you
+#                                         have seen a restart clear.
 #     Only add a pattern you have actually seen in that service's logs. A guessed regex
 #     that never matches is dead weight; one that matches the wrong line tells the user
 #     something false.

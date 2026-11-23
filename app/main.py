@@ -2726,6 +2726,7 @@ async def _sweep_windowed_signals() -> None:
                 hints[key] = kept
             continue
         logged: list[str] = []
+        restart_due = False
         try:
             for signal in signals:
                 params: dict[str, Any] = {
@@ -2743,11 +2744,14 @@ async def _sweep_windowed_signals() -> None:
                     continue
                 if producer_state.windowed_hit(resp.get("logs", ""), signal):
                     logged.append(await _render_signal_means(signal, slug, workers[wid]))
+                    restart_due = restart_due or signal.get("restart") is True
         except Exception as exc:
             logger.warning("Windowed log check failed for %s on worker %s: %s", slug, wid, exc)
             logged = _signal_hints.get(key, [])
         if logged:
             signal_hints[key] = logged
+        if restart_due and c.get("deployed_by") in constants.CASHPILOT_DEPLOYED:
+            await _auto_restart(key, logged)
         probed: list[str] = []
         if spec is not None:
             definition = health_probe.fingerprint(spec)
@@ -2792,6 +2796,41 @@ async def _sweep_windowed_signals() -> None:
     _signal_hints = signal_hints
     _probe_hints = probe_hints
     _probe_state = probe_state
+    # Only the cooldown is kept: a log read that failed once must not let the
+    # next pass restart a copy again within it.
+    now = time.time()
+    for key, at in list(_auto_restarted_at.items()):
+        if now - at >= AUTO_RESTART_COOLDOWN_S:
+            _auto_restarted_at.pop(key, None)
+
+
+#: Seconds between two automatic restarts of one copy (a health signal with ``restart: true``).
+AUTO_RESTART_COOLDOWN_S = 6 * 3600
+#: (slug, worker id, copy) -> time.time() of the last automatic restart.
+_auto_restarted_at: dict[tuple[str, int, int], float] = {}
+
+
+async def _auto_restart(key: tuple[str, int, int], means: list[str]) -> None:
+    """Restart a running copy stuck in a state its catalog says a restart clears. Never raises.
+
+    A ProxyBase client that could not find a relay at its start keeps dialing a
+    dead default one forever, and earns nothing until it is restarted. At most
+    one restart per copy every AUTO_RESTART_COOLDOWN_S, so a copy a restart does
+    not help (the box has no internet) is not restarted over and over.
+    """
+    slug, wid, instance = key
+    now = time.time()
+    last = _auto_restarted_at.get(key)
+    if last is not None and now - last < AUTO_RESTART_COOLDOWN_S:
+        return
+    _auto_restarted_at[key] = now
+    try:
+        await _command_and_record(wid, "restart", slug, instance)
+    except Exception as exc:  # noqa: BLE001 - the next try comes after the cooldown
+        logger.warning("Could not restart %s copy %s on worker %s by itself: %s", slug, instance, wid, exc)
+        return
+    metrics.record_container_lifecycle("restart", slug)
+    logger.warning("Restarted %s copy %s on worker %s by itself: %s", slug, instance, wid, " ".join(means)[:300])
 
 
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:

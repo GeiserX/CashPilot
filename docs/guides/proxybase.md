@@ -73,6 +73,12 @@ If ProxyBase was deployed before the migration to the new client, the container 
 
 Fix: **Remove** the ProxyBase service, then **Deploy** it again from the catalog and paste a fresh **Access Token** from [your dashboard](https://peer.proxybase.org/dashboard). The redeploy pulls the current `ghcr.io/proxybaseorg/peer-cli` image.
 
+### Logs repeat `Failed to connect to <ip>:2931, retrying in 5 seconds.`
+
+The client asks ProxyBase for a relay once, when it starts. If that request fails, it uses a built-in default relay that no longer answers, and it keeps retrying that relay without asking again. It earns nothing, but the container still looks healthy. A restart fixes it.
+
+CashPilot notices after half an hour of retries with no `Balance:` line. It shows the copy under **Needs fixing** and restarts the copy itself, at most once every 6 hours. If the warning stays after a restart, check that the box can reach the internet.
+
 ### Container loops on `Missing ID and NAME`
 
 The peer client accepts its credentials **only as command-line arguments**. Its error text also offers "environment variables ID and NAME", but no published image actually reads them. A container started with only the environment variables loops on `Missing ID and NAME` forever while showing as "running".
