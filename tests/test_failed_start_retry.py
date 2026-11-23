@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -180,6 +181,52 @@ class TestHowOftenItTries:
             clock["now"] += 1
             _pass(earner)
             assert earner.start.call_count == 2
+
+    def test_the_interval_counts_from_each_try_not_from_the_start_of_the_pass(self):
+        """A slow first start must not shorten the wait of the containers after it."""
+        slow, later = _earner(), _earner("cashpilot-earnapp", "earnapp")
+        clock = {"now": 1000.0}
+
+        def slow_start():
+            clock["now"] += 20
+
+        slow.start.side_effect = slow_start
+        with patch.object(orchestrator.time, "monotonic", side_effect=lambda: clock["now"]):
+            _pass(slow, later)
+        assert orchestrator._start_retried_at[later.id] == 1020.0
+
+    def test_two_passes_at_once_start_a_container_once(self, monkeypatch):
+        """A pass the worker stopped waiting for still runs in its thread; the next one must not start it too.
+
+        The first pass is held between reading the last try and writing its own,
+        the gap two unlocked passes would both get through.
+        """
+        import threading
+
+        in_check = threading.Event()
+
+        class HeldOnFirstRead(dict):
+            reads = 0
+
+            def get(self, *args):
+                value = super().get(*args)
+                HeldOnFirstRead.reads += 1
+                if HeldOnFirstRead.reads == 1:
+                    in_check.set()
+                    time.sleep(0.5)
+                return value
+
+        monkeypatch.setattr(orchestrator, "_start_retried_at", HeldOnFirstRead())
+        earner = _earner()
+        monkeypatch.setattr(orchestrator, "_get_client", lambda: _client(earner))
+        first = threading.Thread(target=orchestrator.start_failed_starts)
+        first.start()
+        assert in_check.wait(5)
+        second = threading.Thread(target=orchestrator.start_failed_starts)
+        second.start()
+        first.join(5)
+        second.join(5)
+        assert earner.start.call_count == 1
 
     def test_a_failed_try_is_logged_with_dockers_reason_and_never_raises(self, caplog):
         earner = _earner()

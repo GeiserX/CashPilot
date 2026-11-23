@@ -4382,6 +4382,9 @@ def hold_direct_earners() -> list[str]:
 START_RETRY_SECONDS = 300
 #: Container id -> time.monotonic() of the last try start_failed_starts made.
 _start_retried_at: dict[str, float] = {}
+#: Makes the cooldown check and its stamp one step. A pass the worker stopped
+#: waiting for keeps running in its thread, so two passes can overlap.
+_start_retry_lock = threading.Lock()
 
 
 def start_failed_starts() -> list[str]:
@@ -4407,7 +4410,6 @@ def start_failed_starts() -> list[str]:
     too. One try per container every START_RETRY_SECONDS.
     """
     client = _get_client()
-    now = time.monotonic()
     started: list[str] = []
     seen: set[str] = set()
     for container in client.containers.list(all=True, filters={"label": f"{LABEL_MANAGED}=true", "status": "exited"}):
@@ -4427,9 +4429,11 @@ def start_failed_starts() -> list[str]:
             continue
         cid = str(getattr(container, "id", "") or container.name)
         seen.add(cid)
-        if now - _start_retried_at.get(cid, now - START_RETRY_SECONDS) < START_RETRY_SECONDS:
-            continue
-        _start_retried_at[cid] = now
+        with _start_retry_lock:
+            now = time.monotonic()
+            if now - _start_retried_at.get(cid, now - START_RETRY_SECONDS) < START_RETRY_SECONDS:
+                continue
+            _start_retried_at[cid] = now
         try:
             start_service(slug, _instance_of(container))
         except (ContainerRuntimeError, route_gate.RouteRefused) as exc:
@@ -4441,8 +4445,9 @@ def start_failed_starts() -> list[str]:
         else:
             started.append(container.name)
             logger.warning("Started %s again: Docker could not start it (%s)", container.name, error[:300])
-    for cid in set(_start_retried_at) - seen:
-        _start_retried_at.pop(cid, None)
+    with _start_retry_lock:
+        for cid in set(_start_retried_at) - seen:
+            _start_retried_at.pop(cid, None)
     return started
 
 
