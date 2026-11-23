@@ -49,6 +49,13 @@ logs_have() {
 	out=$(docker logs "$1" 2>&1)
 	grep -qF -- "$2" <<<"$out"
 }
+# logs_have_after <container> <first> <then>: <then> appears in a line after
+# the first line that holds <first>. An earlier <then> does not count.
+logs_have_after() {
+	local out
+	out=$(docker logs "$1" 2>&1)
+	awk -v a="$2" -v b="$3" 'seen && index($0, b) { found = 1 } index($0, a) { seen = 1 } END { exit !found }' <<<"$out"
+}
 exit_code() { docker inspect -f '{{.State.ExitCode}}' "$1"; }
 exited_with() { test "$(docker inspect -f '{{.State.Running}} {{.State.ExitCode}}' "$1")" = "false $2"; }
 
@@ -154,7 +161,9 @@ echo "-- restarts earnapp run once it passes its memory cap"
 # in for a node that has run for a day. The check runs every 60 s.
 docker run -d --name "$P-cap" "${HARDEN[@]}" -e EARNAPP_UUID="$uuid" -e EARNAPP_MEMORY_CAP_MB=1 -v "$P-data:/etc/earnapp" "$IMAGE" >/dev/null
 check "stops earnapp run once it passes the cap" wait_for 100 logs_have "$P-cap" "over its 1 MB cap"
-check "starts it again inside the container" wait_for 30 logs_have "$P-cap" "Restarting it inside this container in"
+# The restart line is logged only once the capped process has exited, so the
+# health check below sees the new process, not the one being stopped.
+check "starts it again inside the container" wait_for 30 logs_have_after "$P-cap" "over its 1 MB cap" "Restarting it inside this container in"
 check "earnapp run is back" wait_for 60 docker exec "$P-cap" /usr/local/bin/cashpilot-earnapp-health
 check "container kept running" test "$(docker inspect -f '{{.State.Running}}' "$P-cap")" = true
 docker rm -f "$P-cap" >/dev/null
