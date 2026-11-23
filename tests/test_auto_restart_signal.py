@@ -32,15 +32,36 @@ KEY = ("proxybase", 7, 1)
 def _clean():
     main._windowed_hints = {}
     main._auto_restarted_at.clear()
+    main._owner_stopped_at.clear()
+    main._copy_locks.clear()
     yield
     main._windowed_hints = {}
     main._auto_restarted_at.clear()
+    main._owner_stopped_at.clear()
+    main._copy_locks.clear()
 
 
-def _sweep(logs, *, containers=(RUNNING,), restart_error=None, read_error=None):
+def _stop_patches(stops):
+    """The owner's Stop (main._svc_stop) with the worker call recorded in ``stops``."""
+
+    async def _routed(wid, slug, instance, direct, routed):
+        stops.append(("stop", wid, slug, instance))
+        return {"status": "stopped"}
+
+    return (
+        patch("app.main._require_writer"),
+        patch("app.main._resolve_worker_id", new_callable=AsyncMock, side_effect=lambda wid: wid),
+        patch("app.main._or_routed", side_effect=_routed),
+        patch("app.main.database.record_health_event", new_callable=AsyncMock),
+    )
+
+
+def _sweep(logs, *, containers=(RUNNING,), restart_error=None, read_error=None, during_read=None):
     restarts = []
 
     async def _proxy(wid, method, path, params=None, **kw):
+        if during_read:
+            await during_read()
         if read_error:
             raise read_error
         return {"logs": logs, "filtered": True}
@@ -112,6 +133,67 @@ def test_a_container_cashpilot_did_not_deploy_is_never_restarted():
     hand_made = {**RUNNING, "deployed_by": "unknown"}
     assert _sweep(STUCK, containers=(hand_made,)) == []
     assert main._windowed_hints[KEY], "it is still flagged"
+
+
+def test_a_routed_copy_on_a_named_worker_is_restarted():
+    """A routed row names the node in deployed_by; it is CashPilot's own proxied copy all the same."""
+    routed = {**RUNNING, "deployed_by": "nas", "route": {"proxy_id": 3, "tunnel_status": "running"}}
+    assert _sweep(STUCK, containers=(routed,)) == [(7, "restart", "proxybase", 1)]
+
+
+def test_a_container_the_user_runs_by_hand_is_never_restarted():
+    external = {**RUNNING, "deployed_by": "external"}
+    assert _sweep(STUCK, containers=(external,)) == []
+
+
+def test_a_copy_the_owner_stops_during_the_check_stays_stopped(caplog):
+    stops = []
+
+    async def _owner_stops():
+        await main._svc_stop(None, "proxybase", 7, 1)
+
+    p1, p2, p3, p4 = _stop_patches(stops)
+    with p1, p2, p3, p4, caplog.at_level("INFO", logger="app.main"):
+        assert _sweep(STUCK, during_read=_owner_stops) == []
+    assert stops == [("stop", 7, "proxybase", 1)]
+    assert KEY not in main._auto_restarted_at, "no cooldown spent on a restart that did not happen"
+    assert "Left proxybase copy 1 on worker 7 stopped: the owner stopped it" in caplog.text
+
+
+def test_a_stop_from_before_the_check_does_not_block_a_restart():
+    main._owner_stopped_at[KEY] = 1.0
+    assert _sweep(STUCK) == [(7, "restart", "proxybase", 1)]
+    assert KEY not in main._owner_stopped_at, "an old stop is forgotten"
+
+
+def test_a_stop_that_comes_during_the_restart_runs_after_it():
+    order = []
+
+    async def _run():
+        restarting = asyncio.Event()
+        finish = asyncio.Event()
+
+        async def _command(wid, command, slug, instance):
+            order.append("restart sent")
+            restarting.set()
+            await finish.wait()
+            order.append("restart done")
+
+        with patch("app.main._command_and_record", side_effect=_command):
+            restart = asyncio.create_task(main._auto_restart(KEY, ["stuck"], 0.0))
+            await restarting.wait()
+            stop = asyncio.create_task(main._svc_stop(None, "proxybase", 7, 1))
+            for _ in range(20):  # time enough for an unordered Stop to reach the worker
+                await asyncio.sleep(0)
+            order.append("stop asked")
+            finish.set()
+            await restart
+            await stop
+
+    p1, p2, p3, p4 = _stop_patches(order)
+    with p1, p2, p3, p4:
+        asyncio.run(_run())
+    assert order == ["restart sent", "stop asked", "restart done", ("stop", 7, "proxybase", 1)]
 
 
 def test_a_failed_restart_is_logged_and_never_raises(caplog):
