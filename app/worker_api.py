@@ -1027,12 +1027,21 @@ _started_at = time.monotonic()
 
 
 async def _guard_once() -> None:
-    """One pass of the fence guard (lan_fence.guard), then of the proxied-only one. Never raises."""
+    """One pass of the fence guard (lan_fence.guard), then of the proxied-only one, then the failed starts. Never raises."""
     try:
         await asyncio.wait_for(asyncio.to_thread(lan_fence.guard), FENCE_STARTUP_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - the next pass tries again
         logger.warning("Fence guard pass did not finish: %s", _reason(exc))
     await _hold_direct_earners()
+    await _start_failed_starts()
+
+
+async def _start_failed_starts() -> None:
+    """Start again the earners Docker could not start at its boot (orchestrator.start_failed_starts). Never raises."""
+    try:
+        await asyncio.wait_for(asyncio.to_thread(orchestrator.start_failed_starts), FENCE_STARTUP_TIMEOUT)
+    except Exception as exc:  # noqa: BLE001 - the next pass tries again
+        logger.warning("Could not look for earners whose start failed: %s", _reason(exc))
 
 
 async def _hold_direct_earners() -> None:
