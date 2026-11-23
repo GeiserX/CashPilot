@@ -142,6 +142,24 @@ version and how to roll back.
 
 ---
 
+## Socket proxy on sockguard 2.4.7: take the new proxy line
+
+**Affects you if** your worker runs behind `cashpilot-socket-proxy`. sockguard
+2.4.7 is built with Go 1.27.4, which fixes a crash in Go's HTTP server
+(GO-2026-6859 / CVE-2026-97054). The proxy serves HTTP over the socket, so
+2.4.6 and older carry that crash. Your compose file pins the proxy image, so
+pulling new CashPilot images, or an in-app update, leaves the old proxy
+running.
+
+**What to do**, on every host that runs a worker:
+
+1. In your compose file, set the proxy's image to
+   `codeswhat/sockguard:2.4.7@sha256:8d985328da6b62a0909656e8c584791d356b5e869f0988deeaef4c08e4cc23da`,
+   or take the compose file of this release.
+2. Run `docker compose up -d cashpilot-socket-proxy` (with `-f` and your file
+   if it is not `docker-compose.yml`), then check with
+   `docker inspect -f '{{.Config.Image}}' cashpilot-socket-proxy`.
+
 ## Socket proxy on sockguard 2.4.6: take the new proxy line
 
 **Affects you if** your worker runs behind `cashpilot-socket-proxy`. sockguard
