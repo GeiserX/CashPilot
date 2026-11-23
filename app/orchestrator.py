@@ -4378,6 +4378,74 @@ def hold_direct_earners() -> list[str]:
     return stopped
 
 
+#: Seconds between two tries to start the same container again (start_failed_starts).
+START_RETRY_SECONDS = 300
+#: Container id -> time.monotonic() of the last try start_failed_starts made.
+_start_retried_at: dict[str, float] = {}
+
+
+def start_failed_starts() -> list[str]:
+    """Start again every earner Docker should run but could not start. Returns the names started.
+
+    Docker starts a container with restart policy unless-stopped or always when
+    its daemon starts, and tries once: a start that fails there is never tried
+    again (its restart policy acts only when a running container exits). After
+    an unclean power loss that first start can fail and a second one work. A
+    gVisor (runsc) earner, for one, finds a stale filestore its sandbox left
+    and fails "creating gofer filestore files"; such earners stayed down for
+    two days until someone started them by hand.
+
+    The sign is Docker's own: the container is exited, its State.Error holds
+    why the start failed (a run that ended clears it, a start that worked
+    clears it too), and its restart policy says Docker means it to run. A Stop
+    leaves State.Error as it was, but it also leaves the container one Docker
+    starts at its next boot, so this keeps Docker's own meaning. Nothing else
+    is touched: a fence-gated node or a proxied copy has policy "no" and its
+    own guard, a tunnel belongs to proxy_tunnel, and a container that exited
+    on its own was not refused a start. Each try goes through start_service,
+    so a route, a restore or a removal that holds the service holds it here
+    too. One try per container every START_RETRY_SECONDS.
+    """
+    client = _get_client()
+    now = time.monotonic()
+    started: list[str] = []
+    seen: set[str] = set()
+    for container in client.containers.list(all=True, filters={"label": f"{LABEL_MANAGED}=true", "status": "exited"}):
+        attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+        state = attrs.get("State") if isinstance(attrs.get("State"), dict) else {}
+        host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+        error = str(state.get("Error") or "").strip()
+        policy = str((host.get("RestartPolicy") or {}).get("Name") or "")
+        slug = str((container.labels or {}).get(LABEL_SERVICE) or "")
+        if (
+            not error
+            or state.get("Status") not in (None, "exited")
+            or policy not in ("unless-stopped", "always")
+            or not slug
+            or is_proxied(container)
+        ):
+            continue
+        cid = str(getattr(container, "id", "") or container.name)
+        seen.add(cid)
+        if now - _start_retried_at.get(cid, now - START_RETRY_SECONDS) < START_RETRY_SECONDS:
+            continue
+        _start_retried_at[cid] = now
+        try:
+            start_service(slug, _instance_of(container))
+        except (ContainerRuntimeError, route_gate.RouteRefused) as exc:
+            logger.info("Left %s stopped, which Docker could not start: %s", container.name, exc)
+        except Exception as exc:  # noqa: BLE001 - the next try comes in START_RETRY_SECONDS
+            logger.warning(
+                "Could not start %s again (%s); Docker could not start it before: %s", container.name, exc, error[:300]
+            )
+        else:
+            started.append(container.name)
+            logger.warning("Started %s again: Docker could not start it (%s)", container.name, error[:300])
+    for cid in set(_start_retried_at) - seen:
+        _start_retried_at.pop(cid, None)
+    return started
+
+
 # ---------------------------------------------------------------------------
 # Self-update (issue #342)
 #
