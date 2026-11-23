@@ -99,7 +99,7 @@ Link again whenever you redeploy with a new UUID. A redeploy that keeps the UUID
 
 ## Docker Configuration
 
-- **Image:** `drumsergio/cashpilot-earnapp:1.665.73-r2`, CashPilot's own image
+- **Image:** `drumsergio/cashpilot-earnapp:1.665.73-r3`, CashPilot's own image
 - **Platforms:** linux/amd64, linux/arm64, linux/arm/v7
 
 The image holds no Bright Data code. At first start it downloads the pinned EarnApp build
@@ -107,7 +107,10 @@ from Bright Data's CDN, checks its sha256 and caches it in the `earnapp-data` vo
 first start needs that CDN reachable. `EARNAPP_UUID` must be `sdk-node-` followed by 32
 lowercase hex characters, which is what `earnapp showid` prints. If `earnapp run` exits, the
 image restarts it inside the same container and says so in the log: the container itself
-keeps running. A device moved from `fazalfarhan01/earnapp:lite` keeps its UUID and volume.
+keeps running. EarnApp never gives memory back and grows with its traffic, so the image also
+restarts `earnapp run` once it uses three quarters of the container's memory limit: 192 MB
+under the 256 MB CashPilot sets. A device moved from `fazalfarhan01/earnapp:lite` keeps its
+UUID and volume.
 
 One exception to the pin: Bright Data's CDN keeps only the build its installer serves today.
 If the pinned build is gone and the volume holds no cached copy, the image runs the build the
