@@ -337,6 +337,17 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                     # The one place the case is normalised: every reader
                     # compares the lowercase name.
                     item["state"] = state.strip().lower()
+                if "restart" in item and (
+                    not isinstance(item["restart"], bool)
+                    or not item.get("window_hours")
+                    or item.get("state", "failing") != "failing"
+                ):
+                    # A restart is for a running copy stuck in a state a restart
+                    # clears, which only a windowed failing signal can show.
+                    errors.append(
+                        f"{path.name}: docker.health_signals[{i}].restart must be true or false, "
+                        "on a failing signal with window_hours"
+                    )
                 if item.get("state") != ACCOUNT_DISABLED:
                     continue
                 # The worker judges this one on a stopped container's tail.

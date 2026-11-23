@@ -2680,6 +2680,7 @@ async def _sweep_windowed_signals() -> None:
     verdicts and still lets the probe update, and the other way round.
     """
     global _windowed_hints, _signal_hints, _probe_hints, _probe_state
+    listed_at = time.time()
     try:
         containers = await _get_all_worker_containers()
     except Exception as exc:
@@ -2726,6 +2727,7 @@ async def _sweep_windowed_signals() -> None:
                 hints[key] = kept
             continue
         logged: list[str] = []
+        restart_due = False
         try:
             for signal in signals:
                 params: dict[str, Any] = {
@@ -2743,11 +2745,15 @@ async def _sweep_windowed_signals() -> None:
                     continue
                 if producer_state.windowed_hit(resp.get("logs", ""), signal):
                     logged.append(await _render_signal_means(signal, slug, workers[wid]))
+                    restart_due = restart_due or signal.get("restart") is True
         except Exception as exc:
             logger.warning("Windowed log check failed for %s on worker %s: %s", slug, wid, exc)
             logged = _signal_hints.get(key, [])
         if logged:
             signal_hints[key] = logged
+        # A routed copy is CashPilot's own proxied copy: its row names the node in deployed_by.
+        if restart_due and (c.get("deployed_by") in constants.CASHPILOT_DEPLOYED or c.get("route")):
+            await _auto_restart(key, logged, listed_at)
         probed: list[str] = []
         if spec is not None:
             definition = health_probe.fingerprint(spec)
@@ -2792,6 +2798,62 @@ async def _sweep_windowed_signals() -> None:
     _signal_hints = signal_hints
     _probe_hints = probe_hints
     _probe_state = probe_state
+    # Only the cooldown is kept: a log read that failed once must not let the
+    # next pass restart a copy again within it.
+    now = time.time()
+    for key, at in list(_auto_restarted_at.items()):
+        if now - at >= AUTO_RESTART_COOLDOWN_S:
+            _auto_restarted_at.pop(key, None)
+    # A stop only matters to the sweep that was running when it came.
+    for key, at in list(_owner_stopped_at.items()):
+        if at < listed_at:
+            _owner_stopped_at.pop(key, None)
+
+
+#: Seconds between two automatic restarts of one copy (a health signal with ``restart: true``).
+AUTO_RESTART_COOLDOWN_S = 6 * 3600
+#: (slug, worker id, copy) -> time.time() of the last automatic restart.
+_auto_restarted_at: dict[tuple[str, int, int], float] = {}
+#: (slug, worker id, copy) -> time.time() of the owner's last Stop, so an automatic
+#: restart of a copy listed as running before that Stop does not start it again.
+_owner_stopped_at: dict[tuple[str, int, int], float] = {}
+#: Orders the owner's Stop and an automatic restart of the same copy.
+_copy_locks: dict[tuple[str, int, int], asyncio.Lock] = {}
+
+
+def _copy_lock(key: tuple[str, int, int]) -> asyncio.Lock:
+    return _copy_locks.setdefault(key, asyncio.Lock())
+
+
+async def _auto_restart(key: tuple[str, int, int], means: list[str], listed_at: float) -> None:
+    """Restart a running copy stuck in a state its catalog says a restart clears. Never raises.
+
+    A ProxyBase client that could not find a relay at its start keeps dialing a
+    dead default one forever, and earns nothing until it is restarted. At most
+    one restart per copy every AUTO_RESTART_COOLDOWN_S, so a copy a restart does
+    not help (the box has no internet) is not restarted over and over. A copy
+    the owner stopped after the sweep listed it as running is left stopped: the
+    Stop and this restart take the same lock, so a Stop that comes during the
+    restart runs after it.
+    """
+    slug, wid, instance = key
+    async with _copy_lock(key):
+        stopped_at = _owner_stopped_at.get(key)
+        if stopped_at is not None and stopped_at >= listed_at:
+            logger.info("Left %s copy %s on worker %s stopped: the owner stopped it", slug, instance, wid)
+            return
+        now = time.time()
+        last = _auto_restarted_at.get(key)
+        if last is not None and now - last < AUTO_RESTART_COOLDOWN_S:
+            return
+        _auto_restarted_at[key] = now
+        try:
+            await _command_and_record(wid, "restart", slug, instance)
+        except Exception as exc:  # noqa: BLE001 - the next try comes after the cooldown
+            logger.warning("Could not restart %s copy %s on worker %s by itself: %s", slug, instance, wid, exc)
+            return
+    metrics.record_container_lifecycle("restart", slug)
+    logger.warning("Restarted %s copy %s on worker %s by itself: %s", slug, instance, wid, " ".join(means)[:300])
 
 
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:
@@ -6560,13 +6622,16 @@ async def _remove_routed(worker_id: int, slug: str) -> dict[str, Any]:
 async def _svc_stop(request: Request, slug: str, worker_id: int | None, instance: int = 1) -> dict[str, Any]:
     _require_writer(request)
     worker_id = await _resolve_worker_id(worker_id)
-    result = await _or_routed(
-        worker_id,
-        slug,
-        instance,
-        lambda: _proxy_worker_command(worker_id, "stop", slug, instance=instance),
-        lambda pid: _routed_command(worker_id, slug, "stop", pid),
-    )
+    key = (slug, worker_id, instance)
+    async with _copy_lock(key):
+        _owner_stopped_at[key] = time.time()
+        result = await _or_routed(
+            worker_id,
+            slug,
+            instance,
+            lambda: _proxy_worker_command(worker_id, "stop", slug, instance=instance),
+            lambda pid: _routed_command(worker_id, slug, "stop", pid),
+        )
     await database.record_health_event(slug, "stop", worker_id=worker_id, instance=instance)
     metrics.record_container_lifecycle("stop", slug)
     return result
