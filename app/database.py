@@ -812,6 +812,26 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_audit_events_created
     ON audit_events (created_at);
 
+-- Money waiting (app/obligations.py): what the household did with each
+-- reminder, and the clock starts CashPilot saw. One row per (service, rule),
+-- per install: the provider account is shared, so whoever handles it closes it
+-- for everyone. `rule` is an obligations[].id, 'cash-out', 'credential:<field>'
+-- or '*' (every rule of the service). anchor_at outlives the 400-day earnings
+-- purge, which a 730-day clock needs. updated_by is users.id, NULL for the job.
+CREATE TABLE IF NOT EXISTS obligation_state (
+    slug            TEXT    NOT NULL,
+    rule            TEXT    NOT NULL,
+    anchor_at       TEXT,
+    anchor_censored INTEGER NOT NULL DEFAULT 0,
+    done_for        TEXT,
+    done_at         TEXT,
+    snoozed_until   TEXT,
+    muted           INTEGER NOT NULL DEFAULT 0,
+    updated_by      INTEGER,
+    updated_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (slug, rule)
+);
+
 -- The identity ledger (issue #740): the device names and ids CashPilot deployed
 -- a service with, per box and per copy, kept after the service is removed so
 -- the owner can see them and reuse one. A row is `active` while that copy runs
@@ -5005,6 +5025,91 @@ async def get_audit_events(limit: int = 100) -> list[dict[str, Any]]:
             (limit,),
         )
         return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+# --- Money waiting (app/obligations.py; table obligation_state above) ---
+
+
+async def get_obligation_state() -> dict[tuple[str, str], dict[str, Any]]:
+    """Every obligation_state row, keyed by (slug, rule)."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM obligation_state")
+        return {(r["slug"], r["rule"]): dict(r) for r in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+async def set_obligation_anchors(anchors: list[tuple[str, str, str | None, bool]]) -> None:
+    """Store (or clear, with None) the clock start of each (slug, rule).
+
+    Only the anchor columns change: a Done, Snooze or mute on the same row stays.
+    """
+    if not anchors:
+        return
+    db = await _get_db()
+    try:
+        for slug, rule, anchor_at, censored in anchors:
+            await db.execute(
+                "INSERT INTO obligation_state (slug, rule, anchor_at, anchor_censored) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (slug, rule) DO UPDATE SET anchor_at = excluded.anchor_at, "
+                "anchor_censored = excluded.anchor_censored, updated_at = datetime('now')",
+                (slug, rule, anchor_at, 1 if censored else 0),
+            )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def set_obligation_action(
+    slug: str,
+    rule: str,
+    *,
+    updated_by: int | None,
+    done_for: str | None = None,
+    done_at: str | None = None,
+    snoozed_until: str | None = None,
+    muted: bool | None = None,
+) -> None:
+    """Record what a user did with one reminder. Unnamed columns keep their value."""
+    sets = ["updated_by = ?", "updated_at = datetime('now')"]
+    params: list[Any] = [updated_by]
+    if done_for is not None:
+        sets += ["done_for = ?", "done_at = ?"]
+        params += [done_for, done_at]
+    if snoozed_until is not None:
+        sets.append("snoozed_until = ?")
+        params.append(snoozed_until)
+    if muted is not None:
+        sets.append("muted = ?")
+        params.append(1 if muted else 0)
+    db = await _get_db()
+    try:
+        await db.execute(
+            "INSERT INTO obligation_state (slug, rule) VALUES (?, ?) ON CONFLICT (slug, rule) DO NOTHING",
+            (slug, rule),
+        )
+        await db.execute(
+            f"UPDATE obligation_state SET {', '.join(sets)} WHERE slug = ? AND rule = ?",  # noqa: S608 - fixed column names
+            (*params, slug, rule),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_owner_timezone() -> str | None:
+    """The first owner's saved timezone, or None when they never chose one."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT p.timezone FROM users u JOIN user_preferences p ON p.user_id = u.id "
+            "WHERE u.role = 'owner' ORDER BY u.id LIMIT 1"
+        )
+        row = await cursor.fetchone()
+        return str(row["timezone"]) if row and row["timezone"] else None
     finally:
         await db.close()
 

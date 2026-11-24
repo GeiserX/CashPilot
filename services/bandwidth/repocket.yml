@@ -91,6 +91,19 @@ payout:
   model: internal
   notes: "Balance held by Repocket; withdrawn on request."
 
+# Reminders before money is lost (services/_schema.yml obligations:, docs/reminders.md).
+obligations:
+  - id: avoid-12-month-dormancy
+    action: keep-active
+    title: Keep a Repocket device sharing, or withdraw your balance
+    loss: After 12 months with no login, payout or bandwidth sharing, Repocket may forfeit the unpaid
+      balance.
+    how: Keep a device sharing, sign in, or withdraw. If you stop using Repocket, withdraw first.
+    when: {since: last_activity, days: 365}
+    warn_days: [90, 30, 7]
+    source: https://repocket.com/payment-and-rewards-policy
+    checked: "2026-11-24"
+
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.
 rating:

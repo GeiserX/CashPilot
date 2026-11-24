@@ -49,6 +49,17 @@
   </div>
 </section>
 
+<!-- Money waiting (docs/reminders.md): deadlines before a provider writes off
+     earnings, and balances that can be cashed out. Hidden while the list is
+     empty; a failed check says so and is never shown as an all-clear. -->
+<section class="attention money-waiting" id="money-waiting" aria-labelledby="money-waiting-title" hidden>
+  <div class="block-head">
+    <h2 class="block-title" id="money-waiting-title">Money waiting <span class="count" id="money-waiting-count"></span></h2>
+  </div>
+  <div class="attn-list" id="money-waiting-list"></div>
+  <div class="attn-foot" id="money-waiting-muted" hidden></div>
+</section>
+
 <!-- What needs a person, first. Failing containers and collectors come from
      the workers and the collector alerts; the payout question keeps its own
      list because nothing counts as earned until it is answered. -->

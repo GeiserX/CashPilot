@@ -48,6 +48,7 @@ from app import (
     catalog,
     compose_generator,
     constants,
+    credential_expiry,
     credential_test,
     custom_services,
     database,
@@ -65,6 +66,7 @@ from app import (
     metrics,
     net_activity,
     notify,
+    obligations,
     onchain,
     payout_registry,
     payouts,
@@ -3133,6 +3135,17 @@ async def lifespan(app: FastAPI):
         "interval",
         hours=1,
         id="proxy_cap_resets",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+    )
+    # Money waiting (app/obligations.py): store new clock starts and push each
+    # reminder once per stage. No startup run, so a restart never bursts pushes.
+    scheduler.add_job(
+        _run_obligations,
+        "interval",
+        minutes=60,
+        id="obligations",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=300,
@@ -8812,6 +8825,222 @@ async def api_earnings_flatlines(request: Request) -> list[dict[str, Any]]:
     return await database.get_flatlined_services(quiet_days=_quiet_days_by_platform())
 
 
+async def _credential_report() -> list[dict[str, Any]]:
+    """The credential health rows (app/credential_expiry.report) from stored config.
+
+    The values are decrypted so a JWT's own expiry can be read. They stay
+    inside this call: the rows carry dates, never the value.
+    """
+    updated = await database.get_config_updated_at()
+    try:
+        values = await database.get_config()
+    except Exception:  # noqa: BLE001 - a value-less report is still a report
+        values = {}
+    if not isinstance(values, dict):
+        values = {}
+    return credential_expiry.report(updated, values, _rejected_credentials())
+
+
+def _rejected_credentials() -> set[str]:
+    """Services whose latest collection the provider REJECTED.
+
+    That is evidence about the credential, where its age is only a guess, so it
+    wins over both the lifetime table and a JWT's own claim.
+    """
+    return {
+        a.get("platform")
+        for a in _collector_alerts
+        if a.get("kind", "collector") == "collector" and a.get("category") == "auth"
+    }
+
+
+# --- Money waiting (app/obligations.py, docs/reminders.md) ---
+
+#: Pushes go out only between these local hours; a stage reached overnight
+#: goes out at the first run after the start.
+OBLIGATION_PUSH_HOURS = (9, 21)
+#: Above this many pushes in one run, one summary push goes out instead.
+OBLIGATION_SUMMARY_OVER = 3
+
+
+def _obligation_zone(name: str | None) -> Any:
+    """A tzinfo for an IANA name, or None when it is unset or unknown here."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    if not name or name.strip().upper() == "UTC":
+        return None
+    try:
+        return ZoneInfo(name.strip())
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+
+
+async def _obligations_now() -> datetime:
+    """Now, in the first owner's timezone, then the container's TZ, then UTC.
+
+    "Today" decides which day a deadline falls on, and the push hours are the
+    owner's waking hours, not the server's.
+    """
+    try:
+        owner = await database.get_owner_timezone()
+    except Exception:  # noqa: BLE001 - a missing preference is not a failure
+        owner = None
+    zone = _obligation_zone(owner) or _obligation_zone(os.environ.get("TZ")) or UTC
+    return datetime.now(zone)
+
+
+def _readings_by_day(history: list[dict[str, Any]], currency: str | None) -> list[tuple[Any, float]]:
+    """One reading per day in the current unit, oldest first; the newest of a day wins."""
+    by_day: dict[Any, float] = {}
+    for row in history:
+        if currency and str(row.get("currency") or "USD").upper() != currency.upper():
+            continue
+        try:
+            day = datetime.fromisoformat(str(row["date"])[:10]).date()
+            by_day[day] = float(row["balance"])
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sorted(by_day.items())
+
+
+async def _obligation_facts(now: datetime) -> dict[str, obligations.ServiceFacts]:
+    """What the engine needs, for every catalog service this install uses.
+
+    In use: a deployment row (``external`` ones included), an online worker
+    reporting it (containers and phone apps), or a balance above 0, even after
+    the service was removed: the inactivity clocks start when it stops.
+    """
+    from app.collectors import COLLECTOR_MAP
+
+    summary = {r["platform"]: r for r in await database.get_earnings_summary()}
+    in_use = {d["slug"] for d in await database.get_deployments()}
+    try:
+        in_use |= {c["slug"] for c in await _get_all_worker_containers() if c.get("slug")}
+    except Exception as exc:  # noqa: BLE001 - a worker read must not hide the rest
+        logger.warning("Reminders: could not read worker containers: %s", type(exc).__name__)
+    in_use |= {slug for slug, r in summary.items() if (r.get("balance") or 0) > 0}
+
+    credentials: dict[str, list[dict[str, Any]]] = {}
+    updated = await database.get_config_updated_at()
+    rejected = _rejected_credentials()
+    for row in await _credential_report():
+        due = None
+        if row.get("expires_at"):
+            due = datetime.fromisoformat(row["expires_at"]).astimezone(now.tzinfo).date()
+        elif row.get("expected_lifetime_hours") is not None:
+            left = float(row["expected_lifetime_hours"]) - float(row.get("age_hours") or 0)
+            due = (now + timedelta(hours=left)).date()
+        credentials.setdefault(row["service"], []).append(
+            {
+                "field": row["field"],
+                "status": row["status"],
+                "due": due,
+                "occurrence": updated.get(f"{row['service']}_{row['field']}", ""),
+                "rejected": row["service"] in rejected,
+            }
+        )
+
+    facts: dict[str, obligations.ServiceFacts] = {}
+    for slug in sorted(in_use):
+        svc = catalog.get_service(slug)
+        if not svc or svc.get("status") == "dead":
+            continue
+        row = summary.get(slug) or {}
+        currency = str(row.get("currency") or "").upper() or None
+        balance = float(row["balance"]) if row.get("balance") is not None else None
+        balance_usd = None
+        if balance is not None and currency:
+            balance_usd = balance if currency == "USD" else exchange_rates.to_usd(balance, currency)
+        service_facts = obligations.ServiceFacts(
+            balance=balance,
+            currency=currency,
+            balance_usd=balance_usd,
+            minimum=payouts.min_payout_in(svc, currency) if currency else None,
+            collected=slug in COLLECTOR_MAP,
+            credentials=credentials.get(slug, []),
+        )
+        # History only for a service with a clock rule: 5 of them today.
+        if balance is not None and any("since" in r["when"] for r in svc.get("obligations") or []):
+            history = await database.get_balance_history(slug, days=database.RETENTION_DAYS + 1)
+            service_facts.readings = _readings_by_day(history, currency)
+            service_facts.payouts = sorted(
+                d
+                for p in await database.get_payouts(slug)
+                if (d := obligations.as_date(p.get("detected_at"))) is not None
+            )
+        facts[slug] = service_facts
+    return facts
+
+
+async def _evaluate_obligations() -> tuple[obligations.Evaluation, datetime]:
+    """Evaluate every reminder now, and store the clock starts seen for the first time.
+
+    The panel calls this on each request and the hourly job on each run, so
+    there is no cache to go stale and nothing to restore after a restart.
+    """
+    now = await _obligations_now()
+    facts = await _obligation_facts(now)
+    state = await database.get_obligation_state()
+    evaluation = obligations.evaluate(catalog.get_services(), facts, state, now.date())
+    if evaluation.anchors:
+        await database.set_obligation_anchors(evaluation.anchors)
+    return evaluation, now
+
+
+async def _run_obligations() -> None:
+    """Hourly: push each reminder that reached a new stage, once.
+
+    Through the alert pipeline every other push uses: one alerts row per stage
+    (the dedupe), a delivery that reached no channel releases its row so the
+    next run retries. Never in the bell: "obligation" is not in the restore
+    allowlist and nothing adds it to _collector_alerts. No startup run: a
+    restart must not burst pushes, and the lifespan test must not hang on it.
+    """
+    try:
+        evaluation, now = await _evaluate_obligations()
+    except Exception as exc:  # noqa: BLE001 - a scheduler job must not die
+        logger.warning("Reminders: could not evaluate: %s", exc)
+        return
+    start, end = OBLIGATION_PUSH_HOURS
+    if not start <= now.hour < end:
+        return
+    due: list[tuple[obligations.Item, str, str, int]] = []
+    for item in evaluation.items:
+        if not obligations.pushable(item):
+            continue
+        title, body = obligations.push_text(item)
+        alert_id = await database.record_alert(
+            "obligation", obligations.push_subject(item), body, cooldown_hours=_FLATLINE_COOLDOWN_HOURS
+        )
+        if alert_id:
+            due.append((item, title, body, alert_id))
+    if len(due) > OBLIGATION_SUMMARY_OVER:
+        await _push_obligation_summary([d[0] for d in due], [d[3] for d in due])
+        return
+    for item, title, body, alert_id in due:
+        await _push_alert("obligation", obligations.push_subject(item), title, body, alert_id)
+
+
+async def _push_obligation_summary(items: list[obligations.Item], alert_ids: list[int]) -> None:
+    """One push in place of many. Every per-item row stays recorded; when the
+    summary reaches no channel they are all released, so the next run retries."""
+    title, body = obligations.summary_text(items)
+    try:
+        delivered = await notify.send(title, body, kind="obligation", subject="summary")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Reminder summary push crashed: %s", notify.redact(str(exc)))
+        delivered = 0
+    if not notify.is_enabled():
+        return
+    metrics.record_notify_delivery(bool(delivered))
+    if delivered:
+        return
+    for alert_id in alert_ids:
+        with contextlib.suppress(Exception):
+            await database.delete_alert(alert_id)
+    logger.warning("No notification target accepted the reminder summary; will retry on the next run")
+
+
 @app.get("/api/credentials/health")
 async def api_credential_health(request: Request) -> list[dict[str, Any]]:
     """Report how old each stored credential is and when it is expected to die.
@@ -8822,123 +9051,7 @@ async def api_credential_health(request: Request) -> list[dict[str, Any]]:
     quietly stopped being recorded.
     """
     _require_auth_api(request)
-
-    from app.collectors import _COLLECTOR_ARGS, credential_lifetime, durable_alternative
-    from app.credential_expiry import jwt_times
-
-    updated = await database.get_config_updated_at()
-    # The values themselves, decrypted, so a JWT's own expiry can be read. They
-    # stay inside this function: the report carries dates, never the value.
-    try:
-        values = await database.get_config()
-    except Exception:  # noqa: BLE001 - a value-less report is still a report
-        values = {}
-    if not isinstance(values, dict):
-        values = {}
-    now = datetime.now(UTC)
-    report: list[dict[str, Any]] = []
-    # Services whose latest collection was REJECTED by the provider. That is
-    # evidence about the credential, where its age is only a guess, so it wins
-    # over both the lifetime table and a JWT's own claim.
-    rejected = {
-        a.get("platform")
-        for a in _collector_alerts
-        if a.get("kind", "collector") == "collector" and a.get("category") == "auth"
-    }
-
-    for slug, args in _COLLECTOR_ARGS.items():
-        missing_durable = [field for field in durable_alternative(slug) if f"{slug}_{field}" not in updated]
-        for arg in args:
-            field = arg.lstrip("?")
-            key = f"{slug}_{field}"
-            stamp = updated.get(key)
-            if not stamp:
-                continue  # not configured; nothing to report an age for
-
-            meta = credential_lifetime(slug, field) or {}
-            hours_total = meta.get("hours")
-            try:
-                age_hours = (now - datetime.fromisoformat(stamp).replace(tzinfo=UTC)).total_seconds() / 3600
-            except ValueError:
-                continue
-
-            if hours_total is None:
-                status = "no_known_expiry"
-            elif age_hours >= hours_total:
-                status = "likely_expired"
-            elif age_hours >= hours_total * 0.75:
-                status = "expiring_soon"
-            else:
-                status = "fresh"
-
-            # A JWT says when it dies. That beats both the paste date and the
-            # per-service guess: a token pasted half-spent, or one the provider
-            # now issues for 7 days instead of a year, is judged on its own
-            # claim. The 25% window mirrors the age-based one; 48 h is the floor
-            # so a short token still gets a warning a human can act on.
-            issued_at, expires_at = jwt_times(str(values.get(key) or ""))
-            if expires_at is not None:
-                remaining_hours = (expires_at - now).total_seconds() / 3600
-                span_hours = (
-                    (expires_at - issued_at).total_seconds() / 3600
-                    if issued_at is not None and expires_at > issued_at
-                    else None
-                )
-                warn_hours = max(48.0, span_hours * 0.25) if span_hours else 48.0
-                if remaining_hours <= 0:
-                    status = "likely_expired"
-                elif remaining_hours <= warn_hours:
-                    status = "expiring_soon"
-                else:
-                    status = "fresh"
-                if span_hours:
-                    hours_total = round(span_hours)
-
-            # A short-lived credential backed by its durable alternative is
-            # re-established on every run (Bytelixir's 2 h session cookie by the
-            # year-long remember-me cookie), so its own age says nothing.
-            # Its lifetime and its "dies this afternoon" reason would then
-            # contradict the calm status, so the row explains the cover instead.
-            # Assumes every durable field of a service re-creates its
-            # short-lived ones; true for Bytelixir, check it for the next one.
-            why = meta.get("why")
-            covered = bool(durable_alternative(slug)) and not missing_durable and not meta.get("durable")
-            if covered and expires_at is None:
-                status = "no_known_expiry"
-                hours_total = None
-                why = (
-                    "Short-lived on its own, but re-created on every run from the saved "
-                    + " and ".join(durable_alternative(slug))
-                    + ", so its age does not matter."
-                )
-
-            if slug in rejected:
-                status = "likely_expired"
-                # The age-based reason (or "its age does not matter") would
-                # contradict the status; the refusal is the reason now.
-                why = (
-                    "The provider rejected the saved credentials on the last run, "
-                    "so they need replacing whatever their age."
-                )
-
-            entry: dict[str, Any] = {
-                "service": slug,
-                "field": field,
-                "age_hours": round(age_hours, 1),
-                "expected_lifetime_hours": hours_total,
-                "status": status,
-            }
-            if expires_at is not None:
-                entry["expires_at"] = expires_at.isoformat()
-            if why:
-                entry["why"] = why
-            # Only nag about a durable alternative when the short-lived credential
-            # is the one actually at risk.
-            if missing_durable and hours_total is not None and not meta.get("durable"):
-                entry["durable_alternative_missing"] = missing_durable
-            report.append(entry)
-
-    return report
+    return await _credential_report()
 
 
 @app.get("/api/services/{slug}/preflight")
@@ -13036,6 +13149,7 @@ async def _restore_upload(
 from app.routers import activity as activity_router  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
 from app.routers import importers as importers_router  # noqa: E402
+from app.routers import obligations as obligations_router  # noqa: E402
 from app.routers import pages as pages_router  # noqa: E402
 from app.routers import users as users_router  # noqa: E402
 
@@ -13044,6 +13158,11 @@ app.include_router(auth_router.router)
 app.include_router(pages_router.router)
 app.include_router(users_router.router)
 app.include_router(importers_router.router)
+app.include_router(obligations_router.router)
+# The router may not import main (tests/test_login_rate_limit.py), so main
+# hands in the evaluation, which reads main's worker and alert state. Looked
+# up at call time, so a test that patches app.main._evaluate_obligations lands.
+obligations_router.evaluate = lambda: _evaluate_obligations()
 
 
 # The two import routes that need api_set_config and api_deploy. Their logic

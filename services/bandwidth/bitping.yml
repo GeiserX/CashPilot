@@ -103,6 +103,19 @@ payout:
   address_source: app
   notes: "Solana-only now, and the address is typed in AT WITHDRAWAL TIME rather than stored."
 
+# Reminders before money is lost (services/_schema.yml obligations:, docs/reminders.md).
+obligations:
+  - id: withdraw-before-12-month-forfeit
+    action: withdraw
+    title: Withdraw your Bitping balance
+    loss: Bitping may forfeit earnings left unclaimed for more than 12 months, after 30 days' notice
+      by email.
+    how: Request a SOL withdrawal on nodes.bitping.com and type your Solana address into the request.
+    when: {since: last_payout, days: 365}
+    warn_days: [90, 30, 7]
+    source: https://bitping.com/terms
+    checked: "2026-11-24"
+
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.
 rating:

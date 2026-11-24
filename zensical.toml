@@ -49,6 +49,7 @@ nav = [
       { "What's new in 2.0" = "whats-new-2.0.md" },
       { "App stores" = "app-stores.md" },
       { "How it works" = "how-it-works.md" },
+      { "Money waiting: reminders" = "reminders.md" },
       { FAQ = "faq.md" },
       { "How CashPilot compares" = "comparison.md" },
       { "Moving from another tool" = [

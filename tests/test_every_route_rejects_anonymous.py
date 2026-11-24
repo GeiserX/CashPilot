@@ -49,6 +49,7 @@ SUBSTITUTIONS = {
     "identity_id": "1",
     "proxy_id": "1",
     "command": "stop",
+    "rule": "cash-out",
 }
 
 

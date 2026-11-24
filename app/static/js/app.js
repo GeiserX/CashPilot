@@ -335,6 +335,7 @@ const CP = (() => {
       loadServicesTable(),
       loadEarningsChart('7'),
       loadPayoutQueue(),
+      loadMoneyWaiting(),
       loadUsagePanel(),
     ]);
 
@@ -344,6 +345,7 @@ const CP = (() => {
       loadDashboardStats();
       loadServicesTable();
       loadPayoutQueue();
+      loadMoneyWaiting();
       loadUsagePanel();
     }, 3600000);
   }
@@ -757,6 +759,142 @@ const CP = (() => {
         </div>
       `;
     }).join('');
+  }
+
+  // Money waiting (/api/obligations, docs/reminders.md): deadlines before a
+  // provider writes off earnings, and balances ready to cash out. Catalog text
+  // only goes through escapeHtml. Credential expiry is not repeated here: Needs
+  // attention already shows it with its Renew button, and the push covers the
+  // rest. A failed check reads "Could not check", never an all-clear.
+  const OBLIGATION_TAGS = { claim: 'Claim', withdraw: 'Withdraw', 'keep-active': 'Keep active' };
+
+  function obligationDate(iso) {
+    // A due date is a calendar day, so it is drawn as that day, not shifted
+    // by the viewer's offset from UTC.
+    const d = new Date(`${iso}T00:00:00Z`);
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  }
+
+  function obligationWhen(item) {
+    if (!item.due) return '';
+    const by = `by ${obligationDate(item.due)}${item.censored ? ' or earlier' : ''}`;
+    const n = item.days_left;
+    if (n < 0) return `${by}, ${-n} day${n === -1 ? '' : 's'} ago`;
+    if (n === 0) return `${by}, today`;
+    return `${by}, ${n} day${n === 1 ? '' : 's'}`;
+  }
+
+  function obligationRow(item) {
+    const cash = item.kind === 'cash-out';
+    let tag = OBLIGATION_TAGS[item.action] || 'Act';
+    if (cash) tag = 'Cash out';
+    if (item.stage === 'overdue') tag = 'Overdue';
+    if (item.stage === 'recheck') tag = 'Arrived?';
+    const level = item.stage === 'overdue' ? 'fail'
+      : (item.days_left != null && item.days_left <= 7) || item.stage === 'recheck' ? 'warn' : 'ask';
+    const slug = escapeHtml(item.slug);
+    const rule = escapeHtml(item.rule);
+    let what = escapeHtml(item.title);
+    if (cash && item.balance != null) {
+      const cur = item.currency || 'USD';
+      const approx = effectiveDisplayCurrency(cur) !== cur
+        ? ` (≈ ${escapeHtml(formatCurrency(item.balance, cur))})` : '';
+      what += `: ${escapeHtml(`${Number(item.balance).toFixed(2)} ${cur}`)}${approx}`;
+    }
+    const when = obligationWhen(item);
+    const parts = [`<span class="mw-title">${what}</span>`];
+    if (when) parts.push(`<span class="mw-when">${escapeHtml(when)}</span>`);
+    if (item.stage === 'recheck') parts.push('<span class="mw-loss">You marked this requested two weeks ago. Did the payout arrive?</span>');
+    else if (item.stage === 'overdue') parts.push('<span class="mw-loss">The provider may already have written this off.</span>');
+    parts.push(`<span class="mw-loss">${escapeHtml(item.loss)}</span>`);
+    if (item.how) parts.push(`<details class="mw-how"><summary>How</summary>${escapeHtml(item.how)}</details>`);
+
+    const actions = [];
+    if (item.url) {
+      actions.push(`<a class="btn btn-primary btn-sm" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open ${escapeHtml(item.name)}</a>`);
+    }
+    if (_canWrite) {
+      if (item.can_done) {
+        const label = item.stage === 'recheck' ? 'It arrived' : (cash || item.action === 'withdraw') ? 'Requested' : 'Done';
+        actions.push(`<button class="btn btn-ghost btn-sm" data-action="obligationDone" data-a1="${slug}" data-a2="${rule}" data-a3="${escapeHtml(item.occurrence)}">${label}</button>`);
+      }
+      if (item.can_snooze) {
+        actions.push(`<button class="btn btn-ghost btn-sm" data-action="obligationSnooze" data-a1="${slug}" data-a2="${rule}" data-a3="1">Snooze a day</button>`);
+      }
+      const more = [];
+      if (item.can_snooze) more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationSnooze" data-a1="${slug}" data-a2="${rule}" data-a3="7">Snooze a week</button>`);
+      more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationMute" data-a1="${slug}" data-a2="${rule}">Not for me</button>`);
+      more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationMute" data-a1="${slug}" data-a2="*">Mute all ${escapeHtml(item.name)} reminders</button>`);
+      if (item.source) more.push(`<a class="btn btn-ghost btn-sm" href="${escapeHtml(item.source)}" target="_blank" rel="noopener noreferrer">Source, checked ${escapeHtml(item.checked)}</a>`);
+      actions.push(`<details class="mw-more"><summary class="btn btn-ghost btn-sm">More</summary><div class="mw-menu">${more.join('')}</div></details>`);
+    } else if (item.source) {
+      actions.push(`<a class="btn btn-ghost btn-sm" href="${escapeHtml(item.source)}" target="_blank" rel="noopener noreferrer">Source</a>`);
+    }
+    return `
+      <div class="attn-row attn-${level} mw-row" data-obligation="${slug}:${rule}">
+        <span class="attn-tag">${escapeHtml(tag)}</span>
+        <span class="attn-what">${escapeHtml(item.name)}</span>
+        <span class="attn-why mw-why">${parts.join('')}</span>
+        <span class="attn-actions">${actions.join('')}</span>
+      </div>`;
+  }
+
+  async function loadMoneyWaiting() {
+    const section = document.getElementById('money-waiting');
+    const list = document.getElementById('money-waiting-list');
+    const foot = document.getElementById('money-waiting-muted');
+    const count = document.getElementById('money-waiting-count');
+    if (!section || !list) return;
+    let data;
+    try {
+      data = await api('/api/obligations');
+    } catch (err) {
+      console.warn('Could not check the reminders:', err);
+      section.hidden = false;
+      if (count) count.textContent = '';
+      list.innerHTML = '<div class="attn-row attn-unknown"><span class="attn-tag">Unknown</span><span class="attn-what">Money waiting</span><span class="attn-why">Could not check. Reload the page to try again.</span><span class="attn-actions"></span></div>';
+      if (foot) foot.hidden = true;
+      return;
+    }
+    const items = (data.items || []).filter(i => i.kind !== 'credential');
+    const muted = data.muted || [];
+    list.innerHTML = items.map(obligationRow).join('');
+    if (count) count.textContent = items.length ? String(items.length) : '';
+    if (foot) {
+      foot.hidden = !muted.length;
+      foot.innerHTML = muted.length ? 'Not for me: ' + muted.map(m => `${escapeHtml(m.name)}, ${escapeHtml(m.title)}${_canWrite
+        ? ` <button class="btn btn-link btn-sm" data-action="obligationUnmute" data-a1="${escapeHtml(m.slug)}" data-a2="${escapeHtml(m.rule)}">Unmute</button>` : ''}`).join(' · ') : '';
+    }
+    // Hidden while there is nothing to do, like the payout card: an empty
+    // panel every day teaches people to skip the one day it matters.
+    section.hidden = !items.length && !muted.length;
+  }
+
+  async function obligationPost(slug, rule, body, done) {
+    try {
+      await api(`/api/obligations/${encodeURIComponent(slug)}/${encodeURIComponent(rule)}`, { method: 'POST', body });
+      toast(done, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    await loadMoneyWaiting();
+  }
+
+  function obligationDone(slug, rule, occurrence) {
+    return obligationPost(slug, rule, { action: 'done', occurrence }, 'Marked done.');
+  }
+
+  function obligationSnooze(slug, rule, days) {
+    const n = Number(days);
+    return obligationPost(slug, rule, { action: 'snooze', days: n }, n === 1 ? 'Snoozed for a day.' : 'Snoozed for a week.');
+  }
+
+  function obligationMute(slug, rule) {
+    return obligationPost(slug, rule, { action: 'mute' }, 'Muted. Unmute it at the foot of Money waiting.');
+  }
+
+  function obligationUnmute(slug, rule) {
+    return obligationPost(slug, rule, { action: 'unmute' }, 'Unmuted.');
   }
 
   // How far off is the next payout for this one service.
@@ -6537,6 +6675,10 @@ const CP = (() => {
     loadDeployRisk,
     confirmPayout,
     rejectPayout,
+    obligationDone,
+    obligationSnooze,
+    obligationMute,
+    obligationUnmute,
     runSelfUpdate,
     // Exposed for import.js, so a deploy from an import asks the same
     // preflight question as every other deploy.

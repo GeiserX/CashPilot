@@ -209,3 +209,167 @@ def test_proxybase_markets_referral_and_image_contract():
 
     # Every service must tell the user how to get paid (contribution rule).
     assert data["cashout"]["method"], "ProxyBase Markets must declare a cashout method"
+
+
+# ---------------------------------------------------------------------------
+# obligations: (services/_schema.yml, app/obligations.py)
+# ---------------------------------------------------------------------------
+
+# A dated rule this long past is dead: the money it protected is gone, so the
+# rule only adds noise. Remove it.
+OBLIGATION_DATE_GRACE_DAYS = 30
+
+
+def _obligation_service(**rule_overrides):
+    rule = {
+        "id": "claim-thing",
+        "action": "claim",
+        "title": "Claim your thing",
+        "loss": "The provider keeps it.",
+        "url": "https://app.acme.io/claim",
+        "when": {"date": "2027-01-22"},
+        "source": "https://acme.io/terms",
+        "checked": "2026-11-24",
+    }
+    rule.update(rule_overrides)
+    return {
+        "slug": "acme",
+        "website": "https://www.acme.io",
+        "cashout": {"dashboard_url": "https://dash.acme.io/pay"},
+        "referral": {"signup_url": "https://join.acme.io/?ref=x"},
+        "obligations": [rule],
+    }
+
+
+def _obligation_problems(**rule_overrides):
+    from app.catalog import validate_obligations
+
+    kept, problems = validate_obligations(_obligation_service(**rule_overrides))
+    assert len(kept) + len(problems) == 1
+    return problems
+
+
+def _long_past(rule, today):
+    from datetime import date, timedelta
+
+    when = rule.get("when") or {}
+    return "date" in when and today - date.fromisoformat(when["date"]) > timedelta(days=OBLIGATION_DATE_GRACE_DAYS)
+
+
+@pytest.mark.parametrize("yml_path", ALL_YAMLS, ids=[y.stem for y in ALL_YAMLS])
+def test_every_shipped_obligation_validates(yml_path):
+    from app.catalog import validate_obligations
+
+    data = yaml.safe_load(yml_path.read_text())
+    if "obligations" not in data:
+        return
+    kept, problems = validate_obligations(data)
+    assert not problems, f"{yml_path.name}: {problems}"
+    assert kept, f"{yml_path.name}: an empty obligations: block"
+
+
+def test_the_phase_one_rules_ship():
+    """The seven rules from the design, so a bad edit cannot drop one quietly."""
+    shipped = set()
+    for path in ALL_YAMLS:
+        data = yaml.safe_load(path.read_text())
+        shipped |= {(data["slug"], rule["id"]) for rule in data.get("obligations") or []}
+    assert shipped >= {
+        ("grass", "claim-stage2-usdc"),
+        ("mysterium", "claim-monthly-rewards-pool"),
+        ("honeygain", "withdraw-before-24-month-write-off"),
+        ("honeygain", "keep-active-6-months"),
+        ("repocket", "avoid-12-month-dormancy"),
+        ("bitping", "withdraw-before-12-month-forfeit"),
+        ("salad", "earn-within-12-months"),
+    }
+
+
+@pytest.mark.parametrize("yml_path", ALL_YAMLS, ids=[y.stem for y in ALL_YAMLS])
+def test_no_dated_obligation_is_long_past(yml_path):
+    from datetime import date
+
+    data = yaml.safe_load(yml_path.read_text())
+    for rule in data.get("obligations") or []:
+        assert not _long_past(rule, date.today()), (
+            f"{yml_path.name}: {rule['id']} was due {rule['when']['date']}; the money is gone, remove the rule"
+        )
+
+
+def test_the_long_past_check_can_fail():
+    """The check above, proved against the Grass rule a year after its date."""
+    from datetime import date
+
+    rule = {"when": {"date": "2027-01-22"}}
+    assert not _long_past(rule, date(2027, 2, 21))
+    assert _long_past(rule, date(2027, 2, 22))
+
+
+def test_a_valid_rule_passes():
+    assert _obligation_problems() == []
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"action": "check"},
+        {"id": "Claim_Thing"},
+        {"title": "x" * 81},
+        {"title": "Claim {amount}"},
+        {"loss": "Lost <b>forever</b>"},
+        {"how": "Use {{ link }}"},
+        {"url": "https://acme-claim.io/drop"},
+        {"url": "http://app.acme.io/claim"},
+        {"source": "acme.io/terms"},
+        {"checked": "24 Nov 2026"},
+        {"when": {"date": "2027-02-30"}},
+        {"when": {"date": "2027-01-22", "since": "last_payout", "days": 3}},
+        {"when": {"since": "first_login", "days": 30}},
+        {"when": {"since": "last_payout", "days": 0}},
+        {"when": {"every": "month", "on": 31, "due_days": 30}},
+        {"when": {"every": "week", "on": 1, "due_days": 3}},
+        {"warn_days": [7, 30]},
+        {"warn_days": [30, 30]},
+        {"warn_days": [30, -1]},
+        {"warn_days": []},
+        {"confidence": "high"},
+    ],
+    ids=lambda o: f"{next(iter(o))}={next(iter(o.values()))!r}"[:40],
+)
+def test_a_bad_rule_is_refused(override):
+    assert _obligation_problems(**override)
+
+
+def test_a_link_on_the_services_own_domains_is_accepted():
+    for url in ("https://acme.io/x", "https://dash.acme.io/pay", "https://join.acme.io/y"):
+        assert _obligation_problems(url=url) == []
+
+
+def test_ids_are_unique_in_a_file():
+    from app.catalog import validate_obligations
+
+    data = _obligation_service()
+    data["obligations"].append(dict(data["obligations"][0]))
+    kept, problems = validate_obligations(data)
+    assert len(kept) == 1 and problems
+
+
+def test_a_bare_on_key_is_read_the_way_desktop_reads_it():
+    """YAML 1.1 turns a bare `on:` into True; Desktop's YAML 1.2 keeps "on"."""
+    from app.catalog import validate_obligations
+
+    when = yaml.safe_load("when: {every: month, on: 1, due_days: 30}")["when"]
+    assert True in when
+    kept, problems = validate_obligations(_obligation_service(when=when))
+    assert not problems and kept[0]["when"]["on"] == 1
+
+
+def test_a_bad_rule_is_dropped_and_the_service_still_loads(tmp_path, caplog):
+    from app import catalog
+
+    data = yaml.safe_load((SERVICES_DIR / "depin" / "grass.yml").read_text())
+    phish = dict(data["obligations"][0], id="phish", url="https://grass-claim.io/")
+    data["obligations"].append(phish)
+    assert catalog._validate(data, tmp_path / "grass.yml") == []
+    assert [r["id"] for r in data["obligations"]] == ["claim-stage2-usdc"]
+    assert "obligations[phish]" in caplog.text

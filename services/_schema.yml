@@ -362,6 +362,46 @@
 #   mechanics, and nothing else. That is precisely why it comes first: it
 #   delivers most of the "where is my money" answer at zero custody risk.
 
+# obligations: (optional) reminders before the provider writes off money: a claim
+#   window, a balance that expires, a dormancy clock. Shown in the dashboard's "Money
+#   waiting" panel and pushed (app/obligations.py, docs/reminders.md). Encode only a
+#   rule the provider's own terms or docs state, with a signal CashPilot already has.
+#   A bad entry is dropped with a warning and the service still loads; CI fails on it.
+#   - id: claim-stage2-usdc        # kebab-case, unique in the file. NEVER rename it:
+#                                  # the done state and the push dedupe key on it.
+#     action: claim                # claim | withdraw | keep-active (picks the button)
+#     title: Claim your Grass Stage 2 USDC    # one instruction, 80 characters or fewer
+#     loss: Grass keeps every allocation not claimed by 22 Jan 2027.   # what is lost,
+#                                  # as a general fact. Never the user's own amount.
+#     how: Sign in, open the Allocation tab and confirm.   # (optional) one or two sentences
+#     url: https://app.grass.io/dashboard   # (optional) where the user acts. https, on
+#                                  # the domain of website, cashout.dashboard_url or
+#                                  # referral.signup_url (fake claim sites exist).
+#                                  # Default: cashout.dashboard_url, then website.
+#     when: {date: "2027-01-22"}   # exactly one of the three forms below
+#     warn_days: [60, 30, 7, 1]    # (optional) days before the due date to warn,
+#                                  # descending. Default [30, 7, 1].
+#     source: https://...          # the provider's own terms or docs, https
+#     checked: "2026-11-24"        # when someone last read the source (quoted)
+#
+#   title, loss and how are plain text pushed to phones: no { and no <, no templating.
+#   The three `when` forms:
+#     {date: "YYYY-MM-DD"}                       a fixed date; dropped the day after.
+#                                                CI fails on one more than 30 days past.
+#     {every: month, "on": 1, due_days: 30}      a window that opens on day `on` (1-28)
+#                                                of each month and closes due_days later.
+#                                                Quote "on": YAML 1.1 reads it as true.
+#     {since: <clock>, days: N}                  due N days after the clock starts:
+#       over_minimum   the first reading at or above cashout.min_amount since the last
+#                      payout; runs while the balance stays at or above it
+#       last_activity  the later of the last balance increase and the last payout;
+#                      runs while the balance is above 0
+#       last_payout    the last payout, or the first reading when there is none;
+#                      runs while the balance is above 0
+#     A clock that started before CashPilot's first reading says "or earlier".
+#   Two reminders need no YAML: cash-out (the balance reached cashout.min_amount and
+#   at least $5; not for method: auto) and credential expiry.
+
 # platforms: [windows, macos, linux, android, ios, docker, browser_extension]
 
 # collector:

@@ -75,6 +75,21 @@ payout:
   model: internal
   notes: "Accrues POINTS; GRASS is claimed from the Grass dashboard during periodic airdrops."
 
+# Reminders before money is lost (services/_schema.yml obligations:, docs/reminders.md).
+obligations:
+  - id: claim-stage2-usdc
+    action: claim
+    title: Claim your Grass Stage 2 USDC
+    loss: Grass keeps every Stage 2 allocation not claimed by 22 Jan 2027, and the window can close
+      earlier once all allocations are claimed.
+    how: Sign in on app.grass.io with the account you used in Stage 2, activate the Grass Wallet, open
+      the Allocation tab and confirm. Claim only on app.grass.io. No Stage 2 points? Choose Not for me.
+    url: https://app.grass.io/dashboard
+    when: {date: "2027-01-22"}
+    warn_days: [60, 30, 7, 1]
+    source: https://x.com/grassfdn/status/2072440279244656685
+    checked: "2026-11-24"
+
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.
 rating:
