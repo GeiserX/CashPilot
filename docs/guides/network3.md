@@ -2,7 +2,7 @@
 
 > **Category:** DePIN | **Status:** Dead
 >
-> **Website:** [https://network3.io](https://network3.io)
+> **Website:** network3.io (now an unrelated football-streaming site, not linked)
 
 ## Description
 
@@ -34,7 +34,7 @@ Network3 was a DePIN project focused on decentralized AI training and bandwidth 
 
 ### 1. Create an account
 
-Sign up at [Network3](https://network3.io).
+Not possible: network3.io now redirects to an unrelated football-streaming site, and the network3.ai app and claim sites no longer answer.
 
 ### 2. Not available in CashPilot
 

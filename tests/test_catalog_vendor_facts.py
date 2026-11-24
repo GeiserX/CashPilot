@@ -31,13 +31,26 @@ def test_bitping_minimum_is_five_cents():
     assert bitping["cashout"]["min_amount"] == 0.05
 
 
-@pytest.mark.parametrize("slug", ["network3", "koii", "gaganode"])
+GONE_DOMAINS = {
+    "network3": ["network3.io", "network3.ai"],
+    "koii": ["koii.network"],
+    "gaganode": ["gaganode.com"],
+}
+
+
+@pytest.mark.parametrize("slug", sorted(GONE_DOMAINS))
 def test_gone_projects_are_dead_and_link_nowhere(slug: str):
     """Their domains now serve a spam, casino or parking page, checked 2026-11-24."""
     entry = ENTRIES[slug]
     assert entry["status"] == "dead"
+    assert any(d in entry["website"] for d in GONE_DOMAINS[slug])
     assert not (entry.get("referral") or {}).get("signup_url")
     assert not (entry.get("cashout") or {}).get("dashboard_url")
+    # The published guide must not link there either: the website, the old
+    # signup URL and the old dashboard URL all sit on these domains.
+    guide = (ROOT / "docs" / "guides" / f"{slug}.md").read_text(encoding="utf-8")
+    links = re.findall(r"(?:https?://|www\.)[^\s)\]>]+", guide)
+    assert [u for u in links if any(d in u for d in GONE_DOMAINS[slug])] == []
 
 
 @pytest.mark.parametrize("slug", ["koii", "gaganode"])
