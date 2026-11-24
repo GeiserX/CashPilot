@@ -440,7 +440,15 @@ class TestTheWindowCap:
     def test_anything_else_is_refused(self, hours):
         assert self._errors({"pattern": "x", "means": "m", "window_hours": hours})
 
-    def test_every_catalog_signal_is_within_the_cap(self):
-        for service in catalog.get_services():
-            for signal in (service.get("docker") or {}).get("health_signals") or []:
-                assert 0 <= float(signal.get("window_hours") or 0) <= 24, service["slug"]
+    def test_every_shipped_signal_is_within_the_cap(self):
+        # Read the files, not get_services(): the loader drops an entry that
+        # fails the cap, so the loaded list would pass with a bad file on disk.
+        import yaml
+
+        root = Path(__file__).resolve().parent.parent / "services"
+        files = [p for p in root.rglob("*.yml") if not p.name.startswith("_")]
+        assert len(files) > 20
+        for path in files:
+            entry = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            for signal in (entry.get("docker") or {}).get("health_signals") or []:
+                assert 0 <= float(signal.get("window_hours") or 0) <= 24, path.name
