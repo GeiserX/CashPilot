@@ -24,7 +24,7 @@ row's **More** menu opens it.
 | Honeygain | Keep a device sharing, or make a payout | 6 months after the last activity or payout |
 | Repocket | Keep a device sharing, or withdraw | 12 months after the last activity or payout |
 | Bitping | Withdraw your balance | 12 months after the last withdrawal |
-| Salad | Earn some Reward Points, or spend your balance | 12 months after the balance last grew |
+| Salad | Earn some Reward Points, or spend your balance | 12 months after the balance last grew. Spending part of it does not reset this. |
 
 **Cash-out.** CashPilot tells you when a balance reaches the provider's
 minimum. This applies to every service it collects from, except services that
@@ -34,9 +34,12 @@ minimum is higher, the provider's minimum applies. When CashPilot cannot
 convert the minimum or the balance, it shows nothing. It never guesses that
 you can withdraw.
 
-**Credential expiry.** You get a push before a saved token or cookie expires,
-on the date the credential itself states. The dashboard already shows it under
-**Needs attention**, with a **Renew** button, so the panel does not repeat it.
+**Credential expiry.** You get a push before a saved token or cookie expires.
+CashPilot uses the expiry date the credential itself states. When it states
+none, CashPilot uses the usual lifetime of that kind of credential, counted
+from the day you saved it. Owners already see it under **Needs attention**,
+with a **Renew** button, so the panel does not repeat it. Only owners get
+credential reminders from the API, the same as the credential health check.
 A credential the provider rejected is already in the bell and already pushed,
 so it does not push again.
 
@@ -62,7 +65,8 @@ deadline may be earlier than CashPilot can see, and the row says
 CashPilot deletes earnings history after 400 days, and the Honeygain clock
 runs for 730 days. So CashPilot stores each clock start the first time it
 sees one, and keeps it after the history behind it is gone. A payout resets
-the clock.
+the clock, except where the provider counts earning only. Salad is one: a
+payout that leaves a balance does not reset its 12 months.
 
 A fixed date drops off the day after it passes, because the money is gone.
 An overdue clock stays and says the provider may already have written the

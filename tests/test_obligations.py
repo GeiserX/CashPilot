@@ -164,6 +164,31 @@ class TestClocks:
         assert item.occurrence == _days(300).isoformat()
         assert item.censored is True
 
+    def test_last_increase_ignores_a_partial_redemption(self):
+        # Salad counts earning only: spending part of the balance does not
+        # reset its 12 months. Earned until 10 Jan, redeemed part on 1 Jun.
+        rule = _rule("earn", when={"since": "last_increase", "days": 365}, warn=[90, 30, 7])
+        readings = [(date(2025, 12, 1), 10.0), (date(2026, 1, 10), 13.0), (date(2026, 6, 1), 3.0)]
+        facts = {"acme": _facts(readings, payouts=[date(2026, 6, 1)])}
+        item = _one(_run([_svc(rules=[rule])], facts, today=date(2027, 1, 10)))
+        assert (item.occurrence, item.due, item.stage) == ("2026-01-10", date(2027, 1, 10), "d7")
+        assert not item.censored
+
+    def test_last_increase_with_no_increase_is_the_first_reading_and_censored(self):
+        rule = _rule("earn", when={"since": "last_increase", "days": 365}, warn=[90])
+        readings = [(_days(300), 5.0), (_days(100), 3.0)]
+        item = _one(_run([_svc(rules=[rule])], {"acme": _facts(readings, payouts=[_days(100)])}))
+        assert (item.occurrence, item.censored) == (_days(300).isoformat(), True)
+
+    def test_salad_warns_on_the_earning_clock(self):
+        from app import catalog
+
+        salad = catalog.get_service("salad")
+        readings = [(date(2025, 12, 1), 10.0), (date(2026, 1, 10), 13.0), (date(2026, 6, 1), 3.0)]
+        facts = {"salad": _facts(readings, payouts=[date(2026, 6, 1)])}
+        items = _run([salad], facts, today=date(2026, 12, 1)).items
+        assert [(i.rule, i.due) for i in items] == [("earn-within-12-months", date(2027, 1, 10))]
+
     def test_an_overdue_clock_stays(self):
         rule = _rule(warn=[90, 30, 7])
         readings = [(_days(200), 1.0), (_days(190), 2.0), (_days(1), 2.0)]
@@ -248,6 +273,13 @@ class TestUserState:
         state = {("acme", "pool"): {"done_for": "2027-02-01", "done_at": "2027-02-02"}}
         ev = _run([_svc(rules=[self.POOL])], {"acme": _facts()}, state, today=date(2027, 3, 1))
         assert [i.occurrence for i in ev.items] == ["2027-03-01"]
+
+    def test_done_on_two_open_windows_hides_both(self):
+        # On 1 Dec November's window closes and December's opens. Closing
+        # December's must not bring back November's, closed earlier.
+        state = {("acme", "pool"): {"done_for": "2026-11-01,2026-12-01", "done_at": "2026-12-01"}}
+        ev = _run([_svc(rules=[self.POOL])], {"acme": _facts()}, state, today=date(2026, 12, 1))
+        assert ev.items == []
 
     def test_done_on_a_dated_rule_does_not_come_back(self):
         state = {("acme", "claim"): {"done_for": "2027-01-22", "done_at": "2026-11-24"}}
@@ -614,6 +646,7 @@ def api():
         patch.object(main, "_evaluate_obligations", AsyncMock(return_value=(Evaluation(items=[GRASS_ITEM]), now))),
         patch.object(main.database, "set_obligation_action", actions),
         patch.object(main.database, "add_audit_event", audit),
+        patch.object(main.database, "get_obligation_state", AsyncMock(return_value={})),
     ):
         yield TestClient(main.app, raise_server_exceptions=False), actions, audit
 
@@ -638,6 +671,23 @@ class TestRoutes:
         assert res.status_code == 200
         assert res.json()["items"][0]["rule"] == "claim-stage2-usdc"
 
+    @pytest.mark.parametrize(
+        ("role", "shown"), [("owner", True), ("writer", False), ("viewer", False), ("readonly", False)]
+    )
+    def test_credential_reminders_only_to_the_owner(self, role, shown):
+        # Credential health is owner-only on the dashboard, and the read-only
+        # token never gets it (/api/credentials/health refuses it).
+        from app import main
+
+        cred = _item(slug="grass", rule="credential:token", kind="credential", action="renew", occurrence="x")
+        muted = [{"slug": "grass", "rule": "credential:token", "name": "Grass", "title": "Credential reminder (token)"}]
+        evaluation = Evaluation(items=[GRASS_ITEM, cred], muted=muted)
+        now = datetime(2026, 11, 24, 12, tzinfo=UTC)
+        with patch.object(main, "_evaluate_obligations", AsyncMock(return_value=(evaluation, now))), _as(role):
+            body = TestClient(main.app, raise_server_exceptions=False).get("/api/obligations").json()
+        assert [i["kind"] for i in body["items"]] == (["rule", "credential"] if shown else ["rule"])
+        assert bool(body["muted"]) is shown
+
     def test_the_fleet_key_does_not(self, api):
         client, _, _ = api
         with _as("fleet"):
@@ -661,6 +711,29 @@ class TestRoutes:
         assert res.status_code == 200
         assert actions.await_args.kwargs["done_for"] == "2027-01-22"
         assert audit.await_args.args[:2] == ("obligation_done", "grass:claim-stage2-usdc")
+
+    def test_done_keeps_the_other_open_window_done(self):
+        # MystNodes on 1 Dec: November's window (closed earlier) and
+        # December's are both open. Closing December's keeps November's.
+        from app import main
+
+        rule = "claim-monthly-rewards-pool"
+        item = _item(slug="mysterium", rule=rule, occurrence="2026-12-01", days_left=30)
+        now = datetime(2026, 12, 1, 12, tzinfo=UTC)
+        state = {("mysterium", rule): {"done_for": "2026-11-01", "done_at": "2026-11-20"}}
+        actions = AsyncMock()
+        with (
+            patch.object(main, "_evaluate_obligations", AsyncMock(return_value=(Evaluation(items=[item]), now))),
+            patch.object(main.database, "get_obligation_state", AsyncMock(return_value=state)),
+            patch.object(main.database, "set_obligation_action", actions),
+            patch.object(main.database, "add_audit_event", AsyncMock()),
+            _as("writer"),
+        ):
+            res = TestClient(main.app, raise_server_exceptions=False).post(
+                f"/api/obligations/mysterium/{rule}", json={"action": "done", "occurrence": "2026-12-01"}
+            )
+        assert res.status_code == 200
+        assert actions.await_args.kwargs["done_for"] == "2026-11-01,2026-12-01"
 
     def test_snooze_is_a_day_or_a_week(self, api):
         client, actions, _ = api

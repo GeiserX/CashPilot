@@ -168,11 +168,15 @@ def clock_start(since: str, facts: ServiceFacts) -> tuple[date | None, bool, boo
         return None, False, False
     if since == "last_payout":
         return (paid, False, True) if paid is not None else (first, True, True)
-    # last_activity: the later of the last balance increase and the last payout.
     increased = None
     for (_, before), (day, after) in zip(readings, readings[1:], strict=False):
         if after > before:
             increased = day
+    if since == "last_increase":
+        # Earning only: a partial redemption (a payout that leaves a balance)
+        # does not reset a clock that the terms count from the last earning.
+        return (increased, False, True) if increased is not None else (first, True, True)
+    # last_activity: the later of the last balance increase and the last payout.
     events = [d for d in (increased, paid) if d is not None]
     if events:
         return max(events), False, True
@@ -198,7 +202,7 @@ def _merge_anchor(live: date, censored: bool, stored: dict[str, Any] | None) -> 
     return live, False
 
 
-def _occurrences(rule: dict[str, Any], today: date) -> list[tuple[date, date]]:
+def open_occurrences(rule: dict[str, Any], today: date) -> list[tuple[date, date]]:
     """``(occurrence, due)`` pairs of a date or monthly rule that are not yet past."""
     when = rule["when"]
     if "date" in when:
@@ -225,6 +229,16 @@ def _muted(state: dict[tuple[str, str], dict[str, Any]], slug: str, rule: str) -
     )
 
 
+def done_occurrences(row: dict[str, Any] | None) -> set[str]:
+    """The occurrences marked done, from ``done_for``.
+
+    A monthly window can still be open when the next one opens, so one rule
+    can have two occurrences done at once. ``done_for`` holds them comma
+    separated (an occurrence is an ISO date and never has a comma).
+    """
+    return {o for o in str((row or {}).get("done_for") or "").split(",") if o}
+
+
 def _settle(
     item: Item,
     row: dict[str, Any] | None,
@@ -234,7 +248,7 @@ def _settle(
 ) -> Item | None:
     """Apply Done and Snooze to one candidate; None when it is hidden."""
     row = row or {}
-    if item.can_done and row.get("done_for") == item.occurrence:
+    if item.can_done and item.occurrence in done_occurrences(row):
         done_at = as_date(row.get("done_at"))
         if not recheck or done_at is None or today < done_at + timedelta(days=RECHECK_DAYS):
             return None
@@ -295,7 +309,7 @@ def _rule_items(svc: dict[str, Any], facts: ServiceFacts, state: dict, today: da
                 out.anchors.append((slug, rid, start.isoformat(), censored))
             candidates.append((start, start + timedelta(days=int(when["days"])), censored))
         else:
-            candidates.extend((occ, due, False) for occ, due in _occurrences(rule, today))
+            candidates.extend((occ, due, False) for occ, due in open_occurrences(rule, today))
         if _muted(state, slug, rid):
             continue
         for occurrence, due, censored in candidates:

@@ -396,6 +396,9 @@
 #                      payout; runs while the balance stays at or above it
 #       last_activity  the later of the last balance increase and the last payout;
 #                      runs while the balance is above 0
+#       last_increase  the last balance increase only; a payout that leaves a balance
+#                      (a partial redemption) does not reset it. The first reading
+#                      when there is no increase; runs while the balance is above 0
 #       last_payout    the last payout, or the first reading when there is none;
 #                      runs while the balance is above 0
 #     A clock that started before CashPilot's first reading says "or earlier".

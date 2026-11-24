@@ -449,7 +449,7 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
 #: The closed sets of services/_schema.yml `obligations:`. A new value comes
 #: with the first rule that needs it, and with the code that reads it.
 OBLIGATION_ACTIONS = frozenset({"claim", "withdraw", "keep-active"})
-OBLIGATION_CLOCKS = frozenset({"over_minimum", "last_activity", "last_payout"})
+OBLIGATION_CLOCKS = frozenset({"over_minimum", "last_activity", "last_increase", "last_payout"})
 OBLIGATION_KEYS = frozenset({"id", "action", "title", "loss", "how", "url", "when", "warn_days", "source", "checked"})
 DEFAULT_WARN_DAYS = (30, 7, 1)
 _OBLIGATION_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")

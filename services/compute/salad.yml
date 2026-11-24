@@ -72,8 +72,9 @@ obligations:
     title: Earn some Salad Reward Points, or spend your balance
     loss: If an account earns no Reward Points for 12 months in a row, its unredeemed balance may
       expire.
-    how: Run the Salad app until it earns, or spend the balance in the Salad Storefront.
-    when: {since: last_activity, days: 365}
+    how: Run the Salad app until it earns, or spend the whole balance in the Salad Storefront.
+      Spending only part of it does not reset the 12 months.
+    when: {since: last_increase, days: 365}
     warn_days: [90, 30, 7]
     source: https://salad.com/terms/chefs/
     checked: "2026-11-24"

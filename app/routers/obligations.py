@@ -1,7 +1,7 @@
 """Money waiting API: the reminders before a provider writes off earnings.
 
 ``GET /api/obligations`` (reader and up) returns what is due now, for the
-dashboard panel. ``POST /api/obligations/{slug}/{rule}`` (writer and up) marks
+dashboard panel; credential reminders go to owners only. ``POST /api/obligations/{slug}/{rule}`` (writer and up) marks
 one done, snoozes it, or mutes it ("Not for me"), the same rights as answering
 a payout question. Every write leaves an audit row, so the household can see
 who closed what. The engine is app/obligations.py and docs/reminders.md says
@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app import catalog, database, deps, obligations
+from app import auth, catalog, database, deps, obligations
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -54,12 +54,15 @@ async def _evaluate() -> tuple[obligations.Evaluation, datetime]:
 
 @router.get("/api/obligations")
 async def api_obligations(request: Request) -> dict[str, Any]:
-    deps._require_reader(request)
+    user = deps._require_reader(request)
     evaluation, now = await _evaluate()
+    # Credential health is the owner's, as on /api/credentials/health and in
+    # Needs attention. The push job reads the evaluation itself, not this.
+    owner = auth.require_role(user, "owner")
     return {
         "evaluated_at": now.isoformat(),
-        "items": [item.as_dict() for item in evaluation.items],
-        "muted": evaluation.muted,
+        "items": [item.as_dict() for item in evaluation.items if owner or item.kind != "credential"],
+        "muted": [m for m in evaluation.muted if owner or not m["rule"].startswith(obligations.CREDENTIAL_PREFIX)],
     }
 
 
@@ -72,6 +75,24 @@ def _known_rule(slug: str, rule: str) -> bool:
     if rule.startswith(obligations.CREDENTIAL_PREFIX):
         return bool(rule.removeprefix(obligations.CREDENTIAL_PREFIX))
     return any(r.get("id") == rule for r in svc.get("obligations") or [])
+
+
+async def _done_for(slug: str, rule: str, occurrence: str, today: date) -> str:
+    """The ``done_for`` value once ``occurrence`` is marked done.
+
+    A date or monthly rule keeps every occurrence already done that is still
+    open, so closing December's window does not reopen November's on the day
+    both are open. A clock, a cash-out and a credential have one occurrence at
+    a time: a new one replaces the old.
+    """
+    svc = catalog.get_service(slug) or {}
+    spec = next((r for r in svc.get("obligations") or [] if r.get("id") == rule), None)
+    if spec is None or "since" in spec["when"]:
+        return occurrence
+    still_open = {o.isoformat() for o, _ in obligations.open_occurrences(spec, today)}
+    row = (await database.get_obligation_state()).get((slug, rule))
+    kept = obligations.done_occurrences(row) & still_open
+    return ",".join(sorted(kept | {occurrence}))
 
 
 @router.post("/api/obligations/{slug}/{rule}")
@@ -99,7 +120,11 @@ async def api_obligation_action(slug: str, rule: str, body: ObligationAction, re
             if not item.can_done:
                 raise HTTPException(status_code=400, detail="This one clears by itself once it is fixed")
             await database.set_obligation_action(
-                slug, rule, updated_by=uid, done_for=item.occurrence, done_at=today.isoformat()
+                slug,
+                rule,
+                updated_by=uid,
+                done_for=await _done_for(slug, rule, item.occurrence, today),
+                done_at=today.isoformat(),
             )
             result["occurrence"] = item.occurrence
         else:
