@@ -95,6 +95,19 @@ class BytelixirCollector(BaseCollector):
             "Accept": accept,
         }
 
+    def _fallback_unusable(self, why: str) -> EarningsResult:
+        """The API fallback answered, but its figure is not the balance."""
+        return EarningsResult(
+            platform=self.platform,
+            balance=0.0,
+            error=(
+                f"Could not read the total from the ByteLixir dashboard page. {why}. "
+                "That is not your total, so CashPilot stored nothing and tries again on the next collection."
+            ),
+            # The session worked (the API answered); only the figure is missing.
+            error_kind=base.KIND_UNREAD,
+        )
+
     @staticmethod
     def _parse_balance_from_html(html: str) -> float | None:
         """Extract the USD balance from server-rendered HTML.
@@ -209,11 +222,27 @@ class BytelixirCollector(BaseCollector):
             # total earned.  Flag this so the user knows it's approximate.
             user_data = data.get("data", {})
             balance_str = user_data.get("balance", "0")
-            balance = float(balance_str)
+            balance = round(float(balance_str), 4)
+
+            # The withdrawable figure is 0 until the account may cash out, and
+            # never more than the dashboard total. Stored as the balance, a
+            # figure below the last one looks like a drop, and the next good
+            # scrape books the whole gap again as new earnings. So it is kept
+            # only when it cannot fake a drop; otherwise nothing is stored.
+            if balance <= 0:
+                return self._fallback_unusable(f"The API gave only the withdrawable balance, ${balance:.2f}")
+            from app import database
+
+            previous = await database.get_latest_balance(self.platform)
+            if previous is not None and balance < previous:
+                return self._fallback_unusable(
+                    f"The API gave only the withdrawable balance, ${balance:.2f}, "
+                    f"below the last recorded balance of ${previous:.2f}"
+                )
 
             return EarningsResult(
                 platform=self.platform,
-                balance=round(balance, 4),
+                balance=balance,
                 currency="USD",
                 # A WARNING, not an error: this reading is real and worth
                 # storing. Reported as an error, the balance was discarded by
