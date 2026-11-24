@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://gradient.network](https://gradient.network)
+> **Website:** [gradient.network](https://app.gradient.network/signup?referralCode=YSKMY7)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
@@ -34,7 +36,7 @@ Gradient Network is a decentralized compute and bandwidth sharing platform backe
 
 ### 1. Create an account
 
-Sign up at [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7).
+Sign up at [Gradient Network](https://app.gradient.network/signup?referralCode=YSKMY7). When the signup asks for a referral code, type `YSKMY7`: the link does not fill it in.
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 

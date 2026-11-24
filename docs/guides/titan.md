@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://titannet.io](https://titannet.io)
+> **Website:** [titannet.io](https://edge.titannet.info/signup?inviteCode=2GKKJ495)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

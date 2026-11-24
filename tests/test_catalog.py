@@ -166,7 +166,7 @@ def test_proxybase_container_contract():
     assert by_key["NAME"]["required"] is True, "NAME (Device Name) must be required"
 
     # Referral revenue guard: the signup URL must keep the referral code.
-    assert data["referral"]["signup_url"] == "https://peer.proxybase.org?referral=nXzS3c6iTO", (
+    assert data["referral"]["signup_url"] == "https://peer.proxybase.org/dashboard/signup?referral=nXzS3c6iTO", (
         f"ProxyBase signup_url must keep the referral code, got {data['referral']['signup_url']}"
     )
 

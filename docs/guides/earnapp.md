@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://earnapp.com](https://earnapp.com)
+> **Website:** [earnapp.com](https://earnapp.com/i/TSMD9wSm)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 !!! danger "EarnApp prohibits the way CashPilot runs it: read this first"
 

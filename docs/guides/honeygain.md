@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://www.honeygain.com](https://www.honeygain.com)
+> **Website:** [honeygain.com](https://dashboard.honeygain.com/ref/SERGIB4014)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

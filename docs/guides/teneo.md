@@ -2,11 +2,13 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://teneo.pro](https://teneo.pro)
+> **Website:** [teneo.pro](https://dashboard.teneo.pro/auth/signup?referralCode=CAqef)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
-Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a browser extension. It operates a community node system where users earn Teneo Points by keeping the extension active. Referrals grant 2000 points each. The protocol focuses on building decentralized data infrastructure.
+Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a browser extension. It operates a community node system where users earn Teneo Points by keeping the extension active. A new account opened with a referral link starts with 1,000 bonus points. The protocol focuses on building decentralized data infrastructure.
 
 ## Earning Estimates
 
@@ -34,7 +36,7 @@ Teneo Protocol is a DePIN network that rewards users for sharing bandwidth via a
 
 ### 1. Create an account
 
-Sign up at [Teneo Protocol](https://dashboard.teneo.pro/?code=CAqef).
+Sign up at [Teneo Protocol](https://dashboard.teneo.pro/auth/signup?referralCode=CAqef).
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 

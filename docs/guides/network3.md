@@ -1,8 +1,11 @@
 # Network3
 
+> [!CAUTION]
+> **Broken:** the project is gone. network3.io now redirects to an unrelated site, and network3.ai no longer resolves (checked 24 November 2026). Deployment is blocked. This guide is kept for reference only.
+
 > **Category:** DePIN | **Status:** Broken
 >
-> **Website:** [https://network3.io](https://network3.io)
+> **Website:** network3.io (no longer the project's site: it redirects to an unrelated site, so it is not linked)
 
 ## Description
 
@@ -34,7 +37,7 @@ Network3 was a DePIN project focused on decentralized AI training and bandwidth 
 
 ### 1. Create an account
 
-Sign up at [Network3](https://network3.io).
+Not possible: network3.io now redirects to an unrelated site and network3.ai no longer resolves.
 
 ### 2. Not available in CashPilot
 

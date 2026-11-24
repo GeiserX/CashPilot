@@ -2,7 +2,9 @@
 
 > **Category:** GPU Compute | **Status:** Active
 >
-> **Website:** [https://vast.ai](https://vast.ai)
+> **Website:** [vast.ai](https://cloud.vast.ai/?ref_id=452772)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
@@ -14,9 +16,9 @@ Vast.ai is a GPU cloud marketplace where you rent out your NVIDIA GPU to AI/ML r
 |--------|-------|
 | Monthly range | $0 - $300 (estimate) |
 | Per | GPU-hour |
-| Minimum payout | $25 |
-| Payout frequency | On request |
-| Payment methods | Crypto, Bank |
+| Minimum payout | $20 |
+| Payout frequency | Weekly (Fridays) |
+| Payment methods | Wise, PayPal, Stripe |
 
 > RTX 3090 ~$0.20-0.40/hr, RTX 4090 ~$0.40-0.80/hr when rented. Utilization varies. Requires NVIDIA GPU, Linux host, Docker, and nvidia-container-toolkit. Set your own pricing.
 

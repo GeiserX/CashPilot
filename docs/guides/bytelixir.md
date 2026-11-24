@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://bytelixir.com](https://bytelixir.com)
+> **Website:** [bytelixir.com](https://bytelixir.com/r/OYEIRE0VSZBZ)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

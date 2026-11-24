@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://proxybase.org](https://proxybase.org)
+> **Website:** [proxybase.org](https://peer.proxybase.org/dashboard/signup?referral=nXzS3c6iTO)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
@@ -39,7 +41,7 @@ The site lists a $0.20 minimum, and a request under $1 went through in October 2
 
 ### 1. Create an account
 
-Sign up at [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO). If the referral field is not pre-filled, enter referral code `nXzS3c6iTO` in the **Referral Code** box before creating your account.
+Sign up at [ProxyBase](https://peer.proxybase.org/dashboard/signup?referral=nXzS3c6iTO). If the referral field is not pre-filled, enter referral code `nXzS3c6iTO` in the **Referral Code** box before creating your account. Create the account with an email and a password, not with Google: the Google sign-in does not send the referral code.
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 

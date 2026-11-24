@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://www.grass.io](https://www.grass.io)
+> **Website:** [grass.io](https://app.grass.io/register?referralCode=kn8FNEPnUr2tMqE)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
