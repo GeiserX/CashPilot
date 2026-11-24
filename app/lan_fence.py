@@ -57,13 +57,16 @@ render the rules, and the UI image imports its constants.
 from __future__ import annotations
 
 import contextlib
+import functools
 import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -113,8 +116,11 @@ BLOCKED = (
 HOST_RULE = "host"
 MASQ_RULE = "masquerade"
 #: The home's own public IP, so NAT loopback on the router cannot bring an
-#: earner back into the LAN.
+#: earner back into the LAN, and every other public IP of the owner's: the
+#: other boxes' exits and CASHPILOT_FENCE_EXITS. One rule per address.
 EGRESS_PREFIX = "egress-"
+#: The most exits of the owner's one table drops, its own included.
+MAX_EXITS = 64
 #: Every IPv6 packet from the bridge, forwarded or to the host.
 IPV6_FWD_RULE = "ipv6-forward"
 IPV6_HOST_RULE = "ipv6-host"
@@ -220,11 +226,22 @@ def egress_target(value: Any) -> str | None:
     return str(addr)
 
 
+def exit_targets(values: Any) -> list[str]:
+    """The owner's public IPv4 exits among ``values``, deduplicated and sorted; anything else left out."""
+    return sorted({ip for ip in (egress_target(v) for v in values or ()) if ip})
+
+
+def _exits(egress: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    """One address or several, as the sorted list of IPv4 addresses the rules name. Raises on a bad one."""
+    values = [egress] if isinstance(egress, str) else list(egress or ())
+    return sorted({str(ipaddress.IPv4Address(v)) for v in values if v})
+
+
 def rule_names(
     subnet: str,
     extra_subnets: list[str] | tuple[str, ...] = (),
     filtered: bool = True,
-    egress: str | None = None,
+    egress: str | list[str] | tuple[str, ...] | None = None,
     ipv6: bool = False,
 ) -> set[str]:
     """The comment of every rule the tables should hold. Each rule has its own."""
@@ -233,8 +250,7 @@ def rule_names(
         names |= {FWD_EST_RULE, IN_EST_RULE, HOST_RULE}
         names |= {name for name, _c, _s in BLOCKED}
         names |= {_connected_rule(c) for c in extra_subnets}
-        if egress:
-            names.add(egress_rule(egress))
+        names |= {egress_rule(ip) for ip in _exits(egress)}
         if ipv6:
             names |= {IPV6_FWD_RULE, IPV6_HOST_RULE}
     return names
@@ -245,7 +261,7 @@ def render_nft(
     subnet: str,
     extra_subnets: list[str] | tuple[str, ...] = (),
     filtered: bool = True,
-    egress: str | None = None,
+    egress: str | list[str] | tuple[str, ...] | None = None,
     ipv6: bool = False,
 ) -> str:
     """The whole table, replaced atomically by one ``nft -f -``.
@@ -286,8 +302,7 @@ def render_nft(
         for cidr in extra_subnets:
             ipaddress.ip_network(cidr)
             lines.append(f'    iifname {q} ip daddr {cidr} counter drop comment "{_connected_rule(cidr)}"')
-        if egress:
-            ip = str(ipaddress.IPv4Address(egress))
+        for ip in _exits(egress):
             lines.append(f'    iifname {q} ip daddr {ip} counter drop comment "{egress_rule(ip)}"')
         lines += [
             "  }",
@@ -319,7 +334,7 @@ def render_iptables(
     subnet: str,
     extra_subnets: list[str] | tuple[str, ...] = (),
     filtered: bool = True,
-    egress: str | None = None,
+    egress: str | list[str] | tuple[str, ...] | None = None,
     ipv6: bool = False,
 ) -> str:
     """The same fence for kernels without nf_tables, as an idempotent sh script.
@@ -354,8 +369,7 @@ def render_iptables(
         for cidr in extra_subnets:
             ipaddress.ip_network(cidr)
             out.append(f"{ipt} -t mangle -A CP-FWD -d {cidr} {comment(_connected_rule(cidr))} -j DROP")
-        if egress:
-            ip = str(ipaddress.IPv4Address(egress))
+        for ip in _exits(egress):
             out.append(f"{ipt} -t mangle -A CP-FWD -d {ip}/32 {comment(egress_rule(ip))} -j DROP")
         out.append(f"{ipt} -t mangle -A CP-IN {est} {comment(IN_EST_RULE)} -j RETURN")
         out.append(f"{ipt} -t mangle -A CP-IN {comment(HOST_RULE)} -j DROP")
@@ -465,9 +479,13 @@ action = sys.argv[1]
 iface = os.environ["FENCE_IFACE"]
 subnet = os.environ["FENCE_SUBNET"]
 filtered = os.environ.get("FENCE_FILTER", "1") == "1"
-egress = f.egress_target(os.environ.get("FENCE_EGRESS"))
-if egress and local(egress):
-    egress = None
+own = f.egress_target(os.environ.get("FENCE_EGRESS"))
+# The owner's other public IPs: the other boxes' exits and CASHPILOT_FENCE_EXITS.
+# FENCE_EXITS_COMPLETE=0 says the list may be short (a name that did not
+# resolve, a worker that has not heard from the UI since it started). Desktop
+# sets neither, so a missing flag reads as complete.
+others = f.exit_targets((os.environ.get("FENCE_EXITS") or "").split(","))
+complete = os.environ.get("FENCE_EXITS_COMPLETE", "1") == "1"
 # A kernel booted with ipv6.disable=1 has no IPv6 at all, and no ip6 hooks to load.
 ipv6 = os.path.isdir(os.environ.get("FENCE_PROC_IPV6") or f.PROC_IPV6)
 route_error = ""
@@ -480,21 +498,27 @@ except OSError as exc:
     extras, route_error = [], "could not read the host's routes (%s)" % exc
 b = backend(os.environ.get("FENCE_BACKEND", "auto"))
 counters, present = read(b, ipv6)
-if not egress:
-    # The worker does not know its public IP yet (a lookup failed, or it just
-    # started): keep the drop the table already has rather than lose it.
-    kept = [n[len(f.EGRESS_PREFIX):] for n in counters if n.startswith(f.EGRESS_PREFIX)]
-    egress = f.egress_target(kept[0]) if len(kept) == 1 else None
-expected = f.rule_names(subnet, extras, filtered, egress, ipv6)
-out = {"backend": b, "ok": True, "changed": False, "error": "", "extra_subnets": extras, "egress": egress, "ipv6": ipv6}
+wanted = ([own] if own else []) + others
+if not own or not complete:
+    # The worker does not know every exit yet (its own lookup failed, it just
+    # started, a name did not resolve): keep the drops the table already has
+    # rather than lose them. A full list later removes the ones that went.
+    wanted += [n[len(f.EGRESS_PREFIX):] for n in counters if n.startswith(f.EGRESS_PREFIX)]
+exits = [ip for ip in f.exit_targets(wanted) if not local(ip)]
+egress = own if own in exits else (exits[0] if not own and not others and len(exits) == 1 else None)
+expected = f.rule_names(subnet, extras, filtered, exits, ipv6)
+out = {
+    "backend": b, "ok": True, "changed": False, "error": "", "extra_subnets": extras,
+    "egress": egress, "exits": exits, "ipv6": ipv6,
+}
 if action == "apply" and filtered and route_error:
     out["ok"] = False
     out["error"] = route_error + "; the table was not changed"
 elif action == "apply" and set(counters) != expected:
     if b == "nft":
-        rc, _o, err = sh(["nft", "-f", "-"], f.render_nft(iface, subnet, extras, filtered, egress, ipv6))
+        rc, _o, err = sh(["nft", "-f", "-"], f.render_nft(iface, subnet, extras, filtered, exits, ipv6))
     else:
-        rc, _o, err = sh(["sh", "-c", f.render_iptables(iface, subnet, extras, filtered, egress, ipv6)])
+        rc, _o, err = sh(["sh", "-c", f.render_iptables(iface, subnet, extras, filtered, exits, ipv6)])
     out["changed"] = True
     if rc != 0:
         out["ok"] = False
@@ -548,6 +572,91 @@ def set_egress_ip(value: Any) -> bool:
         return False
     _egress["ip"] = new
     return True
+
+
+#: The owner's other exits: public IPv4 addresses and host names (a DDNS name
+#: is resolved before every helper run), separated by commas. A port forward on
+#: another of the owner's lines takes a connection from an earner here like
+#: any other from the internet, so each of these addresses is dropped too.
+_EXITS_SETTING = os.getenv("CASHPILOT_FENCE_EXITS", "")
+#: The other boxes' public IPs, from the UI's heartbeat reply (main.api_worker_heartbeat).
+#: None until the first reply since this worker started: the helper then keeps
+#: the drops the table already has. A worker with no UI never gets one.
+_fleet_exits: dict[str, list[str] | None] = {"ips": None if os.getenv("CASHPILOT_UI_URL") else []}
+#: Seconds the names in CASHPILOT_FENCE_EXITS may take to resolve, all of them together.
+RESOLVE_SECONDS = 5.0
+_HOST_NAME = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?$")
+
+
+def set_fleet_exits(values: Any) -> bool:
+    """Remember the other boxes' public IPs for the next apply. Returns True when the list changed."""
+    new = exit_targets(values if isinstance(values, list) else [])
+    if new == _fleet_exits["ips"]:
+        return False
+    _fleet_exits["ips"] = new
+    return True
+
+
+@functools.lru_cache(maxsize=4)
+def _configured_exits(setting: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """CASHPILOT_FENCE_EXITS as (addresses, host names). Read once per value, so each bad entry is logged once."""
+    ips, names = [], []
+    for item in (part.strip() for part in setting.split(",")):
+        if not item:
+            continue
+        try:
+            addr = ipaddress.ip_address(item)
+        except ValueError:
+            if _HOST_NAME.match(item):
+                names.append(item.rstrip(".").lower())
+            else:
+                logger.warning("CASHPILOT_FENCE_EXITS: %r is neither an IP address nor a host name; left out", item)
+            continue
+        if addr.version == 6:
+            # The fence already drops every IPv6 packet from the bridge.
+            continue
+        if ip := egress_target(item):
+            ips.append(ip)
+        else:
+            logger.warning("CASHPILOT_FENCE_EXITS: %s is not a public address; the fence drops it already", item)
+    return tuple(ips), tuple(dict.fromkeys(names))
+
+
+def _resolve(names: tuple[str, ...]) -> tuple[list[str], bool]:
+    """The public IPv4 addresses ``names`` resolve to, and whether every name answered in time.
+
+    A name that fails or times out is not a name with no address: the helper
+    then keeps the drops the table has, so a DNS outage never reopens an exit.
+    """
+    if not names:
+        return [], True
+    pool = ThreadPoolExecutor(max_workers=min(8, len(names)))
+    try:
+        jobs = [pool.submit(socket.getaddrinfo, name, None, socket.AF_INET, socket.SOCK_STREAM) for name in names]
+        done, _late = wait(jobs, timeout=RESOLVE_SECONDS)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    found: list[str] = []
+    answered = len(done) == len(jobs)
+    for job in done:
+        try:
+            found += exit_targets(info[4][0] for info in job.result())
+        except (OSError, UnicodeError):
+            answered = False
+    return found, answered
+
+
+def exit_env() -> dict[str, str]:
+    """The helper's FENCE_EXITS and FENCE_EXITS_COMPLETE: the owner's exits other than this box's own."""
+    ips, names = _configured_exits(_EXITS_SETTING)
+    resolved, answered = _resolve(names)
+    fleet = _fleet_exits["ips"]
+    others = [ip for ip in exit_targets([*ips, *resolved, *(fleet or [])]) if ip != _egress["ip"]]
+    if len(others) >= MAX_EXITS:
+        logger.warning("The fence drops %d of the owner's %d other exits, its limit", MAX_EXITS - 1, len(others))
+        others = others[: MAX_EXITS - 1]
+    complete = answered and fleet is not None
+    return {"FENCE_EXITS": ",".join(others), "FENCE_EXITS_COMPLETE": "1" if complete else "0"}
 
 
 def setting() -> str:
@@ -943,6 +1052,9 @@ def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> 
     """Run the helper to completion and return what it printed. Removed on every path."""
     from docker.errors import APIError
 
+    # Resolved now, before the helper's name is claimed, so a DDNS name that
+    # moved is dropped at its new address by this run.
+    exits = exit_env() if filtered else {}
     with _lock:
         container = None
         try:
@@ -950,7 +1062,7 @@ def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> 
             for attempt in range(2):
                 _clear_helper(client)
                 try:
-                    container = _create_helper(client, action, subnet, filtered)
+                    container = _create_helper(client, action, subnet, filtered, exits)
                     break
                 except APIError as exc:
                     if attempt or getattr(exc, "status_code", None) != 409:
@@ -971,19 +1083,19 @@ def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> 
                 _remove_own(container)
 
 
-def _create_helper(client: Any, action: str, subnet: str, filtered: bool) -> Any:
+def _create_helper(client: Any, action: str, subnet: str, filtered: bool, exits: dict[str, str]) -> Any:
     """Create the helper container, not started, pulling its image once if it is missing."""
     from docker.errors import ImageNotFound
 
     image = _helper_image(client)
     try:
-        return client.containers.create(image=image, **_helper_spec(action, subnet, filtered))
+        return client.containers.create(image=image, **_helper_spec(action, subnet, filtered, exits))
     except ImageNotFound:
         client.images.pull(image)
-        return client.containers.create(image=image, **_helper_spec(action, subnet, filtered))
+        return client.containers.create(image=image, **_helper_spec(action, subnet, filtered, exits))
 
 
-def _helper_spec(action: str, subnet: str, filtered: bool) -> dict[str, Any]:
+def _helper_spec(action: str, subnet: str, filtered: bool, exits: dict[str, str]) -> dict[str, Any]:
     """The helper's container settings: host networking, NET_ADMIN and NET_RAW, every other capability dropped."""
     return dict(
         name=HELPER_NAME,
@@ -995,6 +1107,7 @@ def _helper_spec(action: str, subnet: str, filtered: bool) -> dict[str, Any]:
             "FENCE_FILTER": "1" if filtered else "0",
             "FENCE_BACKEND": _BACKEND,
             "FENCE_EGRESS": _egress["ip"] or "",
+            **exits,
         },
         network_mode="host",
         user="0:0",

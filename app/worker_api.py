@@ -812,6 +812,7 @@ async def _send_heartbeat() -> None:
     if _activity_enabled and _pending_activity is not None:
         payload["activity"] = _pending_activity
 
+    fleet_exits_changed = False
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
@@ -837,6 +838,10 @@ async def _send_heartbeat() -> None:
                 _apply_activity_reply(resp, sent_seq if "activity" in payload else None)
             except Exception:  # noqa: BLE001 - never counts against the heartbeat
                 logger.warning("Activity bookkeeping failed (heartbeat itself landed)")
+            try:
+                fleet_exits_changed = _apply_fleet_exits_reply(resp)
+            except Exception:  # noqa: BLE001 - never counts against the heartbeat
+                logger.warning("Fleet exits bookkeeping failed (heartbeat itself landed)")
             try:
                 # Enrollment: the UI returns our own per-worker key exactly once.
                 # Taken only while we are still on the shared key. The real UI
@@ -922,6 +927,28 @@ async def _send_heartbeat() -> None:
         _consecutive_heartbeat_failures += 1
         logger.warning("Heartbeat failed: %s", _redact_userinfo(_reason(exc)))
         _log_link_failure_hint(exc)
+    # The other boxes' exits are fenced as soon as they arrive or change, as
+    # this box's own new IP is above.
+    if fleet_exits_changed and docker_ok:
+        await _check_fence()
+
+
+def _apply_fleet_exits_reply(resp: Any) -> bool:
+    """Take the other boxes' public IPs from the UI's reply. True when the fence must be applied again.
+
+    A reply without the key comes from a UI that predates it (no other exits)
+    or, once this worker has a list, from one that could not read the fleet
+    this time (the list is kept).
+    """
+    body: Any = None
+    with contextlib.suppress(Exception):
+        body = resp.json()
+    value = body.get("fleet_exits") if isinstance(body, dict) else None
+    if isinstance(value, list):
+        return lan_fence.set_fleet_exits(value)
+    if lan_fence._fleet_exits["ips"] is None:
+        return lan_fence.set_fleet_exits([])
+    return False
 
 
 def _mark_routed(entries: list[dict[str, Any]]) -> bool:

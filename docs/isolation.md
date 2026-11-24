@@ -39,8 +39,9 @@ How it works:
   `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (carrier-grade
   NAT and Tailscale), `169.254.0.0/16` (cloud metadata), any subnet directly
   connected to a real interface of the host (a LAN numbered in public space, a
-  VPS's neighbours), the host itself, and your home's own public IP. That last
-  one matters because most home routers loop a connection to their own public
+  VPS's neighbours), the host itself, your home's own public IP, and the
+  public IPs of [your other internet lines](#your-other-internet-lines). Your
+  home's own public IP matters because most home routers loop a connection to their own public
   address straight back into the LAN (NAT loopback), where it arrives with a
   LAN source address. The worker learns the address from its public IP
   detection. With detection off (`CASHPILOT_EGRESS_DETECT=off`), even with
@@ -108,6 +109,42 @@ shows the error on the worker's row.
 
 The worker uses `nft` when the kernel has nf_tables, and `iptables-legacy`
 otherwise (older NAS kernels). Both write the same rules.
+
+### Your other internet lines
+
+You may run boxes on more than one internet line: two lines at home, or one
+at home and one at a second site. A port forward on any of those lines accepts
+a connection from an earner on another line, like any connection from the
+internet. Some routers and services also trust your own addresses more than
+others. So each worker's fence drops the public IPs of all your lines, not
+only its own:
+
+- **Your other boxes, with no setup.** Each worker reports its public IP. The
+  dashboard sends every worker the public IPv4 addresses of all the others
+  with each heartbeat reply. A worker applies its fence again as soon as that
+  list changes. Phones are left out: on mobile data a phone reports its
+  carrier's address, which changes as it moves.
+- **Lines with no CashPilot box.** List them on each worker in
+  `CASHPILOT_FENCE_EXITS`: public IPv4 addresses and host names, separated by
+  commas, for example `CASHPILOT_FENCE_EXITS=203.0.113.9,office.duckdns.org`.
+  The worker looks up each name before every fence run: every 5 minutes and
+  before each deploy. So a dynamic DNS name that moves is dropped at its new
+  address within 5 minutes. An IPv6 address needs no entry: the fence drops
+  every IPv6 packet from the bridge already. A private address needs none
+  either, and is left out with a warning in the log.
+
+When an address leaves the list (a line changed its IP, a box was removed),
+its drop goes with the next fence run. The list may be short after a worker
+restart, until the dashboard answers, and while a name in
+`CASHPILOT_FENCE_EXITS` does not resolve. In those cases the table keeps the
+drops it has. The fence drops up to 64 addresses.
+
+A single box on one line sees no change. One setup does change: a SOCKS or
+HTTP [proxy](proxies.md) that you host on one of these lines, used by a box
+on another line. The fence drops the tunnel's traffic to that address too, so
+those proxied copies cannot connect. A Tailscale exit node on one of these
+lines cannot be reached directly either. Tailscale then connects through its
+relay servers, which is slower.
 
 ### Modes
 
@@ -375,11 +412,14 @@ no firewall rule.
    read before and after. A counter that went up proves the fence dropped that
    connection, even on a host where nothing on the LAN answers, which is the
    case under Docker Desktop and colima. A counter that did not go up is
-   reported: something on the host routes that traffic around the fence. Two
-   more targets join when the table holds their drops: your home's public IP,
-   and the host's IPv6 link-local address on the bridge. For those, a refused
-   connection also counts as reaching, since the drop answers nothing. An
-   earner with no IPv6 sends nothing to the second, which is not a finding.
+   reported: something on the host routes that traffic around the fence. Each
+   public IP of yours that the fence drops is a target too: your home's own
+   and [your other lines](#your-other-internet-lines). It is tried even when
+   its drop is missing from the table, so a missing drop shows as that address
+   not stopped. The host's IPv6 link-local address on the bridge joins when
+   the table holds its drop. For these targets, a refused connection also
+   counts as reaching, since the drop answers nothing. An earner with no IPv6
+   sends nothing to the link-local address, which is not a finding.
 
 ### Reading the result
 

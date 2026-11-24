@@ -14,6 +14,7 @@ import asyncio
 import json
 import os
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -139,6 +140,18 @@ class TestTheRuleset:
         ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", egress="198.51.100.7")
         assert "-A CP-FWD -d 198.51.100.7/32 -m comment --comment egress-198.51.100.7 -j DROP" in ipt
 
+    def test_every_exit_of_the_owner_gets_one_drop(self):
+        """Another line of the owner's forwards ports too: each of its public IPs is dropped, once."""
+        exits = ["203.0.113.9", "198.51.100.7", "203.0.113.9"]
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", egress=exits)
+        forward = nft.split("chain forward {", 1)[1].split("}", 1)[0]
+        ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", egress=exits)
+        for ip in ("198.51.100.7", "203.0.113.9"):
+            assert forward.count(f'ip daddr {ip} counter drop comment "egress-{ip}"') == 1
+            assert ipt.count(f"-A CP-FWD -d {ip}/32 -m comment --comment egress-{ip} -j DROP") == 1
+        names = lan_fence.rule_names("172.18.0.0/16", egress=exits)
+        assert {n for n in names if n.startswith("egress-")} == {"egress-198.51.100.7", "egress-203.0.113.9"}
+
     @pytest.mark.parametrize("value", [None, "", "192.168.1.1", "100.64.1.1", "2001:db8::1", "x; flush ruleset"])
     def test_only_a_public_ipv4_becomes_an_egress_drop(self, value):
         assert lan_fence.egress_target(value) is None
@@ -258,7 +271,17 @@ exit 2
 
 class TestTheHelperScript:
     def _run(
-        self, tmp_path, action, filtered="1", subnet="172.18.0.0/16", ipv6=False, egress="", route=None, backend="auto"
+        self,
+        tmp_path,
+        action,
+        filtered="1",
+        subnet="172.18.0.0/16",
+        ipv6=False,
+        egress="",
+        route=None,
+        backend="auto",
+        exits=None,
+        complete=None,
     ):
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
@@ -284,6 +307,11 @@ class TestTheHelperScript:
             FENCE_PROC_IPV6=str(tmp_path / ("ipv6" if ipv6 else "no-ipv6")),
             FENCE_PROC_IF_INET6=str(tmp_path / "if_inet6"),
         )
+        # Unset unless a test sets them: Desktop's helper call passes neither.
+        for key, value in (("FENCE_EXITS", exits), ("FENCE_EXITS_COMPLETE", complete)):
+            env.pop(key, None)
+            if value is not None:
+                env[key] = value
         (tmp_path / "ipv6").mkdir(exist_ok=True)
         (tmp_path / "if_inet6").write_text(
             "fe80000000000000a8c1abfffe010203 0c 40 20 80  cp-isolated\n"
@@ -376,6 +404,26 @@ class TestTheHelperScript:
         assert got["egress"] == "81.61.1.9" and "egress-81.61.1.9" in got["counters"]
         self._run(tmp_path, "apply", filtered="0")
         assert self._run(tmp_path, "apply", egress="")["egress"] is None, "nothing to keep, nothing invented"
+
+    def test_every_other_exit_is_dropped_and_one_that_went_is_removed(self, tmp_path):
+        """The owner's other lines: each public IP gets its drop, and an exit that changed loses its old one."""
+        got = self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.3, 62.4.5.6,not-an-ip,10.0.0.1,88.1.2.3")
+        assert got["ok"] and got["matches"]
+        dropped = {n for n in got["counters"] if n.startswith("egress-")}
+        assert dropped == {"egress-81.61.1.9", "egress-88.1.2.3", "egress-62.4.5.6"}, "a LAN or bad entry is no drop"
+        assert got["exits"] == ["62.4.5.6", "81.61.1.9", "88.1.2.3"]
+        again = self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.4,62.4.5.6")
+        assert again["changed"] and again["matches"]
+        assert "egress-88.1.2.4" in again["counters"] and "egress-88.1.2.3" not in again["counters"]
+
+    def test_an_incomplete_list_keeps_the_drops_the_table_has(self, tmp_path):
+        """A name that did not resolve, or a worker that has not heard the UI yet, must not reopen an exit."""
+        self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.3")
+        kept = self._run(tmp_path, "apply", egress="81.61.1.9", exits="", complete="0")
+        assert kept["ok"] and not kept["changed"] and "egress-88.1.2.3" in kept["counters"]
+        gone = self._run(tmp_path, "apply", egress="81.61.1.9", exits="", complete="1")
+        assert gone["changed"] and "egress-88.1.2.3" not in gone["counters"]
+        assert "egress-81.61.1.9" in gone["counters"]
 
     def test_with_ipv6_on_the_host_the_ip6_drops_are_written(self, tmp_path):
         got = self._run(tmp_path, "apply", ipv6=True)
@@ -968,9 +1016,136 @@ def test_the_helper_gets_the_egress_ip():
     client.containers.get.side_effect = NotFound("gone")
     with patch.object(lan_fence, "_helper_image", return_value="img"):
         lan_fence.run_helper(client, "apply", "172.18.0.0/16")
-    assert client.containers.create.call_args.kwargs["environment"]["FENCE_EGRESS"] == "81.61.1.9"
+    env = client.containers.create.call_args.kwargs["environment"]
+    assert env["FENCE_EGRESS"] == "81.61.1.9"
+    assert {"FENCE_EXITS", "FENCE_EXITS_COMPLETE"} <= set(env), "the owner's other exits go to every filtered run"
     lan_fence.set_egress_ip("10.0.0.1")
     assert lan_fence._egress["ip"] == "81.61.1.9", "a LAN answer is a failed lookup: never dropped, the last IP kept"
+
+
+def _answers(table):
+    """A getaddrinfo stand-in: a name in ``table`` answers its addresses, any other fails."""
+
+    def lookup(name, *_args, **_kwargs):
+        if name not in table:
+            raise socket.gaierror(f"no answer for {name}")
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0)) for ip in table[name]]
+
+    return lookup
+
+
+def test_the_helper_gets_the_owners_other_exits():
+    """CASHPILOT_FENCE_EXITS (addresses and DDNS names) and the other boxes' exits, without this box's own."""
+    setting = "62.4.5.6, Home.Example.net.,2001:db8::1, not a host!, 10.0.0.1,81.61.1.9"
+    with (
+        patch.object(lan_fence, "_EXITS_SETTING", setting),
+        patch.object(lan_fence, "_egress", {"ip": "81.61.1.9"}),
+        patch.object(lan_fence, "_fleet_exits", {"ips": None}),
+        patch.object(lan_fence.socket, "getaddrinfo", _answers({"home.example.net": ["88.1.2.3", "10.0.0.5"]})),
+    ):
+        assert lan_fence.exit_env() == {"FENCE_EXITS": "62.4.5.6,88.1.2.3", "FENCE_EXITS_COMPLETE": "0"}, (
+            "until the UI answers, the list may be short: the table keeps what it drops"
+        )
+        assert lan_fence.set_fleet_exits(["81.61.1.9", "95.1.1.1", "192.168.1.1"]) is True
+        assert lan_fence.set_fleet_exits(["95.1.1.1", "81.61.1.9"]) is False
+        assert lan_fence.exit_env() == {"FENCE_EXITS": "62.4.5.6,88.1.2.3,95.1.1.1", "FENCE_EXITS_COMPLETE": "1"}
+
+
+def test_a_name_that_does_not_answer_keeps_the_drops():
+    """A DNS outage is not an exit that went: the helper keeps the table's drops until the name answers."""
+    with (
+        patch.object(lan_fence, "_EXITS_SETTING", "gone.example.net,62.4.5.6"),
+        patch.object(lan_fence, "_egress", {"ip": None}),
+        patch.object(lan_fence, "_fleet_exits", {"ips": []}),
+        patch.object(lan_fence.socket, "getaddrinfo", _answers({})),
+    ):
+        assert lan_fence.exit_env() == {"FENCE_EXITS": "62.4.5.6", "FENCE_EXITS_COMPLETE": "0"}
+
+
+def test_a_single_box_without_settings_sends_an_empty_complete_list():
+    """One box, one line: nothing changes for it, and a gone exit is still removed."""
+    with (
+        patch.object(lan_fence, "_EXITS_SETTING", ""),
+        patch.object(lan_fence, "_egress", {"ip": "81.61.1.9"}),
+        patch.object(lan_fence, "_fleet_exits", {"ips": ["81.61.1.9"]}),
+    ):
+        assert lan_fence.exit_env() == {"FENCE_EXITS": "", "FENCE_EXITS_COMPLETE": "1"}
+
+
+def _reply(body):
+    resp = MagicMock()
+    resp.json.return_value = body
+    return resp
+
+
+def test_the_ui_reply_hands_over_the_other_exits():
+    with patch.object(lan_fence, "_fleet_exits", {"ips": None}):
+        assert worker_api._apply_fleet_exits_reply(_reply({"status": "ok"})) is True, "an older UI: no other exits"
+        assert lan_fence._fleet_exits["ips"] == []
+        assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": ["95.1.1.1", "10.0.0.1"]})) is True
+        assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
+        assert worker_api._apply_fleet_exits_reply(_reply({"status": "ok"})) is False, (
+            "a UI that could not read the fleet"
+        )
+        assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
+        assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": []})) is True
+        assert lan_fence._fleet_exits["ips"] == []
+
+
+@pytest.mark.parametrize(("docker_ok", "checks"), [(True, 1), (False, 0)])
+def test_new_fleet_exits_are_fenced_at_once(docker_ok, checks):
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post = AsyncMock(return_value=_reply({"status": "ok", "fleet_exits": ["95.1.1.1"]}))
+    with (
+        patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value="81.61.1.9")),
+        patch.object(worker_api, "_worker_key", "own"),
+        patch.object(worker_api, "UI_URL", "http://ui:8080"),
+        patch("app.worker_api.orchestrator.get_status", return_value=[]),
+        patch("app.worker_api.orchestrator.docker_available", return_value=docker_ok),
+        patch("app.worker_api.httpx.AsyncClient", return_value=client),
+        patch.object(lan_fence, "run_helper"),
+        patch.object(lan_fence, "_egress", {"ip": "81.61.1.9"}),
+        patch.object(lan_fence, "_fleet_exits", {"ips": None}),
+        patch.object(worker_api, "_check_fence", AsyncMock()) as check,
+    ):
+        asyncio.run(worker_api._send_heartbeat())
+        assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
+    assert check.await_count == checks
+
+
+def test_the_ui_hands_every_box_the_fleets_exits(tmp_path):
+    """Zero config: each box drops the other boxes' public IPv4s. Phones and failed detections are left out."""
+    from app import database, main
+
+    async def go():
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "fleet.db"),
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(main.database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+        ):
+            await database.init_db()
+
+            async def beat(cid, info):
+                body = main.WorkerHeartbeat(name=cid, client_id=cid, containers=[], system_info=info)
+                return await main.api_worker_heartbeat(MagicMock(), body)
+
+            await beat("site-b", {"egress_ip": "95.1.1.1"})
+            await beat("v6-only", {"egress_ip": "2a01:4f8::1"})
+            await beat("lan-answer", {"egress_ip": "192.168.1.5"})
+            phone = await beat("phone", {"os": "Android", "egress_ip": "80.58.0.1"})
+            home = await beat("home", {"egress_ip": "81.61.1.9"})
+            with patch.object(main.database, "list_workers", AsyncMock(side_effect=RuntimeError("locked"))):
+                unread = await beat("home", {"egress_ip": "81.61.1.9"})
+            return home, phone, unread
+
+    home, phone, unread = asyncio.run(go())
+    assert home["fleet_exits"] == ["81.61.1.9", "95.1.1.1"]
+    assert "fleet_exits" not in phone, "a phone has no fence"
+    assert "fleet_exits" not in unread, "could not read is not an empty fleet: the worker keeps its list"
 
 
 # ---------------------------------------------------------------------------
@@ -1581,6 +1756,27 @@ class TestCounterProof:
         everything = {n for n, _c, _s in lan_fence.BLOCKED} | {"host", "egress-198.51.100.7"}
         _fence, findings = self._judge(everything, reachable_label="ipv6-host")
         assert findings[0]["kind"] == "fence_not_hit" and "[fe80::a8c1:abff:fe01:203%eth0]:9" in findings[0]["detail"]
+
+    def test_every_listed_exit_needs_its_own_proof(self):
+        """An exit whose drop is missing gets a sentinel all the same, so the check turns red for it."""
+        read = {
+            "present": True,
+            "egress": "81.61.1.9",
+            "exits": ["62.4.5.6", "81.61.1.9", "88.1.2.3"],
+            "counters": {"egress-81.61.1.9": 0, "egress-62.4.5.6": 0},
+        }
+        targets = isolation_check.fence_targets("172.18.0.1", read)
+        exits = {t["label"]: t for t in targets if t["label"].startswith("egress-")}
+        assert set(exits) == {"egress-62.4.5.6", "egress-81.61.1.9", "egress-88.1.2.3"}
+        assert exits["egress-81.61.1.9"]["range"] == "this home's public IP"
+        assert all(t["refused"] and t["host"] == t["label"][len("egress-") :] for t in exits.values())
+        present = {t["label"] for t in targets} - {"egress-88.1.2.3"}
+        before = {"present": True, "counters": dict.fromkeys(present, 0)}
+        after = {"present": True, "matches": False, "counters": dict.fromkeys(present, 1)}
+        fence, findings = isolation_check.judge_fence(targets, before, after)
+        assert [r["rule"] for r in fence["ranges"] if not r["proven"] and not r["optional"]] == ["egress-88.1.2.3"]
+        not_hit = next(f for f in findings if f["kind"] == "fence_not_hit")
+        assert "88.1.2.3:9" in not_hit["detail"] and "81.61.1.9" not in not_hit["detail"]
 
 
 def _probe_reach():

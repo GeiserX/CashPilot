@@ -11579,7 +11579,36 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         resp["activity"] = {"enabled": activity_on}
         if activity_stored is not None:
             resp["activity"]["stored"] = activity_stored
+    if not _is_phone(body.system_info):
+        exits = await _fleet_exits()
+        if exits is not None:
+            resp["fleet_exits"] = exits
     return resp
+
+
+async def _fleet_exits() -> list[str] | None:
+    """Every box's public IPv4 exit, so each worker's fence drops the owner's other lines too.
+
+    A port forward on another of the owner's lines answers an earner's connect
+    like any from the internet, so the fence (app/lan_fence.py) drops those
+    addresses as it drops the box's own. Phones are left out: a phone on mobile
+    data reports its carrier's address, which moves with it. None when the
+    fleet cannot be read, so the worker keeps the list it has. Never raises.
+    """
+    try:
+        workers = await database.list_workers()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read the fleet's exits: %s", type(exc).__name__)
+        return None
+    found = set()
+    for w in workers:
+        info = _safe_json(w.get("system_info") or "{}", {})
+        if not isinstance(info, dict) or _is_phone(info):
+            continue
+        ip = egress.public_ip(info.get("egress_ip"))
+        if ip and ipaddress.ip_address(ip).version == 4:
+            found.add(ip)
+    return sorted(found)
 
 
 async def _ingest_activity(worker_id: int, cid: str, name: str, payload: dict[str, Any]) -> None:
