@@ -55,6 +55,7 @@ def _sweep(logs, *, filtered=True, recorded=RECORDED, containers=(RUNNING,), wor
         return out
 
     with (
+        patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=list(containers)),
         patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
         patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded),

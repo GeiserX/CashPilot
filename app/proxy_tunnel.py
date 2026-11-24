@@ -2499,12 +2499,65 @@ def _start_legacy(slug: str, earner: Any, sidecar: Any, name: str) -> dict[str, 
     return _started(exit_info, name, not_durable)
 
 
-def logs(slug: str, proxy_id: int, lines: int = 50) -> str:
-    """The last ``lines`` log lines of the copy's earner. ValueError when there is no such copy."""
-    earner = _get(orchestrator._get_client(), earner_name(slug, proxy_id))
+def _earner_or_raise(client: Any, slug: str, proxy_id: int) -> Any:
+    """The copy's earner. ValueError when there is no such copy."""
+    earner = _get(client, earner_name(slug, proxy_id))
     if not _is_ours(earner, slug, proxy_id) or not _is_earner(earner):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
+    return earner
+
+
+def logs(slug: str, proxy_id: int, lines: int = 50) -> str:
+    """The last ``lines`` log lines of the copy's earner. ValueError when there is no such copy."""
+    earner = _earner_or_raise(orchestrator._get_client(), slug, proxy_id)
     return earner.logs(tail=lines, timestamps=True).decode("utf-8", errors="replace")
+
+
+def grep_logs(slug: str, proxy_id: int, match: re.Pattern[str], since_hours: float, lines: int = 1000) -> str:
+    """The earner's log lines of the past ``since_hours`` that match ``match``, as orchestrator.grep_service_logs
+    reads a direct copy's: for the UI's windowed health signals (main._sweep_windowed_signals)."""
+    earner = _earner_or_raise(orchestrator._get_client(), slug, proxy_id)
+    return orchestrator.grep_container_logs(earner, match, since_hours, lines)
+
+
+def restart(slug: str, proxy_id: int) -> dict[str, Any]:
+    """Restart one running copy where it is, for a health signal a restart clears (main._auto_restart).
+
+    Never a stop and a start: a stop writes the copy down as held, so a start
+    that then failed would leave it stopped for good. This writes no marker.
+    It refuses a copy its owner or the traffic cap stopped (held), one that is
+    not running, and one a deploy that did not finish left. The earner
+    restarts only into a tunnel run that is ready, and is stopped again if
+    the tunnel restarted meanwhile (_start_in_ready_run); the heartbeat then
+    starts it once the tunnel is ready, as after a reboot. Under the proxy's
+    lock, as a stop, a start and a deploy are.
+    """
+    with _deploy_lock(proxy_id):
+        client = orchestrator._get_client()
+        earner = _earner_or_raise(client, slug, proxy_id)
+        name = str(earner.name)
+        try:
+            stopped = name in held()
+            unfinished = _recorded_failed(earner)
+        except OSError as exc:
+            raise ProxyTunnelError(
+                f"Could not read which copies are stopped ({exc}); {name} was left as it was"
+            ) from None
+        if stopped:
+            raise ProxyTunnelError(f"{name} was stopped by its owner or by the traffic cap, so it was left stopped")
+        if unfinished:
+            raise ProxyTunnelError(f"{name} was left by a deploy that did not finish, so it was left as it was")
+        if getattr(earner, "status", "") != "running":
+            raise ProxyTunnelError(f"{name} is not running, so it was left as it was")
+        tunnel = _tunnel_of(client, earner, slug, proxy_id)
+        if tunnel is None or not _start_in_ready_run(earner, tunnel, slug, restart=True):
+            raise ProxyTunnelError(
+                f"{name} was not restarted: its tunnel is gone, not ready or restarted at the same moment, or an "
+                "older worker made it. If the restart stopped the copy, the heartbeat starts it once the tunnel is "
+                "ready.",
+                503,
+            )
+    return {"restarted": name}
 
 
 def remove(slug: str, proxy_id: int) -> list[str]:

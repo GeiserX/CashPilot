@@ -775,6 +775,50 @@ class TestWorkerProxiedOps:
         start.assert_called_once_with("x", 1, None, None)
         remove.assert_called_once_with("x", 1)
 
+    def test_a_windowed_log_read_filters_the_copy_and_says_so(self):
+        """The UI's windowed health signals read a proxied copy as they read a direct one: filtered, and told so."""
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(proxy_tunnel, "grep_logs", return_value="2026-11-21 Error: x") as grep,
+            patch.object(proxy_tunnel, "logs", return_value="tail") as tail,
+        ):
+            api = _api()
+            window = api.get("/api/proxied/x/1/logs", params={"lines": 5000, "match": "Error", "since_hours": 48})
+            plain = api.get("/api/proxied/x/1/logs", params={"lines": 20})
+        assert window.json() == {"logs": "2026-11-21 Error: x", "filtered": True}
+        (slug, pid, pattern), kw = grep.call_args
+        assert (slug, pid, pattern.pattern, kw) == ("x", 1, "Error", {"since_hours": 24, "lines": 1000})
+        assert plain.json() == {"logs": "tail"}, "no filter, no claim that one was applied"
+        tail.assert_called_once_with("x", 1, 20)
+
+    @pytest.mark.parametrize("match", ["(", "x" * 201])
+    def test_a_bad_filter_is_a_400(self, match):
+        with patch.object(worker_api, "_verify_api_key"), patch.object(proxy_tunnel, "grep_logs") as grep:
+            resp = _api().get("/api/proxied/x/1/logs", params={"match": match, "since_hours": 1})
+        assert resp.status_code == 400
+        grep.assert_not_called()
+
+    def test_grep_logs_reads_only_the_window_of_our_earner(self):
+        earner = _copy("cashpilot-x-p1", "x", 1)
+        earner.logs.return_value = iter([b"a Error one\nb fine\nc Err", b"or two"])
+        with patch.object(orchestrator, "_get_client", return_value=_client_with(earner)):
+            out = proxy_tunnel.grep_logs("x", 1, re.compile("Error"), since_hours=2)
+            with pytest.raises(ValueError):
+                proxy_tunnel.grep_logs("y", 1, re.compile("Error"), since_hours=2)
+        assert out == "a Error one\nc Error two"
+        kw = earner.logs.call_args.kwargs
+        assert kw["stream"] is True and kw["follow"] is False
+        assert time.time() - 2 * 3600 - 5 <= kw["since"] <= time.time() - 2 * 3600 + 5
+
+    def test_a_restart_reaches_the_tunnel_module(self):
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(proxy_tunnel, "restart", return_value={"restarted": "cashpilot-x-p1"}) as restart,
+        ):
+            resp = _api().post("/api/proxied/x/1/restart", headers=AUTH)
+        assert resp.json() == {"status": "restarted", "restarted": "cashpilot-x-p1"}
+        restart.assert_called_once_with("x", 1)
+
     def test_a_start_with_the_proxy_hands_it_to_the_tunnel(self):
         with (
             patch.object(worker_api, "_verify_api_key"),
@@ -816,12 +860,14 @@ class TestWorkerProxiedOps:
         for method, path in (
             ("post", "/api/proxied/x/1/stop"),
             ("post", "/api/proxied/x/1/start"),
+            ("post", "/api/proxied/x/1/restart"),
             ("delete", "/api/proxied/x/1"),
         ):
             with (
                 patch.object(worker_api, "_verify_api_key"),
                 patch.object(proxy_tunnel, "stop", side_effect=exc),
                 patch.object(proxy_tunnel, "start", side_effect=exc),
+                patch.object(proxy_tunnel, "restart", side_effect=exc),
                 patch.object(proxy_tunnel, "remove", side_effect=exc),
             ):
                 resp = getattr(_api(), method)(path, headers=AUTH)
