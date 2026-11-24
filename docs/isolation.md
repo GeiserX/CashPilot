@@ -176,7 +176,8 @@ each proxy tunnel that needs one. On an `iptables-legacy` host, run
 `iptables-legacy -t mangle -S CP-FWD` instead. The worker's log line
 `Isolation: mode on, fence applied` says the fence runs on that box. With
 `CASHPILOT_CONTAINER_NETWORK` set, the log says `mode operator`, and CashPilot
-writes none of these drops: your own rules must drop your lines' public IPs.
+writes none of these drops: your own rules must drop your lines' public IPs
+([Drop your own public IPs too](#drop-your-own-public-ips-too) shows how).
 
 ### Modes
 
@@ -397,6 +398,35 @@ networks:
     to the Docker host itself never passes the `DOCKER-USER` chain. It also
     shows how to make the CashPilot worker deploy onto this bridge with
     `CASHPILOT_CONTAINER_NETWORK`.
+
+### Drop your own public IPs too
+
+With `CASHPILOT_CONTAINER_NETWORK` set, CashPilot writes none of the drops in
+[Your other internet lines](#your-other-internet-lines). You must add them
+yourself, or an earner can reach the port forwards and the services on each
+of your internet lines. Add one drop for the public IPv4 address of each line
+you have, this box's own line included. Then put the reply rule back above
+them, so replies to your other lines still get out:
+
+```sh
+#!/bin/sh
+# Run after the rules in "Protecting your home network". Safe to run more than once.
+BR=cp-isolated
+for ip in 203.0.113.9 198.51.100.24; do   # the public IPv4 of each of your lines
+  iptables -C DOCKER-USER -i "$BR" -d "$ip" -j REJECT 2>/dev/null ||
+    iptables -I DOCKER-USER -i "$BR" -d "$ip" -j REJECT
+done
+iptables -D DOCKER-USER -i "$BR" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN 2>/dev/null
+iptables -I DOCKER-USER -i "$BR" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+```
+
+- A line with a dynamic IP needs its rule changed each time its IP changes.
+  Remove the old drop with `iptables -D` and the same arguments.
+- A [proxied copy](proxies.md) can use a proxy or a Tailscale exit node on
+  one of your lines. Then its tunnel container needs that address: add a rule
+  above the drop that lets the tunnel's own address reach it. Without that
+  rule, a Tailscale tunnel falls back to Tailscale's relays, and a SOCKS or
+  HTTP tunnel cannot reach its proxy.
 
 Whatever you apply, [test it from inside an earner](isolation-check.md): a rule
 that looks right can still be skipped, and the test shows it in one command.
