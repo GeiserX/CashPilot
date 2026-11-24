@@ -69,3 +69,11 @@ Until the device is on your account it earns for nobody. Sign in to [peer.proxyr
 | `UUID` | Device UUID | Yes | No | Unique 64-character hex ID per device. Generate with: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1 |
 | `API_KEY` | API Key | No | Yes | Your ProxyRack API key (auto-registers device in dashboard if provided) |
 | `DEVICE_NAME` | Device name | No | No | Friendly name for the device in dashboard (default: `Device-${UUID}`) |
+
+## Troubleshooting
+
+### Logs show `Cannot find module '/app/script.js'`
+
+The image downloads the ProxyRack client each time the container starts, and it does not retry a failed download. When that download fails, the client never starts. The container still shows as running, but it earns nothing.
+
+CashPilot reads the last 12 hours of the copy's logs. When they hold this error and no `connected to server` line, it shows the copy under **Needs fixing** and restarts the copy itself, at most once every 6 hours. A restart downloads the client again. If the warning stays after a restart, check that the box can reach the internet.

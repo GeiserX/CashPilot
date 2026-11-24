@@ -88,6 +88,32 @@ def test_the_proxybase_signal_asks_for_a_restart():
     assert [s.get("restart") for s in signals] == [True]
 
 
+PROXYRACK_FAILED = "2026-11-21T11:36:20.000000000Z Error: Cannot find module '/app/script.js'"
+PROXYRACK_CONNECTED = "2026-11-24T15:32:54.000000000Z INFO\tdialer_listener/dialer_listener.go:56\tconnected to server"
+
+
+def test_the_proxyrack_signal_asks_for_a_restart_that_a_connect_clears():
+    """The client download failed at the start: node finds no script and the container sleeps, up and earning
+    nothing. A restart downloads the client again, and a working client logs "connected to server"."""
+    signals = [s for s in producer_state.signals_for(catalog.get_service("proxyrack")) if producer_state.is_windowed(s)]
+    assert [s.get("restart") for s in signals] == [True]
+    (signal,) = signals
+    # A restart that fails the same way logs the error again: it must still be in
+    # the window when the cooldown ends, or the copy is never tried again.
+    assert signal["window_hours"] * 3600 > main.AUTO_RESTART_COOLDOWN_S
+    assert producer_state.windowed_hit(PROXYRACK_FAILED, signal)
+    assert not producer_state.windowed_hit(f"{PROXYRACK_FAILED}\n{PROXYRACK_CONNECTED}", signal)
+    assert not producer_state.windowed_hit(PROXYRACK_CONNECTED, signal)
+
+
+def test_a_proxyrack_copy_whose_client_never_downloaded_is_restarted():
+    stuck = {**RUNNING, "slug": "proxyrack"}
+    assert _sweep(PROXYRACK_FAILED, containers=(stuck,)) == [(7, "restart", "proxyrack", 1)]
+    assert "did not download" in main._windowed_hints[("proxyrack", 7, 1)][0]
+    main._auto_restarted_at.clear()
+    assert _sweep(f"{PROXYRACK_FAILED}\n{PROXYRACK_CONNECTED}", containers=(stuck,)) == []
+
+
 def test_a_stuck_copy_is_restarted_and_still_shown(caplog):
     assert _sweep(STUCK) == [(7, "restart", "proxybase", 1)]
     assert "A restart clears this" in main._windowed_hints[KEY][0]

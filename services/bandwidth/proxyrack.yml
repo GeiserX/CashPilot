@@ -44,6 +44,28 @@ docker:
   volumes: []
   command: ""
   network_mode: ""
+  health_signals:
+    # Seen live (Nov 2026) on three copies on two boxes for days. The image's
+    # start script deletes the client (/app/script.js), downloads it again
+    # with no retry, then sleeps forever. When that download failed (the
+    # vendor's update host served an expired certificate), node logged
+    # "Cannot find module '/app/script.js'" and the container stayed up and
+    # earned nothing. A restart downloads the client again: on 2026-11-24 a
+    # restart of each stuck copy logged "app started" and "connected to
+    # server" within 4 seconds, so CashPilot restarts the copy (restart). A
+    # working client logs "connected to server" when it starts and after a
+    # reconnect, which a longer window could keep in view past a failed
+    # start. The window must outlast the 6-hour restart cooldown, so that a
+    # restart that failed the same way is tried again.
+    - pattern: "Cannot find module .?/app/script\\.js"
+      unless: "connected to server"
+      window_hours: 12
+      restart: true
+      means: >-
+        Proxyrack's client did not download when the container started, so
+        the container runs but earns nothing. A restart downloads it again;
+        if this stays after a restart, check that this box can reach the
+        internet.
   privileged: false
 
 device_link:
