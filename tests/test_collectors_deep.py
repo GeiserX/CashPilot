@@ -407,7 +407,12 @@ class TestStorjDeep:
 
 
 class TestBytelixirDeep:
-    def test_collect_api_fallback(self):
+    @staticmethod
+    def _fallback(withdrawable: str, last_recorded: float | None):
+        """Collect with the dashboard unreadable, so the API fallback answers.
+
+        Returns the result and the mock that stood in for the last recorded balance.
+        """
         from app.collectors.bytelixir import BytelixirCollector
 
         # HTML scrape fails (no balance pattern)
@@ -416,16 +421,76 @@ class TestBytelixirDeep:
         html_resp = _mock_response(200, text="<p>no balance</p>", url="https://dash.bytelixir.com/en")
         html_resp.url = url_mock
         html_resp.text = "<p>no balance</p>"
-        # API fallback succeeds
-        api_resp = _mock_response(200, {"data": {"balance": "0.5000000000"}})
+        api_resp = _mock_response(200, {"data": {"balance": withdrawable}})
 
         client = _make_async_client()
         client.get.side_effect = [html_resp, api_resp]
 
-        with patch.object(BytelixirCollector, "_get_client", return_value=client):
-            c = BytelixirCollector(session_cookie="valid")
-            result = asyncio.run(c.collect())
+        latest = AsyncMock(return_value=last_recorded)
+        with (
+            patch.object(BytelixirCollector, "_get_client", return_value=client),
+            patch("app.database.get_latest_balance", latest),
+        ):
+            result = asyncio.run(BytelixirCollector(session_cookie="valid").collect())
+        return result, latest
+
+    def test_collect_api_fallback(self):
+        """A withdrawable figure above the last recorded balance is kept, with a note."""
+        result, latest = self._fallback("0.5000000000", 0.4)
+        assert result.error is None
         assert result.balance == 0.50
+        assert result.warning and "withdrawable" in result.warning.lower()
+        latest.assert_awaited_once_with("bytelixir")
+
+    def test_fallback_with_no_balance_on_record_is_not_stored(self):
+        """A first reading is the starting point every later gain is measured from.
+
+        The withdrawable figure is at most the total, so kept as the first
+        reading it would book the part not yet withdrawable as new earnings on
+        the next good scrape.
+        """
+        from app import credential_test
+        from app.collectors import base
+
+        result, latest = self._fallback("0.5000000000", None)
+        assert result.error, "a withdrawable figure was stored with nothing to check it against"
+        assert result.warning is None
+        assert result.error_kind == base.KIND_UNREAD
+        assert credential_test.classify(result.error, result.error_kind) == credential_test.OK
+        latest.assert_awaited_once_with("bytelixir")
+
+    def test_fallback_at_or_above_the_last_balance_is_kept(self):
+        """The control: a figure that cannot fake a drop is still stored."""
+        for last in (0.4, 0.5):
+            result, _ = self._fallback("0.5000000000", last)
+            assert result.error is None, last
+            assert result.balance == 0.50
+
+    def test_withdrawable_zero_is_never_stored(self):
+        """The API's withdrawable 0 is not a balance.
+
+        Stored, it wrote a $0 row: the balance looked like it fell to zero, and
+        the next good scrape booked the whole balance again as new earnings.
+        """
+        from app import credential_test
+        from app.collectors import base
+
+        for last in (None, 0.0, 3.2109):
+            result, _ = self._fallback("0.0000000000", last)
+            assert result.error, f"a withdrawable 0 was returned as a reading (last balance {last})"
+            assert result.warning is None
+            assert result.error_kind == base.KIND_UNREAD
+            # The session worked: the credential test must not call the cookie bad.
+            assert credential_test.classify(result.error, result.error_kind) == credential_test.OK
+
+    def test_fallback_below_the_last_balance_is_not_stored(self):
+        from app.collectors import base
+
+        result, latest = self._fallback("0.5000000000", 3.2109)
+        assert result.error, "a withdrawable figure below the last balance was returned as a reading"
+        assert result.error_kind == base.KIND_UNREAD
+        assert "$0.50" in result.error and "$3.21" in result.error
+        latest.assert_awaited_once_with("bytelixir")
 
     def test_collect_api_401(self):
         from app.collectors.bytelixir import BytelixirCollector
