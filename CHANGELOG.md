@@ -10,6 +10,22 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.9.2] - 2026-11-24
+
+### Dependencies
+
+- Bump zensical to 0.1.3 for its security fixes (#803)
+- Bump the sockguard group across 3 directories with 1 update (#802)
+- Bump the minor-and-patch group with 4 updates (#801)
+
+### Packaging
+
+- Bump astral-sh/uv from 0.13.8 to 0.13.9 (#800)
+
+### Testing
+
+- Count only the restart that follows the memory cap (#799)
+
 ## [2.9.1] - 2026-11-23
 
 ### Fixes
