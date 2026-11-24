@@ -224,6 +224,22 @@ def test_a_routed_entry_is_judged_once_as_its_row():
     assert _sweep(STUCK, containers=(), workers=(_proxied(routed=True),)) == []
 
 
+def test_a_proxied_copy_is_read_only_for_a_signal_that_restarts_it():
+    """No page shows a proxied copy's hints, so a signal that only warns is not worth hours of its logs.
+
+    And the worker probes only the service's own copies, so its probe is not asked either."""
+    copies = [
+        {"slug": "earnapp", "proxy_id": 3, "status": "running"},
+        {"slug": "mysterium", "proxy_id": 4, "status": "running"},
+    ]
+    assert catalog.get_service("mysterium")["docker"].get("health_probe"), "a service with a probe"
+    reads = []
+    worker = {**WORKER, "system_info": json.dumps({"proxied": copies})}
+    assert _sweep("Error: Handshake timeout", containers=(), workers=(worker,), reads=reads) == []
+    assert reads == []
+    assert main._windowed_hints == {}
+
+
 def test_an_older_worker_gives_a_proxied_copy_no_verdict():
     """A worker from before the filter returns the plain tail, which is not the window."""
     restarts = []

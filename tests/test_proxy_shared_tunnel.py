@@ -5165,6 +5165,28 @@ class TestARestartInPlace:
             proxy_tunnel.restart("honeygain", 3)
         assert earner.starts == starts
 
+    def test_a_restart_reads_the_copy_only_after_a_stop_under_the_proxys_lock(self, docker):
+        """The owner's stop, the cap's and a deploy hold the proxy's lock: a restart asked meanwhile waits for them."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        outcome: list[Any] = []
+
+        def _restart() -> None:
+            try:
+                outcome.append(proxy_tunnel.restart("honeygain", 3))
+            except proxy_tunnel.ProxyTunnelError as exc:
+                outcome.append(exc)
+
+        with proxy_tunnel._deploy_lock(3):
+            worker = threading.Thread(target=_restart)
+            worker.start()
+            worker.join(0.3)
+            assert outcome == [], "the restart ran while the proxy's lock was held"
+            proxy_tunnel._stop("honeygain", 3)  # what stop() does under that lock
+        worker.join(5)
+        assert len(outcome) == 1 and "left stopped" in str(outcome[0])
+        assert earner.status == "exited" and proxy_tunnel.held() == {NAME}
+
     def test_the_worker_route_answers_a_restart_a_refusal_and_no_such_copy(self, docker):
         _deploy("honeygain")
         with patch.object(worker_api, "_verify_api_key"):

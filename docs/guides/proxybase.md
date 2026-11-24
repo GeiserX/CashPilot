@@ -77,7 +77,7 @@ Fix: **Remove** the ProxyBase service, then **Deploy** it again from the catalog
 
 The client asks ProxyBase for a relay once, when it starts. If that request fails, it uses a built-in default relay that no longer answers, and it keeps retrying that relay without asking again. It earns nothing, but the container still looks healthy. A restart fixes it.
 
-CashPilot notices after half an hour of retries with no `Balance:` line. It shows the copy under **Needs fixing** and restarts the copy itself, at most once every 6 hours. It does the same for a copy through a proxy (the **Proxies** page). If the warning stays after a restart, check that the box can reach the internet.
+CashPilot notices after half an hour of retries with no `Balance:` line. It shows the copy under **Needs fixing** and restarts the copy itself, at most once every 6 hours. It also restarts a copy through a proxy (the **Proxies** page) the same way, but that copy does not show under **Needs fixing**. If the warning stays after a restart, check that the box can reach the internet.
 
 ### Container loops on `Missing ID and NAME`
 

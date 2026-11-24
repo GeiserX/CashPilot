@@ -2704,7 +2704,10 @@ async def _sweep_windowed_signals() -> None:
         probe = ((service or {}).get("docker") or {}).get("health_probe")
         spec = probe if isinstance(probe, dict) and not health_probe.spec_errors(probe) else None
         if instance >= PROXIED_COPY_KEY:
-            # The worker probes only the service's own copies (health_probe.read_all).
+            # No page shows a proxied copy's hints, so only a signal that restarts
+            # it is worth hours of its logs; and the worker probes only the
+            # service's own copies (health_probe.read_all).
+            signals = [s for s in signals if s.get("restart") is True]
             spec = None
         if not signals and spec is None:
             continue
