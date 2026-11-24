@@ -143,6 +143,8 @@ docker:
     Identity must be pre-generated using the identity binary (proof-of-work to difficulty 36, takes hours).
     Use spinning disks for storage. Port 28967 TCP+UDP must be forwarded.
     Dashboard at port 14002 — use your server's LAN IP (not localhost) for the collector API URL.
+    For several nodes, list each node's URL separated by commas (http://host-a:14002,http://host-b:14002):
+    CashPilot adds their payouts up, and the reading fails as a whole if any node cannot be read.
 
 requirements:
   residential_ip: false
@@ -185,6 +187,7 @@ collector:
   # given much data, so a month of a still balance is normal at the start.
   quiet_days: 30
   notes: "Local dashboard at port 14002. API at /api/sno for node stats, earnings, bandwidth. No auth needed on local interface."
+  credential_hint: "The node dashboard's URL on port 14002, with the server's LAN IP rather than localhost, for example <b>http://192.168.1.10:14002</b>. For several nodes, list their URLs separated by commas: CashPilot adds them up."
 
 # What this service does with the user's machine (CashPilot-66x).
 # Written to be read by someone deciding whether to trust it.
