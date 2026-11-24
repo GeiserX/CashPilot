@@ -122,7 +122,8 @@ only its own:
 - **Your other boxes, with no setup.** Each worker reports its public IP. The
   dashboard sends every worker the public IPv4 addresses of all the others
   with each heartbeat reply. A worker applies its fence again as soon as that
-  list changes. Phones are left out: on mobile data a phone reports its
+  list changes. When a box's IP lookup fails, the dashboard keeps that box's
+  last address on the list. Phones are left out: on mobile data a phone reports its
   carrier's address, which changes as it moves.
 - **Lines with no CashPilot box.** List them on each worker in
   `CASHPILOT_FENCE_EXITS`: public IPv4 addresses and host names, separated by

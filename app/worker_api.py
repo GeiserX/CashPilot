@@ -936,16 +936,17 @@ async def _send_heartbeat() -> None:
 def _apply_fleet_exits_reply(resp: Any) -> bool:
     """Take the other boxes' public IPs from the UI's reply. True when the fence must be applied again.
 
-    A reply without the key comes from a UI that predates it (no other exits)
-    or, once this worker has a list, from one that could not read the fleet
-    this time (the list is kept).
+    A null list comes from a UI that could not read the fleet this time: the
+    list stays as it is, unknown after a restart, so the table keeps its drops.
+    A reply without the key comes from a UI that predates it (no other exits).
     """
     body: Any = None
     with contextlib.suppress(Exception):
         body = resp.json()
-    value = body.get("fleet_exits") if isinstance(body, dict) else None
-    if isinstance(value, list):
-        return lan_fence.set_fleet_exits(value)
+    if not isinstance(body, dict) or "fleet_exits" in body and not isinstance(body["fleet_exits"], list):
+        return False
+    if isinstance(body.get("fleet_exits"), list):
+        return lan_fence.set_fleet_exits(body["fleet_exits"])
     if lan_fence._fleet_exits["ips"] is None:
         return lan_fence.set_fleet_exits([])
     return False

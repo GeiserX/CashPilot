@@ -658,6 +658,10 @@ _EXITS_SETTING = os.getenv("CASHPILOT_FENCE_EXITS", "")
 _fleet_exits: dict[str, list[str] | None] = {"ips": None if os.getenv("CASHPILOT_UI_URL") else []}
 #: Seconds the names in CASHPILOT_FENCE_EXITS may take to resolve, all of them together.
 RESOLVE_SECONDS = 5.0
+#: One pool for every fence run's lookups. A lookup that outlives its wait keeps
+#: its thread until the resolver returns, so a pool per run would add threads
+#: for as long as DNS stalls; this one never holds more than 8.
+_RESOLVER = ThreadPoolExecutor(max_workers=8, thread_name_prefix="fence-resolve")
 _HOST_NAME = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?$")
 
 
@@ -703,12 +707,10 @@ def _resolve(names: tuple[str, ...]) -> tuple[list[str], bool]:
     """
     if not names:
         return [], True
-    pool = ThreadPoolExecutor(max_workers=min(8, len(names)))
-    try:
-        jobs = [pool.submit(socket.getaddrinfo, name, None, socket.AF_INET, socket.SOCK_STREAM) for name in names]
-        done, _late = wait(jobs, timeout=RESOLVE_SECONDS)
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)
+    jobs = [_RESOLVER.submit(socket.getaddrinfo, name, None, socket.AF_INET, socket.SOCK_STREAM) for name in names]
+    done, late = wait(jobs, timeout=RESOLVE_SECONDS)
+    for job in late:
+        job.cancel()  # one still queued behind a stalled lookup never runs
     found: list[str] = []
     answered = len(done) == len(jobs)
     for job in done:
@@ -720,16 +722,25 @@ def _resolve(names: tuple[str, ...]) -> tuple[list[str], bool]:
 
 
 def exit_env() -> dict[str, str]:
-    """The helper's FENCE_EXITS and FENCE_EXITS_COMPLETE: the owner's exits other than this box's own."""
+    """The helper's FENCE_EGRESS, FENCE_EXITS and FENCE_EXITS_COMPLETE: this box's exit and the owner's others.
+
+    This box's exit is read once, so the list leaves out the same address the
+    helper gets as its own, even when a heartbeat changes it meanwhile.
+    """
+    own = _egress["ip"]
     ips, names = _configured_exits(_EXITS_SETTING)
     resolved, answered = _resolve(names)
     fleet = _fleet_exits["ips"]
-    others = [ip for ip in exit_targets([*ips, *resolved, *(fleet or [])]) if ip != _egress["ip"]]
+    others = [ip for ip in exit_targets([*ips, *resolved, *(fleet or [])]) if ip != own]
     if len(others) >= MAX_EXITS:
         logger.warning("The fence drops %d of the owner's %d other exits, its limit", MAX_EXITS - 1, len(others))
         others = others[: MAX_EXITS - 1]
     complete = answered and fleet is not None
-    return {"FENCE_EXITS": ",".join(others), "FENCE_EXITS_COMPLETE": "1" if complete else "0"}
+    return {
+        "FENCE_EGRESS": own or "",
+        "FENCE_EXITS": ",".join(others),
+        "FENCE_EXITS_COMPLETE": "1" if complete else "0",
+    }
 
 
 def tunnel_env(client: Any) -> dict[str, str]:
@@ -1231,6 +1242,8 @@ def _helper_spec(action: str, subnet: str, filtered: bool, exits: dict[str, str]
             "FENCE_SUBNET": subnet,
             "FENCE_FILTER": "1" if filtered else "0",
             "FENCE_BACKEND": _BACKEND,
+            # exit_env's own reading when the run is filtered, so the exit list
+            # always leaves out the address the helper takes as this box's.
             "FENCE_EGRESS": _egress["ip"] or "",
             **exits,
         },

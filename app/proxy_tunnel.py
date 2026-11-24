@@ -3533,6 +3533,7 @@ def _start_down_tunnel(tunnel: Any, proxy_id: str, name: str) -> None:
     lock = _deploy_lock(int(proxy_id)) if str(proxy_id).isdigit() else None
     if lock is None or not lock.acquire(blocking=False):
         return
+    started = False
     try:
         try:
             if name in held():
@@ -3545,11 +3546,16 @@ def _start_down_tunnel(tunnel: Any, proxy_id: str, name: str) -> None:
             return
         refresh_proxy_ip(tunnel)
         tunnel.start()
+        started = True
         logger.info("Started %s, which was down while a copy in it should run", tunnel.name)
     except Exception as exc:  # noqa: BLE001 - the next beat tries again
         logger.warning("Could not start %s: %s", tunnel.name, redact(str(exc)))
     finally:
         lock.release()
+    if started:
+        # Its bridge address is new: give it its exception to an exit node or
+        # proxy on one of the owner's lines now, as _wait_ready does for a deploy.
+        lan_fence.tunnel_started()
 
 
 def test(proxy: dict[str, Any], own_ip: str | None) -> dict[str, Any]:

@@ -1114,12 +1114,18 @@ def test_the_helper_gets_the_owners_other_exits():
         patch.object(lan_fence, "_fleet_exits", {"ips": None}),
         patch.object(lan_fence.socket, "getaddrinfo", _answers({"home.example.net": ["88.1.2.3", "10.0.0.5"]})),
     ):
-        assert lan_fence.exit_env() == {"FENCE_EXITS": "62.4.5.6,88.1.2.3", "FENCE_EXITS_COMPLETE": "0"}, (
-            "until the UI answers, the list may be short: the table keeps what it drops"
-        )
+        assert lan_fence.exit_env() == {
+            "FENCE_EGRESS": "81.61.1.9",
+            "FENCE_EXITS": "62.4.5.6,88.1.2.3",
+            "FENCE_EXITS_COMPLETE": "0",
+        }, "until the UI answers, the list may be short: the table keeps what it drops"
         assert lan_fence.set_fleet_exits(["81.61.1.9", "95.1.1.1", "192.168.1.1"]) is True
         assert lan_fence.set_fleet_exits(["95.1.1.1", "81.61.1.9"]) is False
-        assert lan_fence.exit_env() == {"FENCE_EXITS": "62.4.5.6,88.1.2.3,95.1.1.1", "FENCE_EXITS_COMPLETE": "1"}
+        assert lan_fence.exit_env() == {
+            "FENCE_EGRESS": "81.61.1.9",
+            "FENCE_EXITS": "62.4.5.6,88.1.2.3,95.1.1.1",
+            "FENCE_EXITS_COMPLETE": "1",
+        }
 
 
 def test_a_name_that_does_not_answer_keeps_the_drops():
@@ -1130,7 +1136,7 @@ def test_a_name_that_does_not_answer_keeps_the_drops():
         patch.object(lan_fence, "_fleet_exits", {"ips": []}),
         patch.object(lan_fence.socket, "getaddrinfo", _answers({})),
     ):
-        assert lan_fence.exit_env() == {"FENCE_EXITS": "62.4.5.6", "FENCE_EXITS_COMPLETE": "0"}
+        assert lan_fence.exit_env() == {"FENCE_EGRESS": "", "FENCE_EXITS": "62.4.5.6", "FENCE_EXITS_COMPLETE": "0"}
 
 
 def test_a_single_box_without_settings_sends_an_empty_complete_list():
@@ -1140,7 +1146,26 @@ def test_a_single_box_without_settings_sends_an_empty_complete_list():
         patch.object(lan_fence, "_egress", {"ip": "81.61.1.9"}),
         patch.object(lan_fence, "_fleet_exits", {"ips": ["81.61.1.9"]}),
     ):
-        assert lan_fence.exit_env() == {"FENCE_EXITS": "", "FENCE_EXITS_COMPLETE": "1"}
+        assert lan_fence.exit_env() == {"FENCE_EGRESS": "81.61.1.9", "FENCE_EXITS": "", "FENCE_EXITS_COMPLETE": "1"}
+
+
+def test_the_exit_list_and_the_helpers_own_exit_come_from_one_reading():
+    """A heartbeat that changes this box's exit mid-run must not leave the old one out of both."""
+    state = {"ip": "81.61.1.9"}
+
+    def resolve(names):
+        state["ip"] = "95.1.1.1"  # the heartbeat lands while the names resolve
+        return [], True
+
+    with (
+        patch.object(lan_fence, "_EXITS_SETTING", ""),
+        patch.object(lan_fence, "_egress", state),
+        patch.object(lan_fence, "_fleet_exits", {"ips": ["81.61.1.9", "95.1.1.1"]}),
+        patch.object(lan_fence, "_resolve", side_effect=resolve),
+    ):
+        env = lan_fence.exit_env()
+    assert env["FENCE_EGRESS"] == "81.61.1.9"
+    assert env["FENCE_EXITS"] == "95.1.1.1"
 
 
 def _tunnel(ip, files, net=lan_fence.NETWORK_NAME):
@@ -1191,6 +1216,27 @@ def test_tunnel_started_applies_only_in_on_mode_and_never_raises():
         lan_fence.tunnel_started()
 
 
+def test_a_tunnel_the_heartbeat_starts_has_the_fence_applied():
+    """A tunnel started again by the heartbeat gets a new bridge address, and with it its exception."""
+    from app import proxy_tunnel
+
+    tunnel = MagicMock()
+    tunnel.name = "cashpilot-tunnel-p3"
+    tunnel.status = "exited"
+    with (
+        patch.object(proxy_tunnel, "held", return_value=set()),
+        patch.object(proxy_tunnel, "_restarts_by_itself", return_value=False),
+        patch.object(proxy_tunnel, "refresh_proxy_ip"),
+        patch.object(lan_fence, "tunnel_started") as hook,
+    ):
+        proxy_tunnel._start_down_tunnel(tunnel, "3", "cashpilot-earnfm-p3")
+        tunnel.start.assert_called_once()
+        hook.assert_called_once()
+        tunnel.status = "running"
+        proxy_tunnel._start_down_tunnel(tunnel, "3", "cashpilot-earnfm-p3")
+    hook.assert_called_once()  # nothing started the second time: nothing to fence
+
+
 def _reply(body):
     resp = MagicMock()
     resp.json.return_value = body
@@ -1209,6 +1255,11 @@ def test_the_ui_reply_hands_over_the_other_exits():
         assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
         assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": []})) is True
         assert lan_fence._fleet_exits["ips"] == []
+    with patch.object(lan_fence, "_fleet_exits", {"ips": None}):
+        assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": None})) is False, (
+            "a UI that could not read the fleet: still unknown, so the table keeps its drops"
+        )
+        assert lan_fence._fleet_exits["ips"] is None
 
 
 @pytest.mark.parametrize(("docker_ok", "checks"), [(True, 1), (False, 0)])
@@ -1259,12 +1310,36 @@ def test_the_ui_hands_every_box_the_fleets_exits(tmp_path):
             home = await beat("home", {"egress_ip": "81.61.1.9"})
             with patch.object(main.database, "list_workers", AsyncMock(side_effect=RuntimeError("locked"))):
                 unread = await beat("home", {"egress_ip": "81.61.1.9"})
-            return home, phone, unread
+            # site-b's hourly lookup fails: its line is the same line, so its drop stays.
+            failed = await beat("site-b", {"egress_ip": None})
+            return home, phone, unread, failed
 
-    home, phone, unread = asyncio.run(go())
+    with patch.object(main, "_last_fleet_exit", {}):
+        home, phone, unread, failed = asyncio.run(go())
     assert home["fleet_exits"] == ["81.61.1.9", "95.1.1.1"]
     assert "fleet_exits" not in phone, "a phone has no fence"
-    assert "fleet_exits" not in unread, "could not read is not an empty fleet: the worker keeps its list"
+    assert unread["fleet_exits"] is None, "could not read is not an empty fleet: the worker keeps its list"
+    assert failed["fleet_exits"] == ["81.61.1.9", "95.1.1.1"], "a failed lookup keeps the box's last exit"
+
+
+def test_a_removed_box_takes_its_last_exit_with_it():
+    from app import main
+
+    async def go(workers):
+        with patch.object(main.database, "list_workers", AsyncMock(return_value=workers)):
+            return await main._fleet_exits()
+
+    with patch.object(main, "_last_fleet_exit", {}):
+        both = [
+            {"id": 1, "system_info": '{"egress_ip": "81.61.1.9"}'},
+            {"id": 2, "system_info": '{"egress_ip": "95.1.1.1"}'},
+        ]
+        assert asyncio.run(go(both)) == ["81.61.1.9", "95.1.1.1"]
+        assert asyncio.run(go([both[0], {"id": 2, "system_info": "{}"}])) == ["81.61.1.9", "95.1.1.1"]
+        assert asyncio.run(go([both[0]])) == ["81.61.1.9"], "removed: its drop goes"
+        assert asyncio.run(go([both[0], {"id": 2, "system_info": "{}"}])) == ["81.61.1.9"], "and is not remembered"
+        moved = [both[0], {"id": 2, "system_info": '{"egress_ip": "62.4.5.6"}'}]
+        assert asyncio.run(go(moved)) == ["62.4.5.6", "81.61.1.9"], "a new address replaces the old"
 
 
 # ---------------------------------------------------------------------------

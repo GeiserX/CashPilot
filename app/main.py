@@ -11580,10 +11580,17 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         if activity_stored is not None:
             resp["activity"]["stored"] = activity_stored
     if not _is_phone(body.system_info):
-        exits = await _fleet_exits()
-        if exits is not None:
-            resp["fleet_exits"] = exits
+        # None (could not read the fleet) goes out as null: the worker keeps its
+        # list. A missing key means a UI from before this list.
+        resp["fleet_exits"] = await _fleet_exits()
     return resp
+
+
+#: Each box's last public IPv4 exit, by worker id. A failed lookup reports no
+#: address for an hour or so, and the line is the same line all the same: its
+#: drop must stay on the other boxes. A new address replaces the old one, and a
+#: removed box takes its address with it.
+_last_fleet_exit: dict[int, str] = {}
 
 
 async def _fleet_exits() -> list[str] | None:
@@ -11601,13 +11608,23 @@ async def _fleet_exits() -> list[str] | None:
         logger.warning("Could not read the fleet's exits: %s", type(exc).__name__)
         return None
     found = set()
+    present = set()
     for w in workers:
         info = _safe_json(w.get("system_info") or "{}", {})
         if not isinstance(info, dict) or _is_phone(info):
             continue
+        wid = w.get("id")
+        present.add(wid)
         ip = egress.public_ip(info.get("egress_ip"))
         if ip and ipaddress.ip_address(ip).version == 4:
-            found.add(ip)
+            _last_fleet_exit[wid] = ip
+        elif wid in _last_fleet_exit:
+            ip = _last_fleet_exit[wid]
+        else:
+            continue
+        found.add(ip)
+    for gone in set(_last_fleet_exit) - present:
+        del _last_fleet_exit[gone]
     return sorted(found)
 
 
