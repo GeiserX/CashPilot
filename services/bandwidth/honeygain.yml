@@ -106,6 +106,30 @@ payout:
   model: internal
   notes: "Balance held by Honeygain; withdrawn on request."
 
+# Reminders before money is lost (services/_schema.yml obligations:, docs/reminders.md).
+obligations:
+  - id: withdraw-before-24-month-write-off
+    action: withdraw
+    title: Withdraw your Honeygain balance
+    loss: Earnings stay valid for 24 months after they reach the $20 minimum. Honeygain may then write
+      off what was not paid out.
+    url: https://dashboard.honeygain.com/payout/request
+    when: {since: over_minimum, days: 730}
+    warn_days: [180, 60, 30]  # at 18, 22 and 23 months
+    source: https://www.honeygain.com/terms-of-use/
+    checked: "2026-11-24"
+  - id: keep-active-6-months
+    action: keep-active
+    title: Keep a Honeygain device sharing, or make a payout
+    loss: If the app is not used for more than 6 months, Honeygain treats the unpaid balance as
+      expired, even under $20.
+    how: Keep a device sharing, or request a payout. In JumpTask mode a flat balance is normal, so
+      choose Not for me.
+    when: {since: last_activity, days: 180}
+    warn_days: [90, 30, 7]
+    source: https://www.honeygain.com/terms-of-use/
+    checked: "2026-11-24"
+
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.
 rating:

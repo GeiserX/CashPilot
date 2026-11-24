@@ -15,9 +15,10 @@ import logging
 import re
 import signal
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import yaml
 
@@ -436,7 +437,165 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
     if priority is not None and (isinstance(priority, bool) or not isinstance(priority, int) or priority < 1):
         errors.append(f"{path.name}: priority must be a positive integer (1 first), got {priority!r}")
 
+    if "obligations" in data:
+        # Reminders are a display field, like the rating: a bad rule is dropped
+        # with a warning and the service still loads and earns. CI fails on any
+        # warning (tests/test_catalog.py), so a shipped rule is never dropped.
+        kept, problems = validate_obligations(data)
+        for problem in problems:
+            logger.warning("Validation: %s: %s (rule dropped)", path.name, problem)
+        data["obligations"] = kept
+
     return errors
+
+
+#: The closed sets of services/_schema.yml `obligations:`. A new value comes
+#: with the first rule that needs it, and with the code that reads it.
+OBLIGATION_ACTIONS = frozenset({"claim", "withdraw", "keep-active"})
+OBLIGATION_CLOCKS = frozenset({"over_minimum", "last_activity", "last_increase", "last_payout"})
+OBLIGATION_KEYS = frozenset({"id", "action", "title", "loss", "how", "url", "when", "warn_days", "source", "checked"})
+DEFAULT_WARN_DAYS = (30, 7, 1)
+_OBLIGATION_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _registrable_domain(url: object) -> str | None:
+    """The last two labels of an https URL's host, or None.
+
+    Two labels, not a public-suffix lookup: every catalog site is on a plain
+    `name.tld`, and a list would be a new dependency. A `co.uk` site would read
+    as `co.uk` and match nothing, so it fails closed.
+    """
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return None
+    host = (urlsplit(url).hostname or "").lower().rstrip(".")
+    labels = [label for label in host.split(".") if label]
+    if len(labels) < 2:
+        return None
+    return ".".join(labels[-2:])
+
+
+def _iso_date(value: object) -> bool:
+    if not isinstance(value, str) or not _ISO_DATE_RE.match(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _plain_text(value: object, limit: int | None = None) -> bool:
+    """Catalog text pushed to phones: no templating and no markup, ever."""
+    if not isinstance(value, str) or not value.strip() or "{" in value or "<" in value:
+        return False
+    return limit is None or len(value) <= limit
+
+
+def _obligation_when_error(when: object) -> str | None:
+    if not isinstance(when, dict):
+        return "when must be a mapping"
+    if True in when and "on" not in when:
+        # YAML 1.1 reads a bare `on:` key as the boolean true (Desktop's YAML
+        # 1.2 reader keeps it as "on"), so the monthly form's day arrives here
+        # under True. Put it back where both readers agree.
+        when["on"] = when.pop(True)
+    forms = [key for key in ("date", "every", "since") if key in when]
+    if len(forms) != 1:
+        return "when must hold exactly one of date, every or since"
+    form = forms[0]
+    allowed = {"date": {"date"}, "every": {"every", "on", "due_days"}, "since": {"since", "days"}}[form]
+    if extra := sorted(str(key) for key in set(when) - allowed):
+        return f"when.{form} does not take {', '.join(extra)}"
+    if form == "date":
+        return None if _iso_date(when["date"]) else "when.date must be a quoted YYYY-MM-DD date"
+    if form == "every":
+        on, due = when.get("on"), when.get("due_days")
+        if when["every"] != "month":
+            return "when.every must be month"
+        # 1-28, so a window never opens on a day some month does not have.
+        if isinstance(on, bool) or not isinstance(on, int) or not 1 <= on <= 28:
+            return "when.on must be a day 1-28"
+        if isinstance(due, bool) or not isinstance(due, int) or due < 1:
+            return "when.due_days must be a positive integer"
+        return None
+    days = when.get("days")
+    if when["since"] not in OBLIGATION_CLOCKS:
+        return f"when.since must be one of {', '.join(sorted(OBLIGATION_CLOCKS))}"
+    if isinstance(days, bool) or not isinstance(days, int) or days < 1:
+        return "when.days must be a positive integer"
+    return None
+
+
+def validate_obligations(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    """Split a service's `obligations:` into the rules that are valid and the problems.
+
+    The rules are pushed to phones and shown to every role, so the text is
+    plain, and a link must be https on the service's own domain: fake claim
+    sites exist for exactly the services that have claim windows.
+    """
+    raw = data.get("obligations")
+    if not isinstance(raw, list):
+        return [], ["obligations must be a list"]
+    cashout = data.get("cashout") if isinstance(data.get("cashout"), dict) else {}
+    referral = data.get("referral") if isinstance(data.get("referral"), dict) else {}
+    own = {
+        d
+        for d in (
+            _registrable_domain(data.get("website")),
+            _registrable_domain(cashout.get("dashboard_url")),
+            _registrable_domain(referral.get("signup_url")),
+        )
+        if d
+    }
+    kept: list[dict[str, Any]] = []
+    problems: list[str] = []
+    seen: set[str] = set()
+    for i, rule in enumerate(raw):
+        label = f"obligations[{i}]"
+        if not isinstance(rule, dict):
+            problems.append(f"{label} must be a mapping")
+            continue
+        rid = rule.get("id")
+        if isinstance(rid, str):
+            label = f"obligations[{rid}]"
+        problem = None
+        warn = rule.get("warn_days", list(DEFAULT_WARN_DAYS))
+        if extra := sorted(set(rule) - OBLIGATION_KEYS):
+            problem = f"unknown keys {', '.join(map(str, extra))}"
+        elif not isinstance(rid, str) or not _OBLIGATION_ID_RE.match(rid):
+            problem = "id must be kebab-case"
+        elif rid in seen:
+            problem = "id is used twice in this file"
+        elif rule.get("action") not in OBLIGATION_ACTIONS:
+            problem = f"action must be one of {', '.join(sorted(OBLIGATION_ACTIONS))}"
+        elif not _plain_text(rule.get("title"), 80):
+            problem = "title must be plain text of 80 characters or fewer, with no { or <"
+        elif not _plain_text(rule.get("loss")):
+            problem = "loss must be plain text, with no { or <"
+        elif "how" in rule and not _plain_text(rule["how"]):
+            problem = "how must be plain text, with no { or <"
+        elif "url" in rule and _registrable_domain(rule["url"]) not in own:
+            problem = "url must be https on the domain of the service's website, dashboard or signup link"
+        elif (when_error := _obligation_when_error(rule.get("when"))) is not None:
+            problem = when_error
+        elif (
+            not isinstance(warn, list)
+            or not warn
+            or not all(isinstance(w, int) and not isinstance(w, bool) and w >= 0 for w in warn)
+            or any(a <= b for a, b in zip(warn, warn[1:], strict=False))
+        ):
+            problem = "warn_days must be a descending list of whole days, 0 or more"
+        elif _registrable_domain(rule.get("source")) is None:
+            problem = "source must be an https link to the provider's own terms or docs"
+        elif not _iso_date(rule.get("checked")):
+            problem = "checked must be a quoted YYYY-MM-DD date"
+        if problem:
+            problems.append(f"{label}: {problem}")
+            continue
+        seen.add(rid)
+        kept.append(rule)
+    return kept, problems
 
 
 def priority_key(service: dict[str, Any]) -> tuple[bool, int]:

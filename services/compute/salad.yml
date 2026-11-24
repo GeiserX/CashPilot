@@ -65,6 +65,20 @@ payout:
   chain: none
   notes: "PayPal and gift cards ONLY -- no crypto whatsoever. Has no on-chain surface for tier 2 to reconcile."
 
+# Reminders before money is lost (services/_schema.yml obligations:, docs/reminders.md).
+obligations:
+  - id: earn-within-12-months
+    action: keep-active
+    title: Earn some Salad Reward Points, or spend your balance
+    loss: If an account earns no Reward Points for 12 months in a row, its unredeemed balance may
+      expire.
+    how: Run the Salad app until it earns, or spend the whole balance in the Salad Storefront.
+      Spending only part of it does not reset the 12 months.
+    when: {since: last_increase, days: 365}
+    warn_days: [90, 30, 7]
+    source: https://salad.com/terms/chefs/
+    checked: "2026-11-24"
+
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.
 rating:

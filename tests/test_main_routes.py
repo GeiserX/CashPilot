@@ -2313,6 +2313,10 @@ class TestLifespanScheduler:
                         "retry_device_links",
                         # Backup files uploaded for a restore and then left.
                         "restore_sweep",
+                        # Money waiting: stores clock starts and pushes each
+                        # reminder once per stage. Hourly, and NOT spawned at
+                        # startup, so there is no startup task to stub here.
+                        "obligations",
                     }
                     # Every job carries the hardening kwargs (audit fix).
                     for job in jobs.values():

@@ -368,6 +368,20 @@ payout:
         && wget -qO- -T 5 "http://127.0.0.1:4050/identities/$id/beneficiary"
     pattern: '"beneficiary":"(0x[0-9a-fA-F]{40})"'
 
+# Reminders before money is lost (services/_schema.yml obligations:, docs/reminders.md).
+obligations:
+  - id: claim-monthly-rewards-pool
+    action: claim
+    title: Claim last month's MystNodes rewards
+    loss: Rewards not claimed within 30 days of the monthly distribution are forfeited and go back
+      into the next month's pool.
+    how: Open the Rewards page and swap your points for MYST.
+    url: https://my.mystnodes.com/rewards
+    when: {every: month, "on": 1, due_days: 30}
+    warn_days: [30, 7]  # the day the window opens, and 7 days before it closes
+    source: https://help.mystnodes.com/en/articles/13925332-mystnodes-rewards-system
+    checked: "2026-11-24"
+
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.
 rating:
