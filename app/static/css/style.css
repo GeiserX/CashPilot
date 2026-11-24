@@ -1353,7 +1353,6 @@ kbd {
 }
 .page-foot a { color: var(--text-muted); }
 .page-foot a:hover { color: var(--text-primary); }
-.page-foot-keys { margin-left: auto; }
 
 /* ----- Blocks (the console has sections, not cards) ----- */
 .block-head, .card-header {
@@ -2034,7 +2033,6 @@ body.gate { display: flex; flex-direction: column; }
   .settings-index { position: static; flex-direction: row; flex-wrap: wrap; gap: 0 12px; margin-bottom: 16px; }
   .settings-index a { border-left: none; padding-left: 0; }
   .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .page-foot-keys { display: none; }
 }
 /* Services stack into one block per service up to 1100 px, as the fleet
    does: eleven columns need about 950 px even with every cell wrapped. Name

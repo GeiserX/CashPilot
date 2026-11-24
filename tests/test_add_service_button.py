@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import re
 from contextlib import asynccontextmanager
-from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -22,7 +21,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-ROOT = Path(__file__).resolve().parents[1]
 PAGES = ["/", "/catalog", "/fleet", "/setup"]
 
 
@@ -92,9 +90,3 @@ def test_the_dashboard_does_not_repeat_it(client):
     with _as("owner"):
         html = client.get("/").text
     assert html.count('href="/setup"') == 1
-
-
-def test_the_g_a_shortcut_still_finds_it():
-    # The shortcut looked only inside .topnav; the button now lives outside it.
-    app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
-    assert '.topbar a[data-key="${CSS.escape(e.key)}"]' in app_js

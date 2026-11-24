@@ -230,23 +230,14 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Keyboard navigation
   //
-  // "g" then a page's first letter jumps to it (read from each top bar link's
-  // data-key; the footer names the shortcut, the bar stays quiet). "/" focuses the
-  // page's search box, "r" refreshes the dashboard. Ignored while typing.
+  // "/" focuses the page's search box, "r" refreshes the dashboard. Ignored while
+  // typing.
   // -----------------------------------------------------------
   function initSidebar() {
-    let armed = 0;
     const typing = (el) => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
     document.addEventListener('keydown', (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
       if (document.querySelector('.modal-overlay.open')) return;
-      if (armed && Date.now() - armed < 1200) {
-        armed = 0;
-        const link = document.querySelector(`.topbar a[data-key="${CSS.escape(e.key)}"]`);
-        if (link) { e.preventDefault(); window.location.href = link.getAttribute('href'); }
-        return;
-      }
-      if (e.key === 'g') { armed = Date.now(); return; }
       if (e.key === '/') {
         const search = document.querySelector('#catalog-search, #payout-filter');
         if (search) { e.preventDefault(); search.focus(); }
