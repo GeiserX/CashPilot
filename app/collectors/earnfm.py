@@ -50,7 +50,11 @@ class EarnFMCollector(BaseCollector):
             return None
         resp.raise_for_status()
         data = resp.json()
-        return data.get("access_token")
+        token = data.get("access_token")
+        if not token:
+            # Accepted, but no token came back: unknown, not a rejected password.
+            raise ValueError("Earn.fm accepted the login but sent no access token")
+        return token
 
     async def collect(self) -> EarningsResult:
         """Fetch current Earn.fm balance."""

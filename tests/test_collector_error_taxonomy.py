@@ -413,6 +413,17 @@ class TestEarnFMTaxonomy:
             result = asyncio.run(EarnFMCollector(email="a@b.c", password="wrong").collect())
         assert result.error_kind == base.KIND_AUTH
 
+    def test_login_without_a_token_is_not_auth(self):
+        """A 200 with no access token proves nothing about the password."""
+        from app.collectors.earnfm import EarnFMCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {})
+        with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(EarnFMCollector(email="a@b.c", password="p").collect())
+        assert result.error is not None
+        assert result.error_kind is None
+
     @pytest.mark.parametrize("code", [401, 403])
     def test_rejected_token_is_auth(self, code):
         from app.collectors.earnfm import EarnFMCollector
