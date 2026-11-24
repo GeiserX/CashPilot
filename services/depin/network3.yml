@@ -1,18 +1,17 @@
 name: Network3
 slug: network3
 category: depin
-status: broken
+status: dead
+# Checked 2026-11-24: network3.io redirects to an unrelated football-streaming
+# site, and network3.ai, account.network3.ai and claim.network3.ai fail the TLS
+# handshake. The website stays only for the weekly resurrection probe; nothing
+# links to it.
 website: https://network3.io
 description: >
   Network3 was a DePIN project focused on decentralized AI training and bandwidth
-  sharing. The project's SSL certificate has expired and the platform appears
-  to be non-functional. Status marked as broken due to certificate issues and
-  possible project abandonment. Exercise caution before investing time or
-  resources.
-short_description: DePIN AI network - certificate expired, possibly dead
-
-referral:
-  signup_url: "https://network3.io"
+  sharing. The project is gone: its old domain now redirects to an unrelated
+  site, and its app and claim sites no longer answer.
+short_description: DePIN AI network - SITE GONE, the domain redirects to an unrelated site
 
 docker:
   image: ""
@@ -40,23 +39,22 @@ earnings:
   monthly_high: 0
   currency: USD
   per: "device"
-  notes: "Project appears inactive. SSL certificate expired. Do not expect any earnings."
+  notes: "Project gone. Do not expect any earnings."
 
 cashout:
   method: manual
-  dashboard_url: "https://account.network3.ai"
   # Undocumented: the provider does not publish a minimum. NOT 0 —
   # 0 means 'no minimum, cash out anything', which would tell the
   # user they can withdraw now and disables payout detection.
   min_amount: null
   currency: N3
-  notes: "Site up but no SSL, no updates in months. Avoid for now."
+  notes: "Nothing to cash out: the project and its claim site are gone."
 
 platforms: [windows, macos, linux]
 
 collector:
   type: manual
-  notes: "Site unreachable due to expired certificate. No collection possible."
+  notes: "Project gone. No collection possible."
 
 payout:
   model: unknown

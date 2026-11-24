@@ -10,9 +10,9 @@ Services that were evaluated but are no longer listed in the catalog due to bein
 | PacketShare | Dead | Signup process broken, no progress | Mar 2026 |
 | earn.cc | Dead | Signup broke in March 2026 and the site stopped resolving by August 2026 | Sep 2026 |
 | WizardGain | Dead | Indefinite maintenance, then the domain lost its name servers | Sep 2026 |
-| Koii Network | Broken | Website says paused | Mar 2026 |
-| Network3 | Broken | No SSL, no updates in months | Mar 2026 |
-| GagaNode | Shady | Poorly made website, untrustworthy | Mar 2026 |
+| Koii Network | Dead | The domain now serves an unrelated online-casino site | Nov 2026 |
+| Network3 | Dead | network3.io redirects to an unrelated site, and network3.ai no longer answers | Nov 2026 |
+| GagaNode | Dead | The domain is parked and the dashboard no longer answers | Nov 2026 |
 | BlockMesh (Perceptron) | Dropped | Rebranded, requires browser dev mode, shady | Mar 2026 |
 | Filecoin | Not viable | Enterprise-only (10 TiB min, datacenter infrastructure required) | Mar 2026 |
 | AntGain | Dead | Telegram channel unavailable | Mar 2026 |

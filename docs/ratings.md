@@ -102,7 +102,6 @@ What a cited con or pro may rest on:
 | <a href="#passiveapp">PassiveApp</a> | F | 3 of 20 | 8 | <span class="ratings-con" title="CashPilot does not run PassiveApp: you use the provider&#x27;s own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run PassiveApp: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
 | <a href="#proxyrack">ProxyRack</a> | F | 3 of 20 | 8 | <span class="ratings-con" title="ProxyRack&#x27;s help centre says removing a device takes that device&#x27;s earnings off your account, and they come back only if the same device is added again.">ProxyRack's help centre says removing a device takes that device's earnings off your account, and they come back only if the same device is added again.</span> | 2026-11-04 |
 | <a href="#salad">Salad</a> | F | 3 of 20 | 8 | <span class="ratings-con" title="CashPilot does not run Salad: you use the provider&#x27;s own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
-| <a href="#gradient">Gradient Network</a> | F | 2 of 20 | 6 | <span class="ratings-con" title="The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards.">The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards.</span> | 2026-11-04 |
 | <a href="#nodepay">Nodepay</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.">In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.</span> | 2026-11-04 |
 | <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="UpRock&#x27;s help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.">UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.</span> | 2026-11-04 |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="The extension earns points; no token distribution to node operators had been confirmed by October 2026.">The extension earns points; no token distribution to node operators had been confirmed by October 2026.</span> | 2026-11-04 |
@@ -1055,36 +1054,6 @@ What a cited con or pro may rest on:
 **Pros**
 
 - Several Trustpilot reviewers in October and November 2026 report PayPal cash-outs arriving quickly, some more than once; one reviewer in the same period says repeated cash-out attempts failed. [Source](https://www.trustpilot.com/review/salad.com), checked 2026-11-04.
-
-<a id="gradient"></a>
-
-### Gradient Network
-
-**Grade F**, 2 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Gradient Network](guides/gradient.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | No token has launched, so nothing has been paid out to judge. |
-| Payout terms | Poor | No token, launch date or conversion rate announced |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair | Own app or extension, CashPilot cannot deploy or update it |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Not documented. |
-| Support | Unknown | Chrome Web Store reviews report login and connection problems; we found no pattern about tickets. |
-| Earnings realism | Poor | Sentry Node points ended 28 August 2025, no rewards now |
-| Longevity | Fair | Funding round in June 2025, a young project |
-
-**Cons**
-
-- The Sentry Node points program ended on 28 August 2025, and Sentry nodes no longer earn rewards. [Source](https://boxmining.com/gradient-network-token-airdrop-guide/), checked 2026-11-04.
-- Gradient has announced no token, launch date or conversion rate for the points already earned. [Source](https://airdroplet.com/airdrop/gradient-network), checked 2026-11-04.
-- Gradient's funding round was in June 2025; the project is young. [Source](https://boxmining.com/gradient-network-token-airdrop-guide/), checked 2026-11-04.
-- CashPilot does not run Gradient: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/gradient.yml), checked 2026-11-04.
-
-**Pros**
-
-- None found.
 
 <a id="nodepay"></a>
 

@@ -16,7 +16,7 @@ ProxyRack's Peer program lets you earn by sharing your bandwidth as part of thei
 | Per | device |
 | Minimum payout | $20 |
 | Payout frequency | On request |
-| Payment methods | Paypal, Crypto |
+| Payment methods | Paypal, Giftcard, Bank |
 
 > Residential IPs earn more than datacenter. Dashboard behind Cloudflare may complicate automated access.
 

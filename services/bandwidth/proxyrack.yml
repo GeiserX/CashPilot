@@ -65,7 +65,7 @@ requirements:
   min_storage: ""
 
 payment:
-  methods: [paypal, crypto]
+  methods: [paypal, giftcard, bank]
   minimum_payout: "$20"
   currency: USD
   frequency: "On request"
@@ -82,6 +82,10 @@ cashout:
   dashboard_url: "https://peer.proxyrack.com/dashboard"
   min_amount: 20.0
   currency: USD
+  notes: >-
+    Request the payout on the dashboard. ProxyRack reviews it within 72 hours,
+    then Tremendous emails you a reward to redeem as PayPal, a gift card or a
+    wire transfer. There is no crypto option.
 
 platforms: [docker, windows, macos, linux]
 

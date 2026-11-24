@@ -36,7 +36,7 @@ Setup and configuration for every service CashPilot supports.
 
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
-| [Bitping](bitping.md) | — | Docker | $5 | active |
+| [Bitping](bitping.md) | — | Docker | $0.05 | active |
 | [Bytebenefit](bytebenefit.md) | Residential IP | App only | $5 | active |
 | [Bytelixir](bytelixir.md) | Residential IP | App only | $5 | active |
 | [earn.cc](earncc.md) | Residential IP | App only | — | dead |
@@ -68,12 +68,12 @@ Setup and configuration for every service CashPilot supports.
 | [BlockMesh (Perceptron Network)](blockmesh.md) | Residential IP | App only | — | dropped |
 | [Dawn Internet](dawn.md) | Residential IP | App only | — | active |
 | [Deeper Network](deeper-network.md) | Residential IP | App only | — | active |
-| [GagaNode](gaganode.md) | — | App only | $5 | dropped |
-| [Gradient Network](gradient.md) | Residential IP | App only | — | active |
+| [GagaNode](gaganode.md) | — | App only | $5 | dead |
+| [Gradient Network](gradient.md) | Residential IP | App only | — | broken |
 | [Grass](grass.md) | Residential IP | App only | — | active |
 | [Helium](helium.md) | Residential IP | App only | — | active |
-| [Koii Network](koii.md) | — | App only | — | broken |
-| [Network3](network3.md) | — | App only | — | broken |
+| [Koii Network](koii.md) | — | App only | — | dead |
+| [Network3](network3.md) | — | App only | — | dead |
 | [Nodepay](nodepay.md) | Residential IP | App only | — | active |
 | [Noderr Micronodes](noderr.md) | — | App only | — | beta |
 | [Nodle](nodle.md) | — | App only | — | active |

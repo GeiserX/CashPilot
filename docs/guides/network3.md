@@ -1,12 +1,12 @@
 # Network3
 
-> **Category:** DePIN | **Status:** Broken
+> **Category:** DePIN | **Status:** Dead
 >
 > **Website:** [https://network3.io](https://network3.io)
 
 ## Description
 
-Network3 was a DePIN project focused on decentralized AI training and bandwidth sharing. The project's SSL certificate has expired and the platform appears to be non-functional. Status marked as broken due to certificate issues and possible project abandonment. Exercise caution before investing time or resources.
+Network3 was a DePIN project focused on decentralized AI training and bandwidth sharing. The project is gone: its old domain now redirects to an unrelated site, and its app and claim sites no longer answer.
 
 ## Earning Estimates
 
@@ -18,7 +18,7 @@ Network3 was a DePIN project focused on decentralized AI training and bandwidth 
 | Payout frequency |  |
 | Payment methods | Crypto |
 
-> Project appears inactive. SSL certificate expired. Do not expect any earnings.
+> Project gone. Do not expect any earnings.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ Sign up at [Network3](https://network3.io).
 
 ### 2. Not available in CashPilot
 
-CashPilot hides Network3 from the catalog and refuses to deploy it, because its catalog status is **Broken**. The catalog has no Docker image for it either.
+CashPilot hides Network3 from the catalog and refuses to deploy it, because its catalog status is **Dead**. The catalog has no Docker image for it either.
 
 ## Docker Configuration
 

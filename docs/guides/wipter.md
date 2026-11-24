@@ -16,7 +16,7 @@ Wipter is a bandwidth sharing platform available on Windows, Mac, Linux, and And
 | Per | device |
 | Minimum payout | $20 |
 | Payout frequency | On request |
-| Payment methods | Paypal, Crypto |
+| Payment methods | Crypto (USDT on BEP20) |
 
 > Claims up to $1/GB but real-world earnings are lower. Minimum payout $20. Earnings vary heavily by location and demand.
 
@@ -52,4 +52,4 @@ None. The catalog has no Docker image for Wipter.
 
 ## Cashing out
 
-Wipter has no web dashboard. Open the Wipter app, sign in, and request the payout there once your balance reaches $20.
+Wipter has no web dashboard. Open the Wipter app, sign in, and request the payout there once your balance reaches $20. Wipter pays only in USDT on BNB Smart Chain (BEP20), to the wallet you set in the app's Payments section; there is no PayPal option.

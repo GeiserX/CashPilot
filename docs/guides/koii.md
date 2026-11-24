@@ -1,12 +1,12 @@
 # Koii Network
 
-> **Category:** DePIN | **Status:** Broken
+> **Category:** DePIN | **Status:** Dead
 >
-> **Website:** [https://koii.network](https://koii.network)
+> **Website:** koii.network (now an unrelated online-casino site, not linked)
 
 ## Description
 
-Koii Network is a Solana-based DePIN for distributed data, storage, and compute tasks. Task operators post jobs, node operators execute them and earn KOII tokens. Currently paused.
+Koii Network was a Solana-based DePIN for distributed data, storage, and compute tasks. Task operators posted jobs, node operators executed them and earned KOII tokens. The project is gone: its domain now serves an unrelated site.
 
 ## Earning Estimates
 
@@ -18,7 +18,7 @@ Koii Network is a Solana-based DePIN for distributed data, storage, and compute 
 | Payout frequency | Per task |
 | Payment methods | Crypto |
 
-> Website says paused as of March 2026. Check back later.
+> Project gone. Do not expect any earnings.
 
 ## Requirements
 
@@ -34,11 +34,11 @@ Koii Network is a Solana-based DePIN for distributed data, storage, and compute 
 
 ### 1. Create an account
 
-Sign up at [Koii Network](https://koii.network).
+Not possible: koii.network now serves an unrelated online-casino site.
 
 ### 2. Not available in CashPilot
 
-CashPilot hides Koii Network from the catalog and refuses to deploy it, because its catalog status is **Broken**. The catalog has no Docker image for it either.
+CashPilot hides Koii Network from the catalog and refuses to deploy it, because its catalog status is **Dead**. The catalog has no Docker image for it either.
 
 ## Docker Configuration
 

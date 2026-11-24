@@ -14,7 +14,7 @@ Bitping is a decentralized network monitoring platform that pays you for running
 |--------|-------|
 | Monthly range | $0 - $5 (estimate) |
 | Per | device |
-| Minimum payout | $5 |
+| Minimum payout | $0.05 |
 | Payout frequency | On request |
 | Payment methods | Crypto |
 
@@ -22,7 +22,7 @@ Bitping is a decentralized network monitoring platform that pays you for running
 
 ## Cashing out
 
-Node earnings live on nodes.bitping.com; app.bitping.com is the API customer dashboard. Withdrawals are SOL only: type the Solana address into the request, processed within 24 hours.
+Node earnings live on nodes.bitping.com; app.bitping.com is the API customer dashboard. Withdrawals are SOL only: once the unpaid balance is more than $0.05, type the Solana address into the request, processed within 24 hours. A new or empty Solana wallet needs about 0.001 SOL in it first, for the network's rent minimum.
 
 ## Requirements
 
