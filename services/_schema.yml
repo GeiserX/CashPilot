@@ -148,6 +148,22 @@
 #                                        command that reads several costs only its checks
 #           means:   "..."             shown to the user
 #     Same rule as health_signals: only checks against answers you have seen.
+#   traffic_stall: (optional) alert when one running copy sends almost nothing while
+#     the service's other copies are busy: a client that stays connected but gets no
+#     work, which no log line or balance shows (app/traffic_stall.py). It compares
+#     the bytes each copy SENT per hour; received bytes also count broadcasts on the
+#     host's network. Checked every 5 minutes, one alert per copy, cleared when the
+#     copy carries traffic again. Alerts only: it never restarts anything. Needs two
+#     copies or more, on any boxes.
+#       share: 0.05                  (optional) a copy is low in an hour when it sent less
+#                                      than this share of the median of the other copies
+#       peer_min_mb_per_hour: 10     (optional) ...and that median was at least this many
+#                                      MB (million bytes), so a quiet hour for the whole
+#                                      service is no stall
+#       hours: 12                    (optional) ...in each of this many whole hours in a
+#                                      row, from 1 to 168
+#     Only for a service you have seen stall this way, where a working copy sends a
+#     steady amount every hour.
 #   advertised_address_env: ADDRESS  (optional) the env var holding the address
 #     the NETWORK dials this service back at ("host:port" or "host"). The
 #     worker copies that ONE variable's value into heartbeat container entries

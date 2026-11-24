@@ -101,6 +101,8 @@ COPY app/arch.py ./app/
 COPY app/catalog.py ./app/
 # catalog.py validates each entry's rating block with it (the rules ship in services/).
 COPY app/ratings.py ./app/
+# catalog.py validates each entry's docker.traffic_stall block with it.
+COPY app/traffic_stall.py ./app/
 COPY services/ ./services/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
