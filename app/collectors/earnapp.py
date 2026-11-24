@@ -86,7 +86,7 @@ class EarnAppCollector(BaseCollector):
                     params=api_params,
                 )
 
-                if resp.status_code == 403:
+                if resp.status_code in (401, 403):
                     return resp
 
                 resp.raise_for_status()
@@ -94,11 +94,12 @@ class EarnAppCollector(BaseCollector):
 
             resp = await self._retry(_fetch_balance)
 
-            if resp.status_code == 403:
+            if resp.status_code in (401, 403):
                 return EarningsResult(
                     platform=self.platform,
                     balance=0.0,
                     error="Authentication failed — check OAuth token and session cookie",
+                    error_kind=base.KIND_AUTH,
                 )
 
             data = resp.json()
@@ -128,4 +129,5 @@ class EarnAppCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=base.describe_exception(exc),
+                error_kind=base.classify_exception(exc),
             )
