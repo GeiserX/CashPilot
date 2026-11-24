@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://uprock.com](https://uprock.com)
+> **Website:** [uprock.com](https://link.uprock.com/i/33e8492e)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

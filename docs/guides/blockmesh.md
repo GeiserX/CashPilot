@@ -2,7 +2,7 @@
 
 > **Category:** DePIN | **Status:** Dropped
 >
-> **Website:** [https://blockmesh.xyz](https://blockmesh.xyz)
+> **Website:** blockmesh.xyz (no longer resolves. The project now runs as Perceptron Network, which CashPilot does not support. Not linked)
 
 ## Description
 
@@ -34,7 +34,7 @@ Formerly BlockMesh, now rebranded as Perceptron Network. A decentralized bandwid
 
 ### 1. Create an account
 
-Sign up at [BlockMesh (Perceptron Network)](https://blockmesh.xyz).
+Not offered: CashPilot dropped BlockMesh (Perceptron Network), and blockmesh.xyz no longer resolves.
 
 ### 2. Not available in CashPilot
 

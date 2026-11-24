@@ -1705,6 +1705,11 @@ const CP = (() => {
           items.push({ level: 'fail', tag: 'Docker unreachable', what: a.platform, why: escapeHtml(a.error), actions: `<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a> <a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>` });
           continue;
         }
+        // A running copy that carries almost no traffic: its own row says it runs, so only this says it idles.
+        if (a.kind === 'stall') {
+          items.push({ level: 'warn', tag: 'Almost no traffic', what: a.platform, why: escapeHtml(a.error) });
+          continue;
+        }
         if (a.kind !== 'missing') continue;
         const svc = services.find(s => s.slug === a.platform);
         let actions = '';
@@ -1840,7 +1845,7 @@ const CP = (() => {
   let _attentionDrawSeq = 0;
   function attentionAlertsKey(alerts) {
     return JSON.stringify((alerts || [])
-      .filter(a => a.kind === 'missing' || a.kind === 'proxied' || a.kind === 'docker')
+      .filter(a => a.kind === 'missing' || a.kind === 'stall' || a.kind === 'proxied' || a.kind === 'docker')
       .map(a => [a.kind, a.platform, a.error]));
   }
   function refreshAttentionOnAlertChange(alerts, read = ++_attentionReads) {
@@ -2111,11 +2116,13 @@ const CP = (() => {
     const details = svc.instance_details || [];
     const isMulti = details.length > 1;
 
-    // Service name — linked to dashboard for deployed services, referral URL otherwise
+    // Service name — linked to the provider dashboard, or the website when the catalog has none.
+    // Every row here is deployed or marked external, so its user nearly always has an account;
+    // one who deployed first (MystNodes) still finds Sign Up in the service's detail dialog.
     const name = escapeHtml(svc.name);
     const dashUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
-    const nameLink = dashUrl || svc.referral_url;
-    const nameTitle = dashUrl ? 'Open dashboard' : 'Referral link';
+    const nameLink = dashUrl;
+    const nameTitle = 'Open dashboard';
     const nameHtml = nameLink
       ? `<a href="${escapeHtml(nameLink)}" target="_blank" rel="noopener" title="${nameTitle}" class="svc-name">${name}</a>`
       : `<span class="svc-name">${name}</span>`;
@@ -3565,16 +3572,18 @@ const CP = (() => {
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
       : svc.website || '#';
-    const linkUrl = isDeployed && dashboardUrl ? dashboardUrl : signupUrl;
-    const linkLabel = isDeployed && dashboardUrl ? 'Dashboard' : 'Sign Up';
+    // Sign Up stays on a deployed service: a deploy does not prove an account
+    // (a MystNodes node runs before anyone signs up), and the referral only
+    // counts through this link. The dashboard sits beside it.
+    const dashboardLink = isDeployed && dashboardUrl
+      ? `<a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Dashboard</a>`
+      : '';
 
     // Manual-only services: show signup link + earnings tracking notice + any env fields
     if (svc.manual_only) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
       const manualEnvFields = envInputFields(svc, svc.docker && svc.docker.env);
-      const manualBtnLabel = isDeployed && dashboardUrl
-        ? `Dashboard for ${escapeHtml(svc.name)}`
-        : `Sign Up for ${escapeHtml(svc.name)}`;
+      const manualBtnLabel = `Sign Up for ${escapeHtml(svc.name)}`;
       return `
       <div class="card setup-card" id="setup-${svc.slug}">
         <div class="card-header">
@@ -3588,15 +3597,16 @@ const CP = (() => {
           <p class="setup-line">
             Install the app on your device, then CashPilot will track your earnings automatically.
           </p>
-          <a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+          <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
             ${manualBtnLabel}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
+          ${dashboardLink}
           <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
             Setup guide
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
-          ${isDeployed && dashboardUrl ? '' : referralNote(svc)}
+          ${referralNote(svc)}
           ${manualEnvFields ? `<div class="setup-fields">${manualEnvFields}</div>` : ''}
         </div>
       </div>`;
@@ -3613,17 +3623,18 @@ const CP = (() => {
 
       <div class="setup-body">
         <p class="setup-line setup-links">
-          ${isDeployed && dashboardUrl ? '' : `<span>New to ${escapeHtml(svc.name)}?</span>`}
-          <a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-            ${linkLabel}
+          <span>New to ${escapeHtml(svc.name)}?</span>
+          <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+            Sign Up
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
+          ${dashboardLink}
           <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
             Setup guide
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
         </p>
-        ${isDeployed && dashboardUrl ? '' : referralNote(svc)}
+        ${referralNote(svc)}
         <p class="setup-line muted">Already have an account? Enter your credentials below.</p>
       </div>
 
@@ -4401,19 +4412,20 @@ const CP = (() => {
         Setup guide
       </a>`;
 
-    // --- Dashboard link for deployed services, Sign Up for non-deployed ---
+    // --- Provider dashboard for deployed services, and Sign Up always ---
+    // A deploy does not prove an account (a MystNodes node runs before anyone
+    // signs up), and the referral only counts through this link.
     if (isDeployed && dashboardUrl) {
       html += `
         <a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
           Provider dashboard
         </a>`;
-    } else if (!isDeployed) {
-      html += `
-        <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-          Sign up or log in to ${escapeHtml(svc.name)}
+    }
+    html += `
+        <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn ${isDeployed ? 'btn-ghost' : 'btn-primary'} btn-sm">
+          ${isDeployed ? `New to ${escapeHtml(svc.name)}? Sign up` : `Sign up or log in to ${escapeHtml(svc.name)}`}
         </a>
         ${referralNote(svc)}`;
-    }
     html += `</div>`;
 
     // --- Deploy section (worker-aware) ---
@@ -6180,6 +6192,8 @@ const CP = (() => {
         const isProxied = a.kind === 'proxied';
         // A worker that cannot reach Docker: the fix is on that machine, never a credential.
         const isDocker = a.kind === 'docker';
+        // A running copy that carries almost no traffic: look at it, never a credential.
+        const isStall = a.kind === 'stall';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -6198,6 +6212,7 @@ const CP = (() => {
           : isProxyCap ? ' — traffic cap'
           : isProxied ? ' — proxied copy down'
           : isDocker ? ' — Docker unreachable'
+          : isStall ? ' — almost no traffic'
           : isDisabled ? ' — account disabled'
           : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
           : isQuiet ? ' — gone quiet'
@@ -6208,7 +6223,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isProxied && !isDocker;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isStall && !isProxied && !isDocker;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">

@@ -95,7 +95,7 @@ Setup and configuration for every service CashPilot supports.
 | [io.net](ionet.md) | GPU | App only | — | active |
 | [Nosana](nosana.md) | GPU, Storage 50GB, 50 Mbps | App only | — | active |
 | [Salad](salad.md) | GPU, Residential IP | App only | $5 | active |
-| [Vast.ai](vast-ai.md) | GPU, Storage 100GB, 100 Mbps | App only | $25 | active |
+| [Vast.ai](vast-ai.md) | GPU, Storage 100GB, 100 Mbps | App only | $20 | active |
 
 ## Storage
 

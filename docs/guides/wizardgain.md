@@ -5,7 +5,7 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Dead
 >
-> **Website:** [https://wizardgain.com](https://wizardgain.com)
+> **Website:** wizardgain.com (no longer resolves, not linked)
 
 ## Description
 
@@ -37,7 +37,7 @@ WizardGain turns your unused internet bandwidth into a recurring revenue stream.
 
 ### 1. Create an account
 
-Sign up at [WizardGain](https://wizardgain.com).
+Not possible: wizardgain.com no longer resolves.
 
 ### 2. Deploy with CashPilot
 

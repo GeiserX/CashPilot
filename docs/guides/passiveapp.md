@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://passiveapp.com](https://passiveapp.com)
+> **Website:** [passiveapp.com](https://passiveapp.com/i/bqpC4M)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

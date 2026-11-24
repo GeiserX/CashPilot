@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://traffmonetizer.io](https://traffmonetizer.io)
+> **Website:** [traffmonetizer.io](https://traffmonetizer.io/?aff=2111758)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://nodepay.ai](https://nodepay.ai)
+> **Website:** [nodepay.ai](https://app.nodepay.ai/register?ref=0wzzyznen64j9zx)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

@@ -77,6 +77,7 @@ from app import (
     setup_token,
     state_backup,
     step_up,
+    traffic_stall,
     update_check,
     usage,
     version,
@@ -493,6 +494,7 @@ async def _run_health_check() -> None:
         await _account_disabled_check(statuses)
         await _missing_deployment_check(workers)
         await _proxied_copy_check(workers)
+        await _traffic_stall_check(workers, statuses)
         await _worker_docker_check(workers)
     except Exception as exc:
         logger.warning("Health check skipped: %s", exc)
@@ -1165,6 +1167,112 @@ def _proxied_alert_text(fault: dict[str, Any], since: datetime) -> tuple[str, st
     )
 
 
+# The bell entries the traffic-stall check stands behind, keyed by alert subject
+# (container@worker id) and re-added after every collection like the
+# container-down ones.
+_stall_bell: dict[str, dict[str, Any]] = {}
+# One push per stall. The row is cleared when the copy carries traffic again or
+# no longer runs, and that is what re-arms it.
+_STALL_COOLDOWN_HOURS = 24 * 365 * 10
+# What "no longer runs" means for a copy its box still lists, as for the
+# container-down check. Restarting is not stopped: a crash loop lists the copy
+# as restarting between runs, and clearing there re-armed a push on each run.
+_STALL_STOPPED_STATES = ("exited", "dead")
+
+
+def _stall_text(name: str, box: str, stall: traffic_stall.Stall, hours: int) -> tuple[str, str]:
+    """The push title and the message of one stalled copy.
+
+    What to do comes before the last sentence: the bell shows only the first
+    _MAX_ALERT_ERROR_LEN characters.
+    """
+
+    def mb(rate: float) -> str:
+        return "under 0.1 MB" if rate < 0.1 * traffic_stall.MB else f"{rate / traffic_stall.MB:.1f} MB"
+
+    return (
+        f"CashPilot: {name} on {box} carries almost no traffic",
+        f"{name} on {box} has sent {mb(stall.sent)} an hour for {hours} hours; its other copies sent "
+        f"{mb(stall.peers)} an hour. It runs but gets almost no work: look at its logs, and restart it from the "
+        "dashboard if this lasts. CashPilot does not restart it by itself.",
+    )
+
+
+async def _traffic_stall_check(workers: list[dict[str, Any]], statuses: list[dict[str, Any]]) -> None:
+    """Alert when a running copy carries almost no traffic while the service's other copies are busy.
+
+    Only for services whose catalog entry declares docker.traffic_stall
+    (app/traffic_stall.py). The container is up and the account still earns
+    from the other copies, so no other check sees it. Alerts only: it never
+    restarts anything. An alert clears when its copy carries traffic again,
+    is stopped or gone from its box, its box is removed, or its service no
+    longer declares the check. A copy that cannot be judged neither raises nor
+    clears: its box is offline, cannot read Docker or sent a partial list, Docker
+    lists it as restarting (a crash loop would otherwise push on every run), an
+    hour has no reading, or the other copies are quiet too. Never raises.
+    """
+    global _collector_alerts
+    try:
+        specs = {svc["slug"]: spec for svc in catalog.get_services() if (spec := traffic_stall.spec_of(svc))}
+        now = time.time()
+        stalled: dict[traffic_stall.Copy, tuple[str, traffic_stall.Stall, int]] = {}
+        carrying: set[traffic_stall.Copy] = set()
+        if specs:
+            longest = max(spec.hours for spec in specs.values())
+            rows = await database.get_usage_hourly(traffic_stall.last_whole_hour(now) - 3600 * (longest - 1))
+            for slug, spec in specs.items():
+                found, busy = traffic_stall.judge([r for r in rows if r.get("slug") == slug], spec, now)
+                stalled.update({copy: (slug, stall, spec.hours) for copy, stall in found.items()})
+                carrying |= busy
+        boxes = {str(w.get("id")): w for w in workers}
+        online = {wid: w for wid, w in boxes.items() if w.get("status") == "online"}
+        # A box whose list may leave out a copy that still runs there.
+        unsure = {
+            wid for wid, w in online.items() if placement.is_blind(w) or _heartbeat_partial(placement.system_info(w))
+        }
+        running = {
+            (s.get("_worker_id"), str(s.get("name"))): s.get("slug") for s in statuses if s.get("status") == "running"
+        }
+        listed = {(s.get("_worker_id"), str(s.get("name"))): s.get("slug") for s in statuses}
+        stopped = {
+            (s.get("_worker_id"), str(s.get("name"))) for s in statuses if s.get("status") in _STALL_STOPPED_STATES
+        }
+
+        alerting: dict[str, tuple[str, str]] = {}
+        for (wid, container), (slug, stall, hours) in stalled.items():
+            if running.get((wid, container)) != slug or str(wid) not in online:
+                continue
+            name = (catalog.get_service(slug) or {}).get("name") or slug
+            box = str(online[str(wid)].get("name") or wid)
+            alerting[f"{container}@{wid}"] = _stall_text(name, box, stall, hours)
+
+        for subject in await database.get_alert_subjects("stall") | set(_stall_bell):
+            if subject in alerting:
+                continue
+            container, _, wid_text = subject.rpartition("@")
+            worker = boxes.get(wid_text)
+            if worker is not None:
+                if wid_text not in online or wid_text in unsure:
+                    continue  # Its box is offline or cannot list what runs: it cannot say.
+                copy = (worker.get("id"), container)
+                if running.get(copy) in specs and copy not in carrying:
+                    continue  # Still running and still quiet, or undecided.
+                if listed.get(copy) in specs and copy not in running and copy not in stopped:
+                    continue  # Restarting (a crash loop) or caught mid-start: not stopped.
+            await database.clear_alerts("stall", subject)
+            _stall_bell.pop(subject, None)
+            logger.info("%s carries traffic again, stopped or is gone; cleared its stall alert", subject)
+
+        for subject, (title, message) in alerting.items():
+            _stall_bell[subject] = {"kind": "stall", "platform": subject.rpartition("@")[0], "error": message}
+            if alert_id := await database.record_alert("stall", subject, message, cooldown_hours=_STALL_COOLDOWN_HOURS):
+                _spawn(_push_alert("stall", subject, title, message, alert_id))
+        _collector_alerts = [a for a in _collector_alerts if a.get("kind") != "stall"]
+        _collector_alerts.extend(_stall_bell.values())
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must not break the health check
+        logger.warning("Traffic-stall check failed: %s", exc)
+
+
 # When each worker was first seen unable to reach Docker, keyed by client_id.
 _docker_first_seen: dict[str, datetime] = {}
 # The bell entries the Docker check stands behind, keyed by client_id and
@@ -1671,6 +1779,7 @@ async def _warm_collector_alerts() -> None:
             "account_disabled",
             "proxied",
             "docker",
+            "stall",
         ):
             continue
         key = f"{alert['kind']}:{alert['subject']}"
@@ -1718,12 +1827,12 @@ async def _warm_collector_alerts() -> None:
     for e in restored:
         if e["kind"] == "docker":
             _docker_bell.setdefault(e.get("client_id") or e["platform"], e)
-    # Likewise a proxied-copy alert, under the container name its subject carries.
+    # Likewise a proxied-copy or a traffic-stall alert, under the container name its subject carries.
     for e in restored:
-        if e["kind"] == "proxied":
+        if e["kind"] in ("proxied", "stall"):
             subject = e["platform"]
             e["platform"] = subject.rpartition("@")[0] or subject
-            _proxied_bell.setdefault(subject, e)
+            (_proxied_bell if e["kind"] == "proxied" else _stall_bell).setdefault(subject, e)
     # A restart must not make the bell claim nothing has ever been checked. Any
     # stored alert, or any earnings row, is proof that a collection ran.
     global _collection_has_run
@@ -2270,6 +2379,7 @@ async def _run_collection() -> None:
             alerts.extend(_container_down_bell.values())
             alerts.extend(_missing_bell.values())
             alerts.extend(_proxied_bell.values())
+            alerts.extend(_stall_bell.values())
             alerts.extend(_docker_bell.values())
             alerts.extend(_activity_bell)
             _collector_alerts = _with_account_disabled(alerts)
@@ -2682,7 +2792,8 @@ async def _sweep_windowed_signals() -> None:
     global _windowed_hints, _signal_hints, _probe_hints, _probe_state
     listed_at = time.time()
     try:
-        containers = await _get_all_worker_containers()
+        listed = await database.list_workers()
+        containers = await _get_all_worker_containers(listed)
     except Exception as exc:
         logger.warning("Windowed signal check skipped: %s", exc)
         return
@@ -2692,7 +2803,8 @@ async def _sweep_windowed_signals() -> None:
     probe_state: dict[tuple[str, int, int], tuple[str, dict[int, tuple[bool, float]]]] = {}
     probe_rows: dict[int, list[dict[str, Any]] | None] = {}
     workers: dict[int, dict[str, Any] | None] = {}
-    for c in containers:
+    copies = [(c, _routed_proxy_id(c), int(c.get("instance") or 1)) for c in containers] + _proxied_copies(listed)
+    for c, proxy_id, instance in copies:
         slug = egress.container_slug(c)
         wid = c.get("_worker_id")
         if not slug or wid is None or str(c.get("status", "")).lower() != "running":
@@ -2701,9 +2813,14 @@ async def _sweep_windowed_signals() -> None:
         signals = [s for s in producer_state.signals_for(service) if producer_state.is_windowed(s)]
         probe = ((service or {}).get("docker") or {}).get("health_probe")
         spec = probe if isinstance(probe, dict) and not health_probe.spec_errors(probe) else None
+        if instance >= PROXIED_COPY_KEY:
+            # No page shows a proxied copy's hints, so only a signal that restarts
+            # it is worth hours of its logs; and the worker probes only the
+            # service's own copies (health_probe.read_all).
+            signals = [s for s in signals if s.get("restart") is True]
+            spec = None
         if not signals and spec is None:
             continue
-        instance = int(c.get("instance") or 1)
         key = (slug, wid, instance)
 
         def _keep(k: tuple[str, int, int] = key, probe_spec: dict[str, Any] | None = spec) -> None:
@@ -2735,10 +2852,15 @@ async def _sweep_windowed_signals() -> None:
                     "match": producer_state.window_filter(signal),
                     "since_hours": float(signal["window_hours"]),
                 }
-                if instance > 1:
+                path = f"/api/containers/{slug}/logs"
+                if proxy_id is not None:
+                    # A proxied copy is not a container of the service: the
+                    # worker's container routes answer 404 for it.
+                    path = f"/api/proxied/{slug}/{proxy_id}/logs"
+                elif instance > 1:
                     params["instance"] = instance
                 # Hours of a chatty node's logs: seconds on a fast box, more on a Pi.
-                resp = await _proxy_to_worker(wid, "GET", f"/api/containers/{slug}/logs", params=params, timeout=120)
+                resp = await _proxy_to_worker(wid, "GET", path, params=params, timeout=120)
                 # A worker older than the filter returns the plain tail, which is
                 # not the window: no verdict from it.
                 if not resp.get("filtered"):
@@ -2751,9 +2873,11 @@ async def _sweep_windowed_signals() -> None:
             logged = _signal_hints.get(key, [])
         if logged:
             signal_hints[key] = logged
-        # A routed copy is CashPilot's own proxied copy: its row names the node in deployed_by.
-        if restart_due and (c.get("deployed_by") in constants.CASHPILOT_DEPLOYED or c.get("route")):
-            await _auto_restart(key, logged, listed_at)
+        # A proxied copy is always CashPilot's own; a routed one's row names the node in deployed_by.
+        if restart_due and (
+            proxy_id is not None or c.get("deployed_by") in constants.CASHPILOT_DEPLOYED or c.get("route")
+        ):
+            await _auto_restart(key, logged, listed_at, proxy_id)
         probed: list[str] = []
         if spec is not None:
             definition = health_probe.fingerprint(spec)
@@ -2825,7 +2949,61 @@ def _copy_lock(key: tuple[str, int, int]) -> asyncio.Lock:
     return _copy_locks.setdefault(key, asyncio.Lock())
 
 
-async def _auto_restart(key: tuple[str, int, int], means: list[str], listed_at: float) -> None:
+#: The sweep keys a proxied copy (slug, worker id, PROXIED_COPY_KEY + proxy id), apart
+#: from the service's own copies, which count from 1. A routed service's copy keeps
+#: copy 1: it is the service on that box, and its dashboard row reads that key.
+PROXIED_COPY_KEY = 1000
+
+
+def _routed_proxy_id(row: dict[str, Any]) -> int | None:
+    """The proxy a routed service's row (_get_all_worker_containers) runs through; None for any other row."""
+    route = row.get("route")
+    proxy_id = route.get("proxy_id") if isinstance(route, dict) else None
+    return proxy_id if isinstance(proxy_id, int) and not isinstance(proxy_id, bool) else None
+
+
+def _proxied_copies(workers: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int, int]]:
+    """Each running proxied copy the online workers' heartbeats list, as (row, proxy id, copy key) for the sweep.
+
+    Not a routed service's copy, which the containers list already holds, and
+    not one its owner or the traffic cap stopped (``held``).
+    """
+    out: list[tuple[dict[str, Any], int, int]] = []
+    for w in workers:
+        if w.get("status") != "online" or w.get("id") is None:
+            continue
+        info = _safe_json(w.get("system_info", "{}"), {})
+        if info.get("routes_read") is False:
+            # The worker could not say which entries are a routed service, so a
+            # routed one would be keyed apart from its copy-1 cooldown and could
+            # restart twice in one. Wait for a heartbeat that read its routes.
+            continue
+        for e in proxies.proxied_entries({"system_info": info}):
+            pid = e.get("proxy_id")
+            if e.get("routed") is True or e.get("held") is True or not isinstance(pid, int) or isinstance(pid, bool):
+                continue
+            row = {"slug": egress.container_slug(e), "status": e.get("status"), "_worker_id": w["id"]}
+            out.append((row, pid, PROXIED_COPY_KEY + pid))
+    return out
+
+
+async def _restart_proxied(proxy_id: int, worker_id: int, slug: str) -> None:
+    """Restart a proxied copy where it is (worker: proxy_tunnel.restart), under the lock its Stop and Start take.
+
+    Never a stop and a start: a start that failed after the stop would leave
+    the copy stopped for good. The worker refuses a copy its owner or the cap
+    stopped.
+    """
+    proxy = await _proxy_or_404(proxy_id)
+    async with _proxy_copy_lock(proxy_id, worker_id, slug):
+        await _proxy_worker_call(
+            worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/restart", proxy["definition"], timeout=90
+        )
+
+
+async def _auto_restart(
+    key: tuple[str, int, int], means: list[str], listed_at: float, proxy_id: int | None = None
+) -> None:
     """Restart a running copy stuck in a state its catalog says a restart clears. Never raises.
 
     A ProxyBase client that could not find a relay at its start keeps dialing a
@@ -2834,13 +3012,15 @@ async def _auto_restart(key: tuple[str, int, int], means: list[str], listed_at: 
     not help (the box has no internet) is not restarted over and over. A copy
     the owner stopped after the sweep listed it as running is left stopped: the
     Stop and this restart take the same lock, so a Stop that comes during the
-    restart runs after it.
+    restart runs after it. A proxied copy (``proxy_id``, a routed service's
+    too) restarts where it is (_restart_proxied).
     """
     slug, wid, instance = key
+    copy = f"copy {instance}" if instance < PROXIED_COPY_KEY else f"copy through proxy {instance - PROXIED_COPY_KEY}"
     async with _copy_lock(key):
         stopped_at = _owner_stopped_at.get(key)
         if stopped_at is not None and stopped_at >= listed_at:
-            logger.info("Left %s copy %s on worker %s stopped: the owner stopped it", slug, instance, wid)
+            logger.info("Left %s %s on worker %s stopped: the owner stopped it", slug, copy, wid)
             return
         now = time.time()
         last = _auto_restarted_at.get(key)
@@ -2848,12 +3028,26 @@ async def _auto_restart(key: tuple[str, int, int], means: list[str], listed_at: 
             return
         _auto_restarted_at[key] = now
         try:
-            await _command_and_record(wid, "restart", slug, instance)
+            if proxy_id is None:
+                await _command_and_record(wid, "restart", slug, instance)
+            else:
+                try:
+                    await _restart_proxied(proxy_id, wid, slug)
+                except HTTPException as exc:
+                    # A 504: the worker got it and may have restarted the copy, so
+                    # record it as _command_and_record does, or an older stop stays
+                    # the copy's last event and a later crash is never alerted.
+                    if exc.status_code == 504 and instance < PROXIED_COPY_KEY:
+                        await database.record_health_event(slug, "restart", worker_id=wid, instance=instance)
+                    raise
+                if instance < PROXIED_COPY_KEY:
+                    # A routed service's copy is the service's copy 1: recorded as its Restart button records it.
+                    await database.record_health_event(slug, "restart", worker_id=wid, instance=instance)
         except Exception as exc:  # noqa: BLE001 - the next try comes after the cooldown
-            logger.warning("Could not restart %s copy %s on worker %s by itself: %s", slug, instance, wid, exc)
+            logger.warning("Could not restart %s %s on worker %s by itself: %s", slug, copy, wid, exc)
             return
     metrics.record_container_lifecycle("restart", slug)
-    logger.warning("Restarted %s copy %s on worker %s by itself: %s", slug, instance, wid, " ".join(means)[:300])
+    logger.warning("Restarted %s %s on worker %s by itself: %s", slug, copy, wid, " ".join(means)[:300])
 
 
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:

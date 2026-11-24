@@ -5,7 +5,7 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Dead
 >
-> **Website:** [https://earn.cc](https://earn.cc)
+> **Website:** earn.cc (no longer resolves, not linked)
 
 ## Description
 
@@ -37,7 +37,7 @@ earn.cc is a bandwidth monetization service similar to Honeygain. Desktop GUI on
 
 ### 1. Create an account
 
-Sign up at [earn.cc](https://earn.cc).
+Not possible: earn.cc no longer resolves.
 
 ### 2. Deploy with CashPilot
 

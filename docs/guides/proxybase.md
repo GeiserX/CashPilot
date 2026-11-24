@@ -2,7 +2,11 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://proxybase.org](https://proxybase.org)
+> **Website:** [proxybase.org](https://peer.proxybase.org/dashboard/signup?referral=nXzS3c6iTO)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+>
+> Sign up with an email and a password. The Google sign-in does not send the referral code.
 
 ## Description
 
@@ -39,7 +43,7 @@ The site lists a $0.20 minimum, and a request under $1 went through in October 2
 
 ### 1. Create an account
 
-Sign up at [ProxyBase](https://peer.proxybase.org?referral=nXzS3c6iTO). If the referral field is not pre-filled, enter referral code `nXzS3c6iTO` in the **Referral Code** box before creating your account.
+Sign up at [ProxyBase](https://peer.proxybase.org/dashboard/signup?referral=nXzS3c6iTO). If the referral field is not pre-filled, enter referral code `nXzS3c6iTO` in the **Referral Code** box before creating your account. Create the account with an email and a password, not with Google: the Google sign-in does not send the referral code.
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
@@ -77,7 +81,7 @@ Fix: **Remove** the ProxyBase service, then **Deploy** it again from the catalog
 
 The client asks ProxyBase for a relay once, when it starts. If that request fails, it uses a built-in default relay that no longer answers, and it keeps retrying that relay without asking again. It earns nothing, but the container still looks healthy. A restart fixes it.
 
-CashPilot notices after half an hour of retries with no `Balance:` line. It shows the copy under **Needs fixing** and restarts the copy itself, at most once every 6 hours. If the warning stays after a restart, check that the box can reach the internet.
+CashPilot notices after half an hour of retries with no `Balance:` line. It shows the copy under **Needs fixing** and restarts the copy itself, at most once every 6 hours. It also restarts a copy through a proxy (the **Proxies** page) the same way, but that copy does not show under **Needs fixing**. If the warning stays after a restart, check that the box can reach the internet.
 
 ### Container loops on `Missing ID and NAME`
 

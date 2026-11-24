@@ -11,6 +11,7 @@ AUTO_RESTART_COOLDOWN_S.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -56,10 +57,24 @@ def _stop_patches(stops):
     )
 
 
-def _sweep(logs, *, containers=(RUNNING,), restart_error=None, read_error=None, during_read=None):
+def _sweep(
+    logs, *, containers=(RUNNING,), workers=(), restart_error=None, read_error=None, during_read=None, reads=None
+):
+    """One sweep. Returns the restarts: ``_command_and_record``'s, and a proxied copy's as ("in place", ...).
+
+    ``workers`` are the worker rows whose heartbeats list proxied copies;
+    ``reads`` collects each log read's path and params.
+    """
     restarts = []
 
     async def _proxy(wid, method, path, params=None, **kw):
+        if method == "POST" and path.endswith("/restart"):
+            restarts.append(("in place", wid, path))
+            if restart_error:
+                raise restart_error
+            return {"status": "restarted"}
+        if reads is not None:
+            reads.append((path, params))
         if during_read:
             await during_read()
         if read_error:
@@ -73,9 +88,12 @@ def _sweep(logs, *, containers=(RUNNING,), restart_error=None, read_error=None, 
         return {"status": "restarted"}
 
     with (
+        patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=list(workers)),
         patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=list(containers)),
         patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=WORKER),
         patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
+        patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"id": 3, "definition": {}}),
+        patch("app.main.database.record_health_event", new_callable=AsyncMock),
         patch("app.main._proxy_to_worker", side_effect=_proxy),
         patch("app.main._command_and_record", side_effect=_command),
     ):
@@ -161,10 +179,183 @@ def test_a_container_cashpilot_did_not_deploy_is_never_restarted():
     assert main._windowed_hints[KEY], "it is still flagged"
 
 
-def test_a_routed_copy_on_a_named_worker_is_restarted():
-    """A routed row names the node in deployed_by; it is CashPilot's own proxied copy all the same."""
+def test_a_routed_copy_on_a_named_worker_is_restarted_in_place():
+    """A routed row names the node in deployed_by; it is CashPilot's own proxied copy all the same.
+
+    Its logs and its restart go through its proxied copy (the container routes
+    answer 404 for it), and the restart is never a stop and a start."""
     routed = {**RUNNING, "deployed_by": "nas", "route": {"proxy_id": 3, "tunnel_status": "running"}}
-    assert _sweep(STUCK, containers=(routed,)) == [(7, "restart", "proxybase", 1)]
+    reads = []
+    assert _sweep(STUCK, containers=(routed,), reads=reads) == [("in place", 7, "/api/proxied/proxybase/3/restart")]
+    assert [path for path, _ in reads] == ["/api/proxied/proxybase/3/logs"]
+    assert main._windowed_hints[KEY], "its dashboard row (copy 1) shows the hint"
+    assert KEY in main._auto_restarted_at
+
+
+# ---------------------------------------------------------------------------
+# A proxied copy (the Proxies page) is judged and restarted where it is
+# ---------------------------------------------------------------------------
+
+
+def _proxied(**entry):
+    """A worker row, as the database returns it, whose heartbeat lists one proxied copy of proxybase through proxy 3."""
+    copy = {"slug": "proxybase", "proxy_id": 3, "status": "running", "held": False, **entry}
+    return {**WORKER, "system_info": json.dumps({"proxied": [copy]})}
+
+
+PROXIED_KEY = ("proxybase", 7, main.PROXIED_COPY_KEY + 3)
+
+
+def test_a_stuck_proxied_copy_is_restarted_in_place_once(caplog):
+    reads = []
+    clock = {"now": 1_000_000.0}
+    with patch.object(main.time, "time", side_effect=lambda: clock["now"]):
+        assert _sweep(STUCK, containers=(), workers=(_proxied(),), reads=reads) == [
+            ("in place", 7, "/api/proxied/proxybase/3/restart")
+        ]
+        clock["now"] += 1800
+        assert _sweep(STUCK, containers=(), workers=(_proxied(),)) == [], "once per cooldown"
+    path, params = reads[0]
+    assert path == "/api/proxied/proxybase/3/logs"
+    assert params["since_hours"] == 1.0 and "retrying in 5 seconds" in params["match"]
+    assert "instance" not in params
+    assert main._windowed_hints[PROXIED_KEY]
+    assert "Restarted proxybase copy through proxy 3 on worker 7 by itself" in caplog.text
+
+
+def test_a_proxied_copy_is_never_stopped_and_started():
+    """A stop marks the copy held: a start that failed after it would leave it stopped for good."""
+    with patch("app.main._proxied_command", new_callable=AsyncMock) as command:
+        assert len(_sweep(STUCK, containers=(), workers=(_proxied(),))) == 1
+    command.assert_not_called()
+
+
+def test_a_working_proxied_copy_is_left_alone():
+    assert _sweep(WORKING, containers=(), workers=(_proxied(),)) == []
+
+
+def test_a_held_proxied_copy_is_never_read_or_restarted():
+    reads = []
+    assert _sweep(STUCK, containers=(), workers=(_proxied(held=True),), reads=reads) == []
+    assert reads == []
+
+
+def test_a_stopped_or_offline_proxied_copy_is_never_restarted():
+    assert _sweep(STUCK, containers=(), workers=(_proxied(status="exited"),)) == []
+    assert _sweep(STUCK, containers=(), workers=({**_proxied(), "status": "offline"},)) == []
+
+
+def test_a_routed_entry_is_judged_once_as_its_row():
+    """The heartbeat lists a routed service's copy among the proxied ones too; its row already stands for it."""
+    assert _sweep(STUCK, containers=(), workers=(_proxied(routed=True),)) == []
+
+
+def test_no_proxied_copy_is_judged_while_its_worker_cannot_read_its_routes():
+    """Without the routed flag a routed service's copy looks like a proxied one, keyed apart from its cooldown."""
+    reads = []
+    worker = {
+        **WORKER,
+        "system_info": json.dumps(
+            {"proxied": [{"slug": "proxybase", "proxy_id": 3, "status": "running"}], "routes_read": False}
+        ),
+    }
+    assert _sweep(STUCK, containers=(), workers=(worker,), reads=reads) == []
+    assert reads == []
+
+
+def test_a_routed_restart_that_timed_out_is_still_recorded():
+    """A 504: the worker may have restarted it, so the restart must replace an older stop, as for a direct copy."""
+    routed = {**RUNNING, "deployed_by": "nas", "route": {"proxy_id": 3, "tunnel_status": "running"}}
+    timed_out = main.HTTPException(status_code=504, detail="timed out")
+    with patch("app.main.database.record_health_event", new_callable=AsyncMock) as record:
+
+        async def _proxy(wid, method, path, params=None, **kw):
+            if method == "POST":
+                raise timed_out
+            return {"logs": STUCK, "filtered": True}
+
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
+            patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[routed]),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=WORKER),
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"id": 3, "definition": {}}),
+            patch("app.main._proxy_to_worker", side_effect=_proxy),
+        ):
+            asyncio.run(main._check_windowed_signals())
+    record.assert_awaited_once_with("proxybase", "restart", worker_id=7, instance=1)
+
+
+def test_a_proxied_copy_is_read_only_for_a_signal_that_restarts_it():
+    """No page shows a proxied copy's hints, so a signal that only warns is not worth hours of its logs.
+
+    And the worker probes only the service's own copies, so its probe is not asked either."""
+    copies = [
+        {"slug": "earnapp", "proxy_id": 3, "status": "running"},
+        {"slug": "mysterium", "proxy_id": 4, "status": "running"},
+    ]
+    assert catalog.get_service("mysterium")["docker"].get("health_probe"), "a service with a probe"
+    reads = []
+    worker = {**WORKER, "system_info": json.dumps({"proxied": copies})}
+    assert _sweep("Error: Handshake timeout", containers=(), workers=(worker,), reads=reads) == []
+    assert reads == []
+    assert main._windowed_hints == {}
+
+
+def test_an_older_worker_gives_a_proxied_copy_no_verdict():
+    """A worker from before the filter returns the plain tail, which is not the window."""
+    restarts = []
+
+    async def _proxy(wid, method, path, params=None, **kw):
+        if method == "POST":
+            restarts.append(path)
+        return {"logs": STUCK}
+
+    with (
+        patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[_proxied()]),
+        patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=WORKER),
+        patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
+        patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"id": 3, "definition": {}}),
+        patch("app.main._proxy_to_worker", side_effect=_proxy),
+    ):
+        asyncio.run(main._check_windowed_signals())
+    assert restarts == []
+    assert PROXIED_KEY not in main._windowed_hints
+
+
+def test_a_proxied_restart_the_worker_refuses_is_logged_and_never_raises(caplog):
+    refused = main.HTTPException(status_code=409, detail="cashpilot-proxybase-p3 was stopped by its owner")
+    assert len(_sweep(STUCK, containers=(), workers=(_proxied(),), restart_error=refused)) == 1
+    assert "Could not restart proxybase copy through proxy 3 on worker 7 by itself" in caplog.text
+    assert PROXIED_KEY in main._auto_restarted_at, "the next try waits for the cooldown"
+
+
+def test_a_proxied_restart_waits_for_the_copys_stop():
+    """The Proxies page Stop and this restart take the same lock: a restart asked during a Stop goes after it."""
+    order = []
+
+    async def _run():
+        lock = main._proxy_copy_lock(3, 7, "proxybase")
+        await lock.acquire()
+
+        async def _proxy(wid, method, path, **kw):
+            order.append("restart sent")
+            return {"status": "restarted"}
+
+        with (
+            patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"id": 3, "definition": {}}),
+            patch("app.main._proxy_to_worker", side_effect=_proxy),
+        ):
+            restart = asyncio.create_task(main._auto_restart(PROXIED_KEY, ["stuck"], 0.0, 3))
+            for _ in range(20):
+                await asyncio.sleep(0)
+            order.append("stop done")
+            lock.release()
+            await restart
+
+    asyncio.run(_run())
+    assert order == ["stop done", "restart sent"]
 
 
 def test_a_container_the_user_runs_by_hand_is_never_restarted():

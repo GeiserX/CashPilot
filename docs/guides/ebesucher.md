@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://www.ebesucher.com](https://www.ebesucher.com)
+> **Website:** [ebesucher.com](https://www.ebesucher.com/?ref=geiserx)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

@@ -2,7 +2,11 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://dawninternet.com](https://dawninternet.com)
+> **Website:** [dawninternet.com](https://dawninternet.com/?code=2QLQV97F)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+>
+> The website does not pass the code on. Create the account in the DAWN extension and enter referral code `2QLQV97F` when it asks.
 
 ## Description
 
@@ -32,15 +36,15 @@ Dawn Internet is a decentralized wireless network that rewards users for sharing
 
 ## Setup Instructions
 
-### 1. Create an account
+### 1. Install the extension and create an account
 
-Sign up at [Dawn Internet](https://dawninternet.com/?code=2QLQV97F).
+Install the [DAWN Validator extension](https://chromewebstore.google.com/detail/dawn-validator-chrome-ext/fpdkjdnhkakefebpekbdhillbhonfjjp) and create your account in it. When it asks **Do you have any referral code?**, enter `2QLQV97F`. The [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) website does not pass the code on, so type it in the extension.
 
-<small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+<small>Referral code and link: the CashPilot maintainer may earn a commission from it.</small>
 
 ### 2. Run it outside CashPilot
 
-CashPilot cannot deploy Dawn Internet. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. Install the Dawn Internet browser extension and log in. CashPilot does not read Dawn Internet earnings either, so check them in the provider's dashboard.
+CashPilot cannot deploy Dawn Internet. The catalog has no Docker image for it, so its row in **Catalog** shows **Visit** instead of **Add**. Keep the extension running and logged in. CashPilot does not read Dawn Internet earnings either, so check them in the provider's dashboard.
 
 ## Docker Configuration
 
