@@ -36,7 +36,7 @@ requirements:
   min_storage: "100GB"
 
 payment:
-  methods: [wise, paypal, bank]
+  methods: [wise, paypal, stripe]
   minimum_payout: "$20"
   currency: USD
   frequency: "Weekly (Fridays)"

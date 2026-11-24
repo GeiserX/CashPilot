@@ -5,6 +5,8 @@
 > **Website:** [proxybase.org](https://peer.proxybase.org/dashboard/signup?referral=nXzS3c6iTO)
 >
 > <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+>
+> Sign up with an email and a password. The Google sign-in does not send the referral code.
 
 ## Description
 

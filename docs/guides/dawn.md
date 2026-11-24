@@ -5,6 +5,8 @@
 > **Website:** [dawninternet.com](https://dawninternet.com/?code=2QLQV97F)
 >
 > <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+>
+> The website does not pass the code on. Create the account in the DAWN extension and enter referral code `2QLQV97F` when it asks.
 
 ## Description
 

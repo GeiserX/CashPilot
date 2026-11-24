@@ -5,6 +5,8 @@
 > **Website:** [gradient.network](https://app.gradient.network/signup?referralCode=YSKMY7)
 >
 > <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
+>
+> When the signup asks for a referral code, type `YSKMY7`: the link does not fill it in.
 
 ## Description
 
