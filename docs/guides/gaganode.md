@@ -2,7 +2,7 @@
 
 > **Category:** DePIN | **Status:** Dropped
 >
-> **Website:** [https://www.gaganode.com](https://www.gaganode.com)
+> **Website:** www.gaganode.com (now a parked domain, not linked)
 
 ## Description
 
@@ -34,7 +34,7 @@ GagaNode is a multi-platform decentralized bandwidth sharing network that runs o
 
 ### 1. Create an account
 
-Sign up at [GagaNode](https://dashboard.gaganode.com/register).
+Not offered: CashPilot dropped GagaNode, and gaganode.com is now a parked domain.
 
 ### 2. Not available in CashPilot
 

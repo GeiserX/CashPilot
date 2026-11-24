@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://wipter.com](https://wipter.com)
+> **Website:** [wipter.com](https://wipter.com/register?via=FB1373FBDA)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
@@ -40,7 +42,7 @@ Sign up at [Wipter](https://wipter.com/register?via=FB1373FBDA).
 
 ### 2. Install the app
 
-Download the Wipter app for Windows, macOS, Linux or Android from [wipter.com](https://wipter.com), and sign in with your account. The app shares your bandwidth while it runs.
+Create the account with the link in step 1 before you open the app. Download the Wipter app for Windows, macOS, Linux or Android from [wipter.com](https://wipter.com), and sign in with your account. The app shares your bandwidth while it runs.
 
 ### 3. CashPilot
 

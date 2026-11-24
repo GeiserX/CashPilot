@@ -2,11 +2,13 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://pawns.app](https://pawns.app)
+> **Website:** [pawns.app](https://pawns.app?r=19266874)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
-IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-established proxy provider, and Pawns is their residential bandwidth-sharing arm. The CLI Docker image accepts credentials via command-line flags. Offers a generous 10% lifetime referral commission and $3 bonus for new signups with code EARN3.
+IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a well-established proxy provider, and Pawns is their residential bandwidth-sharing arm. The CLI Docker image accepts credentials via command-line flags. Offers a generous 10% lifetime referral commission and a $3 bonus for new users who sign up through a referral link.
 
 ## Earning Estimates
 

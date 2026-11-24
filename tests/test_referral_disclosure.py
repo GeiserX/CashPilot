@@ -57,6 +57,55 @@ def test_every_guide_notes_its_referral_link_right_under_it(slug, guide):
     assert following and following[0] == referral_note(svc), f"{guide.name}: note missing under the signup link"
 
 
+# Guides whose header still links the bare homepage on purpose, each with the
+# reason. Strict xfail: once the header is fixed the case passes, the run goes
+# red, and the entry must be removed.
+_HEADER_PENDING = {
+    "deeper-network": "the shop link's affiliate ID waits on the account owner's confirmation",
+}
+
+_MD_HREF = re.compile(r"\]\(([^)\s]+)\)")
+
+
+def _header_cases() -> list:
+    return [
+        pytest.param(
+            slug,
+            guide,
+            id=slug,
+            marks=[pytest.mark.xfail(strict=True, reason=_HEADER_PENDING[slug])] if slug in _HEADER_PENDING else [],
+        )
+        for slug, guide in _guide_cases()
+    ]
+
+
+@pytest.mark.parametrize(("slug", "guide"), _header_cases())
+def test_no_bare_homepage_link_comes_before_the_signup_link(slug, guide):
+    """The header's Website link is the first link a reader sees.
+
+    It used to be the bare homepage in 27 guides, so a reader who clicked it
+    signed up without the code and the referral was lost. The stub generator
+    wrote it that way for every new guide.
+    """
+    svc = catalog.get_service(slug)
+    text = guide.read_text(encoding="utf-8")
+    first = text.find(svc["referral"]["signup_url"])
+    assert first >= 0, f"{guide.name}: the catalog's signup link is missing"
+    homepage = svc["website"].rstrip("/")
+    bare = [h for h in _MD_HREF.findall(text[:first]) if h.rstrip("/") == homepage]
+    assert not bare, f"{guide.name}: links the bare homepage {homepage} before the referral signup link"
+
+
+def test_a_new_guide_header_links_the_referral_signup():
+    from scripts.new_service_stub import render
+
+    svc = catalog.get_service("honeygain")
+    header = render("honeygain").split("## Description", 1)[0]
+    assert f"({svc['referral']['signup_url']})" in header
+    assert f"({svc['website']})" not in header
+    assert referral_note(svc) in header
+
+
 def test_a_bare_signup_url_gets_no_note():
     assert referral_note({"referral": {"signup_url": "https://x.example"}, "website": "https://x.example"}) == ""
 
@@ -83,13 +132,39 @@ def test_the_app_note_only_appears_for_a_referral_code():
     assert "ref.code" in body
 
 
-@pytest.mark.parametrize("fn", ["renderServiceSetupForm", "renderServiceDetail"])
-def test_every_sign_up_button_in_the_app_carries_the_note(fn):
+def _js_code(fn: str) -> str:
+    """The body of an app.js function, with its comments dropped.
+
+    A count over raw source passed on a comment alone: the detail dialog's only
+    "Sign Up" was the comment above its buttons, so the button could go and
+    the test stay green.
+    """
     body = APP_JS[APP_JS.index(f"function {fn}(") :]
     body = body[: body.index("\n  function ", 1)]
-    buttons = len(re.findall(r"Sign Up", body))
-    assert buttons, fn
-    assert body.count("referralNote(svc)") >= (2 if fn == "renderServiceSetupForm" else 1), fn
+    body = re.sub(r"/\*.*?\*/|<!--.*?-->", "", body, flags=re.S)
+    return re.sub(r"^\s*//.*$", "", body, flags=re.M)
+
+
+@pytest.mark.parametrize(("fn", "buttons"), [("renderServiceSetupForm", 2), ("renderServiceDetail", 1)])
+def test_every_sign_up_button_in_the_app_carries_the_note(fn, buttons):
+    body = _js_code(fn)
+    assert body.count('href="${escapeHtml(signupUrl)}"') >= buttons, fn
+    assert len(re.findall(r"Sign up", body, flags=re.I)) >= buttons, fn
+    assert body.count("referralNote(svc)") >= buttons, fn
+
+
+@pytest.mark.parametrize("fn", ["renderServiceSetupForm", "renderServiceDetail"])
+def test_a_deployed_service_keeps_its_sign_up_link(fn):
+    """A deploy does not prove an account: a MystNodes node runs before anyone signs up.
+
+    The setup form and the detail dialog used to swap Sign Up and its note for
+    the dashboard once a service was deployed, so a user who deployed first and
+    signed up later never saw the referral link. Desktop keeps both.
+    """
+    body = _js_code(fn)
+    assert not re.search(r"\?\s*''\s*:\s*referralNote\(svc\)", body), f"{fn}: the referral note is hidden on deploy"
+    assert not re.search(r"isDeployed[^\n]*:\s*signupUrl", body), f"{fn}: Sign Up turns into the dashboard on deploy"
+    assert "else if (!isDeployed)" not in body, f"{fn}: Sign Up is shown only before deploy"
 
 
 def test_the_new_user_bonus_is_shown_next_to_the_sign_up_button():
