@@ -1174,6 +1174,10 @@ _stall_bell: dict[str, dict[str, Any]] = {}
 # One push per stall. The row is cleared when the copy carries traffic again or
 # no longer runs, and that is what re-arms it.
 _STALL_COOLDOWN_HOURS = 24 * 365 * 10
+# What "no longer runs" means for a copy its box still lists, as for the
+# container-down check. Restarting is not stopped: a crash loop lists the copy
+# as restarting between runs, and clearing there re-armed a push on each run.
+_STALL_STOPPED_STATES = ("exited", "dead")
 
 
 def _stall_text(name: str, box: str, stall: traffic_stall.Stall, hours: int) -> tuple[str, str]:
@@ -1201,9 +1205,11 @@ async def _traffic_stall_check(workers: list[dict[str, Any]], statuses: list[dic
     (app/traffic_stall.py). The container is up and the account still earns
     from the other copies, so no other check sees it. Alerts only: it never
     restarts anything. An alert clears when its copy carries traffic again,
-    no longer runs on its box, or its service no longer declares the check.
-    A copy that cannot be judged (its box offline, an hour without a reading,
-    the other copies quiet too) neither raises nor clears. Never raises.
+    is stopped or gone from its box, its box is removed, or its service no
+    longer declares the check. A copy that cannot be judged neither raises nor
+    clears: its box is offline, cannot read Docker or sent a partial list, Docker
+    lists it as restarting (a crash loop would otherwise push on every run), an
+    hour has no reading, or the other copies are quiet too. Never raises.
     """
     global _collector_alerts
     try:
@@ -1218,9 +1224,18 @@ async def _traffic_stall_check(workers: list[dict[str, Any]], statuses: list[dic
                 found, busy = traffic_stall.judge([r for r in rows if r.get("slug") == slug], spec, now)
                 stalled.update({copy: (slug, stall, spec.hours) for copy, stall in found.items()})
                 carrying |= busy
-        online = {str(w.get("id")): w for w in workers if w.get("status") == "online"}
+        boxes = {str(w.get("id")): w for w in workers}
+        online = {wid: w for wid, w in boxes.items() if w.get("status") == "online"}
+        # A box whose list may leave out a copy that still runs there.
+        unsure = {
+            wid for wid, w in online.items() if placement.is_blind(w) or _heartbeat_partial(placement.system_info(w))
+        }
         running = {
             (s.get("_worker_id"), str(s.get("name"))): s.get("slug") for s in statuses if s.get("status") == "running"
+        }
+        listed = {(s.get("_worker_id"), str(s.get("name"))): s.get("slug") for s in statuses}
+        stopped = {
+            (s.get("_worker_id"), str(s.get("name"))) for s in statuses if s.get("status") in _STALL_STOPPED_STATES
         }
 
         alerting: dict[str, tuple[str, str]] = {}
@@ -1235,15 +1250,18 @@ async def _traffic_stall_check(workers: list[dict[str, Any]], statuses: list[dic
             if subject in alerting:
                 continue
             container, _, wid_text = subject.rpartition("@")
-            worker = online.get(wid_text)
-            if worker is None:
-                continue  # Its box is offline: it cannot say.
-            copy = (worker.get("id"), container)
-            if running.get(copy) in specs and copy not in carrying:
-                continue  # Still running and still quiet, or undecided.
+            worker = boxes.get(wid_text)
+            if worker is not None:
+                if wid_text not in online or wid_text in unsure:
+                    continue  # Its box is offline or cannot list what runs: it cannot say.
+                copy = (worker.get("id"), container)
+                if running.get(copy) in specs and copy not in carrying:
+                    continue  # Still running and still quiet, or undecided.
+                if listed.get(copy) in specs and copy not in running and copy not in stopped:
+                    continue  # Restarting (a crash loop) or caught mid-start: not stopped.
             await database.clear_alerts("stall", subject)
             _stall_bell.pop(subject, None)
-            logger.info("%s carries traffic again or no longer runs there; cleared its stall alert", subject)
+            logger.info("%s carries traffic again, stopped or is gone; cleared its stall alert", subject)
 
         for subject, (title, message) in alerting.items():
             _stall_bell[subject] = {"kind": "stall", "platform": subject.rpartition("@")[0], "error": message}

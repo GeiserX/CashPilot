@@ -75,6 +75,7 @@ class TestWhatIsAStall:
         assert C not in carrying, "still quiet in the last hour: undecided, not recovered"
 
     def test_the_hour_in_progress_is_left_out(self):
+        assert LAST == 1_800_000_000 - 3600, "the hour that started at 1_800_000_000 is still running at NOW"
         rows = _rows({A: [30] * 12, B: [25] * 12, C: [0.3] * 12}) + _rows({C: [40]}, end=LAST + 3600)
         stalled, _ = traffic_stall.judge(rows, SPEC, NOW)
         assert C in stalled
@@ -179,7 +180,10 @@ def _clean_state(monkeypatch):
     monkeypatch.setattr(main, "_collector_alerts", [])
 
 
-WORKERS = [{"id": i, "name": n, "status": "online"} for i, n in ((1, "alpha"), (2, "bravo"), (3, "charlie"))]
+WORKERS = [
+    {"id": i, "name": n, "status": "online", "system_info": json.dumps({"docker_available": True})}
+    for i, n in ((1, "alpha"), (2, "bravo"), (3, "charlie"))
+]
 
 
 def _statuses(slug="honeygain", **status_of):
@@ -294,6 +298,34 @@ class TestItClearsOnlyWhenItCanTell:
         offline = [{**w, "status": "offline"} if w["id"] == 3 else w for w in WORKERS]
         alerts.run([], workers=offline, statuses=_statuses()[:2])
         assert SUBJECT in alerts.rows and _bell() == [("stall", "cashpilot-honeygain")]
+
+    def test_it_clears_once_its_box_is_removed(self):
+        """A removed box never reports again: waiting for it kept the alert for good."""
+        alerts = self._raised()
+        alerts.run([], workers=WORKERS[:2], statuses=_statuses()[:2])
+        assert not alerts.rows and not _bell()
+
+    @pytest.mark.parametrize(
+        "info",
+        [{"docker_available": False}, {"docker_available": True, "containers_listed": False}],
+        ids=["cannot read Docker", "partial list"],
+    )
+    def test_it_stays_while_its_box_cannot_list_what_runs(self, info):
+        """Such a box leaves out copies that still run there, so their absence says nothing."""
+        alerts = self._raised()
+        blind = [{**w, "system_info": json.dumps(info)} if w["id"] == 3 else w for w in WORKERS]
+        alerts.run(_live_rows(*STALLED), workers=blind, statuses=_statuses()[:2])
+        assert SUBJECT in alerts.rows and _bell() == [("stall", "cashpilot-honeygain")]
+        assert len(alerts.titles) == 1
+
+    def test_a_crash_loop_is_one_push(self):
+        """Docker lists a crash-looping copy as restarting between its runs: that neither clears nor re-arms."""
+        alerts = self._raised()
+        for _ in range(3):
+            alerts.run(_live_rows(*STALLED), statuses=_statuses(charlie="restarting"))
+            assert SUBJECT in alerts.rows and _bell() == [("stall", "cashpilot-honeygain")]
+            alerts.run(_live_rows(*STALLED))
+        assert len(alerts.titles) == 1, "one push, however often Docker restarts it"
 
     def test_it_stays_while_the_other_copies_are_quiet_too(self):
         alerts = self._raised()
