@@ -702,6 +702,17 @@ class TestRoutes:
         assert actions.await_count == (1 if code == 200 else 0)
         assert audit.await_count == (1 if code == 200 else 0)
 
+    @pytest.mark.parametrize(("role", "code"), [("owner", 200), ("writer", 404)])
+    def test_only_the_owner_acts_on_a_credential_reminder(self, api, role, code):
+        # The panel hides credential reminders from everyone but the owner, so a
+        # writer must not be able to mute one for the household either.
+        client, actions, audit = api
+        with _as(role):
+            res = client.post("/api/obligations/grass/credential:token", json={"action": "mute"})
+        assert res.status_code == code
+        assert actions.await_count == (1 if code == 200 else 0)
+        assert audit.await_count == (1 if code == 200 else 0)
+
     def test_done_records_the_occurrence(self, api):
         client, actions, audit = api
         with _as("writer"):

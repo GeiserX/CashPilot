@@ -3,7 +3,7 @@
 ``GET /api/obligations`` (reader and up) returns what is due now, for the
 dashboard panel; credential reminders go to owners only. ``POST /api/obligations/{slug}/{rule}`` (writer and up) marks
 one done, snoozes it, or mutes it ("Not for me"), the same rights as answering
-a payout question. Every write leaves an audit row, so the household can see
+a payout question; a credential reminder takes the owner. Every write leaves an audit row, so the household can see
 who closed what. The engine is app/obligations.py and docs/reminders.md says
 what each reminder means.
 
@@ -100,7 +100,10 @@ async def api_obligation_action(slug: str, rule: str, body: ObligationAction, re
     user = deps._require_writer(request)
     if body.action not in ACTIONS:
         raise HTTPException(status_code=400, detail=f"action must be one of {', '.join(ACTIONS)}")
-    if not _known_rule(slug, rule):
+    # Credential reminders are the owner's (see api_obligations): a writer who
+    # never sees one must not mute or snooze it for the household either.
+    owner_only = rule.startswith(obligations.CREDENTIAL_PREFIX) and not auth.require_role(user, "owner")
+    if owner_only or not _known_rule(slug, rule):
         raise HTTPException(status_code=404, detail="No such reminder")
     uid = user.get("uid") if isinstance(user.get("uid"), int) else None
     result: dict[str, Any] = {"slug": slug, "rule": rule, "action": body.action}

@@ -75,7 +75,8 @@ resets it.
 
 ## What you can do with a reminder
 
-Owners and writers see the buttons. Viewers see the reminders only.
+Owners and writers see the buttons. Viewers see the reminders only. Only owners
+can act on a credential reminder.
 
 - **Done**, or **Requested** for a withdrawal, hides this reminder. A monthly
   window comes back next month. A withdrawal comes back once after 14 days if
