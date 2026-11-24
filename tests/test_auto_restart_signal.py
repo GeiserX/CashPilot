@@ -224,6 +224,42 @@ def test_a_routed_entry_is_judged_once_as_its_row():
     assert _sweep(STUCK, containers=(), workers=(_proxied(routed=True),)) == []
 
 
+def test_no_proxied_copy_is_judged_while_its_worker_cannot_read_its_routes():
+    """Without the routed flag a routed service's copy looks like a proxied one, keyed apart from its cooldown."""
+    reads = []
+    worker = {
+        **WORKER,
+        "system_info": json.dumps(
+            {"proxied": [{"slug": "proxybase", "proxy_id": 3, "status": "running"}], "routes_read": False}
+        ),
+    }
+    assert _sweep(STUCK, containers=(), workers=(worker,), reads=reads) == []
+    assert reads == []
+
+
+def test_a_routed_restart_that_timed_out_is_still_recorded():
+    """A 504: the worker may have restarted it, so the restart must replace an older stop, as for a direct copy."""
+    routed = {**RUNNING, "deployed_by": "nas", "route": {"proxy_id": 3, "tunnel_status": "running"}}
+    timed_out = main.HTTPException(status_code=504, detail="timed out")
+    with patch("app.main.database.record_health_event", new_callable=AsyncMock) as record:
+
+        async def _proxy(wid, method, path, params=None, **kw):
+            if method == "POST":
+                raise timed_out
+            return {"logs": STUCK, "filtered": True}
+
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
+            patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[routed]),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=WORKER),
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"id": 3, "definition": {}}),
+            patch("app.main._proxy_to_worker", side_effect=_proxy),
+        ):
+            asyncio.run(main._check_windowed_signals())
+    record.assert_awaited_once_with("proxybase", "restart", worker_id=7, instance=1)
+
+
 def test_a_proxied_copy_is_read_only_for_a_signal_that_restarts_it():
     """No page shows a proxied copy's hints, so a signal that only warns is not worth hours of its logs.
 

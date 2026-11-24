@@ -2863,6 +2863,11 @@ def _proxied_copies(workers: list[dict[str, Any]]) -> list[tuple[dict[str, Any],
         if w.get("status") != "online" or w.get("id") is None:
             continue
         info = _safe_json(w.get("system_info", "{}"), {})
+        if info.get("routes_read") is False:
+            # The worker could not say which entries are a routed service, so a
+            # routed one would be keyed apart from its copy-1 cooldown and could
+            # restart twice in one. Wait for a heartbeat that read its routes.
+            continue
         for e in proxies.proxied_entries({"system_info": info}):
             pid = e.get("proxy_id")
             if e.get("routed") is True or e.get("held") is True or not isinstance(pid, int) or isinstance(pid, bool):
@@ -2916,7 +2921,15 @@ async def _auto_restart(
             if proxy_id is None:
                 await _command_and_record(wid, "restart", slug, instance)
             else:
-                await _restart_proxied(proxy_id, wid, slug)
+                try:
+                    await _restart_proxied(proxy_id, wid, slug)
+                except HTTPException as exc:
+                    # A 504: the worker got it and may have restarted the copy, so
+                    # record it as _command_and_record does, or an older stop stays
+                    # the copy's last event and a later crash is never alerted.
+                    if exc.status_code == 504 and instance < PROXIED_COPY_KEY:
+                        await database.record_health_event(slug, "restart", worker_id=wid, instance=instance)
+                    raise
                 if instance < PROXIED_COPY_KEY:
                     # A routed service's copy is the service's copy 1: recorded as its Restart button records it.
                     await database.record_health_event(slug, "restart", worker_id=wid, instance=instance)
