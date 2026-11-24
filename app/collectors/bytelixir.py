@@ -226,15 +226,21 @@ class BytelixirCollector(BaseCollector):
 
             # The withdrawable figure is 0 until the account may cash out, and
             # never more than the dashboard total. Stored as the balance, a
-            # figure below the last one looks like a drop, and the next good
-            # scrape books the whole gap again as new earnings. So it is kept
-            # only when it cannot fake a drop; otherwise nothing is stored.
+            # figure below the real total books the gap as new earnings on the
+            # next good scrape: after a drop when a balance is on record, and
+            # as a too-low starting point when none is. So it is kept only when
+            # it is at least the last recorded balance; otherwise nothing is stored.
             if balance <= 0:
                 return self._fallback_unusable(f"The API gave only the withdrawable balance, ${balance:.2f}")
             from app import database
 
             previous = await database.get_latest_balance(self.platform)
-            if previous is not None and balance < previous:
+            if previous is None:
+                return self._fallback_unusable(
+                    f"The API gave only the withdrawable balance, ${balance:.2f}, "
+                    "and there is no earlier balance to check it against"
+                )
+            if balance < previous:
                 return self._fallback_unusable(
                     f"The API gave only the withdrawable balance, ${balance:.2f}, "
                     f"below the last recorded balance of ${previous:.2f}"
