@@ -68,7 +68,7 @@ Setup and configuration for every service CashPilot supports.
 | [BlockMesh (Perceptron Network)](blockmesh.md) | Residential IP | App only | — | dropped |
 | [Dawn Internet](dawn.md) | Residential IP | App only | — | active |
 | [Deeper Network](deeper-network.md) | Residential IP | App only | — | active |
-| [GagaNode](gaganode.md) | — | App only | $5 | dead |
+| [GagaNode](gaganode.md) | — | App only | — | dead |
 | [Gradient Network](gradient.md) | Residential IP | App only | — | broken |
 | [Grass](grass.md) | Residential IP | App only | — | active |
 | [Helium](helium.md) | Residential IP | App only | — | active |
@@ -95,7 +95,7 @@ Setup and configuration for every service CashPilot supports.
 | [io.net](ionet.md) | GPU | App only | — | active |
 | [Nosana](nosana.md) | GPU, Storage 50GB, 50 Mbps | App only | — | active |
 | [Salad](salad.md) | GPU, Residential IP | App only | $5 | active |
-| [Vast.ai](vast-ai.md) | GPU, Storage 100GB, 100 Mbps | App only | $25 | active |
+| [Vast.ai](vast-ai.md) | GPU, Storage 100GB, 100 Mbps | App only | $20 | active |
 
 ## Storage
 

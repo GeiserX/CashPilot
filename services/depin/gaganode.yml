@@ -31,7 +31,8 @@ requirements:
 
 payment:
   methods: [crypto, paypal]
-  minimum_payout: "$5"
+  # Dead: no payout can be reached, so no minimum is shown (as for the other dead entries).
+  minimum_payout: ""
   currency: USD
   frequency: "On request"
 
@@ -44,7 +45,7 @@ earnings:
 
 cashout:
   method: manual
-  min_amount: 5.0
+  min_amount: null
   currency: USD
   notes: "The dashboard, where withdrawals were made, no longer answers, so a balance there cannot be withdrawn."
 

@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://peer.proxyrack.com](https://peer.proxyrack.com)
+> **Website:** [peer.proxyrack.com](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

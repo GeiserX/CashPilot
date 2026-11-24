@@ -44,6 +44,12 @@ docker:
   command: "-tou-accept -email ${HONEYGAIN_EMAIL} -pass ${HONEYGAIN_PASSWORD} -device ${HONEYGAIN_DEVICE_NAME}"
   network_mode: ""
   privileged: false
+  # A copy can stay connected and get no work for days while the other copies
+  # stay busy. Only its traffic shows it, so CashPilot alerts on that.
+  traffic_stall:
+    share: 0.05
+    peer_min_mb_per_hour: 10
+    hours: 12
 
 requirements:
   residential_ip: true

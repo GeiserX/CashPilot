@@ -345,3 +345,180 @@ class TestTheSemaphoreSurvivesTheNewExceptionPath:
             return app_main._collection_semaphore.locked()
 
         assert asyncio.run(run()) is False
+
+
+def _cookies(values=None):
+    """A stand-in for httpx.Cookies, which EarnApp and Bitping iterate."""
+    jar = MagicMock()
+    jar.items.return_value = list((values or {}).items())
+    return jar
+
+
+class TestEarnAppTaxonomy:
+    """A rejected OAuth token must reach the "(credential rejected)" push and
+    the credential test as auth, not as an unclassified failure."""
+
+    @pytest.mark.parametrize("code", [401, 403])
+    def test_rejected_token_is_auth(self, code):
+        from app.collectors.earnapp import EarnAppCollector
+
+        client = _make_async_client()
+        client.cookies = _cookies()
+        client.get.side_effect = [_mock_response(200), _mock_response(code)]
+        with patch("app.collectors.earnapp.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(EarnAppCollector(oauth_token="expired").collect())
+        assert result.error is not None
+        assert result.error_kind == base.KIND_AUTH
+
+    def test_provider_outage_is_transient_not_auth(self):
+        from app.collectors.earnapp import EarnAppCollector
+
+        client = _make_async_client()
+        client.cookies = _cookies()
+        client.get.side_effect = [_mock_response(200), _mock_response(503)]
+        with patch("app.collectors.earnapp.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(EarnAppCollector(oauth_token="fine").collect())
+        assert result.error_kind == base.KIND_TRANSIENT
+
+
+class TestProxyRackTaxonomy:
+    @pytest.mark.parametrize("code", [401, 403])
+    def test_rejected_api_key_is_auth(self, code):
+        from app.collectors.proxyrack import ProxyRackCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(code)
+        with patch("app.collectors.proxyrack.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(ProxyRackCollector(api_key="revoked").collect())
+        assert result.error is not None
+        assert result.error_kind == base.KIND_AUTH
+
+    def test_provider_outage_is_transient_not_auth(self):
+        from app.collectors.proxyrack import ProxyRackCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(502)
+        with patch("app.collectors.proxyrack.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(ProxyRackCollector(api_key="fine").collect())
+        assert result.error_kind == base.KIND_TRANSIENT
+
+
+class TestEarnFMTaxonomy:
+    def test_refused_login_is_auth(self):
+        from app.collectors.earnfm import EarnFMCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(400)
+        with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(EarnFMCollector(email="a@b.c", password="wrong").collect())
+        assert result.error_kind == base.KIND_AUTH
+
+    def test_login_without_a_token_is_not_auth(self):
+        """A 200 with no access token proves nothing about the password."""
+        from app.collectors.earnfm import EarnFMCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {})
+        with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(EarnFMCollector(email="a@b.c", password="p").collect())
+        assert result.error is not None
+        assert result.error_kind is None
+
+    @pytest.mark.parametrize("code", [401, 403])
+    def test_rejected_token_is_auth(self, code):
+        from app.collectors.earnfm import EarnFMCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"access_token": "tok"})
+        client.get.return_value = _mock_response(code)
+        with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(EarnFMCollector(email="a@b.c", password="p").collect())
+        assert result.error_kind == base.KIND_AUTH
+
+    def test_provider_outage_is_transient_not_auth(self):
+        from app.collectors.earnfm import EarnFMCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"access_token": "tok"})
+        client.get.return_value = _mock_response(503)
+        with patch("app.collectors.earnfm.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(EarnFMCollector(email="a@b.c", password="p").collect())
+        assert result.error_kind == base.KIND_TRANSIENT
+
+
+class TestIPRoyalTaxonomy:
+    def test_bad_password_is_auth(self):
+        from app.collectors.iproyal import IPRoyalCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(422, {"error": {"code": "invalid_credentials"}})
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(IPRoyalCollector(email="e", password="wrong").collect())
+        assert result.error_kind == base.KIND_AUTH
+
+    def test_disabled_account_is_not_auth(self):
+        """The password is fine; telling the user to change it sends them the wrong way."""
+        from app.collectors.iproyal import IPRoyalCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(422, {"error": {"code": "user_disabled"}})
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(IPRoyalCollector(email="e", password="p").collect())
+        assert "disabled" in result.error
+        assert result.error_kind != base.KIND_AUTH
+
+    def test_rate_limited_login_is_transient_not_auth(self):
+        from app.collectors.iproyal import IPRoyalCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(429)
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(IPRoyalCollector(email="e", password="p").collect())
+        assert result.error_kind == base.KIND_TRANSIENT
+
+    def test_rejected_after_a_successful_relogin_is_auth(self):
+        """The fresh token is refused too, so raise_for_status carries the 401."""
+        from app.collectors.iproyal import IPRoyalCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"access_token": "tok"})
+        client.get.return_value = _mock_response(401)
+        with patch("app.collectors.iproyal.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(IPRoyalCollector(email="e", password="p").collect())
+        assert result.error_kind == base.KIND_AUTH
+
+
+class TestBitpingTaxonomy:
+    def test_refused_login_is_auth(self):
+        from app.collectors.bitping import BitpingCollector
+
+        client = _make_async_client()
+        client.cookies = _cookies()
+        client.post.return_value = _mock_response(401)
+        with patch("app.collectors.bitping.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(BitpingCollector(email="e", password="wrong").collect())
+        assert result.error_kind == base.KIND_AUTH
+
+
+class TestRepocketTaxonomy:
+    def test_rejected_after_refresh_is_auth(self):
+        from app.collectors.repocket import RepocketCollector
+
+        client = _make_async_client()
+        client.post.return_value = _mock_response(200, {"idToken": "id", "refreshToken": "r", "id_token": "id"})
+        client.get.return_value = _mock_response(401)
+        with patch("app.collectors.repocket.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(RepocketCollector(email="e", password="p").collect())
+        assert result.error_kind == base.KIND_AUTH
+
+
+class TestTraffmonetizerTaxonomy:
+    def test_provider_outage_is_transient_not_auth(self):
+        """401 and 403 were already auth; the except path left the rest unknown."""
+        from app.collectors.traffmonetizer import TraffmonetizerCollector
+
+        client = _make_async_client()
+        client.get.return_value = _mock_response(503)
+        with patch("app.collectors.traffmonetizer.httpx.AsyncClient", return_value=client):
+            result = asyncio.run(TraffmonetizerCollector(token="fine").collect())
+        assert result.error_kind == base.KIND_TRANSIENT

@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://www.honeygain.com](https://www.honeygain.com)
+> **Website:** [honeygain.com](https://dashboard.honeygain.com/ref/SERGIB4014)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
@@ -51,6 +53,12 @@ The container logs in with the email and password you use at dashboard.honeygain
 ### 3. Deploy with CashPilot
 
 In the CashPilot web UI, open **Catalog** and click **Add** on the **Honeygain** row, or click **+ Add service** in the top bar and pick it there. Enter your email and password, then click **Deploy Honeygain**.
+
+## When one copy stops getting work
+
+A Honeygain copy can stay connected and get almost no traffic for days while your other copies keep working. Its container runs, its log looks normal, and your balance still grows from the other copies, so nothing else shows it.
+
+If you run two or more copies, CashPilot compares the traffic each copy sends. When one copy sends less than 5% of the median of the other copies for 12 hours in a row, CashPilot alerts you in the bell and your notifications. The median must also be at least 10 MB an hour in each of those hours, so a quiet time for all copies raises no alert. The alert clears when the copy carries traffic again. CashPilot does not restart the copy by itself. Look at its logs, and restart it from the dashboard if the stall lasts.
 
 ## Docker Configuration
 

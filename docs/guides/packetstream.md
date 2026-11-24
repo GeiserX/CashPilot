@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://packetstream.io](https://packetstream.io)
+> **Website:** [packetstream.io](https://packetstream.io/?psr=7xgZ)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

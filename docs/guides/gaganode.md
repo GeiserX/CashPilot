@@ -14,7 +14,7 @@ GagaNode was a multi-platform decentralized bandwidth sharing network that ran o
 |--------|-------|
 | Monthly range | $0 - $0 (estimate) |
 | Per | device |
-| Minimum payout | $5 |
+| Minimum payout |  |
 | Payout frequency | On request |
 | Payment methods | Crypto, Paypal |
 

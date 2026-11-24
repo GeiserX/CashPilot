@@ -5,7 +5,7 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Dead
 >
-> **Website:** [https://peer2profit.com](https://peer2profit.com)
+> **Website:** peer2profit.com (no longer resolves, not linked)
 
 ## Description
 
@@ -37,7 +37,7 @@ Peer2Profit monetizes unused internet bandwidth by routing legitimate traffic th
 
 ### 1. Create an account
 
-Sign up at [Peer2Profit](https://peer2profit.com).
+Not possible: peer2profit.com no longer resolves.
 
 ### 2. Deploy with CashPilot
 

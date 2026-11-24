@@ -11,7 +11,7 @@ description: >
 short_description: proxybase.org - bandwidth sharing, crypto payout, Access Token auth. No wallet is generated
 
 referral:
-  signup_url: "https://peer.proxybase.org?referral=nXzS3c6iTO"
+  signup_url: "https://peer.proxybase.org/dashboard/signup?referral=nXzS3c6iTO"
   code: "nXzS3c6iTO"
 
 docker:

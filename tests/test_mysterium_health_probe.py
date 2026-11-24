@@ -753,6 +753,7 @@ def _sweep(probes=None, *, probe_error=None, logs="", log_error=None, worker_err
         return {"logs": logs, "filtered": True}
 
     with (
+        patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[]),
         patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[RUNNING]),
         patch(
             "app.main.database.get_worker",

@@ -1,5 +1,8 @@
 # Network3
 
+> [!CAUTION]
+> **Dead:** the project is gone. network3.io now redirects to an unrelated football-streaming site, and the network3.ai app and claim sites no longer answer (checked 24 November 2026). Deployment is blocked. This guide is kept for reference only.
+
 > **Category:** DePIN | **Status:** Dead
 >
 > **Website:** network3.io (now an unrelated football-streaming site, not linked)

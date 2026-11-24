@@ -12,7 +12,7 @@ description: >
 short_description: Decentralized VPN/bandwidth - email+password auth, JWT session in volume
 
 referral:
-  signup_url: "https://ur.io/?referral_code=1Q3G19"
+  signup_url: "https://ur.io/c?bonus=1Q3G19"
   code: "1Q3G19"
 
 docker:
