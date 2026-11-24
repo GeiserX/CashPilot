@@ -78,6 +78,14 @@ In CashPilot, click **Add** on the **Storj** row in **Catalog** (or use **+ Add 
 
 Pick the boxes under **Deploy to** and click **Deploy Storj**. CashPilot creates the container with the identity and storage directories mounted.
 
+### 6. Track earnings
+
+CashPilot reads the estimated payout from the node's dashboard on port 14002. Open **Settings**, find Storj under **Earnings collection**, set **Api Url** to the dashboard's address with the server's LAN IP, for example `http://192.168.1.10:14002`, and click **Save credentials**. Do not use `localhost`: inside the CashPilot container it means the container itself.
+
+If you run several nodes, list every dashboard address in the same field, separated by commas, for example `http://192.168.1.10:14002,http://192.168.1.11:14002`. CashPilot reads each node and stores the sum as one Storj balance. If any node cannot be read, the whole reading fails and the error names that node. CashPilot then stores nothing from that run, so a node that is briefly down never shows as a drop in your balance.
+
+Add a new node to the list at the start of a month if you can. Each node reports what it has earned so far this month. So a node added mid-month adds its whole month at once, and your earnings show a one-day jump.
+
 ## Docker Configuration
 
 - **Image:** `storjlabs/storagenode`

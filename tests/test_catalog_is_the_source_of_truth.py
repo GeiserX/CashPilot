@@ -124,8 +124,8 @@ class TestCredentialHintsLiveInTheCatalog:
         # passed, which is the exact regression this guards. So the number
         # tracks the current total and is bumped deliberately when a hint is
         # added, which is a one-line edit with a message saying so.
-        assert len(with_hint) >= 14, (
-            f"a credential hint was lost: found {len(with_hint)}, expected at least 14: {sorted(with_hint)}. "
+        assert len(with_hint) >= 15, (
+            f"a credential hint was lost: found {len(with_hint)}, expected at least 15: {sorted(with_hint)}. "
             "If you ADDED one, raise this floor."
         )
 
