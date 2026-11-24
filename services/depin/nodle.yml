@@ -49,6 +49,11 @@ cashout:
   # user they can withdraw now and disables payout detection.
   min_amount: null
   currency: NODL
+  notes: >-
+    NODL lives in the app's own wallet on ZKsync Era; check it in the app or on
+    a ZKsync Era block explorer. Nodle left its Polkadot parachain, and the
+    Polkadot-to-ZKsync bridge closed on 31 December 2025, so NODL still on the
+    Polkadot side can no longer move to ZKsync.
 
 platforms: [ios, android]
 

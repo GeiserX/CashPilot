@@ -1,18 +1,18 @@
 name: GagaNode
 slug: gaganode
 category: depin
-status: dropped
+status: dead
+# Checked 2026-11-24: www.gaganode.com is a parked domain (a script sends the
+# visitor to /lander), and dashboard.gaganode.com fails the TLS handshake. The
+# website stays only for the weekly resurrection probe; nothing links to it.
+resurrection_checked: "2026-11-24"
 website: https://www.gaganode.com
 description: >
-  GagaNode is a multi-platform decentralized bandwidth sharing network that runs
-  on Windows, Linux, macOS, ARM devices, and Raspberry Pi. It provides a wide
-  range of platform support making it suitable for headless servers and SBCs.
-  The network monetizes idle bandwidth by routing legitimate traffic through
-  residential and datacenter connections.
-short_description: Multi-platform DePIN - Windows, Linux, macOS, ARM, RPi
-
-referral:
-  signup_url: "https://dashboard.gaganode.com/register"
+  GagaNode was a multi-platform decentralized bandwidth sharing network that ran
+  on Windows, Linux, macOS, ARM devices, and Raspberry Pi. The project is gone:
+  its domain is parked and its dashboard, where withdrawals were made, no
+  longer answers.
+short_description: Multi-platform DePIN - SITE GONE, the domain is parked
 
 docker:
   image: ""
@@ -31,29 +31,29 @@ requirements:
 
 payment:
   methods: [crypto, paypal]
-  minimum_payout: "$5"
+  # Dead: no payout can be reached, so no minimum is shown (as for the other dead entries).
+  minimum_payout: ""
   currency: USD
   frequency: "On request"
 
 earnings:
   monthly_low: 0
-  monthly_high: 5
+  monthly_high: 0
   currency: USD
   per: "device"
-  notes: "Earnings vary by location and bandwidth. Supports a wide range of platforms including ARM and Raspberry Pi. Native binaries, no Docker image."
+  notes: "Project gone. Do not expect any earnings."
 
 cashout:
   method: manual
-  dashboard_url: "https://dashboard.gaganode.com"
-  min_amount: 5.0
+  min_amount: null
   currency: USD
-  notes: "Site is up but poorly made and shady. Not recommended."
+  notes: "The dashboard, where withdrawals were made, no longer answers, so a balance there cannot be withdrawn."
 
 platforms: [windows, macos, linux, android]
 
 collector:
-  type: api
-  notes: "Dashboard API at dashboard.gaganode.com. Token-based auth. Earnings and node status endpoints."
+  type: manual
+  notes: "Project gone. No collection possible."
 
 payout:
   model: unknown

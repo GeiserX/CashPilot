@@ -1,14 +1,15 @@
 name: Gradient Network
 slug: gradient
 category: depin
-status: active
+status: broken
 website: https://gradient.network
 description: >
   Gradient Network is a decentralized compute and bandwidth sharing platform
   backed by Pantera Capital. Users earn Gradient Points by running a browser-based
   node that contributes idle resources to the network. The project focuses on
-  building open AI infrastructure through distributed edge computing.
-short_description: DePIN network backed by Pantera Capital - browser-based node
+  building open AI infrastructure through distributed edge computing. Sentry
+  Node rewards ended on 28 August 2025, and the browser node earns nothing now.
+short_description: DePIN network backed by Pantera Capital - node rewards ended August 2025
 
 referral:
   signup_url: "https://app.gradient.network/signup?referralCode=YSKMY7"
@@ -37,10 +38,10 @@ payment:
 
 earnings:
   monthly_low: 0
-  monthly_high: 8
+  monthly_high: 0
   currency: USD
   per: "device"
-  notes: "Earns Gradient Points pre-token launch. Web-based node runs in browser tab. Backed by Pantera Capital, which may indicate stronger token value at launch."
+  notes: "Sentry Node rewards ended on 28 August 2025 (end of Season 1), and Sentry Nodes earn no rewards now. Gradient has announced no token or conversion for the points already earned."
 
 cashout:
   method: redirect
@@ -50,7 +51,7 @@ cashout:
   # user they can withdraw now and disables payout detection.
   min_amount: null
   currency: GRADIENT
-  notes: "Points-based system. Token conversion TBD."
+  notes: "Nothing to cash out: Gradient has announced no token, claim or conversion rate for the points earned before 28 August 2025."
 
 platforms: [browser-extension]
 

@@ -58,7 +58,11 @@ cashout:
   # user they can withdraw now and disables payout detection.
   min_amount: null
   currency: GRASS
-  notes: "GRASS token airdrop-based. Claim from dashboard when eligible."
+  notes: >-
+    Rewards come as periodic distributions claimed on the Grass dashboard. The
+    Stage 2 distribution (activity from October 2024 to June 2026) is paid in
+    USDC: claim it on app.grass.io/dashboard by 22 January 2027, or earlier if
+    every allocation is claimed first. Grass keeps unclaimed rewards.
 
 platforms: [browser-extension, windows, macos, android, ios]
 

@@ -18,7 +18,7 @@ Nodle uses smartphone Bluetooth to create IoT infrastructure. The app passively 
 | Payout frequency | Continuous |
 | Payment methods | Crypto |
 
-> Very low earnings. Background phone app using Bluetooth. Web3-only — no web dashboard for earnings, check via app or Polkadot blockchain explorer only.
+> Very low earnings. Background phone app using Bluetooth. Web3-only — no web dashboard for earnings, check via app or a ZKsync Era block explorer only.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ Download the Nodle app from [Google Play](https://play.google.com/store/apps/det
 
 ### 2. Create a wallet
 
-The app creates a Polkadot-based wallet on first launch. Your NODL earnings are on-chain. There is **no web dashboard** — you can only check earnings inside the app or via a Polkadot/Subscan blockchain explorer.
+The app creates a wallet on ZKsync Era on first launch. Your NODL earnings are on-chain. There is **no web dashboard** — you can only check earnings inside the app or via a ZKsync Era block explorer.
 
 ### 3. Enable permissions
 
@@ -50,6 +50,6 @@ Nodle does not support Docker deployment. It is a mobile-only app that requires 
 
 ## Important Notes
 
-- **Web3-only**: Nodle runs on the Nodle parachain (Polkadot ecosystem). There is no centralized API or web dashboard to check earnings or connected devices.
-- **Token**: NODL — can be viewed on Subscan or other Polkadot explorers using your wallet address.
+- **Web3-only**: Nodle runs on ZKsync Era. It left its Polkadot parachain, and the Polkadot-to-ZKsync bridge closed on 31 December 2025, so NODL still on the Polkadot side can no longer move to ZKsync. There is no centralized API or web dashboard to check earnings or connected devices.
+- **Token**: NODL on ZKsync Era — view it on a ZKsync Era block explorer using your wallet address.
 - **No IP conflicts**: Since Nodle uses Bluetooth (not internet bandwidth), it does not conflict with other bandwidth-sharing services on the same network.

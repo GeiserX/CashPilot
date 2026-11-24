@@ -99,7 +99,7 @@ platforms: [docker, windows, macos, linux, android]
 
 collector:
   type: api
-  notes: "JWT auth via /v1/users/me and /v2/earnings endpoints"
+  notes: "Email and password login at /api/v1/users/tokens returns a JWT; the balance is data.payout.usd_cents from /api/v1/users/balances. Logs in again on a 401."
   credential_hint: "Use your Honeygain account email and password (same as <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
 
 payout:
