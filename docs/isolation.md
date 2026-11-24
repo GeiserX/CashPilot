@@ -139,12 +139,44 @@ restart, until the dashboard answers, and while a name in
 `CASHPILOT_FENCE_EXITS` does not resolve. In those cases the table keeps the
 drops it has. The fence drops up to 64 addresses.
 
-A single box on one line sees no change. One setup does change: a SOCKS or
-HTTP [proxy](proxies.md) that you host on one of these lines, used by a box
-on another line. The fence drops the tunnel's traffic to that address too, so
-those proxied copies cannot connect. A Tailscale exit node on one of these
-lines cannot be reached directly either. Tailscale then connects through its
-relay servers, which is slower.
+A single box on one line sees no change.
+
+**A proxy or exit node on one of your lines keeps working.**
+
+A [proxied copy](proxies.md) can leave through a Tailscale exit node or a SOCKS
+or HTTP proxy that sits on another of your lines. Its tunnel container then
+needs that line's public IP, so the fence lets the tunnel through, and only
+the tunnel:
+
+- A Tailscale tunnel can send UDP to your lines' public IPs, which keeps its
+  direct WireGuard path to the exit node. Without it, Tailscale falls back to
+  its slower relay servers.
+- A SOCKS or HTTP tunnel can open TCP connections to its proxy's port, and
+  to no other port.
+- Each exception names the tunnel's own address on the bridge. An earner that
+  runs on the bridge has its own address, so its packets meet the drop.
+- The earners of a proxied copy share the tunnel's network namespace. There,
+  the tunnel's own firewall lets only the tunnel's traffic out to the bridge:
+  Tailscale's marked packets, or the tunnel's own connections to the proxy's
+  port. A copy cannot set a mark, because it gets no `NET_ADMIN`.
+  Without cgroup v2 on the host, a SOCKS or HTTP tunnel cannot tell its own
+  connections from the copy's. Then the copy can reach the proxy's port
+  directly too, and the tunnel logs a warning.
+- One limit remains. A container that holds `NET_ADMIN` in its own namespace
+  can give itself the tunnel's address. Mysterium is the only catalog service
+  with that capability. Its customers' traffic leaves with the node's own
+  address, so only the node software itself could do this.
+
+The worker writes a tunnel's exception as soon as the tunnel starts, and
+removes it at the next fence run after the tunnel is gone.
+
+**Check that the drops are live.** On the box, `nft list table ip cashpilot`
+lists one `egress-<IP>` rule for each of your lines, and one `tunnel-` rule for
+each proxy tunnel that needs one. On an `iptables-legacy` host, run
+`iptables-legacy -t mangle -S CP-FWD` instead. The worker's log line
+`Isolation: mode on, fence applied` says the fence runs on that box. With
+`CASHPILOT_CONTAINER_NETWORK` set, the log says `mode operator`, and CashPilot
+writes none of these drops: your own rules must drop your lines' public IPs.
 
 ### Modes
 

@@ -237,12 +237,67 @@ def _exits(egress: str | list[str] | tuple[str, ...] | None) -> list[str]:
     return sorted({str(ipaddress.IPv4Address(v)) for v in values if v})
 
 
+#: A proxy tunnel's own way to its proxy or exit node when that sits on one of
+#: the owner's exits (app/proxy_tunnel.py). One rule per tunnel and address.
+TUNNEL_RULE_PREFIX = "tunnel-"
+
+#: (tunnel's bridge address, exit, "udp" or "tcp", TCP port or None)
+Allow = tuple[str, str, str, int | None]
+
+
+def tunnel_rule(src: str, dst: str, proto: str, port: int | None) -> str:
+    return f"{TUNNEL_RULE_PREFIX}{src}-{dst}-{proto}{port or ''}"
+
+
+def parse_tunnels(text: str | None, subnet: str) -> list[tuple[str, str, str | None, int | None]]:
+    """FENCE_TUNNELS: ``src:udp`` for a Tailscale tunnel, ``src:tcp:proxy_ip:port`` for a SOCKS5 or HTTP one.
+
+    Anything else, or a source outside the bridge's subnet, is left out: a
+    tunnel the fence does not know keeps no exception, so it falls back to
+    the drops.
+    """
+    net = ipaddress.ip_network(subnet)
+    found = []
+    for entry in (text or "").split(","):
+        parts = entry.strip().split(":")
+        try:
+            src = ipaddress.IPv4Address(parts[0])
+            if src not in net:
+                continue
+            if len(parts) == 2 and parts[1] == "udp":
+                found.append((str(src), "udp", None, None))
+            elif len(parts) == 4 and parts[1] == "tcp" and parts[3].isdigit() and 0 < int(parts[3]) < 65536:
+                found.append((str(src), "tcp", str(ipaddress.IPv4Address(parts[2])), int(parts[3])))
+        except ValueError:
+            continue
+    return found
+
+
+def tunnel_allows(tunnels: list[tuple[str, str, str | None, int | None]], exits: list[str]) -> list[Allow]:
+    """The exceptions the tunnels need among the exits the fence drops.
+
+    A Tailscale tunnel gets UDP to every exit: the exit node's endpoint is one
+    of them, but only tailscaled knows which, and its port moves with NAT.
+    A SOCKS5 or HTTP tunnel gets TCP to its proxy's port, when the proxy sits
+    on one of the exits. Nothing for an exit the fence does not drop.
+    """
+    dropped = set(exits)
+    found: set[Allow] = set()
+    for src, proto, dst, port in tunnels:
+        if proto == "udp":
+            found |= {(src, ip, "udp", None) for ip in dropped}
+        elif dst in dropped:
+            found.add((src, dst, "tcp", port))
+    return sorted(found, key=lambda a: (a[0], a[1], a[2], a[3] or 0))
+
+
 def rule_names(
     subnet: str,
     extra_subnets: list[str] | tuple[str, ...] = (),
     filtered: bool = True,
     egress: str | list[str] | tuple[str, ...] | None = None,
     ipv6: bool = False,
+    allow: list[Allow] | tuple[Allow, ...] = (),
 ) -> set[str]:
     """The comment of every rule the tables should hold. Each rule has its own."""
     names = {masq_rule(subnet)}
@@ -251,6 +306,7 @@ def rule_names(
         names |= {name for name, _c, _s in BLOCKED}
         names |= {_connected_rule(c) for c in extra_subnets}
         names |= {egress_rule(ip) for ip in _exits(egress)}
+        names |= {tunnel_rule(*a) for a in allow}
         if ipv6:
             names |= {IPV6_FWD_RULE, IPV6_HOST_RULE}
     return names
@@ -263,6 +319,7 @@ def render_nft(
     filtered: bool = True,
     egress: str | list[str] | tuple[str, ...] | None = None,
     ipv6: bool = False,
+    allow: list[Allow] | tuple[Allow, ...] = (),
 ) -> str:
     """The whole table, replaced atomically by one ``nft -f -``.
 
@@ -302,6 +359,14 @@ def render_nft(
         for cidr in extra_subnets:
             ipaddress.ip_network(cidr)
             lines.append(f'    iifname {q} ip daddr {cidr} counter drop comment "{_connected_rule(cidr)}"')
+        # Before the exits' drops: a tunnel's own way to its proxy or exit node.
+        for src, dst, proto, port in allow:
+            src, dst = str(ipaddress.IPv4Address(src)), str(ipaddress.IPv4Address(dst))
+            what = f"tcp dport {int(port)}" if proto == "tcp" else "meta l4proto udp"
+            lines.append(
+                f"    iifname {q} ip saddr {src} ip daddr {dst} {what} counter accept "
+                f'comment "{tunnel_rule(src, dst, proto, port)}"'
+            )
         for ip in _exits(egress):
             lines.append(f'    iifname {q} ip daddr {ip} counter drop comment "{egress_rule(ip)}"')
         lines += [
@@ -336,6 +401,7 @@ def render_iptables(
     filtered: bool = True,
     egress: str | list[str] | tuple[str, ...] | None = None,
     ipv6: bool = False,
+    allow: list[Allow] | tuple[Allow, ...] = (),
 ) -> str:
     """The same fence for kernels without nf_tables, as an idempotent sh script.
 
@@ -369,6 +435,11 @@ def render_iptables(
         for cidr in extra_subnets:
             ipaddress.ip_network(cidr)
             out.append(f"{ipt} -t mangle -A CP-FWD -d {cidr} {comment(_connected_rule(cidr))} -j DROP")
+        for src, dst, proto, port in allow:
+            src, dst = str(ipaddress.IPv4Address(src)), str(ipaddress.IPv4Address(dst))
+            what = f"-p tcp --dport {int(port)}" if proto == "tcp" else "-p udp"
+            name = comment(tunnel_rule(src, dst, proto, port))
+            out.append(f"{ipt} -t mangle -A CP-FWD -s {src}/32 -d {dst}/32 {what} {name} -j RETURN")
         for ip in _exits(egress):
             out.append(f"{ipt} -t mangle -A CP-FWD -d {ip}/32 {comment(egress_rule(ip))} -j DROP")
         out.append(f"{ipt} -t mangle -A CP-IN {est} {comment(IN_EST_RULE)} -j RETURN")
@@ -486,6 +557,7 @@ own = f.egress_target(os.environ.get("FENCE_EGRESS"))
 # sets neither, so a missing flag reads as complete.
 others = f.exit_targets((os.environ.get("FENCE_EXITS") or "").split(","))
 complete = os.environ.get("FENCE_EXITS_COMPLETE", "1") == "1"
+tunnels = f.parse_tunnels(os.environ.get("FENCE_TUNNELS"), subnet)
 # A kernel booted with ipv6.disable=1 has no IPv6 at all, and no ip6 hooks to load.
 ipv6 = os.path.isdir(os.environ.get("FENCE_PROC_IPV6") or f.PROC_IPV6)
 route_error = ""
@@ -506,7 +578,8 @@ if not own or not complete:
     wanted += [n[len(f.EGRESS_PREFIX):] for n in counters if n.startswith(f.EGRESS_PREFIX)]
 exits = [ip for ip in f.exit_targets(wanted) if not local(ip)]
 egress = own if own in exits else (exits[0] if not own and not others and len(exits) == 1 else None)
-expected = f.rule_names(subnet, extras, filtered, exits, ipv6)
+allow = f.tunnel_allows(tunnels, exits)
+expected = f.rule_names(subnet, extras, filtered, exits, ipv6, allow)
 out = {
     "backend": b, "ok": True, "changed": False, "error": "", "extra_subnets": extras,
     "egress": egress, "exits": exits, "ipv6": ipv6,
@@ -516,9 +589,9 @@ if action == "apply" and filtered and route_error:
     out["error"] = route_error + "; the table was not changed"
 elif action == "apply" and set(counters) != expected:
     if b == "nft":
-        rc, _o, err = sh(["nft", "-f", "-"], f.render_nft(iface, subnet, extras, filtered, exits, ipv6))
+        rc, _o, err = sh(["nft", "-f", "-"], f.render_nft(iface, subnet, extras, filtered, exits, ipv6, allow))
     else:
-        rc, _o, err = sh(["sh", "-c", f.render_iptables(iface, subnet, extras, filtered, exits, ipv6)])
+        rc, _o, err = sh(["sh", "-c", f.render_iptables(iface, subnet, extras, filtered, exits, ipv6, allow)])
     out["changed"] = True
     if rc != 0:
         out["ok"] = False
@@ -657,6 +730,58 @@ def exit_env() -> dict[str, str]:
         others = others[: MAX_EXITS - 1]
     complete = answered and fleet is not None
     return {"FENCE_EXITS": ",".join(others), "FENCE_EXITS_COMPLETE": "1" if complete else "0"}
+
+
+def tunnel_env(client: Any) -> dict[str, str]:
+    """The helper's FENCE_TUNNELS: each running proxy tunnel on our network, and how it reaches its proxy.
+
+    An earner of a proxied copy shares its tunnel's network namespace, where
+    the tunnel's own firewall lets only the tunnel's traffic out on the bridge:
+    tailscaled's marked sockets, or the tunnel's own sockets to the proxy's
+    port (tunnel/cp-tunnel). So the tunnel's bridge address, with that protocol
+    and port, carries only the tunnel's own traffic. A tunnel whose settings
+    cannot be read gets no exception and keeps the drops.
+    """
+    from app import proxy_tunnel
+    from app.constants import LABEL_MANAGED, LABEL_ROLE, ROLE_TUNNEL
+
+    try:
+        running = client.containers.list(
+            filters={"label": [f"{LABEL_MANAGED}=true", f"{LABEL_ROLE}={ROLE_TUNNEL}"], "status": "running"}
+        )
+    except Exception as exc:  # noqa: BLE001 - no exception then, the drops hold
+        logger.warning("Could not list the proxy tunnels for the LAN fence: %s", exc)
+        return {"FENCE_TUNNELS": ""}
+    found = []
+    for c in running or []:
+        attrs = getattr(c, "attrs", None) or {}
+        src = (((attrs.get("NetworkSettings") or {}).get("Networks") or {}).get(NETWORK_NAME) or {}).get("IPAddress")
+        if not src:
+            continue
+        kind = proxy_tunnel._read_secret_file(c, "kind")
+        if kind == "tailscale":
+            found.append(f"{src}:udp")
+        elif kind in ("socks5", "http"):
+            ip = proxy_tunnel._read_secret_file(c, "proxy_ip")
+            port = proxy_tunnel._read_secret_file(c, "proxy_port")
+            if ip and port:
+                found.append(f"{src}:tcp:{ip}:{port}")
+    return {"FENCE_TUNNELS": ",".join(sorted(found))}
+
+
+def tunnel_started() -> None:
+    """Apply the fence again for a tunnel that just started, so it gets its exception now. Never raises.
+
+    Docker gives the tunnel its bridge address at its start, and a SOCKS5 or
+    HTTP proxy on one of the owner's exits answers it only once the exception
+    is in place: the next five-minute pass would come after the tunnel gave up.
+    """
+    if _state.get("mode") != MODE_ON:
+        return
+    try:
+        apply_fence(_orchestrator()._get_client())
+    except Exception as exc:  # noqa: BLE001 - the five-minute pass tries again
+        logger.warning("Could not apply the LAN fence for a new tunnel: %s", exc)
 
 
 def setting() -> str:
@@ -1054,7 +1179,7 @@ def run_helper(client: Any, action: str, subnet: str, filtered: bool = True) -> 
 
     # Resolved now, before the helper's name is claimed, so a DDNS name that
     # moved is dropped at its new address by this run.
-    exits = exit_env() if filtered else {}
+    exits = {**exit_env(), **tunnel_env(client)} if filtered else {}
     with _lock:
         container = None
         try:

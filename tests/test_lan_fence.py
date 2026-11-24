@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import socket
 import stat
@@ -269,6 +270,38 @@ exit 2
 """
 
 
+def _forward_verdict(table, src, dst, proto, port, iface="cp-isolated"):
+    """What the stored table's forward chain does with one new packet from the bridge: first match wins.
+
+    Reads the rule forms render_nft writes (iifname, ip saddr/daddr, meta
+    l4proto, tcp/udp dport, ct state); a reply-only rule never matches a new
+    packet. The chain's policy is accept.
+    """
+    import ipaddress as ip
+
+    chain = table.split("chain forward {", 1)[1].split("}", 1)[0]
+    for line in chain.splitlines():
+        line = line.strip()
+        if not line or line.startswith("type ") or "ct state" in line:
+            continue
+        verdict = "accept" if " accept" in line else "drop" if " drop" in line else None
+        if verdict is None:
+            continue
+        ok = True
+        for field, value in re.findall(r"(iifname|ip saddr|ip daddr|meta l4proto|tcp dport|udp dport) (\S+)", line):
+            if field == "iifname":
+                ok &= value.strip('"') == iface
+            elif field in ("ip saddr", "ip daddr"):
+                ok &= ip.ip_address(src if field == "ip saddr" else dst) in ip.ip_network(value)
+            elif field == "meta l4proto":
+                ok &= value == proto
+            else:
+                ok &= field.startswith(proto) and int(value) == port
+        if ok:
+            return verdict
+    return "accept"
+
+
 class TestTheHelperScript:
     def _run(
         self,
@@ -282,6 +315,7 @@ class TestTheHelperScript:
         backend="auto",
         exits=None,
         complete=None,
+        tunnels=None,
     ):
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
@@ -308,7 +342,7 @@ class TestTheHelperScript:
             FENCE_PROC_IF_INET6=str(tmp_path / "if_inet6"),
         )
         # Unset unless a test sets them: Desktop's helper call passes neither.
-        for key, value in (("FENCE_EXITS", exits), ("FENCE_EXITS_COMPLETE", complete)):
+        for key, value in (("FENCE_EXITS", exits), ("FENCE_EXITS_COMPLETE", complete), ("FENCE_TUNNELS", tunnels)):
             env.pop(key, None)
             if value is not None:
                 env[key] = value
@@ -424,6 +458,43 @@ class TestTheHelperScript:
         gone = self._run(tmp_path, "apply", egress="81.61.1.9", exits="", complete="1")
         assert gone["changed"] and "egress-88.1.2.3" not in gone["counters"]
         assert "egress-81.61.1.9" in gone["counters"]
+
+    def test_a_tailscale_tunnel_keeps_its_direct_path_to_an_exit_node_on_an_own_line(self, tmp_path):
+        """The tunnel's WireGuard UDP to the exit node's public IP passes; nothing else from the bridge does."""
+        got = self._run(tmp_path, "apply", egress="81.61.1.9", exits="185.66.46.71", tunnels="172.18.0.5:udp")
+        assert got["ok"] and got["matches"]
+        table = (tmp_path / "table").read_text()
+        assert _forward_verdict(table, "172.18.0.5", "185.66.46.71", "udp", 41641) == "accept"
+        # An earner on the bridge, to the same address and port: still dropped.
+        assert _forward_verdict(table, "172.18.0.9", "185.66.46.71", "udp", 41641) == "drop"
+        # The tunnel itself gets UDP only, and nothing toward the box's own IP's LAN ranges.
+        assert _forward_verdict(table, "172.18.0.5", "185.66.46.71", "tcp", 41641) == "drop"
+        assert _forward_verdict(table, "172.18.0.5", "192.168.1.1", "udp", 41641) == "drop"
+        assert _forward_verdict(table, "172.18.0.5", "81.61.1.9", "udp", 41641) == "accept"
+        assert _forward_verdict(table, "172.18.0.9", "81.61.1.9", "udp", 41641) == "drop"
+
+    def test_a_socks_tunnel_keeps_its_proxy_port_on_an_own_line_and_nothing_else(self, tmp_path):
+        got = self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.3", tunnels="172.18.0.6:tcp:88.1.2.3:1080")
+        assert got["ok"] and got["matches"]
+        table = (tmp_path / "table").read_text()
+        assert _forward_verdict(table, "172.18.0.6", "88.1.2.3", "tcp", 1080) == "accept"
+        assert _forward_verdict(table, "172.18.0.6", "88.1.2.3", "tcp", 22) == "drop"
+        assert _forward_verdict(table, "172.18.0.6", "88.1.2.3", "udp", 1080) == "drop"
+        assert _forward_verdict(table, "172.18.0.6", "81.61.1.9", "tcp", 1080) == "drop", "only its own proxy"
+        assert _forward_verdict(table, "172.18.0.9", "88.1.2.3", "tcp", 1080) == "drop", "an earner, same port"
+
+    def test_a_tunnel_entry_that_is_not_on_the_bridge_or_not_valid_opens_nothing(self, tmp_path):
+        bad = "10.9.9.9:udp,172.18.0.7:icmp,172.18.0.8:tcp:88.1.2.3:99999,nonsense,172.18.0.4:tcp:88.1.2.3"
+        got = self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.3", tunnels=bad)
+        assert got["ok"] and got["matches"]
+        assert not [n for n in got["counters"] if n.startswith("tunnel-")]
+
+    def test_a_tunnel_that_went_loses_its_exception(self, tmp_path):
+        self._run(tmp_path, "apply", egress="81.61.1.9", exits="185.66.46.71", tunnels="172.18.0.5:udp")
+        again = self._run(tmp_path, "apply", egress="81.61.1.9", exits="185.66.46.71", tunnels="")
+        assert again["changed"] and not [n for n in again["counters"] if n.startswith("tunnel-")]
+        table = (tmp_path / "table").read_text()
+        assert _forward_verdict(table, "172.18.0.5", "185.66.46.71", "udp", 41641) == "drop"
 
     def test_with_ipv6_on_the_host_the_ip6_drops_are_written(self, tmp_path):
         got = self._run(tmp_path, "apply", ipv6=True)
@@ -1072,6 +1143,54 @@ def test_a_single_box_without_settings_sends_an_empty_complete_list():
         assert lan_fence.exit_env() == {"FENCE_EXITS": "", "FENCE_EXITS_COMPLETE": "1"}
 
 
+def _tunnel(ip, files, net=lan_fence.NETWORK_NAME):
+    c = MagicMock()
+    c.attrs = {"NetworkSettings": {"Networks": {net: {"IPAddress": ip}}}}
+    c.files = files
+    return c
+
+
+def test_tunnel_env_names_each_running_tunnel_and_how_it_reaches_its_proxy():
+    client = MagicMock()
+    client.containers.list.return_value = [
+        _tunnel("172.18.0.5", {"kind": "tailscale"}),
+        _tunnel("172.18.0.6", {"kind": "socks5", "proxy_ip": "88.1.2.3", "proxy_port": "1080"}),
+        _tunnel("10.0.0.5", {"kind": "tailscale"}, net="bridge"),
+        _tunnel("172.18.0.7", {}),
+    ]
+    with patch("app.proxy_tunnel._read_secret_file", side_effect=lambda c, key: c.files.get(key)):
+        env = lan_fence.tunnel_env(client)
+    assert env == {"FENCE_TUNNELS": "172.18.0.5:udp,172.18.0.6:tcp:88.1.2.3:1080"}, "unreadable or elsewhere: none"
+    filters = client.containers.list.call_args.kwargs["filters"]
+    assert filters["status"] == "running" and "cashpilot.role=tunnel" in filters["label"]
+    client.containers.list.side_effect = RuntimeError("docker down")
+    assert lan_fence.tunnel_env(client) == {"FENCE_TUNNELS": ""}, "no listing: no exception, the drops hold"
+
+
+def test_a_tunnel_that_starts_has_the_fence_applied_at_once():
+    """Its bridge address exists only from its start; the five-minute pass would come after it gave up."""
+    from app import proxy_tunnel
+
+    tunnel = MagicMock()
+    tunnel.status = "running"
+    tunnel.exec_run.return_value = (0, b'{"ip": "185.66.46.71", "country": "ES"}')
+    with patch.object(lan_fence, "tunnel_started") as hook:
+        assert proxy_tunnel._wait_ready(tunnel, timeout=5)["ip"] == "185.66.46.71"
+    hook.assert_called_once()
+
+
+def test_tunnel_started_applies_only_in_on_mode_and_never_raises():
+    with patch.object(lan_fence, "apply_fence") as apply, patch.object(lan_fence, "_orchestrator"):
+        lan_fence._state["mode"] = lan_fence.MODE_OPERATOR
+        lan_fence.tunnel_started()
+        apply.assert_not_called()
+        lan_fence._state["mode"] = lan_fence.MODE_ON
+        lan_fence.tunnel_started()
+        apply.assert_called_once()
+        apply.side_effect = RuntimeError("helper failed")
+        lan_fence.tunnel_started()
+
+
 def _reply(body):
     resp = MagicMock()
     resp.json.return_value = body
@@ -1668,6 +1787,20 @@ class TestTheFleetPage:
 # ---------------------------------------------------------------------------
 
 
+def test_iptables_puts_the_tunnel_exception_before_the_exit_drop():
+    allow = [("172.18.0.5", "185.66.46.71", "udp", None), ("172.18.0.6", "88.1.2.3", "tcp", 1080)]
+    ipt = lan_fence.render_iptables(
+        "cp-isolated", "172.18.0.0/16", egress=["185.66.46.71", "88.1.2.3"], allow=allow
+    ).splitlines()
+    udp = next(i for i, ln in enumerate(ipt) if "-s 172.18.0.5/32 -d 185.66.46.71/32 -p udp" in ln)
+    tcp = next(i for i, ln in enumerate(ipt) if "-s 172.18.0.6/32 -d 88.1.2.3/32 -p tcp --dport 1080" in ln)
+    first_drop = next(i for i, ln in enumerate(ipt) if "--comment egress-" in ln)
+    assert ipt[udp].endswith("-j RETURN") and ipt[tcp].endswith("-j RETURN")
+    assert max(udp, tcp) < first_drop
+    names = lan_fence.rule_names("172.18.0.0/16", egress=["185.66.46.71", "88.1.2.3"], allow=allow)
+    assert {"tunnel-172.18.0.5-185.66.46.71-udp", "tunnel-172.18.0.6-88.1.2.3-tcp1080"} <= names
+
+
 class TestCounterProof:
     def _targets(self):
         return isolation_check.fence_targets("172.18.0.1")
@@ -1756,6 +1889,23 @@ class TestCounterProof:
         everything = {n for n, _c, _s in lan_fence.BLOCKED} | {"host", "egress-198.51.100.7"}
         _fence, findings = self._judge(everything, reachable_label="ipv6-host")
         assert findings[0]["kind"] == "fence_not_hit" and "[fe80::a8c1:abff:fe01:203%eth0]:9" in findings[0]["detail"]
+
+    def test_a_tunnel_exception_is_no_target_and_no_finding(self):
+        """The check probes from an ordinary earner, never from a tunnel: the exception is not a hole it reports."""
+        read = {
+            "present": True,
+            "matches": True,
+            "egress": "81.61.1.9",
+            "exits": ["185.66.46.71", "81.61.1.9"],
+            "counters": {"egress-81.61.1.9": 0, "egress-185.66.46.71": 0, "tunnel-172.18.0.5-185.66.46.71-udp": 9},
+        }
+        targets = isolation_check.fence_targets("172.18.0.1", read)
+        assert not [t for t in targets if t["label"].startswith("tunnel-")]
+        names = {t["label"] for t in targets}
+        before = dict(read, counters=dict.fromkeys(names, 0) | {"tunnel-172.18.0.5-185.66.46.71-udp": 9})
+        after = dict(read, counters=dict.fromkeys(names, 1) | {"tunnel-172.18.0.5-185.66.46.71-udp": 9})
+        _fence, findings = isolation_check.judge_fence(targets, before, after)
+        assert [f for f in findings if f.get("exposure")] == []
 
     def test_every_listed_exit_needs_its_own_proof(self):
         """An exit whose drop is missing gets a sentinel all the same, so the check turns red for it."""

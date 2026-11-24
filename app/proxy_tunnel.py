@@ -64,7 +64,7 @@ from urllib.parse import quote, unquote
 from docker.errors import APIError, DockerException, NotFound
 from docker.types import Mount
 
-from app import egress, orchestrator, route_gate, version
+from app import egress, lan_fence, orchestrator, route_gate, version
 from app.constants import (
     CONTAINER_PREFIX,
     DEPLOY_DEADLINE_SECONDS,
@@ -680,11 +680,17 @@ def sidecar_kwargs(
 def _wait_ready(container: Any, timeout: float = READY_TIMEOUT) -> dict[str, Any]:
     """Wait for /run/ready; returns the probe result {"ip", "country"}."""
     deadline = time.monotonic() + timeout
+    fenced = False
     while time.monotonic() < deadline:
         container.reload()
         if container.status not in ("running", "created", "restarting"):
             break
         if container.status == "running":
+            if not fenced:
+                # Its bridge address exists only now: the fence lets it reach a
+                # proxy or exit node on one of the owner's own exits (lan_fence.tunnel_allows).
+                fenced = True
+                lan_fence.tunnel_started()
             code, out = container.exec_run(["cat", "/run/ready"], demux=False)
             if code == 0 and out:
                 try:
