@@ -50,7 +50,11 @@ class EarnFMCollector(BaseCollector):
             return None
         resp.raise_for_status()
         data = resp.json()
-        return data.get("access_token")
+        token = data.get("access_token")
+        if not token:
+            # Accepted, but no token came back: unknown, not a rejected password.
+            raise ValueError("Earn.fm accepted the login but sent no access token")
+        return token
 
     async def collect(self) -> EarningsResult:
         """Fetch current Earn.fm balance."""
@@ -68,6 +72,7 @@ class EarnFMCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Invalid credentials — check Earn.fm email/password in Settings",
+                    error_kind=base.KIND_AUTH,
                 )
 
             client = self._get_client(timeout=30)
@@ -85,6 +90,7 @@ class EarnFMCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error="Auth token rejected — check Earn.fm email/password in Settings",
+                    error_kind=base.KIND_AUTH,
                 )
 
             resp.raise_for_status()
@@ -107,4 +113,5 @@ class EarnFMCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=base.describe_exception(exc),
+                error_kind=base.classify_exception(exc),
             )
