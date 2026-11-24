@@ -13,7 +13,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -139,6 +141,18 @@ class TestTheRuleset:
         ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", egress="198.51.100.7")
         assert "-A CP-FWD -d 198.51.100.7/32 -m comment --comment egress-198.51.100.7 -j DROP" in ipt
 
+    def test_every_exit_of_the_owner_gets_one_drop(self):
+        """Another line of the owner's forwards ports too: each of its public IPs is dropped, once."""
+        exits = ["203.0.113.9", "198.51.100.7", "203.0.113.9"]
+        nft = lan_fence.render_nft("cp-isolated", "172.18.0.0/16", egress=exits)
+        forward = nft.split("chain forward {", 1)[1].split("}", 1)[0]
+        ipt = lan_fence.render_iptables("cp-isolated", "172.18.0.0/16", egress=exits)
+        for ip in ("198.51.100.7", "203.0.113.9"):
+            assert forward.count(f'ip daddr {ip} counter drop comment "egress-{ip}"') == 1
+            assert ipt.count(f"-A CP-FWD -d {ip}/32 -m comment --comment egress-{ip} -j DROP") == 1
+        names = lan_fence.rule_names("172.18.0.0/16", egress=exits)
+        assert {n for n in names if n.startswith("egress-")} == {"egress-198.51.100.7", "egress-203.0.113.9"}
+
     @pytest.mark.parametrize("value", [None, "", "192.168.1.1", "100.64.1.1", "2001:db8::1", "x; flush ruleset"])
     def test_only_a_public_ipv4_becomes_an_egress_drop(self, value):
         assert lan_fence.egress_target(value) is None
@@ -256,9 +270,52 @@ exit 2
 """
 
 
+def _forward_verdict(table, src, dst, proto, port, iface="cp-isolated"):
+    """What the stored table's forward chain does with one new packet from the bridge: first match wins.
+
+    Reads the rule forms render_nft writes (iifname, ip saddr/daddr, meta
+    l4proto, tcp/udp dport, ct state); a reply-only rule never matches a new
+    packet. The chain's policy is accept.
+    """
+    import ipaddress as ip
+
+    chain = table.split("chain forward {", 1)[1].split("}", 1)[0]
+    for line in chain.splitlines():
+        line = line.strip()
+        if not line or line.startswith("type ") or "ct state" in line:
+            continue
+        verdict = "accept" if " accept" in line else "drop" if " drop" in line else None
+        if verdict is None:
+            continue
+        ok = True
+        for field, value in re.findall(r"(iifname|ip saddr|ip daddr|meta l4proto|tcp dport|udp dport) (\S+)", line):
+            if field == "iifname":
+                ok &= value.strip('"') == iface
+            elif field in ("ip saddr", "ip daddr"):
+                ok &= ip.ip_address(src if field == "ip saddr" else dst) in ip.ip_network(value)
+            elif field == "meta l4proto":
+                ok &= value == proto
+            else:
+                ok &= field.startswith(proto) and int(value) == port
+        if ok:
+            return verdict
+    return "accept"
+
+
 class TestTheHelperScript:
     def _run(
-        self, tmp_path, action, filtered="1", subnet="172.18.0.0/16", ipv6=False, egress="", route=None, backend="auto"
+        self,
+        tmp_path,
+        action,
+        filtered="1",
+        subnet="172.18.0.0/16",
+        ipv6=False,
+        egress="",
+        route=None,
+        backend="auto",
+        exits=None,
+        complete=None,
+        tunnels=None,
     ):
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(exist_ok=True)
@@ -284,6 +341,11 @@ class TestTheHelperScript:
             FENCE_PROC_IPV6=str(tmp_path / ("ipv6" if ipv6 else "no-ipv6")),
             FENCE_PROC_IF_INET6=str(tmp_path / "if_inet6"),
         )
+        # Unset unless a test sets them: Desktop's helper call passes neither.
+        for key, value in (("FENCE_EXITS", exits), ("FENCE_EXITS_COMPLETE", complete), ("FENCE_TUNNELS", tunnels)):
+            env.pop(key, None)
+            if value is not None:
+                env[key] = value
         (tmp_path / "ipv6").mkdir(exist_ok=True)
         (tmp_path / "if_inet6").write_text(
             "fe80000000000000a8c1abfffe010203 0c 40 20 80  cp-isolated\n"
@@ -376,6 +438,63 @@ class TestTheHelperScript:
         assert got["egress"] == "81.61.1.9" and "egress-81.61.1.9" in got["counters"]
         self._run(tmp_path, "apply", filtered="0")
         assert self._run(tmp_path, "apply", egress="")["egress"] is None, "nothing to keep, nothing invented"
+
+    def test_every_other_exit_is_dropped_and_one_that_went_is_removed(self, tmp_path):
+        """The owner's other lines: each public IP gets its drop, and an exit that changed loses its old one."""
+        got = self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.3, 62.4.5.6,not-an-ip,10.0.0.1,88.1.2.3")
+        assert got["ok"] and got["matches"]
+        dropped = {n for n in got["counters"] if n.startswith("egress-")}
+        assert dropped == {"egress-81.61.1.9", "egress-88.1.2.3", "egress-62.4.5.6"}, "a LAN or bad entry is no drop"
+        assert got["exits"] == ["62.4.5.6", "81.61.1.9", "88.1.2.3"]
+        again = self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.4,62.4.5.6")
+        assert again["changed"] and again["matches"]
+        assert "egress-88.1.2.4" in again["counters"] and "egress-88.1.2.3" not in again["counters"]
+
+    def test_an_incomplete_list_keeps_the_drops_the_table_has(self, tmp_path):
+        """A name that did not resolve, or a worker that has not heard the UI yet, must not reopen an exit."""
+        self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.3")
+        kept = self._run(tmp_path, "apply", egress="81.61.1.9", exits="", complete="0")
+        assert kept["ok"] and not kept["changed"] and "egress-88.1.2.3" in kept["counters"]
+        gone = self._run(tmp_path, "apply", egress="81.61.1.9", exits="", complete="1")
+        assert gone["changed"] and "egress-88.1.2.3" not in gone["counters"]
+        assert "egress-81.61.1.9" in gone["counters"]
+
+    def test_a_tailscale_tunnel_keeps_its_direct_path_to_an_exit_node_on_an_own_line(self, tmp_path):
+        """The tunnel's WireGuard UDP to the exit node's public IP passes; nothing else from the bridge does."""
+        got = self._run(tmp_path, "apply", egress="81.61.1.9", exits="185.66.46.71", tunnels="172.18.0.5:udp")
+        assert got["ok"] and got["matches"]
+        table = (tmp_path / "table").read_text()
+        assert _forward_verdict(table, "172.18.0.5", "185.66.46.71", "udp", 41641) == "accept"
+        # An earner on the bridge, to the same address and port: still dropped.
+        assert _forward_verdict(table, "172.18.0.9", "185.66.46.71", "udp", 41641) == "drop"
+        # The tunnel itself gets UDP only, and nothing toward the box's own IP's LAN ranges.
+        assert _forward_verdict(table, "172.18.0.5", "185.66.46.71", "tcp", 41641) == "drop"
+        assert _forward_verdict(table, "172.18.0.5", "192.168.1.1", "udp", 41641) == "drop"
+        assert _forward_verdict(table, "172.18.0.5", "81.61.1.9", "udp", 41641) == "accept"
+        assert _forward_verdict(table, "172.18.0.9", "81.61.1.9", "udp", 41641) == "drop"
+
+    def test_a_socks_tunnel_keeps_its_proxy_port_on_an_own_line_and_nothing_else(self, tmp_path):
+        got = self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.3", tunnels="172.18.0.6:tcp:88.1.2.3:1080")
+        assert got["ok"] and got["matches"]
+        table = (tmp_path / "table").read_text()
+        assert _forward_verdict(table, "172.18.0.6", "88.1.2.3", "tcp", 1080) == "accept"
+        assert _forward_verdict(table, "172.18.0.6", "88.1.2.3", "tcp", 22) == "drop"
+        assert _forward_verdict(table, "172.18.0.6", "88.1.2.3", "udp", 1080) == "drop"
+        assert _forward_verdict(table, "172.18.0.6", "81.61.1.9", "tcp", 1080) == "drop", "only its own proxy"
+        assert _forward_verdict(table, "172.18.0.9", "88.1.2.3", "tcp", 1080) == "drop", "an earner, same port"
+
+    def test_a_tunnel_entry_that_is_not_on_the_bridge_or_not_valid_opens_nothing(self, tmp_path):
+        bad = "10.9.9.9:udp,172.18.0.7:icmp,172.18.0.8:tcp:88.1.2.3:99999,nonsense,172.18.0.4:tcp:88.1.2.3"
+        got = self._run(tmp_path, "apply", egress="81.61.1.9", exits="88.1.2.3", tunnels=bad)
+        assert got["ok"] and got["matches"]
+        assert not [n for n in got["counters"] if n.startswith("tunnel-")]
+
+    def test_a_tunnel_that_went_loses_its_exception(self, tmp_path):
+        self._run(tmp_path, "apply", egress="81.61.1.9", exits="185.66.46.71", tunnels="172.18.0.5:udp")
+        again = self._run(tmp_path, "apply", egress="81.61.1.9", exits="185.66.46.71", tunnels="")
+        assert again["changed"] and not [n for n in again["counters"] if n.startswith("tunnel-")]
+        table = (tmp_path / "table").read_text()
+        assert _forward_verdict(table, "172.18.0.5", "185.66.46.71", "udp", 41641) == "drop"
 
     def test_with_ipv6_on_the_host_the_ip6_drops_are_written(self, tmp_path):
         got = self._run(tmp_path, "apply", ipv6=True)
@@ -968,9 +1087,259 @@ def test_the_helper_gets_the_egress_ip():
     client.containers.get.side_effect = NotFound("gone")
     with patch.object(lan_fence, "_helper_image", return_value="img"):
         lan_fence.run_helper(client, "apply", "172.18.0.0/16")
-    assert client.containers.create.call_args.kwargs["environment"]["FENCE_EGRESS"] == "81.61.1.9"
+    env = client.containers.create.call_args.kwargs["environment"]
+    assert env["FENCE_EGRESS"] == "81.61.1.9"
+    assert {"FENCE_EXITS", "FENCE_EXITS_COMPLETE"} <= set(env), "the owner's other exits go to every filtered run"
     lan_fence.set_egress_ip("10.0.0.1")
     assert lan_fence._egress["ip"] == "81.61.1.9", "a LAN answer is a failed lookup: never dropped, the last IP kept"
+
+
+def _answers(table):
+    """A getaddrinfo stand-in: a name in ``table`` answers its addresses, any other fails."""
+
+    def lookup(name, *_args, **_kwargs):
+        if name not in table:
+            raise socket.gaierror(f"no answer for {name}")
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0)) for ip in table[name]]
+
+    return lookup
+
+
+def test_the_helper_gets_the_owners_other_exits():
+    """CASHPILOT_FENCE_EXITS (addresses and DDNS names) and the other boxes' exits, without this box's own."""
+    setting = "62.4.5.6, Home.Example.net.,2001:db8::1, not a host!, 10.0.0.1,81.61.1.9"
+    with (
+        patch.object(lan_fence, "_EXITS_SETTING", setting),
+        patch.object(lan_fence, "_egress", {"ip": "81.61.1.9"}),
+        patch.object(lan_fence, "_fleet_exits", {"ips": None}),
+        patch.object(lan_fence.socket, "getaddrinfo", _answers({"home.example.net": ["88.1.2.3", "10.0.0.5"]})),
+    ):
+        assert lan_fence.exit_env() == {
+            "FENCE_EGRESS": "81.61.1.9",
+            "FENCE_EXITS": "62.4.5.6,88.1.2.3",
+            "FENCE_EXITS_COMPLETE": "0",
+        }, "until the UI answers, the list may be short: the table keeps what it drops"
+        assert lan_fence.set_fleet_exits(["81.61.1.9", "95.1.1.1", "192.168.1.1"]) is True
+        assert lan_fence.set_fleet_exits(["95.1.1.1", "81.61.1.9"]) is False
+        assert lan_fence.exit_env() == {
+            "FENCE_EGRESS": "81.61.1.9",
+            "FENCE_EXITS": "62.4.5.6,88.1.2.3,95.1.1.1",
+            "FENCE_EXITS_COMPLETE": "1",
+        }
+
+
+def test_a_name_that_does_not_answer_keeps_the_drops():
+    """A DNS outage is not an exit that went: the helper keeps the table's drops until the name answers."""
+    with (
+        patch.object(lan_fence, "_EXITS_SETTING", "gone.example.net,62.4.5.6"),
+        patch.object(lan_fence, "_egress", {"ip": None}),
+        patch.object(lan_fence, "_fleet_exits", {"ips": []}),
+        patch.object(lan_fence.socket, "getaddrinfo", _answers({})),
+    ):
+        assert lan_fence.exit_env() == {"FENCE_EGRESS": "", "FENCE_EXITS": "62.4.5.6", "FENCE_EXITS_COMPLETE": "0"}
+
+
+def test_a_single_box_without_settings_sends_an_empty_complete_list():
+    """One box, one line: nothing changes for it, and a gone exit is still removed."""
+    with (
+        patch.object(lan_fence, "_EXITS_SETTING", ""),
+        patch.object(lan_fence, "_egress", {"ip": "81.61.1.9"}),
+        patch.object(lan_fence, "_fleet_exits", {"ips": ["81.61.1.9"]}),
+    ):
+        assert lan_fence.exit_env() == {"FENCE_EGRESS": "81.61.1.9", "FENCE_EXITS": "", "FENCE_EXITS_COMPLETE": "1"}
+
+
+def test_the_exit_list_and_the_helpers_own_exit_come_from_one_reading():
+    """A heartbeat that changes this box's exit mid-run must not leave the old one out of both."""
+    state = {"ip": "81.61.1.9"}
+
+    def resolve(names):
+        state["ip"] = "95.1.1.1"  # the heartbeat lands while the names resolve
+        return [], True
+
+    with (
+        patch.object(lan_fence, "_EXITS_SETTING", ""),
+        patch.object(lan_fence, "_egress", state),
+        patch.object(lan_fence, "_fleet_exits", {"ips": ["81.61.1.9", "95.1.1.1"]}),
+        patch.object(lan_fence, "_resolve", side_effect=resolve),
+    ):
+        env = lan_fence.exit_env()
+    assert env["FENCE_EGRESS"] == "81.61.1.9"
+    assert env["FENCE_EXITS"] == "95.1.1.1"
+
+
+def _tunnel(ip, files, net=lan_fence.NETWORK_NAME):
+    c = MagicMock()
+    c.attrs = {"NetworkSettings": {"Networks": {net: {"IPAddress": ip}}}}
+    c.files = files
+    return c
+
+
+def test_tunnel_env_names_each_running_tunnel_and_how_it_reaches_its_proxy():
+    client = MagicMock()
+    client.containers.list.return_value = [
+        _tunnel("172.18.0.5", {"kind": "tailscale"}),
+        _tunnel("172.18.0.6", {"kind": "socks5", "proxy_ip": "88.1.2.3", "proxy_port": "1080"}),
+        _tunnel("10.0.0.5", {"kind": "tailscale"}, net="bridge"),
+        _tunnel("172.18.0.7", {}),
+    ]
+    with patch("app.proxy_tunnel._read_secret_file", side_effect=lambda c, key: c.files.get(key)):
+        env = lan_fence.tunnel_env(client)
+    assert env == {"FENCE_TUNNELS": "172.18.0.5:udp,172.18.0.6:tcp:88.1.2.3:1080"}, "unreadable or elsewhere: none"
+    filters = client.containers.list.call_args.kwargs["filters"]
+    assert filters["status"] == "running" and "cashpilot.role=tunnel" in filters["label"]
+    client.containers.list.side_effect = RuntimeError("docker down")
+    assert lan_fence.tunnel_env(client) == {"FENCE_TUNNELS": ""}, "no listing: no exception, the drops hold"
+
+
+def test_a_tunnel_that_starts_has_the_fence_applied_at_once():
+    """Its bridge address exists only from its start; the five-minute pass would come after it gave up."""
+    from app import proxy_tunnel
+
+    tunnel = MagicMock()
+    tunnel.status = "running"
+    tunnel.exec_run.return_value = (0, b'{"ip": "185.66.46.71", "country": "ES"}')
+    with patch.object(lan_fence, "tunnel_started") as hook:
+        assert proxy_tunnel._wait_ready(tunnel, timeout=5)["ip"] == "185.66.46.71"
+    hook.assert_called_once()
+
+
+def test_tunnel_started_applies_only_in_on_mode_and_never_raises():
+    with patch.object(lan_fence, "apply_fence") as apply, patch.object(lan_fence, "_orchestrator"):
+        lan_fence._state["mode"] = lan_fence.MODE_OPERATOR
+        lan_fence.tunnel_started()
+        apply.assert_not_called()
+        lan_fence._state["mode"] = lan_fence.MODE_ON
+        lan_fence.tunnel_started()
+        apply.assert_called_once()
+        apply.side_effect = RuntimeError("helper failed")
+        lan_fence.tunnel_started()
+
+
+def test_a_tunnel_the_heartbeat_starts_has_the_fence_applied():
+    """A tunnel started again by the heartbeat gets a new bridge address, and with it its exception."""
+    from app import proxy_tunnel
+
+    tunnel = MagicMock()
+    tunnel.name = "cashpilot-tunnel-p3"
+    tunnel.status = "exited"
+    with (
+        patch.object(proxy_tunnel, "held", return_value=set()),
+        patch.object(proxy_tunnel, "_restarts_by_itself", return_value=False),
+        patch.object(proxy_tunnel, "refresh_proxy_ip"),
+        patch.object(lan_fence, "tunnel_started") as hook,
+    ):
+        proxy_tunnel._start_down_tunnel(tunnel, "3", "cashpilot-earnfm-p3")
+        tunnel.start.assert_called_once()
+        hook.assert_called_once()
+        tunnel.status = "running"
+        proxy_tunnel._start_down_tunnel(tunnel, "3", "cashpilot-earnfm-p3")
+    hook.assert_called_once()  # nothing started the second time: nothing to fence
+
+
+def _reply(body):
+    resp = MagicMock()
+    resp.json.return_value = body
+    return resp
+
+
+def test_the_ui_reply_hands_over_the_other_exits():
+    with patch.object(lan_fence, "_fleet_exits", {"ips": None}):
+        assert worker_api._apply_fleet_exits_reply(_reply({"status": "ok"})) is True, "an older UI: no other exits"
+        assert lan_fence._fleet_exits["ips"] == []
+        assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": ["95.1.1.1", "10.0.0.1"]})) is True
+        assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
+        assert worker_api._apply_fleet_exits_reply(_reply({"status": "ok"})) is False, (
+            "a UI that could not read the fleet"
+        )
+        assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
+        assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": []})) is True
+        assert lan_fence._fleet_exits["ips"] == []
+    with patch.object(lan_fence, "_fleet_exits", {"ips": None}):
+        assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": None})) is False, (
+            "a UI that could not read the fleet: still unknown, so the table keeps its drops"
+        )
+        assert lan_fence._fleet_exits["ips"] is None
+
+
+@pytest.mark.parametrize(("docker_ok", "checks"), [(True, 1), (False, 0)])
+def test_new_fleet_exits_are_fenced_at_once(docker_ok, checks):
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post = AsyncMock(return_value=_reply({"status": "ok", "fleet_exits": ["95.1.1.1"]}))
+    with (
+        patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value="81.61.1.9")),
+        patch.object(worker_api, "_worker_key", "own"),
+        patch.object(worker_api, "UI_URL", "http://ui:8080"),
+        patch("app.worker_api.orchestrator.get_status", return_value=[]),
+        patch("app.worker_api.orchestrator.docker_available", return_value=docker_ok),
+        patch("app.worker_api.httpx.AsyncClient", return_value=client),
+        patch.object(lan_fence, "run_helper"),
+        patch.object(lan_fence, "_egress", {"ip": "81.61.1.9"}),
+        patch.object(lan_fence, "_fleet_exits", {"ips": None}),
+        patch.object(worker_api, "_check_fence", AsyncMock()) as check,
+    ):
+        asyncio.run(worker_api._send_heartbeat())
+        assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
+    assert check.await_count == checks
+
+
+def test_the_ui_hands_every_box_the_fleets_exits(tmp_path):
+    """Zero config: each box drops the other boxes' public IPv4s. Phones and failed detections are left out."""
+    from app import database, main
+
+    async def go():
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "fleet.db"),
+            patch.object(main, "_authenticate_worker_heartbeat", AsyncMock(return_value="ok")),
+            patch.object(main.database, "confirm_worker_key", AsyncMock()),
+            patch.object(main, "_earnings_for_worker", AsyncMock(return_value=None)),
+        ):
+            await database.init_db()
+
+            async def beat(cid, info):
+                body = main.WorkerHeartbeat(name=cid, client_id=cid, containers=[], system_info=info)
+                return await main.api_worker_heartbeat(MagicMock(), body)
+
+            await beat("site-b", {"egress_ip": "95.1.1.1"})
+            await beat("v6-only", {"egress_ip": "2a01:4f8::1"})
+            await beat("lan-answer", {"egress_ip": "192.168.1.5"})
+            phone = await beat("phone", {"os": "Android", "egress_ip": "80.58.0.1"})
+            home = await beat("home", {"egress_ip": "81.61.1.9"})
+            with patch.object(main.database, "list_workers", AsyncMock(side_effect=RuntimeError("locked"))):
+                unread = await beat("home", {"egress_ip": "81.61.1.9"})
+            # site-b's hourly lookup fails: its line is the same line, so its drop stays.
+            failed = await beat("site-b", {"egress_ip": None})
+            return home, phone, unread, failed
+
+    with patch.object(main, "_last_fleet_exit", {}):
+        home, phone, unread, failed = asyncio.run(go())
+    assert home["fleet_exits"] == ["81.61.1.9", "95.1.1.1"]
+    assert "fleet_exits" not in phone, "a phone has no fence"
+    assert unread["fleet_exits"] is None, "could not read is not an empty fleet: the worker keeps its list"
+    assert failed["fleet_exits"] == ["81.61.1.9", "95.1.1.1"], "a failed lookup keeps the box's last exit"
+
+
+def test_a_removed_box_takes_its_last_exit_with_it():
+    from app import main
+
+    async def go(workers):
+        with patch.object(main.database, "list_workers", AsyncMock(return_value=workers)):
+            return await main._fleet_exits()
+
+    with patch.object(main, "_last_fleet_exit", {}):
+        both = [
+            {"id": 1, "system_info": '{"egress_ip": "81.61.1.9"}'},
+            {"id": 2, "system_info": '{"egress_ip": "95.1.1.1"}'},
+        ]
+        assert asyncio.run(go(both)) == ["81.61.1.9", "95.1.1.1"]
+        assert asyncio.run(go([both[0], {"id": 2, "system_info": "{}"}])) == ["81.61.1.9", "95.1.1.1"]
+        assert asyncio.run(go([both[0]])) == ["81.61.1.9"], "removed: its drop goes"
+        assert asyncio.run(go([both[0], {"id": 2, "system_info": "{}"}])) == ["81.61.1.9"], "and is not remembered"
+        moved = [both[0], {"id": 2, "system_info": '{"egress_ip": "62.4.5.6"}'}]
+        assert asyncio.run(go(moved)) == ["62.4.5.6", "81.61.1.9"], "a new address replaces the old"
 
 
 # ---------------------------------------------------------------------------
@@ -1493,6 +1862,20 @@ class TestTheFleetPage:
 # ---------------------------------------------------------------------------
 
 
+def test_iptables_puts_the_tunnel_exception_before_the_exit_drop():
+    allow = [("172.18.0.5", "185.66.46.71", "udp", None), ("172.18.0.6", "88.1.2.3", "tcp", 1080)]
+    ipt = lan_fence.render_iptables(
+        "cp-isolated", "172.18.0.0/16", egress=["185.66.46.71", "88.1.2.3"], allow=allow
+    ).splitlines()
+    udp = next(i for i, ln in enumerate(ipt) if "-s 172.18.0.5/32 -d 185.66.46.71/32 -p udp" in ln)
+    tcp = next(i for i, ln in enumerate(ipt) if "-s 172.18.0.6/32 -d 88.1.2.3/32 -p tcp --dport 1080" in ln)
+    first_drop = next(i for i, ln in enumerate(ipt) if "--comment egress-" in ln)
+    assert ipt[udp].endswith("-j RETURN") and ipt[tcp].endswith("-j RETURN")
+    assert max(udp, tcp) < first_drop
+    names = lan_fence.rule_names("172.18.0.0/16", egress=["185.66.46.71", "88.1.2.3"], allow=allow)
+    assert {"tunnel-172.18.0.5-185.66.46.71-udp", "tunnel-172.18.0.6-88.1.2.3-tcp1080"} <= names
+
+
 class TestCounterProof:
     def _targets(self):
         return isolation_check.fence_targets("172.18.0.1")
@@ -1581,6 +1964,44 @@ class TestCounterProof:
         everything = {n for n, _c, _s in lan_fence.BLOCKED} | {"host", "egress-198.51.100.7"}
         _fence, findings = self._judge(everything, reachable_label="ipv6-host")
         assert findings[0]["kind"] == "fence_not_hit" and "[fe80::a8c1:abff:fe01:203%eth0]:9" in findings[0]["detail"]
+
+    def test_a_tunnel_exception_is_no_target_and_no_finding(self):
+        """The check probes from an ordinary earner, never from a tunnel: the exception is not a hole it reports."""
+        read = {
+            "present": True,
+            "matches": True,
+            "egress": "81.61.1.9",
+            "exits": ["185.66.46.71", "81.61.1.9"],
+            "counters": {"egress-81.61.1.9": 0, "egress-185.66.46.71": 0, "tunnel-172.18.0.5-185.66.46.71-udp": 9},
+        }
+        targets = isolation_check.fence_targets("172.18.0.1", read)
+        assert not [t for t in targets if t["label"].startswith("tunnel-")]
+        names = {t["label"] for t in targets}
+        before = dict(read, counters=dict.fromkeys(names, 0) | {"tunnel-172.18.0.5-185.66.46.71-udp": 9})
+        after = dict(read, counters=dict.fromkeys(names, 1) | {"tunnel-172.18.0.5-185.66.46.71-udp": 9})
+        _fence, findings = isolation_check.judge_fence(targets, before, after)
+        assert [f for f in findings if f.get("exposure")] == []
+
+    def test_every_listed_exit_needs_its_own_proof(self):
+        """An exit whose drop is missing gets a sentinel all the same, so the check turns red for it."""
+        read = {
+            "present": True,
+            "egress": "81.61.1.9",
+            "exits": ["62.4.5.6", "81.61.1.9", "88.1.2.3"],
+            "counters": {"egress-81.61.1.9": 0, "egress-62.4.5.6": 0},
+        }
+        targets = isolation_check.fence_targets("172.18.0.1", read)
+        exits = {t["label"]: t for t in targets if t["label"].startswith("egress-")}
+        assert set(exits) == {"egress-62.4.5.6", "egress-81.61.1.9", "egress-88.1.2.3"}
+        assert exits["egress-81.61.1.9"]["range"] == "this home's public IP"
+        assert all(t["refused"] and t["host"] == t["label"][len("egress-") :] for t in exits.values())
+        present = {t["label"] for t in targets} - {"egress-88.1.2.3"}
+        before = {"present": True, "counters": dict.fromkeys(present, 0)}
+        after = {"present": True, "matches": False, "counters": dict.fromkeys(present, 1)}
+        fence, findings = isolation_check.judge_fence(targets, before, after)
+        assert [r["rule"] for r in fence["ranges"] if not r["proven"] and not r["optional"]] == ["egress-88.1.2.3"]
+        not_hit = next(f for f in findings if f["kind"] == "fence_not_hit")
+        assert "88.1.2.3:9" in not_hit["detail"] and "81.61.1.9" not in not_hit["detail"]
 
 
 def _probe_reach():

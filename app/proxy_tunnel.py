@@ -64,7 +64,7 @@ from urllib.parse import quote, unquote
 from docker.errors import APIError, DockerException, NotFound
 from docker.types import Mount
 
-from app import egress, orchestrator, route_gate, version
+from app import egress, lan_fence, orchestrator, route_gate, version
 from app.constants import (
     CONTAINER_PREFIX,
     DEPLOY_DEADLINE_SECONDS,
@@ -680,11 +680,17 @@ def sidecar_kwargs(
 def _wait_ready(container: Any, timeout: float = READY_TIMEOUT) -> dict[str, Any]:
     """Wait for /run/ready; returns the probe result {"ip", "country"}."""
     deadline = time.monotonic() + timeout
+    fenced = False
     while time.monotonic() < deadline:
         container.reload()
         if container.status not in ("running", "created", "restarting"):
             break
         if container.status == "running":
+            if not fenced:
+                # Its bridge address exists only now: the fence lets it reach a
+                # proxy or exit node on one of the owner's own exits (lan_fence.tunnel_allows).
+                fenced = True
+                lan_fence.tunnel_started()
             code, out = container.exec_run(["cat", "/run/ready"], demux=False)
             if code == 0 and out:
                 try:
@@ -3580,6 +3586,7 @@ def _start_down_tunnel(tunnel: Any, proxy_id: str, name: str) -> None:
     lock = _deploy_lock(int(proxy_id)) if str(proxy_id).isdigit() else None
     if lock is None or not lock.acquire(blocking=False):
         return
+    started = False
     try:
         try:
             if name in held():
@@ -3592,11 +3599,16 @@ def _start_down_tunnel(tunnel: Any, proxy_id: str, name: str) -> None:
             return
         refresh_proxy_ip(tunnel)
         tunnel.start()
+        started = True
         logger.info("Started %s, which was down while a copy in it should run", tunnel.name)
     except Exception as exc:  # noqa: BLE001 - the next beat tries again
         logger.warning("Could not start %s: %s", tunnel.name, redact(str(exc)))
     finally:
         lock.release()
+    if started:
+        # Its bridge address is new: give it its exception to an exit node or
+        # proxy on one of the owner's lines now, as _wait_ready does for a deploy.
+        lan_fence.tunnel_started()
 
 
 def test(proxy: dict[str, Any], own_ip: str | None) -> dict[str, Any]:

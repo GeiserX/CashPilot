@@ -843,9 +843,11 @@ def _address(host: str, port: int) -> str:
 def fence_targets(gateway: str | None, fence: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """One connect per blocked range, plus the bridge gateway for the host rule.
 
-    ``fence`` is the helper's read. When the table holds a drop for the home's
-    public IP, that address is a target too: without the drop, the router's
-    NAT loopback would hand the connect back to the LAN. When it holds the
+    ``fence`` is the helper's read. Each of the owner's public IPs the helper
+    means to drop (this home's own, the other boxes' exits, CASHPILOT_FENCE_EXITS)
+    is a target too, whether or not its drop is in the table: without the drop,
+    the router's NAT loopback or a port forward on that line would hand the
+    connect to a LAN. When the table holds the
     IPv6 drops and the bridge has a link-local address, that address is one:
     an earner whose engine gave it IPv6 would reach the host there. Both count
     a reset as reaching, since the drop answers nothing.
@@ -872,14 +874,20 @@ def fence_targets(gateway: str | None, fence: dict[str, Any] | None = None) -> l
         )
     counters = (fence or {}).get("counters") or {}
     egress = (fence or {}).get("egress")
-    if egress and lan_fence.egress_rule(egress) in counters:
+    # Every exit the helper meant to drop gets its own connect, whether or not
+    # its rule is in the table: a missing drop then shows as that exit unproven.
+    # A helper older than "exits" named one address, and only when it was there.
+    exits = (fence or {}).get("exits")
+    if exits is None:
+        exits = [egress] if egress and lan_fence.egress_rule(egress) in counters else []
+    for ip in exits:
         found.append(
             {
                 "group": "fence",
-                "host": egress,
+                "host": ip,
                 "port": SENTINEL_PORT,
-                "label": lan_fence.egress_rule(egress),
-                "range": "this home's public IP",
+                "label": lan_fence.egress_rule(ip),
+                "range": "this home's public IP" if ip == egress else "another public IP of yours",
                 "refused": True,
             }
         )
