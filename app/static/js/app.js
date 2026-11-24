@@ -1705,6 +1705,11 @@ const CP = (() => {
           items.push({ level: 'fail', tag: 'Docker unreachable', what: a.platform, why: escapeHtml(a.error), actions: `<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a> <a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>` });
           continue;
         }
+        // A running copy that carries almost no traffic: its own row says it runs, so only this says it idles.
+        if (a.kind === 'stall') {
+          items.push({ level: 'warn', tag: 'Almost no traffic', what: a.platform, why: escapeHtml(a.error) });
+          continue;
+        }
         if (a.kind !== 'missing') continue;
         const svc = services.find(s => s.slug === a.platform);
         let actions = '';
@@ -1840,7 +1845,7 @@ const CP = (() => {
   let _attentionDrawSeq = 0;
   function attentionAlertsKey(alerts) {
     return JSON.stringify((alerts || [])
-      .filter(a => a.kind === 'missing' || a.kind === 'proxied' || a.kind === 'docker')
+      .filter(a => a.kind === 'missing' || a.kind === 'stall' || a.kind === 'proxied' || a.kind === 'docker')
       .map(a => [a.kind, a.platform, a.error]));
   }
   function refreshAttentionOnAlertChange(alerts, read = ++_attentionReads) {
@@ -6180,6 +6185,8 @@ const CP = (() => {
         const isProxied = a.kind === 'proxied';
         // A worker that cannot reach Docker: the fix is on that machine, never a credential.
         const isDocker = a.kind === 'docker';
+        // A running copy that carries almost no traffic: look at it, never a credential.
+        const isStall = a.kind === 'stall';
         // The failure TAXONOMY (CashPilot-5bdm). Only 'auth' means "your
         // credential needs replacing"; a transient provider outage self-heals
         // and a shape change is our bug, so pointing the user at their
@@ -6198,6 +6205,7 @@ const CP = (() => {
           : isProxyCap ? ' — traffic cap'
           : isProxied ? ' — proxied copy down'
           : isDocker ? ' — Docker unreachable'
+          : isStall ? ' — almost no traffic'
           : isDisabled ? ' — account disabled'
           : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
           : isQuiet ? ' — gone quiet'
@@ -6208,7 +6216,7 @@ const CP = (() => {
           : isShape ? ' — page changed (our bug)'
           : '';
         const muted = isNotice || isTransient;
-        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isProxied && !isDocker;
+        const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isStall && !isProxied && !isDocker;
         return `
         <div class="notify-item" data-platform="${escapeHtml(a.platform)}" data-kind="${escapeHtml(a.kind || 'collector')}"${category ? ` data-category="${escapeHtml(category)}"` : ''}>
           <div class="notify-item-icon${muted ? ' muted' : ''}">
