@@ -422,3 +422,25 @@ class TestTheCatalogKey:
     )
     def test_anything_else_is_refused(self, signal):
         assert self._errors(signal)
+
+
+class TestTheWindowCap:
+    """Workers read at most 24 hours of logs, so a longer window is judged on part of itself."""
+
+    @staticmethod
+    def _errors(signal):
+        errors = catalog._validate({"docker": {"health_signals": [signal]}}, Path("x.yml"))
+        return [e for e in errors if "window_hours" in e and "restart" not in e]
+
+    @pytest.mark.parametrize("hours", [0, 1, 6, 12.5, 24])
+    def test_up_to_24_hours_is_accepted(self, hours):
+        assert self._errors({"pattern": "x", "means": "m", "window_hours": hours}) == []
+
+    @pytest.mark.parametrize("hours", [25, 48, -1, "12", True])
+    def test_anything_else_is_refused(self, hours):
+        assert self._errors({"pattern": "x", "means": "m", "window_hours": hours})
+
+    def test_every_catalog_signal_is_within_the_cap(self):
+        for service in catalog.get_services():
+            for signal in (service.get("docker") or {}).get("health_signals") or []:
+                assert 0 <= float(signal.get("window_hours") or 0) <= 24, service["slug"]
