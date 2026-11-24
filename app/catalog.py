@@ -349,6 +349,18 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                         f"{path.name}: docker.health_signals[{i}].restart must be true or false, "
                         "on a failing signal with window_hours"
                     )
+                window = item.get("window_hours")
+                if window is not None and (
+                    isinstance(window, bool) or not isinstance(window, int | float) or not 0 <= window <= 24
+                ):
+                    # Workers read at most the last 24 hours of logs. A longer
+                    # window would be judged on part of itself: an "unless" line
+                    # older than 24 hours is never seen, so a copy that recovered
+                    # could still be called failing, and restarted.
+                    errors.append(
+                        f"{path.name}: docker.health_signals[{i}].window_hours must be a number from 0 to 24, "
+                        f"got {window!r}"
+                    )
                 if item.get("state") != ACCOUNT_DISABLED:
                     continue
                 # The worker judges this one on a stopped container's tail.
