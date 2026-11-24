@@ -38,11 +38,14 @@ class IPRoyalCollector(BaseCollector):
         self._device_id = _generate_identifier()
         self._token: str | None = None
         self._login_error = "Login failed — check email/password"
+        # The failure kind that goes with _login_error (base.KIND_*, or None).
+        self._login_kind: str | None = base.KIND_AUTH
 
     async def _login(self, client: httpx.AsyncClient) -> str | None:
         """Login and return a JWT access token, or None on failure."""
         # Reset first: a message from an earlier login must never outlive it.
         self._login_error = "Login failed — check email/password"
+        self._login_kind = base.KIND_AUTH
         resp = await client.post(
             f"{API_BASE}/users/tokens",
             json={
@@ -64,17 +67,23 @@ class IPRoyalCollector(BaseCollector):
                 # support can bring it back, so say that instead of "bad password".
                 logger.error("IPRoyal: account disabled by Pawns")
                 self._login_error = "Account disabled by Pawns — contact Pawns support (the password is fine)"
+                self._login_kind = None
             else:
                 logger.error("IPRoyal: bad credentials")
             return None
         if resp.status_code == 429:
             logger.warning("IPRoyal: rate limited on login")
             self._login_error = "Pawns rate-limited the login — it will retry on the next run"
+            self._login_kind = base.KIND_TRANSIENT
             return None
 
         resp.raise_for_status()
         data = resp.json()
-        return data.get("access_token")
+        token = data.get("access_token")
+        if not token:
+            # Accepted, but no token came back: unknown, not a rejected password.
+            self._login_kind = None
+        return token
 
     async def _fetch_balance(self, client: httpx.AsyncClient) -> httpx.Response:
         """Fetch balance dashboard (used as retry target)."""
@@ -95,6 +104,7 @@ class IPRoyalCollector(BaseCollector):
                     platform=self.platform,
                     balance=0.0,
                     error=self._login_error,
+                    error_kind=self._login_kind,
                 )
 
             resp = await self._retry(lambda: self._fetch_balance(client))
@@ -107,6 +117,7 @@ class IPRoyalCollector(BaseCollector):
                         platform=self.platform,
                         balance=0.0,
                         error=self._login_error,
+                        error_kind=self._login_kind,
                     )
                 resp = await self._retry(lambda: self._fetch_balance(client))
 
@@ -128,4 +139,5 @@ class IPRoyalCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=base.describe_exception(exc),
+                error_kind=base.classify_exception(exc),
             )

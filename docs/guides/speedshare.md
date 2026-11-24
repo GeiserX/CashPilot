@@ -2,7 +2,7 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Dead
 >
-> **Website:** [https://speedshare.app](https://speedshare.app)
+> **Website:** speedshare.app (old landing page still online, service dead, not linked)
 
 > **Deprecated:** SpeedShare authentication is completely broken: login no longer works. The project was confirmed dead in their Discord (March 2026). Deployment is blocked. This guide is kept for reference only.
 
@@ -36,7 +36,7 @@ SpeedShare lets you earn by sharing your unused internet bandwidth. Residential 
 
 ### 1. Create an account
 
-Sign up at [SpeedShare](https://speedshare.app).
+Not possible: SpeedShare is dead (login stopped working in March 2026), even though its old landing page is still online.
 
 ### 2. Deploy with CashPilot
 

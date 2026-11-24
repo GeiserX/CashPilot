@@ -22,7 +22,7 @@ from urllib.parse import quote, urlsplit
 
 import yaml
 
-from app import arch, health_probe, ratings
+from app import arch, health_probe, ratings, traffic_stall
 
 logger = logging.getLogger(__name__)
 
@@ -370,6 +370,9 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
             # look fine for want of a working regex.
             for problem in health_probe.spec_errors(docker["health_probe"]):
                 errors.append(f"{path.name}: docker.health_probe: {problem}")
+        if "traffic_stall" in docker:
+            for problem in traffic_stall.spec_errors(docker["traffic_stall"]):
+                errors.append(f"{path.name}: docker.traffic_stall: {problem}")
         ports = docker.get("ports")
         if isinstance(ports, list):
             # A bad mapping used to load fine and then 500 the deploy, on

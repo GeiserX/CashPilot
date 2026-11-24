@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://earn.fm](https://earn.fm)
+> **Website:** [earn.fm](https://earn.fm/ref/GEISYB91)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

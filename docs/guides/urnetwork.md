@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://ur.io](https://ur.io)
+> **Website:** [ur.io](https://ur.io/c?bonus=1Q3G19)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
@@ -34,7 +36,7 @@ URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by prov
 
 ### 1. Create an account
 
-Sign up at [URnetwork](https://ur.io/?referral_code=1Q3G19).
+Sign up at [URnetwork](https://ur.io/c?bonus=1Q3G19).
 
 <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 

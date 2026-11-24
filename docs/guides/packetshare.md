@@ -5,7 +5,7 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Dead
 >
-> **Website:** [https://www.packetshare.io](https://www.packetshare.io)
+> **Website:** www.packetshare.io (now a parked domain, not linked)
 
 ## Description
 
@@ -37,7 +37,7 @@ PacketShare lets you earn passive income by sharing your unused internet bandwid
 
 ### 1. Create an account
 
-Sign up at [PacketShare](https://www.packetshare.io/register.html).
+Not possible: packetshare.io is now a parked domain. For bandwidth sharing that CashPilot can deploy today, see the [service guides](index.md).
 
 ### 2. Deploy with CashPilot
 

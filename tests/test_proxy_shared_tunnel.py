@@ -5104,3 +5104,96 @@ class TestRoundTenFollowups:
         tunnel.remove(force=True)
         assert docker.named(NAME).status == "running"
         assert proxy_tunnel.stop("honeygain", 3) == {"was_running": True}
+
+
+class TestARestartInPlace:
+    """proxy_tunnel.restart: what the UI's windowed health sweep asks for a copy stuck in a state a restart clears.
+
+    A stop and a start would do it too, but the stop marks the copy held first,
+    so a start that then failed would leave it stopped for good. A restart
+    writes no marker and keeps the container, so its device id stays."""
+
+    def test_the_copy_restarts_in_its_tunnel_and_nothing_else_moves(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        earner, other = docker.named(NAME), docker.named("cashpilot-earnfm-p3")
+        before = (earner.starts, other.starts, tunnel.starts, len(docker.events))
+        assert proxy_tunnel.restart("honeygain", 3) == {"restarted": NAME}
+        assert docker.named(NAME) is earner and earner.status == "running"
+        assert earner.starts == before[0] + 1
+        assert (other.starts, tunnel.starts) == before[1:3]
+        assert docker.events[before[3] :] == [("stop", NAME)]
+        assert proxy_tunnel.held() == set()
+
+    def test_a_copy_its_owner_stopped_is_left_stopped(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        proxy_tunnel.stop("honeygain", 3)
+        earner = docker.named(NAME)
+        starts = earner.starts
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="left stopped"):
+            proxy_tunnel.restart("honeygain", 3)
+        assert earner.status == "exited" and earner.starts == starts
+        assert proxy_tunnel.held() == {NAME}
+
+    def test_a_copy_that_is_not_running_is_left_as_it_is(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        earner.status = "exited"
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="not running"):
+            proxy_tunnel.restart("honeygain", 3)
+        assert earner.status == "exited" and proxy_tunnel.held() == set()
+
+    def test_a_copy_whose_tunnel_is_not_ready_is_not_restarted(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        starts = earner.starts
+        docker.broken_auth.add(docker.named("cashpilot-tunnel-p3").files["proxy_auth"])
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="was not restarted") as err:
+            proxy_tunnel.restart("honeygain", 3)
+        assert err.value.status_code == 503
+        assert earner.status == "running" and earner.starts == starts
+        assert proxy_tunnel.held() == set()
+
+    def test_a_copy_a_failed_deploy_left_is_not_restarted(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        starts = earner.starts
+        proxy_tunnel._set_failed(earner.id, True)
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="did not finish"):
+            proxy_tunnel.restart("honeygain", 3)
+        assert earner.starts == starts
+
+    def test_a_restart_reads_the_copy_only_after_a_stop_under_the_proxys_lock(self, docker):
+        """The owner's stop, the cap's and a deploy hold the proxy's lock: a restart asked meanwhile waits for them."""
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        outcome: list[Any] = []
+
+        def _restart() -> None:
+            try:
+                outcome.append(proxy_tunnel.restart("honeygain", 3))
+            except proxy_tunnel.ProxyTunnelError as exc:
+                outcome.append(exc)
+
+        with proxy_tunnel._deploy_lock(3):
+            worker = threading.Thread(target=_restart)
+            worker.start()
+            worker.join(0.3)
+            assert outcome == [], "the restart ran while the proxy's lock was held"
+            proxy_tunnel._stop("honeygain", 3)  # what stop() does under that lock
+        worker.join(5)
+        assert len(outcome) == 1 and "left stopped" in str(outcome[0])
+        assert earner.status == "exited" and proxy_tunnel.held() == {NAME}
+
+    def test_the_worker_route_answers_a_restart_a_refusal_and_no_such_copy(self, docker):
+        _deploy("honeygain")
+        with patch.object(worker_api, "_verify_api_key"):
+            api = TestClient(worker_api.app, raise_server_exceptions=False)
+            assert api.post("/api/proxied/earnfm/3/restart").status_code == 404
+            ok = api.post("/api/proxied/honeygain/3/restart")
+            proxy_tunnel.stop("honeygain", 3)
+            held = api.post("/api/proxied/honeygain/3/restart")
+        assert ok.status_code == 200 and ok.json() == {"status": "restarted", "restarted": NAME}
+        assert held.status_code == 409 and "left stopped" in held.json()["detail"]

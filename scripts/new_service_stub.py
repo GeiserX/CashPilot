@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -25,7 +26,7 @@ TEMPLATE = """# {name}
 
 > **Category:** {category} | **Status:** {status}
 >
-> **Website:** [{website}]({website})
+> **Website:** [{website_label}]({header_url}){header_note}
 
 ## Description
 
@@ -93,12 +94,20 @@ def render(slug: str) -> str:
     earnings = service.get("earnings") or {}
     payment = service.get("payment") or {}
     low, high = earnings.get("monthly_low"), earnings.get("monthly_high")
+    website = service.get("website", "")
+    signup = (service.get("referral") or {}).get("signup_url") or website
+    note = referral_note(service)
     return TEMPLATE.format(
         name=service.get("name", slug),
         slug=slug,
         category=service.get("category", ""),
         status=str(service.get("status", "")).title(),
-        website=service.get("website", ""),
+        # A referral service's header links its coded signup, with the note under
+        # it: a bare homepage link at the top of the page is a signup that pays
+        # nobody (tests/test_referral_disclosure.py fails a guide that has one).
+        website_label=(urlsplit(website).hostname or website).removeprefix("www."),
+        header_url=signup if note else website,
+        header_note=f"\n>\n> {note}" if note else "",
         description=service.get("description", "").strip(),
         earnings=(f"${low} - ${high} (estimate)" if low is not None and high is not None else "Not documented"),
         methods=", ".join(payment.get("methods") or []) or "Not documented",
@@ -107,8 +116,8 @@ def render(slug: str) -> str:
         vps=_fmt(reqs.get("vps_ip")),
         per_account=_fmt(reqs.get("devices_per_account")),
         per_ip=_fmt(reqs.get("devices_per_ip")),
-        signup=(service.get("referral") or {}).get("signup_url") or service.get("website", ""),
-        referral_note=(f"\n\n    {note}\n" if (note := referral_note(service)) else ""),
+        signup=signup,
+        referral_note=f"\n\n    {note}\n" if note else "",
     )
 
 

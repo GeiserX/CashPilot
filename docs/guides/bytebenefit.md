@@ -2,7 +2,9 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [https://bytebenefit.io](https://bytebenefit.io)
+> **Website:** [bytebenefit.io](https://bytebenefit.io/invited?ref=Brl4z3)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

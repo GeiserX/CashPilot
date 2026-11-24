@@ -36,10 +36,10 @@ requirements:
   min_storage: "100GB"
 
 payment:
-  methods: [crypto, bank]
-  minimum_payout: "$25"
+  methods: [wise, paypal, stripe]
+  minimum_payout: "$20"
   currency: USD
-  frequency: "On request"
+  frequency: "Weekly (Fridays)"
 
 earnings:
   monthly_low: 0
@@ -51,9 +51,9 @@ earnings:
 cashout:
   method: redirect
   dashboard_url: "https://cloud.vast.ai/host/earnings"
-  min_amount: 25.0
+  min_amount: 20.0
   currency: USD
-  notes: "Earnings accumulate in Vast.ai balance. Withdraw via PayPal or crypto."
+  notes: "Earnings accumulate in Vast.ai balance. Withdraw via Wise, PayPal or Stripe."
 
 platforms: [linux]
 

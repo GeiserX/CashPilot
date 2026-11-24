@@ -113,4 +113,5 @@ class RepocketCollector(BaseCollector):
                 platform=self.platform,
                 balance=0.0,
                 error=base.describe_exception(exc),
+                error_kind=base.classify_exception(exc),
             )
