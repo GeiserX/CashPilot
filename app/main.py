@@ -2682,7 +2682,8 @@ async def _sweep_windowed_signals() -> None:
     global _windowed_hints, _signal_hints, _probe_hints, _probe_state
     listed_at = time.time()
     try:
-        containers = await _get_all_worker_containers()
+        listed = await database.list_workers()
+        containers = await _get_all_worker_containers(listed)
     except Exception as exc:
         logger.warning("Windowed signal check skipped: %s", exc)
         return
@@ -2692,7 +2693,8 @@ async def _sweep_windowed_signals() -> None:
     probe_state: dict[tuple[str, int, int], tuple[str, dict[int, tuple[bool, float]]]] = {}
     probe_rows: dict[int, list[dict[str, Any]] | None] = {}
     workers: dict[int, dict[str, Any] | None] = {}
-    for c in containers:
+    copies = [(c, _routed_proxy_id(c), int(c.get("instance") or 1)) for c in containers] + _proxied_copies(listed)
+    for c, proxy_id, instance in copies:
         slug = egress.container_slug(c)
         wid = c.get("_worker_id")
         if not slug or wid is None or str(c.get("status", "")).lower() != "running":
@@ -2701,9 +2703,11 @@ async def _sweep_windowed_signals() -> None:
         signals = [s for s in producer_state.signals_for(service) if producer_state.is_windowed(s)]
         probe = ((service or {}).get("docker") or {}).get("health_probe")
         spec = probe if isinstance(probe, dict) and not health_probe.spec_errors(probe) else None
+        if instance >= PROXIED_COPY_KEY:
+            # The worker probes only the service's own copies (health_probe.read_all).
+            spec = None
         if not signals and spec is None:
             continue
-        instance = int(c.get("instance") or 1)
         key = (slug, wid, instance)
 
         def _keep(k: tuple[str, int, int] = key, probe_spec: dict[str, Any] | None = spec) -> None:
@@ -2735,10 +2739,15 @@ async def _sweep_windowed_signals() -> None:
                     "match": producer_state.window_filter(signal),
                     "since_hours": float(signal["window_hours"]),
                 }
-                if instance > 1:
+                path = f"/api/containers/{slug}/logs"
+                if proxy_id is not None:
+                    # A proxied copy is not a container of the service: the
+                    # worker's container routes answer 404 for it.
+                    path = f"/api/proxied/{slug}/{proxy_id}/logs"
+                elif instance > 1:
                     params["instance"] = instance
                 # Hours of a chatty node's logs: seconds on a fast box, more on a Pi.
-                resp = await _proxy_to_worker(wid, "GET", f"/api/containers/{slug}/logs", params=params, timeout=120)
+                resp = await _proxy_to_worker(wid, "GET", path, params=params, timeout=120)
                 # A worker older than the filter returns the plain tail, which is
                 # not the window: no verdict from it.
                 if not resp.get("filtered"):
@@ -2751,9 +2760,11 @@ async def _sweep_windowed_signals() -> None:
             logged = _signal_hints.get(key, [])
         if logged:
             signal_hints[key] = logged
-        # A routed copy is CashPilot's own proxied copy: its row names the node in deployed_by.
-        if restart_due and (c.get("deployed_by") in constants.CASHPILOT_DEPLOYED or c.get("route")):
-            await _auto_restart(key, logged, listed_at)
+        # A proxied copy is always CashPilot's own; a routed one's row names the node in deployed_by.
+        if restart_due and (
+            proxy_id is not None or c.get("deployed_by") in constants.CASHPILOT_DEPLOYED or c.get("route")
+        ):
+            await _auto_restart(key, logged, listed_at, proxy_id)
         probed: list[str] = []
         if spec is not None:
             definition = health_probe.fingerprint(spec)
@@ -2825,7 +2836,56 @@ def _copy_lock(key: tuple[str, int, int]) -> asyncio.Lock:
     return _copy_locks.setdefault(key, asyncio.Lock())
 
 
-async def _auto_restart(key: tuple[str, int, int], means: list[str], listed_at: float) -> None:
+#: The sweep keys a proxied copy (slug, worker id, PROXIED_COPY_KEY + proxy id), apart
+#: from the service's own copies, which count from 1. A routed service's copy keeps
+#: copy 1: it is the service on that box, and its dashboard row reads that key.
+PROXIED_COPY_KEY = 1000
+
+
+def _routed_proxy_id(row: dict[str, Any]) -> int | None:
+    """The proxy a routed service's row (_get_all_worker_containers) runs through; None for any other row."""
+    route = row.get("route")
+    proxy_id = route.get("proxy_id") if isinstance(route, dict) else None
+    return proxy_id if isinstance(proxy_id, int) and not isinstance(proxy_id, bool) else None
+
+
+def _proxied_copies(workers: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int, int]]:
+    """Each running proxied copy the online workers' heartbeats list, as (row, proxy id, copy key) for the sweep.
+
+    Not a routed service's copy, which the containers list already holds, and
+    not one its owner or the traffic cap stopped (``held``).
+    """
+    out: list[tuple[dict[str, Any], int, int]] = []
+    for w in workers:
+        if w.get("status") != "online" or w.get("id") is None:
+            continue
+        info = _safe_json(w.get("system_info", "{}"), {})
+        for e in proxies.proxied_entries({"system_info": info}):
+            pid = e.get("proxy_id")
+            if e.get("routed") is True or e.get("held") is True or not isinstance(pid, int) or isinstance(pid, bool):
+                continue
+            row = {"slug": egress.container_slug(e), "status": e.get("status"), "_worker_id": w["id"]}
+            out.append((row, pid, PROXIED_COPY_KEY + pid))
+    return out
+
+
+async def _restart_proxied(proxy_id: int, worker_id: int, slug: str) -> None:
+    """Restart a proxied copy where it is (worker: proxy_tunnel.restart), under the lock its Stop and Start take.
+
+    Never a stop and a start: a start that failed after the stop would leave
+    the copy stopped for good. The worker refuses a copy its owner or the cap
+    stopped.
+    """
+    proxy = await _proxy_or_404(proxy_id)
+    async with _proxy_copy_lock(proxy_id, worker_id, slug):
+        await _proxy_worker_call(
+            worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/restart", proxy["definition"], timeout=90
+        )
+
+
+async def _auto_restart(
+    key: tuple[str, int, int], means: list[str], listed_at: float, proxy_id: int | None = None
+) -> None:
     """Restart a running copy stuck in a state its catalog says a restart clears. Never raises.
 
     A ProxyBase client that could not find a relay at its start keeps dialing a
@@ -2834,13 +2894,15 @@ async def _auto_restart(key: tuple[str, int, int], means: list[str], listed_at: 
     not help (the box has no internet) is not restarted over and over. A copy
     the owner stopped after the sweep listed it as running is left stopped: the
     Stop and this restart take the same lock, so a Stop that comes during the
-    restart runs after it.
+    restart runs after it. A proxied copy (``proxy_id``, a routed service's
+    too) restarts where it is (_restart_proxied).
     """
     slug, wid, instance = key
+    copy = f"copy {instance}" if instance < PROXIED_COPY_KEY else f"copy through proxy {instance - PROXIED_COPY_KEY}"
     async with _copy_lock(key):
         stopped_at = _owner_stopped_at.get(key)
         if stopped_at is not None and stopped_at >= listed_at:
-            logger.info("Left %s copy %s on worker %s stopped: the owner stopped it", slug, instance, wid)
+            logger.info("Left %s %s on worker %s stopped: the owner stopped it", slug, copy, wid)
             return
         now = time.time()
         last = _auto_restarted_at.get(key)
@@ -2848,12 +2910,18 @@ async def _auto_restart(key: tuple[str, int, int], means: list[str], listed_at: 
             return
         _auto_restarted_at[key] = now
         try:
-            await _command_and_record(wid, "restart", slug, instance)
+            if proxy_id is None:
+                await _command_and_record(wid, "restart", slug, instance)
+            else:
+                await _restart_proxied(proxy_id, wid, slug)
+                if instance < PROXIED_COPY_KEY:
+                    # A routed service's copy is the service's copy 1: recorded as its Restart button records it.
+                    await database.record_health_event(slug, "restart", worker_id=wid, instance=instance)
         except Exception as exc:  # noqa: BLE001 - the next try comes after the cooldown
-            logger.warning("Could not restart %s copy %s on worker %s by itself: %s", slug, instance, wid, exc)
+            logger.warning("Could not restart %s %s on worker %s by itself: %s", slug, copy, wid, exc)
             return
     metrics.record_container_lifecycle("restart", slug)
-    logger.warning("Restarted %s copy %s on worker %s by itself: %s", slug, instance, wid, " ".join(means)[:300])
+    logger.warning("Restarted %s %s on worker %s by itself: %s", slug, copy, wid, " ".join(means)[:300])
 
 
 async def _raise_worker_offline_alert(w: dict[str, Any]) -> None:

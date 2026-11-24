@@ -381,6 +381,13 @@ hardening of both containers and everything you set up. What changes:
   recreated inside it (same image, environment, labels and limits, from what
   Docker recorded), because a container's network namespace is fixed when it
   is created.
+- **A copy stuck in a state a restart clears restarts in place.** A health
+  signal in the service's catalog entry that asks for a restart
+  (`restart: true`) covers copies through a proxy too. CashPilot reads the
+  copy's logs over the signal's window and, while the signal holds, restarts
+  that container inside its tunnel, at most once every 6 hours. It never stops
+  and starts the copy, so the copy keeps its device id, and a copy you or the
+  traffic cap stopped stays stopped.
 - **A move never loses a copy.** While a copy is recreated, its old container
   is kept under `<name>-moving` until the new one holds the name and runs. A
   move that fails puts the old container back. If the worker stops in the

@@ -2260,12 +2260,40 @@ async def api_proxied_start(
     return {"status": "started", **result}
 
 
-@app.get("/api/proxied/{slug}/{proxy_id}/logs")
-async def api_proxied_logs(request: Request, slug: str, proxy_id: int, lines: int = 50) -> dict[str, Any]:
-    """The log tail of a proxied copy's earner, as /api/containers/{slug}/logs gives a service's."""
+@app.post("/api/proxied/{slug}/{proxy_id}/restart")
+async def api_proxied_restart(request: Request, slug: str, proxy_id: int) -> dict[str, Any]:
+    """Restart a running proxied copy where it is, for a health signal a restart clears.
+
+    Never a stop and a start, and never a copy its owner or the cap stopped
+    (proxy_tunnel.restart).
+    """
     _verify_api_key(request)
     try:
-        logs = await asyncio.to_thread(proxy_tunnel.logs, slug, proxy_id, max(1, min(lines, 1000)))
+        result = await asyncio.to_thread(proxy_tunnel.restart, slug, proxy_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _proxy_http_error(exc) from None
+    return {"status": "restarted", **result}
+
+
+@app.get("/api/proxied/{slug}/{proxy_id}/logs")
+async def api_proxied_logs(
+    request: Request, slug: str, proxy_id: int, lines: int = 50, match: str = "", since_hours: float = 0
+) -> dict[str, Any]:
+    """The log tail of a proxied copy's earner, as /api/containers/{slug}/logs gives a service's.
+
+    With ``match`` and ``since_hours``, the matching lines of that window, and
+    ``filtered`` to say so, as there.
+    """
+    _verify_api_key(request)
+    compiled = _log_filter(match, since_hours)
+    lines = max(1, min(lines, 1000))
+    try:
+        if compiled is not None:
+            logs = await asyncio.to_thread(
+                proxy_tunnel.grep_logs, slug, proxy_id, compiled, since_hours=min(since_hours, 24), lines=lines
+            )
+            return {"logs": logs, "filtered": True}
+        logs = await asyncio.to_thread(proxy_tunnel.logs, slug, proxy_id, lines)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
     return {"logs": logs}
@@ -2673,6 +2701,18 @@ async def api_remove_instance(request: Request, slug: str, instance: int) -> dic
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+def _log_filter(match: str, since_hours: float) -> re.Pattern[str] | None:
+    """The compiled ``match`` of a windowed log read, or None for a plain tail. 400 for a bad one."""
+    if not match or since_hours <= 0:
+        return None
+    if len(match) > 200:
+        raise HTTPException(status_code=400, detail="match is too long")
+    try:
+        return re.compile(match)
+    except re.error:
+        raise HTTPException(status_code=400, detail="match is not a valid regular expression") from None
+
+
 @app.get("/api/containers/{slug}/logs")
 async def api_container_logs(
     request: Request, slug: str, lines: int = 50, instance: int = 1, match: str = "", since_hours: float = 0
@@ -2685,14 +2725,9 @@ async def api_container_logs(
     """
     _verify_api_key(request)
     _validate_instance(instance)
+    compiled = _log_filter(match, since_hours)
     try:
-        if match and since_hours > 0:
-            if len(match) > 200:
-                raise HTTPException(status_code=400, detail="match is too long")
-            try:
-                compiled = re.compile(match)
-            except re.error:
-                raise HTTPException(status_code=400, detail="match is not a valid regular expression")
+        if compiled is not None:
             logs = await asyncio.to_thread(
                 orchestrator.grep_service_logs,
                 slug,

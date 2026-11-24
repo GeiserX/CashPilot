@@ -5748,7 +5748,11 @@ def grep_service_logs(
     is read as a stream and filtered here, so megabytes of logs never leave the
     worker and never sit in memory at once.
     """
-    container = _find_container(slug, instance)
+    return grep_container_logs(_find_container(slug, instance), match, since_hours, lines)
+
+
+def grep_container_logs(container: Any, match: re.Pattern[str], since_hours: float, lines: int = 1000) -> str:
+    """grep_service_logs for a container already found: a proxied copy's earner too (proxy_tunnel.grep_logs)."""
     since = int(time.time() - since_hours * 3600)
     kept: collections.deque[str] = collections.deque(maxlen=lines)
     pending = b""
