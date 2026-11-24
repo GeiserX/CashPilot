@@ -30,7 +30,8 @@ requirements:
   min_storage: ""
 
 payment:
-  methods: [paypal, crypto]
+  methods: [crypto]
+  crypto_token: USDT
   minimum_payout: "$20"
   currency: USD
   frequency: "On request"
@@ -51,7 +52,9 @@ cashout:
   currency: USD
   notes: >-
     Wipter has no web dashboard. Open the Wipter desktop or phone app, sign
-    in, and request the payout there once the balance reaches $20.
+    in, and request the payout there once the balance reaches $20. Wipter pays
+    only in USDT on BNB Smart Chain (BEP20), to the wallet you set in the app's
+    Payments section; there is no PayPal option.
 
 platforms: [windows, macos, linux, android]
 

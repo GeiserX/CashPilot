@@ -1,16 +1,17 @@
 name: Koii Network
 slug: koii
 category: depin
-status: broken
+status: dead
+# Checked 2026-11-24: koii.network serves an unrelated online-casino site. The
+# website stays only for the weekly resurrection probe; nothing links to it.
+resurrection_checked: "2026-11-24"
 website: https://koii.network
 description: >
-  Koii Network is a Solana-based DePIN for distributed data, storage, and
-  compute tasks. Task operators post jobs, node operators execute them and
-  earn KOII tokens. Currently paused.
-short_description: Solana DePIN - distributed compute tasks, currently paused
-
-referral:
-  signup_url: "https://koii.network"
+  Koii Network was a Solana-based DePIN for distributed data, storage, and
+  compute tasks. Task operators posted jobs, node operators executed them and
+  earned KOII tokens. The project is gone: its domain now serves an unrelated
+  site.
+short_description: Solana DePIN - SITE GONE, the domain serves an unrelated site
 
 docker:
   image: ""
@@ -38,11 +39,10 @@ earnings:
   monthly_high: 0
   currency: USD
   per: "node"
-  notes: "Website says paused as of March 2026. Check back later."
+  notes: "Project gone. Do not expect any earnings."
 
 cashout:
   method: manual
-  dashboard_url: "https://koii.network"
   # Undocumented: the provider does not publish a minimum. NOT 0 —
   # 0 means 'no minimum, cash out anything', which would tell the
   # user they can withdraw now and disables payout detection.
@@ -53,7 +53,7 @@ platforms: [windows, macos, linux]
 
 collector:
   type: manual
-  notes: "Service paused. No collection possible."
+  notes: "Project gone. No collection possible."
 
 payout:
   model: unknown

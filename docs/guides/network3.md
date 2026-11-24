@@ -1,15 +1,15 @@
 # Network3
 
 > [!CAUTION]
-> **Broken:** the project is gone. network3.io now redirects to an unrelated site, and network3.ai no longer resolves (checked 24 November 2026). Deployment is blocked. This guide is kept for reference only.
+> **Dead:** the project is gone. network3.io now redirects to an unrelated football-streaming site, and the network3.ai app and claim sites no longer answer (checked 24 November 2026). Deployment is blocked. This guide is kept for reference only.
 
-> **Category:** DePIN | **Status:** Broken
+> **Category:** DePIN | **Status:** Dead
 >
-> **Website:** network3.io (no longer the project's site: it redirects to an unrelated site, so it is not linked)
+> **Website:** network3.io (now an unrelated football-streaming site, not linked)
 
 ## Description
 
-Network3 was a DePIN project focused on decentralized AI training and bandwidth sharing. The project's SSL certificate has expired and the platform appears to be non-functional. Status marked as broken due to certificate issues and possible project abandonment. Exercise caution before investing time or resources.
+Network3 was a DePIN project focused on decentralized AI training and bandwidth sharing. The project is gone: its old domain now redirects to an unrelated site, and its app and claim sites no longer answer.
 
 ## Earning Estimates
 
@@ -21,7 +21,7 @@ Network3 was a DePIN project focused on decentralized AI training and bandwidth 
 | Payout frequency |  |
 | Payment methods | Crypto |
 
-> Project appears inactive. SSL certificate expired. Do not expect any earnings.
+> Project gone. Do not expect any earnings.
 
 ## Requirements
 
@@ -37,11 +37,11 @@ Network3 was a DePIN project focused on decentralized AI training and bandwidth 
 
 ### 1. Create an account
 
-Not possible: network3.io now redirects to an unrelated site and network3.ai no longer resolves.
+Not possible: network3.io now redirects to an unrelated football-streaming site, and the network3.ai app and claim sites no longer answer.
 
 ### 2. Not available in CashPilot
 
-CashPilot hides Network3 from the catalog and refuses to deploy it, because its catalog status is **Broken**. The catalog has no Docker image for it either.
+CashPilot hides Network3 from the catalog and refuses to deploy it, because its catalog status is **Dead**. The catalog has no Docker image for it either.
 
 ## Docker Configuration
 
