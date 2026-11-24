@@ -1,6 +1,7 @@
 """Storj storagenode earnings collector.
 
-Fetches estimated payout from the local storagenode API (port 14002).
+Fetches estimated payout from the local storagenode API (port 14002), from one
+node or from several listed with commas, summed into one reading.
 No authentication required — the API is only accessible on localhost.
 """
 
@@ -60,82 +61,106 @@ class StorjCollector(BaseCollector):
 
     def __init__(self, api_url: str = DEFAULT_API_URL) -> None:
         super().__init__()
-        self.api_url = api_url.rstrip("/")
+        # One Storj wallet often has several nodes, one per disk or per site,
+        # and each node's dashboard knows only its own payout. A comma-separated
+        # list is read node by node and summed into one reading. A URL listed
+        # twice is read once, or that node's earnings would count double.
+        urls = [u.strip().rstrip("/") for u in (api_url or "").split(",")]
+        self.api_urls = list(dict.fromkeys(u for u in urls if u)) or [DEFAULT_API_URL]
+        self.api_url = self.api_urls[0]
 
     async def collect(self) -> EarningsResult:
-        """Fetch current Storj storagenode estimated payout."""
-        try:
-            client = self._get_client(timeout=15)
-            resp = await self._retry(lambda: client.get(f"{self.api_url}/api/sno/estimated-payout"))
+        """Fetch the estimated payout of every configured node and add them up.
 
-            if resp.status_code == 404:
-                # Older storagenode versions use different endpoint
-                resp = await client.get(f"{self.api_url}/api/sno")
-
-            resp.raise_for_status()
-            data = resp.json()
-
-            # estimated-payout endpoint returns cents
-            if "currentMonth" in data:
-                # Payout values are in cents (integer)
-                # Absent keys are a SHAPE CHANGE, not zero earnings.
-                #
-                # Three .get(name, 0) defaults summed to a confident 0.00 when
-                # storagenode renamed its payout sub-fields, and that zero was
-                # recorded as a real balance. Because it is a DROP from the
-                # previous reading, _detect_payout then asked the user to
-                # confirm a payout of their entire balance that never happened
-                # — and a confirmed payout is permanent.
-                #
-                # The ValueError below is unreachable once currentMonth exists,
-                # so this branch has to do its own shape check.
-                month = data["currentMonth"]
-                known = [
-                    k for k in ("egressBandwidthPayout", "egressRepairAuditPayout", "diskSpacePayout") if k in month
-                ]
-                if not known:
-                    raise ValueError(
-                        "storagenode currentMonth has no known payout field "
-                        f"(saw: {sorted(month)[:6]}) — the API shape may have changed"
-                    )
-                payout_cents = sum(month.get(k, 0) for k in known)
-                balance = payout_cents / 100.0
-            elif "estimatedPayout" in data:
-                balance = data["estimatedPayout"] / 100.0
-            elif "currentMonthExpectations" in data:
-                balance = data["currentMonthExpectations"] / 100.0
-            else:
-                raise ValueError("Unrecognized storagenode API response shape — no known payout field found")
-
-            return EarningsResult(
-                platform=self.platform,
-                balance=round(balance, 4),
-                currency="USD",
+        Any node that fails fails the whole reading, naming that node. A sum
+        without it would be stored as a real balance that dropped, which looks
+        like a payout, and the next full reading would book that node's whole
+        month as a sudden gain.
+        """
+        several = len(self.api_urls) > 1
+        total = 0.0
+        warnings: list[str] = []
+        for url in self.api_urls:
+            try:
+                client = self._get_client(timeout=15)
+                balance = await self._one(client, url)
                 # The balance can keep ticking (held amount, storage income)
                 # while satellites cannot reach the node at all, so a healthy
                 # collection is exactly when a reachability caveat is needed.
-                warning=await self._reachability_warning(client),
-            )
-        except httpx.ConnectError:
-            return EarningsResult(
-                platform=self.platform,
-                balance=0.0,
-                error=(
-                    "Storagenode API not reachable at "
-                    f"{self.api_url} — if running in Docker, use "
-                    "the node's LAN IP instead of localhost "
-                    "(e.g. http://192.168.1.x:14002)"
-                ),
-            )
-        except Exception as exc:
-            base.log_failure(logger, "Storj", exc)
-            return EarningsResult(
-                platform=self.platform,
-                balance=0.0,
-                error=base.describe_exception(exc),
-            )
+                warning = await self._reachability_warning(client, url)
+            except httpx.ConnectError:
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error=(
+                        "Storagenode API not reachable at "
+                        f"{url} — if running in Docker, use "
+                        "the node's LAN IP instead of localhost "
+                        "(e.g. http://192.168.1.x:14002)"
+                    ),
+                )
+            except Exception as exc:
+                base.log_failure(logger, "Storj", exc)
+                error = base.describe_exception(exc)
+                return EarningsResult(
+                    platform=self.platform,
+                    balance=0.0,
+                    error=f"Storagenode at {url}: {error}" if several else error,
+                )
+            total += balance
+            if warning:
+                warnings.append(f"Node {url}: {warning}" if several else warning)
 
-    async def _reachability_warning(self, client: httpx.AsyncClient) -> str | None:
+        return EarningsResult(
+            platform=self.platform,
+            balance=round(total, 4),
+            currency="USD",
+            warning=" ".join(warnings) or None,
+        )
+
+    async def _one(self, client: httpx.AsyncClient, url: str) -> float:
+        """One node's estimated payout this month, in USD. Raises on any failure."""
+        resp = await self._retry(lambda: client.get(f"{url}/api/sno/estimated-payout"))
+
+        if resp.status_code == 404:
+            # Older storagenode versions use different endpoint
+            resp = await client.get(f"{url}/api/sno")
+
+        resp.raise_for_status()
+        data = resp.json()
+
+        # estimated-payout endpoint returns cents
+        if "currentMonth" in data:
+            # Payout values are in cents (integer)
+            # Absent keys are a SHAPE CHANGE, not zero earnings.
+            #
+            # Three .get(name, 0) defaults summed to a confident 0.00 when
+            # storagenode renamed its payout sub-fields, and that zero was
+            # recorded as a real balance. Because it is a DROP from the
+            # previous reading, _detect_payout then asked the user to
+            # confirm a payout of their entire balance that never happened
+            # — and a confirmed payout is permanent.
+            #
+            # The ValueError below is unreachable once currentMonth exists,
+            # so this branch has to do its own shape check.
+            month = data["currentMonth"]
+            known = [k for k in ("egressBandwidthPayout", "egressRepairAuditPayout", "diskSpacePayout") if k in month]
+            if not known:
+                raise ValueError(
+                    "storagenode currentMonth has no known payout field "
+                    f"(saw: {sorted(month)[:6]}) — the API shape may have changed"
+                )
+            payout_cents = sum(month.get(k, 0) for k in known)
+            balance = payout_cents / 100.0
+        elif "estimatedPayout" in data:
+            balance = data["estimatedPayout"] / 100.0
+        elif "currentMonthExpectations" in data:
+            balance = data["currentMonthExpectations"] / 100.0
+        else:
+            raise ValueError("Unrecognized storagenode API response shape — no known payout field found")
+        return round(balance, 4)
+
+    async def _reachability_warning(self, client: httpx.AsyncClient, url: str) -> str | None:
         """Can satellites actually reach this node? None is 'nothing to report'.
 
         The dashboard's /api/sno/ states it directly: ``lastPinged`` is the
@@ -154,7 +179,7 @@ class StorjCollector(BaseCollector):
             # A shorter deadline than the collection's own 15s: a stalling
             # dashboard must not be able to double the cost of the reading
             # this probe merely decorates.
-            resp = await client.get(f"{self.api_url}/api/sno/", timeout=5)
+            resp = await client.get(f"{url}/api/sno/", timeout=5)
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
