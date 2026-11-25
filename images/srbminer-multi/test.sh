@@ -28,7 +28,7 @@ cache_mount=(--mount "type=volume,src=$cache,dst=/var/lib/srbminer")
 mismatch_mount=(--mount "type=volume,src=$mismatch,dst=/var/lib/srbminer")
 
 docker run "${harden[@]}" --name "$name-empty" --network none "${cache_mount[@]}" \
-    --entrypoint sh "$image" -c 'test -z "$(ls -A /var/lib/srbminer)"'
+    --entrypoint sh "$image" -c 'entries=$(ls -A /var/lib/srbminer) && test -z "$entries"'
 out=$(timeout 150s docker run "${harden[@]}" --name "$name-first" "${cache_mount[@]}" \
     "$image" --version 2>&1 | head -c 65536) || {
     printf '%s\n' "$out" >&2
@@ -63,4 +63,4 @@ if out=$(timeout 150s docker run "${harden[@]}" --name "$name-reject-archive" "$
 fi
 grep -F 'release archive SHA-256 mismatch' <<<"$out"
 docker run "${harden[@]}" --name "$name-after-mismatch" --network none "${mismatch_mount[@]}" \
-    --entrypoint sh "$image" -c 'test -z "$(ls -A /var/lib/srbminer)"'
+    --entrypoint sh "$image" -c 'entries=$(ls -A /var/lib/srbminer) && test -z "$entries"'

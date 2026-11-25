@@ -108,7 +108,15 @@ jobs:
           fi
           docker tag "$REPO:$TAG" "$REPO:$VERSION"
           docker push "$REPO:$VERSION"
-      - if: github.event_name == 'push'
+      - name: Check whether the README still matches main
+        if: github.event_name == 'push'
+        id: description
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          if git diff --quiet HEAD FETCH_HEAD -- images/srbminer-multi/README.md; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: github.event_name == 'push' && steps.description.outputs.current == 'true'
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
