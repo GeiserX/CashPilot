@@ -227,7 +227,8 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
     as zero, so the total never quietly understates what the fleet costs.
     """
     known = [m for m in machines if m.get("monthly_cost") is not None]
-    unknown = [m for m in machines if m.get("monthly_cost") is None]
+    unmetered = [m for m in machines if m.get("verdict") == NOT_METERED]
+    unknown = [m for m in machines if m.get("monthly_cost") is None and m.get("verdict") != NOT_METERED]
     # A machine that is not reporting has monthly_gross None, and summing that
     # as 0.0 makes the fleet total silently exclude whatever it earns. That is
     # the same "absent read as measured" mistake this function already guards
@@ -243,6 +244,18 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
     known_gross = sum(float(m.get("monthly_gross") or 0.0) for m in known)
     cost = sum(float(m.get("monthly_cost") or 0.0) for m in known)
 
+    if not (unknown or gross_unknown or unmetered):
+        summary = f"Across {len(machines)} machine(s): about {gross:.2f} earned against {cost:.2f} of electricity."
+    else:
+        notes = []
+        if known or unknown:
+            notes.append(f"Costs are known for {len(known)} of {len(known) + len(unknown)} machine(s).")
+        if unmetered:
+            notes.append(f"No per-kWh bill for {len(unmetered)} machine(s).")
+        if gross_unknown:
+            notes.append(f"{len(gross_unknown)} machine(s) are not reporting, so what they earn is not in this total.")
+        summary = " ".join(notes)
+
     return {
         "machines": machines,
         "monthly_gross": round(gross, 4),
@@ -253,16 +266,5 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
         "gross_unknown_for": len(gross_unknown),
         "losing_money": [m["machine"] for m in machines if m.get("verdict") == LOSING_MONEY],
         "quality": "estimated",
-        "summary": (
-            (
-                f"Costs are known for {len(known)} of {len(machines)} machine(s)."
-                + (
-                    f" {len(gross_unknown)} machine(s) are not reporting, so what they earn is not in this total."
-                    if gross_unknown
-                    else ""
-                )
-            )
-            if (unknown or gross_unknown)
-            else f"Across {len(machines)} machine(s): about {gross:.2f} earned against {cost:.2f} of electricity."
-        ),
+        "summary": summary,
     }
