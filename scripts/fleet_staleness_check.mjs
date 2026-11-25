@@ -232,6 +232,100 @@ check('an older response cannot restore stale watts', racing.editor().value === 
 check('the gross tooltip describes period accruals', racing.markup().includes('Accrued at the pool during this period'),
   'the tooltip asserts that past accruals still await payout');
 
+const fleetSource = html.slice(
+  html.indexOf('  // Lazily fetch the plaintext key'),
+  html.indexOf('  // Running costs: per machine,'),
+);
+const workerSaveSource = html.slice(
+  html.indexOf("  document.getElementById('fleet-workers').addEventListener('click'"),
+  html.indexOf('  window.copyWorkerEnv = '),
+);
+const buildWorkerPower = new Function(
+  'document', 'CP', 'esc', 'brk', 'CSS', '_isOwner', '_isolation', 'loadFleetEconomics', 'loadPowerSettings',
+  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), workerSaveSource, 'return loadFleet;'].join('\n'),
+);
+
+function workerPowerFixture(owner = true) {
+  const stored = {id: 1, client_id: 'rig', name: 'Rig', watts: 100, unmetered: false};
+  const posts = [];
+  let fields, button, click, holdWorkers;
+  const workers = {
+    addEventListener: (_, handler) => { click = handler; },
+    querySelectorAll: () => fields ? [fields.unmetered] : [],
+    set innerHTML(markup) {
+      const billing = markup.match(/class="power-unmetered"[^>]*>/)?.[0] ?? '';
+      const checked = /\bchecked\b/.test(billing);
+      fields = {
+        watts: {value: String(stored.watts)},
+        dedicated: {checked: false},
+        unmetered: {checked, defaultChecked: checked, dataset: {clientId: stored.client_id}},
+      };
+      const save = markup.match(/<button[^>]*power-save-worker[^>]*>/)?.[0];
+      button = save ? {disabled: /\bdisabled\b/.test(save), dataset: {clientId: stored.client_id}} : null;
+    },
+  };
+  const document = {
+    getElementById: id => id === 'fleet-workers' ? workers : {style: {}},
+    querySelector: selector => fields[selector.match(/^\.power-(\w+)/)[1]],
+  };
+  const api = async (path, options) => {
+    if (path === '/api/fleet/summary') return {};
+    if (path === '/api/workers') {
+      const response = [{...stored}];
+      const gate = holdWorkers;
+      holdWorkers = null;
+      if (gate) await gate;
+      return response;
+    }
+    if (path !== '/api/config') throw new Error('unexpected API call ' + path);
+    const data = options.body.data;
+    posts.push(data);
+    if ('worker_rig_unmetered' in data) stored.unmetered = data.worker_rig_unmetered === 'true';
+    stored.watts = Number(data.worker_rig_watts);
+    return {};
+  };
+  const refresh = buildWorkerPower(document, {...CP, api, toast() {}}, esc, esc, {escape: String}, owner, {}, () => {}, () => {});
+  return {
+    refresh, posts, stored, fields: () => fields, button: () => button,
+    save: () => click({target: {closest: selector => selector === '.power-save-worker' ? button : null}}),
+    holdNextRefresh() {
+      let release;
+      holdWorkers = new Promise(resolve => { release = resolve; });
+      return release;
+    },
+  };
+}
+
+const workerPower = workerPowerFixture();
+await workerPower.refresh();
+workerPower.fields().unmetered.checked = true;
+await workerPower.refresh();
+check('refresh preserves an unsaved billing edit', workerPower.fields().unmetered.checked, 'the checked draft was lost');
+workerPower.fields().unmetered.checked = true;
+const finishStaleWorkers = workerPower.holdNextRefresh();
+const staleWorkers = workerPower.refresh();
+await workerPower.save();
+check('Save posts a checked billing setting', workerPower.stored.unmetered, JSON.stringify(workerPower.posts));
+finishStaleWorkers();
+await staleWorkers;
+check('a refresh started before Save cannot revert the checkbox', workerPower.fields().unmetered.checked,
+  'the old unchecked response replaced the saved setting');
+workerPower.fields().watts.value = '125';
+await workerPower.save();
+check('a wattage-only save leaves billing alone', workerPower.stored.unmetered && workerPower.stored.watts === 125
+  && !('worker_rig_unmetered' in workerPower.posts.at(-1)), JSON.stringify(workerPower.posts));
+await workerPower.refresh();
+workerPower.fields().unmetered.checked = false;
+await workerPower.save();
+check('clearing and saving the checkbox posts false', !workerPower.stored.unmetered
+  && workerPower.posts.at(-1).worker_rig_unmetered === 'false', JSON.stringify(workerPower.posts));
+
+const viewerPower = workerPowerFixture(false);
+await viewerPower.refresh();
+check('viewers cannot save power settings', !viewerPower.button() || viewerPower.button().disabled, 'Save is enabled');
+await viewerPower.save();
+check('viewer clicks cannot post settings', viewerPower.posts.length === 0, JSON.stringify(viewerPower.posts));
+
 if (failures.length) {
   console.error('fleet staleness check FAILED:');
   for (const f of failures) console.error(`  - ${f}`);
