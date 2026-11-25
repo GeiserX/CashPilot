@@ -162,9 +162,9 @@ CONNECT.
   CasaOS and Runtipi packages are in this repository and run the socket proxy.
   [App stores](app-stores.md)
 - **Catalog.** <!-- n:active -->40<!-- /n --> active services and
-  <!-- n:beta -->3<!-- /n --> in beta: <!-- n:docker -->17<!-- /n --> run in
-  Docker, <!-- n:tracked -->26<!-- /n --> are tracked, and
-  <!-- n:collectors -->17<!-- /n --> have a balance collector.
+  <!-- n:beta -->4<!-- /n --> in beta: <!-- n:docker -->17<!-- /n --> run in
+  Docker, <!-- n:tracked -->27<!-- /n --> are tracked, and
+  <!-- n:collectors -->18<!-- /n --> have a balance collector.
   [How CashPilot compares](comparison.md) sets this against five other stacks,
   every cell sourced.
 
