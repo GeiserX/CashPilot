@@ -6684,23 +6684,24 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Currency selector (settings page)
   // -----------------------------------------------------------
+  function partitionFiatCodes(fiat) {
+    const codes = Object.keys(fiat).sort();
+    const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'PLN', 'SEK', 'NOK', 'DKK', 'CZK', 'HUF', 'RON'];
+    return [popular.filter(code => codes.includes(code)), codes.filter(code => !popular.includes(code))];
+  }
+
   async function populateCurrencyDropdown() {
     const select = document.getElementById('settings-currency');
     if (!select) return;
 
     await loadExchangeRates();
-    const fiatCodes = Object.keys(_exchangeRates.fiat || {}).sort();
-
-    const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'PLN', 'SEK', 'NOK', 'DKK', 'CZK', 'HUF', 'RON'];
+    const [popular, remaining] = partitionFiatCodes(_exchangeRates.fiat || {});
     const options = [];
 
     for (const code of popular) {
-      if (fiatCodes.includes(code)) {
-        options.push(`<option value="${code}"${code === _displayCurrency ? ' selected' : ''}>${code}</option>`);
-      }
+      options.push(`<option value="${code}"${code === _displayCurrency ? ' selected' : ''}>${code}</option>`);
     }
 
-    const remaining = fiatCodes.filter(c => !popular.includes(c));
     if (remaining.length > 0) {
       options.push('<option disabled>──────────</option>');
       for (const code of remaining) {
@@ -6900,6 +6901,7 @@ const CP = (() => {
 
   return {
     api,
+    partitionFiatCodes,
     checkForUpdate,
     toast,
     openModal,

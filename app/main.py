@@ -25,7 +25,7 @@ import urllib.parse
 import weakref
 from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -34,7 +34,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -59,6 +59,7 @@ from app import (
     fleet_key,
     gpu,
     health_probe,
+    income_export,
     ipgeo,
     lan_isolation,
     log_redaction,
@@ -10136,6 +10137,56 @@ async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="No unconfirmed payout with that id")
     await _retire_payout_alert(payout_id, platform=platform)
     return {"ok": True, "id": payout_id, "removed": True}
+
+
+@app.get("/api/earnings/income.csv")
+async def api_income_csv(
+    request: Request, start: str | None = None, end: str | None = None, currency: str = "USD"
+) -> StreamingResponse:
+    """Download earnings and confirmed payouts with their historical rates."""
+    user = _require_owner(request)
+    # Date inputs in the Payouts form send empty strings when left blank.
+    for name, value in (("start", start), ("end", end)):
+        if value:
+            if not _ISO_DATE.fullmatch(value):
+                raise HTTPException(status_code=400, detail=f"{name} must use YYYY-MM-DD.")
+            try:
+                date.fromisoformat(value)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"{name} must be a real calendar date.")
+
+    today = datetime.now(UTC).date().isoformat()
+    end = end or today
+    if end > today:
+        raise HTTPException(status_code=400, detail="The end date cannot be in the future (UTC).")
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise HTTPException(status_code=400, detail="Currency must have three uppercase letters, such as USD.")
+    start = start or min(await database.oldest_income_date() or end, end)
+    if start > end:
+        raise HTTPException(status_code=400, detail="The start date must be on or before the end date.")
+
+    try:
+        fiat = await exchange_rates.fetch_daily_fiat_rates(currency, start, end)
+    except exchange_rates.UnknownFiat:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No daily ECB rate for {currency} in this date range. Export in USD or choose a supported currency.",
+        )
+    if fiat is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not get the daily exchange rates. Try again or export in USD.",
+        )
+
+    await database.add_audit_event("income_export", f"{start}..{end}", "exported", actor=user, detail=currency)
+    return StreamingResponse(
+        income_export.stream_csv(start, end, currency, fiat),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="cashpilot-income-{start}_{end}-{currency}.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.get("/api/services/{slug}/payout-progress")

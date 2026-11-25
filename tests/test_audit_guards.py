@@ -95,6 +95,7 @@ class TestMutatingEndpointsSitAboveViewer:
 
     LADDER = {
         "api_test_credentials": "_require_owner",
+        "api_income_csv": "_require_owner",
         "api_confirm_payout": "_require_writer",
         "api_reject_payout": "_require_writer",
     }

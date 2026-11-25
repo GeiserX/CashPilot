@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -187,6 +188,49 @@ async def fetch_daily_usd_prices(currency: str) -> dict[str, float]:
         # A timeout has an empty str(); name its class so the line says what failed.
         logger.warning("rate history for %s failed: %s", currency, str(exc) or type(exc).__name__)
         return {}
+
+
+class UnknownFiat(ValueError):
+    """Frankfurter has no daily rates for this currency and range."""
+
+
+async def fetch_daily_fiat_rates(currency: str, start: str, end: str) -> dict[str, float] | None:
+    """Return USD-to-fiat ECB rates by day, or None if the response is unusable."""
+    if currency == "USD":
+        return {start: 1.0}
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"https://api.frankfurter.dev/v1/{start}..{end}",
+                params={"from": "USD", "to": currency},
+            )
+        if response.status_code == 404:
+            raise UnknownFiat(currency)
+        response.raise_for_status()
+
+        payload = response.json()
+        if payload["base"] != "USD":
+            return None
+        rates = {}
+        for day, quoted in payload["rates"].items():
+            rate = quoted[currency]
+            if (
+                date.fromisoformat(day).isoformat() != day
+                or day > end
+                or isinstance(rate, bool)
+                or not isinstance(rate, (int, float))
+                or not math.isfinite(rate)
+                or rate <= 0
+            ):
+                return None
+            rates[day] = float(rate)
+        # A quote from after the start cannot price the opening days.
+        return rates if rates and min(rates) <= start else None
+    except UnknownFiat:
+        raise
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError, OverflowError):
+        return None
 
 
 def rates_stale() -> bool:
