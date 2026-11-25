@@ -238,12 +238,21 @@ def endpoint(spec: Chain) -> tuple[httpx.URL | None, str | None]:
     value = os.environ.get(variable, spec.rpc).strip()
     if not value:
         return None, f"Turned off by {variable}."
+    invalid = f"{variable} must be an HTTP or HTTPS base URL without credentials, a query or a fragment."
     try:
         url = httpx.URL(value.rstrip("/"))
-    except httpx.InvalidURL:
-        url = None
-    if url is None or url.scheme not in {"http", "https"} or not url.host or url.userinfo or url.query or url.fragment:
-        return None, f"{variable} must be an HTTP or HTTPS base URL without credentials, a query or a fragment."
+        host, port = url.host, url.port
+    except (httpx.InvalidURL, ValueError):
+        return None, invalid
+    if (
+        url.scheme not in {"http", "https"}
+        or not host
+        or (port is not None and not 1 <= port <= 65535)
+        or url.userinfo
+        or "?" in value
+        or "#" in value
+    ):
+        return None, invalid
     return url, None
 
 
@@ -336,6 +345,8 @@ async def _read(spec: Chain, address: str, url: str, client: httpx.AsyncClient) 
     """
     if spec.kind == "esplora":
         payload = await _explorer_get(client, f"{url.rstrip('/')}/address/{address}")
+        if "address" in payload and payload["address"] != address:
+            raise ValueError("Esplora returned a different address")
         confirmed = _utxo_delta(payload.get("chain_stats"))
         if confirmed < 0:
             raise ValueError("Esplora confirmed spending exceeds funding")

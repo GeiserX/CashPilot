@@ -37,7 +37,7 @@ _SECRET_PARAM_RE = re.compile(
 # The public payout address in a HeroMiners request identifies this installation's wallet.
 _KASPA_ADDRESS_PARAM_RE = re.compile(r"(\baddress=)kaspa(?::|%3a)[a-z0-9]+", re.IGNORECASE)
 _ONCHAIN_ADDRESS_RE = re.compile(
-    r"(/address/)[A-Za-z0-9]{26,90}(?=[^A-Za-z0-9]|$)"
+    r"(/address/)(?:bc1[a-z0-9]{11,87}|[13][a-z0-9]{13,34})(?=[^a-z0-9]|$)"
     r"|(/addresses/)kaspa(?::|%3a)[a-z0-9]{61,63}(?=/balance)",
     re.IGNORECASE,
 )

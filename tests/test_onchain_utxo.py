@@ -30,6 +30,7 @@ def _client(handler):
     [
         ("bitcoin", BTC),
         ("bitcoin", BTC.upper()),
+        ("bitcoin", "bc1sw50qgdz25j"),
         ("bitcoin", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"),
         ("bitcoin", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"),
         ("bitcoin", "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0"),
@@ -88,7 +89,7 @@ async def test_esplora_confirmed_and_negative_pending_are_separate():
     def handler(request):
         assert request.method == "GET"
         assert str(request.url) == f"https://mempool.space/api/address/{BTC}"
-        return httpx.Response(200, json=_esplora(_stats(313825056, 1), _stats(100, 1100)))
+        return httpx.Response(200, json={"address": BTC, **_esplora(_stats(313825056, 1), _stats(100, 1100))})
 
     async with _client(handler) as client:
         result = await onchain.balance("bitcoin", BTC.upper(), client=client)
@@ -119,6 +120,7 @@ async def test_esplora_confirms_a_zero_balance():
         _esplora(_stats(50, 100)),
         _esplora({**_stats(50), "funded_txo_count": 0}),
         {"chain_stats": _stats()},
+        {**_esplora(_stats(123456789)), "address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"},
     ],
 )
 @pytest.mark.anyio
@@ -165,6 +167,29 @@ async def test_rate_limit_uses_retry_after_on_the_effective_endpoint(monkeypatch
 
 
 @pytest.mark.anyio
+async def test_backoff_only_applies_to_the_url_that_failed(monkeypatch):
+    url = "https://node.example"
+    variable = "CASHPILOT_ONCHAIN_URL_BITCOIN"
+    paths = []
+
+    def handler(request):
+        paths.append(request.url.path)
+        if request.url.path.startswith("/a/"):
+            return httpx.Response(429, headers={"Retry-After": "600"})
+        return httpx.Response(200, json=_esplora())
+
+    async with _client(handler) as client:
+        monkeypatch.setenv(variable, f"{url}/a")
+        assert (await onchain.balance("bitcoin", BTC, client=client))["state"] == onchain.UNREACHABLE
+        monkeypatch.setenv(variable, f"{url}/b")
+        assert (await onchain.balance("bitcoin", BTC, client=client))["state"] == onchain.KNOWN
+        monkeypatch.setenv(variable, f"{url}/a")
+        assert (await onchain.balance("bitcoin", BTC, client=client))["state"] == onchain.UNREACHABLE
+
+    assert paths == [f"/a/address/{BTC}", f"/b/address/{BTC}"]
+
+
+@pytest.mark.anyio
 async def test_override_change_bypasses_cached_default_and_empty_disables(monkeypatch):
     calls = []
 
@@ -185,6 +210,35 @@ async def test_override_change_bypasses_cached_default_and_empty_disables(monkey
     assert changed["source"] == "umbrel.local"
     assert disabled["state"] == malformed["state"] == onchain.UNSUPPORTED
     assert "CASHPILOT_ONCHAIN_URL_BITCOIN" in disabled["detail"]
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        "https://xn--a.test/api",
+        "https://example.test/api?",
+        "https://example.test/api#",
+        "https://example.test:99999/api",
+    ],
+)
+@pytest.mark.anyio
+async def test_malformed_endpoint_leaves_other_chains_readable(monkeypatch, override):
+    monkeypatch.setenv("CASHPILOT_ONCHAIN_URL_BITCOIN", override)
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.raw_host)
+        return httpx.Response(200, json={"address": KAS, "balance": 1})
+
+    async with _client(handler) as client:
+        bitcoin, kaspa = await asyncio.gather(
+            onchain.balance("bitcoin", BTC, client=client),
+            onchain.balance("kaspa", KAS, client=client),
+        )
+
+    assert bitcoin["state"] == onchain.UNSUPPORTED
+    assert kaspa["state"] == onchain.KNOWN
+    assert hosts == [b"api.kaspa.org"]
 
 
 @pytest.mark.anyio

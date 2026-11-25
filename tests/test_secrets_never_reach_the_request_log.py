@@ -212,6 +212,7 @@ class TestAnyClientRequest:
         ("path", "address"),
         [
             ("/api/address/{}", "bc1q0pp74ghs25vpn2ah6auz4vkehvzy8z8ddyzts7"),
+            ("/api/address/{}", "bc1sw50qgdz25j"),
             ("/addresses/{}/balance", "kaspa:qz0efmwpt789garsw290g47865tz73pwdm3fufqxymchvun9u8tjxlc3ue4s5"),
         ],
     )
