@@ -332,11 +332,20 @@ class TestEndpoint:
         assert charlie["break_even_price_per_kwh"] is None
         assert charlie["break_even_tariff"] is None
 
-    def test_an_empty_list_from_a_blind_worker_is_not_a_measured_zero(self):
-        """Docker unreadable means the empty container list is no reading at all."""
+    @pytest.mark.parametrize(
+        "system_info",
+        [
+            {"docker_available": False},
+            {"docker_available": True, "containers_listed": False},
+            {"docker_available": True, "proxied": None},
+            {"docker_available": True, "routes_read": False},
+        ],
+        ids=["docker-unavailable", "containers-unread", "proxies-unread", "routes-unread"],
+    )
+    def test_an_empty_list_from_an_unread_inventory_has_no_break_even(self, system_info):
         out = self._call(
             config={"power_currency": "USD", "worker_c1_watts": "18"},
-            workers=[{"id": 1, "name": "charlie", "system_info": {"docker_available": False}}],
+            workers=[{"id": 1, "name": "charlie", "system_info": system_info}],
             earned={},
         )
         charlie = out["machines"][0]

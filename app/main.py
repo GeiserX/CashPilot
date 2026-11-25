@@ -10320,6 +10320,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
 
     assessed = []
     for worker in workers:
+        worker_id = worker.get("id")
         info = worker.get("system_info") or {}
         # Keyed on client_id, not the autoincrement row id.
         #
@@ -10338,7 +10339,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 # offline machine to zero earnings is what produced the
                 # "turn it off" advice about a host we cannot see.
                 monthly_gross=(
-                    per_worker_gross.get(worker.get("id"), 0.0) if str(worker.get("status") or "") == "online" else None
+                    per_worker_gross.get(worker_id, 0.0) if str(worker.get("status") or "") == "online" else None
                 ),
                 watts=watts,
                 # No rate means the tariff cannot be expressed in the same unit
@@ -10348,11 +10349,12 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 price_per_kwh=(price or None) if fx_ok else None,
                 metered=power.is_metered(info),
                 dedicated=_worker_flag(config, worker, "dedicated"),
-                # A host that lists nothing is a measured zero only when it can
-                # read its own Docker socket. A blind one (docker_available not
-                # true) may be running anything, so its empty list is no reading.
+                # An empty list counts as zero only when the worker could
+                # reach Docker and read its whole inventory.
                 gross_measured=(
-                    worker.get("id") in read if worker.get("id") in hosting else not placement.is_blind(worker)
+                    worker_id in read
+                    if worker_id in hosting
+                    else not placement.is_blind(worker) and not _heartbeat_partial(info)
                 ),
             )
         )
