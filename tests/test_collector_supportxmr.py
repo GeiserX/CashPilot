@@ -86,8 +86,10 @@ class TestReading:
         result, _ = _run(SupportXMRCollector(FUND), lambda r: httpx.Response(200, json=dict(KNOWN, amtDue=1)))
         assert result.balance == pytest.approx(1e-12, abs=1e-18)
 
-    def test_an_address_the_pool_has_never_seen_is_an_error_never_zero(self):
-        result, _ = _run(SupportXMRCollector(FUND), lambda r: httpx.Response(200, json=NEVER_SEEN))
+    @pytest.mark.parametrize("txn_count", [0, 9])
+    def test_an_address_the_pool_has_never_seen_is_an_error_never_zero(self, txn_count):
+        body = dict(NEVER_SEEN, txnCount=txn_count)
+        result, _ = _run(SupportXMRCollector(FUND), lambda r: httpx.Response(200, json=body))
         assert result.error and "no record of this address" in result.error
         assert result.error_kind is None
         assert credential_test.classify(result.error, result.error_kind) == credential_test.BAD_CREDENTIALS
@@ -192,3 +194,34 @@ class TestRegistration:
         out = payouts.detect(0.052633849853, 0.002633849853, svc, "XMR")
         assert out is not None and out["amount"] == 0.05
         assert payouts.detect(0.002, 0.0026, svc, "XMR") is None
+
+    def test_a_drop_at_the_manual_minimum_counts_to_the_piconero(self):
+        from app import catalog, payouts
+
+        svc = catalog.get_service("supportxmr")
+        out = payouts.detect(0.011, 0.001, svc, "XMR")
+        assert out is not None and out["amount"] == 0.01 and out["confirmed"] is False
+        assert payouts.detect(0.010999999999, 0.001, svc, "XMR") is None
+
+    @pytest.mark.parametrize("address", [FUND, f"{FUND}.rig"])
+    def test_credential_check_gives_payout_address_advice(self, monkeypatch, address):
+        from unittest.mock import AsyncMock
+
+        from fastapi.testclient import TestClient
+
+        from app import main
+
+        async def fetch_stats(_client, url):
+            return httpx.Response(200, json=NEVER_SEEN, request=httpx.Request("GET", url))
+
+        monkeypatch.setattr(main.auth, "get_current_user", lambda request: {"uid": 1, "u": "admin", "r": "owner"})
+        monkeypatch.setattr(main.database, "get_config", AsyncMock(return_value={"supportxmr_address": address}))
+        monkeypatch.setattr(httpx.AsyncClient, "get", fetch_stats)
+        monkeypatch.setattr(credential_test, "_last_attempt", {})
+        response = TestClient(main.app).post("/api/services/supportxmr/test-credentials")
+
+        assert response.status_code == 200
+        result = response.json()
+        assert result["outcome"] == credential_test.BAD_CREDENTIALS
+        assert "payout address" in result["message"] and "shares" in result["message"]
+        assert "balance" not in result and address not in result["message"]

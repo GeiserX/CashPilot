@@ -156,7 +156,9 @@ def classify(error: str | None, kind: str | None = None) -> str:
     return UNEXPECTED_SHAPE
 
 
-def message(outcome: str, service_name: str, balance: float | None = None, currency: str = "") -> str:
+def message(
+    outcome: str, service_name: str, balance: float | None = None, currency: str = "", *, payout_address: bool = False
+) -> str:
     """A sentence the user can act on, containing nothing sensitive."""
     if outcome == OK:
         if balance is None:
@@ -165,6 +167,11 @@ def message(outcome: str, service_name: str, balance: float | None = None, curre
             f"{service_name} accepted these credentials and reported a balance of {balance:g} {currency}".strip() + "."
         )
     if outcome == BAD_CREDENTIALS:
+        if payout_address:
+            return (
+                f"CashPilot could not verify this payout address with {service_name}. "
+                "Check it against the address your miner uses. If your miner is new, try again after it sends shares."
+            )
         return (
             f"{service_name} rejected these credentials. If they are a browser cookie or token, "
             "they have most likely expired — copy a fresh one and try again."
@@ -213,11 +220,13 @@ def note_attempt(slug: str, now: float | None = None) -> None:
     _last_attempt[slug] = time.monotonic() if now is None else now
 
 
-def result(outcome: str, service_name: str, **extra: Any) -> dict[str, Any]:
+def result(outcome: str, service_name: str, *, payout_address: bool = False, **extra: Any) -> dict[str, Any]:
     """The response body. Deliberately has no field that could carry a secret."""
     return {
         "ok": outcome == OK,
         "outcome": outcome,
-        "message": message(outcome, service_name, extra.get("balance"), extra.get("currency", "")),
+        "message": message(
+            outcome, service_name, extra.get("balance"), extra.get("currency", ""), payout_address=payout_address
+        ),
         **{k: v for k, v in extra.items() if k in {"balance", "currency"}},
     }
