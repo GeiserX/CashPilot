@@ -39,7 +39,8 @@ def read(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_only_the_unpaid_balance_is_read_in_etc(read):
-    result, requests = await read(lambda _: httpx.Response(200, json=CONTRACT["sample"]), f" {ADDRESS} ")
+    stats = dict(CONTRACT["sample"]["stats"], pending=123_456)
+    result, requests = await read(lambda _: httpx.Response(200, json={"stats": stats}), f" {ADDRESS} ")
 
     assert result.error is None and result.warning is None
     assert result.platform == SLUG
@@ -161,3 +162,18 @@ async def test_ethereum_classic_rpc_uses_wei_not_pool_units():
         assert result["amount"] == Decimal("1.000000000000000001")
     finally:
         onchain.reset_state()
+
+
+@pytest.mark.asyncio
+async def test_ethereum_classic_rpc_error_keeps_the_payout_address_out_of_logs(caplog):
+    response = httpx.Response(200, json={"error": {"code": -32602, "message": f"Invalid account {ADDRESS}"}})
+    onchain.reset_state()
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: response)) as client:
+            result = await onchain.balance("ethereum-classic", ADDRESS, client=client)
+    finally:
+        onchain.reset_state()
+
+    assert result["state"] == onchain.UNREACHABLE and result["amount"] is None
+    assert "Could not read ethereum-classic balance" in caplog.text
+    assert ADDRESS not in caplog.text

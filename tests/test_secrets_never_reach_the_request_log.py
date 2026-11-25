@@ -27,6 +27,7 @@ import httpx  # noqa: E402
 import pytest  # noqa: E402
 
 from app import log_redaction, notify  # noqa: E402
+from app.collectors import base, twominers  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -95,6 +96,26 @@ async def test_2miners_request_logs_omit_the_payout_address(redacting, caplog):
 
     assert address not in caplog.text
     assert f"{endpoint}/<redacted>" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_2miners_refusal_keeps_the_payout_address_out_of_logs_and_alerts(redacting, caplog, monkeypatch):
+    address = "0x" + "ab" * 20
+    echoed_address = "0x" + address[2:].upper()
+    reason = f"Refused account {echoed_address}".encode()
+    transport = httpx.MockTransport(lambda _: httpx.Response(403, extensions={"reason_phrase": reason}))
+    collector = twominers.TwoMinersETCCollector(address)
+
+    with caplog.at_level(logging.INFO):
+        async with httpx.AsyncClient(transport=transport) as client:
+            monkeypatch.setattr(collector, "_get_client", lambda **kwargs: client)
+            result = await collector.collect()
+
+    assert result.error_kind == base.KIND_TRANSIENT
+    assert result.error and "HTTP 403" in result.error
+    assert address not in result.error.lower()
+    assert address not in caplog.text.lower()
+    assert "https://etc.2miners.com/api/accounts/<redacted>" in caplog.text
 
 
 class TestNotifierRequests:

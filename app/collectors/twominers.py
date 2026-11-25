@@ -56,9 +56,9 @@ class _TwoMinersCollector(BaseCollector):
                 return self._unseen_address()
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            # The request URL contains the user's payout address.
+            # The server can echo the payout address in its reason phrase.
             status = exc.response.status_code
-            error = f"2Miners returned HTTP {status} {exc.response.reason_phrase}."
+            error = f"2Miners returned HTTP {status}."
             logger.warning("%s", error)
             # The endpoint is public. A refused request says nothing about the address.
             kind = base.KIND_TRANSIENT if status in (401, 403) else base.classify_exception(exc)
