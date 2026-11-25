@@ -43,12 +43,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.tag.outputs.version }}
+      revision: ${{ steps.tag.outputs.revision }}
       tag: ${{ steps.tag.outputs.tag }}
       published: ${{ steps.tag.outputs.published }}
+      inputs: ${{ steps.tag.outputs.inputs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Shellcheck
         run: shellcheck images/xmrig/*.sh
@@ -89,31 +91,49 @@ jobs:
           grep -q "not XMRig's own not-xmrig" <<<"$out"
           test "$(cat "$tmp/VERSION")" = 0.0.1
 
+      - name: bump.sh refuses a tag that moved after selection
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tmp=$(mktemp -d)
+          cp images/xmrig/bump.sh images/xmrig/COMMIT images/xmrig/REVISION "$tmp/"
+          echo 0.0.1 > "$tmp/VERSION"
+          if out=$("$tmp/bump.sh" v6.27.0 0000000000000000000000000000000000000000 2>&1); then
+            echo "::error::bump.sh accepted a different commit: $out"
+            exit 1
+          fi
+          echo "$out"
+          grep -q "expected 0000000000000000000000000000000000000000" <<<"$out"
+          test "$(cat "$tmp/VERSION")" = 0.0.1
+
       - name: Work out the tag, and refuse to reuse a published one
         id: tag
-        env:
-          # The PR's base, or on push the commit main was at before it.
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           version=$(tr -d '[:space:]' < images/xmrig/VERSION)
           revision=$(tr -d '[:space:]' < images/xmrig/REVISION)
+          [[ "$revision" =~ ^[1-9][0-9]*$ ]]
           tag="$version-r$revision"
-          code=$(curl -s -o /dev/null -w '%{http_code}' "https://hub.docker.com/v2/repositories/$REPO/tags/$tag")
-          case "$code" in
-            200) published=true ;;
-            404) published=false ;;
-            *) echo "::error::Docker Hub answered $code for $REPO:$tag; cannot tell whether it is published"; exit 1 ;;
-          esac
-          echo "$REPO:$tag published: $published"
-          if [ "$published" = true ] && [ -n "$BASE" ] && \
-             ! git diff --quiet "$BASE" HEAD -- images/xmrig/Dockerfile images/xmrig/health.sh images/xmrig/VERSION images/xmrig/COMMIT; then
-            echo "::error::This change alters what goes into the image, but $REPO:$tag is already published, so main would skip it. Raise images/xmrig/REVISION so main publishes a new tag."
-            exit 1
+          files=$(sha256sum images/xmrig/{Dockerfile,health.sh,VERSION,COMMIT})
+          inputs=$(printf '%s\n' "$files" | sha256sum | cut -d ' ' -f 1)
+          if manifest=$(images/xmrig/registry-manifest.sh "$REPO" "$tag"); then
+            published=true
+            previous=$(jq -r '.annotations["io.cashpilot.xmrig.inputs"] // empty' <<<"$manifest")
+            if [ "$previous" != "$inputs" ]; then
+              echo "::error::$REPO:$tag already exists with different image inputs. Raise images/xmrig/REVISION."
+              exit 1
+            fi
+          else
+            status=$?
+            if [ "$status" != 44 ]; then exit "$status"; fi
+            published=false
           fi
+          echo "$REPO:$tag published: $published"
           {
             echo "version=$version"
+            echo "revision=$revision"
             echo "tag=$tag"
             echo "published=$published"
+            echo "inputs=$inputs"
           } >> "$GITHUB_OUTPUT"
 
   # Not named `test`: that is the required check from test.yml in the ruleset.
@@ -130,6 +150,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build and test natively, without mining
         run: images/xmrig/test.sh ${{ matrix.platform }}
 
@@ -148,6 +170,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
@@ -180,6 +204,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
@@ -191,13 +217,12 @@ jobs:
           pattern: digest-*
           path: /tmp/digests
           merge-multiple: true
-      # Never :latest. <version>-r<revision> never changes once pushed;
-      # <version> follows the newest revision of that XMRig version.
-      - name: Join both platforms under <version>-r<revision> and <version>
+      - name: Join both platforms under the immutable revision tag
         if: needs.tag.outputs.published == 'false'
         env:
           TAG: ${{ needs.tag.outputs.tag }}
-          VERSION: ${{ needs.tag.outputs.version }}
+          REVISION: ${{ needs.tag.outputs.revision }}
+          INPUTS: ${{ needs.tag.outputs.inputs }}
         run: |
           cd /tmp/digests
           count=$(find . -maxdepth 1 -type f | wc -l)
@@ -207,31 +232,38 @@ jobs:
           fi
           refs=()
           for digest in *; do refs+=("$REPO@sha256:$digest"); done
-          docker buildx imagetools create -t "$REPO:$TAG" -t "$REPO:$VERSION" "${refs[@]}"
-          docker buildx imagetools inspect "$REPO:$TAG"
-      # A push that wrote <version>-r<revision> but not <version> leaves the
-      # alias behind, and the next run skips the build. Point it at this
-      # revision, but only while this commit is still main's head, so a rerun
-      # of an older run never moves the alias backwards.
-      - name: Point <version> at this revision
-        if: needs.tag.outputs.published == 'true'
+          docker buildx imagetools create -t "$REPO:$TAG" \
+            --annotation "index:io.cashpilot.xmrig.revision=$REVISION" \
+            --annotation "index:io.cashpilot.xmrig.inputs=$INPUTS" "${refs[@]}"
+      # Main runs share a concurrency group. An old rerun can fill in a
+      # missing revision tag while the version alias stays on the newer one.
+      - name: Point the version alias at the newest published revision
         env:
           TAG: ${{ needs.tag.outputs.tag }}
           VERSION: ${{ needs.tag.outputs.version }}
+          REVISION: ${{ needs.tag.outputs.revision }}
         run: |
-          head=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "main is at $head now, not $GITHUB_SHA; leaving $REPO:$VERSION alone"
-            exit 0
-          fi
-          want=$(docker buildx imagetools inspect "$REPO:$TAG" --format '{{.Manifest.Digest}}')
-          have=$(docker buildx imagetools inspect "$REPO:$VERSION" --format '{{.Manifest.Digest}}' 2>/dev/null || true)
-          if [ "$want" = "$have" ]; then
-            echo "$REPO:$VERSION already points at $TAG ($want)"
+          if alias=$(images/xmrig/registry-manifest.sh "$REPO" "$VERSION"); then
+            previous=$(jq -er '.annotations["io.cashpilot.xmrig.revision"]' <<<"$alias")
+            [[ "$previous" =~ ^[1-9][0-9]*$ ]]
+            if (( previous > REVISION )); then
+              echo "$REPO:$VERSION already points to a newer revision (r$previous)"
+              exit 0
+            fi
+            if (( previous == REVISION )); then
+              target=$(images/xmrig/registry-manifest.sh "$REPO" "$TAG")
+              if [ "$alias" = "$target" ]; then
+                echo "$REPO:$VERSION already points to $TAG"
+                exit 0
+              fi
+              echo "::error::$REPO:$VERSION and $REPO:$TAG have different manifests for the same revision"
+              exit 1
+            fi
           else
-            echo "$REPO:$VERSION is at ${have:-nothing}; pointing it at $TAG ($want)"
-            docker buildx imagetools create -t "$REPO:$VERSION" "$REPO:$TAG"
+            status=$?
+            if [ "$status" != 44 ]; then exit "$status"; fi
           fi
+          docker buildx imagetools create -t "$REPO:$VERSION" "$REPO:$TAG"
 
   # The pushed image is a fresh build, not the one test.sh ran, so check what
   # users will pull, on a runner of each architecture. Still no mining.
@@ -271,6 +303,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -280,14 +314,17 @@ jobs:
           short-description: "Unofficial XMRig for CashPilot: upstream built from its XMRig-signed release commit, amd64 and arm64"
 
   bump:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.bump.outputs.changed }}
       from: ${{ steps.bump.outputs.from }}
       to: ${{ steps.bump.outputs.to }}
+      commit: ${{ steps.bump.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Read XMRig's newest release and check XMRig signed it
         id: bump
         env:
@@ -296,16 +333,18 @@ jobs:
           before=$(cat images/xmrig/VERSION)
           images/xmrig/bump.sh
           after=$(cat images/xmrig/VERSION)
+          commit=$(cat images/xmrig/COMMIT)
           changed=false
           [ "$before" != "$after" ] && changed=true
           {
             echo "from=$before"
             echo "to=$after"
+            echo "commit=$commit"
             echo "changed=$changed"
           } >> "$GITHUB_OUTPUT"
 
-  # A PR opened with GITHUB_TOKEN does not start this workflow's pull_request
-  # run, so the bumped pin is tested here on both platforms, before the PR exists.
+  # Build both platforms before opening the PR. Its pull_request workflows
+  # wait for a maintainer to approve them because it uses GITHUB_TOKEN.
   bump-test:
     needs: bump
     if: needs.bump.outputs.changed == 'true'
@@ -320,12 +359,15 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Pin the same release, then build and test it
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TO: ${{ needs.bump.outputs.to }}
+          COMMIT: ${{ needs.bump.outputs.commit }}
         run: |
-          images/xmrig/bump.sh "v$TO"
+          images/xmrig/bump.sh "v$TO" "$COMMIT"
           images/xmrig/test.sh ${{ matrix.platform }}
 
   bump-pr:
@@ -341,7 +383,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TO: ${{ needs.bump.outputs.to }}
-        run: images/xmrig/bump.sh "v$TO"
+          COMMIT: ${{ needs.bump.outputs.commit }}
+        run: images/xmrig/bump.sh "v$TO" "$COMMIT"
       - name: Open or update the bump PR
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
@@ -361,4 +404,4 @@ jobs:
 
             Merging publishes `${{ env.REPO }}:${{ needs.bump.outputs.to }}-r1`. Then point the xmrig catalog entry at its digest.
 
-            This PR was opened with the workflow token, so GitHub starts no pull_request checks on it and the ruleset's required `test` and `build (strict)` never report. It changes only `images/xmrig/`, which this run already tested; merge it with the admin bypass.
+            This PR uses the workflow token. Select **Approve workflows to run** to start its checks. Wait for `test` and `build (strict)` to pass before merging.

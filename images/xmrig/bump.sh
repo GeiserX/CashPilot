@@ -4,6 +4,7 @@
 #
 #   images/xmrig/bump.sh          the newest release (releases/latest)
 #   images/xmrig/bump.sh v6.27.0  that release tag
+#   images/xmrig/bump.sh v6.27.0 <sha>  require the same commit in each CI job
 #
 # Resolves the tag to its commit and refuses unless GitHub marks that commit's
 # signature verified AND the committer is XMRig's own account (GitHub login
@@ -32,9 +33,12 @@ die() {
 tag=${1:-$("${CURL[@]}" "$API/releases/latest" | jq -r '.tag_name // empty')}
 [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "unexpected release tag '$tag'; expected vX.Y.Z"
 version=${tag#v}
+expected=${2:-}
 
 current=$(tr -d '[:space:]' <"$DIR/VERSION")
 if [[ "$version" == "$current" ]]; then
+	[[ -z "$expected" || "$(cat "$DIR/COMMIT")" == "$expected" ]] ||
+		die "$tag is already pinned to a different commit than $expected"
 	echo "$version (already pinned)"
 	exit 0
 fi
@@ -52,6 +56,7 @@ if [[ "$type" == tag ]]; then
 	sha=$(jq -r '.object.sha' <<<"$ref")
 fi
 [[ "$type" == commit && "$sha" =~ ^[0-9a-f]{40}$ ]] || die "$tag does not resolve to a commit (got $type $sha)"
+[[ -z "$expected" || "$sha" == "$expected" ]] || die "$tag points at $sha; expected $expected"
 
 commit=$("${CURL[@]}" "$API/commits/$sha")
 verification=$(jq -c '.commit.verification' <<<"$commit")
