@@ -2176,8 +2176,14 @@ const CP = (() => {
     return Number.isInteger(id) && id > 0 ? id : undefined;
   }
 
+  // A joined Desktop that takes commands reports a URL too, so it is a deploy target.
+  // One without a URL only reports what runs on it.
   function onlineDeployWorkers(workers) {
     return (workers || []).filter(w => w.status === 'online' && w.url);
+  }
+
+  function isDesktopWorker(w) {
+    return ((w && w.system_info) || {}).device_type === 'desktop';
   }
 
   function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
@@ -2208,6 +2214,7 @@ const CP = (() => {
       <label class="worker-pick">
         <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : ''}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
+        ${isDesktopWorker(w) ? '<span class="badge" title="CashPilot Desktop: it runs the image its own catalog pins, one copy per service">Desktop</span>' : ''}
         ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
         ${deployed
           ? '<span class="badge badge-deployed">Deployed</span>'
@@ -5685,8 +5692,8 @@ const CP = (() => {
     if (!container) return;
     try {
       const workers = await api('/api/workers').catch(() => []);
-      // Only workers with a command URL can answer /api/update-info; a paired Desktop or phone cannot.
-      const online = onlineDeployWorkers(workers);
+      // Only Docker workers answer /api/update-info; a Desktop updates itself and a phone has no URL.
+      const online = onlineDeployWorkers(workers).filter(w => !isDesktopWorker(w));
       if (!online.length) {
         container.innerHTML = `<p class="block-empty">No Docker worker is online, so the install cannot be inspected or updated right now.</p>`;
         return;

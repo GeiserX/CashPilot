@@ -391,11 +391,19 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
 
 
 async def _resolve_worker_id(worker_id: int | None) -> int:
-    """Auto-select a worker only when one online worker has a command URL."""
+    """Auto-select a worker only when one online Docker worker has a command URL.
+
+    A joined Desktop that takes commands has a URL too, but it is picked only by
+    its id: a deploy that names no worker keeps going where it went before.
+    """
     if worker_id is not None:
         return worker_id
     workers = await database.list_workers()
-    online = [w for w in workers if w["status"] == "online" and w.get("url")]
+    online = [
+        w
+        for w in workers
+        if w["status"] == "online" and w.get("url") and not placement.is_desktop(placement.system_info(w))
+    ]
     if len(online) == 1:
         return online[0]["id"]
     if len(online) == 0:
@@ -7124,7 +7132,16 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     # The worker then read as online from its heartbeats while every deploy,
     # start, stop, restart and logs call failed 401, with nothing connecting
     # the two symptoms.
-    auth_key = await _confirmed_worker_key(cid) or FLEET_API_KEY
+    auth_key = await _confirmed_worker_key(cid)
+    if not auth_key and placement.is_desktop(placement.system_info(worker)):
+        # A joined Desktop takes only the key this server issued to it, never the
+        # shared one, so the shared key is not sent to it at all.
+        raise HTTPException(
+            status_code=503,
+            detail="This Desktop has not finished joining, so it has no key of its own yet. "
+            "Wait for its next heartbeat and try again.",
+        )
+    auth_key = auth_key or FLEET_API_KEY
     headers: dict[str, str] = {}
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
@@ -11069,6 +11086,7 @@ async def api_update_info(request: Request, worker_id: int | None = None) -> dic
     """Everything the settings card needs: versions + what an update would do."""
     _require_owner(request)
     wid = await _resolve_worker_id(worker_id)
+    await _refuse_desktop_update(wid)
     info = await _proxy_to_worker(wid, "GET", "/api/update/info")
     check = update_check.state()
     current = version.current()
@@ -11099,7 +11117,18 @@ async def api_update(request: Request, worker_id: int | None = None) -> dict[str
     """
     _require_owner(request)
     wid = await _resolve_worker_id(worker_id)
+    await _refuse_desktop_update(wid)
     return await _proxy_to_worker(wid, "POST", "/api/update/self", timeout=120)
+
+
+async def _refuse_desktop_update(worker_id: int) -> None:
+    """A joined Desktop takes deploys and stops, but it updates itself from its own app."""
+    worker = await database.get_worker(worker_id) or {}
+    if placement.is_desktop(placement.system_info(worker)):
+        raise HTTPException(
+            status_code=409,
+            detail="CashPilot Desktop updates itself from its own app. Pick a Docker worker here.",
+        )
 
 
 @app.get("/api/env-info")

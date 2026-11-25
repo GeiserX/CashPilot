@@ -177,7 +177,15 @@ function formDom(rowsHtml, routeValue) {
 const routedSvc = { slug: 'honeygain', name: 'Honeygain', routes: { 1: 3 }, max_instances: 1 };
 const directBox = { id: 2, name: 'box2', containers: [{ slug: 'honeygain' }], system_info: {} };
 const newBox = { id: 4, name: 'box4', containers: [], system_info: {} };
-const { workerCheckboxList } = fns(['workerCopies', 'workerCheckboxList']);
+const { workerCheckboxList } = fns(['workerCopies', 'isDesktopWorker', 'workerCheckboxList']);
+
+// A joined Desktop that takes commands is a deploy target, and says it is a Desktop.
+{
+  const desktop = { id: 5, name: 'my-pc', url: 'http://192.168.1.30:8086', containers: [], system_info: { device_type: 'desktop' } };
+  const html = workerCheckboxList(routedSvc, [desktop, newBox], 'deploy-worker-cb').rows;
+  assert.match(html, /data-wid="5"[^>]*>\s*<span class="worker-pick-name">my-pc<\/span>\s*<span class="badge"[^>]*>Desktop<\/span>/, 'the Desktop row carries a Desktop badge');
+  assert.equal((html.match(/>Desktop</g) || []).length, 1, 'a Docker box carries no Desktop badge');
+}
 
 // Routed on its only box: the form stays, so the Route box is there to change it.
 assert.equal(workerCheckboxList(routedSvc, [routedBox]).allDeployed, false, 'a routed box keeps the form on screen');

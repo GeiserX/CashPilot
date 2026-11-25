@@ -194,6 +194,7 @@ The **Fleet** page lists every box:
 - **Check isolation** on Docker workers that support it ([what it tests](isolation-check.md)) and **Remove**;
 - **Add a box** at the bottom, with the environment variables for the next worker.
   A computer with [CashPilot Desktop](https://github.com/GeiserX/CashPilot-Desktop) joins with the same block: pick **Join my CashPilot** (on first run, or in Settings under **How this computer runs**) and paste it into **Paste from Add a box**.
+  A joined Desktop shows the **Desktop** tag. You deploy services to it and stop them from here, as on a Docker worker, while its dashboard switch **can start and stop services on this computer** is on (it is on by default). CashPilot sends it only the key it gave that Desktop when it joined, never the shared key. The Desktop runs the image its own catalog pins, one copy per service, and refuses to delete data that cannot be recovered. With the switch off it shows **Desktop, reports only**: it reports what runs there, and you add services in its own app. A Desktop updates itself, so the update card lists Docker workers only, and a deploy that names no worker still goes to the one Docker worker.
 
 ![The Boxes table on the Fleet page: three Linux boxes reporting, one offline box with its last known containers greyed out, and an Android phone listing its earning apps](images/screenshots/fleet-phone.png)
 

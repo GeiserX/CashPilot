@@ -153,6 +153,38 @@ class TestApiDeploy:
         assert resp.status_code == 503, resp.text
         assert resp.json()["detail"] == message
 
+    def test_deploy_goes_to_a_desktop_that_takes_commands_with_its_own_key(self, client):
+        """A joined Desktop that reports a command URL is a box the server deploys to."""
+        desktop = {
+            **_online_worker(2, url="http://192.168.1.30:8086"),
+            "client_id": "desk",
+            "system_info": json.dumps({"device_type": "desktop", "arch": "x86_64"}),
+        }
+        sent = {}
+
+        async def post(self, url, json=None, params=None, headers=None, **kwargs):
+            sent.update(url=url, headers=headers, json=json)
+            return _mock_httpx_resp(200, {"status": "deployed", "container_id": "abc123def456"})
+
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[desktop]),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=desktop),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.30:8086", None)),
+            patch("app.main.FLEET_API_KEY", "shared-key"),
+            patch("app.main.catalog.get_service", return_value={"slug": "honeygain", "docker": {"image": "test"}}),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("httpx.AsyncClient.post", post),
+        ):
+            resp = client.post("/api/deploy/honeygain?worker_id=2", json={})
+
+        assert resp.status_code == 200, resp.text
+        assert sent["url"] == "http://192.168.1.30:8086/api/containers/honeygain/deploy"
+        assert sent["headers"]["Authorization"] == "Bearer desk-key"
+        assert sent["json"]["image"] == "test"
+
     def test_deploy_success(self, client):
         svc = {
             "slug": "honeygain",
@@ -882,6 +914,44 @@ class TestServiceManagement:
         ):
             resp = client.post("/api/services/honeygain/stop")
             assert resp.status_code == 200
+
+    def test_stop_on_a_desktop_that_takes_commands_sends_its_own_key(self, client):
+        _, mock_client = self._setup_proxy()
+        desktop = {
+            **_online_worker(2, url="http://192.168.1.30:8086"),
+            "client_id": "desk",
+            "system_info": json.dumps({"device_type": "desktop"}),
+        }
+        with (
+            _auth_writer(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=desktop),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.30:8086", None)),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post("/api/services/honeygain/stop?worker_id=2")
+        assert resp.status_code == 200, resp.text
+        assert mock_client.post.call_args.args[0] == "http://192.168.1.30:8086/api/containers/honeygain/stop"
+        assert mock_client.post.call_args.kwargs["headers"]["Authorization"] == "Bearer desk-key"
+
+    def test_a_desktop_is_not_offered_the_docker_update(self, client):
+        desktop = {
+            **_online_worker(2, url="http://192.168.1.30:8086"),
+            "system_info": json.dumps({"device_type": "desktop"}),
+        }
+        send = AsyncMock()
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=desktop),
+            patch("app.main._proxy_to_worker", send),
+        ):
+            info = client.get("/api/update-info?worker_id=2")
+            update = client.post("/api/update?worker_id=2")
+        assert info.status_code == 409 and update.status_code == 409, (info.text, update.text)
+        assert "updates itself from its own app" in info.json()["detail"]
+        send.assert_not_awaited()
 
     def test_start_service(self, client):
         worker, mock_client = self._setup_proxy()

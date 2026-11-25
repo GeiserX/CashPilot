@@ -135,6 +135,22 @@ class TestResolveWorkerId:
         ):
             asyncio.run(_resolve_worker_id(None))
 
+    def test_a_desktop_that_takes_commands_is_never_picked_by_default(self):
+        """It is a deploy target by its id; a deploy that names no worker still goes to the Docker worker."""
+        from app.main import _resolve_worker_id
+
+        workers = [
+            {"id": 1, "status": "online", "url": "http://192.168.1.1:8081"},
+            {
+                "id": 2,
+                "status": "online",
+                "url": "http://192.168.1.2:8086",
+                "system_info": json.dumps({"device_type": "desktop"}),
+            },
+        ]
+        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
+            assert asyncio.run(_resolve_worker_id(None)) == 1
+
 
 class TestGetAllWorkerContainers:
     def test_docker_containers(self):
@@ -2505,6 +2521,35 @@ class TestOutboundWorkerAuth:
         connecting the two.
         """
         assert self._auth(("worker-1-key", False)) == "Bearer shared-key"
+
+    def _desktop(self):
+        return {**self._worker(), "system_info": json.dumps({"device_type": "desktop"})}
+
+    def test_a_joined_desktop_gets_the_key_this_server_issued_to_it(self):
+        import app.main as m
+
+        with (
+            patch("app.main.FLEET_API_KEY", "shared-key"),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.5:8081", None)),
+        ):
+            _, headers = asyncio.run(m._get_verified_worker_url(self._desktop()))
+        assert headers["Authorization"] == "Bearer desk-key"
+
+    @pytest.mark.parametrize("key_state", [(None, False), ("desk-key", False)])
+    def test_a_desktop_never_gets_the_shared_key(self, key_state):
+        """A joined Desktop takes only its own key, so the shared one is never sent to it."""
+        import app.main as m
+
+        with (
+            patch("app.main.FLEET_API_KEY", "shared-key"),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=key_state),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.5:8081", None)),
+            pytest.raises(m.HTTPException) as caught,
+        ):
+            asyncio.run(m._get_verified_worker_url(self._desktop()))
+        assert caught.value.status_code == 503
+        assert "not finished joining" in caught.value.detail
 
 
 # ---------------------------------------------------------------------------
