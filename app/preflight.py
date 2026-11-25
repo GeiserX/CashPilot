@@ -181,6 +181,11 @@ def assess(
             )
             verdicts.append(CHECK_YOURSELF)
 
+    hosting_note = reqs.get("hosting_note")
+    if hosting_note and egress.normalise_network_type(info.get("egress_network_type")) == egress.HOSTING:
+        findings.append({"verdict": CHECK_YOURSELF, "message": hosting_note})
+        verdicts.append(CHECK_YOURSELF)
+
     min_bandwidth = reqs.get("min_bandwidth")
     if min_bandwidth:
         findings.append(

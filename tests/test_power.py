@@ -550,7 +550,7 @@ class TestNetEarningsActuallyChargeElectricity:
     tests pass. Which is what happened here, again.
     """
 
-    def _net(self, containers, price="0.20"):
+    def _net(self, containers, price="0.20", *, slug="honeygain"):
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -568,15 +568,16 @@ class TestNetEarningsActuallyChargeElectricity:
                 ),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
-                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"honeygain": 4.0})),
+                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={slug: 4.0})),
             ):
                 return await main.api_earnings_net(MagicMock(), days=30)
 
         return asyncio.run(run())
 
-    def test_a_running_container_is_actually_charged_for_its_electricity(self):
+    @pytest.mark.parametrize("slug", ["honeygain", "xmrig"])
+    def test_a_running_container_is_actually_charged_for_its_electricity(self, slug):
         """The shape workers really send: keyed on `slug`."""
-        out = self._net([{"slug": "honeygain", "status": "running", "cpu_percent": 4.0, "_worker_id": 1}])
+        out = self._net([{"slug": slug, "status": "running", "cpu_percent": 4.0, "_worker_id": 1}], slug=slug)
         assert out["total_cost"] > 0, "no electricity was charged at all — the container matched nothing"
         assert out["total_net"] < out["total_gross"], "net must be below gross once power is paid for"
 

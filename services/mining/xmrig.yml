@@ -1,0 +1,167 @@
+name: XMRig (Monero CPU mining)
+slug: xmrig
+category: mining
+status: beta
+website: https://xmrig.com
+description: >-
+  Mine Monero with your CPU. CashPilot runs XMRig, and your chosen pool pays
+  Monero to your public payout address. XMRig uses 1% of hashing time to support
+  its developers. Electricity can cost more than the XMR you earn.
+short_description: Mine Monero with your CPU and your choice of pool
+
+referral:
+  signup_url: https://xmrig.com
+  program: false
+  account: false
+
+docker:
+  image: drumsergio/cashpilot-xmrig:6.27.0-r1@sha256:34d09420653187fe3fb3c206a0bc67e98de6c2e85320c12b8c544b6c8100174d
+  platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: 3g
+    cpu_shares: 128
+  env:
+    - key: WALLET
+      label: Monero address
+      required: true
+      secret: false
+      pattern: '[48][1-9A-HJ-NP-Za-km-z]{94}([1-9A-HJ-NP-Za-km-z]{11})?'
+    - key: POOL_URL
+      label: Pool
+      required: true
+      default: stratum+ssl://gulf.moneroocean.stream:20128
+      pattern: '(stratum\+(ssl|tcp)://)?[A-Za-z0-9.\-]+:[0-9]{2,5}'
+    - key: WORKER_NAME
+      label: Worker name
+      required: true
+      identifier: true
+      pattern: '[A-Za-z0-9_\-]{1,32}'
+    - key: CPU_PERCENT
+      label: CPU thread target (%)
+      default: "50"
+      pattern: '100|[1-9][0-9]?'
+    - key: RANDOMX_MODE
+      label: RandomX mode
+      default: auto
+      pattern: 'auto|fast|light'
+  command: >-
+    --url=${POOL_URL} --user=${WALLET} --pass=${WORKER_NAME} --rig-id=${WORKER_NAME}
+    --donate-level=1 --cpu-max-threads-hint=${CPU_PERCENT} --cpu-priority=0
+    --randomx-mode=${RANDOMX_MODE} --randomx-wrmsr=-1 --http-host=127.0.0.1
+    --http-port=18088 --keepalive --no-color --print-time=300
+
+mining:
+  dev_fee_percent: 1
+  dev_fee_source: https://github.com/xmrig/xmrig/blob/v6.27.0/src/donate.h
+  pool_fee_note: >-
+    MoneroOcean, the default pool, charges a 0% mining fee. The default payout
+    threshold is 0.3 XMR, and you can lower it to 0.003 XMR. Payouts below 4 XMR
+    can cost up to 0.0004 XMR. Other pools set their own rates and thresholds.
+
+requirements:
+  residential_ip: false
+  vps_ip: true
+  devices_per_ip: 0
+  hosting_note: >-
+    This machine reports a hosting connection. Check your provider's terms
+    before mining. Some providers, including Hetzner Cloud, prohibit it.
+    Check your actual power costs before relying on a profit estimate.
+
+payment:
+  methods: [crypto]
+  crypto_token: XMR
+  currency: XMR
+  minimum_payout: 0.003 XMR (MoneroOcean, after you lower it)
+  frequency: When the pool threshold is reached
+earnings:
+  monthly_low: 0
+  monthly_high: 8
+  currency: USD
+  per: device
+  notes: >-
+    Gross estimate before electricity. On 2026-11-25, 1 kH/s was worth about
+    $1 a month at the observed XMR price and network difficulty. A desktop
+    CPU at half its threads can draw 30 to 50 W extra. Check your actual usage
+    and electricity price to see if it pays.
+cashout:
+  method: auto
+  dashboard_url: https://moneroocean.stream
+  min_amount: 0.003
+  currency: XMR
+  notes: >-
+    The pool pays your Monero address when your balance reaches your threshold.
+    The pool holds the balance until it pays you.
+payout:
+  model: external
+  chain: monero
+  address_env: WALLET
+  address_source: env
+collector:
+  type: manual
+  notes: >-
+    Check your balance on your pool's website. To track unpaid balances from
+    SupportXMR in CashPilot, add its pool entry with the same Monero address.
+
+disclosure:
+  sells: compute
+  third_party_traffic: No. The miner sends work to mining pools.
+  data_collected: Your Monero address, worker name and IP address go to the pool.
+  isp_risk: Some networks and DNS resolvers block mining pool connections.
+  account_rules: Most Monero pools identify you by your public payout address.
+
+rating:
+  reviewed_on: "2026-11-25"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: good
+    privacy: good
+    identity_checks: good
+    support: unknown
+    earnings_realism: fair
+    longevity: unknown
+  notes:
+    payout_record: The pool pays the wallet. We tested pool shares and did not verify a payout.
+    payout_terms: The pool sets its payout threshold and any payout fee.
+    account_safety: Pool restrictions vary. We did not review account enforcement across pools.
+    terms_fit: CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS.
+    traffic_transparency: The miner submits shares to pools over outbound connections.
+    privacy: The source is public. The pool sees your payout address, worker name and IP address.
+    identity_checks: MoneroOcean and SupportXMR let workers connect with a public Monero address.
+    support: We did not test support for XMRig or the pools.
+    earnings_realism: Hashrate and electricity prices vary by hardware and location.
+    longevity: We did not review the long-term operation of the pools.
+  cons:
+    - text: A payout requires enough XMR to meet your pool threshold.
+      criterion: payout_terms
+      kind: terms
+      source: https://api.moneroocean.stream/config
+      checked_on: "2026-11-25"
+    - text: Some hosting providers prohibit cryptocurrency mining.
+      criterion: terms_fit
+      kind: terms
+      source: https://www.hetzner.com/legal/cloud-server/
+      checked_on: "2026-11-25"
+    - text: The extra electricity can cost more than the XMR earned.
+      criterion: earnings_realism
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/xmrig.md
+      checked_on: "2026-11-25"
+  pros:
+    - text: The miner sends hashes to pools and does not relay anyone else's traffic.
+      criterion: traffic_transparency
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md
+      checked_on: "2026-11-25"
+    - text: The miner is open source and the image pins a signed upstream release.
+      criterion: privacy
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md
+      checked_on: "2026-11-25"
+    - text: You can mine with a public Monero address without identifying yourself by name.
+      criterion: identity_checks
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/xmrig.md
+      checked_on: "2026-11-25"

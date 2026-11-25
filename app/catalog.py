@@ -158,6 +158,9 @@ def fence_gated(svc: dict[str, Any] | None) -> bool:
     return bool(((svc or {}).get("docker") or {}).get("fence_gated") is True)
 
 
+_IMAGE_DIGEST_RE = re.compile(r"@sha256:[0-9a-f]{64}$")
+
+
 def _validate_network_shape(docker: dict[str, Any], name: str) -> list[str]:
     """The keys that decide where a service's network namespace lives."""
     errors: list[str] = []
@@ -205,11 +208,58 @@ def _validate_network_shape(docker: dict[str, Any], name: str) -> list[str]:
                 "in the host's network namespace"
             )
         images = [docker.get("image")] + list((docker.get("image_by_arch") or {}).values())
-        if not all(isinstance(i, str) and re.search(r"@sha256:[0-9a-f]{64}$", i) for i in images if i):
+        if not all(isinstance(i, str) and _IMAGE_DIGEST_RE.search(i) for i in images if i):
             errors.append(f"{name}: a service with {', '.join(held)} must pin its image by @sha256: digest")
         if docker.get("fence_gated") is not True:
             errors.append(f"{name}: a service with {', '.join(held)} must be fence_gated: true")
     return errors
+
+
+def _validate_mining(data: dict[str, Any], name: str) -> list[str]:
+    docker = data.get("docker")
+    docker = docker if isinstance(docker, dict) else {}
+    by_arch = docker.get("image_by_arch")
+    images = [docker.get("image")]
+    if isinstance(by_arch, dict):
+        images.extend(by_arch.values())
+    deployable_miner = data.get("category") == "mining" and any(images)
+    if not deployable_miner and "mining" not in data:
+        return []
+
+    mining = data.get("mining")
+    if not isinstance(mining, dict):
+        return [f"{name}: mining must be a mapping with fee information"]
+
+    errors = []
+    unexpected = set(mining) - {"dev_fee_percent", "dev_fee_source", "pool_fee_note"}
+    if unexpected:
+        errors.append(f"{name}: unknown mining fields: {', '.join(sorted(map(str, unexpected)))}")
+    fee = mining.get("dev_fee_percent")
+    if isinstance(fee, bool) or not isinstance(fee, (int, float)) or not 0 <= fee <= 10:
+        errors.append(f"{name}: mining.dev_fee_percent must be a number from 0 to 10")
+    source = mining.get("dev_fee_source")
+    try:
+        valid_source = isinstance(source, str) and source.startswith("https://") and bool(urlsplit(source).hostname)
+    except ValueError:
+        valid_source = False
+    if not valid_source:
+        errors.append(f"{name}: mining.dev_fee_source must be an https:// link")
+    if "pool_fee_note" in mining and not isinstance(mining["pool_fee_note"], str):
+        errors.append(f"{name}: mining.pool_fee_note must be a string")
+    if any(not isinstance(image, str) or not _IMAGE_DIGEST_RE.search(image) for image in images if image):
+        errors.append(f"{name}: a miner must pin each image by @sha256: digest")
+    if deployable_miner:
+        requirements = data.get("requirements")
+        note = requirements.get("hosting_note") if isinstance(requirements, dict) else None
+        if not isinstance(note, str) or not note.strip():
+            errors.append(f"{name}: a deployable miner needs requirements.hosting_note")
+    return errors
+
+
+def mining_facts(service: dict[str, Any]) -> dict[str, Any] | None:
+    """Mining fee information from the validated catalog."""
+    mining = service.get("mining")
+    return mining if isinstance(mining, dict) else None
 
 
 def _validate(data: dict[str, Any], path: Path) -> list[str]:
@@ -427,6 +477,10 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
         for field in ("residential_ip", "vps_ip", "gpu"):
             if field in reqs and not isinstance(reqs[field], bool):
                 errors.append(f"{path.name}: requirements.{field} must be a boolean")
+        if "hosting_note" in reqs and not isinstance(reqs["hosting_note"], str):
+            errors.append(f"{path.name}: requirements.hosting_note must be a string")
+
+    errors.extend(_validate_mining(data, path.name))
 
     link = data.get("device_link")
     if link is not None:

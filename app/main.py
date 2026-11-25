@@ -10515,6 +10515,7 @@ async def api_deploy_risk(request: Request, slug: str) -> dict[str, Any]:
         "slug": slug,
         "attribution": lan_isolation.attribution_notice(service),
         "isolation": lan_isolation.assess(service),
+        "mining": catalog.mining_facts(service),
     }
 
 

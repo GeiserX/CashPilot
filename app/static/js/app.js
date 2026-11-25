@@ -1085,7 +1085,8 @@ const CP = (() => {
 
     const attribution = risk.attribution;
     const isolation = risk.isolation || {};
-    if (!attribution && !isolation.summary) { card.style.display = 'none'; return; }
+    const mining = risk.mining;
+    if (!attribution && !isolation.summary && !mining) { card.style.display = 'none'; return; }
 
     let html = '';
     if (attribution) {
@@ -1105,6 +1106,15 @@ const CP = (() => {
         <div class="deploy-risk-block deploy-risk-info">
           <div class="deploy-risk-headline">Keeping it off your LAN</div>
           <div class="deploy-risk-body-text">${escapeHtml(isolation.summary)}</div>
+        </div>`;
+    }
+    if (mining) {
+      html += `
+        <div class="deploy-risk-block deploy-risk-info">
+          <div class="deploy-risk-headline">Miner fee: ${escapeHtml(String(mining.dev_fee_percent))}% of hashing time</div>
+          ${mining.pool_fee_note ? `<div class="deploy-risk-body-text">${escapeHtml(mining.pool_fee_note)}</div>` : ''}
+          <div class="deploy-risk-body-text">The pool holds rewards until its payout threshold. CashPilot lists tracked pool balances as accrued. Payouts arrive in your wallet.</div>
+          <div class="deploy-risk-source"><a href="${escapeHtml(mining.dev_fee_source)}" target="_blank" rel="noopener noreferrer">Miner fee source</a></div>
         </div>`;
     }
     card.style.display = '';

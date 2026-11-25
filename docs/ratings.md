@@ -76,6 +76,7 @@ What a cited con or pro may rest on:
 | <a href="#packetstream">PacketStream</a> | D | 10 of 20 | 2 | <span class="ratings-con" title="Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid.">Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid.</span> | 2026-11-04 |
 | <a href="#proxybase">ProxyBase</a> | D | 9 of 20 | 4 | <span class="ratings-con" title="ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings.">ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings.</span> | 2026-11-04 |
 | <a href="#storj">Storj</a> | D | 9 of 20 | 3 | <span class="ratings-con" title="CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.">CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.</span> | 2026-11-04 |
+| <a href="#xmrig">XMRig (Monero CPU mining)</a> | D | 9 of 20 | 4 | <span class="ratings-con" title="A payout requires enough XMR to meet your pool threshold.">A payout requires enough XMR to meet your pool threshold.</span> | 2026-11-25 |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | <span class="ratings-con" title="The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.">The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.</span> | 2026-11-04 |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | <span class="ratings-con" title="EarnApp&#x27;s help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.">EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.</span> | 2026-11-04 |
 | <a href="#golem">Golem Network</a> | D | 7 of 20 | 6 | <span class="ratings-con" title="CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.">CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.</span> | 2026-11-04 |
@@ -282,6 +283,37 @@ What a cited con or pro may rest on:
 - Storj publishes its own Docker image, storjlabs/storagenode. [Source](https://hub.docker.com/r/storjlabs/storagenode), checked 2026-11-04.
 - No account: a wallet address and an email for operator notices. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml), checked 2026-11-04.
 - Active nodes kept being paid after the filing. [Source](https://startupfortune.com/storj-labs-filed-for-chapter-11-bankruptcy-and-token-holders-are-last-in-line/), checked 2026-11-04.
+
+<a id="xmrig"></a>
+
+### XMRig (Monero CPU mining)
+
+**Grade D**, 9 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [XMRig (Monero CPU mining)](guides/xmrig.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The pool pays the wallet. We tested pool shares and did not verify a payout. |
+| Payout terms | Fair | The pool sets its payout threshold and any payout fee. |
+| Account safety | Unknown | Pool restrictions vary. We did not review account enforcement across pools. |
+| Fit with how CashPilot runs it | Fair | CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS. |
+| Traffic transparency | Good | The miner submits shares to pools over outbound connections. |
+| Privacy | Good | The source is public. The pool sees your payout address, worker name and IP address. |
+| Identity checks | Good | MoneroOcean and SupportXMR let workers connect with a public Monero address. |
+| Support | Unknown | We did not test support for XMRig or the pools. |
+| Earnings realism | Fair | Hashrate and electricity prices vary by hardware and location. |
+| Longevity | Unknown | We did not review the long-term operation of the pools. |
+
+**Cons**
+
+- A payout requires enough XMR to meet your pool threshold. [Source](https://api.moneroocean.stream/config), checked 2026-11-25.
+- Some hosting providers prohibit cryptocurrency mining. [Source](https://www.hetzner.com/legal/cloud-server/), checked 2026-11-25.
+- The extra electricity can cost more than the XMR earned. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/xmrig.md), checked 2026-11-25.
+
+**Pros**
+
+- The miner sends hashes to pools and does not relay anyone else's traffic. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md), checked 2026-11-25.
+- The miner is open source and the image pins a signed upstream release. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md), checked 2026-11-25.
+- You can mine with a public Monero address without identifying yourself by name. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/xmrig.md), checked 2026-11-25.
 
 <a id="honeygain"></a>
 

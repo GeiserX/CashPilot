@@ -15,6 +15,22 @@ const grab = name => {
   return next >= 0 ? rest.slice(0, next) : rest;
 };
 
+const fillDeployRisk = new Function('api', 'escapeHtml', `${grab('fillDeployRisk')}\nreturn fillDeployRisk;`)(
+  async () => ({
+    mining: { dev_fee_percent: 0, dev_fee_source: 'https://example.com/?a=1&b=2', pool_fee_note: '<untrusted>' },
+  }),
+  value => escapeHtml(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
+);
+const riskBody = { innerHTML: '' };
+const riskCard = { dataset: { slug: 'xmrig' }, style: { display: 'none' }, querySelector: () => riskBody };
+await fillDeployRisk(riskCard);
+assert.equal(riskCard.style.display, '');
+assert.match(riskBody.innerHTML, /Miner fee: 0% of hashing time/);
+assert.match(riskBody.innerHTML, /&lt;untrusted&gt;/);
+assert.match(riskBody.innerHTML, /https:\/\/example.com\/\?a=1&amp;b=2/);
+assert.match(riskBody.innerHTML, /CashPilot lists tracked pool balances as accrued/);
+console.log('A miner shows its fee, source and pool note before deploy.');
+
 // A secret field with a pattern renders the pattern and asks the browser for
 // a new secret, never a saved one; a plain field renders neither.
 const render = new Function(
