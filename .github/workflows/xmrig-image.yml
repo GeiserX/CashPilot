@@ -1,0 +1,344 @@
+name: XMRig image
+
+# drumsergio/cashpilot-xmrig: upstream XMRig built from source at a release
+# commit GitHub reports as signed (images/xmrig/README.md says why it exists).
+#
+# Never mines. GitHub's terms forbid mining on Actions, so every test stops at
+# --version, --dry-run and a miner with no network that never gets a job.
+#
+# - pull_request: build amd64 and arm64, each natively on its own runner, and
+#   test both. Pushes nothing.
+# - push to main: the same tests, then publish <version> and <version>-r<revision>.
+# - schedule (weekly): read XMRig's newest release; when it moved and its
+#   commit is signed, test the bumped pin on both platforms and open a PR.
+
+on:
+  pull_request:
+    paths:
+      - "images/xmrig/**"
+      - ".github/workflows/xmrig-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - "images/xmrig/**"
+      - ".github/workflows/xmrig-image.yml"
+  schedule:
+    - cron: "29 5 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xmrig-image-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REPO: drumsergio/cashpilot-xmrig
+
+jobs:
+  tag:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      tag: ${{ steps.tag.outputs.tag }}
+      published: ${{ steps.tag.outputs.published }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Shellcheck
+        run: shellcheck images/xmrig/*.sh
+
+      # v5.0.0 is an old XMRig release whose commit is unsigned. A copy of the
+      # pin files starts at 0.0.1, so only the signature check can stop it.
+      - name: bump.sh refuses a release whose commit is not signed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tmp=$(mktemp -d)
+          cp images/xmrig/bump.sh images/xmrig/COMMIT images/xmrig/REVISION "$tmp/"
+          echo 0.0.1 > "$tmp/VERSION"
+          if out=$("$tmp/bump.sh" v5.0.0 2>&1); then
+            echo "::error::bump.sh pinned the unsigned v5.0.0: $out"
+            exit 1
+          fi
+          echo "$out"
+          grep -q "does not report a valid signature" <<<"$out"
+          test "$(cat "$tmp/VERSION")" = 0.0.1
+
+      - name: Work out the tag, and refuse to reuse a published one
+        id: tag
+        env:
+          # The PR's base, or on push the commit main was at before it.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          version=$(tr -d '[:space:]' < images/xmrig/VERSION)
+          revision=$(tr -d '[:space:]' < images/xmrig/REVISION)
+          tag="$version-r$revision"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://hub.docker.com/v2/repositories/$REPO/tags/$tag")
+          case "$code" in
+            200) published=true ;;
+            404) published=false ;;
+            *) echo "::error::Docker Hub answered $code for $REPO:$tag; cannot tell whether it is published"; exit 1 ;;
+          esac
+          echo "$REPO:$tag published: $published"
+          if [ "$published" = true ] && [ -n "$BASE" ] && \
+             ! git diff --quiet "$BASE" HEAD -- images/xmrig/Dockerfile images/xmrig/health.sh images/xmrig/VERSION images/xmrig/COMMIT; then
+            echo "::error::This change alters what goes into the image, but $REPO:$tag is already published, so main would skip it. Raise images/xmrig/REVISION so main publishes a new tag."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "published=$published"
+          } >> "$GITHUB_OUTPUT"
+
+  # Not named `test`: that is the required check from test.yml in the ruleset.
+  image:
+    needs: tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build and test natively, without mining
+        run: images/xmrig/test.sh ${{ matrix.platform }}
+
+  # Each platform is compiled on its own runner and pushed by digest; the
+  # manifest job then joins both under the tags. No QEMU compile.
+  publish:
+    needs: [tag, image]
+    if: github.event_name == 'push' && needs.tag.outputs.published == 'false'
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: images/xmrig
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REPO }},push-by-digest=true,name-canonical=true,push=true
+      - name: Keep the digest for the manifest job
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.runner }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Runs on every push to main, also when the tag is already published, so a
+  # rerun checks the live tag again instead of skipping it.
+  manifest:
+    needs: [tag, image, publish]
+    if: always() && github.event_name == 'push' && needs.image.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - if: needs.tag.outputs.published == 'false'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          path: /tmp/digests
+          merge-multiple: true
+      # Never :latest. <version>-r<revision> never changes once pushed;
+      # <version> follows the newest revision of that XMRig version.
+      - name: Join both platforms under <version>-r<revision> and <version>
+        if: needs.tag.outputs.published == 'false'
+        env:
+          TAG: ${{ needs.tag.outputs.tag }}
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          cd /tmp/digests
+          count=$(find . -maxdepth 1 -type f | wc -l)
+          if [ "$count" != 2 ]; then
+            echo "::error::expected 2 platform digests, found $count"
+            exit 1
+          fi
+          refs=()
+          for digest in *; do refs+=("$REPO@sha256:$digest"); done
+          docker buildx imagetools create -t "$REPO:$TAG" -t "$REPO:$VERSION" "${refs[@]}"
+          docker buildx imagetools inspect "$REPO:$TAG"
+      # A push that wrote <version>-r<revision> but not <version> leaves the
+      # alias behind, and the next run skips the build. Point it at this
+      # revision, but only while this commit is still main's head, so a rerun
+      # of an older run never moves the alias backwards.
+      - name: Point <version> at this revision
+        if: needs.tag.outputs.published == 'true'
+        env:
+          TAG: ${{ needs.tag.outputs.tag }}
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "main is at $head now, not $GITHUB_SHA; leaving $REPO:$VERSION alone"
+            exit 0
+          fi
+          want=$(docker buildx imagetools inspect "$REPO:$TAG" --format '{{.Manifest.Digest}}')
+          have=$(docker buildx imagetools inspect "$REPO:$VERSION" --format '{{.Manifest.Digest}}' 2>/dev/null || true)
+          if [ "$want" = "$have" ]; then
+            echo "$REPO:$VERSION already points at $TAG ($want)"
+          else
+            echo "$REPO:$VERSION is at ${have:-nothing}; pointing it at $TAG ($want)"
+            docker buildx imagetools create -t "$REPO:$VERSION" "$REPO:$TAG"
+          fi
+
+  # The pushed image is a fresh build, not the one test.sh ran, so check what
+  # users will pull, on a runner of each architecture. Still no mining.
+  verify:
+    needs: [tag, manifest]
+    if: always() && needs.manifest.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86-64
+          - runner: ubuntu-24.04-arm
+            arch: ARMv8
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: The pushed tag runs and is the pinned version on this platform
+        env:
+          TAG: ${{ needs.tag.outputs.tag }}
+          VERSION: ${{ needs.tag.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          harden=(--init --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 512 --memory 256m --network none)
+          out=$(docker run --rm --pull always "${harden[@]}" "$REPO:$TAG" --version)
+          echo "$out"
+          dry=$(docker run --rm "${harden[@]}" "$REPO:$TAG" --dry-run --no-color -o pool.supportxmr.com:443 --tls \
+            -u 44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A)
+          echo "$dry"
+          if [ "$(head -n1 <<<"$out")" != "XMRig $VERSION" ] || ! grep -qF "built for Linux $ARCH" <<<"$dry"; then
+            echo "::error::$REPO:$TAG on $ARCH is not XMRig $VERSION built for $ARCH"
+            exit 1
+          fi
+
+  description:
+    needs: [tag, manifest]
+    if: always() && github.event_name == 'push' && needs.manifest.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.REPO }}
+          readme-filepath: images/xmrig/README.md
+          short-description: "Unofficial XMRig for CashPilot: upstream built from its signed release commit, amd64 and arm64"
+
+  bump:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.bump.outputs.changed }}
+      from: ${{ steps.bump.outputs.from }}
+      to: ${{ steps.bump.outputs.to }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read XMRig's newest release and check its signature
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          before=$(cat images/xmrig/VERSION)
+          images/xmrig/bump.sh
+          after=$(cat images/xmrig/VERSION)
+          changed=false
+          [ "$before" != "$after" ] && changed=true
+          {
+            echo "from=$before"
+            echo "to=$after"
+            echo "changed=$changed"
+          } >> "$GITHUB_OUTPUT"
+
+  # A PR opened with GITHUB_TOKEN does not start this workflow's pull_request
+  # run, so the bumped pin is tested here on both platforms, before the PR exists.
+  bump-test:
+    needs: bump
+    if: needs.bump.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Pin the same release, then build and test it
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TO: ${{ needs.bump.outputs.to }}
+        run: |
+          images/xmrig/bump.sh "v$TO"
+          images/xmrig/test.sh ${{ matrix.platform }}
+
+  bump-pr:
+    needs: [bump, bump-test]
+    if: needs.bump.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Pin the tested release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TO: ${{ needs.bump.outputs.to }}
+        run: images/xmrig/bump.sh "v$TO"
+      - name: Open or update the bump PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: chore/xmrig-image-bump
+          add-paths: |
+            images/xmrig/VERSION
+            images/xmrig/COMMIT
+            images/xmrig/REVISION
+          commit-message: "chore(xmrig-image): pin XMRig ${{ needs.bump.outputs.to }}"
+          title: "chore(xmrig-image): pin XMRig ${{ needs.bump.outputs.to }}, its newest signed release (was ${{ needs.bump.outputs.from }})"
+          body: |
+            XMRig released ${{ needs.bump.outputs.to }}; the image pins ${{ needs.bump.outputs.from }}.
+
+            This moves the pin to the release tag's commit. GitHub reports a valid signature on that commit, and the image build refuses to compile unless the tag still points at it. Look over the upstream release notes before merging: https://github.com/xmrig/xmrig/releases/tag/v${{ needs.bump.outputs.to }}
+
+            The bumped pin was built natively on amd64 and arm64 and tested in this run, before the PR was opened (`--version`, `--dry-run` and the health check; nothing mined): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Merging publishes `${{ env.REPO }}:${{ needs.bump.outputs.to }}-r1`. Then point the xmrig catalog entry at its digest.
+
+            This PR was opened with the workflow token, so GitHub starts no pull_request checks on it and the ruleset's required `test` and `build (strict)` never report. It changes only `images/xmrig/`, which this run already tested; merge it with the admin bypass.
