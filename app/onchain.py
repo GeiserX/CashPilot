@@ -83,6 +83,10 @@ class Chain:
 #: benefit.
 CHAINS: dict[str, Chain] = {
     "ethereum": Chain("ethereum", "Ethereum", "ETH", 18, "https://ethereum-rpc.publicnode.com", "evm"),
+    # Ethereum Classic mainnet (eth_chainId 0x3d).
+    "ethereum-classic": Chain(
+        "ethereum-classic", "Ethereum Classic", "ETC", 18, "https://geth-at.etc-network.info", "evm"
+    ),
     "polygon": Chain("polygon", "Polygon", "POL", 18, "https://polygon-bor-rpc.publicnode.com", "evm"),
     "solana": Chain("solana", "Solana", "SOL", 9, "https://api.mainnet-beta.solana.com", "solana"),
 }

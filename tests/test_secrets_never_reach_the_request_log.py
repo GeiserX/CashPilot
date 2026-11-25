@@ -85,6 +85,18 @@ async def test_herominers_request_logs_omit_the_payout_address(redacting, caplog
     assert f"{endpoint}?address=<redacted>&longpoll=false" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_2miners_request_logs_omit_the_payout_address(redacting, caplog):
+    address = "0x00109777bdc6d6a658097ed6b6167569ee1f4ec1"
+    endpoint = "https://etc.2miners.com/api/accounts"
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with _MockedClient() as client:
+            await client.get(f"{endpoint}/{address}")
+
+    assert address not in caplog.text
+    assert f"{endpoint}/<redacted>" in caplog.text
+
+
 class TestNotifierRequests:
     def test_the_telegram_bot_token_is_not_logged(self, redacting, caplog):
         log = _send_alert(caplog, CASHPILOT_TELEGRAM_BOT_TOKEN=FAKE_BOT_TOKEN, CASHPILOT_TELEGRAM_CHAT_ID="42")

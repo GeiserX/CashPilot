@@ -106,6 +106,7 @@ What a cited con or pro may rest on:
 | <a href="#nodepay">Nodepay</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.">In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.</span> | 2026-11-04 |
 | <a href="#supportxmr">SupportXMR</a> | F | 2 of 20 | 8 | <span class="ratings-con" title="Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.">Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.</span> | 2026-11-25 |
 | <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="UpRock&#x27;s help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.">UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.</span> | 2026-11-04 |
+| <a href="#2miners-etc">2Miners ETC</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="The pool charges a 1% fee and holds payouts until your threshold is reached.">The pool charges a 1% fee and holds payouts until your threshold is reached.</span> | 2026-11-25 |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="The extension earns points; no token distribution to node operators had been confirmed by October 2026.">The extension earns points; no token distribution to node operators had been confirmed by October 2026.</span> | 2026-11-04 |
 | <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR.">Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR.</span> | 2026-11-04 |
 | <a href="#herominers-kas">HeroMiners Kaspa</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="The pool charges a 0.9% fee and holds payouts until your threshold is reached.">The pool charges a 0.9% fee and holds payouts until your threshold is reached.</span> | 2026-11-25 |
@@ -1168,6 +1169,33 @@ What a cited con or pro may rest on:
 - UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum. [Source](https://help.uprock.com/en/articles/2057635-security-and-user-asset-protection-2fa-and-withdrawals), checked 2026-11-06.
 - Rewards are UPT tokens; reviewers and a third-party review say their value is very low. [Source](https://paidfromsurveys.com/uprock-ai-earnings-review), checked 2026-11-04.
 - CashPilot does not run UpRock: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/uprock.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="2miners-etc"></a>
+
+### 2Miners ETC
+
+**Grade F**, 1 of 20 points, 9 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [2Miners ETC](guides/2miners-etc.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The pool API lists payments. No wallet receipt was checked. |
+| Payout terms | Fair | 2Miners lists a 1% pool fee and a minimum threshold of 0.1 ETC. |
+| Account safety | Unknown | The pool shows stats by payout address. The review did not check reports of withheld balances. |
+| Fit with how CashPilot runs it | Unknown | The pool setup guide lists supported miners. Its terms were not reviewed. |
+| Traffic transparency | Unknown | The pool setup guide lists mining servers. The connection was not inspected. |
+| Privacy | Unknown | The pool publishes account stats. Its data retention practices were not checked. |
+| Identity checks | Unknown | The pool setup guide asks for a payout address. Identity rules for payouts were not checked. |
+| Support | Unknown | The pool FAQ lists support options. No support request was tested. |
+| Earnings realism | Unknown | The pool displays estimates. No estimate was compared with a payout. |
+| Longevity | Unknown | The pool API answered during the check. Its operating history was not verified. |
+
+**Cons**
+
+- The pool charges a 1% fee and holds payouts until your threshold is reached. [Source](https://etc.2miners.com/), checked 2026-11-25.
 
 **Pros**
 
