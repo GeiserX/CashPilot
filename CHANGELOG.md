@@ -10,6 +10,12 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.10.2] - 2026-11-25
+
+### Fixes
+
+- Keep the wallet seed out of CashPilot and the container settings (#820)
+
 ## [2.10.1] - 2026-11-25
 
 ### Documentation
