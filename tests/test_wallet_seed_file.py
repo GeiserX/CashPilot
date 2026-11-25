@@ -216,6 +216,68 @@ class TestTheWalletChoice:
         assert sent[0]["json"]["wallet_seed"] == {"mode": "migrate", "phrase": PHRASE}
 
 
+class TestDesktopLegacyWallet:
+    @pytest.fixture
+    def legacy_desktop(self, db):
+        phrase = " ".join(f"test-only-word-{index}" for index in range(12))
+        asyncio.run(database.upsert_worker(CLIENT_ID, system_info=json.dumps({"device_type": "desktop"})))
+        for generation in ("prior", "current"):
+            spec = {"env": {**ENV, KEY: phrase}, "note": generation}
+            asyncio.run(database.save_deployment(SLUG, generation, spec=spec, worker_id=1))
+        return phrase
+
+    @pytest.mark.parametrize("fleet_owner", ["desktop", "docker"])
+    def test_refused_desktop_redeploy_scrubs_the_confirmed_seed(self, legacy_desktop, fleet_owner):
+        phrase = legacy_desktop
+        if fleet_owner == "docker":
+            worker = asyncio.run(database.upsert_worker("docker-box", system_info='{"docker_available": true}'))
+            # Same seed, different deploy. Ownership matters even when the values match.
+            docker_spec = {"env": {**ENV, KEY: phrase}}
+            asyncio.run(database.save_deployment(SLUG, "d" * 12, spec=docker_spec, worker_id=worker))
+
+        result, sent = _deploy({}, wallet_seed={"mode": "import", "phrase": phrase.upper()})
+        assert isinstance(result, HTTPException) and result.status_code == 409
+        assert sent == []
+        assert phrase not in result.detail
+        assert asyncio.run(database.get_deployment_spec(SLUG, worker_id=1)) == {"env": ENV, "note": "current"}
+        assert asyncio.run(database.prior_deployment_spec(SLUG, 1)) == {"env": ENV, "note": "prior"}
+        if fleet_owner == "docker":
+            assert asyncio.run(database.get_deployment_spec(SLUG, worker_id=worker)) == docker_spec
+            assert asyncio.run(database.get_deployment_spec(SLUG)) == docker_spec
+        else:
+            assert asyncio.run(database.get_deployment_spec(SLUG)) == {"env": ENV, "note": "current"}
+
+    @pytest.mark.parametrize("choice", ["missing", "different"])
+    def test_refused_desktop_redeploy_saves_the_possible_only_copy(self, legacy_desktop, choice):
+        phrase = legacy_desktop
+        wallet = {"mode": "import", "phrase": f"{phrase} extra"} if choice == "different" else None
+        result, sent = _deploy({}, wallet_seed=wallet)
+        assert isinstance(result, HTTPException) and result.status_code == 409
+        assert sent == []
+        assert "your only copy" in result.detail
+        assert phrase not in result.detail
+        assert asyncio.run(database.get_deployment_spec(SLUG, worker_id=1))["env"][KEY] == phrase
+        assert asyncio.run(database.prior_deployment_spec(SLUG, 1))["env"][KEY] == phrase
+        assert asyncio.run(database.get_deployment_spec(SLUG))["env"][KEY] == phrase
+
+    def test_refused_desktop_redeploy_scrubs_a_legacy_fleet_only_spec_on_its_worker(self, db):
+        phrase = " ".join(f"test-only-word-{index}" for index in range(12))
+        container_id = "abc123def456"
+        asyncio.run(
+            database.upsert_worker(
+                CLIENT_ID,
+                containers=json.dumps([{"slug": SLUG, "container_id": container_id}]),
+                system_info=json.dumps({"device_type": "desktop"}),
+            )
+        )
+        asyncio.run(database.save_deployment(SLUG, container_id, spec={"env": {**ENV, KEY: phrase}}))
+
+        result, sent = _deploy({}, wallet_seed={"mode": "import", "phrase": phrase})
+        assert isinstance(result, HTTPException) and result.status_code == 409
+        assert sent == []
+        assert asyncio.run(database.get_deployment_spec(SLUG)) == {"env": ENV}
+
+
 class TestAnOlderWorker:
     FEATURES = ("instances",)
 

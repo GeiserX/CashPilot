@@ -115,6 +115,7 @@ class TestDesktopWalletDeploys:
             patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
             patch("app.main._validate_worker_url", return_value=(worker["url"], None)),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.forget_env_value", new_callable=AsyncMock, return_value=(False, False)),
             patch("app.main.database.prior_deployment_spec", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
             patch("app.main.database.record_identities", new_callable=AsyncMock),

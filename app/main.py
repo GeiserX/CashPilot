@@ -5260,12 +5260,13 @@ async def _deploy(
     return response
 
 
-def _desktop_wallet_refusal(svc: dict[str, Any] | None) -> HTTPException:
+def _desktop_wallet_refusal(svc: dict[str, Any] | None, *, recovery: str = "") -> HTTPException:
     service = svc or {}
     name = service.get("name") or service.get("slug") or "This service"
     return HTTPException(
         status_code=409,
-        detail=f"{name} runs only on the machine that holds its wallet. Deploy it from CashPilot Desktop on that machine.",
+        detail=f"{name} runs only on the machine that holds its wallet. Deploy it from CashPilot Desktop on that machine."
+        + recovery,
     )
 
 
@@ -5293,10 +5294,27 @@ async def _wallet_choice(
     key = wallet_seed.seed_key(svc)
     if not key:
         return None, None
-    if await _worker_is_desktop(worker_id):
-        raise _desktop_wallet_refusal(svc)
-    capable = wallet_seed.FEATURE in await _worker_features(worker_id)
     choice = body.wallet_seed
+    if await _worker_is_desktop(worker_id):
+        if restore is not None:
+            raise _desktop_wallet_refusal(svc)
+        # Legacy records do not prove that the owner saw the phrase. The
+        # import field is filled by the owner, so a match proves they have it.
+        confirmed = wallet_seed.normalize(choice.phrase) if choice is not None and choice.mode == "import" else ""
+        removed, retained = await database.forget_env_value(
+            svc["slug"], worker_id, key, confirmed_wallet_seed=confirmed
+        )
+        recovery = ""
+        if retained:
+            recovery = (
+                " CashPilot kept a saved seed phrase because it could be your only copy."
+                ' If the wallet is in CashPilot Desktop, use "Reveal seed phrase" there to see it.'
+                ' To clear the saved copy, choose "Use a wallet I already have" and enter the phrase.'
+            )
+        elif removed:
+            recovery = " CashPilot cleared the saved seed phrase that you supplied."
+        raise _desktop_wallet_refusal(svc, recovery=recovery)
+    capable = wallet_seed.FEATURE in await _worker_features(worker_id)
     posted = wallet_seed.normalize(posted_env.get(key))
     legacy = wallet_seed.normalize(recorded_env.get(key))
     if restore is not None:
