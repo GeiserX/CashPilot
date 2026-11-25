@@ -485,3 +485,59 @@ class TestLogsEndpoint:
         with patch("app.worker_api.orchestrator.get_service_logs", side_effect=RuntimeError("no docker")):
             resp = _client().get("/api/containers/honeygain/logs", headers=_auth())
         assert resp.status_code == 503
+
+
+class TestCheckedWorkerDeploy:
+    path = "/api/containers/honeygain/deploy-checked"
+
+    def test_checked_deploy_checks_again_after_the_state_read(self):
+        from docker.errors import NotFound
+
+        docker = MagicMock()
+        containers = {}
+        reads_under_lock = []
+
+        def container_get(name):
+            reads_under_lock.append(worker_api.route_gate.deploying("honeygain")._is_owned())
+            if name not in containers:
+                raise NotFound("missing")
+            return containers[name]
+
+        def deploy(**kwargs):
+            assert worker_api.route_gate.deploying("honeygain")._is_owned()
+            containers["cashpilot-honeygain"] = object()
+            return "container-id"
+
+        docker.containers.get.side_effect = container_get
+        client = _client()
+        with (
+            patch.object(worker_api.orchestrator, "_get_client", return_value=docker),
+            patch.object(worker_api.orchestrator, "deploy_raw", side_effect=deploy) as deployed,
+            patch.object(worker_api.lan_fence, "refresh_outside"),
+        ):
+            assert client.get(self.path, headers=_auth()).json() == {"exists": False}
+            first = client.post(self.path, json={"image": "img"}, headers=_auth())
+            assert first.status_code == 200
+            # The controller used the same earlier state read for both requests.
+            refused = client.post(self.path, json={"image": "img"}, headers=_auth())
+            assert refused.status_code == 409
+            assert refused.json()["detail"]["error"] == "replace_existing"
+            assert reads_under_lock == [False, True, True]
+            assert deployed.call_count == 1
+            assert client.get(self.path, headers=_auth()).json() == {"exists": True}
+            approved = client.post(self.path, json={"image": "img", "replace_existing": True}, headers=_auth())
+            assert approved.status_code == 200
+            assert deployed.call_count == 2
+
+    def test_checked_deploy_fails_closed_if_docker_cannot_be_read(self):
+        with (
+            patch.object(worker_api.orchestrator, "_get_client", side_effect=RuntimeError("Docker offline")),
+            patch.object(worker_api.orchestrator, "deploy_raw") as deployed,
+        ):
+            assert _client().get(self.path, headers=_auth()).status_code == 503
+            assert _client().post(self.path, json={"image": "img"}, headers=_auth()).status_code == 503
+        deployed.assert_not_called()
+
+    def test_checked_routes_require_worker_auth(self):
+        assert _client().get(self.path).status_code == 401
+        assert _client().post(self.path, json={"image": "img"}).status_code == 401

@@ -386,6 +386,16 @@ def _container_name(slug: str, instance: int = 1) -> str:
     return base if instance <= 1 else f"{base}-{instance}"
 
 
+def deploy_target_exists(slug: str, instance: int) -> bool:
+    """Read the exact Docker name a direct deploy would replace, even if stopped."""
+    client = _get_client()
+    try:
+        client.containers.get(_container_name(slug, instance))
+    except NotFound:
+        return False
+    return True
+
+
 def _instance_of(container: Any) -> int:
     """Which copy of its service a container is; 1 when unlabelled."""
     try:

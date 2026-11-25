@@ -40,7 +40,7 @@ from docker.errors import APIError, DockerException
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, SecretStr, ValidationError
+from pydantic import BaseModel, SecretStr, StrictBool, ValidationError
 
 from app import (
     activity,
@@ -1565,6 +1565,11 @@ class DeploySpec(BaseModel):
     wallet_seed: WalletSeedSpec | None = None
 
 
+class CheckedDeploySpec(DeploySpec):
+    # The controller sets this only after the owner approves the replacement.
+    replace_existing: StrictBool = False
+
+
 _BLOCKED_VOLUME_ROOTS = {
     "/",
     "/etc",
@@ -2533,7 +2538,22 @@ def _refuse_beside_routed_copy(slug: str) -> None:
         )
 
 
-def _deploy_direct(**kwargs: Any) -> str:
+def _deploy_target_exists(slug: str, instance: int) -> bool:
+    try:
+        return orchestrator.deploy_target_exists(slug, instance)
+    except (DockerException, RuntimeError):
+        raise HTTPException(status_code=503, detail="Could not look up the deploy container in Docker.") from None
+
+
+@app.get("/api/containers/{slug}/deploy-checked")
+async def api_checked_deploy_state(request: Request, slug: str, instance: int = 1) -> dict[str, bool]:
+    """Read the deploy target from Docker without reading its logs."""
+    _verify_api_key(request)
+    _validate_instance(instance)
+    return {"exists": await asyncio.to_thread(_deploy_target_exists, slug, instance)}
+
+
+def _deploy_direct(*, replace_existing: bool = True, **kwargs: Any) -> str:
     """orchestrator.deploy_raw, and with an approval to leave the route, forget the route in the same lock.
 
     Checked and forgotten under route_gate.deploying, the lock every route
@@ -2543,6 +2563,11 @@ def _deploy_direct(**kwargs: Any) -> str:
     """
     slug = kwargs["slug"]
     with route_gate.deploying(slug):
+        if not replace_existing and _deploy_target_exists(slug, kwargs["instance"]):
+            raise HTTPException(
+                status_code=409,
+                detail={"error": "replace_existing", "message": "The existing container needs replacement approval."},
+            )
         if not kwargs.get("leave_route"):
             return orchestrator.deploy_raw(**kwargs)
         _refuse_beside_routed_copy(slug)
@@ -2554,7 +2579,17 @@ def _deploy_direct(**kwargs: Any) -> str:
 
 @app.post("/api/containers/{slug}/deploy")
 async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
-    """Deploy a container from spec sent by UI."""
+    """Deploy a container through the existing web dashboard protocol."""
+    return await _deploy_container(request, slug, spec, replace_existing=True)
+
+
+@app.post("/api/containers/{slug}/deploy-checked")
+async def api_deploy_container_checked(request: Request, slug: str, spec: CheckedDeploySpec) -> dict[str, Any]:
+    """Create a container, or replace one only with the controller's approval."""
+    return await _deploy_container(request, slug, spec, replace_existing=spec.replace_existing)
+
+
+async def _deploy_container(request: Request, slug: str, spec: DeploySpec, *, replace_existing: bool) -> dict[str, Any]:
     _verify_api_key(request)
     # Counted from now, not from when a thread is free: the UI's hold on the ids
     # of a deploy it got no answer for must outlast it (constants.DEPLOY_DEADLINE_SECONDS).
@@ -2594,6 +2629,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
+            replace_existing=replace_existing,
             leave_route=leave_route,
             replaced_identity=replaced,
             deadline=deadline,
