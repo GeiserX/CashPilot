@@ -16,7 +16,6 @@ short_description: Bitcoin mining pool, tracked by your payout address
 # confirmed there is none, so `program` stays absent and scripts/referral_check.py
 # keeps reporting it until someone does.
 referral:
-  account: false
   signup_url: "https://ocean.xyz/getstarted"
   account: false
 
