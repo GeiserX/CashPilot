@@ -35,7 +35,7 @@ hide:
 
     ---
 
-    <!-- n:catalogued -->54<!-- /n --> services: what each one needs, whether it runs in Docker, the payout minimum, and a setup guide.
+    <!-- n:catalogued -->55<!-- /n --> services: what each one needs, whether it runs in Docker, the payout minimum, and a setup guide.
 
 -   :material-server-network: **[Fleet management](fleet.md)**
 
@@ -53,7 +53,7 @@ hide:
 
 ## The dashboard
 
-The dashboard is what you look at every day: the balances, a 7-day or 30-day earnings chart, the payouts waiting for your confirmation, and every deployed service with its status, balance, CPU and memory. Collectors read the balances of <!-- n:collectors -->17<!-- /n --> providers every hour; for the rest, check the provider's own dashboard. Below that, **Resource use per server** graphs hourly CPU, memory and network traffic for each server, or for one container, over 7 or 30 days. The **Payouts** page lists every service, the boxes that run it and the address each one pays to.
+The dashboard is what you look at every day: the balances, a 7-day or 30-day earnings chart, the payouts waiting for your confirmation, and every deployed service with its status, balance, CPU and memory. Collectors read the balances of <!-- n:collectors -->18<!-- /n --> providers every hour; for the rest, check the provider's own dashboard. Below that, **Resource use per server** graphs hourly CPU, memory and network traffic for each server, or for one container, over 7 or 30 days. The **Payouts** page lists every service, the boxes that run it and the address each one pays to.
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention with a button for each, which service runs on which box, earnings per day, and the deployed services table with status, balance, CPU, memory and payout progress for eight services](images/screenshots/dashboard.png)
 
@@ -107,8 +107,8 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 - **<!-- n:extension -->18<!-- /n --> services run as a browser extension or a desktop app** (Grass, Nodepay, Dawn, Helium, and more). CashPilot lists them with signup links and reads their balances where a collector exists.
 - **Proxied copies**: an extra copy of a deployed service that leaves through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy, so one box earns on several IPs ([Proxied copies](proxies.md)).
 - **<!-- n:gpu -->6<!-- /n --> GPU compute services** (Salad, Vast.ai, io.net, Nosana, Golem, Flux) run on their own software, and Salad, Vast.ai, io.net and Nosana need a GPU; CashPilot tracks them the same way.
-- **<!-- n:mining -->2<!-- /n --> mining pools** (OCEAN, SupportXMR) are tracked by your payout address: point your own miner at one, and CashPilot reads the unpaid balance. See [Mining](mining.md).
-- <!-- n:active -->40<!-- /n --> active services and <!-- n:beta -->3<!-- /n --> in beta, <!-- n:catalogued -->54<!-- /n --> catalogued. The other <!-- n:retired -->11<!-- /n --> died, broke or were dropped; [Discontinued services](discontinued-services.md) says why, so nobody re-adds them.
+- CashPilot tracks **<!-- n:mining -->3<!-- /n --> mining pools** by your payout address. Point your own miner at a supported pool, and CashPilot reads the unpaid balance. See [Mining](mining.md).
+- <!-- n:active -->40<!-- /n --> active services and <!-- n:beta -->4<!-- /n --> in beta, <!-- n:catalogued -->55<!-- /n --> catalogued. The other <!-- n:retired -->11<!-- /n --> died, broke or were dropped; [Discontinued services](discontinued-services.md) says why, so nobody re-adds them.
 
 The [Service guides](guides/index.md) table shows, for every service, what it needs (residential IP, GPU, disk), how it runs, the minimum payout and its status. Services marked residential-only do not pay a datacenter IP; the rest run on a VPS.
 

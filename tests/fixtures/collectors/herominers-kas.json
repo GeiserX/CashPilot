@@ -1,0 +1,16 @@
+{
+  "slug": "herominers-kas",
+  "currency": "KAS",
+  "fields": ["stats.balance", "stats.lastShare"],
+  "note": "Sample from the HeroMiners Kaspa API on 2026-11-25. The unpaid balance is in sompi. The other balance and payout fields are unused.",
+  "parsed": 408.28934717,
+  "sample": {
+    "stats": {
+      "balance": "40828934717",
+      "paid": "20853646526889",
+      "lastShare": "1795640820",
+      "minPayoutLevel": "50000000000",
+      "hashrate": 28976712690347
+    }
+  }
+}

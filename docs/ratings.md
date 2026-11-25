@@ -108,6 +108,7 @@ What a cited con or pro may rest on:
 | <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="UpRock&#x27;s help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.">UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.</span> | 2026-11-04 |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="The extension earns points; no token distribution to node operators had been confirmed by October 2026.">The extension earns points; no token distribution to node operators had been confirmed by October 2026.</span> | 2026-11-04 |
 | <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR.">Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR.</span> | 2026-11-04 |
+| <a href="#herominers-kas">HeroMiners Kaspa</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="The pool charges a 0.9% fee and holds payouts until your threshold is reached.">The pool charges a 0.9% fee and holds payouts until your threshold is reached.</span> | 2026-11-25 |
 | <a href="#nodle">Nodle</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply.">One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply.</span> | 2026-11-04 |
 | <a href="#spide">Spide</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="CashPilot does not run Spide: you use the provider&#x27;s own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Spide: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
 | <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token.">Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token.</span> | 2026-11-04 |
@@ -1224,6 +1225,33 @@ What a cited con or pro may rest on:
 
 - Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. [Source](https://deeper-network-inc.gitbook.io/deeper-connect-knowledge-base/faq/mining), checked 2026-11-04.
 - CashPilot does not run Deeper Network: you use the provider's own router hardware, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/deeper-network.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="herominers-kas"></a>
+
+### HeroMiners Kaspa
+
+**Grade F**, 1 of 20 points, 9 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [HeroMiners Kaspa](guides/herominers-kas.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The pool API lists payments. No wallet receipt was checked. |
+| Payout terms | Fair | HeroMiners lists a 0.9% pool fee, an hourly payment interval, and a minimum threshold of 1 KAS. |
+| Account safety | Unknown | The pool uses payout addresses for its stats. The review did not check reports of withheld balances. |
+| Fit with how CashPilot runs it | Unknown | The pool's Start page lists supported miners. Its terms were not reviewed. |
+| Traffic transparency | Unknown | The pool's Start page lists mining servers. The connection was not inspected. |
+| Privacy | Unknown | The pool's stats are public. Its data retention practices were not checked. |
+| Identity checks | Unknown | The pool asks for a payout address to show stats. Identity rules for payouts were not checked. |
+| Support | Unknown | The pool links to support channels. No support request was tested. |
+| Earnings realism | Unknown | The pool displays estimates. No estimate was compared with a payout. |
+| Longevity | Unknown | The pool API answered during the check. Its operating history was not verified. |
+
+**Cons**
+
+- The pool charges a 0.9% fee and holds payouts until your threshold is reached. [Source](https://kaspa.herominers.com/api/stats), checked 2026-11-25.
 
 **Pros**
 

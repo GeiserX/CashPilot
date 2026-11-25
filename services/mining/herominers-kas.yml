@@ -1,0 +1,100 @@
+name: HeroMiners Kaspa
+slug: herominers-kas
+category: mining
+status: beta
+website: https://kaspa.herominers.com/
+description: >
+  Track the unpaid Kaspa balance HeroMiners holds for your public payout
+  address. Run your own Kaspa miner and point it at the pool. CashPilot reads
+  the pool balance and asks you to confirm payouts when the balance drops.
+short_description: Kaspa mining pool, tracked by your payout address
+
+# The Visit link opens the pool dashboard. Referral programme status is unconfirmed.
+referral:
+  account: false
+  signup_url: https://kaspa.herominers.com/?lang=en
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  note: "Needs a Kaspa miner pointed at HeroMiners"
+
+payment:
+  methods: [crypto]
+  minimum_payout: "1 KAS (adjustable)"
+  currency: KAS
+  frequency: "The pool checks your payout threshold hourly"
+
+cashout:
+  method: auto
+  dashboard_url: https://kaspa.herominers.com/
+  min_amount: 1
+  currency: KAS
+  notes: >
+    HeroMiners pays your address automatically once you reach your chosen
+    threshold. The lowest threshold is 1 KAS.
+
+platforms: []
+
+collector:
+  type: api
+  quiet_days: 2
+  accrual: pool
+  notes: >
+    Reads stats.balance from the public Kaspa stats API, in sompi (100 million
+    per KAS). HeroMiners reports an unknown or invalid address as an error.
+  credential_hint: >
+    Enter the full public Kaspa payout address your miner uses on HeroMiners.
+    Include the <b>kaspa:</b> prefix and omit the worker name.
+
+payout:
+  model: external
+  chain: kaspa
+  address_source: collector
+  notes: >
+    The balance is accrued at HeroMiners. Check your wallet for the amount you
+    received before confirming a payout in CashPilot.
+
+disclosure:
+  sells: compute
+  third_party_traffic: "No. Your miner sends mining work to the pool."
+  data_collected: "The pool's public stats show each payout address and its mining activity."
+  account_rules: "The pool uses your payout address in place of an account."
+
+rating:
+  reviewed_on: "2026-11-25"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: unknown
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: "The pool API lists payments. No wallet receipt was checked."
+    payout_terms: "HeroMiners lists a 0.9% pool fee, an hourly payment interval, and a minimum threshold of 1 KAS."
+    account_safety: "The pool uses payout addresses for its stats. The review did not check reports of withheld balances."
+    terms_fit: "The pool's Start page lists supported miners. Its terms were not reviewed."
+    traffic_transparency: "The pool's Start page lists mining servers. The connection was not inspected."
+    privacy: "The pool's stats are public. Its data retention practices were not checked."
+    identity_checks: "The pool asks for a payout address to show stats. Identity rules for payouts were not checked."
+    support: "The pool links to support channels. No support request was tested."
+    earnings_realism: "The pool displays estimates. No estimate was compared with a payout."
+    longevity: "The pool API answered during the check. Its operating history was not verified."
+  cons:
+  - text: "The pool charges a 0.9% fee and holds payouts until your threshold is reached."
+    criterion: payout_terms
+    kind: terms
+    source: https://kaspa.herominers.com/api/stats
+    checked_on: "2026-11-25"
