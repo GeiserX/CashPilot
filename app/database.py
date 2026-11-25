@@ -17,7 +17,7 @@ import re
 import secrets
 import sqlite3
 import time
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -2232,6 +2232,54 @@ def _decode_spec(blob: str, slug: str) -> dict[str, Any] | None:
         _logger.warning("Recorded spec for %s is not valid JSON; falling back to the catalog", slug)
         return None
     return spec if isinstance(spec, dict) else None
+
+
+async def get_saved_wallet_phrases(fields: Collection[str]) -> set[str]:
+    """Read wallet fields across the owner's credentials and deployment records."""
+    db = await _get_db()
+    try:
+        # Read the fleet row and both worker versions in the same snapshot.
+        # Another worker may already have replaced the fleet copy of a seed.
+        cursor = await db.execute(
+            """
+            SELECT key AS name, value, 1 AS is_config FROM config
+            UNION
+            SELECT slug, spec_encrypted, 0 FROM deployments WHERE spec_encrypted <> ''
+            UNION
+            SELECT slug, env_vars_encrypted, 0 FROM deployments WHERE env_vars_encrypted <> ''
+            UNION
+            SELECT slug, spec_encrypted, 0 FROM deployment_specs
+            UNION
+            SELECT slug, prior_spec_encrypted, 0 FROM deployment_specs WHERE prior_spec_encrypted IS NOT NULL
+            """
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+
+    phrases: set[str] = set()
+    suffixes = tuple(fields)
+    for name, value, is_config in rows:
+        if is_config:
+            # Saved service credentials prefix their field with the service slug.
+            if value and wallet_seed.field_name(name).endswith(suffixes):
+                phrases.add(decrypt_value(value))
+        elif spec := _decode_spec(value, name):
+            phrases.update(_wallet_phrases_in_spec(spec, fields))
+    return phrases
+
+
+def _wallet_phrases_in_spec(value: Any, fields: Collection[str]) -> Iterator[str]:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if wallet_seed.field_name(key) in fields:
+                phrase = child.get("phrase") if isinstance(child, dict) else child
+                if isinstance(phrase, str) and phrase:
+                    yield phrase
+            yield from _wallet_phrases_in_spec(child, fields)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _wallet_phrases_in_spec(child, fields)
 
 
 async def get_deployments() -> list[dict[str, Any]]:

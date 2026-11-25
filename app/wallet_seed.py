@@ -38,6 +38,7 @@ import io
 import re
 import tarfile
 import time
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,12 @@ LABEL_HELPER = "cashpilot.wallet-helper"
 GENERATE_TIMEOUT = 60
 
 _WORDLIST_FILE = Path(__file__).with_name("bip39_english.txt")
+_BIP39_LENGTHS = (12, 15, 18, 21, 24)
+
+
+def field_name(key: str) -> str:
+    """Compare wallet field names without case or separators."""
+    return re.sub(r"[^a-z0-9]", "", key.casefold())
 
 
 class WalletSeedError(Exception):
@@ -143,6 +150,37 @@ def normalize(phrase: Any) -> str:
     return " ".join(str(phrase or "").lower().split())
 
 
+def phrase_words(text: str) -> list[str]:
+    """Tokenize deploy text and saved phrases with the same letter boundaries."""
+    return "".join(char if char.isalpha() else " " for char in text.lower()).split()
+
+
+def contains_bip39_phrase(words: Sequence[str]) -> bool:
+    """Check every BIP-39 length within each run of English BIP-39 words."""
+    if len(words) < _BIP39_LENGTHS[0]:
+        return False
+    wordlist = _wordlist()
+    indices = [wordlist.get(word, -1) for word in words]
+    run = 0
+    for end, index in enumerate(indices, 1):
+        run = run + 1 if index >= 0 else 0
+        for length in _BIP39_LENGTHS:
+            if length > run:
+                break
+            if _valid_checksum(indices[end - length : end]):
+                return True
+    return False
+
+
+def _valid_checksum(indices: Sequence[int]) -> bool:
+    bits = 0
+    for index in indices:
+        bits = (bits << 11) | index
+    checksum_bits = len(indices) * 11 // 33
+    entropy = (bits >> checksum_bits).to_bytes(len(indices) * 11 * 32 // 33 // 8, "big")
+    return hashlib.sha256(entropy).digest()[0] >> (8 - checksum_bits) == bits & ((1 << checksum_bits) - 1)
+
+
 def phrase_problem(phrase: str, words: int = 12) -> str | None:
     """Why ``phrase`` is not a valid BIP-39 phrase of ``words`` words, or None.
 
@@ -164,12 +202,7 @@ def phrase_problem(phrase: str, words: int = 12) -> str | None:
             + (" are not BIP-39 words." if many else " is not a BIP-39 word.")
             + " Check the spelling."
         )
-    bits = 0
-    for word in found:
-        bits = (bits << 11) | wordlist[word]
-    checksum_bits = words * 11 // 33
-    entropy = (bits >> checksum_bits).to_bytes(words * 11 * 32 // 33 // 8, "big")
-    if hashlib.sha256(entropy).digest()[0] >> (8 - checksum_bits) != bits & ((1 << checksum_bits) - 1):
+    if not _valid_checksum([wordlist[word] for word in found]):
         return "The words are all valid, but the phrase does not check out. One of them is probably wrong."
     return None
 

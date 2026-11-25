@@ -7525,9 +7525,10 @@ def _worker_left_restore(resp: Any) -> bool:
     return bool(_worker_restore_answer(resp).get("left"))
 
 
-def _refuse_desktop_wallet_payload(path: str, body: dict[str, Any], desktop_json: dict[str, Any] | None) -> None:
-    """Check the final request, including raw deploys and rebuilt proxy copies."""
+async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | None) -> None:
+    """Check the final request and fields that may be stripped before the send."""
     svc = None
+    slug = None
     match path.split("/"):
         case ["", "api", "containers", slug, "deploy" | "restore"] | ["", "api", "proxied", slug, _, "deploy"]:
             svc = catalog.get_service(slug)
@@ -7536,29 +7537,45 @@ def _refuse_desktop_wallet_payload(path: str, body: dict[str, Any], desktop_json
 
     # Raw commands can carry seed fields for another service. Ignore case and
     # separators so env vars and JSON field names follow the same rule.
-    separators = re.compile(r"[^a-z0-9]")
-    wallet_fields = dict.fromkeys(("walletseed", "seedphrase", "recoveryphrase", "mnemonic"), svc)
+    wallet_fields = dict.fromkeys(("walletseed", "seedphrase", "recoveryphrase", "mnemonic"))
     for service in catalog.get_services():
         if key := wallet_seed.seed_key(service):
-            wallet_fields[separators.sub("", key.casefold())] = service
+            wallet_fields[wallet_seed.field_name(key)] = service
 
-    # Check the raw fields before schema validation and the full spec before
-    # projection to the Desktop schema. Either can hold a seed.
-    pending: list[Any] = [body, desktop_json]
-    while pending:
-        value = pending.pop()
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if isinstance(key, str):
-                    field = separators.sub("", key.casefold())
-                    if field in wallet_fields:
-                        raise _desktop_wallet_refusal(wallet_fields[field])
-                    pending.append(key)
-                pending.append(child)
-        elif isinstance(value, (list, tuple)):
-            pending.extend(value)
-        elif isinstance(value, str) and wallet_seed.phrase_problem(value) is None:
-            raise _desktop_wallet_refusal(svc)
+    keys = {slug} if slug else set()
+
+    def string_values(payload: dict[str, Any]) -> Iterable[str]:
+        pending: list[tuple[str | None, Any]] = [(None, payload)]
+        while pending:
+            key, value = pending.pop()
+            if isinstance(key, str):
+                field = wallet_seed.field_name(key)
+                if field in wallet_fields:
+                    raise _desktop_wallet_refusal(wallet_fields[field])
+                keys.add(key)
+            if isinstance(value, dict):
+                pending.extend(reversed(value.items()))
+            elif isinstance(value, (list, tuple)):
+                pending.extend((None, child) for child in reversed(value))
+            elif isinstance(value, str):
+                yield value
+
+    # Join values in request order. Keep each key separate so it cannot break a
+    # phrase split across values or join unrelated words into a phrase.
+    texts = [" ".join(string_values(payload)) for payload in payloads if payload is not None]
+    streams = [wallet_seed.phrase_words(text) for text in (*texts, *keys)]
+    if any(wallet_seed.contains_bip39_phrase(words) for words in streams):
+        raise _desktop_wallet_refusal(None)
+
+    known = {
+        f" {' '.join(words)} "
+        for phrase in await database.get_saved_wallet_phrases(wallet_fields)
+        if (words := wallet_seed.phrase_words(phrase))
+    }
+    for words in streams:
+        text = f" {' '.join(words)} "
+        if any(phrase in text for phrase in known):
+            raise _desktop_wallet_refusal(None)
 
 
 class _DesktopDeploySpec(BaseModel):
@@ -7571,16 +7588,23 @@ class _DesktopDeploySpec(BaseModel):
     instance: int = 1
 
 
-def _desktop_deploy_body(path: str, spec: dict[str, Any], desktop_json: dict[str, Any] | None) -> dict[str, Any]:
-    _refuse_desktop_wallet_payload(path, spec, desktop_json)
-    if not re.fullmatch(r"/api/containers/[a-z0-9][a-z0-9_.-]*/deploy", path):
-        raise HTTPException(status_code=409, detail="CashPilot Desktop cannot take this request from the dashboard.")
-    try:
-        body = _DesktopDeploySpec.model_validate(spec if desktop_json is None else desktop_json)
-    except ValidationError:
+async def _desktop_deploy_body(path: str, spec: dict[str, Any], desktop_json: dict[str, Any] | None) -> dict[str, Any]:
+    deploy_path = re.fullmatch(r"/api/containers/[a-z0-9][a-z0-9_.-]*/deploy", path)
+    body = None
+    if deploy_path:
         # Validation errors carry submitted values, including credentials.
-        raise HTTPException(status_code=422, detail="Invalid CashPilot Desktop deploy request.") from None
-    return body.model_dump(exclude_unset=True)
+        with contextlib.suppress(ValidationError):
+            body = _DesktopDeploySpec.model_validate(spec if desktop_json is None else desktop_json).model_dump(
+                exclude_unset=True
+            )
+    # Walk the serialized body too. Model field order can differ from the raw
+    # request, and projection can remove fields between two parts of a phrase.
+    await _refuse_desktop_wallet_payload(path, spec, desktop_json, body)
+    if not deploy_path:
+        raise HTTPException(status_code=409, detail="CashPilot Desktop cannot take this request from the dashboard.")
+    if body is None:
+        raise HTTPException(status_code=422, detail="Invalid CashPilot Desktop deploy request.")
+    return body
 
 
 async def _proxy_to_worker(
@@ -7609,7 +7633,7 @@ async def _proxy_to_worker(
     """
     worker = await database.get_worker(worker_id)
     if json is not None and worker and placement.is_desktop(placement.system_info(worker)):
-        json = _desktop_deploy_body(path, json, desktop_json)
+        json = await _desktop_deploy_body(path, json, desktop_json)
     extra = headers
     url, headers = await _get_verified_worker_url(worker)
     if extra:

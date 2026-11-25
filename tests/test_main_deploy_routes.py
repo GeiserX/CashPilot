@@ -4,6 +4,7 @@ These routes proxy commands to workers via httpx, so we mock the httpx calls
 and the database layer.
 """
 
+import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app import catalog, database, wallet_seed
 from app.main import app
 
 
@@ -101,6 +103,21 @@ def _mock_httpx_resp(status_code=200, json_data=None):
 
 
 class TestDesktopWalletDeploys:
+    _PHRASE_12 = "abandon " * 11 + "about"
+    _PHRASE_24 = "abandon " * 23 + "art"
+    _BAD_CHECKSUM = "people walk home before lunch then enjoy fresh bread near apple tree"
+    _LONG_TEXT = (
+        "The local community group meets near the river each Thursday. "
+        "Our volunteers prepare meals for anyone who needs one."
+    )
+    _HONEYGAIN_ENV = {"HONEYGAIN_EMAIL": "owner@example.test", "HONEYGAIN_PASSWORD": "test-password"}
+
+    @pytest.fixture(autouse=True)
+    def desktop_db(self, tmp_path):
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"):
+            asyncio.run(database.init_db())
+            yield
+
     @pytest.fixture
     def worker_target(self):
         worker = {
@@ -114,7 +131,6 @@ class TestDesktopWalletDeploys:
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
             patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
             patch("app.main._validate_worker_url", return_value=(worker["url"], None)),
-            patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.forget_env_value", new_callable=AsyncMock, return_value=(False, False)),
             patch("app.main.database.prior_deployment_spec", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
@@ -207,6 +223,104 @@ class TestDesktopWalletDeploys:
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
         self._assert_wallet_refusal(response, post, phrase)
         assert phrase not in response.text
+
+    @pytest.mark.parametrize(
+        "shape",
+        ["valid-24", "comma", "hyphen", "split-fields", "embedded", "split-list", "valid-15", "valid-18", "valid-21"],
+    )
+    def test_raw_deploy_refuses_a_phrase_in_request_values(self, client, worker_target, shape):
+        _, post = worker_target
+        words = self._PHRASE_12.split()
+        assert wallet_seed.phrase_problem(self._PHRASE_12) is None
+        assert wallet_seed.phrase_problem(self._PHRASE_24, words=24) is None
+        env = dict(self._HONEYGAIN_ENV)
+        spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
+        if shape == "split-fields":
+            env["HONEYGAIN_PASSWORD"] = " ".join(words[:6])
+            env["HONEYGAIN_DEVICE_NAME"] = " ".join(words[6:])
+        elif shape == "split-list":
+            spec["extra"] = words
+        else:
+            env["HONEYGAIN_PASSWORD"] = {
+                "valid-24": self._PHRASE_24,
+                "comma": ", ".join(words),
+                "hyphen": "-".join(words),
+                "embedded": f"Example text: {self._PHRASE_12} (end of example)",
+                "valid-15": "abandon " * 14 + "address",
+                "valid-18": "abandon " * 17 + "agent",
+                "valid-21": "abandon " * 20 + "admit",
+            }[shape]
+        other_http = AsyncMock(side_effect=AssertionError("unexpected outbound HTTP"))
+        with patch("httpx.AsyncClient.send", other_http):
+            response = client.post(
+                "/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec}
+            )
+        other_http.assert_not_awaited()
+        assert (response.status_code, post.await_count) == (409, 0)
+        assert "abandon" not in response.text
+
+    def test_raw_deploy_checks_values_in_the_serialized_body_order(self, client, worker_target):
+        _, post = worker_target
+        words = self._PHRASE_12.split()
+        spec = {"env": {"PASSWORD": " ".join(words[6:])}, "image": "fixture.invalid/" + "-".join(words[:6])}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, self._PHRASE_12)
+        assert "abandon" not in response.text
+
+    @pytest.mark.parametrize("source", ["credentials", "fleet", "current", "prior"])
+    def test_desktop_refuses_a_saved_phrase_even_with_an_invalid_checksum(self, client, worker_target, source):
+        _, post = worker_target
+        words = self._BAD_CHECKSUM.split()
+        saved = " / ".join(words).upper()
+        seed_key = "HOSTD_WALLET_SEED"
+        stored = {"env": {seed_key: saved}}
+        empty = {"env": {}}
+
+        async def save():
+            if source == "credentials":
+                await database.set_config(f"sia-hostd_{seed_key}", saved)
+            elif source == "fleet":
+                await database.save_deployment("sia-hostd", "old", spec=stored)
+            else:
+                await database.save_deployment("sia-hostd", "old", spec=stored, worker_id=1)
+                if source == "prior":
+                    await database.save_deployment("sia-hostd", "new", spec=empty, worker_id=1)
+                else:
+                    await database.save_deployment("sia-hostd", "another", spec=empty)
+
+        asyncio.run(save())
+        env = {
+            **self._HONEYGAIN_ENV,
+            "HONEYGAIN_PASSWORD": "Entry: " + "-".join(words[:6]),
+            "HONEYGAIN_DEVICE_NAME": ", ".join(words[6:]) + " (end)",
+        }
+        response = client.post("/api/deploy/honeygain?worker_id=2", json={"env": env})
+        self._assert_wallet_refusal(response, post)
+        assert words[0] not in response.text
+
+    @pytest.mark.parametrize(
+        ("slug", "env", "raw"),
+        [
+            ("honeygain", {**_HONEYGAIN_ENV, "HONEYGAIN_PASSWORD": _BAD_CHECKSUM}, True),
+            ("honeygain", {**_HONEYGAIN_ENV, "HONEYGAIN_PASSWORD": _LONG_TEXT}, False),
+            ("honeygain", {**_HONEYGAIN_ENV, "HONEYGAIN_PASSWORD": "abandon " * 10 + "about"}, True),
+            ("iproyal", {"IPROYALPAWNS_EMAIL": "owner@example.test", "IPROYALPAWNS_PASSWORD": _LONG_TEXT}, False),
+            ("packetstream", {"CID": "review-fixture"}, True),
+            ("traffmonetizer", {"TRAFFMONETIZER_TOKEN": "review-fixture"}, False),
+        ],
+    )
+    def test_desktop_accepts_ordinary_deploy_values(self, client, worker_target, slug, env, raw):
+        _, post = worker_target
+        assert all(word in wallet_seed._wordlist() for word in self._BAD_CHECKSUM.split())
+        assert "does not check out" in wallet_seed.phrase_problem(self._BAD_CHECKSUM)
+        if raw:
+            spec = {"image": catalog.get_service(slug)["docker"]["image"], "env": env}
+            response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": slug, "spec": spec})
+        else:
+            response = client.post(f"/api/deploy/{slug}?worker_id=2", json={"env": env})
+        assert (response.status_code, post.await_count) == (200, 1)
+        for key, value in env.items():
+            assert post.await_args.kwargs["json"]["env"][key] == value
 
     @pytest.mark.parametrize("field", ["Env", "unexpected", "approval"])
     def test_raw_desktop_deploy_requires_exact_schema_keys(self, client, worker_target, field):
@@ -336,6 +450,7 @@ class TestApiDeploy:
             patch("app.main._validate_worker_url", return_value=("http://192.168.1.30:8086", None)),
             patch("app.main.FLEET_API_KEY", "shared-key"),
             patch("app.main.catalog.get_service", return_value={"slug": "honeygain", "docker": {"image": "test"}}),
+            patch("app.main.database.get_saved_wallet_phrases", new_callable=AsyncMock, return_value=set()),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
             patch("httpx.AsyncClient.post", post),
