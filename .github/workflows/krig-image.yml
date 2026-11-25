@@ -1,0 +1,126 @@
+name: KRig image
+
+on:
+  pull_request:
+    paths:
+      - "images/krig/**"
+      - "images/xmrig/registry-manifest.sh"
+      - ".github/workflows/krig-image.yml"
+  push:
+    branches: [main]
+    paths:
+      - "images/krig/**"
+      - "images/xmrig/registry-manifest.sh"
+      - ".github/workflows/krig-image.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: krig-image-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REPO: drumsergio/cashpilot-krig
+  LOCAL_IMAGE: cashpilot-krig:ci
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check image inputs and revision tag
+        run: |
+          shellcheck images/krig/*.sh
+          dir=images/krig
+          version=$(cat "$dir/VERSION")
+          revision=$(cat "$dir/REVISION")
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$revision" =~ ^[1-9][0-9]*$ ]]
+          tag="$version-r$revision"
+          inputs=$(sha256sum "$dir"/{Dockerfile,.dockerignore,entrypoint.sh,VERSION,ARCHIVE_SHA256,BINARY_SHA256})
+          inputs=$(printf '%s\n' "$inputs" | sha256sum | cut -d ' ' -f 1)
+          published=false
+          if images/xmrig/registry-manifest.sh "$REPO" "$tag" >/dev/null; then
+            published=true
+            docker pull --platform linux/amd64 "$REPO:$tag"
+            previous=$(docker image inspect "$REPO:$tag" --format '{{ index .Config.Labels "io.cashpilot.krig.inputs" }}')
+            if [ "$previous" != "$inputs" ]; then
+              echo "::error::$REPO:$tag already has different image inputs. Raise REVISION."
+              exit 1
+            fi
+          else
+            status=$?
+            if [ "$status" != 44 ]; then exit "$status"; fi
+          fi
+          {
+            echo "VERSION=$version"
+            echo "REVISION=$revision"
+            echo "TAG=$tag"
+            echo "PUBLISHED=$published"
+            echo "INPUTS=$inputs"
+          } >> "$GITHUB_ENV"
+      - name: Build amd64 and test startup with --version
+        run: |
+          docker build --platform linux/amd64 -t "$LOCAL_IMAGE" \
+            --label "io.cashpilot.krig.inputs=$INPUTS" \
+            --label "io.cashpilot.krig.revision=$REVISION" images/krig
+          bash images/krig/test.sh "$LOCAL_IMAGE"
+      - if: github.event_name == 'push'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Publish the tested image under its revision tag
+        if: github.event_name == 'push' && env.PUBLISHED == 'false'
+        run: |
+          docker tag "$LOCAL_IMAGE" "$REPO:$TAG"
+          docker push "$REPO:$TAG"
+      - name: Verify the published revision with --version
+        if: github.event_name == 'push'
+        run: |
+          out=$(docker run --rm --pull always --init --cap-drop ALL \
+            --security-opt no-new-privileges:true --pids-limit 512 "$REPO:$TAG" --version)
+          echo "$out"
+          grep -F "krig-miner v$VERSION (" <<<"$out"
+      - name: Publish the version alias
+        if: github.event_name == 'push'
+        run: |
+          if images/xmrig/registry-manifest.sh "$REPO" "$VERSION" >/dev/null; then
+            docker pull --platform linux/amd64 "$REPO:$VERSION"
+            previous=$(docker image inspect "$REPO:$VERSION" --format '{{ index .Config.Labels "io.cashpilot.krig.revision" }}')
+            [[ "$previous" =~ ^[1-9][0-9]*$ ]]
+            if (( previous > REVISION )); then
+              exit 0
+            fi
+            if (( previous == REVISION )); then
+              alias_id=$(docker image inspect "$REPO:$VERSION" --format '{{ .Id }}')
+              revision_id=$(docker image inspect "$REPO:$TAG" --format '{{ .Id }}')
+              test "$alias_id" = "$revision_id"
+              exit 0
+            fi
+          else
+            status=$?
+            if [ "$status" != 44 ]; then exit "$status"; fi
+          fi
+          docker tag "$REPO:$TAG" "$REPO:$VERSION"
+          docker push "$REPO:$VERSION"
+      - name: Check whether the README still matches main
+        if: github.event_name == 'push'
+        id: description
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          if git diff --quiet HEAD FETCH_HEAD -- images/krig/README.md; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: github.event_name == 'push' && steps.description.outputs.current == 'true'
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.REPO }}
+          readme-filepath: images/krig/README.md
+          short-description: "Unofficial KRig startup image for CashPilot, Linux amd64"
