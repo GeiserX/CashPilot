@@ -4791,11 +4791,23 @@ async def _deploy(
     # operator relocating a mount, which is how a redeploy moves a node off the
     # directory that holds its identity.
     catalog_defaults = {var["key"]: str(var.get("default", "")) for var in docker_conf.get("env", [])}
+    # Mining forms show public defaults as placeholders. A posted value for
+    # one of these controls was entered, even when it resets to the default.
+    miner_defaults = {
+        var["key"]
+        for var in docker_conf.get("env", [])
+        if catalog.mining_facts(svc)
+        and var.get("default")
+        and "{hostname}" not in str(var["default"])
+        and not (var.get("secret") or var.get("identifier") or var.get("per_device"))
+    }
     # Stripped once and used stripped: "/mnt/s " is not a different path from
     # "/mnt/s", and sent as typed it becomes a host directory with a space in it.
     posted_env = {key: str(value).strip() for key, value in (body.env or {}).items()}
     typed_env = {
-        key: value for key, value in posted_env.items() if value and value != catalog_defaults.get(key, "").strip()
+        key: value
+        for key, value in posted_env.items()
+        if value and (key in miner_defaults or value != catalog_defaults.get(key, "").strip())
     }
 
     # A wallet seed kept in a file in the node's own volume (app/wallet_seed.py):
@@ -9567,6 +9579,8 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # says code reading "service" matched nothing in production while its tests
     # passed, which is precisely what happened here again.
     running = [c for c in statuses if egress.container_slug(c) and str(c.get("status", "")).lower() == "running"]
+    running_slugs = {egress.container_slug(container) for container in running}
+    running_miners = {slug for slug in running_slugs if slug and catalog.mining_facts(catalog.get_service(slug) or {})}
 
     # Group by WORKER and keep it that way through the watt calculation. Each
     # host pays its own idle draw, so collapsing a multi-host fleet into one
@@ -9586,6 +9600,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
 
     watts_by_service: dict[str, float] = {}
     unmetered_services: set[str] = set()
+    miner_cpu_missing = False
     for wid, containers in by_worker.items():
         meta = worker_meta.get(wid) or {}
         info = _safe_json(meta.get("system_info", "{}"), {})
@@ -9607,18 +9622,22 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             # would silently turn "unmeasurable" into "idle", which is how a
             # busy service ends up costing nothing on the running-costs card.
             if c.get("cpu_percent") is None:
+                if svc in running_miners:
+                    miner_cpu_missing = True
                 continue
             watts_by_service[svc] = watts_by_service.get(svc, 0.0) + power.estimate_watts(
                 float(c.get("cpu_percent") or 0.0), host_tdp_watts=tdp, container_count=count
             )
 
     rows = []
-    for platform, gross in earned.items():
+    # A miner runs under its own slug while its pool reports earnings separately.
+    # Include the miner's power bill even when its own earnings are unread.
+    for platform in [*earned, *sorted(running_miners - earned.keys())]:
         watts = watts_by_service.get(platform, 0.0)
         rows.append(
             {
                 "platform": platform,
-                "gross": float(gross),
+                "gross": earned.get(platform),
                 "watts": watts,
                 "hours": hours,
                 "cost_quality": power.ESTIMATED,
@@ -9672,7 +9691,10 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # which is the one thing this endpoint's docstring promises it never does.
     # cost_known came from `price_per_kwh > 0` alone and never asked whether any
     # watts had actually been measured (CashPilot-c6u).
-    result = power.summarise(rows, price_per_kwh=(price_usd if (fx_ok and watts_known) else 0.0), currency="USD")
+    cost_known = fx_ok and watts_known and not miner_cpu_missing
+    result = power.summarise(rows, price_per_kwh=price_usd if cost_known else 0.0, currency="USD")
+    if miner_cpu_missing:
+        result["cost_unavailable_reason"] = "A running miner has no CPU reading, so its electricity cost is unknown."
     if not watts_known:
         result["cost_known"] = False
         result["watts_unavailable"] = True

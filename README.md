@@ -10,7 +10,7 @@
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
 </p>
 
-CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. A dashboard and a worker on each server start the <!-- n:docker -->17<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->27<!-- /n --> that run as a browser extension, a desktop app, a GPU node or a mining pool, and read the balances of <!-- n:collectors -->17<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
+CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. A dashboard and a worker on each server start the <!-- n:docker -->18<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->26<!-- /n --> that run as a browser extension, a desktop app, a GPU node or a mining pool, and read the balances of <!-- n:collectors -->17<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention (an offline box, a stopped container, a balance it could not read, a payout to confirm), which service runs on which box, earnings per day, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 

@@ -48,19 +48,24 @@ hashrate all change.
 ## Troubleshooting
 
 - **Slow hashrate.** Huge pages can improve RandomX speed. On a Linux host
-  you control, `sudo sysctl -w vm.nr_hugepages=1280` reserves about 2.5 GiB
-  of RAM until reboot. Reserve it only if other workloads can spare the
-  memory. Watch the miner log for the huge-page allocation.
+  you control, check `Hugepagesize` in `/proc/meminfo`. If it is 2048 kB
+  and other workloads can spare 2.5 GiB of RAM, run
+  `sudo sysctl -w vm.nr_hugepages=1280` to reserve that memory until reboot.
+  A larger page size reserves more memory for the same count.
+  Watch the miner log for the huge-page allocation.
   [XMRig huge-page guide](https://xmrig.com/docs/miner/hugepages)
 - **MSR optimization.** It requires privileged access to CPU registers.
   CashPilot disables it and runs XMRig as an unprivileged user. Expect lower
   hashrates than a tuned bare-metal benchmark.
   [XMRig MSR guide](https://xmrig.com/docs/miner/randomx-optimization-guide/msr)
+- **Hosts with multiple NUMA nodes.** CashPilot uses one shared RandomX
+  dataset to keep the miner inside its 3 GiB memory limit.
 - **The pool never connects.** Check the hostname and port. Some DNS filters
   block pool domains. Check the resolver on the worker and whether your
-  network permits the connection. TLS helps protect the connection. Use a
-  pool certificate fingerprint if you configure XMRig directly and need it
-  to verify the pool's identity.
+  network permits the connection. The catalog's TLS option encrypts the
+  connection. It accepts the pool's certificate without checking a CA chain
+  or hostname. Configure a pool certificate fingerprint in XMRig directly
+  if you need to verify the pool's identity.
 - **Antivirus or a NAS security advisor flags XMRig.** These tools can label
   coin miners as potentially unwanted applications (PUA). Verify the image
   and use it only on hardware where you have permission to mine.

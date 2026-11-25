@@ -97,6 +97,17 @@ def assess(
                 }
             )
             verdicts.append(EARNS_NOTHING)
+        elif catalog.mining_facts(service):
+            findings.append(
+                {
+                    "verdict": REDUCED,
+                    "message": (
+                        f"{service.get('name', slug)} is already running on this machine. "
+                        "A second miner shares its CPU. Check that both copies have enough processing time."
+                    ),
+                }
+            )
+            verdicts.append(REDUCED)
         else:
             findings.append(
                 {
@@ -183,7 +194,7 @@ def assess(
 
     hosting_note = reqs.get("hosting_note")
     if hosting_note and egress.normalise_network_type(info.get("egress_network_type")) == egress.HOSTING:
-        findings.append({"verdict": CHECK_YOURSELF, "message": hosting_note})
+        findings.append({"verdict": CHECK_YOURSELF, "message": hosting_note, "kind": "hosting_note"})
         verdicts.append(CHECK_YOURSELF)
 
     min_bandwidth = reqs.get("min_bandwidth")

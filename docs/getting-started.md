@@ -297,9 +297,9 @@ CashPilot supports **<!-- n:live -->44<!-- /n --> services** that are active or 
 - **DePIN** (<!-- n:depin -->15<!-- /n -->): decentralized physical infrastructure networks
 - **GPU Compute** (<!-- n:compute -->6<!-- /n -->): rent out your GPU for AI and compute workloads
 - **Storage** (<!-- n:storage -->2<!-- /n -->): share disk space on decentralized storage networks
-- **Mining** (<!-- n:mining -->3<!-- /n -->): track the balance a mining pool holds for your payout address ([Mining](mining.md))
+- **Mining** (<!-- n:mining -->3<!-- /n -->): deploy a miner or track a pool by payout address ([Mining](mining.md))
 
-Of these, **<!-- n:docker -->17<!-- /n -->** can be deployed and managed automatically via Docker. The other <!-- n:tracked -->27<!-- /n --> (<!-- n:extension -->18<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes, <!-- n:mining -->3<!-- /n --> mining pools) are listed in the catalog with signup links, and their balances are read where a collector exists.
+Of these, **<!-- n:docker -->18<!-- /n -->** can be deployed and managed automatically via Docker. The catalog tracks the other <!-- n:tracked -->26<!-- /n --> (<!-- n:extension -->18<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes, <!-- n:mining_pools -->2<!-- /n --> mining pools). CashPilot reads their balances where a collector exists.
 
 Browse the full catalog in the [Service Guides](guides/index.md) section.
 

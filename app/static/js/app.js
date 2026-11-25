@@ -2058,16 +2058,18 @@ const CP = (() => {
       // while leaving the field genuinely empty, so the server fills it in per
       // worker and each host registers under its own name.
       const defaultIsTemplate = String(env.default || '').includes('{hostname}');
+      const minerDefault = svc.mining && env.default && !env.secret && !isIdentityField(env);
+      const showPlaceholder = defaultIsTemplate || minerDefault;
       return `
       <div class="form-group">
         ${label}${identityPickButton(svc, env)}
         <input class="form-input" type="${inputType}"${withId ? ` id="${id}"` : ''}
                data-slug="${svc.slug}" data-key="${env.key}"
-               placeholder="${escapeHtml(defaultIsTemplate ? String(env.default) : (env.description || ''))}"
-               value="${escapeHtml(defaultIsTemplate ? '' : (env.default || ''))}"
+               placeholder="${escapeHtml(showPlaceholder ? String(env.default) : (env.description || ''))}"
+               value="${escapeHtml(showPlaceholder ? '' : (env.default || ''))}"
                ${env.secret ? 'autocomplete="new-password"' : ''}
                ${env.pattern ? `pattern="${escapeHtml(env.pattern)}"` : ''}
-               ${env.required ? 'required' : ''}>
+               ${env.required && !minerDefault ? 'required' : ''}>
         ${hint}${isIdentityField(env) && _isOwner ? `<div class="identity-pick" data-pick-slug="${escapeHtml(svc.slug)}" data-pick-key="${escapeHtml(env.key)}"></div>` : ''}
       </div>`;
     }).join('');
@@ -3917,13 +3919,12 @@ const CP = (() => {
       return true;
     }
 
-    // Only the findings worth interrupting for. "check_these" is advisory —
-    // surfacing it as a modal on every deploy would train people to click
-    // through the one that matters.
+    // Show the hosting terms when the selected box reports a hosting exit.
+    // Keep routine advice out of the confirmation.
     const serious = [];
     assessments.forEach((a, i) => {
       (a && a.findings ? a.findings : [])
-        .filter(f => f.verdict === 'will_earn_nothing' || a.blocking)
+        .filter(f => f.verdict === 'will_earn_nothing' || f.kind === 'hosting_note' || a.blocking)
         .forEach(f => serious.push({worker: workerIds[i], message: f.message}));
     });
     if (!serious.length) return true;

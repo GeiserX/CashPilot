@@ -103,11 +103,11 @@ The dashboard is what you look at every day: the balances, a 7-day or 30-day ear
 
 ## What it runs
 
-- **<!-- n:docker -->17<!-- /n --> services run in Docker**, started by the worker from the catalog: no compose file to write. Bandwidth sharing (Honeygain, EarnApp, IPRoyal Pawns, PacketStream, Repocket, Traffmonetizer, ProxyRack, and more), MystNodes, Anyone Protocol, Storj and Sia (hostd).
+- **<!-- n:docker -->18<!-- /n --> services run in Docker**, started by the worker from the catalog: no compose file to write. Bandwidth sharing (Honeygain, EarnApp, IPRoyal Pawns, PacketStream, Repocket, Traffmonetizer, ProxyRack, and more), MystNodes, Anyone Protocol, Storj and Sia (hostd).
 - **<!-- n:extension -->18<!-- /n --> services run as a browser extension or a desktop app** (Grass, Nodepay, Dawn, Helium, and more). CashPilot lists them with signup links and reads their balances where a collector exists.
 - **Proxied copies**: an extra copy of a deployed service that leaves through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy, so one box earns on several IPs ([Proxied copies](proxies.md)).
 - **<!-- n:gpu -->6<!-- /n --> GPU compute services** (Salad, Vast.ai, io.net, Nosana, Golem, Flux) run on their own software, and Salad, Vast.ai, io.net and Nosana need a GPU; CashPilot tracks them the same way.
-- **<!-- n:mining -->3<!-- /n --> mining pools** (OCEAN, SupportXMR) are tracked by your payout address: point your own miner at one, and CashPilot reads the unpaid balance. See [Mining](mining.md).
+- **Mining** includes the deployable [XMRig CPU miner](guides/xmrig.md) and **<!-- n:mining_pools -->2<!-- /n --> tracked pools**. Add your payout address to OCEAN or SupportXMR to read its unpaid balance. See [Mining](mining.md).
 - <!-- n:active -->40<!-- /n --> active services and <!-- n:beta -->4<!-- /n --> in beta, <!-- n:catalogued -->55<!-- /n --> catalogued. The other <!-- n:retired -->11<!-- /n --> died, broke or were dropped; [Discontinued services](discontinued-services.md) says why, so nobody re-adds them.
 
 The [Service guides](guides/index.md) table shows, for every service, what it needs (residential IP, GPU, disk), how it runs, the minimum payout and its status. Services marked residential-only do not pay a datacenter IP; the rest run on a VPS.

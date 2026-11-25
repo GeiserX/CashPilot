@@ -89,6 +89,7 @@ def test_xmrig_command_sets_the_fee_and_does_not_allow_wallet_flags(xmrig):
     assert "--donate-level=9" not in args
     assert "--donate-level=1" in args
     assert "--randomx-wrmsr=-1" in args
+    assert "--randomx-no-numa" in args
     assert "--http-host=127.0.0.1" in args
     assert "--http-port=18088" in args
 
@@ -96,6 +97,17 @@ def test_xmrig_command_sets_the_fee_and_does_not_allow_wallet_flags(xmrig):
 @pytest.mark.parametrize("network_type", ["hosting", "residential", None])
 def test_hosting_note_is_advice_for_a_reported_hosting_exit(xmrig, network_type):
     result = preflight.assess(xmrig, system_info={"egress_network_type": network_type})
-    note = {"verdict": preflight.CHECK_YOURSELF, "message": xmrig["requirements"]["hosting_note"]}
+    note = {
+        "verdict": preflight.CHECK_YOURSELF,
+        "message": xmrig["requirements"]["hosting_note"],
+        "kind": "hosting_note",
+    }
     assert (note in result["findings"]) is (network_type == "hosting")
     assert result["blocking"] is False
+
+
+def test_a_second_miner_on_the_same_worker_shares_cpu(xmrig):
+    result = preflight.assess(xmrig, already_deployed_slugs={"xmrig"})
+    messages = [f["message"] for f in result["findings"]]
+    assert any("shares its CPU" in message for message in messages)
+    assert not any("shares the same connection" in message for message in messages)

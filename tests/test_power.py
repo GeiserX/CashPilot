@@ -248,6 +248,31 @@ class TestNetEndpoint:
         assert out["services"][0]["net"] is None
         assert out["total_net"] is None
 
+    @pytest.mark.parametrize("earned", [{}, {"supportxmr": 4.0}])
+    def test_a_running_miner_has_a_cost_without_its_own_earnings(self, earned):
+        out = self._call(
+            {"power_price_per_kwh": "0.20", "power_currency": "USD"},
+            earned,
+            [{"slug": "xmrig", "status": "running", "cpu_percent": 50.0}],
+        )
+        miner = next(row for row in out["services"] if row["platform"] == "xmrig")
+        assert miner["gross"] is None
+        assert miner["net"] is None
+        assert miner["cost"] == pytest.approx(6.552)
+        assert out["total_cost"] == pytest.approx(6.552)
+        assert out["total_gross"] == earned.get("supportxmr")
+        assert out["total_net"] is None
+
+    def test_a_running_miner_without_cpu_stats_has_unknown_cost(self):
+        out = self._call(
+            {"power_price_per_kwh": "0.20", "power_currency": "USD"},
+            {"supportxmr": 4.0},
+            [{"slug": "xmrig", "status": "running"}],
+        )
+        assert out["cost_known"] is False
+        assert out["total_cost"] is None
+        assert "no CPU reading" in out["cost_unavailable_reason"]
+
     def test_a_stopped_container_does_not_dilute_the_idle_floor(self):
         """A stopped container draws nothing and must not be counted."""
         busy = self._call(
