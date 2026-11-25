@@ -737,7 +737,7 @@ const CP = (() => {
       // A browser check caught this: a 24.90 USD payout rendered as "£18.55",
       // which is not a figure the user can match against anything.
       const nativeCurrency = p.currency || 'USD';
-      const native = `${Number(p.amount).toFixed(2)} ${nativeCurrency}`;
+      const native = `${formatAmount(p.amount, nativeCurrency)} ${nativeCurrency}`;
       // Compare CURRENCY CODES, not the formatted strings. formatCurrency
       // returns "$24.90" via Intl while `native` is "24.90 USD", so a string
       // comparison finds them different for a USD payout on a USD dashboard
@@ -801,7 +801,7 @@ const CP = (() => {
       const cur = item.currency || 'USD';
       const approx = effectiveDisplayCurrency(cur) !== cur
         ? ` (≈ ${escapeHtml(formatCurrency(item.balance, cur))})` : '';
-      what += `: ${escapeHtml(`${Number(item.balance).toFixed(2)} ${cur}`)}${approx}`;
+      what += `: ${escapeHtml(`${formatAmount(item.balance, cur)} ${cur}`)}${approx}`;
     }
     const when = obligationWhen(item);
     const parts = [`<span class="mw-title">${what}</span>`];
@@ -939,7 +939,7 @@ const CP = (() => {
       const pct = threshold > 0 ? Math.max(0, Math.min(100, (balance / threshold) * 100)) : 100;
       bar = `
         <div class="payout-progress-track" role="img"
-             aria-label="${escapeHtml(pct.toFixed(0))}% of the ${escapeHtml(threshold.toFixed(2))} minimum">
+             aria-label="${escapeHtml(pct.toFixed(0))}% of the ${escapeHtml(formatAmount(threshold, data.balance_currency || card.dataset.currency))} minimum">
           <div class="payout-progress-fill" style="width:${pct.toFixed(1)}%;"></div>
         </div>`;
     }
@@ -956,7 +956,7 @@ const CP = (() => {
     // counted down to a threshold in tokens. The endpoint now converts the
     // minimum into the balance's unit and states what that unit is.
     const unit = data.balance_currency || card.dataset.currency || '';
-    const money = value => (unit ? `${Number(value).toFixed(2)} ${unit}` : formatCurrency(value));
+    const money = value => (unit ? `${formatAmount(value, unit)} ${unit}` : formatCurrency(value));
 
     const paid = data.confirmed_payout_count || 0;
 
@@ -980,7 +980,7 @@ const CP = (() => {
     card.style.display = '';
     const payoutRows = (confirmed || []).map(p => `
         <li class="payout-row">
-          <span class="num">${escapeHtml(String(p.detected_at || '').slice(0, 10))} · ${escapeHtml(Number(p.amount).toFixed(2))} ${escapeHtml(p.currency || '')}${p.method ? ` · ${escapeHtml(p.method)}` : ''}</span>
+          <span class="num">${escapeHtml(String(p.detected_at || '').slice(0, 10))} · ${escapeHtml(formatAmount(p.amount, p.currency))} ${escapeHtml(p.currency || '')}${p.method ? ` · ${escapeHtml(p.method)}` : ''}</span>
           ${_canWrite ? `<button type="button" class="btn btn-ghost btn-sm" data-remove-payout="${escapeHtml(String(p.id))}" title="Remove this cash-out">Remove</button>` : ''}
         </li>`).join('');
     const payoutList = confirmed === null
@@ -6265,8 +6265,9 @@ const CP = (() => {
     } else if (_exchangeRates.crypto_usd && _exchangeRates.crypto_usd[nativeCurrency]) {
       usdAmount = amount * _exchangeRates.crypto_usd[nativeCurrency];
     } else {
-      // Unknown token with no rate — show raw value
-      return amount.toFixed(2) + ' ' + nativeCurrency;
+      // Unknown token with no rate — show raw value, in full: toFixed(2)
+      // showed 0.000613902892 XMR as "0.00 XMR" whenever XMR had no price.
+      return formatAmount(amount, nativeCurrency) + ' ' + nativeCurrency;
     }
 
     // Convert USD to the display currency — but ONLY label it as the display
@@ -6303,8 +6304,29 @@ const CP = (() => {
 
   function formatNative(val, currency) {
     if (!currency || currency === 'USD') return null;
-    const amount = parseFloat(val || 0);
-    return amount.toFixed(4) + ' ' + currency;
+    return formatAmount(parseFloat(val || 0), currency) + ' ' + currency;
+  }
+
+  // Fiat is USD plus every currency the rate table priced; a missing code is USD.
+  function isFiatCurrency(currency) {
+    const code = String(currency || 'USD').trim().toUpperCase();
+    return code === 'USD' || Boolean(_exchangeRates.fiat && _exchangeRates.fiat[code]);
+  }
+
+  // A balance or payout in its own unit, without dropping a coin's small units.
+  // Fiat keeps two decimals. Anything else (BTC, XMR, a provider's token) shows
+  // at least eight decimals (one satoshi), and more for a small amount so that
+  // eight significant digits show, up to twelve (one piconero). Trailing zeros
+  // are trimmed back to two. toFixed(2) turned a 0.01599128 BTC payout into
+  // "0.02", and toFixed(4) turned 0.000613902892 XMR into "0.0006". Same rule
+  // as payouts.format_amount.
+  function formatAmount(val, currency) {
+    const amount = Number(val);
+    if (isFiatCurrency(currency)) return amount.toFixed(2);
+    const places = Number.isFinite(amount) && amount !== 0
+      ? Math.min(12, Math.max(8, 7 - Math.floor(Math.log10(Math.abs(amount)))))
+      : 8;
+    return amount.toFixed(places).replace(/(\.\d\d\d*?)0+$/, '$1');
   }
 
   function setTextContent(id, text) {

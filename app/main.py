@@ -1490,7 +1490,7 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
             # The drop was one bad reading, not a cashout: the question is taken back.
             logger.info("%s balance recovered; withdrew the probable payout question", result.platform)
             return None
-        probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform))
+        probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform), result.currency)
         if not probable:
             return None
         payout_id = await database.record_probable_payout(
@@ -1552,7 +1552,7 @@ async def _pending_payout_alerts(seen: set[str] | None = None) -> list[dict[str,
             {
                 "kind": "payout",
                 "platform": platform,
-                "error": f"Balance dropped by {amount:.2f} {currency}".rstrip()
+                "error": f"Balance dropped by {payouts.format_amount(amount, currency)} {currency}".rstrip()
                 + " — was this a payout? Confirm or reject it."
                 if isinstance(amount, int | float)
                 else "A balance drop looks like a payout — confirm or reject it.",
@@ -9071,17 +9071,20 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
         signup_bonus = 0.0
         with contextlib.suppress(ValueError, TypeError):
             signup_bonus = float(all_config.get(f"{slug}_signup_bonus", "0") or "0")
-        balance_adjusted = round(max(0.0, balance - signup_bonus), 4)
+        # Twelve decimals (one piconero), like payouts.detect: four showed a
+        # 0.01599128 BTC balance as 0.016, more than the user has, and turned a
+        # small daily mining gain into "no change".
+        balance_adjusted = round(max(0.0, balance - signup_bonus), 12)
 
         entry = {
             "platform": slug,
             "name": svc["name"] if svc else slug,
-            "balance": round(balance, 4),
+            "balance": round(balance, 12),
             "balance_adjusted": balance_adjusted,
-            "signup_bonus": round(signup_bonus, 4),
+            "signup_bonus": round(signup_bonus, 12),
             "currency": row["currency"],
             "last_updated": row["date"],
-            "delta": round(delta, 4),
+            "delta": round(delta, 12),
             "cashout": {
                 # None, not True, when the minimum is unknown. Claiming
                 # eligibility we cannot establish sends the user to a withdrawal
@@ -10162,7 +10165,7 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     comparable = minimum is not None or payouts.min_payout(service) is None
     return {
         "slug": slug,
-        "current_balance": round(current, 6) if known else None,
+        "current_balance": round(current, 12) if known else None,
         # What the numbers above are actually in, so nothing has to assume.
         "balance_currency": balance_currency,
         "min_amount": minimum,

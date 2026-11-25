@@ -27,7 +27,8 @@ const grab = name => {
   const end = rest.search(/\n  (?:async )?function [A-Za-z_]/);
   return rest.slice(0, end > 0 ? end : 2000);
 };
-const fns = grab('effectiveDisplayCurrency') + '\n' + grab('formatCurrency');
+// formatCurrency writes an unpriced coin through formatAmount, which needs isFiatCurrency.
+const fns = ['effectiveDisplayCurrency', 'formatCurrency', 'isFiatCurrency', 'formatAmount'].map(grab).join('\n');
 
 const cases = [
   ['USD payout, USD dashboard          ', 'USD', 'USD', {USD:1}, {}, false],
