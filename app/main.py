@@ -36,7 +36,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -7531,6 +7531,28 @@ def _refuse_desktop_wallet_payload(path: str, body: dict[str, Any]) -> None:
                 raise _desktop_wallet_refusal(service)
 
 
+class _DesktopDeploySpec(BaseModel):
+    """The JSON fields CashPilot Desktop's workerDeploySpec reads."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    image: str
+    env: dict[str, str] = Field(default_factory=dict)
+    instance: int = 1
+
+
+def _desktop_deploy_body(path: str, spec: dict[str, Any], desktop_json: dict[str, Any] | None) -> dict[str, Any]:
+    _refuse_desktop_wallet_payload(path, spec)
+    if not re.fullmatch(r"/api/containers/[a-z0-9][a-z0-9_.-]*/deploy", path):
+        raise HTTPException(status_code=409, detail="CashPilot Desktop cannot take this request from the dashboard.")
+    try:
+        body = _DesktopDeploySpec.model_validate(spec if desktop_json is None else desktop_json)
+    except ValidationError:
+        # Validation errors carry submitted values, including credentials.
+        raise HTTPException(status_code=422, detail="Invalid CashPilot Desktop deploy request.") from None
+    return body.model_dump(exclude_unset=True)
+
+
 async def _proxy_to_worker(
     worker_id: int,
     method: str,
@@ -7542,6 +7564,7 @@ async def _proxy_to_worker(
     marked: bool = False,
     allow_plain_http: bool = True,
     headers: dict[str, str] | None = None,
+    desktop_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Proxy one request to a worker's REST API and return its parsed JSON.
 
@@ -7556,7 +7579,7 @@ async def _proxy_to_worker(
     """
     worker = await database.get_worker(worker_id)
     if json is not None and worker and placement.is_desktop(placement.system_info(worker)):
-        _refuse_desktop_wallet_payload(path, json)
+        json = _desktop_deploy_body(path, json, desktop_json)
     extra = headers
     url, headers = await _get_verified_worker_url(worker)
     if extra:
@@ -7737,7 +7760,13 @@ async def _proxy_worker_deploy(
         # Only after _confirm_leave_route checked the owner's password.
         spec = {**spec, "route_approval": await _sign_for_worker(worker_id, step_up.ACTION_LEAVE_ROUTE, slug)}
     return await _proxy_to_worker(
-        worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
+        worker_id,
+        "POST",
+        f"/api/containers/{slug}/deploy",
+        json=spec,
+        timeout=_deploy_timeout(slug),
+        # Desktop gets its runtime settings from its own catalog.
+        desktop_json={key: spec[key] for key in _DesktopDeploySpec.model_fields if key in spec},
     )
 
 
@@ -12507,6 +12536,7 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         # An approval comes only from the password step-up of /api/deploy; one
         # pasted into a raw spec is dropped, so this route can never run another
         # image than the catalog's on a service with critical volumes.
+        original_spec = body.spec.copy()
         body.spec.pop("approval", None)
         # The same for leaving a route, and a route this spec claims is not
         # one it deploys: this route runs on the worker's own IP only.
@@ -12531,7 +12561,10 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         copy = _copy_number(body.spec)
         held = await _reserve_pending_identities(body.slug, worker_id, copy if copy and copy > 0 else 1, raw_env)
         try:
-            result = await _proxy_to_worker(worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec)
+            # The Desktop schema must also reject fields the Docker route strips.
+            result = await _proxy_to_worker(
+                worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec, desktop_json=original_spec
+            )
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, body.slug, worker_id)
             if not _outcome_unknown(exc):

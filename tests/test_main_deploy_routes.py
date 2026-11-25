@@ -117,6 +117,7 @@ class TestDesktopWalletDeploys:
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.prior_deployment_spec", new_callable=AsyncMock, return_value=None),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main.database.record_identities", new_callable=AsyncMock),
             patch("app.main._spawn", lambda coro: coro.close()),
             patch("httpx.AsyncClient.post", post),
         ):
@@ -173,6 +174,24 @@ class TestDesktopWalletDeploys:
         )
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": slug, "spec": spec})
         self._assert_wallet_refusal(response, post, fake_wallet_seed)
+
+    @pytest.mark.parametrize("field", ["Env", "unexpected", "approval"])
+    def test_raw_desktop_deploy_requires_exact_schema_keys(self, client, worker_target, fake_wallet_seed, field):
+        _, post = worker_target
+        spec = {"image": "honeygain/honeygain:latest", "env": {}, field: {"HOSTD_WALLET_SEED": fake_wallet_seed}}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        post.assert_not_awaited()
+        assert response.status_code == 422
+        assert "deploy request" in response.json()["detail"]
+        assert fake_wallet_seed not in response.text
+
+    def test_raw_desktop_deploy_accepts_the_desktop_fields(self, client, worker_target):
+        _, post = worker_target
+        spec = {"image": "honeygain/honeygain:latest", "env": {"EMAIL": "user@example.test"}, "instance": 1}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        assert response.status_code == 200
+        post.assert_awaited_once()
+        assert post.await_args.kwargs["json"] == spec
 
     def test_fleet_copy_gets_the_wallet_refusal(self, client, worker_target):
         _, post = worker_target
@@ -293,7 +312,7 @@ class TestApiDeploy:
         assert resp.status_code == 200, resp.text
         assert sent["url"] == "http://192.168.1.30:8086/api/containers/honeygain/deploy"
         assert sent["headers"]["Authorization"] == "Bearer desk-key"
-        assert sent["json"]["image"] == "test"
+        assert sent["json"] == {"image": "test", "env": {}}
 
     def test_deploy_success(self, client):
         svc = {
