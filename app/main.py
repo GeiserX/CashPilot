@@ -10348,7 +10348,12 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 price_per_kwh=(price or None) if fx_ok else None,
                 metered=power.is_metered(info),
                 dedicated=_worker_flag(config, worker, "dedicated"),
-                gross_measured=worker.get("id") not in hosting or worker.get("id") in read,
+                # A host that lists nothing is a measured zero only when it can
+                # read its own Docker socket. A blind one (docker_available not
+                # true) may be running anything, so its empty list is no reading.
+                gross_measured=(
+                    worker.get("id") in read if worker.get("id") in hosting else not placement.is_blind(worker)
+                ),
             )
         )
         assessed[-1]["break_even_tariff"] = _break_even_local(

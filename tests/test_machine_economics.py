@@ -332,6 +332,28 @@ class TestEndpoint:
         assert charlie["break_even_price_per_kwh"] is None
         assert charlie["break_even_tariff"] is None
 
+    def test_an_empty_list_from_a_blind_worker_is_not_a_measured_zero(self):
+        """Docker unreadable means the empty container list is no reading at all."""
+        out = self._call(
+            config={"power_currency": "USD", "worker_c1_watts": "18"},
+            workers=[{"id": 1, "name": "charlie", "system_info": {"docker_available": False}}],
+            earned={},
+        )
+        charlie = out["machines"][0]
+        assert charlie["break_even_tariff"] is None
+        assert "loses money at any electricity price" not in charlie["summary"]
+
+    def test_an_empty_list_from_a_worker_that_sees_docker_is_a_measured_zero(self):
+        """The mirror: a host that can read its socket and runs nothing earns 0."""
+        out = self._call(
+            config={"power_currency": "USD", "worker_c1_watts": "18"},
+            workers=[{"id": 1, "name": "charlie", "system_info": {"docker_available": True}}],
+            earned={},
+        )
+        charlie = out["machines"][0]
+        assert charlie["break_even_tariff"] == {"price_per_kwh": 0.0, "currency": "USD"}
+        assert "loses money at any electricity price" in charlie["summary"]
+
     def test_a_read_zero_still_breaks_even_at_zero(self):
         """The mirror: a gross that WAS read and is 0.0 keeps the strong claim."""
         out = self._call(
