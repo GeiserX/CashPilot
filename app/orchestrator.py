@@ -386,14 +386,22 @@ def _container_name(slug: str, instance: int = 1) -> str:
     return base if instance <= 1 else f"{base}-{instance}"
 
 
-def deploy_target_exists(slug: str, instance: int) -> bool:
-    """Read the exact Docker name a direct deploy would replace, even if stopped."""
-    client = _get_client()
+def deploy_target(client: Any, name: str) -> Any | None:
+    """Read the exact Docker name a deploy would replace, even if stopped."""
     try:
-        client.containers.get(_container_name(slug, instance))
+        return client.containers.get(name)
     except NotFound:
-        return False
-    return True
+        return None
+    except DockerException as exc:
+        raise ContainerRuntimeError("Could not look up the deploy container in Docker.", 503) from exc
+
+
+def require_deploy_target(expected: str | None, container: Any | None) -> None:
+    """Compare IDs while the caller holds the deploy lock."""
+    if expected is not None:
+        actual = "none" if container is None else container.id
+        if actual != expected:
+            raise DeployTargetChanged(actual)
 
 
 def _instance_of(container: Any) -> int:
@@ -900,6 +908,16 @@ class ContainerRuntimeError(RuntimeError):
         self.status_code = status_code
 
 
+class DeployTargetChanged(ContainerRuntimeError):
+    def __init__(self, actual: str):
+        super().__init__(
+            "The container on this worker no longer matches the deploy request. "
+            "Review the current container and use Redeploy to confirm a replacement.",
+            409,
+        )
+        self.actual = actual
+
+
 class WalletSeedRefused(ContainerRuntimeError):
     """The wallet step of a deploy said no (app/wallet_seed.py); nothing was touched.
 
@@ -1178,6 +1196,7 @@ def deploy_raw(
     name: str | None = None,
     leave_route: bool = False,
     replaced_identity: dict[str, str] | None = None,
+    expected_container: str | None = None,
     deadline: float | None = None,
     start: bool = True,
     pulled: bool = False,
@@ -1229,8 +1248,13 @@ def deploy_raw(
     """
     if deadline is None:
         deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
-    client = _get_client()
+    try:
+        client = _get_client()
+    except RuntimeError as exc:
+        raise ContainerRuntimeError(str(exc), 503) from exc
     name = name or _container_name(slug, instance)
+    if expected_container is not None:
+        require_deploy_target(expected_container, deploy_target(client, name))
     # A copy: the wallet step takes the seed variable out of it.
     env = dict(env or {})
     if name.startswith(TUNNEL_PREFIX):
@@ -1311,8 +1335,11 @@ def deploy_raw(
     identity_before = _identity_snapshot(name)
     held_before = _MISMATCH_HELD.get(name)
     stopped_before = name in user_stopped()
+    old = deploy_target(client, name)
+    require_deploy_target(expected_container, old)
     try:
-        old = client.containers.get(name)
+        if old is None:
+            raise NotFound(name)
         if not start:
             raise ContainerRuntimeError(
                 f"{name} already exists, so nothing was restored. A restore only creates a new container.", 409
@@ -1421,6 +1448,10 @@ def deploy_raw(
             )
             raise _deploy_failure(exc, restored, slug) from exc
     except NotFound:
+        if old is not None:
+            require_deploy_target(expected_container, deploy_target(client, name))
+            if expected_container is not None:
+                raise DeployTargetChanged(old.id) from None
         _ensure_volumes(client, volumes)
         _prepare_wallet(client, slug, name, image, env, volumes, wallet_seed, wallet, start and not joined)
 
@@ -1567,6 +1598,9 @@ def deploy_raw(
         _remove_replaced(replaced, name, slug)
         raise
     except Exception as exc:
+        conflict = (
+            expected_container is not None and created is None and isinstance(exc, APIError) and exc.status_code == 409
+        )
         restored = _roll_back(
             client,
             name,
@@ -1577,10 +1611,12 @@ def deploy_raw(
             stopped_before,
             held_before=held_before,
             created=created,
-            create_only=not start,
+            create_only=not start or conflict,
             gated=gated,
             joined=joined,
         )
+        if conflict and (current := deploy_target(client, name)) is not None and current.id != expected_container:
+            raise DeployTargetChanged(current.id) from None
         raise _deploy_failure(exc, restored, slug) from exc
     if gated:
         _mark_failed(name, False)

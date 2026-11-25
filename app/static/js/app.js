@@ -42,6 +42,10 @@ const CP = (() => {
             && window.confirm(`${asked.message}\n\nDeploy anyway?`)) {
           return api(path, { ...opts, sharedOk: true, body: { ...opts.body, allow_shared_identity: true } });
         }
+        if (asked && asked.error === 'confirm_deploy_targets' && opts.body
+            && !opts.body.expected_containers && window.confirm(asked.message)) {
+          return api(path, { ...opts, body: { ...opts.body, expected_containers: asked.expected_containers } });
+        }
         // detail can be a structured refusal ({error, message, ...}); surface
         // its message instead of the useless "[object Object]".
         let detail = data && data.detail;
@@ -4664,7 +4668,7 @@ const CP = (() => {
     // A box with only copies left: rebuild those, never its renamed original.
     const jobs = [
       ...(base ? ids : []).map(id => [id, `/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true, replace_existing: true } }]),
-      ...(copies ? copyIds : []).map(id => [id, `/api/deploy/${slug}/device-names/copies?worker_id=${id}`, { method: 'POST' }]),
+      ...(copies ? copyIds : []).map(id => [id, `/api/deploy/${slug}/device-names/copies?worker_id=${id}`, { method: 'POST', body: { replace_existing: true } }]),
     ];
     for (const [id, url, opts] of jobs) {
       try {
@@ -5602,8 +5606,8 @@ const CP = (() => {
     const input = document.getElementById(`identity-change-value-${id}`);
     const value = input ? input.value.trim() : '';
     if (!row || !value) { toast('Type the new id first', 'warning'); return; }
-    if (!window.confirm(`Change the ${row.label} of ${row.service} on ${row.worker}? CashPilot makes this one `
-      + 'container again with the new id, and the provider sees a new device.')) return;
+    if (!window.confirm(`Change the ${row.label} of ${row.service} on ${row.worker}? CashPilot rebuilds `
+      + 'this service’s instances on this worker and its running proxied copies. The provider may see new devices.')) return;
     try {
       const res = await api(`/api/identities/${encodeURIComponent(id)}/change`, { method: 'POST', body: { value, replace_existing: true } });
       // The notes a redeploy shows: what it kept, a proxied copy left on its old

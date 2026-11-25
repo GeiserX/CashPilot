@@ -114,3 +114,29 @@ test('a mixed deploy approves replacement only on the box being scaled', async (
     ['/api/deploy/demo?worker_id=1', true],
   ]);
 });
+
+for (const accept of [true, false]) {
+  test(`the inventory ID is sent only after acceptance (${accept})`, async () => {
+    const expected = { '1': 'a'.repeat(64), p4: 'b'.repeat(64) };
+    const posts = [];
+    const questions = [];
+    const fetch = async (_path, config) => {
+      posts.push(JSON.parse(config.body));
+      if (posts.length > 1) {
+        return { ok: false, status: 409, json: async () => ({
+          detail: { error: 'deploy_target_changed', message: 'The container changed.' },
+        }) };
+      }
+      return { ok: false, status: 409, json: async () => ({
+        detail: { error: 'confirm_deploy_targets', message: 'Replace instance 1 and proxied copy p4?', expected_containers: expected },
+      }) };
+    };
+    const window = { confirm: message => { questions.push(message); return accept; } };
+    const api = new Function('fetch', 'window', `${extract(app, 'api')}\nreturn api;`)(fetch, window);
+    const attempt = api('/api/deploy/demo?worker_id=1', { method: 'POST', body: { replace_existing: true } });
+    await assert.rejects(attempt, accept ? /container changed/ : /Replace instance 1/);
+    assert.equal(questions.length, 1);
+    assert.equal(posts.length, accept ? 2 : 1);
+    if (accept) assert.deepEqual(posts[1].expected_containers, expected);
+  });
+}

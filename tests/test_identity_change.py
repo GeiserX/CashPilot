@@ -147,7 +147,9 @@ def _deploys(sent):
     return [
         s
         for s in sent
-        if s["method"] == "POST" and s["path"].endswith("/deploy") and s["path"].startswith("/api/containers/")
+        if s["method"] == "POST"
+        and s["path"].endswith(("/deploy", "/deploy-checked"))
+        and s["path"].startswith("/api/containers/")
     ]
 
 
@@ -159,10 +161,11 @@ def _deploys(sent):
 def test_device_id_change_forwards_the_owners_replacement_approval(db):
     _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)
     [row] = _rows()
-    answer, sent = _change(row["id"], UUID_B, body={"replace_existing": True})
+    with patch.object(main, "_worker_deploy_target", AsyncMock(return_value=("a" * 64, True))):
+        answer, sent = _change(row["id"], UUID_B, body={"expected_containers": {"1": "a" * 64}})
     assert not isinstance(answer, HTTPException)
     [deploy] = _deploys(sent)
-    assert deploy["json"]["replace_existing"] is True
+    assert deploy["json"]["expected_container"] == "a" * 64
 
 
 class TestWhichRows:
@@ -512,7 +515,12 @@ class TestProxiedCopies:
                 patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
                 patch.object(main, "_proxy_worker_call", side_effect=worker_call),
             ]
-            answer = await _with(patches, lambda: main.api_identity_change(_Req({"value": RACK_B}), row["id"]))
+            answer = await _with(
+                patches,
+                lambda: main.api_identity_change(
+                    _Req({"value": RACK_B, "expected_containers": {f"p{running}": "a" * 64}}), row["id"]
+                ),
+            )
             return answer, sent, running, stopped
 
         answer, sent, running, stopped = asyncio.run(go())

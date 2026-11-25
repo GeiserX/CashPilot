@@ -109,7 +109,6 @@ class TestItIsRefusedBeforeAnythingIsTouched:
         with (
             patch.object(worker_api, "_verify_api_key"),
             patch.object(worker_api, "_validate_deploy_spec"),
-            patch.object(orchestrator, "deploy_target_exists", return_value=False),
             patch.object(
                 worker_api.orchestrator,
                 "deploy_raw",

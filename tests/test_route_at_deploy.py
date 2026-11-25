@@ -450,7 +450,7 @@ class TestTheWorkerProxiedRoutes:
         """The real proxy_tunnel.deploy, which picks the tunnel under its lock, with no Docker below it."""
         seen = {}
 
-        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
+        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
             seen["own_tunnel"] = own_tunnel
             seen["marked_first"] = route_gate.routed().get(slug)
             if isinstance(outcome, Exception):
@@ -756,7 +756,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copy_made = threading.Event()
         copies = []
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
             if threading.current_thread() is routed_thread:
                 raise RuntimeError("tunnel did not start")
             copies.append(own_tunnel)
@@ -817,7 +817,9 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(
             proxy_tunnel,
             "_deploy",
-            lambda slug, pid, earner, proxy, own_ip, *, own_tunnel, deadline: make(slug, pid, own_tunnel),
+            lambda slug, pid, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None: make(
+                slug, pid, own_tunnel
+            ),
         )
         # A start of a copy whose tunnel is gone rebuilds it by the route it reads.
         monkeypatch.setattr(
@@ -876,7 +878,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copies = []
         copy_done = threading.Event()
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
             if threading.current_thread() is routed_thread:
                 raise RuntimeError("tunnel did not start")
             copies.append(own_tunnel)
@@ -912,7 +914,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copy_made = threading.Event()
         copies = []
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
             copies.append(own_tunnel)
             copy_made.set()
             return {"container_id": "c"}
@@ -926,12 +928,8 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(proxy_tunnel, "_deploy", tunnel_deploy)
         monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
         monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
-        monkeypatch.setattr(orchestrator, "deploy_target_exists", lambda slug, instance: False)
         monkeypatch.setattr(orchestrator, "deploy_raw", deploy_raw)
-        assert (
-            worker_api._deploy_direct(slug="honeygain", instance=1, replace_existing=False, leave_route=True)
-            == "direct-id"
-        )
+        assert worker_api._deploy_direct(slug="honeygain", instance=1, leave_route=True) == "direct-id"
         assert copy_made.wait(5)
         assert route_gate.routed() == {}
         assert copies == [False]  # never a tunnel of its own that no route covers
@@ -951,12 +949,9 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
         monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
         monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
-        monkeypatch.setattr(orchestrator, "deploy_target_exists", lambda slug, instance: False)
         monkeypatch.setattr(orchestrator, "deploy_raw", deploy_raw)
         assert (
-            worker_api._deploy_direct(
-                slug="honeygain", image="honeygain/honeygain:1", instance=1, replace_existing=False, leave_route=True
-            )
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", instance=1, leave_route=True)
             == "direct-id"
         )
         assert held_at == {"pull": False, "deploy": False}
@@ -981,9 +976,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         client.images.pull.side_effect = lambda image: steps.append(("pull", image))
         client.containers.run.side_effect = lambda **kw: steps.append("run") or MagicMock(id="direct-id")
         assert (
-            worker_api._deploy_direct(
-                slug="honeygain", image="honeygain/honeygain:1", instance=1, replace_existing=False, leave_route=True
-            )
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", instance=1, leave_route=True)
             == "direct-id"
         )
         assert steps == [("pull", "honeygain/honeygain:1"), "run"]
@@ -1003,9 +996,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         client.images.pull.side_effect = ImageNotFound("manifest for honeygain/honeygain:typo not found")
         client.images.get.side_effect = ImageNotFound("No such image: honeygain/honeygain:typo")
         with pytest.raises(orchestrator.ContainerRuntimeError) as err:
-            worker_api._deploy_direct(
-                slug="honeygain", image="honeygain/honeygain:typo", instance=1, replace_existing=False, leave_route=True
-            )
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:typo", instance=1, leave_route=True)
         assert "manifest for honeygain/honeygain:typo not found" in str(err.value)
         assert client.images.pull.call_count == 1
         client.containers.run.assert_not_called()
@@ -1054,7 +1045,6 @@ class TestAWorkerThatStartsWithoutDocker:
             patch.object(worker_api.lan_fence, "guard", return_value={}),
             patch.object(worker_api.proxy_tunnel, "recover_moves", return_value=[]),
             patch.object(worker_api.proxy_tunnel, "sweep_test_tunnels", return_value=[]),
-            patch.object(worker_api, "_migrate_proxied"),
         ):
             asyncio.run(run())
         return hold.call_count

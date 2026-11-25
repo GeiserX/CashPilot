@@ -115,8 +115,39 @@ class TestItIsRefusedBeforeAnythingIsTouched:
         assert err.status_code == 503
 
 
+def test_a_container_that_arrives_during_the_image_pull_is_left_running():
+    old = MagicMock(id="a" * 64)
+    client = _client()
+    current = None
+
+    def get(name):
+        if current is None:
+            raise orchestrator.NotFound(name)
+        return current
+
+    def pull(client, image, deadline):
+        nonlocal current
+        current = old
+
+    client.containers.get.side_effect = get
+    with (
+        patch.object(orchestrator, "_CONTAINER_RUNTIME", ""),
+        patch.object(orchestrator, "_CONTAINER_RUNTIME_OVERRIDES", ""),
+        patch.object(orchestrator, "_CONTAINER_NETWORK", ""),
+        patch.object(orchestrator, "_get_client", return_value=client),
+        patch.object(orchestrator, "_pull_until", side_effect=pull),
+        pytest.raises(orchestrator.DeployTargetChanged) as refused,
+    ):
+        orchestrator.deploy_raw("honeygain", "image:tag", expected_container="none")
+    assert refused.value.actual == old.id
+    old.stop.assert_not_called()
+    old.remove.assert_not_called()
+    client.containers.run.assert_not_called()
+
+
 class TestTheWorkerApi:
     def _post(self, default, installed, old):
+        old.id = "a" * 64
         client = _client(old=old)
         with (
             patch.object(orchestrator, "_CONTAINER_RUNTIME", default),
@@ -128,7 +159,7 @@ class TestTheWorkerApi:
             patch.object(worker_api, "_validate_deploy_spec"),
         ):
             return TestClient(worker_api.app).post(
-                "/api/containers/honeygain/deploy", json={"image": "x", "replace_existing": True}
+                "/api/containers/honeygain/deploy", json={"image": "x", "expected_container": old.id}
             )
 
     def test_a_missing_runtime_is_a_409_that_says_why(self):

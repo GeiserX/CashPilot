@@ -326,6 +326,38 @@ def _deploy(slug, proxy=None, proxy_id=3):
     )
 
 
+@pytest.mark.parametrize("routed", [False, True])
+def test_worker_proxy_deploy_requires_the_approved_id_once(docker, tmp_path, routed):
+    client = TestClient(worker_api.app)
+    path = "/api/proxied/honeygain/3/deploy"
+    body = {"earner": {"image": "honeygain/honeygain"}, "proxy": _socks(), "routed": routed}
+    with (
+        patch.object(worker_api.route_gate, "ROUTED_MARKER", str(tmp_path / ".routed")),
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api, "_validate_proxied"),
+        patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+    ):
+        first = client.post(path, json=body)
+        assert first.status_code == 200, first.text
+        original = first.json()["container_id"]
+        assert client.get(path).json()["expected_container"] == original
+
+        refused = client.post(path, json=body)
+        assert refused.status_code == 409
+        assert refused.json()["detail"]["current_container"] == original
+        assert docker.named("cashpilot-honeygain-p3").id == original
+
+        body["expected_container"] = original
+        approved = client.post(path, json=body)
+        assert approved.status_code == 200, approved.text
+        successor = approved.json()["container_id"]
+        assert successor != original
+        replay = client.post(path, json=body)
+        assert replay.status_code == 409
+        assert replay.json()["detail"]["current_container"] == successor
+        assert docker.named("cashpilot-honeygain-p3").id == successor
+
+
 def _member_ids(docker, tunnel):
     return sorted(
         c.name for c in docker.by_id.values() if c.attrs["HostConfig"]["NetworkMode"] == f"container:{tunnel.id}"

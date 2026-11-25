@@ -1453,7 +1453,7 @@ class TestTheWorkerReportsTheReplacedIds:
                 json={
                     "image": "honeygain/honeygain",
                     "env": {"HONEYGAIN_DEVICE_NAME": "new"},
-                    "replace_existing": True,
+                    "expected_container": old.id if old is not None else "none",
                 },
             )
 

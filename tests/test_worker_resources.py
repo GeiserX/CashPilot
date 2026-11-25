@@ -339,7 +339,6 @@ class TestWorkerDeployEndpoint:
             return "container-id-123"
 
         with (
-            patch("app.orchestrator.deploy_target_exists", return_value=False),
             patch("app.worker_api.orchestrator.deploy_raw", side_effect=_fake_deploy),
         ):
             resp = self._client().post(
@@ -362,7 +361,6 @@ class TestWorkerDeployEndpoint:
             return "container-id-123"
 
         with (
-            patch("app.orchestrator.deploy_target_exists", return_value=False),
             patch("app.worker_api.orchestrator.deploy_raw", side_effect=_fake_deploy),
         ):
             resp = self._client().post(

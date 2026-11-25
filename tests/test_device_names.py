@@ -105,8 +105,8 @@ def _post(client, path, body, workers, recorded=None, role="owner", wid=None, co
         await _mark_pending(proxy_id, worker_id, slug, not current)
         return current
 
-    async def _fake_deploy(worker_id, slug, spec, *, replace_existing=False):
-        sent.append({**spec, "replace_existing": True} if replace_existing else spec)
+    async def _fake_deploy(worker_id, slug, spec, *, expected_container="none"):
+        sent.append({**spec, "expected_container": expected_container})
         return {"container_id": "c1"}
 
     by_id = {w["id"]: w for w in workers}
@@ -364,7 +364,11 @@ def _rename_with_copies(
         patch("app.main.proxies.worker_proxy_spec", return_value={}),
         patch("app.main._register_device", new_callable=AsyncMock),
     ):
-        body = {"env": {}, "rename_devices": rename}
+        body = {
+            "env": {},
+            "rename_devices": rename,
+            "expected_containers": {f"p{copy['proxy_id']}": "a" * 64 for copy in copies},
+        }
         resp, sent = _post(
             client,
             path,
@@ -829,7 +833,7 @@ class TestRunningBoxesCanBeRenamed:
         assert resp.status_code == 200, resp.text
         assert sent[0]["env"]["EMAIL"] == "me@x.io"
         assert sent[0]["env"]["PASSWORD"] == "stored-pw", "the blank box keeps the stored password"
-        assert sent[0]["replace_existing"] is True
+        assert sent[0]["expected_container"] == "none"
 
     def test_that_redeploy_with_the_missing_value_left_blank_is_refused_by_name(self, client):
         resp, sent = self._form_then_server(client, {"EMAIL": "", "PASSWORD": ""})

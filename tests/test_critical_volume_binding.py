@@ -319,7 +319,6 @@ def worker(monkeypatch):
         return "cid"
 
     monkeypatch.setattr(worker_api.orchestrator, "deploy_raw", fake_deploy)
-    monkeypatch.setattr(orchestrator, "deploy_target_exists", lambda slug, instance: False)
     monkeypatch.setattr(worker_api, "_validate_runtime", lambda runtime: None)
     monkeypatch.setattr(worker_api.lan_fence, "refresh_outside", lambda: None)
     client = TestClient(worker_api.app, raise_server_exceptions=False)
