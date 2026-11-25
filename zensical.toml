@@ -123,6 +123,7 @@ nav = [
         ] },
       { Mining = [
           { OCEAN = "guides/ocean.md" },
+          { SupportXMR = "guides/supportxmr.md" },
         ] },
     ] },
   { Mining = "mining.md" },

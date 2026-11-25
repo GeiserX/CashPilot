@@ -5,6 +5,7 @@ The **Mining** section of the catalog is for crypto you mine with your own hardw
 | Pool | Coin | Guide |
 |---|---|---|
 | OCEAN | Bitcoin | [OCEAN](guides/ocean.md) |
+| SupportXMR | Monero | [SupportXMR](guides/supportxmr.md) |
 
 ## Accrued is not received
 
@@ -14,7 +15,7 @@ CashPilot keeps the two apart:
 
 - The **balance** of a pool is its unpaid balance: the same "waiting" figure every provider's balance is. The catalog marks each pool entry with `collector.accrual: pool`, which says its balance is accrued, not received.
 - When the pool pays you, the unpaid balance drops. The dashboard asks you to confirm that drop as a **payout**. Only a confirmed payout counts as received, in the lifetime total and on the Payouts page.
-- The cash-out reminder skips pools. They pay by themselves, so there is nothing for you to request.
+- The cash-out reminder skips pools that pay automatically. Some pools also let you request an early payout. See the pool's guide for the terms.
 
 ## No keys, ever
 

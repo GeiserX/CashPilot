@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app import database, main
+from app.collectors.base import EarningsResult
 
 
 @pytest.fixture
@@ -91,6 +92,25 @@ def test_detection_withdraws_a_one_reading_dip(db):
     with patch.object(main.database, "get_latest_balance", AsyncMock(return_value=0.07)):
         assert asyncio.run(main._detect_payout(result)) is None
     assert _pending("honeygain") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("balance", "still_pending"),
+    [pytest.param(0.011, False, id="full-recovery"), pytest.param(0.010999999999, True, id="one-piconero-short")],
+)
+async def test_supportxmr_recovers_an_exact_minimum_drop(db, monkeypatch, balance, still_pending):
+    monkeypatch.setattr(main, "_push_alert", AsyncMock())
+    await database.upsert_earnings("supportxmr", 0.011, "XMR")
+    await main._detect_payout(EarningsResult(platform="supportxmr", balance=0.001, currency="XMR"))
+    assert [p["amount"] for p in await database.get_payouts("supportxmr")] == [0.01]
+    assert await database.get_alert_subjects("payout") == {"supportxmr"}
+    await database.upsert_earnings("supportxmr", 0.001, "XMR")
+
+    await main._detect_payout(EarningsResult(platform="supportxmr", balance=balance, currency="XMR"))
+
+    assert [p["amount"] for p in await database.get_payouts("supportxmr")] == ([0.01] if still_pending else [])
+    assert await database.get_alert_subjects("payout") == ({"supportxmr"} if still_pending else set())
 
 
 def test_withdraw_neither_commits_nor_rolls_back_another_tasks_write(db):

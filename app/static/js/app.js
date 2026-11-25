@@ -3060,7 +3060,7 @@ const CP = (() => {
         redirect: 'You will be redirected to the service dashboard to complete the payout.',
         api: 'Payout will be triggered via the service API.',
         manual: 'Follow the instructions below to claim your earnings.',
-        auto: 'Payouts happen automatically when the minimum threshold is reached.',
+        auto: 'The provider sends payouts automatically. Check its payout terms for the threshold.',
       };
       const extIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
 

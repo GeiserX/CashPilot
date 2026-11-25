@@ -185,6 +185,16 @@ class TestParsingRealShapes:
         assert out.balance == fx["parsed"]
         assert out.currency == fx["currency"]
 
+    def test_supportxmr_reads_piconero(self):
+        from app.collectors.supportxmr import SupportXMRCollector
+
+        fx = _fixture("supportxmr")
+        fund = "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A"
+        out = self._run(SupportXMRCollector(address=fund), [fx["sample"]])
+        assert out.error is None
+        assert out.balance == pytest.approx(fx["parsed"], abs=1e-15)
+        assert out.currency == fx["currency"]
+
     def test_a_renamed_field_is_caught_rather_than_read_as_zero(self):
         """The failure this bead exists for: the provider renames the key."""
         from app.collectors.salad import SaladCollector

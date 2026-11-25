@@ -104,6 +104,7 @@ What a cited con or pro may rest on:
 | <a href="#proxyrack">ProxyRack</a> | F | 3 of 20 | 8 | <span class="ratings-con" title="ProxyRack&#x27;s help centre says removing a device takes that device&#x27;s earnings off your account, and they come back only if the same device is added again.">ProxyRack's help centre says removing a device takes that device's earnings off your account, and they come back only if the same device is added again.</span> | 2026-11-04 |
 | <a href="#salad">Salad</a> | F | 3 of 20 | 8 | <span class="ratings-con" title="CashPilot does not run Salad: you use the provider&#x27;s own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
 | <a href="#nodepay">Nodepay</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.">In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.</span> | 2026-11-04 |
+| <a href="#supportxmr">SupportXMR</a> | F | 2 of 20 | 8 | <span class="ratings-con" title="Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.">Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.</span> | 2026-11-25 |
 | <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="UpRock&#x27;s help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.">UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.</span> | 2026-11-04 |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="The extension earns points; no token distribution to node operators had been confirmed by October 2026.">The extension earns points; no token distribution to node operators had been confirmed by October 2026.</span> | 2026-11-04 |
 | <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR.">Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR.</span> | 2026-11-04 |
@@ -1109,6 +1110,34 @@ What a cited con or pro may rest on:
 - In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points. [Source](https://coinmarketcap.com/academy/article/nodepay-airdrop-guide-everything-you-need-to-know), checked 2026-11-04.
 - Rewards are points converted to the NC token, so their value rests on the token. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
 - CashPilot does not run Nodepay: you use the provider's own browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/nodepay.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="supportxmr"></a>
+
+### SupportXMR
+
+**Grade F**, 2 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [SupportXMR](guides/supportxmr.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Not reviewed. The pool's API lists payments for an address, but we did not check a payout ourselves. |
+| Payout terms | Fair | Monero only, a 0.6% pool fee, and 0.1 XMR before an automatic payout (0.01 XMR on request, for a 0.001 XMR fee). |
+| Account safety | Unknown | There is no account to ban; we found no reports of withheld balances either way. |
+| Fit with how CashPilot runs it | Fair | CashPilot runs nothing for SupportXMR; it reads the balance of a miner you run yourself. |
+| Traffic transparency | Unknown | A pool sells no traffic; it turns your hashrate into Monero blocks. Not reviewed beyond that. |
+| Privacy | Unknown | Not reviewed. Address stats are public on supportxmr.com by design. |
+| Identity checks | Unknown | The site asks only for a Monero address to show stats. We did not find a written policy that says so. |
+| Support | Unknown | Not reviewed. |
+| Earnings realism | Unknown | Earnings follow your own hashrate and the pool's luck. We did not compare estimates with real payouts. |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout. [Source](https://www.supportxmr.com/script_min.js), checked 2026-11-25.
+- CashPilot does not run a miner for SupportXMR: you point your own miner at the pool, and CashPilot only reads the balance. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/mining/supportxmr.yml), checked 2026-11-25.
 
 **Pros**
 
