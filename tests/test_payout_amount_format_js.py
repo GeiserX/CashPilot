@@ -19,11 +19,11 @@ APP_JS = ROOT / "app/static/js/app.js"
 
 _HARNESS = r"""
 const src = require('fs').readFileSync(process.argv[process.argv.length - 2], 'utf8');
-const from = src.indexOf('  function formatNative(val, currency) {');
+const from = src.indexOf('  function formatCurrency(val, nativeCurrency, digits) {');
 const to = src.indexOf('  function setTextContent(id, text) {');
 if (from < 0 || to <= from) { console.log(JSON.stringify({ error: 'block moved' })); process.exit(0); }
 const _exchangeRates = { fiat: { USD: 1, EUR: 0.92 }, crypto_usd: {} };
-const fns = new Function('_exchangeRates', `${src.slice(from, to)}; return { formatAmount, formatNative };`)(_exchangeRates);
+const fns = new Function('_exchangeRates', '_displayCurrency', `${src.slice(from, to)}; return { formatAmount, formatNative, formatCurrency };`)(_exchangeRates, 'USD');
 const cases = JSON.parse(process.argv[process.argv.length - 1]);
 console.log(JSON.stringify(cases.map(([fn, args]) => fns[fn](...args))));
 """
@@ -50,7 +50,9 @@ def _run(*cases):
     [
         (0.01599128, "BTC", "0.01599128"),
         (0.00012345, "BTC", "0.00012345"),
-        (0.000613902892, "XMR", "0.0006139"),
+        (0.000613902892, "XMR", "0.00061390289"),
+        (0.000000004, "XMR", "0.000000004"),
+        (1.23456789, "BTC", "1.23456789"),
         (1.5, "BTC", "1.50"),
         (123, "GRASS", "123.00"),
         (24.9, "USD", "24.90"),
@@ -70,7 +72,14 @@ def test_format_amount_matches_the_server(value, currency, text):
 def test_the_services_table_keeps_a_monero_balance_in_full():
     usd, xmr = _run(["formatNative", [5, "USD"]], ["formatNative", [0.000613902892, "XMR"]])
     assert usd is None
-    assert xmr == "0.0006139 XMR"
+    assert xmr == "0.00061390289 XMR"
+
+
+def test_an_unpriced_coin_keeps_its_small_units():
+    """With no price for XMR the services table shows formatCurrency, not formatNative."""
+    xmr, delta = _run(["formatCurrency", [0.000613902892, "XMR"]], ["formatCurrency", [0.00001, "BTC"]])
+    assert xmr == "0.00061390289 XMR"
+    assert delta == "0.00001 BTC"
 
 
 @pytest.mark.parametrize(

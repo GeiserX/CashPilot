@@ -9071,17 +9071,20 @@ async def api_earnings_breakdown(request: Request) -> list[dict[str, Any]]:
         signup_bonus = 0.0
         with contextlib.suppress(ValueError, TypeError):
             signup_bonus = float(all_config.get(f"{slug}_signup_bonus", "0") or "0")
-        balance_adjusted = round(max(0.0, balance - signup_bonus), 4)
+        # Twelve decimals (one piconero), like payouts.detect: four showed a
+        # 0.01599128 BTC balance as 0.016, more than the user has, and turned a
+        # small daily mining gain into "no change".
+        balance_adjusted = round(max(0.0, balance - signup_bonus), 12)
 
         entry = {
             "platform": slug,
             "name": svc["name"] if svc else slug,
-            "balance": round(balance, 4),
+            "balance": round(balance, 12),
             "balance_adjusted": balance_adjusted,
-            "signup_bonus": round(signup_bonus, 4),
+            "signup_bonus": round(signup_bonus, 12),
             "currency": row["currency"],
             "last_updated": row["date"],
-            "delta": round(delta, 4),
+            "delta": round(delta, 12),
             "cashout": {
                 # None, not True, when the minimum is unknown. Claiming
                 # eligibility we cannot establish sends the user to a withdrawal

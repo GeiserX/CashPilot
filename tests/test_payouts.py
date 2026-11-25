@@ -109,7 +109,9 @@ class TestCoinAmountsKeepEverySmallUnit:
         [
             (0.01599128, "BTC", "0.01599128"),
             (0.00012345, "BTC", "0.00012345"),
-            (0.000613902892, "XMR", "0.0006139"),
+            (0.000613902892, "XMR", "0.00061390289"),
+            (0.000000004, "XMR", "0.000000004"),
+            (1.23456789, "BTC", "1.23456789"),
             (1.5, "BTC", "1.50"),
             (123.0, "GRASS", "123.00"),
             (24.9, "USD", "24.90"),
@@ -119,6 +121,29 @@ class TestCoinAmountsKeepEverySmallUnit:
     )
     def test_format_amount(self, value, currency, text):
         assert payouts.format_amount(value, currency) == text
+
+    def test_a_tiny_coin_amount_never_reads_as_zero(self):
+        assert payouts.format_amount(0.000000004, "BTC") != "0.00"
+
+    def test_the_card_counts_down_a_bitcoin_minimum_to_the_satoshi(self):
+        """Two decimals said "0.01 to go" for 0.00598576 BTC, and :g cut the minimum."""
+        out = payouts.project(0.0045, OCEAN, [], "BTC")
+        assert out["remaining"] == 0.00598576
+        assert out["summary"].startswith("0.00598576 to go.")
+        out = payouts.project(0.0045, OCEAN, series(0.0, 0.0002, 0.0004, 0.0006, 0.0008, 0.001, 0.0012), "BTC")
+        assert out["state"] == payouts.PROJECTED
+        assert "the 0.01048576 minimum, at 0.0002 a day." in out["summary"]
+
+    def test_the_bar_target_keeps_a_small_coin_minimum(self):
+        """remaining rounded to 4 made a 0.0001 minimum read as 17%, not 20%."""
+        small = {"slug": "pool", "cashout": {"min_amount": 0.0001, "currency": "BTC"}}
+        out = payouts.project(0.00002, small, [], "BTC")
+        assert out["remaining"] == 0.00008
+        assert out["summary"].startswith("0.00008 to go.")
+
+    def test_a_dollar_projection_reads_as_before(self):
+        out = payouts.project(10.0, HONEYGAIN, series(1.0, 2.0, 3.0, 4.0, 5.0))
+        assert out["summary"] == "About 10 day(s) to the 20 minimum, at 1.0000 a day."
 
     def test_lifetime_keeps_every_satoshi(self):
         confirmed = [{"amount": 0.00012345, "confirmed": 1}]

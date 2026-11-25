@@ -939,7 +939,7 @@ const CP = (() => {
       const pct = threshold > 0 ? Math.max(0, Math.min(100, (balance / threshold) * 100)) : 100;
       bar = `
         <div class="payout-progress-track" role="img"
-             aria-label="${escapeHtml(pct.toFixed(0))}% of the ${escapeHtml(threshold.toFixed(2))} minimum">
+             aria-label="${escapeHtml(pct.toFixed(0))}% of the ${escapeHtml(formatAmount(threshold, data.balance_currency || card.dataset.currency))} minimum">
           <div class="payout-progress-fill" style="width:${pct.toFixed(1)}%;"></div>
         </div>`;
     }
@@ -6265,8 +6265,9 @@ const CP = (() => {
     } else if (_exchangeRates.crypto_usd && _exchangeRates.crypto_usd[nativeCurrency]) {
       usdAmount = amount * _exchangeRates.crypto_usd[nativeCurrency];
     } else {
-      // Unknown token with no rate — show raw value
-      return amount.toFixed(2) + ' ' + nativeCurrency;
+      // Unknown token with no rate — show raw value, in full: toFixed(2)
+      // showed 0.000613902892 XMR as "0.00 XMR" whenever XMR had no price.
+      return formatAmount(amount, nativeCurrency) + ' ' + nativeCurrency;
     }
 
     // Convert USD to the display currency — but ONLY label it as the display
@@ -6314,13 +6315,18 @@ const CP = (() => {
 
   // A balance or payout in its own unit, without dropping a coin's small units.
   // Fiat keeps two decimals. Anything else (BTC, XMR, a provider's token) shows
-  // up to eight, trailing zeros trimmed back to two: toFixed(2) turned a
-  // 0.01599128 BTC payout into "0.02", and toFixed(4) turned 0.000613902892 XMR
-  // into "0.0006". Eight is a satoshi. Same rule as payouts.format_amount.
+  // at least eight decimals (one satoshi), and more for a small amount so that
+  // eight significant digits show, up to twelve (one piconero). Trailing zeros
+  // are trimmed back to two. toFixed(2) turned a 0.01599128 BTC payout into
+  // "0.02", and toFixed(4) turned 0.000613902892 XMR into "0.0006". Same rule
+  // as payouts.format_amount.
   function formatAmount(val, currency) {
     const amount = Number(val);
     if (isFiatCurrency(currency)) return amount.toFixed(2);
-    return amount.toFixed(8).replace(/(\.\d\d\d*?)0+$/, '$1');
+    const places = Number.isFinite(amount) && amount !== 0
+      ? Math.min(12, Math.max(8, 7 - Math.floor(Math.log10(Math.abs(amount)))))
+      : 8;
+    return amount.toFixed(places).replace(/(\.\d\d\d*?)0+$/, '$1');
   }
 
   function setTextContent(id, text) {
