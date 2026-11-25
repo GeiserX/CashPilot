@@ -127,6 +127,11 @@ class TestBreakEven:
         out = me.assess_machine(name="box", monthly_gross=None, watts=65.0, price_per_kwh=None)
         assert "break_even_price_per_kwh" not in out
 
+    def test_an_unread_gross_has_no_break_even(self):
+        out = me.assess_machine(name="box", monthly_gross=0.0, watts=65.0, price_per_kwh=None, gross_measured=False)
+        assert "break_even_price_per_kwh" not in out
+        assert "guessing would be worse" in out["summary"]
+
     def test_without_watts_there_is_no_break_even_tariff(self):
         out = me.assess_machine(name="box", monthly_gross=4.0, watts=None, price_per_kwh=None)
         assert "break_even_price_per_kwh" not in out
@@ -176,7 +181,7 @@ class TestItNeverActsOnTheNumber:
 
 
 class TestEndpoint:
-    def _call(self, config=None, workers=None, earned=None, containers=None):
+    def _call(self, config=None, workers=None, earned=None, containers=None, measured=None):
         import asyncio
         import json
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -201,10 +206,17 @@ class TestEndpoint:
                 patch.object(main, "_require_auth_api", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value=config or {})),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=rows)),
-                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value=earned or {})),
+                patch.object(main.database, "get_earned_by_platform", fake_earned),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers or [])),
             ):
                 return await main.api_fleet_economics(MagicMock())
+
+        # Every platform in `earned` counts as read unless `measured` says
+        # otherwise, the way the real reader marks a priced delta.
+        async def fake_earned(days=30, measured=None, _read=measured):
+            if measured is not None:
+                measured.update((earned or {}) if _read is None else _read)
+            return earned or {}
 
         return asyncio.run(run())
 
@@ -291,6 +303,47 @@ class TestEndpoint:
         assert out["tariff_currency"] == "EUR"
         assert out["tariff_price_per_kwh"] == 0.25
 
+    def test_a_gross_nobody_read_gets_no_break_even(self):
+        """No collector, no credentials or no rate: 0.0 is missing data, not zero.
+
+        Telling that user "loses money at any electricity price" with a 0.000
+        break-even would be a claim built on nothing.
+        """
+        out = self._call(
+            config={"power_currency": "USD", "worker_c1_watts": "18"},
+            workers=self.WORKERS,
+            earned={},
+            containers=[{"slug": "mysterium", "status": "running", "_worker_id": 1}],
+        )
+        charlie = {m["machine"]: m for m in out["machines"]}["charlie"]
+        assert charlie["break_even_tariff"] is None
+        assert "loses money at any electricity price" not in charlie["summary"]
+        assert "guessing would be worse" in charlie["summary"]
+
+    def test_an_unread_gross_with_a_tariff_gets_no_break_even_either(self):
+        out = self._call(
+            config={"power_currency": "USD", "power_price_per_kwh": "0.25", "worker_c1_watts": "18"},
+            workers=self.WORKERS,
+            earned={"mysterium": 0.0},
+            measured=(),
+            containers=[{"slug": "mysterium", "status": "running", "_worker_id": 1}],
+        )
+        charlie = {m["machine"]: m for m in out["machines"]}["charlie"]
+        assert charlie["break_even_price_per_kwh"] is None
+        assert charlie["break_even_tariff"] is None
+
+    def test_a_read_zero_still_breaks_even_at_zero(self):
+        """The mirror: a gross that WAS read and is 0.0 keeps the strong claim."""
+        out = self._call(
+            config={"power_currency": "USD", "worker_c1_watts": "18"},
+            workers=self.WORKERS,
+            earned={"mysterium": 0.0},
+            containers=[{"slug": "mysterium", "status": "running", "_worker_id": 1}],
+        )
+        charlie = {m["machine"]: m for m in out["machines"]}["charlie"]
+        assert charlie["break_even_tariff"] == {"price_per_kwh": 0.0, "currency": "USD"}
+        assert "loses money at any electricity price" in charlie["summary"]
+
     def test_the_tariff_is_echoed_as_typed_not_converted(self):
         """The page prints "you pay" next to a local price, so it must be local."""
         a, b = self._fx(lambda v, cur: v * 0.9, lambda v, cur: v / 0.9)
@@ -321,7 +374,7 @@ class TestWorkerWatts:
 
         assert main._worker_watts({"worker_7_watts": "65"}, {"id": 7, "client_id": "abc"}) == 65.0
 
-    @pytest.mark.parametrize("raw", [None, "", "lots"])
+    @pytest.mark.parametrize("raw", [None, "", "lots", "nan", "inf", "-inf"])
     def test_absent_or_unreadable_is_none(self, raw):
         from app import main
 

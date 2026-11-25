@@ -675,6 +675,36 @@ class TestTypedMachineWattsAndServiceBreakEven:
         out = self._net({"worker_rig_watts": "200"}, self.BUSY, self.WORKER, measured=())
         assert "break_even_price_per_kwh" not in out["services"][0]
 
+    @pytest.mark.parametrize("cpu", [600.0, 800.0])
+    def test_typed_watts_cap_the_per_service_shares(self, cpu):
+        """Docker's cpu_percent is per core, so a busy miner reports 600-800%.
+
+        Uncapped, one such container on a typed 100 W box was charged 400-520 W.
+        The shares on one machine must never add up to more than its typed draw.
+        """
+        busy = [
+            {"slug": "miner", "status": "running", "cpu_percent": cpu, "_worker_id": 1},
+            {"slug": "other", "status": "running", "cpu_percent": 50.0, "_worker_id": 1},
+        ]
+        out = self._net(
+            {"power_price_per_kwh": "0.25", "power_currency": "USD", "worker_rig_watts": "100"},
+            busy,
+            self.WORKER,
+            earned={"miner": 10.0, "other": 1.0},
+            measured=("miner", "other"),
+        )
+        # 100 W x 720 h x 0.25 USD/kWh is the most this machine can cost.
+        assert out["total_cost"] == pytest.approx(100 / 1000 * 720 * 0.25, rel=0.001)
+        miner = next(r for r in out["services"] if r["platform"] == "miner")
+        assert miner["cost"] < out["total_cost"]
+        assert miner["break_even_price_per_kwh"] > 10.0 / (100 / 1000 * 720)
+
+    def test_without_typed_watts_the_split_is_unchanged(self):
+        """The cap is the typed draw only; the 65 W guess path keeps its old figures."""
+        busy = [{"slug": "miner", "status": "running", "cpu_percent": 300.0, "_worker_id": 1}]
+        out = self._net({"power_price_per_kwh": "1", "power_currency": "USD"}, busy, self.WORKER)
+        assert out["total_cost"] == pytest.approx((65 * 0.4 + 65 * 0.6 * 3) / 1000 * 720, rel=0.001)
+
     def test_a_small_share_gets_no_break_even(self):
         """A 2 W share of a box that is on anyway would make an invented break-even."""
         crowd = [{"slug": f"s{i}", "status": "running", "cpu_percent": 0.0, "_worker_id": 1} for i in range(9)] + [

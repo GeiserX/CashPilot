@@ -86,8 +86,13 @@ def assess_machine(
     price_per_kwh: float | None,
     metered: bool = True,
     dedicated: bool = False,
+    gross_measured: bool = True,
 ) -> dict[str, Any]:
     """Should this machine stay powered on for what it earns?
+
+    ``gross_measured`` is False when none of the machine's services had an
+    earnings reading in the window, so its 0.0 gross is an absence of data,
+    not a measured zero. No break-even tariff is built on that.
 
     ``dedicated`` means the machine exists only to run these services, so its
     WHOLE draw is attributable. On a machine that would be on anyway — a NAS, a
@@ -152,7 +157,7 @@ def assess_machine(
         # it is the price this machine could stand. Withholding it until a
         # tariff is typed hid the one number a user can check against a bill
         # without telling CashPilot what that bill is.
-        if watts is not None and watts > 0:
+        if gross_measured and watts is not None and watts > 0:
             out["break_even_price_per_kwh"] = round(break_even_price(gross, watts) or 0.0, 4)
             out["quality"] = "estimated"
             if gross <= 0:
@@ -177,7 +182,7 @@ def assess_machine(
         # Everything here rests on an entered wattage and tariff.
         "quality": "estimated",
         "break_even_watts": round(break_even_watts(gross, price_per_kwh) or 0.0, 1),
-        "break_even_price_per_kwh": round(break_even_price(gross, watts) or 0.0, 4),
+        "break_even_price_per_kwh": (round(break_even_price(gross, watts) or 0.0, 4) if gross_measured else None),
         "summary": _summary(name, gross, cost, net, verdict, dedicated),
     }
 

@@ -9593,13 +9593,15 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         # The draw the user typed for this machine on the Fleet page comes
         # first. It is the only figure here anyone checked against the box;
         # the fleet card already charged it while this endpoint split a 65 W
-        # guess, so one machine had two running costs on one page.
+        # guess. Both now start from the typed draw, though the CPU-share split
+        # below and the request window keep the two from matching exactly.
         typed = _worker_watts(cfg, meta) if meta else None
         try:
             tdp = typed if typed and typed > 0 else float(info.get("host_tdp_watts") or host_tdp)
         except (TypeError, ValueError):
             tdp = host_tdp
         count = max(1, len(containers))
+        host_watts: dict[str, float] = {}
         for c in containers:
             svc = egress.container_slug(c)
             if not metered:
@@ -9613,9 +9615,18 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             # busy service ends up costing nothing on the running-costs card.
             if c.get("cpu_percent") is None:
                 continue
-            watts_by_service[svc] = watts_by_service.get(svc, 0.0) + power.estimate_watts(
+            host_watts[svc] = host_watts.get(svc, 0.0) + power.estimate_watts(
                 float(c.get("cpu_percent") or 0.0), host_tdp_watts=tdp, container_count=count
             )
+        # Docker reports cpu_percent per core (800% for eight saturated cores),
+        # so the shares can add up to several times the host's draw. When the
+        # user typed that draw, it is a measured ceiling: scale this machine's
+        # shares down so together they never charge more than it.
+        total = sum(host_watts.values())
+        if typed and typed > 0 and total > typed:
+            host_watts = {svc: w * typed / total for svc, w in host_watts.items()}
+        for svc, w in host_watts.items():
+            watts_by_service[svc] = watts_by_service.get(svc, 0.0) + w
 
     rows = []
     break_even: dict[str, float] = {}
@@ -10277,7 +10288,12 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # to build the same list in a single request.
     raw_workers = await database.list_workers()
     workers = [_decoded_worker(w) for w in raw_workers]
-    earned = await database.get_earned_by_platform(days=30)
+    # Which platforms had a priced reading at all. Without it a service with no
+    # collector, no credentials or no FX price contributes 0.0, and a machine
+    # hosting only such services would get a 0.0 break-even tariff and "loses
+    # money at any electricity price" on a gross nobody ever read.
+    measured: set[str] = set()
+    earned = await database.get_earned_by_platform(days=30, measured=measured)
     containers = await _get_all_worker_containers(raw_workers)
 
     # Attribute each service's gross to the worker running it. A service on two
@@ -10285,6 +10301,11 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # answer, and pretending otherwise would be invented precision again.
     per_worker_gross: dict[Any, float] = {}
     hosts: dict[str, list[Any]] = {}
+    # Workers hosting at least one service, and those with at least one whose
+    # earnings were actually read. A worker in the first set and not the second
+    # has a gross of 0.0 that is missing data, not a measured zero.
+    hosting: set[Any] = set()
+    read: set[Any] = set()
     for container in containers:
         slug = egress.container_slug(container)
         if slug:
@@ -10293,6 +10314,9 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         share = float(earned.get(slug) or 0.0) / max(1, len(worker_ids))
         for worker_id in worker_ids:
             per_worker_gross[worker_id] = per_worker_gross.get(worker_id, 0.0) + share
+            hosting.add(worker_id)
+            if slug in measured:
+                read.add(worker_id)
 
     assessed = []
     for worker in workers:
@@ -10324,6 +10348,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 price_per_kwh=(price or None) if fx_ok else None,
                 metered=power.is_metered(info),
                 dedicated=_worker_flag(config, worker, "dedicated"),
+                gross_measured=worker.get("id") not in hosting or worker.get("id") in read,
             )
         )
         assessed[-1]["break_even_tariff"] = _break_even_local(
@@ -11158,9 +11183,13 @@ def _worker_watts(config: dict[str, Any], worker: dict[str, Any]) -> float | Non
     """
     raw = config.get(f"worker_{_worker_config_key(worker)}_watts") or config.get(f"worker_{worker.get('id')}_watts")
     try:
-        return float(raw) if raw else None
+        value = float(raw) if raw else None
     except (TypeError, ValueError):
         return None
+    # 'nan' and 'inf' parse as floats, but JSONResponse refuses to render them,
+    # so one bad stored value would take down GET /api/workers and with it the
+    # input box the user needs to correct it.
+    return value if value is not None and math.isfinite(value) else None
 
 
 def _break_even_local(usd_per_kwh: float | None, tariff_currency: str) -> dict[str, Any] | None:
