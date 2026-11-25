@@ -10,6 +10,17 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.10.1] - 2026-11-25
+
+### Documentation
+
+- Tell Desktop users where to paste the Add a box block (#818)
+- Explain why workers keep exit drops after a server rollback (#816)
+
+### Fixes
+
+- Stop flagging paired Desktops as out of date and stop auto-picking them for deploys (#817)
+
 ## [2.10.0] - 2026-11-24
 
 ### Features

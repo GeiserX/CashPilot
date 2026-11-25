@@ -304,6 +304,8 @@ def container_drift(
         if isinstance(var, dict)
         and var.get("key")
         and var["key"] not in in_command
+        # A wallet seed kept in the node's own file is never in its env (app/wallet_seed.py).
+        and not var.get("seed_file")
         and (var.get("required") or str(var.get("default") or ""))
     }
     if missing := want_env - have_env:

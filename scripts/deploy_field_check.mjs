@@ -53,7 +53,7 @@ const shownLinks = [];
 // provider device; renameAnswer is what the user clicks.
 let renameAnswer = false;
 const deploy = new Function('document', 'api', 'toast', '_confirmPreflight', 'wizardState', '_imageChoice', '_instancesFor', '_showDeviceLink', '_routeChoice', '_confirmDeviceRenames',
-  `${grab('_deployToWorkers')}\nreturn _deployToWorkers;`)(document, api, () => { toasts++; },
+  `const _walletRequest = () => undefined;\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`)(document, api, () => { toasts++; },
   async () => { preflights++; return true; }, { deployed: [] }, () => undefined, () => undefined,
   (slug, statusEl, links) => shownLinks.push(links), () => undefined, async () => renameAnswer);
 const input = (key, value, { valid, required }) => ({ value, required, pattern: '[a-f0-9-]+',

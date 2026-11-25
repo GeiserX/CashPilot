@@ -39,7 +39,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app import catalog, database, placement
+from app import catalog, database, placement, wallet_seed
 
 logger = logging.getLogger(__name__)
 
@@ -443,6 +443,17 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
                     if own is not None:
                         server["address_read"] = True
                         server["address"] = address_from_spec(own, env_name)
+                elif wallet_seed.seed_var(service) is not None:
+                    # A seed-file wallet: the worker returned its public address
+                    # when it made the wallet, and the deploy recorded only that.
+                    try:
+                        own = await database.get_deployment_spec(slug, worker_id=server["worker_id"])
+                    except Exception:  # noqa: BLE001 - unreadable record: not asked
+                        own = None
+                    address = (own or {}).get("wallet_address")
+                    if isinstance(address, str) and address:
+                        server["address_read"] = True
+                        server["address"] = address
                 elif (server["worker_id"], slug) in read:
                     found = sorted({a for a in read[(server["worker_id"], slug)] if a})
                     server["address_read"] = True

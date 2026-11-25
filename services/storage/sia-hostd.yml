@@ -39,6 +39,20 @@ docker:
       required: true
       secret: true
       description: "BIP-39 seed phrase that controls the host's Siacoin wallet. Generate one with `docker run --rm ghcr.io/siafoundation/hostd seed` and back it up -- it is the ONLY way to reach the earnings"
+      # Where the seed lives instead of this variable. A client that reads this
+      # block never stores the seed and never passes it as a variable: the
+      # worker that runs hostd writes it to this file in hostd's own data
+      # volume, which hostd reads before the variable (verified on hostd 2.11.0
+      # and 2.12.2). A client that predates the block still asks for the
+      # variable, so the entry above stays for it.
+      seed_file:
+        path: /data/hostd.yml
+        key: recoveryPhrase
+        words: 12
+        # Run in the service's own image, offline, to make a new wallet.
+        generate: ["seed"]
+        phrase_pattern: '(?m)^Recovery Phrase: ([a-z]+(?: [a-z]+){11})$'
+        address_pattern: '(?m)^Address ([0-9a-f]{76})$'
     - key: HOSTD_API_PASSWORD
       label: "Dashboard password"
       required: true
@@ -66,9 +80,10 @@ docker:
   critical_volumes:
     - target: "/data"
       holds: >-
-        Wallet database, host settings and contract state. Losing it loses the
-        node's identity and contract revenue tracking; the seed phrase remains
-        the only recovery path for funds.
+        The wallet seed phrase (hostd.yml), the wallet database, host settings
+        and contract state. Losing it loses the node's identity and contract
+        revenue tracking; the seed phrase you wrote down is then the only
+        recovery path for funds.
     - target: "/storage"
       holds: >-
         Stored renter data. Losing it fails storage proofs and forfeits the
@@ -76,11 +91,12 @@ docker:
   command: ""
   network_mode: ""
   setup: >
-    Before first run, generate a seed with
-    `docker run --rm ghcr.io/siafoundation/hostd seed` and back it up. After
-    the deploy, send some Siacoin to the node's wallet for collateral and
-    fees, then add the storage folder (/storage), set prices and announce the
-    host in the dashboard.
+    On deploy, CashPilot creates a new wallet on the machine that runs the
+    node and shows its seed phrase once: write it down. To use a wallet you
+    already have, paste its seed phrase instead. After the deploy, send some
+    Siacoin to the node's wallet for collateral and fees, then add the
+    storage folder (/storage), set prices and announce the host in the
+    dashboard.
 
 requirements:
   residential_ip: false
@@ -136,9 +152,10 @@ payout:
   chain: sia
   address_source: app
   notes: >
-    Funds live in the seed-controlled Sia wallet inside the node. CashPilot
-    never holds the key; the seed phrase is the only recovery path and must be
-    backed up before first deploy.
+    Funds live in the seed-controlled Sia wallet inside the node. The seed
+    phrase lives only in hostd's data volume on the machine that runs it;
+    CashPilot never stores it. The phrase you write down when the wallet is
+    created is the only recovery path.
 
 disclosure:
   sells: >-

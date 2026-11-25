@@ -92,6 +92,9 @@ COPY app/activity.py ./app/
 COPY app/procnet.py ./app/
 # Reads a payout address set inside a container (Mysterium, Anyone).
 COPY app/payout_read.py ./app/
+# Keeps a catalog seed_file wallet in the node's own volume (Sia), with the
+# BIP-39 word list it checks a pasted phrase against.
+COPY app/wallet_seed.py app/bip39_english.txt ./app/
 # Reads a node's own earnings figures from inside it (Mysterium, issue #488).
 COPY app/node_read.py ./app/
 # Asks a running node how it is doing from inside it (docker.health_probe);

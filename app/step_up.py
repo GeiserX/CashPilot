@@ -59,6 +59,10 @@ ACTION_LEAVE_ROUTE = "leave-route"
 #: the UI's own audit row names the box by its id instead (``slug|worker_id``).
 ACTION_DELETE_CRITICAL = "delete-critical-volumes"
 
+#: Reading a node's wallet seed phrase back from its own file on one worker
+#: (app/wallet_seed.py). Target: :func:`reveal_target`.
+ACTION_REVEAL_WALLET_SEED = "reveal-wallet-seed"
+
 #: Downloading every device id in the ledger unmasked (Settings > Device ids).
 #: The UI checks the password alone: no worker takes part. Target: "device ids".
 ACTION_EXPORT_IDENTITIES = "export-device-ids"
@@ -124,6 +128,11 @@ def delete_target(slug: str, worker_client_id: str, critical_set: str | None = N
     if critical_set is None:
         return f"{slug}|{worker_client_id}"
     return f"{slug}|{worker_client_id}|{hashlib.sha256(critical_set.encode()).hexdigest()}"
+
+
+def reveal_target(slug: str, worker_client_id: str) -> str:
+    """The approval target of one seed reveal: this service, on this worker."""
+    return f"{slug}|{worker_client_id}"
 
 
 class StepUpError(Exception):
