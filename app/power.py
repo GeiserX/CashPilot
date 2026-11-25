@@ -70,7 +70,7 @@ def energy_cost(watts: float, hours: float, price_per_kwh: float) -> float:
 
 
 def net_for_service(
-    gross: float,
+    gross: float | None,
     cost: float | None,
     *,
     quality: str = ESTIMATED,
@@ -81,27 +81,15 @@ def net_for_service(
     below zero is costing more in electricity than it pays, and the honest thing
     is to say so rather than let it sit in a dashboard looking like income.
     """
-    gross = float(gross)
-    if cost is None:
-        # A tariff or wattage is missing, so the cost is unknown. Reporting cost 0 here
-        # would make net equal gross and present earnings as profit - the exact
-        # dishonesty this module exists to prevent, and it must not creep back in
-        # at the per-service level just because the totals get it right.
-        return {
-            "gross": round(gross, 4),
-            "cost": None,
-            "net": None,
-            "cost_quality": "unknown",
-            "negative": False,
-        }
-    cost = max(0.0, float(cost))
-    net = gross - cost
+    gross = float(gross) if gross is not None else None
+    cost = max(0.0, float(cost)) if cost is not None else None
+    net = gross - cost if gross is not None and cost is not None else None
     return {
-        "gross": round(gross, 4),
-        "cost": round(cost, 4),
-        "net": round(net, 4),
-        "cost_quality": quality,
-        "negative": net < 0,
+        "gross": round(gross, 4) if gross is not None else None,
+        "cost": round(cost, 4) if cost is not None else None,
+        "net": round(net, 4) if net is not None else None,
+        "cost_quality": quality if cost is not None else "unknown",
+        "negative": net is not None and net < 0,
     }
 
 
@@ -132,16 +120,17 @@ def summarise(
     on an unmetered host should arrive with ``watts`` already zeroed.
 
     A missing tariff or wattage leaves the cost unknown. Net compares only
-    services with a known cost.
+    services with both a known gross and a known cost.
     """
     configured = price_per_kwh > 0
     rows: list[dict[str, Any]] = []
     total_gross = 0.0
-    known_gross = 0.0
     total_cost = 0.0
+    total_net = 0.0
 
     for svc in services:
-        gross = float(svc.get("gross") or 0.0)
+        value = svc.get("gross", 0.0)
+        gross = float(value) if value is not None else None
         watts = svc.get("watts")
         cost = (
             energy_cost(float(watts), float(svc.get("hours") or 0.0), price_per_kwh)
@@ -158,13 +147,17 @@ def summarise(
         # does not care is unaffected.
         row["cost_attributable"] = bool(svc.get("cost_attributable", True))
         rows.append(row)
-        total_gross += gross
+        if gross is not None:
+            total_gross += gross
         if cost is not None:
-            known_gross += gross
             total_cost += cost
+            if gross is not None:
+                total_net += gross - cost
 
     unknown = [row["platform"] for row in rows if row["cost"] is None]
+    gross_unknown = [row["platform"] for row in rows if row["gross"] is None]
     cost_known = configured and (not rows or len(unknown) < len(rows))
+    net_known = configured and (not rows or any(row["net"] is not None for row in rows))
 
     return {
         "currency": currency,
@@ -173,9 +166,10 @@ def summarise(
         # a zero cost would render gross as net and quietly overstate earnings.
         "cost_known": cost_known,
         "cost_unknown_for": unknown,
+        "gross_unknown_for": gross_unknown,
         "services": rows,
-        "total_gross": round(total_gross, 4),
+        "total_gross": round(total_gross, 4) if not rows or len(gross_unknown) < len(rows) else None,
         "total_cost": round(total_cost, 4) if cost_known else None,
-        "total_net": round(known_gross - total_cost, 4) if cost_known else None,
+        "total_net": round(total_net, 4) if net_known else None,
         "negative_services": [r["platform"] for r in rows if r["negative"]],
     }

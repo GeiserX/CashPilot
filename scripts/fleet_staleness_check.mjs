@@ -12,7 +12,7 @@
 // functions are extracted and run for real, on both an online and an offline
 // worker, and the OUTPUT is inspected.
 //
-// No browser needed: these renderers build strings and touch no DOM.
+// No browser needed: the running-costs check supplies the small DOM it uses.
 //   node scripts/fleet_staleness_check.mjs
 // Exits non-zero on any mismatch.
 import {readFileSync} from 'node:fs';
@@ -150,6 +150,87 @@ check('a single hostile name is not flagged', countWorkerNames(named(['__proto__
   'a lone worker was reported as a duplicate');
 check('no workers is not a crash', Object.keys(countWorkerNames([])).length === 0, 'empty input misbehaved');
 check('undefined is not a crash', Object.keys(countWorkerNames(undefined)).length === 0, 'undefined misbehaved');
+
+const economicsSource = html.slice(
+  html.indexOf('  // Running costs: per machine,'),
+  html.indexOf('  // How many workers share each display name.'),
+);
+const saveSource = html.slice(
+  html.indexOf("  document.getElementById('fleet-economics-body').addEventListener('submit'"),
+  html.indexOf("  document.getElementById('fleet-workers').addEventListener('click'"),
+);
+const buildEconomics = new Function(
+  'document', 'CP', 'brk', '_isOwner',
+  economicsSource + saveSource + '\nreturn loadFleetEconomics;',
+);
+
+function deviceFixture() {
+  let stored = '10', markup = '', editor, submit, pendingNet;
+  const card = {style: {}};
+  const body = {
+    querySelectorAll: () => editor ? [editor] : [],
+    addEventListener: (_, handler) => { submit = handler; },
+    set innerHTML(value) {
+      markup = value;
+      const raw = value.match(/data-slug="ocean" value="([^"]*)"/)?.[1];
+      const button = {disabled: false};
+      const form = {
+        querySelector: selector => selector === 'button' ? button : editor,
+        matches: () => false,
+        closest: () => form,
+      };
+      editor = {value: raw, defaultValue: raw, dataset: {slug: 'ocean'}, form};
+    },
+  };
+  const document = {getElementById(id) {
+    return {'fleet-economics-card': card, 'fleet-economics-body': body}[id];
+  }};
+  const api = async (path, options) => {
+    if (path === '/api/config') {
+      stored = options.body.data.power_device_ocean_watts;
+      return {};
+    }
+    if (path === '/api/fleet/economics') {
+      return {machines: [{kind: 'device', slug: 'ocean', machine: 'OCEAN', watts: stored, gross_basis: 'accrued'}]};
+    }
+    const pending = pendingNet;
+    pendingNet = null;
+    return pending ?? {services: []};
+  };
+  const refresh = buildEconomics(document, {api, formatCurrency: String, toast() {}}, String, true);
+  return {
+    refresh, editor: () => editor, markup: () => markup, setStored: value => { stored = value; },
+    stored: () => stored,
+    submit: () => submit({target: editor.form, preventDefault() {}}),
+    holdNextNet(promise) { pendingNet = promise; },
+  };
+}
+
+for (const draft of ['25', '']) {
+  const fixture = deviceFixture();
+  await fixture.refresh();
+  check('Fleet renders stored watts', fixture.editor().value === '10', fixture.markup());
+  fixture.editor().value = draft;
+  await fixture.refresh();
+  check('a Fleet refresh preserves the device draft ' + JSON.stringify(draft),
+    fixture.editor().value === draft, 'fresh markup replaced the draft');
+  await fixture.submit();
+  check('Save posts the device draft ' + JSON.stringify(draft),
+    fixture.stored() === draft, 'Save posted ' + fixture.stored());
+}
+
+const racing = deviceFixture();
+let finishOlder;
+racing.holdNextNet(new Promise(resolve => { finishOlder = resolve; }));
+const older = racing.refresh();
+racing.setStored('25');
+await racing.refresh();
+check('a newer refresh shows the saved watts', racing.editor().value === '25', racing.markup());
+finishOlder({services: []});
+await older;
+check('an older response cannot restore stale watts', racing.editor().value === '25', racing.markup());
+check('the gross tooltip describes period accruals', racing.markup().includes('Accrued at the pool during this period'),
+  'the tooltip asserts that past accruals still await payout');
 
 if (failures.length) {
   console.error('fleet staleness check FAILED:');

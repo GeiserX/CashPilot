@@ -258,12 +258,21 @@ CASHPILOT_WORKER_NAME=server-name</code>
   // so this renders those rather than inventing cheerier wording. The verdicts
   // exist because the answer is often "this machine is not worth leaving on",
   // and softening that would defeat the point of computing it.
-  async function loadFleetEconomics() {
+  let fleetEconomicsRequest = 0;
+  async function loadFleetEconomics(savedDevice) {
     const card = document.getElementById('fleet-economics-card');
     const body = document.getElementById('fleet-economics-body');
     const quality = document.getElementById('fleet-economics-quality');
     if (!card || !body) return;
 
+    // The Fleet timer must leave an unfinished device edit in place.
+    const editing = () => Array.from(body.querySelectorAll('.power-device-watts')).some(input =>
+      input.dataset.slug !== savedDevice
+        && (input.value !== input.defaultValue || input.form.matches(':focus-within')
+            || input.form.querySelector('button').disabled)
+    );
+    if (editing()) return;
+    const request = ++fleetEconomicsRequest;
     let economics, net;
     try {
       [economics, net] = await Promise.all([
@@ -274,6 +283,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       console.warn('Could not load running costs:', err);
       return;   // Leave hidden; unknown is not "free".
     }
+    if (request !== fleetEconomicsRequest || editing()) return;
 
     const machines = (economics && economics.machines) || [];
     if (!machines.length) { card.style.display = 'none'; return; }
@@ -303,7 +313,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const rows = machines.map(m => {
       const losing = m.verdict === 'losing_money';
       const device = m.kind === 'device';
-      const grossLabel = m.gross_basis === 'accrued' ? 'Accrued at the pool, awaiting payout' : 'Gross earnings per month';
+      const grossLabel = m.gross_basis === 'accrued' ? 'Accrued at the pool during this period' : 'Gross earnings per month';
       return `
         <div class="economics-row">
           <div>
@@ -349,7 +359,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             ${attributable.map(s => `
               <div class="economics-service-row">
                 <span>${esc(s.platform)}</span>
-                <span class="num${s.negative ? ' text-fail' : ''}"${s.gross_basis === 'accrued' ? ' title="Accrued at the pool, awaiting payout"' : ''}>
+                <span class="num${s.negative ? ' text-fail' : ''}"${s.gross_basis === 'accrued' ? ' title="Accrued at the pool during this period"' : ''}>
                   ${money(s.gross)} − ${money(s.cost)} = ${money(s.net)}
                 </span>
               </div>`).join('')}
@@ -896,17 +906,22 @@ CASHPILOT_WORKER_NAME=server-name</code>
     e.preventDefault();
     const input = form.querySelector('.power-device-watts');
     const save = form.querySelector('button');
+    if (save.disabled) return;
+    const watts = input.value.trim();
     save.disabled = true;
+    input.readOnly = true;
     try {
       await CP.api('/api/config', { method: 'POST', body: { data: {
-        [`power_device_${input.dataset.slug}_watts`]: input.value.trim(),
+        [`power_device_${input.dataset.slug}_watts`]: watts,
       } } });
+      input.defaultValue = watts;
       CP.toast('Device power saved', 'success');
-      loadFleetEconomics();
+      await loadFleetEconomics(input.dataset.slug);
     } catch (err) {
       CP.toast('Could not save: ' + err.message, 'error');
     } finally {
       save.disabled = false;
+      input.readOnly = false;
     }
   });
 

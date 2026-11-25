@@ -261,7 +261,7 @@ class TestEndpoint:
         out = self._call()
         assert out["machines"] == []
 
-    @pytest.mark.parametrize("watts", [None, "0", "-10", "nan", "inf"])
+    @pytest.mark.parametrize("watts", [None, "0", "-10", "nan", "inf", "5e-324"])
     def test_a_tracked_pool_with_no_valid_watts_has_unknown_cost(self, watts):
         out = self._call(
             config={"power_currency": "USD", "power_price_per_kwh": "0.20", "power_device_ocean_watts": watts},
@@ -288,6 +288,15 @@ class TestEndpoint:
         assert device["break_even_tariff"] == {"currency": "USD", "price_per_kwh": pytest.approx(8 / 7.3, abs=0.0001)}
         assert device["monthly_cost"] == pytest.approx(1.46)
         assert out["monthly_net"] == pytest.approx(6.54)
+
+    def test_pool_gross_is_a_period_accrual_not_the_unpaid_balance(self):
+        out = self._call(
+            earned={"ocean": 8.0},
+            deployments=[{"slug": "ocean", "status": "external"}],
+        )
+        (device,) = out["machines"]
+        assert device["gross_basis"] == "accrued"
+        assert "Earnings accrued at the pool during this period." in device["summary"]
 
     def test_a_pool_without_a_priced_reading_does_not_get_a_zero_break_even(self):
         out = self._call(

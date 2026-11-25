@@ -9544,11 +9544,13 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     watts_known = True
     try:
         statuses = await _get_all_worker_containers()
+        worker_meta = {w.get("id"): w for w in await database.list_workers()}
     except Exception as exc:
         # A worker status problem must not take out the earnings figures, which
         # come from the database and are still perfectly reportable.
         logger.warning("Worker status unavailable for the power estimate: %s", exc)
         statuses = []
+        worker_meta = {}
         watts_known = False
     # Only RUNNING containers. A stopped one draws nothing, and counting it
     # inflates a worker's container count, which shrinks every running service's
@@ -9577,17 +9579,15 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     for c in running:
         by_worker.setdefault(c.get("_worker_id"), []).append(c)
 
-    worker_meta = {w.get("id"): w for w in await database.list_workers()}
-
     hours = max(1, int(days)) * 24.0
     # Earned OVER THE WINDOW, not the latest balance: subtracting a window's
     # electricity from a running total would be meaningless arithmetic.
     measured: set[str] = set()
     earned = await database.get_earned_by_platform(max(1, int(days)), measured=measured)
     services = {platform: catalog.get_service(platform) or {} for platform in earned}
+    deployed_in_containers = {egress.container_slug(c) for c in statuses}
     external: set[str] = set()
     if any(catalog.draws_device_power(service) for service in services.values()):
-        deployed_in_containers = {egress.container_slug(c) for c in statuses}
         external = {
             d["slug"]
             for d in await database.get_deployments()
@@ -9642,13 +9642,21 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     break_even: dict[str, float] = {}
     for platform, gross in earned.items():
         service = services[platform]
+        gross_basis = _gross_basis(service)
+        uses_device_power = catalog.draws_device_power(service) and (
+            platform in external or (service.get("requirements") or {}).get("gpu") is True
+        )
         watts: float | None = watts_by_service.get(platform, 0.0)
         watts_source = "cpu_share" if platform in watts_by_service else None
-        if catalog.draws_device_power(service) and (
-            platform in external or (service.get("requirements") or {}).get("gpu") is True
-        ):
+        if gross_basis == "accrued" and platform not in external and platform not in deployed_in_containers:
+            # Earnings history survives untracking. A leftover setting cannot
+            # tell us how long the equipment ran in the historical window.
+            watts = None
+        elif uses_device_power:
             watts = _device_watts(cfg, platform)
             watts_source = "entered" if watts is not None else None
+        elif not watts_known:
+            watts = None
         cost_attributable = watts_source == "entered" or machine_economics.per_service_is_meaningful(watts)
         # Whole-device watts can be charged directly. A CPU share below smart
         # plug resolution gives no per-service break-even. USD per kWh.
@@ -9657,11 +9665,13 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         rows.append(
             {
                 "platform": platform,
-                "gross": float(gross),
+                "gross": None
+                if (uses_device_power or gross_basis == "accrued") and platform not in measured
+                else gross,
                 "watts": watts,
                 "watts_source": watts_source,
                 "hours": hours,
-                "gross_basis": _gross_basis(service),
+                "gross_basis": gross_basis,
                 "cost_quality": power.ESTIMATED,
                 # Whether a PER-SERVICE cost means anything, as opposed to
                 # whether the machine costs anything. A bandwidth container adds
@@ -9705,26 +9715,18 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # module already does when no tariff is set at all: "a zero cost would
     # render gross as net and quietly overstate earnings."
     #
-    # Unknown WATTS suppress the net for the same reason unknown FX does, and
-    # through the same mechanism: a zero price makes summarise report cost and
-    # net as None instead of as numbers. Without this, a failed worker lookup
-    # charged every service 0 W, cost summed to 0.00, and the endpoint returned
-    # total_net == total_gross with cost_known TRUE -- gross presented as profit,
-    # which is the one thing this endpoint's docstring promises it never does.
-    # cost_known came from `price_per_kwh > 0` alone and never asked whether any
-    # watts had actually been measured (CashPilot-c6u).
-    result = power.summarise(rows, price_per_kwh=(price_usd if (fx_ok and watts_known) else 0.0), currency="USD")
+    # An inventory failure affects worker estimates. Entered device draw is
+    # independent of those estimates and still usable (CashPilot-c6u).
+    can_price = fx_ok and (watts_known or any(row["watts"] is not None for row in rows))
+    result = power.summarise(rows, price_per_kwh=price_usd if can_price else 0.0, currency="USD")
     for row, source in zip(result["services"], rows, strict=True):
         row.update(watts=source["watts"], watts_source=source["watts_source"], gross_basis=source["gross_basis"])
         if row["platform"] in break_even:
             row["break_even_price_per_kwh"] = break_even[row["platform"]]
     if not watts_known:
-        result["cost_known"] = False
         result["watts_unavailable"] = True
         result["cost_unavailable_reason"] = (
-            "CashPilot could not reach its workers, so it does not know what any service "
-            "is drawing right now. Earnings below are real; the running cost and the net "
-            "figure are unknown for this window, not zero."
+            "CashPilot could not reach its workers. Costs that need worker readings are unknown, not zero."
         )
     if not fx_ok:
         result["cost_known"] = False
@@ -10402,7 +10404,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         )
         gross_basis = _gross_basis(service)
         if gross_basis == "accrued" and device["monthly_gross"] is not None:
-            device["summary"] += " These earnings accrue at the pool and await payout."
+            device["summary"] += " Earnings accrued at the pool during this period."
         device.update(
             kind="device",
             slug=slug,
@@ -11254,7 +11256,8 @@ def _device_watts(config: dict[str, Any], slug: str) -> float | None:
         watts = float(config.get(f"power_device_{slug}_watts", ""))
     except (TypeError, ValueError):
         return None
-    return watts if math.isfinite(watts) and watts > 0 else None
+    # Match the Fleet field's 1 W minimum, including values saved through the API.
+    return watts if math.isfinite(watts) and watts >= 1 else None
 
 
 def _gross_basis(service: dict[str, Any]) -> str:

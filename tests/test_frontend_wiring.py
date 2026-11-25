@@ -461,7 +461,7 @@ class TestRunningCostsAreShownWithoutBeingInvented:
 
     def test_a_failed_fetch_leaves_the_card_hidden(self):
         page = self._fleet()
-        block = page[page.index("async function loadFleetEconomics()") :][:1400]
+        block = page[page.index("async function loadFleetEconomics(") :][:1600]
         assert "Leave hidden" in block or "return;   // Leave hidden" in block
 
     def test_the_break_even_tariff_is_shown_in_the_tariff_unit(self):

@@ -624,7 +624,7 @@ class TestTypedMachineWattsAndServiceBreakEven:
     guess, so one machine had two different running costs on one page.
     """
 
-    def _net(self, cfg, containers, workers, measured=("miner",), earned=None, deployments=None):
+    def _net(self, cfg, containers, workers, measured=("miner",), earned=None, deployments=None, inventory_error=None):
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -643,7 +643,9 @@ class TestTypedMachineWattsAndServiceBreakEven:
             with (
                 patch.object(main, "_require_auth_api", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value=cfg)),
-                patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
+                patch.object(
+                    main, "_get_all_worker_containers", AsyncMock(return_value=containers, side_effect=inventory_error)
+                ),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
                 patch.object(main.database, "get_deployments", AsyncMock(return_value=deployments or [])),
                 patch.object(main.database, "get_earned_by_platform", fake_earned),
@@ -655,7 +657,7 @@ class TestTypedMachineWattsAndServiceBreakEven:
     WORKER = [{"id": 1, "client_id": "rig", "system_info": "{}"}]
     BUSY = [{"slug": "miner", "status": "running", "cpu_percent": 100.0, "_worker_id": 1}]
 
-    @pytest.mark.parametrize(("entered", "cost"), [("", None), ("2", 0.288)])
+    @pytest.mark.parametrize(("entered", "cost"), [("", None), ("5e-324", None), ("2", 0.288)])
     def test_a_tracked_pool_uses_only_entered_wall_watts(self, entered, cost):
         out = self._net(
             {"power_price_per_kwh": "0.20", "power_currency": "USD", "power_device_ocean_watts": entered},
@@ -667,15 +669,71 @@ class TestTypedMachineWattsAndServiceBreakEven:
         )
         ocean, grass = out["services"]
         assert ocean["cost"] == cost
-        assert ocean["watts"] == (float(entered) if entered else None)
-        assert ocean["watts_source"] == ("entered" if entered else None)
-        assert ocean["cost_attributable"] is bool(entered)
+        assert ocean["watts"] == (float(entered) if cost is not None else None)
+        assert ocean["watts_source"] == ("entered" if cost is not None else None)
+        assert ocean["cost_attributable"] is (cost is not None)
         assert ocean["gross_basis"] == "accrued"
-        assert ("break_even_price_per_kwh" in ocean) is bool(entered)
+        assert ("break_even_price_per_kwh" in ocean) is (cost is not None)
         assert grass["gross_basis"] == "earned"
         assert grass["cost"] == 0.0
         assert grass["cost_attributable"] is False
         assert out["total_net"] == pytest.approx(10.0 - cost if cost is not None else 2.0)
+
+    @pytest.mark.parametrize("measured", [(), ("ocean",)])
+    def test_a_pool_needs_a_priced_earnings_delta_to_report_net(self, measured):
+        out = self._net(
+            {"power_price_per_kwh": "0.20", "power_currency": "USD", "power_device_ocean_watts": "10"},
+            [],
+            [],
+            measured=measured,
+            earned={"ocean": 0.0},
+            deployments=[{"slug": "ocean", "status": "external"}],
+        )
+        (pool,) = out["services"]
+        assert pool["cost"] == 1.44
+        assert pool["gross"] == (0.0 if measured else None)
+        assert pool["net"] == (-1.44 if measured else None)
+        assert pool["negative"] is bool(measured)
+        assert out["total_cost"] == 1.44
+        assert out["total_gross"] == pool["gross"]
+        assert out["gross_unknown_for"] == ([] if measured else ["ocean"])
+        assert out["total_net"] == pool["net"]
+        assert out["negative_services"] == (["ocean"] if measured else [])
+
+    @pytest.mark.parametrize("watts", ["", "10"])
+    def test_pool_history_without_a_deployment_has_no_known_power_cost(self, watts):
+        out = self._net(
+            {"power_price_per_kwh": "0.20", "power_currency": "USD", "power_device_ocean_watts": watts},
+            [],
+            [],
+            measured=("ocean", "grass"),
+            earned={"ocean": 8.0, "grass": 2.0},
+            deployments=[{"slug": "grass", "status": "external"}],
+        )
+        pool, grass = out["services"]
+        assert pool["gross"] == 8.0
+        assert pool["cost"] is None
+        assert pool["net"] is None
+        assert out["cost_unknown_for"] == ["ocean"]
+        assert out["total_net"] == grass["net"] == 2.0
+
+    def test_entered_device_cost_survives_worker_inventory_failure(self):
+        out = self._net(
+            {"power_price_per_kwh": "0.20", "power_currency": "USD", "power_device_ocean_watts": "10"},
+            [],
+            [],
+            measured=("ocean", "honeygain"),
+            earned={"ocean": 8.0, "honeygain": 2.0},
+            deployments=[{"slug": "ocean", "status": "external"}],
+            inventory_error=RuntimeError("unavailable"),
+        )
+        pool, honeygain = out["services"]
+        assert out["watts_unavailable"] is True
+        assert out["cost_known"] is True
+        assert out["cost_unknown_for"] == ["honeygain"]
+        assert pool["cost"] == 1.44
+        assert honeygain["cost"] is None
+        assert out["total_net"] == 6.56
 
     def test_a_cpu_miner_stays_on_its_worker_cpu_share(self):
         from unittest.mock import patch
