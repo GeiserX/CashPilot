@@ -31,6 +31,13 @@ ALL_YAMLS = _discover_yamls()
 
 @pytest.mark.parametrize("yml_path", ALL_YAMLS, ids=[y.stem for y in ALL_YAMLS])
 class TestServiceYAML:
+    def test_device_power_follows_category_and_gpu_requirement(self, yml_path):
+        from app import catalog
+
+        service = yaml.safe_load(yml_path.read_text(encoding="utf-8"))
+        expected = service["category"] == "mining" or (service.get("requirements") or {}).get("gpu") is True
+        assert catalog.draws_device_power(service) is expected
+
     def test_parses_without_error(self, yml_path):
         with open(yml_path) as f:
             data = yaml.safe_load(f)

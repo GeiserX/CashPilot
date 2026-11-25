@@ -483,6 +483,13 @@ class TestRunningCostsAreShownWithoutBeingInvented:
         block = block[block.index("const breakEven = m =>") :][:900]
         assert "economics.tariff_currency === be.currency" in block
 
+    def test_device_draw_is_saved_under_its_own_config_prefix(self):
+        page = self._fleet()
+        assert "m.kind === 'device'" in page
+        assert 'class="power-device-watts"' in page
+        assert "`power_device_${input.dataset.slug}_watts`" in page
+        assert "!deviceSlugs.has(s.platform)" in page
+
 
 class TestTheDeployStepWarnsBeforeItActs:
     """deploy-risk and preflight, the last two orphaned endpoints.

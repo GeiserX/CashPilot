@@ -62,6 +62,7 @@ async def _economics(config, *, rate=0.92, rate_available=True):
         patch.object(main, "_require_auth_api", lambda r: None),
         patch.object(main.database, "get_config", AsyncMock(return_value=config)),
         patch.object(main.database, "list_workers", AsyncMock(return_value=[worker])),
+        patch.object(main.database, "get_deployments", AsyncMock(return_value=[])),
         patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"honeygain": 5.0})),
         patch.object(
             main,

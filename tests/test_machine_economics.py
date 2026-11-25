@@ -181,7 +181,7 @@ class TestItNeverActsOnTheNumber:
 
 
 class TestEndpoint:
-    def _call(self, config=None, workers=None, earned=None, containers=None, measured=None):
+    def _call(self, config=None, workers=None, earned=None, containers=None, measured=None, deployments=None):
         import asyncio
         import json
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -206,6 +206,7 @@ class TestEndpoint:
                 patch.object(main, "_require_auth_api", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value=config or {})),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=rows)),
+                patch.object(main.database, "get_deployments", AsyncMock(return_value=deployments or [])),
                 patch.object(main.database, "get_earned_by_platform", fake_earned),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers or [])),
             ):
@@ -259,6 +260,71 @@ class TestEndpoint:
     def test_an_empty_fleet_returns_an_empty_summary(self):
         out = self._call()
         assert out["machines"] == []
+
+    @pytest.mark.parametrize("watts", [None, "0", "-10", "nan", "inf"])
+    def test_a_tracked_pool_with_no_valid_watts_has_unknown_cost(self, watts):
+        out = self._call(
+            config={"power_currency": "USD", "power_price_per_kwh": "0.20", "power_device_ocean_watts": watts},
+            earned={"ocean": 8.0},
+            deployments=[{"slug": "ocean", "status": "external"}],
+        )
+        (device,) = out["machines"]
+        assert device["kind"] == "device"
+        assert device["slug"] == "ocean"
+        assert device["gross_basis"] == "accrued"
+        assert device["monthly_gross"] == 8.0
+        assert device["monthly_cost"] is None
+        assert device["break_even_tariff"] is None
+        assert out["cost_unknown_for"] == 1
+
+    def test_a_tracked_pool_uses_entered_wall_watts_in_fleet_totals(self):
+        out = self._call(
+            config={"power_currency": "USD", "power_price_per_kwh": "0.20", "power_device_ocean_watts": "10"},
+            earned={"ocean": 8.0},
+            deployments=[{"slug": "ocean", "status": "external"}, {"slug": "grass", "status": "external"}],
+        )
+        (device,) = out["machines"]
+        assert device["watts"] == 10.0
+        assert device["break_even_tariff"] == {"currency": "USD", "price_per_kwh": pytest.approx(8 / 7.3, abs=0.0001)}
+        assert device["monthly_cost"] == pytest.approx(1.46)
+        assert out["monthly_net"] == pytest.approx(6.54)
+
+    def test_a_pool_without_a_priced_reading_does_not_get_a_zero_break_even(self):
+        out = self._call(
+            config={"power_currency": "USD", "power_device_ocean_watts": "10"},
+            earned={"ocean": 0.0},
+            measured=set(),
+            deployments=[{"slug": "ocean", "status": "external"}],
+        )
+        (device,) = out["machines"]
+        assert device["watts"] == 10.0
+        assert device["monthly_gross"] is None
+        assert device["break_even_tariff"] is None
+
+    @pytest.mark.parametrize(
+        ("slug", "service"),
+        [
+            ("xmrig", {"name": "XMRig", "category": "mining"}),
+            ("render-gpu", {"name": "Render host", "category": "compute", "requirements": {"gpu": True}}),
+        ],
+    )
+    def test_a_service_running_on_a_worker_is_counted_once(self, slug, service):
+        from unittest.mock import patch
+
+        from app import catalog
+
+        with patch.object(catalog, "get_service", return_value=service):
+            out = self._call(
+                config={"power_currency": "USD", "power_price_per_kwh": "0.20", "worker_c1_watts": "100"},
+                workers=self.WORKERS[:1],
+                earned={slug: 8.0},
+                containers=[{"slug": slug, "status": "running", "_worker_id": 1}],
+                deployments=[{"slug": slug, "status": "external"}],
+            )
+        (machine,) = out["machines"]
+        assert machine["kind"] == "machine"
+        assert out["monthly_gross"] == 8.0
+        assert out["monthly_cost"] == 14.6
 
     def _fx(self, from_usd, to_usd):
         from unittest.mock import patch

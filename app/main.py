@@ -9584,6 +9584,15 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # electricity from a running total would be meaningless arithmetic.
     measured: set[str] = set()
     earned = await database.get_earned_by_platform(max(1, int(days)), measured=measured)
+    services = {platform: catalog.get_service(platform) or {} for platform in earned}
+    external: set[str] = set()
+    if any(catalog.draws_device_power(service) for service in services.values()):
+        deployed_in_containers = {egress.container_slug(c) for c in statuses}
+        external = {
+            d["slug"]
+            for d in await database.get_deployments()
+            if d["status"] == "external" and d["slug"] not in deployed_in_containers
+        }
 
     watts_by_service: dict[str, float] = {}
     unmetered_services: set[str] = set()
@@ -9632,19 +9641,27 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     rows = []
     break_even: dict[str, float] = {}
     for platform, gross in earned.items():
-        watts = watts_by_service.get(platform, 0.0)
-        # A per-service break-even only where the per-service cost can be
-        # attributed at all, and only for a gross that was actually read. A
-        # break-even built on a 2 W share of a box that is on anyway would be
-        # invented precision. USD per kWh, like every money figure here.
-        if machine_economics.per_service_is_meaningful(watts) and platform in measured:
+        service = services[platform]
+        watts: float | None = watts_by_service.get(platform, 0.0)
+        watts_source = "cpu_share" if platform in watts_by_service else None
+        if catalog.draws_device_power(service) and (
+            platform in external or (service.get("requirements") or {}).get("gpu") is True
+        ):
+            watts = _device_watts(cfg, platform)
+            watts_source = "entered" if watts is not None else None
+        cost_attributable = watts_source == "entered" or machine_economics.per_service_is_meaningful(watts)
+        # Whole-device watts can be charged directly. A CPU share below smart
+        # plug resolution gives no per-service break-even. USD per kWh.
+        if cost_attributable and watts and platform in measured:
             break_even[platform] = round(float(gross) / (watts / 1000.0 * hours), 4)
         rows.append(
             {
                 "platform": platform,
                 "gross": float(gross),
                 "watts": watts,
+                "watts_source": watts_source,
                 "hours": hours,
+                "gross_basis": _gross_basis(service),
                 "cost_quality": power.ESTIMATED,
                 # Whether a PER-SERVICE cost means anything, as opposed to
                 # whether the machine costs anything. A bandwidth container adds
@@ -9658,7 +9675,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
                 # unreliable is which service to blame, so that is what gets
                 # flagged. machine_economics has held this rule since it was
                 # written and nothing had ever asked it.
-                "cost_attributable": machine_economics.per_service_is_meaningful(watts),
+                "cost_attributable": cost_attributable,
             }
         )
 
@@ -9697,7 +9714,8 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # cost_known came from `price_per_kwh > 0` alone and never asked whether any
     # watts had actually been measured (CashPilot-c6u).
     result = power.summarise(rows, price_per_kwh=(price_usd if (fx_ok and watts_known) else 0.0), currency="USD")
-    for row in result["services"]:
+    for row, source in zip(result["services"], rows, strict=True):
+        row.update(watts=source["watts"], watts_source=source["watts_source"], gross_basis=source["gross_basis"])
         if row["platform"] in break_even:
             row["break_even_price_per_kwh"] = break_even[row["platform"]]
     if not watts_known:
@@ -10312,6 +10330,14 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         slug = egress.container_slug(container)
         if slug:
             hosts.setdefault(slug, []).append(container.get("_worker_id"))
+    devices = {}
+    for deployment in await database.get_deployments():
+        slug = deployment["slug"]
+        if deployment["status"] != "external" or slug in hosts:
+            continue
+        service = catalog.get_service(slug)
+        if service and catalog.draws_device_power(service):
+            devices[slug] = service
     for slug, worker_ids in hosts.items():
         share = float(earned.get(slug) or 0.0) / max(1, len(worker_ids))
         for worker_id in worker_ids:
@@ -10360,9 +10386,31 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 ),
             )
         )
+        assessed[-1]["kind"] = "machine"
         assessed[-1]["break_even_tariff"] = _break_even_local(
             assessed[-1].get("break_even_price_per_kwh"), tariff_currency
         )
+
+    for slug, service in devices.items():
+        watts = _device_watts(config, slug)
+        device = machine_economics.assess_machine(
+            name=service["name"],
+            monthly_gross=earned.get(slug, 0.0) if slug in measured else None,
+            watts=watts,
+            price_per_kwh=(price or None) if fx_ok else None,
+            dedicated=True,
+        )
+        gross_basis = _gross_basis(service)
+        if gross_basis == "accrued" and device["monthly_gross"] is not None:
+            device["summary"] += " These earnings accrue at the pool and await payout."
+        device.update(
+            kind="device",
+            slug=slug,
+            watts=watts,
+            gross_basis=gross_basis,
+            break_even_tariff=_break_even_local(device.get("break_even_price_per_kwh"), tariff_currency),
+        )
+        assessed.append(device)
 
     summary = machine_economics.fleet_summary(assessed)
     # Every figure in this payload is USD. It previously carried no currency at
@@ -11199,6 +11247,18 @@ def _worker_watts(config: dict[str, Any], worker: dict[str, Any]) -> float | Non
     # so one bad stored value would take down GET /api/workers and with it the
     # input box the user needs to correct it.
     return value if value is not None and math.isfinite(value) else None
+
+
+def _device_watts(config: dict[str, Any], slug: str) -> float | None:
+    try:
+        watts = float(config.get(f"power_device_{slug}_watts", ""))
+    except (TypeError, ValueError):
+        return None
+    return watts if math.isfinite(watts) and watts > 0 else None
+
+
+def _gross_basis(service: dict[str, Any]) -> str:
+    return "accrued" if (service.get("collector") or {}).get("accrual") == "pool" else "earned"
 
 
 def _break_even_local(usd_per_kwh: float | None, tariff_currency: str) -> dict[str, Any] | None:
