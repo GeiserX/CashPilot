@@ -391,15 +391,15 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
 
 
 async def _resolve_worker_id(worker_id: int | None) -> int:
-    """Return a valid worker_id, auto-resolving when only one worker is online."""
+    """Auto-select a worker only when one online worker has a command URL."""
     if worker_id is not None:
         return worker_id
     workers = await database.list_workers()
-    online = [w for w in workers if w["status"] == "online"]
+    online = [w for w in workers if w["status"] == "online" and w.get("url")]
     if len(online) == 1:
         return online[0]["id"]
     if len(online) == 0:
-        raise HTTPException(status_code=503, detail="No workers online")
+        raise HTTPException(status_code=503, detail="No workers online that can receive commands")
     raise HTTPException(
         status_code=400,
         detail="worker_id is required (multiple workers online)",
@@ -7098,10 +7098,16 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     """
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
+    if not worker.get("url"):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "This device only reports to CashPilot, so the server cannot deploy to it or control it. "
+                "Add services in the CashPilot app on that device, or pick a Docker worker."
+            ),
+        )
     if worker["status"] != "online":
         raise HTTPException(status_code=503, detail="Worker is offline")
-    if not worker["url"]:
-        raise HTTPException(status_code=503, detail="Worker URL not known")
     url, pinned_ip = await asyncio.to_thread(_validate_worker_url, worker["url"])
     host_header: str | None = None
     if pinned_ip:
@@ -12083,27 +12089,20 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     ui_version = version.current()
     for w in workers:
         _parse_worker_json(w)
-        # Skew is judged here, where the UI's own version is known, rather than
-        # in the browser: the fleet page would otherwise have to learn what the
-        # UI is running and re-implement the comparison. Both sides must be
-        # known releases for this to be True, so an older worker that predates
-        # version reporting reads as unknown, not as a mismatch.
         w["ui_version"] = ui_version
-        # An Android client ships on its OWN release track, so the UI's version
-        # is the wrong yardstick: a phone on 0.3.0 against a UI on 1.24.1 is not
-        # skew, it is two different products, and comparing them flagged EVERY
-        # Android device permanently. Compare a phone against the newest
-        # CashPilot-android release instead.
-        #
-        # reference_version is what the worker was actually judged against, so
-        # the UI can say so rather than always claiming "UI vX".
+        # Android and Desktop ship on their OWN release tracks, so the UI version is the
+        # wrong yardstick for them. A phone is compared with the newest CashPilot-android
+        # release. Desktop has no cached latest release here, so it gets no reference.
+        # Unknown reference -> no skew: version.skewed() returns False when either side
+        # is unknown, so a GitHub outage never flags every phone or Desktop.
         si = w.get("system_info") or {}
-        is_android = placement.is_android(si)
-        reference = update_check.android_latest() if is_android else ui_version
+        if _is_phone(si):
+            reference = update_check.android_latest()
+        elif placement.is_desktop(si):
+            reference = None
+        else:
+            reference = ui_version
         w["reference_version"] = reference
-        # Unknown reference -> no skew. version.skewed() already returns False
-        # when either side is unknown, which is what keeps an offline install
-        # (or a GitHub outage) from lighting a warning on every phone.
         w["version_skew"] = version.skewed(reference, si.get("version"))
         # The per-machine power settings the running-costs card needs, read the
         # SAME way api_fleet_economics reads them — client_id first, row id as
