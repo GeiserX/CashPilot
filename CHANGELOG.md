@@ -10,6 +10,26 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [2.10.0] - 2026-11-24
+
+### Features
+
+- Warn you before a provider writes off your earnings (#814)
+- Stop earners reaching the port forwards on your other internet lines (#810)
+- Catch a Honeygain copy that stays up but gets no work for days (#808)
+- Show the whole Storj payout for people who run several nodes (#807)
+
+### Fixes
+
+- Stop a health signal judging a window longer than the logs a worker reads (#815)
+- Stop sending people to dead sites and wrong payout minimums (#813)
+- Restart a Proxyrack copy whose client never downloaded, so it earns again by itself (#811)
+- Stop losing referral credit on guide headers and three signup links (#805)
+- Let stuck copies behind a proxy restart themselves like direct ones (#809)
+- Tell you when EarnApp or ProxyRack rejects your credential (#812)
+- Stop a failed scrape from storing $0 and booking phantom earnings (#806)
+- Drop the g-jump shortcut and its footer hint, which stopped working (#804)
+
 ## [2.9.2] - 2026-11-24
 
 ### Dependencies
