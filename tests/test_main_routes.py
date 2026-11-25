@@ -191,6 +191,36 @@ class TestGetAllWorkerContainers:
         assert result[0]["slug"] == "earnapp"
         assert result[0]["_is_android"] is True
 
+    @pytest.mark.parametrize(
+        ("system_info", "url", "can_command", "report_only"),
+        [
+            # A joined Desktop never sends docker_available: its command URL decides.
+            ({"device_type": "desktop"}, "http://192.168.1.30:8086", True, False),
+            ({"device_type": "desktop"}, "", False, True),
+            # Docker workers keep what they had: Docker access decides, URL or not.
+            ({"docker_available": True}, "", True, False),
+            ({"docker_available": False}, "http://192.168.1.1:8081", False, False),
+        ],
+    )
+    def test_which_copies_take_commands(self, system_info, url, can_command, report_only):
+        from app.main import _get_all_worker_containers
+
+        workers = [
+            {
+                "id": 3,
+                "name": "box",
+                "status": "online",
+                "url": url,
+                "system_info": json.dumps(system_info),
+                "containers": json.dumps([{"slug": "honeygain", "name": "cashpilot-honeygain", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
+            [copy] = asyncio.run(_get_all_worker_containers())
+        assert copy["_can_command"] is can_command
+        assert copy["_desktop_report_only"] is report_only
+
     def test_offline_workers_skipped(self):
         """CashPilot-1xg: this fed a worker with NO containers.
 

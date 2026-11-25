@@ -246,6 +246,12 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
         sys_info = _safe_json(w.get("system_info", "{}"), {})
         worker_has_docker = sys_info.get("docker_available", False)
         is_android = placement.is_android(sys_info)
+        # Whether this box takes container commands (start, stop, restart, logs).
+        # A joined Desktop never reports docker_available: it takes commands when
+        # it reports a command URL, and only reports what runs there when it does not.
+        is_desktop = placement.is_desktop(sys_info)
+        worker_can_command = bool(w.get("url")) if is_desktop else bool(worker_has_docker)
+        desktop_report_only = is_desktop and not worker_can_command
         worker_name = w.get("name", "worker")
 
         # Docker containers (from Docker-based workers only — skip for Android)
@@ -312,6 +318,8 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
                             "_has_docker": worker_has_docker,
+                            "_can_command": worker_can_command,
+                            "_desktop_report_only": desktop_report_only,
                             "_is_android": False,
                         }
                     )
@@ -348,6 +356,8 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                         "_node": worker_name,
                         "_worker_id": w.get("id"),
                         "_has_docker": worker_has_docker,
+                        "_can_command": worker_can_command,
+                        "_desktop_report_only": desktop_report_only,
                         "_is_android": False,
                     }
                 )
@@ -4006,6 +4016,12 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "memory": None if inst.get("memory_mb") is None else f"{float(inst['memory_mb']):.1f} MB",
                 "container_name": inst.get("name", ""),
                 "has_docker": inst.get("_has_docker", False),
+                # Whether its box takes start, stop, restart and logs: a Docker
+                # worker with Docker, or a joined Desktop that reports a command URL.
+                "can_command": inst.get("_can_command", False),
+                # A joined Desktop that only reports, so the UI can say why its
+                # buttons are off.
+                "desktop_report_only": inst.get("_desktop_report_only", False),
                 "is_android": inst.get("_is_android", False),
                 # Started outside CashPilot: it has no CashPilot label, so the
                 # container commands cannot target it and the UI must not offer
@@ -4796,15 +4812,20 @@ async def _deploy(
         await _check_route(slug, svc, worker_id, route, recorded_route, instances)
     # Read only when copies are involved, so a plain deploy asks the worker
     # record nothing it did not ask before.
-    running_copies = (
-        await _worker_instances(worker_id, slug)
-        if body.instances is not None or (recorded or {}).get("instances")
-        else set()
-    )
+    # A joined Desktop takes one copy per service from here, and any copy it added
+    # itself stays its own: the server neither sends copy 2+ nor removes them.
+    copies_involved = body.instances is not None or (recorded or {}).get("instances")
+    to_desktop = await _worker_is_desktop(worker_id) if copies_involved else False
+    running_copies = await _worker_instances(worker_id, slug) if copies_involved and not to_desktop else set()
     if instances > 1:
         limit, why = scaling_limit(svc)
         if instances > limit:
             raise HTTPException(status_code=400, detail=why)
+        if to_desktop:
+            raise HTTPException(
+                status_code=409,
+                detail="CashPilot Desktop runs one copy of each service from here. Add more copies on that computer.",
+            )
         if "instances" not in await _worker_features(worker_id):
             raise HTTPException(
                 status_code=409,
@@ -11121,10 +11142,15 @@ async def api_update(request: Request, worker_id: int | None = None) -> dict[str
     return await _proxy_to_worker(wid, "POST", "/api/update/self", timeout=120)
 
 
+async def _worker_is_desktop(worker_id: int) -> bool:
+    """Whether this worker row is a joined CashPilot Desktop."""
+    worker = await database.get_worker(worker_id) or {}
+    return placement.is_desktop(placement.system_info(worker))
+
+
 async def _refuse_desktop_update(worker_id: int) -> None:
     """A joined Desktop takes deploys and stops, but it updates itself from its own app."""
-    worker = await database.get_worker(worker_id) or {}
-    if placement.is_desktop(placement.system_info(worker)):
+    if await _worker_is_desktop(worker_id):
         raise HTTPException(
             status_code=409,
             detail="CashPilot Desktop updates itself from its own app. Pick a Docker worker here.",

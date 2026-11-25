@@ -226,6 +226,22 @@ class TestTheDeploy:
             _deploy(2, worker=_worker(features=()))
         assert err.value.status_code == 409
 
+    def test_a_joined_desktop_is_never_sent_a_second_copy(self):
+        desktop = {**_worker(), "system_info": json.dumps({"device_type": "desktop"})}
+        with pytest.raises(HTTPException) as err:
+            _deploy(2, worker=desktop)
+        assert err.value.status_code == 409
+        assert "one copy of each service" in err.value.detail
+
+    def test_copies_a_desktop_added_itself_stay_on_a_redeploy(self):
+        desktop = {
+            **_worker(copies=(1, 2)),
+            "system_info": json.dumps({"device_type": "desktop"}),
+        }
+        deploys, deletes, _ = _deploy(1, worker=desktop)
+        assert [d.get("instance", 1) for d in deploys] == [1]
+        assert deletes == []
+
     def test_the_count_is_bounded(self):
         with pytest.raises(HTTPException):
             _deploy(MAX_INSTANCES + 1)
