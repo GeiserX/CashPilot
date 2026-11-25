@@ -57,6 +57,7 @@ from app import (
     egress,
     exchange_rates,
     fleet_key,
+    gpu,
     health_probe,
     ipgeo,
     lan_isolation,
@@ -4531,6 +4532,8 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
     name = svc.get("name") or svc.get("slug") or "This service"
     if egress.devices_per_ip_limit(svc) == 1:
         return 1, f"{name} allows one device per IP address, so a second copy on one machine earns nothing."
+    if gpu.spec_of(svc):
+        return 1, f"{name} uses this machine's GPU, which two copies would share."
     if docker_conf.get("volumes"):
         return 1, f"{name} keeps data in a volume or host directory, which two copies would share."
     if docker_conf.get("ports"):
@@ -4858,6 +4861,18 @@ async def _deploy(
             raise HTTPException(
                 status_code=409,
                 detail="This worker is too old to run a service more than once. Update the worker first.",
+            )
+    if grant := gpu.spec_of(svc):
+        if custom_image:
+            raise HTTPException(status_code=400, detail=f"{slug} uses a GPU and runs only the catalog image.")
+        worker = _decoded_worker(await database.get_worker(worker_id) or {})
+        info = worker.get("system_info")
+        grants = info.get("gpu_grants") if isinstance(info, dict) else None
+        if not isinstance(grants, dict) or grants.get(slug) != grant:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This worker did not report the catalog GPU grant for {svc.get('name') or slug}. "
+                "Update the worker and wait for its next heartbeat.",
             )
 
     # Ports — key is "container_port/protocol" per Docker SDK. A mapping with a

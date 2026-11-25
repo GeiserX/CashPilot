@@ -19,7 +19,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
-from app import egress
+from app import egress, gpu
 from app.constants import PROXIED_FORBIDDEN_CAPS
 
 KINDS = ("socks5", "http", "tailscale")
@@ -254,6 +254,8 @@ def refusal(svc: dict[str, Any]) -> str | None:
         return f"{name} keeps data in a volume or host directory, which a proxied copy would share."
     if docker_conf.get("devices"):
         return f"{name} needs a device on the host, which a proxied copy does not get."
+    if gpu.spec_of(svc):
+        return f"{name} needs this machine's GPU, which a proxied copy does not get."
     if risky := sorted(set(_caps(docker_conf.get("cap_add"))) & PROXIED_FORBIDDEN_CAPS):
         return (
             f"{name} asks for {', '.join(risky)}, which would let it change or bypass the tunnel's firewall, "

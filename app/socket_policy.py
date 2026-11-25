@@ -31,6 +31,7 @@ from pathlib import Path
 
 import yaml
 
+from app import gpu
 from app.constants import LABEL_DEPLOYED_BY
 
 SERVICES_DIR = Path(__file__).resolve().parent.parent / "services"
@@ -44,7 +45,14 @@ FIXED_COMMANDS: list[list[str]] = [
 #: What a created container may ask for. The worker's own ceilings
 #: (app/worker_api.py) are at least this strict.
 ALLOWED_CAPABILITIES = ("NET_ADMIN", "NET_RAW", "SETUID", "SETGID")
-ALLOWED_DEVICES = ("/dev/net/tun",)
+#: /dev/net/tun for Mysterium; the render nodes and /dev/kfd for a catalog GPU
+#: grant (app/gpu.py). Exact paths: sockguard matches an entry as a prefix too,
+#: so /dev/dri would also open card*, the display control nodes.
+ALLOWED_DEVICES = ("/dev/net/tun", *gpu.RENDER_NODE_CEILING, gpu.KFD)
+#: The one device request a container may make: an NVIDIA GPU with the gpu
+#: capability, as app/gpu.py builds it for a catalog GPU grant. No max_count:
+#: in sockguard 2.4.7 a max_count of -1 admits only "all", never a count of 1.
+ALLOWED_DEVICE_REQUESTS = ("{driver: nvidia, allowed_capabilities: [[gpu]]}",)
 #: Docker's default runtime and the gVisor ones docs/security-defaults.md names.
 ALLOWED_RUNTIMES = ("runc", "runsc", "runsc-hostnet", "runsc-hostnet-raw")
 
@@ -144,6 +152,7 @@ request_body:
     allow_host_cgroupns: false
     allowed_capabilities: [{capabilities}]
     allowed_devices: [{devices}]
+    allowed_device_requests: [{device_requests}]
     allowed_runtimes: [{runtimes}]
     allow_sysctls: true               # the tunnel sidecar turns IPv6 off in its own namespace
     require_no_new_privileges: true
@@ -238,6 +247,7 @@ def policy(services_dir: Path = SERVICES_DIR) -> str:
     return TEMPLATE.format(
         capabilities=", ".join(ALLOWED_CAPABILITIES),
         devices=", ".join(ALLOWED_DEVICES),
+        device_requests=", ".join(ALLOWED_DEVICE_REQUESTS),
         runtimes=", ".join(ALLOWED_RUNTIMES),
         commands=commands,
         owner=OWNER,

@@ -19,6 +19,23 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## After 2.10.2: take the new proxy policy before you deploy a service that uses a GPU
+
+**Affects you if** your worker runs behind `cashpilot-socket-proxy` and you
+want to deploy a catalog service that uses a GPU ([GPU grant](docs/gpu.md)).
+Nothing else changes: every other service deploys as before.
+
+The proxy's policy now lets the worker pass in an NVIDIA GPU request and the
+render nodes `/dev/dri/renderD128` to `renderD135` and `/dev/kfd`. Until your
+compose file carries that policy, the worker refuses a GPU service's deploy
+with the fix, and its status page and the dashboard's update card say the
+policy is out of date.
+
+**What to do.** Run the command the worker's status page shows (it rewrites
+only the policy block of your compose file), check the diff, use the new
+file, then run `docker compose up -d --force-recreate cashpilot-socket-proxy
+cashpilot-worker`. Or take this release's compose file.
+
 ## After 2.3.0: the fleet key no longer reads the dashboard, and `/data` closes to other users
 
 **Affects you if** a dashboard tile, widget or script calls the CashPilot API

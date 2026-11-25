@@ -4,7 +4,7 @@
 
 # name: Human-readable service name
 # slug: URL/container-safe identifier (lowercase, hyphens)
-# category: bandwidth | depin | storage | compute
+# category: bandwidth | depin | storage | compute | mining
 # status: active | beta | broken | dead | dropped
 # resurrection_checked: "YYYY-MM-DD"   # (dead entries only) the site still answers, but a human
 #   confirmed on this date that the programme is gone. The weekly liveness check stops
@@ -201,6 +201,22 @@
 #     Only devices on the worker's allow-list may be requested, and only by the
 #     service whose own YAML declares them. A device is a direct line to the
 #     kernel, so the catalog cannot widen that ceiling on its own.
+#     Never a /dev/dri node or /dev/kfd here: a GPU comes only through gpu below.
+#   runtime: runc (optional) the one runtime the service works under. Neither the
+#     deploy request nor the operator's default can change it.
+#   gpu: (optional) the GPU the worker passes in (app/gpu.py, docs/gpu.md). Read by
+#     the worker from its own catalog, never from a deploy request; a custom
+#     service or a proxied copy never gets one.
+#       vendor: nvidia     nvidia | amd | intel
+#       count: 1           1 (default) | "all"
+#       rocm: false        amd only: also pass /dev/kfd
+#     Needs requirements.gpu: true and runtime: runc (gVisor cannot pass DRI
+#     through, and passes NVIDIA only with flags CashPilot does not set), and
+#     cannot be used with network_mode: host. The image and every image_by_arch
+#     alternative must be pinned by SHA-256 digest. The worker refuses image
+#     overrides for GPU services. No docker.env key may start with
+#     NVIDIA_: every container without an NVIDIA grant gets
+#     NVIDIA_VISIBLE_DEVICES=void, and a grant's value is Docker's.
 #   privileged: false (optional, security-sensitive — grants the container full host device access)
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30).
 #     Also set as the container's own stop timeout, so stops CashPilot does not
@@ -361,7 +377,7 @@
 #         registry must flag what it does not know rather than render a blank
 #         that reads as "nothing to see here".
 #
-#   chain: ethereum | polygon | solana | none | ...
+#   chain: ethereum | polygon | solana | bitcoin | none | ...
 #     `none` means NO on-chain surface exists at all, ever — Salad pays PayPal
 #     and gift cards only. Tier 2 (on-chain reconciliation) must skip these
 #     rather than fail to find an address for them.
@@ -374,10 +390,12 @@
 #     container — so the registry can read it from the deployed spec instead of
 #     asking the user to retype it.
 #
-#   address_source: env | manual | app
+#   address_source: env | manual | app | collector
 #     Where the address is actually set. `manual` covers post-deploy
 #     configuration (Mysterium's beneficiary via TequilAPI, Anyone's anonrc);
-#     `app` covers a wallet linked inside the provider's own site.
+#     `app` covers a wallet linked inside the provider's own site; `collector`
+#     means the address is the collector's `address` argument, saved in
+#     Settings (track-only entries such as a mining pool read by payout address).
 #
 #   address_read:
 #     command: ["cat", "/etc/anon/anonrc"]
@@ -444,6 +462,11 @@
 #   type: api | scrape | manual | auto
 #     - auto: earnings accrue/settle automatically; no active collection needed
 #   notes: "Implementation hints for the earnings collector" (for developers)
+#   accrual: pool   (optional)
+#     The balance this collector reads is credit a third party holds and may
+#     never pay (a pool's unpaid balance, immature rewards). Its increases are
+#     ACCRUED, NOT RECEIVED: only a confirmed payout is money received. Omit it
+#     for an account balance. The loader rejects any other value.
 #   quiet_days: 14
 #     How many days the balance can stand still while the service is working
 #     normally: earnings that start late (a vetting period) or arrive in

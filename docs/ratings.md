@@ -93,6 +93,7 @@ What a cited con or pro may rest on:
 | <a href="#sentinel-dvpn">Sentinel dVPN</a> | F | 5 of 20 | 6 | <span class="ratings-con" title="Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host.">Payments are in the P2P token, and 20% of every bandwidth payment goes to stakers rather than the node host.</span> | 2026-11-04 |
 | <a href="#traffmonetizer">Traffmonetizer</a> | F | 5 of 20 | 4 | <span class="ratings-con" title="Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks, or marked completed with no matching transaction.">Trustpilot rates it 1.9; reviewers from 2023 to November 2026 report payouts pending for weeks, or marked completed with no matching transaction.</span> | 2026-11-04 |
 | <a href="#helium">Helium</a> | F | 4 of 20 | 6 | <span class="ratings-con" title="HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none.">HIP 149 retired Proof-of-Coverage rewards on 6 July 2026; IoT hotspots now earn only for data they carry, and more than 114,000 of them carried none.</span> | 2026-11-04 |
+| <a href="#ocean">OCEAN</a> | F | 4 of 20 | 7 | <span class="ratings-con" title="Paid in Bitcoin only, and nothing is paid on-chain until your balance reaches 0.01048576 BTC.">Paid in Bitcoin only, and nothing is paid on-chain until your balance reaches 0.01048576 BTC.</span> | 2026-11-25 |
 | <a href="#proxylite">ProxyLite</a> | F | 4 of 20 | 7 | <span class="ratings-con" title="The site&#x27;s owner is hidden in its domain records, and we found no named company behind it.">The site's owner is hidden in its domain records, and we found no named company behind it.</span> | 2026-11-04 |
 | <a href="#vast-ai">Vast.ai</a> | F | 4 of 20 | 7 | <span class="ratings-con" title="A host earns only while rented, and Vast&#x27;s own figures for a consumer GPU depend on rental type and reliability score.">A host earns only while rented, and Vast's own figures for a consumer GPU depend on rental type and reliability score.</span> | 2026-11-04 |
 | <a href="#bytebenefit">Bytebenefit</a> | F | 3 of 20 | 7 | <span class="ratings-con" title="The app&#x27;s Google Play listing says your traffic serves web-intelligence requests by Infatica&#x27;s clients, without saying who they are or how they are checked.">The app's Google Play listing says your traffic serves web-intelligence requests by Infatica's clients, without saying who they are or how they are checked.</span> | 2026-11-04 |
@@ -798,6 +799,35 @@ What a cited con or pro may rest on:
 **Pros**
 
 - The hotspot gateway software is open source under the Apache-2.0 licence. [Source](https://github.com/helium/gateway-rs), checked 2026-11-04.
+
+<a id="ocean"></a>
+
+### OCEAN
+
+**Grade F**, 4 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [OCEAN](guides/ocean.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We saw one on-chain payout to one address on mempool.space, which is not a record. No user reports were reviewed. |
+| Payout terms | Fair | Bitcoin only, a 2% fee, and 0.01048576 BTC before an on-chain payout. Lightning payouts are opt-in. |
+| Account safety | Unknown | There is no account to ban; we found no reports of withheld balances either way. |
+| Fit with how CashPilot runs it | Fair | CashPilot runs nothing for OCEAN; it reads the balance of a miner you run yourself. |
+| Traffic transparency | Unknown | A pool sells no traffic; it turns your hashrate into Bitcoin blocks. Not reviewed beyond that. |
+| Privacy | Unknown | Not reviewed. Address stats are public on ocean.xyz by design. |
+| Identity checks | Good | OCEAN needs only the Bitcoin address it pays. There is no account. |
+| Support | Unknown | Not reviewed. |
+| Earnings realism | Unknown | Earnings follow your own hashrate and the pool's luck. We did not compare OCEAN's estimates with real payouts. |
+| Longevity | Unknown | OCEAN's documentation dates from November 2023. We did not check its legal entity. |
+
+**Cons**
+
+- Paid in Bitcoin only, and nothing is paid on-chain until your balance reaches 0.01048576 BTC. [Source](https://ocean.xyz/docs/lightning), checked 2026-11-25.
+- A 2% pool fee, or 1% when you build your own block templates with DATUM. [Source](https://ocean.xyz/), checked 2026-11-25.
+- CashPilot does not run a miner for OCEAN: you point your own hardware at the pool, and CashPilot only reads the balance. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/mining/ocean.yml), checked 2026-11-25.
+
+**Pros**
+
+- No account and no identity check. OCEAN asks only for the Bitcoin address it pays. [Source](https://ocean.xyz/), checked 2026-11-25.
 
 <a id="proxylite"></a>
 

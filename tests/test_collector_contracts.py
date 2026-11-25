@@ -176,6 +176,15 @@ class TestParsingRealShapes:
         assert out.error is None
         assert out.balance == fx["parsed"]
 
+    def test_ocean_reads_the_unpaid_balance(self):
+        from app.collectors.ocean import OceanCollector
+
+        fx = _fixture("ocean")
+        out = self._run(OceanCollector(address="bc1q4efd2vns8qwawg3nt4xxzs9053shh0q3x0tuu9"), [fx["sample"]])
+        assert out.error is None
+        assert out.balance == fx["parsed"]
+        assert out.currency == fx["currency"]
+
     def test_a_renamed_field_is_caught_rather_than_read_as_zero(self):
         """The failure this bead exists for: the provider renames the key."""
         from app.collectors.salad import SaladCollector

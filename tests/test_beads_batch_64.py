@@ -68,9 +68,10 @@ def nav_refs(entries: list | None = None) -> list[str]:
 
 class TestTheTopLevelIsGroupedRatherThanFlat:
     def test_there_are_far_fewer_tabs_than_before(self):
-        """Eleven was the measured starting point; the fix is meaningless if the
-        count did not actually come down."""
-        assert len(top_level()) <= 8, f"{len(top_level())} tabs: {top_level()}"
+        """The original eleven sections fit in eight tabs, plus Mining."""
+        names = top_level()
+        original_tabs = [name for name in names if name != "Mining"]
+        assert len(original_tabs) <= 8, f"{len(names)} tabs: {names}"
 
     def test_the_groups_are_domain_nouns(self):
         """What Paperless, Immich and Authentik all do. Imperative labels

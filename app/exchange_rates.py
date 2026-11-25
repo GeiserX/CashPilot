@@ -42,6 +42,8 @@ CRYPTO_IDS: dict[str, str] = {
     # cash-out recorded in one must count toward the totals.
     "USDT": "tether",
     "USDC": "usd-coin",
+    # Mining pools that pay in Bitcoin (OCEAN).
+    "BTC": "bitcoin",
 }
 
 CACHE_TTL = 900  # 15 minutes

@@ -1177,7 +1177,8 @@ class TestBrokenTunnel:
         moved = docker.named("cashpilot-honeygain-p3")
         assert moved.status == "running"
         # Recreated from what Docker recorded, hardening included.
-        assert moved.kw["image"] == "honeygain/honeygain:1" and moved.kw["environment"] == ["K=honeygain"]
+        assert moved.kw["image"] == "honeygain/honeygain:1"
+        assert moved.kw["environment"] == ["K=honeygain", "NVIDIA_VISIBLE_DEVICES=void"]
         assert moved.kw["cap_drop"] == ["ALL"] and moved.kw["privileged"] is False
         assert moved.kw["restart_policy"] == {"Name": "no"} and moved.labels[LABEL_PROXY] == "3"
         _heartbeat()
@@ -1452,6 +1453,23 @@ class TestStartAndRemoveReconcile:
 
 
 class TestEditsAndMovesSecondReview:
+    def test_a_moved_copy_gets_no_nvidia_devices(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        old = docker.named("cashpilot-honeygain-p3")
+        old.attrs["Config"]["Env"] = ["K=value", "NVIDIA_VISIBLE_DEVICES=all"]
+        clone = proxy_tunnel._clone_into(docker, old, tunnel)
+        assert clone.attrs["Config"]["Env"] == ["K=value", "NVIDIA_VISIBLE_DEVICES=void"]
+
+    def test_a_copy_with_device_requests_is_not_moved(self, docker):
+        _deploy("honeygain")
+        tunnel = docker.named("cashpilot-tunnel-p3")
+        old = docker.named("cashpilot-honeygain-p3")
+        old.attrs["HostConfig"]["DeviceRequests"] = [{"Driver": "nvidia", "Capabilities": [["gpu"]]}]
+        with pytest.raises(proxy_tunnel.ProxyTunnelError, match="device requests"):
+            proxy_tunnel._clone_into(docker, old, tunnel)
+        assert docker.named(old.name) is old and old.status == "running"
+
     def test_a_copy_that_does_not_stop_is_not_moved(self, docker):
         _deploy("honeygain")
         tunnel = docker.named("cashpilot-tunnel-p3")
@@ -3701,7 +3719,8 @@ class TestAnOlderWorkersTunnelIsReplacedNeverReused:
         assert new.files["proxy_auth"] == old.files["proxy_auth"] and new.files["own_ip"] == old.files["own_ip"]
         assert _member_ids(docker, new) == ["cashpilot-earnfm-p3", NAME]
         for n in (NAME, "cashpilot-earnfm-p3"):
-            assert docker.named(n).attrs["Config"]["Env"] == env[n] and docker.named(n).labels == labels[n]
+            assert docker.named(n).attrs["Config"]["Env"] == [*env[n], "NVIDIA_VISIBLE_DEVICES=void"]
+            assert docker.named(n).labels == labels[n]
         assert docker.named(NAME).kw["volumes"] == {"hg-data": {"bind": "/data", "mode": "rw"}}
         # The running copy started again in the new run, once it was ready; the stopped one stays stopped.
         assert docker.named(NAME).status == "running"

@@ -11,13 +11,15 @@
 # What it checks:
 #   a. every Docker call the worker makes passes the proxy, through the real
 #      worker code in the real worker container: deploys (bind from the allowed
-#      folder, NET_RAW; host networking with NET_ADMIN and /dev/net/tun), the
+#      folder, NET_RAW; host networking with NET_ADMIN and /dev/net/tun), a
+#      create with an NVIDIA GPU request (the GPU grant), the
 #      catalog's exec readers, logs, stats, pause and file reads, stop, start,
 #      restart, volumes, the tunnel sidecar (sysctls, put_archive, an earner in
 #      its namespace), the isolation check and the activity round; and the
 #      proxy logged no refusal while they ran;
 #   b. the proxy refuses a privileged create, a bind of / and of the socket,
-#      SYS_ADMIN, a device, host PID, seccomp=unconfined, a create without
+#      SYS_ADMIN, a device, an AMD device request, /dev/dri/card0, host PID,
+#      seccomp=unconfined, a create without
 #      no-new-privileges, the same privileged create spelled in lowercase, a
 #      local volume bound to /, exec of sh, exec with LD_PRELOAD, container
 #      update, swarm init, a build, plugins and events;

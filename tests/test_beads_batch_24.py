@@ -21,6 +21,7 @@ Two beads, one cause: -eat filed the missing hint, -izt filed the unread field.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,7 @@ DOCUMENTED_COLLECTOR_KEYS = {
     "durable_alternative",
     "quiet_days",
     "node_read",
+    "accrual",
 }
 
 
@@ -106,8 +108,11 @@ class TestNoServiceHidesGuidanceInAFieldNothingReads:
         """Guards the guard: an allowlist that drifts from the schema proves nothing."""
         schema = (SERVICES / "_schema.yml").read_text(encoding="utf-8")
         start = schema.index("# collector:")
-        block = schema[start : start + 2000]
-        for key in ("type", "notes", "credential_hint", "per_node_earnings", "quiet_days"):
+        # The whole block, up to the next top-level key: a fixed-size window
+        # silently pushed the last key out each time the block grew.
+        following = re.search(r"^# [a-z_]+:", schema[start + 1 :], re.M)
+        block = schema[start : start + 1 + following.start()] if following else schema[start:]
+        for key in ("type", "notes", "credential_hint", "per_node_earnings", "quiet_days", "accrual"):
             assert f"#   {key}:" in block, f"{key} is in the allowlist but not documented in _schema.yml"
 
     def test_the_documented_field_is_actually_used(self):

@@ -1,0 +1,28 @@
+{
+  "currency": "BTC",
+  "fields": [
+    "result.unpaid",
+    "result.lastest_share_ts",
+    "result.estimated_payout_next_block"
+  ],
+  "note": "balance = float(result.unpaid); an unknown address answers HTTP 200 {\"error\":\"No such user/worker\"}, which is an error. Sample recorded live on 2026-11-25 for the address OCEAN's own /v1/blocks lists.",
+  "parsed": 0.00571777,
+  "sample": {
+    "result": {
+      "estimated_bonus_earn_next_block": "0.00000000",
+      "estimated_earn_next_block": "0.00141890",
+      "estimated_payout_next_block": "0.00000000",
+      "estimated_total_earn_next_block": "0.00141890",
+      "hashrate_300s": "20206150328135624",
+      "hashrate_60s": "21317038236220348",
+      "lastest_share_ts": "1795626484",
+      "shares_300s": "1411383296",
+      "shares_60s": "297795584",
+      "shares_in_tides": "494229258240",
+      "snap_ts": "1795626480",
+      "snap_type": "user",
+      "unpaid": "0.00571777"
+    }
+  },
+  "slug": "ocean"
+}

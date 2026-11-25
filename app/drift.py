@@ -24,7 +24,7 @@ import re
 import shlex
 from typing import Any
 
-from app import arch, catalog, lan_fence
+from app import arch, catalog, gpu, lan_fence
 from app.constants import EPHEMERAL_PORTS
 
 #: Repositories CashPilot builds itself (images/<slug>/). The catalog pins their tag.
@@ -62,6 +62,9 @@ def catalog_fingerprint(svc: dict[str, Any] | None) -> str:
         for var in judged.get("env") or []
         if isinstance(var, dict)
     ]
+    if "gpu" in docker_conf:
+        # Only when declared, so every fingerprint made before the GPU grant stays as it was.
+        judged["gpu"] = docker_conf["gpu"]
     blob = json.dumps(judged, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
@@ -229,10 +232,18 @@ def container_drift(
         found.append(f"still has {_names(extra)}, which the catalog no longer grants")
 
     want_devices = {_device_target(d) for d in docker_conf.get("devices") or []} - {""}
-    if missing := want_devices - set(shape.get("devices") or []):
+    have_devices = set(shape.get("devices") or [])
+    if missing := want_devices - have_devices:
         found.append(f"missing device {_names(missing)}, which the catalog now passes in")
-    if extra := set(shape.get("devices") or []) - want_devices:
+    grant = gpu.spec_of(svc)
+    # A GPU grant's render nodes and /dev/kfd are picked by the worker from the
+    # host (app/gpu.py), so they are the catalog's even though it names none.
+    gpu_devices = {d for d in have_devices if gpu.in_ceiling(d)} if grant else set()
+    if extra := have_devices - want_devices - gpu_devices:
         found.append(f"still has device {_names(extra)}, which the catalog no longer passes in")
+    if grant and "gpu" in shape and not shape.get("gpu") and not gpu_devices:
+        # "gpu" in shape: a worker older than the grant sends no request list.
+        found.append("missing GPU, which the catalog now passes in")
 
     if shape.get("privileged") and not docker_conf.get("privileged"):
         found.append("runs privileged, which CashPilot no longer allows")

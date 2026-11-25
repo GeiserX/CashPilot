@@ -135,6 +135,24 @@ def phase_allowed() -> None:
             labels=dict(LABEL),
         ),
     )
+    # The GPU grant (app/gpu.py): the proxy passes an NVIDIA request with the
+    # gpu capability. Created only: on a host without the toolkit the start
+    # fails with Docker's own message, which is not the proxy's to judge.
+    from docker.types import DeviceRequest
+
+    gpu_probe = check(
+        "create a container with an NVIDIA GPU request",
+        lambda: client.containers.create(
+            ALPINE,
+            ["true"],
+            name=PREFIX + "gpu",
+            labels=dict(LABEL),
+            security_opt=["no-new-privileges:true"],
+            device_requests=[DeviceRequest(driver="nvidia", count=1, capabilities=[["gpu"]])],
+        ),
+    )
+    if gpu_probe is not None:
+        check("remove the GPU request container", lambda: gpu_probe.remove(force=True))
     name = PREFIX + "plain"
     container = check("inspect a container", lambda: client.containers.get(name))
     if container is None:
@@ -241,6 +259,23 @@ REQUESTS: list[tuple[str, str, str, object]] = [
         *_create(
             {
                 "Devices": [{"PathOnHost": "/dev/zero", "PathInContainer": "/dev/zero", "CgroupPermissions": "rwm"}],
+                "SecurityOpt": NNP,
+            }
+        ),
+    ),
+    (
+        "an AMD device request",
+        "POST",
+        *_create({"DeviceRequests": [{"Driver": "amd", "Count": 1, "Capabilities": [["gpu"]]}], "SecurityOpt": NNP}),
+    ),
+    (
+        "device /dev/dri/card0, a display control node",
+        "POST",
+        *_create(
+            {
+                "Devices": [
+                    {"PathOnHost": "/dev/dri/card0", "PathInContainer": "/dev/dri/card0", "CgroupPermissions": "rwm"}
+                ],
                 "SecurityOpt": NNP,
             }
         ),

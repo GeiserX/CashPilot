@@ -1851,7 +1851,7 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .wizard-panel .section-title { font-size: var(--fs-4); }
 .wizard-panel p { max-width: 80ch; }
 .wizard-footer { display: flex; justify-content: flex-start; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); }
-.category-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-width: 980px; }
+.category-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; max-width: 1100px; }
 
 .category-card:hover {
   display: grid;

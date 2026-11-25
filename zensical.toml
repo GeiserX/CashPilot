@@ -120,13 +120,18 @@ nav = [
           { "Sia (hostd)" = "guides/sia-hostd.md" },
           { Storj = "guides/storj.md" },
         ] },
+      { Mining = [
+          { OCEAN = "guides/ocean.md" },
+        ] },
     ] },
+  { Mining = "mining.md" },
   { Configuration = [
       { "Configuration reference" = "configuration.md" },
       { "Multi-node fleet management" = "fleet.md" },
       { "Running on ARM" = "arm.md" },
       { "Custom services" = "custom-services.md" },
       { "Proxied copies" = "proxies.md" },
+      { "GPU services" = "gpu.md" },
     ] },
   { Security = [
       { "Security defaults" = "security-defaults.md" },

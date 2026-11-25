@@ -184,7 +184,8 @@ class TestDeployRawResources:
                 hostname="myhost",
             )
         kwargs = client.containers.run.call_args.kwargs
-        assert kwargs["environment"] == {"ID": "tok", "NAME": "dev"}
+        # Plus the void stamp every container without an NVIDIA grant gets (app/gpu.py).
+        assert kwargs["environment"] == {"ID": "tok", "NAME": "dev", "NVIDIA_VISIBLE_DEVICES": "void"}
         assert kwargs["ports"] == {"8081/tcp": 9000}
         assert kwargs["volumes"] == {"/host": {"bind": "/data", "mode": "rw"}}
         assert kwargs["cap_add"] == ["NET_ADMIN"]
