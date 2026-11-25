@@ -159,6 +159,19 @@ class TestFleetRollUp:
         assert out["monthly_gross"] == 15.0
         assert out["monthly_net"] == 10.0
 
+    def test_fixed_price_workers_do_not_count_as_unknown_electricity_cost(self):
+        out = me.fleet_summary(
+            [
+                self._machine("home", 10.0, 4.0),
+                self._machine("hosted", 5.0, None, me.NOT_METERED),
+            ]
+        )
+        assert out["cost_known_for"] == 1
+        assert out["cost_unknown_for"] == 0
+        assert out["monthly_net"] == 6.0
+        assert "Costs are known for 1 of 1" in out["summary"]
+        assert "No per-kWh bill for 1" in out["summary"]
+
     def test_a_fleet_with_no_cost_data_reports_no_net(self):
         out = me.fleet_summary([self._machine("a", 10.0, None)])
         assert out["monthly_net"] is None
@@ -260,6 +273,27 @@ class TestEndpoint:
     def test_an_empty_fleet_returns_an_empty_summary(self):
         out = self._call()
         assert out["machines"] == []
+
+    def test_the_billing_setting_overrides_the_worker_default_in_both_directions(self):
+        config = {"power_price_per_kwh": "0.20", "power_currency": "USD", "worker_c1_watts": "100"}
+        inputs = {
+            "workers": [{**self.WORKERS[0], "system_info": {"metered": False}}],
+            "earned": {"honeygain": 8.0},
+            "containers": [{"slug": "honeygain", "status": "running", "_worker_id": 1}],
+        }
+        legacy = self._call(config=config, **inputs)["machines"][0]
+        assert legacy["verdict"] == me.NOT_METERED
+        config["worker_c1_unmetered"] = "false"
+        metered = self._call(config=config, **inputs)["machines"][0]
+        assert metered["monthly_cost"] == 14.6
+        assert metered["break_even_tariff"]["price_per_kwh"] == 0.1096
+        config["worker_c1_unmetered"] = "true"
+        unmetered = self._call(config=config, **inputs)["machines"][0]
+        assert unmetered["verdict"] == me.NOT_METERED
+        assert unmetered["monthly_gross"] == 8.0
+        assert unmetered["monthly_cost"] is None
+        assert unmetered["monthly_net"] is None
+        assert unmetered["break_even_tariff"] is None
 
     @pytest.mark.parametrize("watts", [None, "0", "-10", "nan", "inf", "5e-324"])
     def test_a_tracked_pool_with_no_valid_watts_has_unknown_cost(self, watts):
