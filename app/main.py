@@ -65,6 +65,7 @@ from app import (
     login_rate_limit,
     machine_economics,
     metrics,
+    miner_read,
     net_activity,
     notify,
     obligations,
@@ -10263,6 +10264,30 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     }
 
 
+def _lan_miner_estimates(workers: list[dict[str, Any]], price: float | None) -> list[dict[str, Any]]:
+    """Report fresh device readings as estimates outside the assessed totals."""
+    now = datetime.now(UTC)
+    estimates = []
+    for worker in workers:
+        if worker.get("status") != "online":
+            continue
+        snapshot = miner_read.sanitize_snapshot((worker.get("system_info") or {}).get("miners"))
+        for device in snapshot["devices"] if snapshot else ():
+            watts = device["watts"]
+            age = (now - datetime.fromisoformat(device["read_at"])).total_seconds()
+            if watts is not None and 0 <= age <= miner_read.STALE_AFTER:
+                estimates.append(
+                    {
+                        "worker": worker.get("name") or f"worker {worker.get('id')}",
+                        "target": device["target"],
+                        "watts": watts,
+                        "monthly_cost": machine_economics.monthly_cost(watts, price) if price else None,
+                        "quality": "device-reported",
+                    }
+                )
+    return estimates
+
+
 @app.get("/api/fleet/economics")
 async def api_fleet_economics(request: Request) -> dict[str, Any]:
     """Is each machine worth keeping powered on for what it earns?
@@ -10415,6 +10440,10 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         assessed.append(device)
 
     summary = machine_economics.fleet_summary(assessed)
+    lan_miners = _lan_miner_estimates(workers, price if fx_ok and price > 0 else None)
+    costs = [device["monthly_cost"] for device in lan_miners if device["monthly_cost"] is not None]
+    summary["lan_miners"] = lan_miners
+    summary["lan_miners_monthly_cost"] = round(sum(costs), 4) if costs else None
     # Every figure in this payload is USD. It previously carried no currency at
     # all, so fleet.html printed bare numbers the user could not attribute to a
     # unit — and the numbers themselves mixed two.
@@ -12064,6 +12093,8 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
     if not cid:
         raise HTTPException(status_code=400, detail="Worker name or client_id required")
     state = await _authenticate_worker_heartbeat(request, cid)
+    if "miners" in body.system_info:
+        body.system_info["miners"] = miner_read.sanitize_snapshot(body.system_info["miners"])
     # Pre-upsert state: upsert_worker unconditionally writes 'online', so the
     # offline -> online recovery is only observable here, before it runs.
     # Best-effort on purpose: this read failing must never reject a heartbeat
@@ -12378,7 +12409,7 @@ async def _run_activity_hourly() -> None:
 @app.get("/api/workers")
 async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     """List all registered workers."""
-    _require_auth_api(request)
+    user = _require_auth_api(request)
     workers = await database.list_workers()
     config = await database.get_config() or {}
     ui_version = version.current()
@@ -12391,6 +12422,7 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # Unknown reference -> no skew: version.skewed() returns False when either side
         # is unknown, so a GitHub outage never flags every phone or Desktop.
         si = w.get("system_info") or {}
+        _public_worker_miners(si, show_pool_user=auth.require_role(user, "owner"))
         if _is_phone(si):
             reference = update_check.android_latest()
         elif placement.is_desktop(si):
@@ -12412,6 +12444,15 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # to a fully enrolled one on the fleet page.
         w["enrollment"] = enrollment_state(w.get("key_issued_at"), bool(w.get("key_confirmed")))
     return workers
+
+
+def _public_worker_miners(info: dict[str, Any], *, show_pool_user: bool) -> None:
+    if "miners" in info:
+        snapshot = miner_read.sanitize_snapshot(info["miners"])
+        if snapshot and not show_pool_user:
+            for device in snapshot["devices"]:
+                device["pool_user"] = None
+        info["miners"] = snapshot
 
 
 def _parse_worker_json(w: dict[str, Any]) -> None:
@@ -12445,11 +12486,12 @@ def _parse_worker_json(w: dict[str, Any]) -> None:
 @app.get("/api/workers/{worker_id}")
 async def api_get_worker(request: Request, worker_id: int) -> dict[str, Any]:
     """Get details for a specific worker."""
-    _require_auth_api(request)
+    user = _require_auth_api(request)
     worker = await database.get_worker(worker_id)
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
     _parse_worker_json(worker)
+    _public_worker_miners(worker.get("system_info") or {}, show_pool_user=auth.require_role(user, "owner"))
     return worker
 
 

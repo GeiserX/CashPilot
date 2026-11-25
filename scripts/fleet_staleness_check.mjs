@@ -232,6 +232,23 @@ check('an older response cannot restore stale watts', racing.editor().value === 
 check('the gross tooltip describes period accruals', racing.markup().includes('Accrued at the pool during this period'),
   'the tooltip asserts that past accruals still await payout');
 
+const renderMiners = new Function('esc', 'brk', extract('renderMiners') + '; return renderMiners;')(esc, esc);
+const miner = {
+  target: 'axeos://10.0.0.4', protocol: 'axeos', ok: true, read_at: new Date().toISOString(),
+  hashrate_ghs: 1000, watts: 10, best_diff: 483000, model: '<img src=x>', pool_user: '<payout>',
+};
+const onlineBox = {status: 'online'};
+const renderMiner = (device, worker = onlineBox) => renderMiners(worker, {devices: [device], errors: []});
+const readings = renderMiner(miner);
+check('current miner shows rates, power and difficulty', ['cell-ok', '1 TH/s', '10 J/TH', '483k'].every(text => readings.includes(text)), readings);
+check('miner model and user are escaped', readings.includes('&lt;img src=x&gt;') && readings.includes('&lt;payout&gt;'), readings);
+const old = renderMiner({...miner, read_at: new Date(Date.now() - 240000).toISOString()});
+const offlineMiner = renderMiner(miner, {status: 'offline'});
+check('stale and offline miners show the last read in grey', [old, offlineMiner].every(row => row.includes('cell-unknown') && row.includes('Last read')), old + offlineMiner);
+const missed = renderMiner({...miner, ok: false, error: 'timed out'});
+check('a failed reading has no figures', missed.includes('timed out') && !missed.includes('TH/s') && !missed.includes(' J/TH'), missed);
+check('a worker with no configuration has no miner panel', renderMiners(onlineBox, undefined) === '', 'unexpected miner panel');
+
 if (failures.length) {
   console.error('fleet staleness check FAILED:');
   for (const f of failures) console.error(`  - ${f}`);
