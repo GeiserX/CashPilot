@@ -25,6 +25,7 @@ from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
 from app.collectors.salad import SaladCollector
 from app.collectors.storj import StorjCollector
+from app.collectors.supportxmr import SupportXMRCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "bytelixir": BytelixirCollector,
     "salad": SaladCollector,
     "ocean": OceanCollector,
+    "supportxmr": SupportXMRCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -74,6 +76,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "salad": ["auth_cookie"],
     # A public payout address: OCEAN's stats are keyed by it, and it unlocks no funds.
     "ocean": ["address"],
+    "supportxmr": ["address"],
 }
 
 # How long each credential actually lasts, and why it matters.

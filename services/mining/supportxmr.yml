@@ -1,0 +1,132 @@
+name: SupportXMR
+slug: supportxmr
+category: mining
+status: beta
+website: https://www.supportxmr.com
+description: >
+  SupportXMR is a Monero mining pool with no account: your miner logs in with
+  your Monero address as its username, and the pool pays that address.
+  CashPilot does not run a miner here. It reads the balance SupportXMR holds
+  for your address, so you see what your CPU miner has earned next to your
+  other income. The balance is earned but not received: the pool pays it once
+  it passes your payout threshold.
+short_description: Monero mining pool, tracked by your payout address
+
+# The catalog uses this link to open the pool's website. The referral audit
+# reports the programme as unknown until its status is confirmed.
+referral:
+  account: false
+  signup_url: "https://supportxmr.com"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+  note: "Needs a Monero miner (XMRig) pointed at pool.supportxmr.com"
+
+payment:
+  methods: [crypto]
+  minimum_payout: "0.1 XMR (automatic), 0.01 XMR on request"
+  currency: XMR
+  frequency: "When your balance passes your threshold, or on request"
+
+cashout:
+  method: auto
+  dashboard_url: "https://www.supportxmr.com"
+  # The pool's minimum payout on request.
+  min_amount: 0.01
+  currency: XMR
+  notes: >-
+    SupportXMR pays your address once the balance reaches your threshold
+    (0.1 XMR by default). On its site you can also request an instant payout
+    from 0.01 XMR, for a 0.001 XMR fee.
+
+platforms: []
+
+collector:
+  type: api
+  # A new miner's balance starts moving about 2 hours after its first shares,
+  # once the pool's blocks confirm.
+  quiet_days: 2
+  accrual: pool
+  notes: >-
+    GET https://www.supportxmr.com/api/miner/{address}/stats, no auth. amtDue
+    is piconero (1e12 per XMR). An address the pool has never seen answers 200
+    with every field zero: lastHash, totalHashes, amtDue and amtPaid all 0 is
+    an error, never a 0 balance. txnCount is not trusted (it is 0 for addresses
+    that have been paid).
+  credential_hint: >-
+    Your Monero payout address: the username your miner uses on SupportXMR,
+    without any <b>.workername</b> or <b>+difficulty</b> part. It is public and
+    unlocks no funds.
+
+payout:
+  model: external
+  chain: monero
+  address_source: collector
+  notes: >-
+    The balance is earned but not received until SupportXMR pays it to this
+    address. Monero balances cannot be read on-chain without a private view
+    key, which CashPilot never asks for, so you confirm each payout yourself.
+
+disclosure:
+  sells: compute
+  third_party_traffic: >-
+    No. Your miner sends hashes to the pool; nobody routes traffic through your connection.
+  data_collected: >-
+    Your Monero address, the worker names you choose, your hashrate and your
+    miner's IP address as the pool sees it.
+  isp_risk: >-
+    A miner keeps one connection open to the pool and uses little bandwidth.
+    The cost to watch is electricity, not your ISP.
+  account_rules: >-
+    There is no account. The address is the identity, and anyone can read its
+    stats on supportxmr.com.
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-25"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_terms: Monero only, a 0.6% pool fee, and 0.1 XMR before an automatic payout (0.01 XMR on request, for a 0.001 XMR fee).
+    terms_fit: CashPilot runs nothing for SupportXMR; it reads the balance of a miner you run yourself.
+    payout_record: Not reviewed. The pool's API lists payments for an address, but we did not check a payout ourselves.
+    account_safety: There is no account to ban; we found no reports of withheld balances either way.
+    traffic_transparency: A pool sells no traffic; it turns your hashrate into Monero blocks. Not reviewed beyond that.
+    privacy: Not reviewed. Address stats are public on supportxmr.com by design.
+    identity_checks: The site asks only for a Monero address to show stats. We did not find a written policy that says so.
+    support: Not reviewed.
+    earnings_realism: Earnings follow your own hashrate and the pool's luck. We did not compare estimates with real payouts.
+    longevity: Not checked on a primary source.
+  cons:
+  - text: Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.
+    criterion: payout_terms
+    kind: terms
+    source: https://www.supportxmr.com/script_min.js
+    checked_on: "2026-11-25"
+  - text: 'CashPilot does not run a miner for SupportXMR: you point your own miner at the pool, and CashPilot only reads the balance.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/mining/supportxmr.yml
+    checked_on: "2026-11-25"

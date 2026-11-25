@@ -5,6 +5,7 @@ The **Mining** section of the catalog is for crypto you mine with your own hardw
 | Pool | Coin | Guide |
 |---|---|---|
 | OCEAN | Bitcoin | [OCEAN](guides/ocean.md) |
+| SupportXMR | Monero | [SupportXMR](guides/supportxmr.md) |
 
 ## Accrued is not received
 

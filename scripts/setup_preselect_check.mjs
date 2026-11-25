@@ -165,11 +165,11 @@ console.log('/setup?service=<slug> starts the wizard at the setup step with that
 // sends the user to the Settings field the collector reads.
 {
   const pool = { slug: 'ocean', name: 'OCEAN', category: 'mining', manual_only: true, platforms: [], docker: { image: '', env: [] },
-    referral: { signup_url: 'https://ocean.xyz/getstarted' }, cashout: { dashboard_url: 'https://ocean.xyz/stats' } };
+    referral: { account: false, signup_url: 'https://ocean.xyz/getstarted' }, cashout: { dashboard_url: 'https://ocean.xyz/stats' } };
   const app = { manual_only: true, slug: 'grass', name: 'Grass', category: 'depin', platforms: ['desktop'], docker: { image: '' } };
   const referralNote = () => '';
   const form = new Function('escapeHtml', 'capFirst', 'referralNote', 'envInputFields',
-    `${grab('renderServiceSetupForm')}\nreturn renderServiceSetupForm;`)(escapeHtml, capFirst, referralNote, () => '');
+    `${grab('hasAccount')}\n${grab('renderServiceSetupForm')}\nreturn renderServiceSetupForm;`)(escapeHtml, capFirst, referralNote, () => '');
   const html = form(pool, []);
   assert.match(html, /<a href="\/settings#collector-ocean"[^>]*>Add your payout address<\/a>/, 'the pool step links to its Settings field');
   assert.match(html, /CashPilot runs no miner for it/);

@@ -1,0 +1,24 @@
+{
+  "currency": "XMR",
+  "fields": [
+    "amtDue",
+    "lastHash",
+    "totalHashes",
+    "amtPaid"
+  ],
+  "note": "balance = amtDue / 1e12 (piconero). An address the pool has never seen answers 200 with lastHash, totalHashes, amtDue and amtPaid all 0: an error, never 0. Sample recorded live on 2026-11-25 for the Monero General Fund's donation address.",
+  "parsed": 0.002633849853,
+  "sample": {
+    "amtDue": 2633849853,
+    "amtPaid": 934095340542,
+    "expiry": 1795629368100,
+    "hash": 1500,
+    "identifier": "global",
+    "invalidShares": 754,
+    "lastHash": 1795629323,
+    "totalHashes": 86313450020,
+    "txnCount": 0,
+    "validShares": 757428
+  },
+  "slug": "supportxmr"
+}
