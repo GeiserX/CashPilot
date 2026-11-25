@@ -6,10 +6,10 @@ never does, and what your host needs first.
 
 !!! warning "Beta"
 
-    The GPU grant is new. NVIDIA has run on one real host so far (WSL2 with
-    Docker and the NVIDIA Container Toolkit). AMD and Intel have run only in
-    tests. Tell us how it goes on yours: open an issue with the card, the driver
-    and the error, if any.
+    The GPU grant is new and has not yet run on a real NVIDIA, AMD or Intel
+    host. Its tests and the socket proxy's live check pass. It stays beta until
+    it has run on one real host. Tell us how it goes on yours: open an issue
+    with the card, the driver and the error, if any.
 
 ## Who gets a GPU
 
