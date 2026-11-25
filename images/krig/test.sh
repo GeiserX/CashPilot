@@ -53,19 +53,28 @@ if out=$(timeout 15s docker run "${harden[@]}" --name "$name-reject-cache" --net
 fi
 grep -F 'download failed.' <<<"$out"
 
-# A successful HTTPS download alone must not install an unpinned archive.
-docker run "${harden[@]}" --name "$name-wrong-pin" --network none --user 0:0 \
-    --mount "type=volume,src=$override,dst=/usr/local/share/krig" \
-    --entrypoint sh "$image" -c 'printf "%064d\n" 0 > /usr/local/share/krig/ARCHIVE_SHA256'
-if out=$(timeout 150s docker run "${harden[@]}" --name "$name-reject-archive" "${mismatch_mount[@]}" \
-    --mount "type=volume,src=$override,dst=/usr/local/share/krig,readonly" \
-    "$image" --version 2>&1 | head -c 65536); then
-    echo "the container accepted an archive with a different SHA-256" >&2
-    exit 1
-fi
-grep -F 'release archive SHA-256 mismatch' <<<"$out"
-docker run "${harden[@]}" --name "$name-after-mismatch" --network none "${mismatch_mount[@]}" \
-    --entrypoint sh "$image" -c 'entries=$(ls -A /var/lib/krig) && test -z "$entries"'
+# Exercise both checks with a fresh cache and one deliberately wrong pin.
+reject_pin() {
+    local pin=$1 expected=$2 out
+    docker run "${harden[@]}" --name "$name-wrong-pin" --network none --user 0:0 \
+        --mount "type=volume,src=$override,dst=/override" \
+        --entrypoint sh "$image" -c '
+            cp /usr/local/share/krig/* /override/
+            printf "%064d\n" 0 > "/override/$1"
+        ' sh "$pin"
+    if out=$(timeout 150s docker run "${harden[@]}" --name "$name-reject-pin" "${mismatch_mount[@]}" \
+        --mount "type=volume,src=$override,dst=/usr/local/share/krig,readonly" \
+        "$image" --version 2>&1 | head -c 65536); then
+        echo "the container accepted an incorrect $pin" >&2
+        exit 1
+    fi
+    grep -F "$expected" <<<"$out"
+    docker run "${harden[@]}" --name "$name-after-mismatch" --network none "${mismatch_mount[@]}" \
+        --entrypoint sh "$image" -c 'entries=$(ls -A /var/lib/krig) && test -z "$entries"'
+}
+
+reject_pin ARCHIVE_SHA256 'release archive SHA-256 mismatch'
+reject_pin BINARY_SHA256 'extracted executable SHA-256 mismatch'
 
 # A start killed with SIGKILL mid-download leaves its staging folder behind;
 # the next start must clear it.
