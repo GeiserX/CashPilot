@@ -15,6 +15,8 @@ short_description: proxybase.xyz - SOCKS5 marketplace for AI agents, USDC payout
 referral:
   signup_url: "https://proxybase.xyz?referral=nXzS3c6iTO"
   code: "nXzS3c6iTO"
+  # The client mints its own wallet on first run; there is no account to sign up for.
+  account: false
 
 docker:
   image: "ghcr.io/proxybasehq/proxybase-cli@sha256:007e2be8087e6926230ac69de9b23b4b9d7d195f63e0d87fd8626916c91cc268"

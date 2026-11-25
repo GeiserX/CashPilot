@@ -75,6 +75,111 @@ class TestNothingIsEverAutoConfirmed:
         assert payouts.detect(10.0, 0.0, zero) is None
 
 
+OCEAN = {"slug": "ocean", "name": "OCEAN", "cashout": {"min_amount": 0.01048576, "currency": "BTC"}}
+
+
+class TestCoinAmountsKeepEverySmallUnit:
+    """A pool pays in satoshi and piconero; rounding for dollars loses them.
+
+    Six-decimal storage kept 0.015991 of a 0.01599128 BTC payout, and the
+    two-decimal reason text said the balance "fell by 0.02 ... 0.01 minimum".
+    """
+
+    def test_a_bitcoin_payout_is_stored_to_the_satoshi(self):
+        out = payouts.detect(0.01599128 + 0.0002, 0.0002, OCEAN, "BTC")
+        assert out["amount"] == 0.01599128
+
+    def test_a_monero_payout_is_stored_to_the_piconero(self):
+        xmr = {"slug": "pool", "cashout": {"min_amount": 0.0001, "currency": "XMR"}}
+        out = payouts.detect(0.000613902892 + 0.5, 0.5, xmr, "XMR")
+        assert out["amount"] == 0.000613902892
+
+    def test_the_reason_names_the_whole_amount_and_minimum(self):
+        out = payouts.detect(0.01599128 + 0.0002, 0.0002, OCEAN, "BTC")
+        assert "fell by 0.01599128," in out["reason"]
+        assert "0.01048576 minimum" in out["reason"]
+
+    def test_a_dollar_reason_still_reads_in_cents(self):
+        out = payouts.detect(25.0, 1.0, HONEYGAIN, "USD")
+        assert "fell by 24.00," in out["reason"]
+        assert "20.00 minimum" in out["reason"]
+
+    @pytest.mark.parametrize(
+        ("value", "currency", "text"),
+        [
+            (0.01599128, "BTC", "0.01599128"),
+            (0.00012345, "BTC", "0.00012345"),
+            (0.000613902892, "XMR", "0.00061390289"),
+            (0.000000004, "XMR", "0.000000004"),
+            (1.23456789, "BTC", "1.23456789"),
+            (1.5, "BTC", "1.50"),
+            (123.0, "GRASS", "123.00"),
+            (24.9, "USD", "24.90"),
+            (12.3456, "EUR", "12.35"),
+            (12.3456, None, "12.35"),
+        ],
+    )
+    def test_format_amount(self, value, currency, text):
+        assert payouts.format_amount(value, currency) == text
+
+    def test_a_tiny_coin_amount_never_reads_as_zero(self):
+        assert payouts.format_amount(0.000000004, "BTC") != "0.00"
+
+    def test_the_card_counts_down_a_bitcoin_minimum_to_the_satoshi(self):
+        """Two decimals said "0.01 to go" for 0.00598576 BTC, and :g cut the minimum."""
+        out = payouts.project(0.0045, OCEAN, [], "BTC")
+        assert out["remaining"] == 0.00598576
+        assert out["summary"].startswith("0.00598576 to go.")
+        out = payouts.project(0.0045, OCEAN, series(0.0, 0.0002, 0.0004, 0.0006, 0.0008, 0.001, 0.0012), "BTC")
+        assert out["state"] == payouts.PROJECTED
+        assert "the 0.01048576 minimum, at 0.0002 a day." in out["summary"]
+
+    def test_the_bar_target_keeps_a_small_coin_minimum(self):
+        """remaining rounded to 4 made a 0.0001 minimum read as 17%, not 20%."""
+        small = {"slug": "pool", "cashout": {"min_amount": 0.0001, "currency": "BTC"}}
+        out = payouts.project(0.00002, small, [], "BTC")
+        assert out["remaining"] == 0.00008
+        assert out["summary"].startswith("0.00008 to go.")
+
+    def test_a_dollar_projection_reads_as_before(self):
+        out = payouts.project(10.0, HONEYGAIN, series(1.0, 2.0, 3.0, 4.0, 5.0))
+        assert out["summary"] == "About 10 day(s) to the 20 minimum, at 1.0000 a day."
+
+    def test_lifetime_keeps_every_satoshi(self):
+        confirmed = [{"amount": 0.00012345, "confirmed": 1}]
+        assert payouts.lifetime_earned(0.005, confirmed) == 0.00512345
+
+    def test_the_bell_shows_the_whole_coin_amount(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+
+        row = {"platform": "ocean", "amount": 0.01599128, "currency": "BTC", "confirmed": 0}
+        with patch.object(main.database, "get_payouts", AsyncMock(return_value=[row])):
+            (alert,) = asyncio.run(main._pending_payout_alerts())
+        assert alert["error"].startswith("Balance dropped by 0.01599128 BTC")
+
+    def test_collection_passes_the_balance_unit_to_the_reason(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app import main
+        from app.collectors.base import EarningsResult
+
+        result = EarningsResult(platform="ocean", balance=0.0002, currency="BTC")
+        with (
+            patch.object(main.catalog, "get_service", return_value=OCEAN),
+            patch.object(main.database, "get_latest_balance", AsyncMock(return_value=0.01599128 + 0.0002)),
+            patch.object(main.database, "withdraw_recovered_payout", AsyncMock(return_value=False)),
+            patch.object(main.database, "record_probable_payout", AsyncMock(return_value=7)) as record,
+            patch.object(main.database, "record_alert", AsyncMock(return_value=False)) as alert,
+        ):
+            asyncio.run(main._detect_payout(result))
+        assert record.await_args.kwargs["amount"] == 0.01599128
+        assert "fell by 0.01599128," in alert.await_args.args[2]
+
+
 class TestLifetimeCountsConfirmedPayoutsOnly:
     def test_lifetime_is_balance_plus_confirmed(self):
         confirmed = [{"amount": 20.0, "confirmed": 1}, {"amount": 30.0, "confirmed": 1}]
@@ -219,6 +324,21 @@ class TestEndpoints:
             patch.object(main.database, "reject_payout", AsyncMock(return_value=patches.get("ok", True))),
         ):
             return asyncio.run(fn(MagicMock(), *args))
+
+    def test_progress_keeps_every_satoshi_of_a_coin_balance(self):
+        """Six decimals showed a 0.00512345 BTC balance as 0.005123 on the card."""
+        from app import main
+
+        out = self._call(
+            main.api_payout_progress,
+            "honeygain",
+            balance=0.005,
+            payouts=[{"amount": 0.00012345, "confirmed": 1}],
+        )
+        assert out["current_balance"] == 0.005
+        assert out["lifetime_earned"] == 0.00512345
+        out = self._call(main.api_payout_progress, "honeygain", balance=0.00512345)
+        assert out["current_balance"] == 0.00512345
 
     def test_progress_splits_balance_from_lifetime(self):
         from app import main

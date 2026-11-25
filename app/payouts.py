@@ -29,6 +29,7 @@ Two rules run through everything below:
 
 from __future__ import annotations
 
+import math
 from datetime import date
 from typing import Any
 
@@ -155,23 +156,55 @@ def looks_like_payout(previous: float, current: float, threshold: float | None) 
     return (previous - current) >= threshold
 
 
-def detect(previous: float, current: float, service: dict[str, Any] | None) -> dict[str, Any] | None:
+def format_amount(value: float, currency: str | None = None) -> str:
+    """A balance or payout as text, without dropping a coin's small units.
+
+    Fiat keeps two decimals. Anything else (BTC, XMR, a provider's token) shows
+    at least eight decimals (one satoshi), and more for a small amount so that
+    eight significant digits show, up to twelve (one piconero). Trailing zeros
+    are trimmed back to two. Two decimals turned a 0.01599128 BTC payout into
+    "0.02" and 0.000613902892 XMR into "0.00"; a flat eight still showed
+    0.000000004 as "0.00". A missing currency is USD, the same default the
+    dashboard uses. formatAmount in app.js applies the same rule.
+    """
+    # Imported here, not at module scope, for the same reason as min_payout_in.
+    from app import exchange_rates
+
+    if exchange_rates.is_fiat(currency):
+        return f"{value:.2f}"
+    value = float(value)
+    places = 8
+    if value and math.isfinite(value):
+        places = min(12, max(8, 7 - math.floor(math.log10(abs(value)))))
+    whole, _, decimals = f"{value:.{places}f}".partition(".")
+    return f"{whole}.{decimals.rstrip('0').ljust(2, '0')}"
+
+
+def detect(
+    previous: float, current: float, service: dict[str, Any] | None, currency: str | None = None
+) -> dict[str, Any] | None:
     """A PROBABLE payout, or None. Never a confirmed one.
 
     The amount recorded is the size of the drop, which is what a payout of this
     balance would have been. If the user rejects it, nothing is recorded at all.
+    ``currency`` is the unit the balance is recorded in; it only decides how
+    the reason text writes the numbers.
     """
     threshold = min_payout(service)
     if not looks_like_payout(previous, current, threshold):
         return None
+    # Twelve decimals, not six: six stored a 0.01599128 BTC payout as 0.015991,
+    # 128 satoshi short, and Monero counts to twelve (one piconero).
+    amount = round(previous - current, 12)
     return {
         "platform": service.get("slug") if service else None,
-        "amount": round(previous - current, 6),
+        "amount": amount,
         "confirmed": False,
         "reason": (
-            f"The balance fell by {previous - current:.2f}, which is at least this service's "
-            f"{threshold:.2f} minimum cashout. That usually means you were paid — but a provider "
-            "correction can look identical, so CashPilot will not record it as income until you say so."
+            f"The balance fell by {format_amount(amount, currency)}, which is at least this service's "
+            f"{format_amount(threshold, min_payout_currency(service) or currency)} minimum cashout. "
+            "That usually means you were paid — but a provider correction can look identical, so "
+            "CashPilot will not record it as income until you say so."
         ),
     }
 
@@ -186,7 +219,8 @@ def lifetime_earned(current_balance: float, confirmed_payouts: list[dict[str, An
     for payout in confirmed_payouts or []:
         if payout.get("confirmed"):
             total += float(payout.get("amount") or 0.0)
-    return round(total, 6)
+    # Twelve, like the payout amount itself: six showed 0.00512345 BTC as 0.005123.
+    return round(total, 12)
 
 
 def daily_rate(history: list[dict[str, Any]] | None) -> float | None:
@@ -259,6 +293,20 @@ def project(
     # documented minimum" — no estimate rather than a wrong one.
     threshold = min_payout_in(service, balance_currency)
     balance = float(current_balance or 0.0)
+    # Every number below is in the balance's unit. Fiat reads as before; a coin
+    # keeps its small units: ".2f" said "0.01 to go" for 0.00598576 BTC.
+    from app import exchange_rates
+
+    fiat = exchange_rates.is_fiat(balance_currency)
+
+    def amount(value: float) -> str:
+        return format_amount(value, balance_currency)
+
+    def minimum(value: float) -> str:
+        return f"{value:g}" if fiat else amount(value)
+
+    def per_day(value: float) -> str:
+        return f"{value:.4f}" if fiat else amount(value)
 
     if threshold is None:
         return {
@@ -278,7 +326,7 @@ def project(
             "state": REACHED,
             "days": 0,
             "remaining": 0.0,
-            "summary": f"You have reached the {threshold:g} minimum — this can be cashed out now.",
+            "summary": f"You have reached the {minimum(threshold)} minimum — this can be cashed out now.",
         }
 
     remaining = threshold - balance
@@ -287,9 +335,9 @@ def project(
         return {
             "state": NOT_ENOUGH_DATA,
             "days": None,
-            "remaining": round(remaining, 4),
+            "remaining": round(remaining, 12),
             "summary": (
-                f"{remaining:.2f} to go. There is not enough history yet to say how long that will take — "
+                f"{amount(remaining)} to go. There is not enough history yet to say how long that will take — "
                 f"come back after a few more days of collection."
             ),
         }
@@ -297,9 +345,9 @@ def project(
         return {
             "state": NOT_EARNING,
             "days": None,
-            "remaining": round(remaining, 4),
+            "remaining": round(remaining, 12),
             "summary": (
-                f"{remaining:.2f} to go, but this has earned nothing recently, so at the current rate it "
+                f"{amount(remaining)} to go, but this has earned nothing recently, so at the current rate it "
                 "will not get there at all."
             ),
         }
@@ -309,17 +357,17 @@ def project(
         return {
             "state": TOO_FAR,
             "days": None,
-            "remaining": round(remaining, 4),
-            "rate_per_day": round(rate, 6),
+            "remaining": round(remaining, 12),
+            "rate_per_day": round(rate, 12),
             "summary": (
-                f"At {rate:.4f} a day it would take over a year to reach the {threshold:g} minimum. "
+                f"At {per_day(rate)} a day it would take over a year to reach the {minimum(threshold)} minimum. "
                 "That is worth knowing before you leave it running."
             ),
         }
     return {
         "state": PROJECTED,
         "days": round(days, 1),
-        "remaining": round(remaining, 4),
-        "rate_per_day": round(rate, 6),
-        "summary": f"About {days:.0f} day(s) to the {threshold:g} minimum, at {rate:.4f} a day.",
+        "remaining": round(remaining, 12),
+        "rate_per_day": round(rate, 12),
+        "summary": f"About {days:.0f} day(s) to the {minimum(threshold)} minimum, at {per_day(rate)} a day.",
     }

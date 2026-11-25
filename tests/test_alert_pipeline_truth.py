@@ -167,7 +167,7 @@ class TestPayoutPromptIsPushed:
             patch.object(
                 main.payouts,
                 "detect",
-                lambda prev, bal, svc: {"amount": 5.0, "reason": "balance dropped by 5"},
+                lambda prev, bal, svc, currency=None: {"amount": 5.0, "reason": "balance dropped by 5"},
             ),
             patch.object(main.database, "record_probable_payout", AsyncMock(return_value=payout_id)),
             patch.object(main.database, "record_alert", AsyncMock(return_value=7 if record_returns else None)),

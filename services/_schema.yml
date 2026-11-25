@@ -35,6 +35,11 @@
 #   bonus: (optional) what each side gets, shown on the service detail page:
 #     referrer: "20% of referral traffic earnings"
 #     referee: "$1 welcome bonus"
+#   account: (optional) false when the provider has no account to sign up for
+#            (a permissionless node, an identity that is only a wallet). The UI
+#            then labels signup_url "Visit", never "Sign Up". Absent means an
+#            account is needed. tests/test_catalog_account.py checks the setup
+#            card text for statements that there is no account.
 
 # docker:
 #   image: Docker Hub image

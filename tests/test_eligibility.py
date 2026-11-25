@@ -203,3 +203,22 @@ class TestSignupBonusOffset:
         result = _call_breakdown(rows, svcs, config=config)
         assert result[0]["balance_adjusted"] == 15.0
         assert result[1]["balance_adjusted"] == 5.0
+
+
+class TestBreakdownKeepsCoinUnits:
+    """Four decimals showed 0.01599128 BTC as 0.016, more than the user has."""
+
+    def test_a_bitcoin_balance_reaches_the_page_to_the_satoshi(self):
+        rows = [
+            _earnings_row("ocean", balance=0.01599128, prev_balance=0.01598128, currency="BTC"),
+            _earnings_row("xmr", balance=0.000613902892, currency="XMR"),
+        ]
+        out = {r["platform"]: r for r in _call_breakdown(rows, {})}
+        assert out["ocean"]["balance"] == 0.01599128
+        assert out["ocean"]["balance_adjusted"] == 0.01599128
+        assert out["xmr"]["balance"] == 0.000613902892
+
+    def test_a_small_daily_gain_is_not_no_change(self):
+        rows = [_earnings_row("ocean", balance=0.01599128, prev_balance=0.01598128, currency="BTC")]
+        (entry,) = _call_breakdown(rows, {})
+        assert entry["delta"] == 0.00001

@@ -420,7 +420,7 @@ What a cited con or pro may rest on:
 | Fit with how CashPilot runs it | Good | CashPilot builds its own image from published relay software |
 | Traffic transparency | Poor | Relays other people's traffic unvetted, exits draw abuse |
 | Privacy | Good | Open-source fork of Tor, under Tor's licence |
-| Identity checks | Good | No account needed at all |
+| Identity checks | Good | No account to sign up for, only a wallet |
 | Support | Unknown | No pattern found. |
 | Earnings realism | Unknown | Not measured. |
 | Longevity | Unknown | Not checked on a primary source. |
@@ -433,7 +433,7 @@ What a cited con or pro may rest on:
 
 **Pros**
 
-- No account is needed at all. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
+- There is no account to sign up for. A relay needs only a wallet, with no identity check. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
 - The relay software is a published fork of Tor, under Tor's licence. [Source](https://github.com/anyone-protocol/ator-protocol), checked 2026-11-04.
 - CashPilot builds its own image from Anyone's published relay software, which needs no account. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml), checked 2026-11-04.
 
