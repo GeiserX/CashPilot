@@ -100,6 +100,116 @@ def _mock_httpx_resp(status_code=200, json_data=None):
     return resp
 
 
+class TestDesktopWalletDeploys:
+    @pytest.fixture
+    def worker_target(self):
+        worker = {
+            **_online_worker(2, url="http://192.168.1.30:8086"),
+            "client_id": "desk",
+            "system_info": json.dumps({"device_type": "desktop"}),
+        }
+        post = AsyncMock(return_value=_mock_httpx_resp(200, {"container_id": "c1"}))
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
+            patch("app.main._validate_worker_url", return_value=(worker["url"], None)),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.prior_deployment_spec", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._spawn", lambda coro: coro.close()),
+            patch("httpx.AsyncClient.post", post),
+        ):
+            yield worker, post
+
+    @pytest.fixture
+    def fake_wallet_seed(self):
+        return " ".join(f"fake-test-word-{index}" for index in range(12))
+
+    @pytest.fixture
+    def hostd_env(self):
+        return {"HOSTD_API_PASSWORD": "test-password", "SIA_STORAGE_DIR": "/srv/sia"}
+
+    def _assert_wallet_refusal(self, response, post, fake_wallet_seed=None):
+        if fake_wallet_seed is not None:
+            seed_was_sent = any(fake_wallet_seed in json.dumps(call.kwargs["json"]) for call in post.await_args_list)
+            assert not seed_was_sent, "The web server sent the wallet seed to the Desktop"
+        assert not post.await_count, "The web server sent a request to the Desktop"
+        assert response.status_code == 409
+        assert "runs only on the machine that holds its wallet" in response.json()["detail"]
+
+    @pytest.mark.parametrize("source", ["posted", "recorded"])
+    def test_legacy_seed_never_reaches_desktop(self, client, worker_target, fake_wallet_seed, hostd_env, source):
+        _, post = worker_target
+        env = {**hostd_env, "HOSTD_WALLET_SEED": fake_wallet_seed}
+        recorded = {"env": env} if source == "recorded" else None
+        with patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded):
+            response = client.post("/api/deploy/sia-hostd?worker_id=2", json={"env": {} if recorded else env})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+
+    def test_wallet_choice_stays_off_desktop_even_if_it_advertises_support(self, client, worker_target, hostd_env):
+        worker, post = worker_target
+        worker["system_info"] = json.dumps({"device_type": "desktop", "features": ["wallet_seed_file"]})
+        response = client.post(
+            "/api/deploy/sia-hostd?worker_id=2", json={"env": hostd_env, "wallet_seed": {"mode": "generate"}}
+        )
+        self._assert_wallet_refusal(response, post)
+
+    @pytest.mark.parametrize(
+        ("slug", "field"),
+        [
+            ("sia-hostd", "env"),
+            ("sia-hostd", "wallet_seed"),
+            ("other-service", "env"),
+            ("other-service", "wallet_seed"),
+        ],
+    )
+    def test_raw_deploy_never_forwards_a_wallet_seed(self, client, worker_target, fake_wallet_seed, slug, field):
+        _, post = worker_target
+        spec = (
+            {"env": {"HOSTD_WALLET_SEED": fake_wallet_seed}}
+            if field == "env"
+            else {"wallet_seed": {"mode": "import", "phrase": fake_wallet_seed}}
+        )
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": slug, "spec": spec})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+
+    def test_fleet_copy_gets_the_wallet_refusal(self, client, worker_target):
+        _, post = worker_target
+        with patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"definition": {}, "state": {}}):
+            response = client.post("/api/proxies/1/copies", json={"worker_id": 2, "slug": "sia-hostd"})
+        self._assert_wallet_refusal(response, post)
+
+    def test_fleet_copy_cannot_forward_a_seed_recorded_under_another_slug(
+        self, client, worker_target, fake_wallet_seed
+    ):
+        worker, post = worker_target
+        worker["system_info"] = json.dumps({"device_type": "desktop", "features": ["proxy_tunnel"]})
+        recorded = {"image": "test", "env": {"HOSTD_WALLET_SEED": fake_wallet_seed}}
+        copy = {"worker_id": 2, "slug": "honeygain"}
+        with (
+            patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"definition": {}, "state": {}}),
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded),
+            patch("app.main.database.list_proxied_copies", new_callable=AsyncMock, side_effect=[[], [copy]]),
+            patch("app.main.database.save_proxied_copy", new_callable=AsyncMock),
+            patch("app.main.database.delete_proxied_copy", new_callable=AsyncMock) as delete_copy,
+        ):
+            response = client.post("/api/proxies/1/copies", json={"worker_id": 2, "slug": "honeygain"})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+        delete_copy.assert_awaited_once_with(1, 2, "honeygain")
+
+    def test_older_docker_worker_still_receives_legacy_seed(self, client, worker_target, fake_wallet_seed, hostd_env):
+        worker, post = worker_target
+        worker["system_info"] = json.dumps({"docker_available": True, "features": []})
+        env = {**hostd_env, "HOSTD_WALLET_SEED": fake_wallet_seed}
+        response = client.post("/api/deploy/sia-hostd?worker_id=2", json={"env": env})
+        assert response.status_code == 200
+        post.assert_awaited_once()
+        spec = post.await_args.kwargs["json"]
+        assert spec["env"].get("HOSTD_WALLET_SEED") == fake_wallet_seed
+        assert "wallet_seed" not in spec
+
+
 # ---------------------------------------------------------------------------
 # Deploy route
 # ---------------------------------------------------------------------------

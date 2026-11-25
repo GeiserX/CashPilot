@@ -243,9 +243,12 @@ class TestAnOlderWorker:
 
 
 class TestARestore:
-    def _choice(self, features, recorded):
+    def _choice(self, features, recorded, *, desktop=False):
         async def run():
-            with patch.object(main, "_worker_features", AsyncMock(return_value=set(features))):
+            with (
+                patch.object(main, "_worker_features", AsyncMock(return_value=set(features))),
+                patch.object(main, "_worker_is_desktop", AsyncMock(return_value=desktop)),
+            ):
                 return await main._wallet_choice(
                     catalog.get_service(SLUG), main.DeployRequest(), 1, {}, recorded, {"sha256": "x"}
                 )
@@ -259,6 +262,12 @@ class TestARestore:
         """Its volume may hold no file, and the node must still find its wallet."""
         assert self._choice({"wallet_seed_file"}, {KEY: PHRASE}) == (None, None)
         assert self._choice(set(), {KEY: PHRASE}) == (None, None)
+
+    def test_a_desktop_restore_is_refused_before_the_wallet_can_travel(self):
+        with pytest.raises(HTTPException) as exc:
+            self._choice({"wallet_seed_file"}, {}, desktop=True)
+        assert exc.value.status_code == 409
+        assert "runs only on the machine that holds its wallet" in exc.value.detail
 
 
 class TestTheRawDeployRecord:

@@ -5245,6 +5245,15 @@ async def _deploy(
     return response
 
 
+def _desktop_wallet_refusal(svc: dict[str, Any] | None) -> HTTPException:
+    service = svc or {}
+    name = service.get("name") or service.get("slug") or "This service"
+    return HTTPException(
+        status_code=409,
+        detail=f"{name} runs only on the machine that holds its wallet. Deploy it from CashPilot Desktop on that machine.",
+    )
+
+
 async def _wallet_choice(
     svc: dict[str, Any],
     body: DeployRequest,
@@ -5269,6 +5278,8 @@ async def _wallet_choice(
     key = wallet_seed.seed_key(svc)
     if not key:
         return None, None
+    if await _worker_is_desktop(worker_id):
+        raise _desktop_wallet_refusal(svc)
     capable = wallet_seed.FEATURE in await _worker_features(worker_id)
     choice = body.wallet_seed
     posted = wallet_seed.normalize(posted_env.get(key))
@@ -5281,15 +5292,6 @@ async def _wallet_choice(
     if not capable:
         if choice is None and (posted or legacy):
             return key, None
-        if await _worker_is_desktop(worker_id):
-            # A joined Desktop keeps the seed in a file too, but it makes or
-            # takes the wallet only in its own window, where it shows a new
-            # phrase once. It is not too old, so it gets its own answer.
-            raise HTTPException(
-                status_code=409,
-                detail="CashPilot Desktop makes and keeps this wallet on that computer. Deploy the service from "
-                "CashPilot Desktop there. Nothing was deployed.",
-            )
         raise HTTPException(
             status_code=409,
             detail="This worker is too old to keep the wallet seed out of CashPilot and out of the container's "
@@ -7490,6 +7492,30 @@ def _worker_left_restore(resp: Any) -> bool:
     return bool(_worker_restore_answer(resp).get("left"))
 
 
+def _refuse_desktop_wallet_payload(path: str, body: dict[str, Any]) -> None:
+    """Check the final request, including raw deploys and rebuilt proxy copies."""
+    svc = None
+    spec = body
+    match path.split("/"):
+        case ["", "api", "containers", slug, "deploy" | "restore"]:
+            svc = catalog.get_service(slug)
+        case ["", "api", "proxied", slug, _, "deploy"]:
+            svc = catalog.get_service(slug)
+            spec = body.get("earner")
+    if wallet_seed.seed_key(svc):
+        raise _desktop_wallet_refusal(svc)
+    if not isinstance(spec, dict):
+        return
+    if "wallet_seed" in spec:
+        raise _desktop_wallet_refusal(svc)
+    env = spec.get("env")
+    if isinstance(env, dict) and env:
+        # A raw command can carry a seed variable under a different slug.
+        for service in catalog.get_services():
+            if (key := wallet_seed.seed_key(service)) and key in env:
+                raise _desktop_wallet_refusal(service)
+
+
 async def _proxy_to_worker(
     worker_id: int,
     method: str,
@@ -7514,6 +7540,8 @@ async def _proxy_to_worker(
     the URL this call sends to, not one read earlier (the restore's passphrase).
     """
     worker = await database.get_worker(worker_id)
+    if json is not None and worker and placement.is_desktop(placement.system_info(worker)):
+        _refuse_desktop_wallet_payload(path, json)
     extra = headers
     url, headers = await _get_verified_worker_url(worker)
     if extra:
@@ -8173,6 +8201,8 @@ async def api_add_proxied_copy(
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
     if svc.get("status") in _UNDEPLOYABLE_STATUSES:
         raise HTTPException(status_code=409, detail=f"Service '{slug}' is no longer available for deployment")
+    if wallet_seed.seed_key(svc) and await _worker_is_desktop(body.worker_id):
+        raise _desktop_wallet_refusal(svc)
     if why := proxies.refusal(svc):
         raise HTTPException(status_code=400, detail=why)
     worker_id = await _resolve_worker_id(body.worker_id)
