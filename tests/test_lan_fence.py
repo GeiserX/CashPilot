@@ -1250,7 +1250,7 @@ def test_the_ui_reply_hands_over_the_other_exits():
         assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": ["95.1.1.1", "10.0.0.1"]})) is True
         assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
         assert worker_api._apply_fleet_exits_reply(_reply({"status": "ok"})) is False, (
-            "a UI that could not read the fleet"
+            "a UI rolled back to before the list: keep the drops it gave"
         )
         assert lan_fence._fleet_exits["ips"] == ["95.1.1.1"]
         assert worker_api._apply_fleet_exits_reply(_reply({"fleet_exits": []})) is True
