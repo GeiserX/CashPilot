@@ -106,7 +106,9 @@ class TestResolveWorkerId:
         from app.main import _resolve_worker_id
 
         with patch(
-            "app.main.database.list_workers", new_callable=AsyncMock, return_value=[{"id": 7, "status": "online"}]
+            "app.main.database.list_workers",
+            new_callable=AsyncMock,
+            return_value=[{"id": 7, "status": "online", "url": "http://192.168.1.7:8081"}],
         ):
             result = asyncio.run(_resolve_worker_id(None))
             assert result == 7
@@ -124,8 +126,8 @@ class TestResolveWorkerId:
         from app.main import _resolve_worker_id
 
         workers = [
-            {"id": 1, "status": "online"},
-            {"id": 2, "status": "online"},
+            {"id": 1, "status": "online", "url": "http://192.168.1.1:8081"},
+            {"id": 2, "status": "online", "url": "http://192.168.1.2:8081"},
         ]
         with (
             patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
@@ -1668,6 +1670,34 @@ class TestApiFleet:
             assert resp.status_code == 200
             body = resp.json()
             assert "watts" in body[0] and "dedicated" in body[0]
+
+    def test_fleet_version_skew_uses_the_devices_release_line(self, client):
+        devices = {
+            "desktop": {"device_type": "desktop", "version": "1.4.0"},
+            "android": {"device_type": "android", "version": "0.4.0"},
+            "legacy-android": {"os": "Android", "version": "0.3.0"},
+            "docker": {"os": "Linux", "version": "2.9.0"},
+        }
+        workers = [
+            {"id": i, "name": name, "system_info": json.dumps(info)}
+            for i, (name, info) in enumerate(devices.items(), 1)
+        ]
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+            patch("app.main.version.current", return_value="2.10.0"),
+            patch("app.main.update_check.android_latest", return_value="v0.4.0"),
+        ):
+            resp = client.get("/api/workers")
+
+        assert resp.status_code == 200, resp.text
+        assert {w["name"]: (w["reference_version"], w["version_skew"]) for w in resp.json()} == {
+            "desktop": (None, False),
+            "android": ("v0.4.0", False),
+            "legacy-android": ("v0.4.0", True),
+            "docker": ("2.10.0", True),
+        }
 
     def test_api_get_worker(self, client):
         worker = {"id": 1, "name": "w1", "status": "online", "containers": "[]", "apps": "[]", "system_info": "{}"}

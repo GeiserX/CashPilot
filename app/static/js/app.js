@@ -2176,6 +2176,10 @@ const CP = (() => {
     return Number.isInteger(id) && id > 0 ? id : undefined;
   }
 
+  function onlineDeployWorkers(workers) {
+    return (workers || []).filter(w => w.status === 'online' && w.url);
+  }
+
   function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
     let rows = '';
     let allDeployed = true;
@@ -3787,15 +3791,15 @@ const CP = (() => {
       ${svc.has_collector ? collectorCredentialsNotice(svc.slug) : ''}
 
       ${(() => {
-        const onlineWorkers = (workers || []).filter(w => w.status === 'online');
+        const onlineWorkers = onlineDeployWorkers(workers);
         const { rows: workerRows, allDeployed } = workerCheckboxList(svc, onlineWorkers, 'setup-deploy-worker-cb');
 
         if (onlineWorkers.length === 0) {
-          return `<p class="setup-line muted">No workers online.</p>`;
+          return `<p class="setup-line muted">No online workers can receive deploys.</p>`;
         }
 
         if (allDeployed) {
-          return `<p class="setup-line"><span class="status-dot running"></span> Deployed on all nodes.</p>`;
+          return `<p class="setup-line"><span class="status-dot running"></span> Deployed on every available worker.</p>`;
         }
 
         return `
@@ -4099,8 +4103,8 @@ const CP = (() => {
   // Catalog
   // -----------------------------------------------------------
   let catalogServices = [];
-  // The online boxes, so a row does not offer Add for a service that already
-  // runs on all of them. null when unknown: then Add stays.
+  // The deploy targets, so Add stays hidden when a service runs on all of them.
+  // null when the targets are unknown: then Add stays visible.
   let catalogOnlineWorkers = null;
 
   async function loadCatalog() {
@@ -4109,7 +4113,7 @@ const CP = (() => {
       _isOwner ? api('/api/workers').catch(() => null) : Promise.resolve(null),
     ]);
     catalogServices = services;
-    catalogOnlineWorkers = Array.isArray(workers) ? workers.filter(w => w.status === 'online') : null;
+    catalogOnlineWorkers = Array.isArray(workers) ? onlineDeployWorkers(workers) : null;
     filterCatalog();
     loadCustomServices();
   }
@@ -4173,7 +4177,7 @@ const CP = (() => {
     const detailsBtn = `<button class="btn btn-link btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Details</button>`;
     if (isDeployed) {
       // The wizard can only add boxes that do not run it yet. On every online
-      // box already, Add would lead to "Deployed on all nodes", so drop it.
+      // target already, Add would only open a form with nothing to deploy.
       const everywhere = catalogOnlineWorkers && catalogOnlineWorkers.length > 0
         && catalogOnlineWorkers.every(w => runsOn(w, svc.slug));
       actionBtn = [
@@ -4578,13 +4582,13 @@ const CP = (() => {
       const envFields = envInputFields(svc, svc.docker.env, { withId: false, withHint: false });
 
       // Worker deploy targets
-      const onlineWorkers = (workers || []).filter(w => w.status === 'online');
+      const onlineWorkers = onlineDeployWorkers(workers);
       let workerRows = '';
       let allDeployed = true;
       ({ rows: workerRows, allDeployed } = workerCheckboxList(svc, onlineWorkers, 'deploy-worker-cb'));
 
       if (onlineWorkers.length === 0) {
-        workerRows = '<p class="muted">No workers online.</p>';
+        workerRows = '<p class="muted">No online workers can receive deploys.</p>';
       }
 
       html += isDeployed ? '' : `<h4 class="sd-h">Deploy</h4>`;
@@ -4602,7 +4606,7 @@ const CP = (() => {
       // A service that can run more than once keeps its node list on screen
       // when every node has it, since the Instances boxes are how it scales.
       if (allDeployed && onlineWorkers.length > 0 && !(svc.max_instances > 1)) {
-        html += `<p class="sd-note">Already on every online box.</p>`;
+        html += `<p class="sd-note">Already on every available worker.</p>`;
       } else {
         html += `
         <div class="sd-targets">

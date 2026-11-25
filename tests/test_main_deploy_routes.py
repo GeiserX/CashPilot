@@ -106,6 +106,45 @@ def _mock_httpx_resp(status_code=200, json_data=None):
 
 
 class TestApiDeploy:
+    def test_deploy_automatically_picks_the_worker_with_a_url(self, client):
+        desktop = _online_worker(2, url="")
+        phone = _online_worker(3, url=None)
+        worker = _online_worker()
+        send_deploy = AsyncMock(return_value={"container_id": "abc123"})
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[desktop, phone, worker]),
+            patch("app.main.catalog.get_service", return_value={"slug": "honeygain", "docker": {"image": "test"}}),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._proxy_worker_deploy", send_deploy),
+        ):
+            resp = client.post("/api/deploy/honeygain", json={})
+
+        assert resp.status_code == 200, resp.text
+        assert send_deploy.await_args.args[:2] == (worker["id"], "honeygain")
+
+    @pytest.mark.parametrize(
+        ("query", "status", "message"),
+        [
+            ("", "online", "No workers online that can receive commands"),
+            ("?worker_id=2", "online", "This computer cannot receive deploys or other commands from the server yet."),
+            ("?worker_id=2", "offline", "This computer cannot receive deploys or other commands from the server yet."),
+        ],
+    )
+    def test_deploy_to_a_fleet_with_only_a_report_only_worker(self, client, query, status, message):
+        desktop = {**_online_worker(2, url=""), "status": status}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[desktop]),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=desktop),
+            patch("app.main.catalog.get_service", return_value={"slug": "honeygain", "docker": {"image": "test"}}),
+        ):
+            resp = client.post(f"/api/deploy/honeygain{query}", json={})
+
+        assert resp.status_code == 503, resp.text
+        assert resp.json()["detail"] == message
+
     def test_deploy_success(self, client):
         svc = {
             "slug": "honeygain",
