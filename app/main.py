@@ -7100,7 +7100,11 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
         raise HTTPException(status_code=404, detail="Worker not found")
     if not worker.get("url"):
         raise HTTPException(
-            status_code=503, detail="This computer cannot receive deploys or other commands from the server yet."
+            status_code=503,
+            detail=(
+                "This device only reports to CashPilot, so the server cannot deploy to it or control it. "
+                "Add services in the CashPilot app on that device, or pick a Docker worker."
+            ),
         )
     if worker["status"] != "online":
         raise HTTPException(status_code=503, detail="Worker is offline")
@@ -12086,7 +12090,11 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
     for w in workers:
         _parse_worker_json(w)
         w["ui_version"] = ui_version
-        # Android and Desktop ship separately. Only Android has a cached latest release.
+        # Android and Desktop ship on their OWN release tracks, so the UI version is the
+        # wrong yardstick for them. A phone is compared with the newest CashPilot-android
+        # release. Desktop has no cached latest release here, so it gets no reference.
+        # Unknown reference -> no skew: version.skewed() returns False when either side
+        # is unknown, so a GitHub outage never flags every phone or Desktop.
         si = w.get("system_info") or {}
         if _is_phone(si):
             reference = update_check.android_latest()

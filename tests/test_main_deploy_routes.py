@@ -128,8 +128,16 @@ class TestApiDeploy:
         ("query", "status", "message"),
         [
             ("", "online", "No workers online that can receive commands"),
-            ("?worker_id=2", "online", "This computer cannot receive deploys or other commands from the server yet."),
-            ("?worker_id=2", "offline", "This computer cannot receive deploys or other commands from the server yet."),
+            (
+                "?worker_id=2",
+                "online",
+                "This device only reports to CashPilot, so the server cannot deploy to it or control it. Add services in the CashPilot app on that device, or pick a Docker worker.",
+            ),
+            (
+                "?worker_id=2",
+                "offline",
+                "This device only reports to CashPilot, so the server cannot deploy to it or control it. Add services in the CashPilot app on that device, or pick a Docker worker.",
+            ),
         ],
     )
     def test_deploy_to_a_fleet_with_only_a_report_only_worker(self, client, query, status, message):

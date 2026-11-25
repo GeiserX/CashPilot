@@ -5685,9 +5685,10 @@ const CP = (() => {
     if (!container) return;
     try {
       const workers = await api('/api/workers').catch(() => []);
-      const online = (workers || []).filter(w => w.status === 'online');
+      // Only workers with a command URL can answer /api/update-info; a paired Desktop or phone cannot.
+      const online = onlineDeployWorkers(workers);
       if (!online.length) {
-        container.innerHTML = `<p class="block-empty">No worker is online, so the install cannot be inspected or updated right now.</p>`;
+        container.innerHTML = `<p class="block-empty">No Docker worker is online, so the install cannot be inspected or updated right now.</p>`;
         return;
       }
       if (!online.some(w => w.id === updateCardWorkerId)) updateCardWorkerId = online[0].id;
