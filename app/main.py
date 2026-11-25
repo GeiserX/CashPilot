@@ -10161,12 +10161,17 @@ async def api_income_csv(
         raise HTTPException(status_code=400, detail="The end date cannot be in the future (UTC).")
     if not re.fullmatch(r"[A-Z]{3}", currency):
         raise HTTPException(status_code=400, detail="Currency must have three uppercase letters, such as USD.")
-    start = start or min(await database.oldest_income_date() or end, end)
-    if start > end:
+    if start and start > end:
         raise HTTPException(status_code=400, detail="The start date must be on or before the end date.")
 
+    oldest = start
+    if not oldest or currency != "USD":
+        oldest = min(await database.oldest_income_date() or end, end)
+    start = start or oldest
+    # Rates before the oldest saved date cannot price any row.
+    export_start = max(start, oldest)
     try:
-        fiat = await exchange_rates.fetch_daily_fiat_rates(currency, start, end)
+        fiat = await exchange_rates.fetch_daily_fiat_rates(currency, export_start, end)
     except exchange_rates.UnknownFiat:
         raise HTTPException(
             status_code=400,
@@ -10180,7 +10185,7 @@ async def api_income_csv(
 
     await database.add_audit_event("income_export", f"{start}..{end}", "exported", actor=user, detail=currency)
     return StreamingResponse(
-        income_export.stream_csv(start, end, currency, fiat),
+        income_export.stream_csv(export_start, end, currency, fiat),
         media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="cashpilot-income-{start}_{end}-{currency}.csv"',

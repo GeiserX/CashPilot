@@ -1805,7 +1805,7 @@ async def iter_earned_steps(end: str | None = None) -> AsyncIterator[EarnedStep]
     if end is not None:
         query += " WHERE date <= ?"
         params = (end,)
-    query += " ORDER BY platform, source, date"
+    query += " ORDER BY platform, date, source"
     # Earlier readings supply the opening baseline. The live collector can
     # commit on the shared connection while this cursor streams its snapshot.
     steps = _EarnedSteps(priced_only=False)

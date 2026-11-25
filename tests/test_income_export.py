@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from datetime import UTC, date, datetime, timedelta
 from io import StringIO
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import httpx
@@ -100,6 +101,16 @@ async def test_blank_dates_use_oldest_income_and_today(client, db):
     assert response.headers["content-disposition"].endswith(f'{EARLIER}_{today}-USD.csv"')
 
 
+async def test_export_explains_history_limits(client):
+    response = await client.get("/payouts")
+    assert response.status_code == 200
+    assert "Older earnings readings may have been deleted. A past year can be incomplete." in response.text
+
+    guide = (Path(__file__).resolve().parents[1] / "docs" / "income-export.md").read_text()
+    assert f"{database.RETENTION_DAYS} days after recording them" in guide
+    assert "If more than one source reads the same account, the CSV can count that income more than once." in guide
+
+
 async def test_baseline_clamp_and_start_filter(client, db):
     dates = [EARLIER, SATURDAY, "2025-11-16", MONDAY]
     for value, day in zip([10, 15, 3, 4], dates, strict=True):
@@ -116,12 +127,12 @@ async def test_baseline_clamp_and_start_filter(client, db):
 async def test_running_total_and_two_sources(client, db):
     await db.upsert_earnings("mysterium", 10, "MYST", EARLIER, 0.5, source="desktop", earned=20)
     await db.upsert_earnings("mysterium", 4, "MYST", EARLIER, 0.5, earned=40)
-    await db.upsert_earnings("mysterium", 2, "MYST", SATURDAY, 0.5, source="desktop", earned=25)
+    await db.upsert_earnings("mysterium", 2, "MYST", MONDAY, 0.5, source="desktop", earned=25)
     await db.upsert_earnings("mysterium", 7, "MYST", SATURDAY, 0.5, earned=43)
     rows = csv_rows(await client.get(EXPORT))
-    assert [(r["service"], r["coin"], r["amount"], r["usd_value"]) for r in rows] == [
-        ("mysterium", "MYST", "5", "2.5"),
-        ("mysterium", "MYST", "3", "1.5"),
+    assert [(r["service"], r["date"], r["coin"], r["amount"], r["usd_value"]) for r in rows] == [
+        ("mysterium", SATURDAY, "MYST", "3", "1.5"),
+        ("mysterium", MONDAY, "MYST", "5", "2.5"),
     ]
 
 
@@ -160,6 +171,29 @@ async def test_only_confirmed_payouts_with_recorded_dates_and_rates(client, db):
     ]
 
 
+async def test_cointracking_example_maps_a_payout(client, db):
+    await db.add_manual_payout("mysterium", 8, "MYST", 0.25, "crypto", MONDAY)
+    (payout,) = csv_rows(await client.get(EXPORT))
+
+    guide = (Path(__file__).resolve().parents[1] / "docs" / "income-export.md").read_text()
+    cointracking = guide.split("### CoinTracking", 1)[1]
+    example = cointracking.split("```csv\n", 1)[1].split("\n```", 1)[0]
+    (row,) = csv.DictReader(StringIO(example))
+    assert row == {
+        "Type": "Income",
+        "Buy Amount": payout["amount"],
+        "Buy Currency": payout["coin"],
+        "Sell Amount": "",
+        "Sell Currency": "",
+        "Fee": "",
+        "Fee Currency": "",
+        "Exchange": "",
+        "Trade-Group": "",
+        "Comment": payout["service"],
+        "Date": datetime.fromisoformat(payout["date"]).strftime("%d.%m.%Y %H:%M:%S"),
+    }
+
+
 async def test_weekend_uses_previous_business_day(client, db, monkeypatch):
     fetch = AsyncMock(return_value={EARLIER: 0.9, MONDAY: 0.91})
     monkeypatch.setattr(exchange_rates, "fetch_daily_fiat_rates", fetch)
@@ -172,6 +206,19 @@ async def test_weekend_uses_previous_business_day(client, db, monkeypatch):
         ("2", "EUR", "0.91", "1.82"),
     ]
     fetch.assert_awaited_once_with("EUR", SATURDAY, MONDAY)
+
+
+async def test_fiat_rates_only_need_to_cover_saved_history(client, db, monkeypatch):
+    await db.upsert_earnings("honeygain", 7, date=EARLIER)
+    await db.upsert_earnings("honeygain", 9, date=MONDAY)
+    fetch = AsyncMock(return_value={EARLIER: 0.9, MONDAY: 0.91})
+    monkeypatch.setattr(exchange_rates, "fetch_daily_fiat_rates", fetch)
+
+    response = await client.get(EXPORT, params={"start": "1998-12-30", "end": MONDAY, "currency": "EUR"})
+    (earned,) = csv_rows(response)
+    assert earned["local_value"] == "1.82"
+    assert response.headers["content-disposition"].endswith(f'1998-12-30_{MONDAY}-EUR.csv"')
+    fetch.assert_awaited_once_with("EUR", EARLIER, MONDAY)
 
 
 @pytest.mark.parametrize(

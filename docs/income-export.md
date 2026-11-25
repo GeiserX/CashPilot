@@ -2,6 +2,8 @@
 
 Open **Payouts**, find **Income for taxes**, and select a date range and currency. **This year** runs through today, and **Last year** covers the previous calendar year. Leave the dates blank to export the available history through today. CashPilot uses UTC dates and includes both ends of the range.
 
+CashPilot deletes earnings readings 400 days after recording them. The CSV uses the history that remains, so a past year can contain only part of its earned or accrued income.
+
 ## Choose an accounting basis
 
 - **Cash basis.** Use payout rows. They record money that the service paid out. CashPilot includes only confirmed payouts.
@@ -27,6 +29,8 @@ Use one basis for the same income. Adding payout rows to the earned and accrued 
 | method | Payout method, if recorded. |
 
 A blank valuation means the rate was unavailable. The native amount is still present. CashPilot skips internal points such as Grass points in earnings readings. The first reading per source provides an opening balance. Later rows record increases, so the CSV can begin after the oldest reading in the selected range.
+
+If more than one source reads the same account, the CSV can count that income more than once.
 
 The USD rate comes from the later reading or from the payout record. When CashPilot backfills a reading's price, it uses CoinGecko's price at 00:00 UTC for that day. CashPilot uses the most recent ECB reference rate on or before the row's day to convert USD to your selected currency. This covers weekends, holidays and days when the ECB has yet to publish its rate. [Frankfurter daily rates](https://frankfurter.dev/v1/)
 
@@ -63,10 +67,11 @@ Format Date as YYYY-MM-DD HH:mm:ss in UTC. Set Received Amount from amount and R
 
 ### CoinTracking
 
-Use the Custom Importer to map the CSV fields, or use these headers in CoinTracking's CSV format.
+Convert income rows to CoinTracking's regular CSV format. The Custom Importer requires trade fields on both sides, and an income row has only a buy side. [CoinTracking Custom Importer requirements](https://cointracking.freshdesk.com/en/support/solutions/articles/29000032507)
 
 ```csv
 "Type","Buy Amount","Buy Currency","Sell Amount","Sell Currency","Fee","Fee Currency","Exchange","Trade-Group","Comment","Date"
+"Income","8","MYST","","","","","","","mysterium","17.11.2025 00:00:00"
 ```
 
-For an income row, set Type to Income or Mining as appropriate. Map amount to Buy Amount, coin to Buy Currency and service to Comment. Format Date as DD.MM.YYYY HH:MM:SS. Use the type labels for your account language. [CoinTracking CSV importer](https://cointracking.freshdesk.com/en/support/solutions/articles/29000032507), [Custom Importer](https://cointracking.info/import/custom)
+Set Type to Income or Mining as appropriate. Map amount to Buy Amount, coin to Buy Currency and service to Comment. Leave the Sell fields blank. Format Date as DD.MM.YYYY HH:MM:SS. The export provides the UTC day, so use 00:00:00 for the time. Use the type labels for your account language. [CoinTracking regular CSV format](https://cointracking.freshdesk.com/en/support/solutions/articles/29000038366-how-can-i-import-2gether-csv-data-into-cointracking-)
