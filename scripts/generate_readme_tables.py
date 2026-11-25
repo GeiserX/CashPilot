@@ -41,6 +41,7 @@ END = "<!-- END GENERATED: {name} -->"
 DOCKER = "docker-services"
 EXTENSION = "extension-services"
 GPU = "gpu-services"
+MINING = "mining-services"
 
 #: Files whose counts are generated. The README also carries the lists above.
 COUNTED_FILES = [
@@ -78,6 +79,7 @@ _LABELS = {
     DOCKER: "Run in Docker by CashPilot",
     EXTENSION: "Browser extension or desktop app, tracked",
     GPU: "GPU compute, tracked",
+    MINING: "Crypto mining",
 }
 
 
@@ -89,9 +91,13 @@ def _selected(kind: str) -> list[dict]:
     services = _live()
     if kind == GPU:
         return [s for s in services if s.get("category") == "compute"]
+    if kind == MINING:
+        return [s for s in services if s.get("category") == "mining"]
+    # Compute and mining have their own lists, so neither is counted twice.
+    rest = [s for s in services if s.get("category") not in {"compute", "mining"}]
     if kind == DOCKER:
-        return [s for s in services if s.get("category") != "compute" and _is_dockerable(s)]
-    return [s for s in services if s.get("category") != "compute" and not _is_dockerable(s)]
+        return [s for s in rest if _is_dockerable(s)]
+    return [s for s in rest if not _is_dockerable(s)]
 
 
 def _line(kind: str) -> str:
@@ -115,10 +121,11 @@ def counts() -> dict[str, int]:
         "docker": len(_selected(DOCKER)),
         "extension": len(_selected(EXTENSION)),
         "gpu": len(_selected(GPU)),
+        "mining": len(_selected(MINING)),
         "collectors": len(COLLECTOR_MAP),
     }
-    out["tracked"] = out["extension"] + out["gpu"]
-    for category in ("bandwidth", "depin", "compute", "storage"):
+    out["tracked"] = out["extension"] + out["gpu"] + out["mining"]
+    for category in ("bandwidth", "depin", "compute", "storage", "mining"):
         out[category] = sum(s.get("category") == category for s in live)
     return out
 
@@ -135,7 +142,7 @@ def render_counts(text: str, values: dict[str, int], name: str) -> str:
 
 def render(readme: str) -> str:
     """Replace every generated region, leaving all other text untouched."""
-    for kind in (DOCKER, EXTENSION, GPU):
+    for kind in (DOCKER, EXTENSION, GPU, MINING):
         begin, end = BEGIN.format(name=kind), END.format(name=kind)
         if begin not in readme or end not in readme:
             raise SystemExit(

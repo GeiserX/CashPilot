@@ -7,7 +7,7 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SERVICES_DIR = PROJECT_ROOT / "services"
-CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
+CATEGORIES = {"bandwidth", "depin", "storage", "compute", "mining"}
 VALID_STATUSES = {"active", "beta", "broken", "dead", "dropped"}
 
 REQUIRED_FIELDS = {"name", "slug", "category", "status", "website", "description"}

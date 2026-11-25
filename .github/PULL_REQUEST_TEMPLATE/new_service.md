@@ -7,7 +7,7 @@ The README table and the guide are generated — do not hand-edit them.
 
 - **Name:**
 - **Slug:**
-- **Category:** bandwidth / depin / storage / compute
+- **Category:** bandwidth / depin / storage / compute / mining
 
 ## Checklist
 

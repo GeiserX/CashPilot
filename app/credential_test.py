@@ -64,6 +64,9 @@ _AUTH_MARKERS = (
     "session expired",
     "token expired",
     "cookie expired",
+    # "OCEAN has no record of this address yet": a pool that does not know the
+    # payout address saved for it, most often a typo.
+    "no record of",
 )
 # Checked BEFORE the auth words: httpx's "[SSL: CERTIFICATE_VERIFY_FAILED] ...
 # certificate has expired" is the connection failing, not the credentials. Only

@@ -4,7 +4,7 @@
 
 # name: Human-readable service name
 # slug: URL/container-safe identifier (lowercase, hyphens)
-# category: bandwidth | depin | storage | compute
+# category: bandwidth | depin | storage | compute | mining
 # status: active | beta | broken | dead | dropped
 # resurrection_checked: "YYYY-MM-DD"   # (dead entries only) the site still answers, but a human
 #   confirmed on this date that the programme is gone. The weekly liveness check stops
@@ -377,7 +377,7 @@
 #         registry must flag what it does not know rather than render a blank
 #         that reads as "nothing to see here".
 #
-#   chain: ethereum | polygon | solana | none | ...
+#   chain: ethereum | polygon | solana | bitcoin | none | ...
 #     `none` means NO on-chain surface exists at all, ever — Salad pays PayPal
 #     and gift cards only. Tier 2 (on-chain reconciliation) must skip these
 #     rather than fail to find an address for them.
@@ -390,10 +390,12 @@
 #     container — so the registry can read it from the deployed spec instead of
 #     asking the user to retype it.
 #
-#   address_source: env | manual | app
+#   address_source: env | manual | app | collector
 #     Where the address is actually set. `manual` covers post-deploy
 #     configuration (Mysterium's beneficiary via TequilAPI, Anyone's anonrc);
-#     `app` covers a wallet linked inside the provider's own site.
+#     `app` covers a wallet linked inside the provider's own site; `collector`
+#     means the address is the collector's `address` argument, saved in
+#     Settings (track-only entries such as a mining pool read by payout address).
 #
 #   address_read:
 #     command: ["cat", "/etc/anon/anonrc"]
@@ -460,6 +462,11 @@
 #   type: api | scrape | manual | auto
 #     - auto: earnings accrue/settle automatically; no active collection needed
 #   notes: "Implementation hints for the earnings collector" (for developers)
+#   accrual: pool   (optional)
+#     The balance this collector reads is credit a third party holds and may
+#     never pay (a pool's unpaid balance, immature rewards). Its increases are
+#     ACCRUED, NOT RECEIVED: only a confirmed payout is money received. Omit it
+#     for an account balance. The loader rejects any other value.
 #   quiet_days: 14
 #     How many days the balance can stand still while the service is working
 #     normally: earnings that start late (a vetting period) or arrive in

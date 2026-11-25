@@ -19,6 +19,7 @@ from app.collectors.grass import GrassCollector
 from app.collectors.honeygain import HoneygainCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
+from app.collectors.ocean import OceanCollector
 from app.collectors.packetstream import PacketStreamCollector
 from app.collectors.proxyrack import ProxyRackCollector
 from app.collectors.repocket import RepocketCollector
@@ -45,6 +46,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "grass": GrassCollector,
     "bytelixir": BytelixirCollector,
     "salad": SaladCollector,
+    "ocean": OceanCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -70,6 +72,8 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     # are never passed to the collector — which accepts them already.
     "bytelixir": ["session_cookie", "?remember_web", "?xsrf_token"],
     "salad": ["auth_cookie"],
+    # A public payout address: OCEAN's stats are keyed by it, and it unlocks no funds.
+    "ocean": ["address"],
 }
 
 # How long each credential actually lasts, and why it matters.

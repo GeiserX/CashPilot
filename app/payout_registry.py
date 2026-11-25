@@ -83,6 +83,9 @@ UNCHECKED_REASONS = {
     # Set after deploy inside the container (Mysterium's TequilAPI, Anyone's
     # anonrc), and no worker could read it back this time.
     "manual": "outside",
+    # Saved in Settings for a collector (a pool's payout address), and the
+    # settings could not be read this time.
+    "collector": "settings",
     # Linked inside the provider's own app or site, which CashPilot cannot read.
     "app": "app",
 }
@@ -93,18 +96,33 @@ def _address_view(
     model: str,
     spec: dict[str, Any] | None,
     servers: list[dict[str, Any]],
+    configured_address: str | None = None,
 ) -> dict[str, Any]:
     """The address fields of one row, from the fleet spec and each server's answer.
 
     Each server dict may carry ``address`` (what that box holds) and
     ``address_read`` (True when that box was actually asked: its spec was read,
     or its container answered). A server that was not asked says nothing.
+
+    ``configured_address`` is the collector's ``address`` saved in Settings, read
+    only for ``address_source: collector`` (a pool tracked by payout address).
     """
     if model != "external":
         return {"address": None, "addresses": [], "address_missing": False, "address_unchecked": None}
 
     env_name = payout.get("address_env") or ""
     source = payout.get("address_source") or ("env" if env_name else None)
+
+    if source == "collector":
+        # CashPilot holds this address itself, so blank really is "not set":
+        # the collector has nothing to read until the user saves one.
+        address = (configured_address or "").strip() or None
+        return {
+            "address": address,
+            "addresses": [{"address": address, "servers": []}] if address else [],
+            "address_missing": address is None,
+            "address_unchecked": None,
+        }
 
     by_address: dict[str, list[str]] = {}
     asked_empty: list[str] = []
@@ -174,6 +192,7 @@ def entry(
     deployed: bool,
     servers: list[dict[str, Any]] | None = None,
     recorded: bool | None = None,
+    configured_address: str | None = None,
 ) -> dict[str, Any]:
     """One row of the registry.
 
@@ -181,6 +200,8 @@ def entry(
     ``placement.runs_on``), each optionally with the address read on that box.
     ``recorded`` is whether CashPilot's deployments table has a row for it;
     None means the caller did not say, and it then follows ``deployed``.
+    ``configured_address`` is the address saved in Settings for a service whose
+    ``address_source`` is ``collector``.
     """
     payout = service.get("payout") or {}
     model = payout.get("model") or "unknown"
@@ -192,7 +213,7 @@ def entry(
 
     servers = servers or []
     env_name = payout.get("address_env") or ""
-    view = _address_view(payout, model, spec, servers)
+    view = _address_view(payout, model, spec, servers, configured_address)
     recorded = deployed if recorded is None else recorded
 
     return {
@@ -386,6 +407,12 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
         confirmations = {}
     now = datetime.now(UTC)
 
+    try:
+        config: dict[str, Any] | None = await database.get_config() or {}
+    except Exception as exc:  # noqa: BLE001 - unknown, never "not set"
+        logger.warning("Could not read the settings for the payout registry: %s", exc)
+        config = None
+
     services = catalog.get_services()
     readable = {
         svc["slug"]
@@ -460,7 +487,18 @@ async def registry(read_addresses: Any = None) -> dict[str, Any]:
                     server["addresses"] = found
                     server["address"] = found[0] if found else None
         deployed = bool(servers) if workers is not None else slug in recorded_slugs and slug not in tracked_only
-        row = entry(service, spec, deployed=deployed, servers=servers, recorded=slug in recorded_slugs)
+        row = entry(
+            service,
+            spec,
+            deployed=deployed,
+            servers=servers,
+            recorded=slug in recorded_slugs,
+            configured_address=(config or {}).get(f"{slug}_address"),
+        )
+        if config is None and row["address_source"] == "collector" and row["model"] == "external":
+            # The address lives in Settings, which could not be read this time:
+            # not checked, never "not set".
+            row.update(address_missing=False, address_unchecked=UNCHECKED_REASONS["collector"])
         row["tracked_only"] = slug in tracked_only
         row["runs_on_unknown"] = workers is None
         row["backup"] = (

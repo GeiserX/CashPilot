@@ -1,0 +1,138 @@
+name: OCEAN
+slug: ocean
+category: mining
+status: beta
+website: https://ocean.xyz
+description: >
+  OCEAN is a Bitcoin mining pool with no account: your miner logs in with your
+  Bitcoin address as its username, and the pool pays that address. CashPilot
+  does not run a miner here. It reads the unpaid balance OCEAN holds for your
+  address, so you see what your ASIC (a Bitaxe, an Antminer) has earned next to
+  your other income. The unpaid balance is earned but not received: OCEAN pays
+  it on-chain once it passes the payout threshold.
+short_description: Bitcoin mining pool, tracked by your payout address
+
+# No referral programme was visible on ocean.xyz on 2026-11-25, but nobody has
+# confirmed there is none, so `program` stays absent and scripts/referral_check.py
+# keeps reporting it until someone does.
+referral:
+  signup_url: "https://ocean.xyz/getstarted"
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: ""
+  gpu: false
+  min_storage: ""
+  note: "Needs a Bitcoin ASIC miner (a Bitaxe, an Antminer) pointed at mine.ocean.xyz:3334"
+
+payment:
+  methods: [crypto]
+  minimum_payout: "0.01048576 BTC"
+  currency: BTC
+  frequency: "When a block pays your balance past the threshold"
+
+cashout:
+  method: auto
+  dashboard_url: "https://ocean.xyz/stats"
+  # The pool's smallest on-chain threshold, so a payout above it is always seen.
+  min_amount: 0.01048576
+  currency: BTC
+  notes: >-
+    OCEAN pays on-chain to your address once your unpaid balance reaches the
+    threshold. Lightning payouts (opt-in, BOLT12) are not detected by CashPilot.
+
+platforms: []
+
+collector:
+  type: api
+  # OCEAN's unpaid balance only moves when the pool finds a block, which can
+  # take a few days.
+  quiet_days: 3
+  accrual: pool
+  notes: >-
+    GET https://api.ocean.xyz/v1/statsnap/{address}, no auth. result.unpaid is
+    BTC as a decimal string. An address OCEAN has never seen answers HTTP 200
+    with {"error":"No such user/worker"}, which is an error, never a 0 balance.
+  credential_hint: >-
+    Your BTC payout address: the username your miner uses on OCEAN, without the
+    <b>.workername</b> part. It is public and unlocks no funds.
+
+payout:
+  model: external
+  chain: bitcoin
+  address_source: collector
+  notes: >-
+    Unpaid is earned but not received until OCEAN pays it on-chain to this
+    address, unless you turned on Lightning payouts.
+
+disclosure:
+  sells: compute
+  third_party_traffic: >-
+    No. Your miner sends hashes to the pool; nobody routes traffic through your connection.
+  data_collected: >-
+    Your Bitcoin address, the worker names you choose, your hashrate and your
+    miner's IP address as the pool sees it.
+  isp_risk: >-
+    A miner keeps one connection open to the pool and uses little bandwidth. The
+    cost to watch is electricity, not your ISP.
+  account_rules: >-
+    There is no account. The address is the identity, and anyone can read its
+    stats on ocean.xyz.
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-25"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: good
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_terms: Bitcoin only, a 2% fee, and 0.01048576 BTC before an on-chain payout. Lightning payouts are opt-in.
+    terms_fit: CashPilot runs nothing for OCEAN; it reads the balance of a miner you run yourself.
+    identity_checks: OCEAN needs only the Bitcoin address it pays. There is no account.
+    payout_record: We saw one on-chain payout to one address on mempool.space, which is not a record. No user reports were reviewed.
+    account_safety: There is no account to ban; we found no reports of withheld balances either way.
+    traffic_transparency: A pool sells no traffic; it turns your hashrate into Bitcoin blocks. Not reviewed beyond that.
+    privacy: Not reviewed. Address stats are public on ocean.xyz by design.
+    support: Not reviewed.
+    earnings_realism: Earnings follow your own hashrate and the pool's luck. We did not compare OCEAN's estimates with real payouts.
+    longevity: OCEAN's documentation dates from November 2023. We did not check its legal entity.
+  cons:
+  - text: Paid in Bitcoin only, and nothing is paid on-chain until your balance reaches 0.01048576 BTC.
+    criterion: payout_terms
+    kind: terms
+    source: https://ocean.xyz/docs/lightning
+    checked_on: "2026-11-25"
+  - text: A 2% pool fee, or 1% when you build your own block templates with DATUM.
+    criterion: payout_terms
+    kind: terms
+    source: https://ocean.xyz/
+    checked_on: "2026-11-25"
+  - text: 'CashPilot does not run a miner for OCEAN: you point your own hardware at the pool, and CashPilot only reads the balance.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/mining/ocean.yml
+    checked_on: "2026-11-25"
+  pros:
+  - text: No account and no identity check. OCEAN asks only for the Bitcoin address it pays.
+    criterion: identity_checks
+    kind: terms
+    source: https://ocean.xyz/
+    checked_on: "2026-11-25"

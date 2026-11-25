@@ -150,7 +150,9 @@
           ? 'Set in the provider\'s app, not checked'
           : entry.address_unchecked === 'record'
             ? 'No deploy record to read on some boxes'
-            : 'Set outside CashPilot, not checked';
+            : entry.address_unchecked === 'settings'
+              ? 'Saved in Settings, could not be read'
+              : 'Set outside CashPilot, not checked';
         return html + (html ? '<br>' : '') + '<span class="payout-unchecked">' + (html ? 'Not checked on every box' : why) + '</span>';
       }
       return html || '<span class="payout-missing">Not set</span>';

@@ -120,7 +120,11 @@ nav = [
           { "Sia (hostd)" = "guides/sia-hostd.md" },
           { Storj = "guides/storj.md" },
         ] },
+      { Mining = [
+          { OCEAN = "guides/ocean.md" },
+        ] },
     ] },
+  { Mining = "mining.md" },
   { Configuration = [
       { "Configuration reference" = "configuration.md" },
       { "Multi-node fleet management" = "fleet.md" },
