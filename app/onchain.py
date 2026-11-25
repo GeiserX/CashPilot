@@ -96,6 +96,10 @@ class Chain:
 #: benefit.
 CHAINS: dict[str, Chain] = {
     "ethereum": Chain("ethereum", "Ethereum", "ETH", 18, "https://ethereum-rpc.publicnode.com", "evm"),
+    # Ethereum Classic mainnet (eth_chainId 0x3d).
+    "ethereum-classic": Chain(
+        "ethereum-classic", "Ethereum Classic", "ETC", 18, "https://geth-at.etc-network.info", "evm"
+    ),
     "polygon": Chain("polygon", "Polygon", "POL", 18, "https://polygon-bor-rpc.publicnode.com", "evm"),
     "solana": Chain("solana", "Solana", "SOL", 9, "https://api.mainnet-beta.solana.com", "solana"),
     "bitcoin": Chain(
@@ -427,6 +431,7 @@ async def balance(chain: str, address: str, *, client: httpx.AsyncClient | None 
             until = _now() + _retry_delay(exc)
             _backoff_until[resolved] = max(_backoff_until.get(resolved, 0), until)
             error = type(exc).__name__
+            # The endpoint can echo the payout address in its error.
             logger.warning("Could not read %s balance: %s", slug, error)
             return _result(UNREACHABLE, slug, detail=f"{error} while reading the chain.")
         finally:
