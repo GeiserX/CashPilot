@@ -4831,13 +4831,18 @@ async def _deploy(
                 status_code=409,
                 detail="This worker is too old to run a service more than once. Update the worker first.",
             )
-    if gpu.spec_of(svc) and "gpu_grant" not in await _worker_features(worker_id):
-        # The worker builds the grant from its own catalog; an older one would
-        # start the service with no GPU, where it runs and earns nothing.
-        raise HTTPException(
-            status_code=409,
-            detail=f"This worker is too old to give {svc.get('name') or slug} a GPU. Update the worker first.",
-        )
+    if grant := gpu.spec_of(svc):
+        if custom_image:
+            raise HTTPException(status_code=400, detail=f"{slug} uses a GPU and runs only the catalog image.")
+        worker = _decoded_worker(await database.get_worker(worker_id) or {})
+        info = worker.get("system_info")
+        grants = info.get("gpu_grants") if isinstance(info, dict) else None
+        if not isinstance(grants, dict) or grants.get(slug) != grant:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This worker did not report the catalog GPU grant for {svc.get('name') or slug}. "
+                "Update the worker and wait for its next heartbeat.",
+            )
 
     # Ports — key is "container_port/protocol" per Docker SDK. A mapping with a
     # host address ("127.0.0.1:9980:9980") becomes [address, port]: a web UI

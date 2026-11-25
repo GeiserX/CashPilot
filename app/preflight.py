@@ -131,7 +131,8 @@ def assess(
         verdicts.append(EARNS_NOTHING)
 
     # Hardware the container cannot conjure.
-    for finding in _gpu_findings(service, info, already_deployed - {slug}):
+    gpu_findings = _gpu_findings(service, info, already_deployed - {slug} if worker is not None else set())
+    for finding in gpu_findings:
         findings.append(finding)
         verdicts.append(finding["verdict"])
 
@@ -256,10 +257,13 @@ def assess(
         # An old worker sends no arch, an unusual CPU folds to nothing, or the
         # entry declares no platforms. Say so instead of implying a pass.
         not_checked.append("whether the image has a build for this CPU")
+    summary = _summary(verdict, service)
+    if any(finding["verdict"] == EARNS_NOTHING for finding in gpu_findings):
+        summary = "The worker will refuse this deploy because it cannot provide the required GPU."
     return {
         "slug": slug,
         "verdict": verdict,
-        "summary": _summary(verdict, service),
+        "summary": summary,
         "findings": findings,
         # Say what was NOT checked, so a clean result is not mistaken for a
         # guarantee about things we never looked at.
@@ -291,20 +295,18 @@ def _gpu_findings(service: dict[str, Any], info: dict[str, Any], deployed: set[s
         return []
     name = service.get("name") or service.get("slug") or "This service"
     vendor = grant["vendor"]
-    label = gpu.VENDOR_NAMES[vendor]
     report = info.get("gpu") if isinstance(info.get("gpu"), dict) else {}
-    vendors = report.get("vendors") if isinstance(report.get("vendors"), dict) else None
+    vendors = report.get("vendors")
+    if not isinstance(vendors, dict) or not all(isinstance(facts, dict) for facts in vendors.values()):
+        vendors = None
     findings: list[dict[str, str]] = []
-    if vendors is not None and report.get("available") is not None and vendor not in vendors:
-        # Only a conclusive sysfs read sends "vendors" with a True or False answer.
-        seen = ", ".join(gpu.VENDOR_NAMES[v] for v in gpu.VENDORS if v in vendors) or "no GPU"
-        findings.append(
-            {
-                "verdict": EARNS_NOTHING,
-                "message": f"This machine has no {label} GPU that {name} can use (it sees: {seen}). "
-                "The worker refuses the deploy.",
-            }
-        )
+    host = {
+        "conclusive": vendors is not None and isinstance(report.get("available"), bool),
+        "vendors": vendors,
+        "kfd": (vendors or {}).get("amd", {}).get("kfd"),
+    }
+    if problem := gpu.missing(grant, host):
+        findings.append({"verdict": EARNS_NOTHING, "message": f"{problem} The worker refuses the deploy."})
     elif vendors is None or vendor not in vendors:
         findings.append({"verdict": CHECK_YOURSELF, "message": _GPU_CHECK_YOURSELF})
     elif vendor == "nvidia" and report.get("nvidia_toolkit") is not True:

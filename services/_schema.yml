@@ -207,7 +207,9 @@
 #       rocm: false        amd only: also pass /dev/kfd
 #     Needs requirements.gpu: true and runtime: runc (gVisor cannot pass DRI
 #     through, and passes NVIDIA only with flags CashPilot does not set), and
-#     cannot be used with network_mode: host. No docker.env key may start with
+#     cannot be used with network_mode: host. The image and every image_by_arch
+#     alternative must be pinned by SHA-256 digest. The worker refuses image
+#     overrides for GPU services. No docker.env key may start with
 #     NVIDIA_: every container without an NVIDIA grant gets
 #     NVIDIA_VISIBLE_DEVICES=void, and a grant's value is Docker's.
 #   privileged: false (optional, security-sensitive — grants the container full host device access)

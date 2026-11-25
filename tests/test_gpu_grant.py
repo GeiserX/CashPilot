@@ -8,9 +8,10 @@ Intel render nodes (an iGPU and two SR-IOV functions) and the ASPEED BMC chip.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -111,6 +112,13 @@ def test_a_conclusive_read_with_no_gpu_is_a_real_no(tmp_path):
     assert host["conclusive"] is True and host["vendors"] == {}
 
 
+def test_an_unreadable_display_vendor_is_unknown(tmp_path):
+    address = "0000:03:00.0"
+    _pci(tmp_path, address, "0x10de", "0x030200")
+    (tmp_path / "bus" / "pci" / "devices" / address / "vendor").unlink()
+    assert read(tmp_path)["conclusive"] is False
+
+
 # ---------------------------------------------------------------------------
 # What a grant becomes
 # ---------------------------------------------------------------------------
@@ -193,7 +201,8 @@ def _catalog(services: dict[str, dict]):
 
 
 MINER = {"slug": "gpuminer", "name": "GPU Miner", "requirements": {"gpu": True}}
-MINER["docker"] = {"image": "example/miner:1", "runtime": "runc", "gpu": {"vendor": "nvidia"}}
+MINER_IMAGE = "example/miner:1@sha256:" + "a" * 64
+MINER["docker"] = {"image": MINER_IMAGE, "runtime": "runc", "gpu": {"vendor": "nvidia"}}
 
 
 def test_only_a_catalog_slug_gets_a_grant():
@@ -209,7 +218,7 @@ def test_only_a_catalog_slug_gets_a_grant():
 # ---------------------------------------------------------------------------
 
 
-def _deploy(slug: str, services: dict[str, dict], host: dict = NVIDIA_HOST, **kwargs) -> dict:
+def _deploy(slug: str, services: dict[str, dict], host: dict = NVIDIA_HOST, image: str = MINER_IMAGE, **kwargs) -> dict:
     captured: dict = {}
 
     def fake_run(**kw):
@@ -222,9 +231,10 @@ def _deploy(slug: str, services: dict[str, dict], host: dict = NVIDIA_HOST, **kw
     with (
         patch.object(orchestrator, "_get_client", return_value=client),
         _catalog(services),
+        patch.object(orchestrator, "get_service", side_effect=services.get),
         patch.object(gpu, "host_gpus", return_value=host),
     ):
-        orchestrator.deploy_raw(slug=slug, image="example/miner:1", **kwargs)
+        orchestrator.deploy_raw(slug=slug, image=image, **kwargs)
     return captured
 
 
@@ -267,10 +277,11 @@ def test_a_machine_without_the_vendor_is_refused_before_the_pull(tmp_path):
     with (
         patch.object(orchestrator, "_get_client", return_value=client),
         _catalog({"gpuminer": MINER}),
+        patch.object(orchestrator, "get_service", return_value=MINER),
         patch.object(gpu, "host_gpus", return_value=read(watchtower(tmp_path))),
         pytest.raises(orchestrator.ContainerRuntimeError, match=r"no NVIDIA GPU .*not touched"),
     ):
-        orchestrator.deploy_raw(slug="gpuminer", image="example/miner:1")
+        orchestrator.deploy_raw(slug="gpuminer", image=MINER_IMAGE)
     client.images.pull.assert_not_called()
     client.containers.run.assert_not_called()
 
@@ -288,34 +299,71 @@ def test_a_request_cannot_set_an_nvidia_variable():
     assert "NVIDIA_" in exc.value.detail
 
 
-def test_the_worker_refuses_a_gpu_its_machine_does_not_have(tmp_path):
-    spec = worker_api.DeploySpec(image="example/miner:1")
+@pytest.mark.parametrize(
+    ("image", "instance", "status", "detail"),
+    [(MINER_IMAGE, 2, 400, "one copy"), ("example/other:1", 1, 403, "catalog pins")],
+)
+@pytest.mark.asyncio
+async def test_worker_deploy_checks_gpu_image_and_instance_before_start(image, instance, status, detail):
+    spec = worker_api.DeploySpec(image=image, instance=instance)
     with (
         _catalog({"gpuminer": MINER}),
+        patch.object(orchestrator, "get_service", return_value=MINER),
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(orchestrator, "proxy_policy_current", return_value=None),
+        patch.object(gpu, "host_gpus", return_value=NVIDIA_HOST),
+        patch.object(worker_api, "_deploy_direct", side_effect=AssertionError("should refuse before deployment")),
+        pytest.raises(HTTPException, match=detail) as exc,
+    ):
+        await worker_api.api_deploy_container(MagicMock(), "gpuminer", spec)
+    assert exc.value.status_code == status
+
+
+@pytest.mark.asyncio
+async def test_ui_refuses_gpu_deploy_when_worker_catalog_lacks_the_grant():
+    worker = {"system_info": json.dumps({"features": ["gpu_grant"], "gpu_grants": {}})}
+    with (
+        _catalog({"gpuminer": MINER}),
+        patch.object(main, "_resolve_worker_id", AsyncMock(return_value=1)),
+        patch.object(main, "_device_names", AsyncMock(return_value=("box", []))),
+        patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=None)),
+        patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
+        pytest.raises(HTTPException, match="catalog") as exc,
+    ):
+        await main._deploy("gpuminer", main.DeployRequest(), 1)
+    assert exc.value.status_code == 409
+
+
+def test_the_worker_refuses_a_gpu_its_machine_does_not_have(tmp_path):
+    spec = worker_api.DeploySpec(image=MINER_IMAGE)
+    with (
+        _catalog({"gpuminer": MINER}),
+        patch.object(orchestrator, "get_service", return_value=MINER),
         patch.object(gpu, "host_gpus", return_value=read(watchtower(tmp_path))),
         patch.object(orchestrator, "proxy_policy_current", return_value=None),
         pytest.raises(HTTPException) as exc,
     ):
-        worker_api._validate_gpu("gpuminer")
+        worker_api._validate_gpu("gpuminer", spec)
     assert exc.value.status_code == 409
     assert "no NVIDIA GPU" in exc.value.detail and "Intel" in exc.value.detail
-    del spec
 
 
 def test_the_worker_refuses_a_gpu_while_the_proxy_policy_is_old():
     fix = {"release": "v9", "command": "c", "url": "u", "recreate": "r"}
+    spec = worker_api.DeploySpec(image=MINER_IMAGE)
     with (
         _catalog({"gpuminer": MINER}),
+        patch.object(orchestrator, "get_service", return_value=MINER),
         patch.object(orchestrator, "proxy_policy_current", return_value=False),
         patch.object(orchestrator, "proxy_policy_fix", return_value=fix),
         pytest.raises(HTTPException) as exc,
     ):
-        worker_api._validate_gpu("gpuminer")
+        worker_api._validate_gpu("gpuminer", spec)
     assert exc.value.status_code == 409
     assert "socket proxy" in exc.value.detail
     # The control: a slug without a grant never asks the proxy.
     with _catalog({}), patch.object(orchestrator, "proxy_policy_current", return_value=False):
-        worker_api._validate_gpu("plain")
+        worker_api._validate_gpu("plain", spec)
 
 
 def test_a_proxied_copy_request_for_a_gpu_slug_is_refused():
@@ -483,6 +531,23 @@ def test_a_tracked_only_gpu_entry_keeps_the_old_message():
     tracked = {"slug": "salad", "requirements": {"gpu": True}, "docker": {"image": ""}}
     (finding,) = preflight._gpu_findings(tracked, _gpu_report(available=True, vendors={}), set())
     assert finding == {"verdict": preflight.CHECK_YOURSELF, "message": preflight._GPU_CHECK_YOURSELF}
+
+
+@pytest.mark.parametrize(("nodes", "reason"), [([], "render node"), (["/dev/dri/renderD128"], "/dev/kfd")])
+def test_preflight_warns_when_amd_has_no_usable_device(nodes, reason):
+    miner = {**MINER, "docker": {**MINER["docker"], "gpu": {"vendor": "amd", "rocm": True}}}
+    report = _gpu_report(available=True, vendors={"amd": {"render_nodes": nodes, "kfd": False}})
+    result = preflight.assess(miner, system_info=report)
+    (finding,) = result["findings"]
+    assert finding["verdict"] == preflight.EARNS_NOTHING
+    assert reason in finding["message"]
+    assert "refuse this deploy" in result["summary"]
+
+
+def test_preflight_without_a_worker_does_not_claim_gpu_sharing():
+    with _catalog({"othergpu": {**MINER, "slug": "othergpu"}}):
+        result = preflight.assess(MINER, already_deployed_slugs={"othergpu"})
+    assert not any("shares the GPU" in finding["message"] for finding in result["findings"])
 
 
 def test_drift_leaves_gpu_devices_alone_and_flags_a_missing_gpu():

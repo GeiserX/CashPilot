@@ -1243,7 +1243,7 @@ def deploy_raw(
     # the request's choice. A proxied copy gets none. Every container without
     # an NVIDIA grant gets NVIDIA_VISIBLE_DEVICES=void, so a CUDA image cannot
     # take the GPU through a host whose default runtime is nvidia.
-    gpu_grant = gpu.grant(slug)
+    gpu_grant = gpu_grant_for_deploy(slug, image, instance)
     if gpu_grant and joined:
         raise ContainerRuntimeError(
             f"{service_name(slug)} needs this machine's GPU, which a proxied copy does not get. Nothing changed.", 400
@@ -2890,6 +2890,22 @@ def catalog_image_matches(slug: str, image: str) -> bool:
         if repo == c_repo and (not c_tag or tag == c_tag) and (not c_digest or digest == c_digest):
             return True
     return False
+
+
+def gpu_grant_for_deploy(slug: str | None, image: str, instance: int) -> dict[str, Any] | None:
+    """Allow a GPU only for the pinned catalog image and only on the first copy."""
+    grant = gpu.grant(slug)
+    if not slug or not grant:
+        return None
+    if instance != 1:
+        raise ContainerRuntimeError(f"{service_name(slug)} uses this machine's GPU and can run only one copy.", 400)
+    if not catalog_image_matches(slug, image):
+        raise ContainerRuntimeError(
+            f"{service_name(slug)} uses this machine's GPU and runs only the image this worker's catalog pins. "
+            "If the catalog image changed, update the worker first. Nothing was deployed.",
+            403,
+        )
+    return grant
 
 
 def _catalog_command_tokens(template: str, env: dict[str, Any]) -> list[str]:

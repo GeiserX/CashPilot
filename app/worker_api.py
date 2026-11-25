@@ -840,6 +840,11 @@ async def _send_heartbeat() -> None:
         payload["system_info"]["features"].append("state_restore")
         # Gives a catalog service the GPU its own catalog entry declares (docker.gpu, app/gpu.py).
         payload["system_info"]["features"].append("gpu_grant")
+        payload["system_info"]["gpu_grants"] = {
+            service["slug"]: grant
+            for service in (_catalog_get_services() if _catalog_get_services else [])
+            if not service["slug"].startswith("custom-") and (grant := gpu.spec_of(service))
+        }
         # The services a restore that did not finish left half-written here. The
         # box may hold no container of one, so the dashboard draws its Remove
         # from this list. Left out when it cannot be read.
@@ -1909,14 +1914,17 @@ def _validate_route_approval(spec: DeploySpec, slug: str) -> bool:
     return True
 
 
-def _validate_gpu(slug: str | None) -> None:
+def _validate_gpu(slug: str | None, spec: DeploySpec) -> None:
     """A GPU grant (app/gpu.py) refused before the running container is touched.
 
     The grant comes from this worker's catalog. It is refused here when the
     socket proxy runs an older policy, which refuses the GPU, or when sysfs
     says for sure that this machine has no GPU of that vendor.
     """
-    grant = gpu.grant(slug)
+    try:
+        grant = orchestrator.gpu_grant_for_deploy(slug, spec.image, spec.instance)
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     if not grant:
         return
     name = orchestrator.service_name(slug or "")
@@ -1968,7 +1976,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     _validate_fence_gated(spec, slug)
-    _validate_gpu(slug)
+    _validate_gpu(slug, spec)
     proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
     compose_dir = os.getenv(orchestrator.COMPOSE_DIR_ENV, "").strip()
     compose_dir = orchestrator.host_path_key(compose_dir) if compose_dir.startswith("/") else ""

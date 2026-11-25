@@ -64,7 +64,7 @@ from urllib.parse import quote, unquote
 from docker.errors import APIError, DockerException, NotFound
 from docker.types import Mount
 
-from app import egress, lan_fence, orchestrator, route_gate, version
+from app import egress, gpu, lan_fence, orchestrator, route_gate, version
 from app.constants import (
     CONTAINER_PREFIX,
     DEPLOY_DEADLINE_SECONDS,
@@ -939,7 +939,7 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
 
     A container's network namespace is fixed when it is created, so moving an
     earner to another tunnel means a new container. The worker rebuilds it from
-    ``inspect``, so it needs neither the UI nor the catalog. ``start``
+    ``inspect`` without contacting the UI. ``start``
     defaults to whether the member was running.
 
     Nothing is removed before its replacement holds the name: the clone is
@@ -1003,10 +1003,14 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         }
         or None,
     }
+    # Older copies may have inherited NVIDIA settings from their image. A
+    # replacement must explicitly hide NVIDIA devices like a fresh deploy.
+    environment = [entry for entry in cfg.get("Env") or [] if not entry.upper().startswith(gpu.ENV_PREFIX)]
+    environment.extend(f"{key}={value}" for key, value in gpu.VOID_ENV.items())
     clone = client.containers.create(
         image=cfg.get("Image") or _image_of(member),
         name=staged,
-        environment=cfg.get("Env") or [],
+        environment=environment,
         labels=dict(cfg.get("Labels") or _labels(member)),
         network_mode=f"container:{tunnel.id}",
         # As orchestrator.deploy_raw does for every proxied copy: every
@@ -1070,6 +1074,10 @@ def _refuse_unmovable(member: Any) -> None:
     what = ""
     if hc.get("Devices"):
         what = "host devices"
+    elif hc.get("DeviceRequests"):
+        what = "device requests"
+    elif gpu.grant(_labels(member).get(LABEL_SERVICE)):
+        what = "a catalog GPU grant"
     elif risky := sorted(
         {str(c).upper().removeprefix("CAP_") for c in hc.get("CapAdd") or []} & PROXIED_FORBIDDEN_CAPS
     ):

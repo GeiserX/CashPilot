@@ -6,25 +6,23 @@ never does, and what your host needs first.
 
 !!! warning "Beta"
 
-    The GPU grant is new and has not yet run on a real NVIDIA, AMD or Intel
-    host. Its tests and the socket proxy's live check pass. It stays beta until
-    it has run on one real host. Tell us how it goes on yours: open an issue
-    with the card, the driver and the error, if any.
+    The GPU grant stays in beta until it runs on a real NVIDIA host.
 
 ## Who gets a GPU
 
-A GPU goes only to a **catalog service whose entry declares `docker.gpu`**. The
-worker reads that from its own catalog, never from the deploy request.
+A GPU goes only to a **catalog service whose entry declares `docker.gpu`**.
+The worker uses its own catalog to check the grant and the image digest.
+Update the worker if its catalog lacks the service or has a different grant.
 
 - **A custom service never gets one.** An image you add yourself has not been
   reviewed ([custom services](custom-services.md)).
 - **A proxied copy never gets one.** It lives inside its tunnel's network
   namespace ([proxied copies](proxies.md)).
 - **One copy per machine.** Two copies would share the same GPU.
-- **Every other container gets `NVIDIA_VISIBLE_DEVICES=void`.** CUDA base images
-  set that variable to `all`. On a host whose default Docker runtime is
-  `nvidia`, such an image would get every GPU with no grant at all. The
-  container's own value wins over the image's, so it gets none.
+- **The worker sets `NVIDIA_VISIBLE_DEVICES=void`** when it creates a service
+  container without an NVIDIA grant. CUDA base images set that variable to
+  `all`. The worker's value hides the GPUs even on hosts whose default Docker
+  runtime is `nvidia`.
 
 ## What CashPilot passes in
 
@@ -80,9 +78,8 @@ deploy and says what it found. The running container is not touched.
   `/dev/dxg`. The worker says it cannot tell, and still passes an NVIDIA
   request: Docker Desktop and Docker in WSL with the toolkit can serve it. AMD
   and Intel are refused on WSL.
-- **macOS and Windows hosts.** Docker runs in a virtual machine that has no
-  GPU. A deploy is refused when the worker reads that machine's PCI bus and finds
-  no GPU of that vendor.
+- **Docker VMs without GPU passthrough.** When the worker's PCI read shows no
+  GPU of the requested vendor, it refuses the deploy.
 - **More than 8 render nodes.** Only `renderD128` to `renderD135` are passed in.
   SR-IOV virtual functions count as GPUs.
 

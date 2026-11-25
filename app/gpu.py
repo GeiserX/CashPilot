@@ -31,6 +31,7 @@ image (no Docker SDK) and app/socket_policy.py can import it.
 from __future__ import annotations
 
 import platform
+import re
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +79,7 @@ def spec_of(svc: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(block, dict) or block.get("vendor") not in VENDORS:
         return None
     count = block.get("count", 1)
-    if count not in (1, "all") or isinstance(count, bool):
+    if count != "all" and (type(count) is not int or count != 1):
         return None
     return {"vendor": block["vendor"], "count": count, "rocm": block.get("rocm") is True}
 
@@ -100,20 +101,25 @@ def spec_errors(data: dict[str, Any]) -> list[str]:
     block = docker["gpu"]
     if not isinstance(block, dict):
         return [*errors, "docker.gpu must be a mapping"]
-    if unknown := sorted(set(block) - {"vendor", "count", "rocm"}):
-        errors.append(f"docker.gpu has unknown keys: {', '.join(map(str, unknown))}")
+    if unknown := sorted(str(key) for key in block if key not in {"vendor", "count", "rocm"}):
+        errors.append(f"docker.gpu has unknown keys: {', '.join(unknown)}")
     vendor = block.get("vendor")
     if vendor not in VENDORS:
         errors.append(f"docker.gpu.vendor must be one of {', '.join(VENDORS)}, got {vendor!r}")
     count = block.get("count", 1)
-    if isinstance(count, bool) or count not in (1, "all"):
+    if count != "all" and (type(count) is not int or count != 1):
         errors.append(f'docker.gpu.count must be 1 or "all", got {count!r}')
     if "rocm" in block and not isinstance(block["rocm"], bool):
         errors.append("docker.gpu.rocm must be true or false")
     elif block.get("rocm") and vendor != "amd":
         errors.append("docker.gpu.rocm is for vendor amd only")
-    if (data.get("requirements") or {}).get("gpu") is not True:
+    requirements = data.get("requirements")
+    if not isinstance(requirements, dict) or requirements.get("gpu") is not True:
         errors.append("docker.gpu needs requirements.gpu: true")
+    by_arch = docker.get("image_by_arch")
+    images = [docker.get("image"), *(by_arch.values() if isinstance(by_arch, dict) else ())]
+    if not all(isinstance(image, str) and re.search(r"@sha256:[0-9a-f]{64}\Z", image) for image in images):
+        errors.append("docker.gpu needs an image pinned by digest, including each architecture alternative")
     if str(docker.get("runtime") or "").strip() != "runc":
         # gVisor cannot pass DRI devices through, and passes NVIDIA only with
         # flags CashPilot does not set.
@@ -144,10 +150,7 @@ def grant(slug: str | None) -> dict[str, Any] | None:
 
 
 def _read(path: Path) -> str:
-    try:
-        return path.read_text(encoding="ascii", errors="replace").strip().lower()
-    except OSError:
-        return ""
+    return path.read_text(encoding="ascii", errors="replace").strip().lower()
 
 
 def _render_number(path: str) -> int:
@@ -179,25 +182,24 @@ def host_gpus(sysfs: Path = Path("/sys")) -> dict[str, Any]:
     by_id = {pci: vendor for vendor, pci in VENDOR_IDS.items()}
     vendors: dict[str, dict[str, Any]] = {}
     try:
-        pci_devices = sorted((sysfs / "bus" / "pci" / "devices").iterdir())
+        for dev in (sysfs / "bus" / "pci" / "devices").iterdir():
+            if not _read(dev / "class").startswith("0x03"):
+                continue
+            vendor = by_id.get(_read(dev / "vendor"))
+            if vendor:
+                vendors.setdefault(vendor, {"pci": 0, "render_nodes": []})["pci"] += 1
+        drm = sysfs / "class" / "drm"
+        if drm.exists():
+            for node in drm.iterdir():
+                if not node.name.startswith("renderD"):
+                    continue
+                vendor = by_id.get(_read(node / "device" / "vendor"))
+                if vendor:
+                    entry = vendors.setdefault(vendor, {"pci": 0, "render_nodes": []})
+                    entry["render_nodes"].append(f"/dev/dri/{node.name}")
     except OSError as exc:
-        result["reason"] = f"this machine's PCI devices could not be read ({exc.strerror or exc})"
+        result["reason"] = f"this machine's GPU devices could not be read ({exc.strerror or exc})"
         return result
-    for dev in pci_devices:
-        if not _read(dev / "class").startswith("0x03"):
-            continue
-        vendor = by_id.get(_read(dev / "vendor"))
-        if vendor:
-            vendors.setdefault(vendor, {"pci": 0, "render_nodes": []})["pci"] += 1
-    try:
-        nodes = sorted((sysfs / "class" / "drm").glob("renderD*"))
-    except OSError:
-        nodes = []
-    for node in nodes:
-        vendor = by_id.get(_read(node / "device" / "vendor"))
-        if vendor:
-            entry = vendors.setdefault(vendor, {"pci": 0, "render_nodes": []})
-            entry["render_nodes"].append(f"/dev/dri/{node.name}")
     for entry in vendors.values():
         entry["render_nodes"].sort(key=_render_number)
     result["kfd"] = (sysfs / "class" / "kfd" / "kfd").exists()
@@ -222,7 +224,7 @@ def missing(grant_: dict[str, Any], host: dict[str, Any]) -> str | None:
     vendor = grant_["vendor"]
     found = (host.get("vendors") or {}).get(vendor)
     label = VENDOR_NAMES[vendor]
-    if not found:
+    if found is None:
         return f"This machine has no {label} GPU CashPilot can pass in (it sees: {describe(host)})."
     if vendor != "nvidia" and not [n for n in found.get("render_nodes") or [] if n in RENDER_NODE_CEILING]:
         return (

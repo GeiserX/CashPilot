@@ -275,7 +275,12 @@ class TestGpuBlock:
             "status": "active",
             "description": "desc",
             "requirements": {"gpu": True} if requirements is None else requirements,
-            "docker": {"image": "x:1", "runtime": "runc", "gpu": gpu or {"vendor": "nvidia"}, **docker},
+            "docker": {
+                "image": "x:1@sha256:" + "a" * 64,
+                "runtime": "runc",
+                "gpu": gpu or {"vendor": "nvidia"},
+                **docker,
+            },
         }
 
     def test_a_valid_block_loads(self, tmp_path):
@@ -288,8 +293,13 @@ class TestGpuBlock:
             ({"gpu": {"vendor": "matrox"}}, "docker.gpu.vendor must be one of nvidia, amd, intel"),
             ({"gpu": {"vendor": "nvidia", "count": 2}}, 'docker.gpu.count must be 1 or "all"'),
             ({"gpu": {"vendor": "nvidia", "count": True}}, 'docker.gpu.count must be 1 or "all"'),
+            ({"gpu": {"vendor": "nvidia", "count": 1.0}}, 'docker.gpu.count must be 1 or "all"'),
+            ({"gpu": {"vendor": "nvidia", "typo": False, 5: True}}, "docker.gpu has unknown keys"),
             ({"gpu": {"vendor": "nvidia", "rocm": True}}, "docker.gpu.rocm is for vendor amd only"),
             ({"requirements": {}}, "docker.gpu needs requirements.gpu: true"),
+            ({"requirements": ["gpu"]}, "docker.gpu needs requirements.gpu: true"),
+            ({"image": "x:1"}, "docker.gpu needs an image pinned by digest"),
+            ({"image_by_arch": {"amd64": "x:1"}}, "docker.gpu needs an image pinned by digest"),
             ({"runtime": "runsc"}, "docker.gpu needs docker.runtime: runc"),
             ({"network_mode": "host"}, "docker.gpu cannot be used with network_mode: host"),
             ({"devices": ["/dev/dri/renderD128"]}, "docker.devices /dev/dri/renderD128: a GPU comes only through"),
