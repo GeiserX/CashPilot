@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!entrypoint.sh
+!VERSION
+!ARCHIVE_SHA256
+!BINARY_SHA256

@@ -9596,7 +9596,8 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     hours = max(1, int(days)) * 24.0
     # Earned OVER THE WINDOW, not the latest balance: subtracting a window's
     # electricity from a running total would be meaningless arithmetic.
-    earned = await database.get_earned_by_platform(max(1, int(days)))
+    measured: set[str] = set()
+    earned = await database.get_earned_by_platform(max(1, int(days)), measured=measured)
 
     watts_by_service: dict[str, float] = {}
     unmetered_services: set[str] = set()
@@ -9605,11 +9606,18 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         meta = worker_meta.get(wid) or {}
         info = _safe_json(meta.get("system_info", "{}"), {})
         metered = power.is_metered(info)
+        # The draw the user typed for this machine on the Fleet page comes
+        # first. It is the only figure here anyone checked against the box;
+        # the fleet card already charged it while this endpoint split a 65 W
+        # guess. Both now start from the typed draw, though the CPU-share split
+        # below and the request window keep the two from matching exactly.
+        typed = _worker_watts(cfg, meta) if meta else None
         try:
-            tdp = float(info.get("host_tdp_watts") or host_tdp)
+            tdp = typed if typed and typed > 0 else float(info.get("host_tdp_watts") or host_tdp)
         except (TypeError, ValueError):
             tdp = host_tdp
         count = max(1, len(containers))
+        host_watts: dict[str, float] = {}
         for c in containers:
             svc = egress.container_slug(c)
             if not metered:
@@ -9625,19 +9633,36 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
                 if svc in running_miners:
                     miner_cpu_missing = True
                 continue
-            watts_by_service[svc] = watts_by_service.get(svc, 0.0) + power.estimate_watts(
+            host_watts[svc] = host_watts.get(svc, 0.0) + power.estimate_watts(
                 float(c.get("cpu_percent") or 0.0), host_tdp_watts=tdp, container_count=count
             )
+        # Docker reports cpu_percent per core (800% for eight saturated cores),
+        # so the shares can add up to several times the host's draw. When the
+        # user typed that draw, it is a measured ceiling: scale this machine's
+        # shares down so together they never charge more than it.
+        total = sum(host_watts.values())
+        if typed and typed > 0 and total > typed:
+            host_watts = {svc: w * typed / total for svc, w in host_watts.items()}
+        for svc, w in host_watts.items():
+            watts_by_service[svc] = watts_by_service.get(svc, 0.0) + w
 
     rows = []
+    break_even: dict[str, float] = {}
     # A miner runs under its own slug while its pool reports earnings separately.
     # Include the miner's power bill even when its own earnings are unread.
     for platform in [*earned, *sorted(running_miners - earned.keys())]:
+        gross = earned.get(platform)
         watts = watts_by_service.get(platform, 0.0)
+        # A per-service break-even only where the per-service cost can be
+        # attributed at all, and only for a gross that was actually read. A
+        # break-even built on a 2 W share of a box that is on anyway would be
+        # invented precision. USD per kWh, like every money figure here.
+        if gross is not None and platform in measured and machine_economics.per_service_is_meaningful(watts):
+            break_even[platform] = round(float(gross) / (watts / 1000.0 * hours), 4)
         rows.append(
             {
                 "platform": platform,
-                "gross": earned.get(platform),
+                "gross": gross,
                 "watts": watts,
                 "hours": hours,
                 "cost_quality": power.ESTIMATED,
@@ -9693,6 +9718,9 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # watts had actually been measured (CashPilot-c6u).
     cost_known = fx_ok and watts_known and not miner_cpu_missing
     result = power.summarise(rows, price_per_kwh=price_usd if cost_known else 0.0, currency="USD")
+    for row in result["services"]:
+        if row["platform"] in break_even:
+            row["break_even_price_per_kwh"] = break_even[row["platform"]]
     if miner_cpu_missing:
         result["cost_unavailable_reason"] = "A running miner has no CPU reading, so its electricity cost is unknown."
     if not watts_known:
@@ -10270,6 +10298,8 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # all. Convert the TARIFF, so the endpoint stays canonical USD like the rest
     # of the API and the frontend's display-currency layer can render it.
     tariff_currency = str(config.get("power_currency") or "EUR")
+    # The tariff as typed, kept for the break-even line, which reads against it.
+    tariff_local = price
     fx_ok = True
     if price and tariff_currency != "USD":
         converted = exchange_rates.to_usd(price, tariff_currency)
@@ -10283,7 +10313,12 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # to build the same list in a single request.
     raw_workers = await database.list_workers()
     workers = [_decoded_worker(w) for w in raw_workers]
-    earned = await database.get_earned_by_platform(days=30)
+    # Which platforms had a priced reading at all. Without it a service with no
+    # collector, no credentials or no FX price contributes 0.0, and a machine
+    # hosting only such services would get a 0.0 break-even tariff and "loses
+    # money at any electricity price" on a gross nobody ever read.
+    measured: set[str] = set()
+    earned = await database.get_earned_by_platform(days=30, measured=measured)
     containers = await _get_all_worker_containers(raw_workers)
 
     # Attribute each service's gross to the worker running it. A service on two
@@ -10291,6 +10326,11 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # answer, and pretending otherwise would be invented precision again.
     per_worker_gross: dict[Any, float] = {}
     hosts: dict[str, list[Any]] = {}
+    # Workers hosting at least one service, and those with at least one whose
+    # earnings were actually read. A worker in the first set and not the second
+    # has a gross of 0.0 that is missing data, not a measured zero.
+    hosting: set[Any] = set()
+    read: set[Any] = set()
     for container in containers:
         slug = egress.container_slug(container)
         if slug:
@@ -10299,9 +10339,13 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         share = float(earned.get(slug) or 0.0) / max(1, len(worker_ids))
         for worker_id in worker_ids:
             per_worker_gross[worker_id] = per_worker_gross.get(worker_id, 0.0) + share
+            hosting.add(worker_id)
+            if slug in measured:
+                read.add(worker_id)
 
     assessed = []
     for worker in workers:
+        worker_id = worker.get("id")
         info = worker.get("system_info") or {}
         # Keyed on client_id, not the autoincrement row id.
         #
@@ -10310,13 +10354,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         # dedicated settings silently, while the old keys linger forever. The
         # id is also read from the row-id fallback for volumes written before
         # this change.
-        raw_watts = config.get(f"worker_{_worker_config_key(worker)}_watts") or config.get(
-            f"worker_{worker.get('id')}_watts"
-        )
-        try:
-            watts = float(raw_watts) if raw_watts else None
-        except (TypeError, ValueError):
-            watts = None
+        watts = _worker_watts(config, worker)
         assessed.append(
             machine_economics.assess_machine(
                 name=worker.get("name") or f"worker {worker.get('id')}",
@@ -10326,7 +10364,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 # offline machine to zero earnings is what produced the
                 # "turn it off" advice about a host we cannot see.
                 monthly_gross=(
-                    per_worker_gross.get(worker.get("id"), 0.0) if str(worker.get("status") or "") == "online" else None
+                    per_worker_gross.get(worker_id, 0.0) if str(worker.get("status") or "") == "online" else None
                 ),
                 watts=watts,
                 # No rate means the tariff cannot be expressed in the same unit
@@ -10336,7 +10374,17 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 price_per_kwh=(price or None) if fx_ok else None,
                 metered=power.is_metered(info),
                 dedicated=_worker_flag(config, worker, "dedicated"),
+                # An empty list counts as zero only when the worker could
+                # reach Docker and read its whole inventory.
+                gross_measured=(
+                    worker_id in read
+                    if worker_id in hosting
+                    else not placement.is_blind(worker) and not _heartbeat_partial(info)
+                ),
             )
+        )
+        assessed[-1]["break_even_tariff"] = _break_even_local(
+            assessed[-1].get("break_even_price_per_kwh"), tariff_currency
         )
 
     summary = machine_economics.fleet_summary(assessed)
@@ -10344,9 +10392,12 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # all, so fleet.html printed bare numbers the user could not attribute to a
     # unit — and the numbers themselves mixed two.
     summary["currency"] = "USD"
+    # Always, not only on an FX failure: each machine's break_even_tariff is in
+    # this currency, and the page compares the two before printing "you pay".
+    summary["tariff_currency"] = tariff_currency
+    summary["tariff_price_per_kwh"] = tariff_local if tariff_local > 0 else None
     if not fx_ok:
         summary["fx_unavailable"] = True
-        summary["tariff_currency"] = tariff_currency
         summary["cost_unavailable_reason"] = (
             f"Your electricity tariff is in {tariff_currency} and earnings are recorded in "
             f"USD. No {tariff_currency}-to-USD rate is available right now, so a running "
@@ -11153,6 +11204,40 @@ def _worker_config_key(worker: dict[str, Any]) -> str:
     which is what these settings should have been keyed on.
     """
     return str(worker.get("client_id") or worker.get("id") or "")
+
+
+def _worker_watts(config: dict[str, Any], worker: dict[str, Any]) -> float | None:
+    """The wall draw the user typed for this machine, or None.
+
+    Read client_id first, then the row id for values written before that
+    changed. One reader for every consumer: the fleet economics card, the
+    per-service net figures and the fleet list's input box all used to build
+    this lookup inline, and three copies of a lookup drift apart.
+    """
+    raw = config.get(f"worker_{_worker_config_key(worker)}_watts") or config.get(f"worker_{worker.get('id')}_watts")
+    try:
+        value = float(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+    # 'nan' and 'inf' parse as floats, but JSONResponse refuses to render them,
+    # so one bad stored value would take down GET /api/workers and with it the
+    # input box the user needs to correct it.
+    return value if value is not None and math.isfinite(value) else None
+
+
+def _break_even_local(usd_per_kwh: float | None, tariff_currency: str) -> dict[str, Any] | None:
+    """A USD break-even tariff, expressed in the currency the user's tariff is in.
+
+    It is a price per kWh to read against an electricity bill, so it belongs in
+    the bill's currency. With no rate it stays in USD and says so: a USD value
+    labelled USD is still true, a USD value labelled EUR would not be.
+    """
+    if usd_per_kwh is None:
+        return None
+    local = exchange_rates.from_usd(usd_per_kwh, tariff_currency)
+    if local is None:
+        return {"price_per_kwh": usd_per_kwh, "currency": "USD"}
+    return {"price_per_kwh": round(local, 4), "currency": tariff_currency}
 
 
 # ---------------------------------------------------------------------------
@@ -12280,8 +12365,7 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # the fallback for values written before that changed. Returning them
         # here is what lets the fleet page show the current value in its input
         # rather than an empty box that silently overwrites what is stored.
-        raw_watts = config.get(f"worker_{_worker_config_key(w)}_watts") or config.get(f"worker_{w.get('id')}_watts")
-        w["watts"] = raw_watts or ""
+        w["watts"] = _worker_watts(config, w)
         w["dedicated"] = _worker_flag(config, w, "dedicated")
         # Whether this worker ever finished the per-worker-key cutover. Without
         # it the only trace was a UI log line once a minute, which nobody reads,

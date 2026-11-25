@@ -627,3 +627,139 @@ class TestNetEarningsActuallyChargeElectricity:
         assert out["cost_known"] is False
         assert out["services"][0]["cost"] is None
         assert out["services"][0]["net"] is None
+
+
+class TestTypedMachineWattsAndServiceBreakEven:
+    """The per-service figures use the watts the user typed for the machine.
+
+    The fleet card charged the typed draw while this endpoint split a 65 W
+    guess, so one machine had two different running costs on one page.
+    """
+
+    def _net(self, cfg, containers, workers, measured=("miner",), earned=None):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app import main
+
+        earned = earned if earned is not None else {"miner": 3.0}
+
+        async def fake_earned(days=30, measured=None):
+            if measured is not None:
+                measured.update(m for m in measured_slugs if m in earned)
+            return earned
+
+        measured_slugs = set(measured)
+
+        async def run():
+            with (
+                patch.object(main, "_require_auth_api", lambda r: None),
+                patch.object(main.database, "get_config", AsyncMock(return_value=cfg)),
+                patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
+                patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
+                patch.object(main.database, "get_earned_by_platform", fake_earned),
+            ):
+                return await main.api_earnings_net(MagicMock(), days=30)
+
+        return asyncio.run(run())
+
+    WORKER = [{"id": 1, "client_id": "rig", "system_info": "{}"}]
+    BUSY = [{"slug": "miner", "status": "running", "cpu_percent": 100.0, "_worker_id": 1}]
+
+    def test_entered_machine_watts_replace_the_65w_guess(self):
+        """A typed 200 W must cost more than the 65 W default, and exactly so."""
+        guess = self._net({"power_price_per_kwh": "0.30", "power_currency": "USD"}, self.BUSY, self.WORKER)
+        typed = self._net(
+            {"power_price_per_kwh": "0.30", "power_currency": "USD", "worker_rig_watts": "200"},
+            self.BUSY,
+            self.WORKER,
+        )
+        assert typed["total_cost"] == pytest.approx(guess["total_cost"] * 200 / 65, rel=0.001)
+
+    def test_typed_watts_win_over_a_reported_tdp(self):
+        worker = [{"id": 1, "client_id": "rig", "system_info": '{"host_tdp_watts": 65}'}]
+        typed = self._net(
+            {"power_price_per_kwh": "0.30", "power_currency": "USD", "worker_rig_watts": "130"},
+            self.BUSY,
+            worker,
+        )
+        reported = self._net({"power_price_per_kwh": "0.30", "power_currency": "USD"}, self.BUSY, worker)
+        assert typed["total_cost"] == pytest.approx(reported["total_cost"] * 2, rel=0.001)
+
+    def test_an_attributable_measured_service_gets_a_break_even(self):
+        """100% CPU on a typed 200 W box is a large share, so it can be priced.
+
+        Single container: 200 W x (0.4 + 0.6) = 200 W over 720 h is 144 kWh;
+        3.00 / 144 = 0.0208 USD/kWh. No tariff is needed for it.
+        """
+        out = self._net({"worker_rig_watts": "200"}, self.BUSY, self.WORKER)
+        row = out["services"][0]
+        assert row["cost_attributable"] is True
+        assert row["break_even_price_per_kwh"] == pytest.approx(3.0 / 144.0, abs=0.0001)
+
+    def test_cost_only_miner_and_measured_service_share_a_power_bill(self):
+        out = self._net(
+            {"power_price_per_kwh": "0.20", "power_currency": "USD", "worker_rig_watts": "200"},
+            [
+                {"slug": "honeygain", "status": "running", "cpu_percent": 50.0, "_worker_id": 1},
+                {"slug": "xmrig", "status": "running", "cpu_percent": 50.0, "_worker_id": 1},
+            ],
+            self.WORKER,
+            measured=("honeygain",),
+            earned={"honeygain": 3.0},
+        )
+
+        rows = {row["platform"]: row for row in out["services"]}
+        # Each container draws 100 W for 720 hours.
+        assert rows["honeygain"]["break_even_price_per_kwh"] == round(3.0 / 72.0, 4)
+        miner = rows["xmrig"]
+        assert miner["cost_attributable"] is True
+        assert miner["cost"] == pytest.approx(14.4)
+        assert miner["gross"] is None
+        assert miner["net"] is None
+        assert "break_even_price_per_kwh" not in miner
+        assert out["total_cost"] == pytest.approx(28.8)
+
+    def test_a_service_whose_gross_was_never_read_gets_no_break_even(self):
+        out = self._net({"worker_rig_watts": "200"}, self.BUSY, self.WORKER, measured=())
+        assert "break_even_price_per_kwh" not in out["services"][0]
+
+    @pytest.mark.parametrize("cpu", [600.0, 800.0])
+    def test_typed_watts_cap_the_per_service_shares(self, cpu):
+        """Docker's cpu_percent is per core, so a busy miner reports 600-800%.
+
+        Uncapped, one such container on a typed 100 W box was charged 400-520 W.
+        The shares on one machine must never add up to more than its typed draw.
+        """
+        busy = [
+            {"slug": "miner", "status": "running", "cpu_percent": cpu, "_worker_id": 1},
+            {"slug": "other", "status": "running", "cpu_percent": 50.0, "_worker_id": 1},
+        ]
+        out = self._net(
+            {"power_price_per_kwh": "0.25", "power_currency": "USD", "worker_rig_watts": "100"},
+            busy,
+            self.WORKER,
+            earned={"miner": 10.0, "other": 1.0},
+            measured=("miner", "other"),
+        )
+        # 100 W x 720 h x 0.25 USD/kWh is the most this machine can cost.
+        assert out["total_cost"] == pytest.approx(100 / 1000 * 720 * 0.25, rel=0.001)
+        miner = next(r for r in out["services"] if r["platform"] == "miner")
+        assert miner["cost"] < out["total_cost"]
+        assert miner["break_even_price_per_kwh"] > 10.0 / (100 / 1000 * 720)
+
+    def test_without_typed_watts_the_split_is_unchanged(self):
+        """The cap is the typed draw only; the 65 W guess path keeps its old figures."""
+        busy = [{"slug": "miner", "status": "running", "cpu_percent": 300.0, "_worker_id": 1}]
+        out = self._net({"power_price_per_kwh": "1", "power_currency": "USD"}, busy, self.WORKER)
+        assert out["total_cost"] == pytest.approx((65 * 0.4 + 65 * 0.6 * 3) / 1000 * 720, rel=0.001)
+
+    def test_a_small_share_gets_no_break_even(self):
+        """A 2 W share of a box that is on anyway would make an invented break-even."""
+        crowd = [{"slug": f"s{i}", "status": "running", "cpu_percent": 0.0, "_worker_id": 1} for i in range(9)] + [
+            {"slug": "miner", "status": "running", "cpu_percent": 0.0, "_worker_id": 1}
+        ]
+        out = self._net({"worker_rig_watts": "30"}, crowd, self.WORKER)
+        row = next(r for r in out["services"] if r["platform"] == "miner")
+        assert row["cost_attributable"] is False
+        assert "break_even_price_per_kwh" not in row
