@@ -938,7 +938,9 @@ def _apply_fleet_exits_reply(resp: Any) -> bool:
 
     A null list comes from a UI that could not read the fleet this time: the
     list stays as it is, unknown after a restart, so the table keeps its drops.
-    A reply without the key comes from a UI that predates it (no other exits).
+    A reply without the key comes from an older UI. If the UI rolled back to
+    before the list, keep the drops it gave. Start with an empty list only if
+    the worker has no list yet.
     """
     body: Any = None
     with contextlib.suppress(Exception):
