@@ -213,12 +213,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
     return _apiKey;
   }
 
+  let fleetRequest = 0;
+  let pendingWorkerPowerSaves = 0;
   async function loadFleet() {
+    const request = ++fleetRequest;
     try {
       const [summary, workers] = await Promise.all([
         CP.api('/api/fleet/summary'),
         CP.api('/api/workers'),
       ]);
+      if (request !== fleetRequest || pendingWorkerPowerSaves) return;
 
       document.getElementById('fleet-total-workers').textContent = summary.total_workers || 0;
       document.getElementById('fleet-online-workers').textContent = summary.online_workers || 0;
@@ -245,6 +249,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       loadFleetEconomics();
       loadPowerSettings();
     } catch (err) {
+      if (request !== fleetRequest || pendingWorkerPowerSaves) return;
       const msg = (err.message || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
       document.getElementById('fleet-workers').innerHTML =
         `<div class="empty-state"><div class="empty-state-text">Failed to load fleet data: ${msg}</div></div>`;
@@ -352,8 +357,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (net && Array.isArray(net.services)) {
       const serviceRows = net.services.filter(s => !deviceSlugs.has(s.platform));
       const attributable = serviceRows.filter(s => s.cost_attributable && s.cost != null);
-      const withheld = serviceRows.filter(s => !s.cost_attributable && s.cost != null).length;
-      const unknown = serviceRows.filter(s => s.cost == null).length;
+      const unmetered = serviceRows.filter(s => s.unmetered).length;
+      const withheld = serviceRows.filter(s => !s.unmetered && !s.cost_attributable && s.cost != null).length;
+      const unknown = serviceRows.filter(s => !s.unmetered && s.cost == null).length;
       if (attributable.length) {
         services = `
           <div class="economics-services">
@@ -369,6 +375,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
       }
       if (withheld > 0) {
         services += `<div class="economics-note">${withheld} service(s) draw too little on a machine that is already on for their share of the bill to mean anything, so no per-service figure is shown for them. Their cost is still counted in the machine totals above.</div>`;
+      }
+      if (unmetered > 0) {
+        services += `<div class="economics-note">${unmetered} service(s) run on boxes with no per-kWh bill.</div>`;
       }
       if (unknown > 0 && net.price_per_kwh != null) {
         services += `<div class="economics-note">Electricity cost is unknown for ${unknown} service(s).</div>`;
@@ -411,6 +420,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const container = document.getElementById('fleet-workers');
     if (!container) return;
 
+    const billingEdits = new Map(Array.from(container.querySelectorAll('.power-unmetered'))
+      .filter(input => input.checked !== input.defaultChecked)
+      .map(input => [input.dataset.clientId, input.checked]));
     const nameCounts = countWorkerNames(workers);
 
     if (workers.length === 0) {
@@ -480,13 +492,18 @@ CASHPILOT_WORKER_NAME=server-name</code>
             <label for="watts-${cid}" class="sr-only">Draw in watts</label>
             <span class="w-watts"><input id="watts-${cid}" class="power-watts form-input form-input-sm" type="number" min="0" step="1"
                    data-client-id="${cid}" value="${esc(w.watts ?? '')}"
+                   ${_isOwner ? '' : 'disabled'}
                    placeholder="65"
                    title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run."><span class="unit">W</span></span>
             <label class="w-dedicated">
-              <input type="checkbox" class="power-dedicated" data-client-id="${cid}" ${w.dedicated ? 'checked' : ''}>
+              <input type="checkbox" class="power-dedicated" data-client-id="${cid}" ${w.dedicated ? 'checked' : ''} ${_isOwner ? '' : 'disabled'}>
               dedicated
             </label>
-            <button class="btn btn-link power-save-worker" data-client-id="${cid}">save</button>
+            <label class="w-dedicated">
+              <input type="checkbox" class="power-unmetered" data-client-id="${cid}" ${w.unmetered ? 'checked' : ''} ${_isOwner ? '' : 'disabled'}>
+              Not billed per kWh
+            </label>
+            <button class="btn btn-link power-save-worker" data-client-id="${cid}" ${_isOwner ? '' : 'disabled'}>save</button>
           </td>
           <td class="w-ctr" data-label="${isAndroid ? 'Apps' : 'Containers'}">${items.length ? (isAndroid ? renderApps(items, isOnline, w.last_heartbeat) : renderContainers(w, isOnline)) : '<span class="muted">none</span>'}</td>
           <td class="w-act">
@@ -511,6 +528,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
+    for (const input of container.querySelectorAll('.power-unmetered')) {
+      if (billingEdits.has(input.dataset.clientId)) input.checked = billingEdits.get(input.dataset.clientId);
+    }
   }
 
   function renderMiners(worker, snapshot) {
@@ -998,26 +1018,44 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // did forever because neither had an input (CashPilot-jm6).
     const powerBtn = e.target.closest('.power-save-worker');
     if (powerBtn) {
+      if (!_isOwner || powerBtn.disabled) return;
       const id = powerBtn.dataset.clientId;
       const watts = document.querySelector(`.power-watts[data-client-id="${CSS.escape(id)}"]`);
       const dedicated = document.querySelector(`.power-dedicated[data-client-id="${CSS.escape(id)}"]`);
+      const unmetered = document.querySelector(`.power-unmetered[data-client-id="${CSS.escape(id)}"]`);
       const raw = (watts?.value || '').trim();
       const value = Number(raw);
       if (raw !== '' && (!Number.isFinite(value) || value < 0)) {
         CP.toast('That is not a wattage', 'error');
         return;
       }
+      // Keep an unchanged billing choice out of a watts-only save. Another
+      // tab might have updated it since this row loaded.
+      const data = {
+        [`worker_${id}_watts`]: raw,
+        [`worker_${id}_dedicated`]: dedicated?.checked ? 'true' : 'false',
+      };
+      const billingChanged = unmetered && unmetered.checked !== unmetered.defaultChecked;
+      const billedAtFixedPrice = unmetered?.checked ?? false;
+      if (billingChanged) data[`worker_${id}_unmetered`] = billedAtFixedPrice ? 'true' : 'false';
+      powerBtn.disabled = true;
+      pendingWorkerPowerSaves++;
       try {
-        await CP.api('/api/config', { method: 'POST', body: { data: {
-          // Keyed on client_id, which survives re-enrolment — the row id does
-          // not, and settings keyed on it are orphaned when a host re-enrols.
-          [`worker_${id}_watts`]: raw,
-          [`worker_${id}_dedicated`]: dedicated?.checked ? 'true' : 'false',
-        } } });
+        await CP.api('/api/config', { method: 'POST', body: { data } });
+        // Reads that started before this save carry the previous settings.
+        fleetRequest++;
+        if (billingChanged) {
+          const draft = unmetered.checked;
+          unmetered.defaultChecked = billedAtFixedPrice;
+          unmetered.checked = draft;
+        }
         CP.toast('Machine power saved', 'success');
         loadFleetEconomics();
       } catch (err) {
         CP.toast('Could not save: ' + err.message, 'error');
+      } finally {
+        pendingWorkerPowerSaves--;
+        powerBtn.disabled = false;
       }
       return;
     }

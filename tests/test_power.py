@@ -657,6 +657,72 @@ class TestTypedMachineWattsAndServiceBreakEven:
     WORKER = [{"id": 1, "client_id": "rig", "system_info": "{}"}]
     BUSY = [{"slug": "miner", "status": "running", "cpu_percent": 100.0, "_worker_id": 1}]
 
+    def test_a_worker_marked_unmetered_has_no_estimated_service_cost(self):
+        config = {
+            "power_price_per_kwh": "0.20",
+            "power_currency": "USD",
+            "worker_rig_watts": "100",
+            "worker_rig_unmetered": "true",
+        }
+        (service,) = self._net(config, self.BUSY, self.WORKER)["services"]
+        assert service["cost"] == 0.0
+        assert service["unmetered"] is True
+        assert service["cost_attributable"] is False
+        assert "break_even_price_per_kwh" not in service
+        config["worker_rig_unmetered"] = "false"
+        (metered,) = self._net(config, self.BUSY, self.WORKER)["services"]
+        assert metered["cost"] == 14.4
+        assert metered["unmetered"] is False
+        assert "break_even_price_per_kwh" in metered
+
+    def test_unmetered_copy_does_not_hide_missing_metered_cpu_reading(self):
+        config = {
+            "power_price_per_kwh": "0.20",
+            "power_currency": "USD",
+            "worker_rig_unmetered": "true",
+            "worker_home_watts": "100",
+        }
+        workers = [*self.WORKER, {"id": 2, "client_id": "home", "system_info": "{}"}]
+        metered_copy = {**self.BUSY[0], "_worker_id": 2, "cpu_percent": None}
+        result = self._net(config, [*self.BUSY, metered_copy], workers)
+        (service,) = result["services"]
+        assert service["cost"] is None
+        assert service["net"] is None
+        assert service["unmetered"] is False
+        assert result["cost_unknown_for"] == ["miner"]
+        assert "break_even_price_per_kwh" not in service
+
+        metered_copy["cpu_percent"] = 100.0
+        (service,) = self._net(config, [*self.BUSY, metered_copy], workers)["services"]
+        assert service["cost"] == 14.4
+        assert service["cost_attributable"] is True
+
+    @pytest.mark.parametrize("metered_copy", [False, True])
+    def test_entered_gpu_draw_cannot_charge_an_unmetered_worker(self, monkeypatch, metered_copy):
+        from app import catalog
+
+        monkeypatch.setattr(catalog, "get_service", lambda slug: {"requirements": {"gpu": True}})
+        config = {
+            "power_price_per_kwh": "0.20",
+            "power_currency": "USD",
+            "power_device_miner_watts": "100",
+            "worker_rig_unmetered": "true",
+        }
+        workers = self.WORKER.copy()
+        copies = self.BUSY.copy()
+        if metered_copy:
+            workers.append({"id": 2, "client_id": "home", "system_info": "{}"})
+            copies.append({**self.BUSY[0], "_worker_id": 2})
+        (service,) = self._net(config, copies, workers)["services"]
+        assert service["cost"] == (None if metered_copy else 0.0)
+        assert service["cost_attributable"] is False
+        assert "break_even_price_per_kwh" not in service
+
+        config["worker_rig_unmetered"] = "false"
+        (service,) = self._net(config, copies, workers)["services"]
+        assert service["cost"] == 14.4
+        assert service["watts_source"] == "entered"
+
     @pytest.mark.parametrize(("entered", "cost"), [("", None), ("5e-324", None), ("2", 0.288)])
     def test_a_tracked_pool_uses_only_entered_wall_watts(self, entered, cost):
         out = self._net(
