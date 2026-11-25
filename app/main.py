@@ -1490,7 +1490,7 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
             # The drop was one bad reading, not a cashout: the question is taken back.
             logger.info("%s balance recovered; withdrew the probable payout question", result.platform)
             return None
-        probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform))
+        probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform), result.currency)
         if not probable:
             return None
         payout_id = await database.record_probable_payout(
@@ -1552,7 +1552,7 @@ async def _pending_payout_alerts(seen: set[str] | None = None) -> list[dict[str,
             {
                 "kind": "payout",
                 "platform": platform,
-                "error": f"Balance dropped by {amount:.2f} {currency}".rstrip()
+                "error": f"Balance dropped by {payouts.format_amount(amount, currency)} {currency}".rstrip()
                 + " — was this a payout? Confirm or reject it."
                 if isinstance(amount, int | float)
                 else "A balance drop looks like a payout — confirm or reject it.",
@@ -10162,7 +10162,7 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     comparable = minimum is not None or payouts.min_payout(service) is None
     return {
         "slug": slug,
-        "current_balance": round(current, 6) if known else None,
+        "current_balance": round(current, 12) if known else None,
         # What the numbers above are actually in, so nothing has to assume.
         "balance_currency": balance_currency,
         "min_amount": minimum,

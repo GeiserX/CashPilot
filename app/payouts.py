@@ -155,23 +155,49 @@ def looks_like_payout(previous: float, current: float, threshold: float | None) 
     return (previous - current) >= threshold
 
 
-def detect(previous: float, current: float, service: dict[str, Any] | None) -> dict[str, Any] | None:
+def format_amount(value: float, currency: str | None = None) -> str:
+    """A balance or payout as text, without dropping a coin's small units.
+
+    Fiat keeps two decimals. Anything else (BTC, XMR, a provider's token) shows
+    up to eight, with trailing zeros trimmed back to two: two decimals turned a
+    0.01599128 BTC payout into "0.02" and 0.000613902892 XMR into "0.00".
+    Eight is a satoshi, so no bitcoin amount loses a digit. A missing currency
+    is USD, the same default the dashboard uses.
+    """
+    # Imported here, not at module scope, for the same reason as min_payout_in.
+    from app import exchange_rates
+
+    if exchange_rates.is_fiat(currency):
+        return f"{value:.2f}"
+    whole, _, decimals = f"{value:.8f}".partition(".")
+    return f"{whole}.{decimals.rstrip('0').ljust(2, '0')}"
+
+
+def detect(
+    previous: float, current: float, service: dict[str, Any] | None, currency: str | None = None
+) -> dict[str, Any] | None:
     """A PROBABLE payout, or None. Never a confirmed one.
 
     The amount recorded is the size of the drop, which is what a payout of this
     balance would have been. If the user rejects it, nothing is recorded at all.
+    ``currency`` is the unit the balance is recorded in; it only decides how
+    the reason text writes the numbers.
     """
     threshold = min_payout(service)
     if not looks_like_payout(previous, current, threshold):
         return None
+    # Twelve decimals, not six: six stored a 0.01599128 BTC payout as 0.015991,
+    # 128 satoshi short, and Monero counts to twelve (one piconero).
+    amount = round(previous - current, 12)
     return {
         "platform": service.get("slug") if service else None,
-        "amount": round(previous - current, 6),
+        "amount": amount,
         "confirmed": False,
         "reason": (
-            f"The balance fell by {previous - current:.2f}, which is at least this service's "
-            f"{threshold:.2f} minimum cashout. That usually means you were paid — but a provider "
-            "correction can look identical, so CashPilot will not record it as income until you say so."
+            f"The balance fell by {format_amount(amount, currency)}, which is at least this service's "
+            f"{format_amount(threshold, min_payout_currency(service) or currency)} minimum cashout. "
+            "That usually means you were paid — but a provider correction can look identical, so "
+            "CashPilot will not record it as income until you say so."
         ),
     }
 
@@ -186,7 +212,8 @@ def lifetime_earned(current_balance: float, confirmed_payouts: list[dict[str, An
     for payout in confirmed_payouts or []:
         if payout.get("confirmed"):
             total += float(payout.get("amount") or 0.0)
-    return round(total, 6)
+    # Twelve, like the payout amount itself: six showed 0.00512345 BTC as 0.005123.
+    return round(total, 12)
 
 
 def daily_rate(history: list[dict[str, Any]] | None) -> float | None:

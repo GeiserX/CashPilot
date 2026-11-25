@@ -211,6 +211,11 @@ def fiat_rates_stale() -> bool:
     return time.time() - _fiat_last_fetch > STALE_THRESHOLD
 
 
+def is_fiat(currency: str | None) -> bool:
+    """True for USD and every currency Frankfurter priced. A missing code is USD."""
+    return str(currency or "USD").strip().upper() in _fiat_rates
+
+
 def get_all() -> dict[str, Any]:
     """Return all cached rates for the frontend."""
     return {
