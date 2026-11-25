@@ -1,16 +1,17 @@
 name: XMRig image
 
 # drumsergio/cashpilot-xmrig: upstream XMRig built from source at a release
-# commit GitHub reports as signed (images/xmrig/README.md says why it exists).
+# commit signed by XMRig's own account (images/xmrig/README.md says why it exists).
 #
-# Never mines. GitHub's terms forbid mining on Actions, so every test stops at
-# --version, --dry-run and a miner with no network that never gets a job.
+# Never mines and never starts a miner. GitHub's terms forbid mining on Actions,
+# so every test stops at --version, --help, --dry-run and the health script
+# against a stand-in API.
 #
 # - pull_request: build amd64 and arm64, each natively on its own runner, and
 #   test both. Pushes nothing.
 # - push to main: the same tests, then publish <version> and <version>-r<revision>.
 # - schedule (weekly): read XMRig's newest release; when it moved and its
-#   commit is signed, test the bumped pin on both platforms and open a PR.
+#   commit is signed by XMRig, test the bumped pin on both platforms and open a PR.
 
 on:
   pull_request:
@@ -67,6 +68,25 @@ jobs:
           fi
           echo "$out"
           grep -q "does not report a valid signature" <<<"$out"
+          test "$(cat "$tmp/VERSION")" = 0.0.1
+
+      # v6.27.0 is signed by XMRig. With a copy that expects another account,
+      # only the committer check can stop it, so this proves that check bites.
+      - name: bump.sh refuses a signed commit from an account other than XMRig's
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tmp=$(mktemp -d)
+          cp images/xmrig/bump.sh images/xmrig/COMMIT images/xmrig/REVISION "$tmp/"
+          echo 0.0.1 > "$tmp/VERSION"
+          sed -i 's/^SIGNER_LOGIN=xmrig$/SIGNER_LOGIN=not-xmrig/' "$tmp/bump.sh"
+          grep -q '^SIGNER_LOGIN=not-xmrig$' "$tmp/bump.sh"
+          if out=$("$tmp/bump.sh" v6.27.0 2>&1); then
+            echo "::error::bump.sh pinned v6.27.0 for the wrong account: $out"
+            exit 1
+          fi
+          echo "$out"
+          grep -q "not XMRig's own not-xmrig" <<<"$out"
           test "$(cat "$tmp/VERSION")" = 0.0.1
 
       - name: Work out the tag, and refuse to reuse a published one
@@ -257,7 +277,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.REPO }}
           readme-filepath: images/xmrig/README.md
-          short-description: "Unofficial XMRig for CashPilot: upstream built from its signed release commit, amd64 and arm64"
+          short-description: "Unofficial XMRig for CashPilot: upstream built from its XMRig-signed release commit, amd64 and arm64"
 
   bump:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -268,7 +288,7 @@ jobs:
       to: ${{ steps.bump.outputs.to }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Read XMRig's newest release and check its signature
+      - name: Read XMRig's newest release and check XMRig signed it
         id: bump
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -335,9 +355,9 @@ jobs:
           body: |
             XMRig released ${{ needs.bump.outputs.to }}; the image pins ${{ needs.bump.outputs.from }}.
 
-            This moves the pin to the release tag's commit. GitHub reports a valid signature on that commit, and the image build refuses to compile unless the tag still points at it. Look over the upstream release notes before merging: https://github.com/xmrig/xmrig/releases/tag/v${{ needs.bump.outputs.to }}
+            This moves the pin to the release tag's commit. GitHub reports a valid signature on that commit, by XMRig's own account (`xmrig`, support@xmrig.com), and the image build refuses to compile unless the tag still points at it. Look over the upstream release notes before merging: https://github.com/xmrig/xmrig/releases/tag/v${{ needs.bump.outputs.to }}
 
-            The bumped pin was built natively on amd64 and arm64 and tested in this run, before the PR was opened (`--version`, `--dry-run` and the health check; nothing mined): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            The bumped pin was built natively on amd64 and arm64 and tested in this run, before the PR was opened (`--version`, `--help`, `--dry-run` and the health check against a stand-in API; no miner started): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
             Merging publishes `${{ env.REPO }}:${{ needs.bump.outputs.to }}-r1`. Then point the xmrig catalog entry at its digest.
 

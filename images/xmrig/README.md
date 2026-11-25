@@ -6,7 +6,7 @@ The XMRig project publishes no Docker image. The XMRig images on Docker Hub with
 
 ## What it is
 
-- **Upstream XMRig, unmodified.** The build fetches XMRig's release tag from https://github.com/xmrig/xmrig and compiles the commit pinned in `COMMIT`. GitHub reports a valid signature on that commit. The build refuses to compile when the tag no longer points at the pinned commit.
+- **Upstream XMRig, unmodified.** The build fetches XMRig's release tag from https://github.com/xmrig/xmrig and compiles the commit pinned in `COMMIT`. GitHub reports a valid signature on that commit, made by XMRig's own account (`xmrig`, support@xmrig.com). The build refuses to compile when the tag no longer points at the pinned commit.
 - **The 1% dev fee stays.** XMRig donates 1% of its hashing time to its developers (`src/donate.h`), and 1% is the lowest value its source allows. `--donate-level=0` still gives 1%. We do not patch it.
 - **CPU only.** Built without the CUDA and OpenCL loaders.
 - **No root.** It runs as uid 10001 and needs no capabilities, devices or privileged mode. It runs under the hardening CashPilot gives every container: all capabilities dropped, `no-new-privileges`, not privileged, 512 pids.
@@ -47,8 +47,8 @@ There is no `latest` tag. Platforms: `linux/amd64`, `linux/arm64`. Each one is c
 
 ## Upgrades
 
-A weekly job reads XMRig's newest release and resolves its tag to a commit. It goes on only when GitHub reports a valid signature on that commit. It then builds and tests the new pin on both platforms and opens a pull request. Merging it publishes the new tag.
+A weekly job reads XMRig's newest release and resolves its tag to a commit. It goes on only when GitHub reports a valid signature on that commit and the committer is XMRig's own account. A commit made in GitHub's web UI is signed by GitHub, not by XMRig, so it does not pass. It then builds and tests the new pin on both platforms and opens a pull request. Merging it publishes the new tag.
 
-The tests never mine: GitHub's terms forbid mining on Actions. They run `--version`, `--dry-run`, and a miner with no network that never gets a job.
+The tests never mine: GitHub's terms forbid mining on Actions. In CI they run `--version`, `--help`, `--dry-run` and the health check against a stand-in API, with no network and no miner process. `XMRIG_TEST_LIVE=1 images/xmrig/test.sh` also starts a miner with no network on a local host, which never gets a job; it refuses to run in CI.
 
 Source: https://github.com/GeiserX/CashPilot/tree/main/images/xmrig

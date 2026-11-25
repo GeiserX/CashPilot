@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # Build the image for one platform on a host of that architecture and test it
-# without mining: GitHub's terms forbid mining on Actions, so nothing here
-# connects to a pool or hashes. Every container runs with --network none.
+# without mining: nothing here connects to a pool or hashes, and every
+# container runs with --network none.
 #
 #   images/xmrig/test.sh [linux/amd64|linux/arm64]   (default: the host's)
+#   XMRIG_TEST_LIVE=1 images/xmrig/test.sh           also start a miner daemon
 #
 # CI runs it once on an amd64 runner and once on an arm64 runner, so both
-# builds are compiled and tested natively, with no emulation.
+# builds are compiled and tested natively, with no emulation. CI stops at
+# --version, --help, --dry-run and the health script against a stand-in API:
+# GitHub's terms forbid mining on Actions, so no miner process runs there.
+# XMRIG_TEST_LIVE=1 (local hosts only, never CI) adds a miner daemon with no
+# network, which waits for a job that never comes: its API answers, it shows
+# unhealthy, and it stops fast and cleanly.
 set -uo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
@@ -23,6 +29,10 @@ linux/arm64) ARCH="ARMv8" ;;
 	exit 2
 	;;
 esac
+if [[ "${XMRIG_TEST_LIVE:-}" == 1 && -n "${CI:-}" ]]; then
+	echo "XMRIG_TEST_LIVE=1 starts a miner process; never set it in CI" >&2
+	exit 2
+fi
 P="cashpilot-xmrig-test-$$"
 IMG="$P:image"
 # The hardening CashPilot's worker gives every container (app/orchestrator.py),
@@ -94,29 +104,35 @@ check "image health check runs cashpilot-xmrig-health" \
 	has "$(docker inspect -f '{{json .Config.Healthcheck.Test}}' "$IMG")" /usr/local/bin/cashpilot-xmrig-health
 check "unhealthy when the HTTP API is off" \
 	not docker run --rm "${HARDEN[@]}" --entrypoint /usr/local/bin/cashpilot-xmrig-health "$IMG"
-# A miner with the API on and no pool: XMRig waits for a job and never hashes.
-docker run -d --name "$P-nopool" "${HARDEN[@]}" "$IMG" "${MINE[@]}" --http-port=18088 >/dev/null
-check "the HTTP API answers without a pool" \
-	wait_for 30 docker exec "$P-nopool" wget -qO- -T 2 http://127.0.0.1:18088/2/summary
-# Let the miner's own uptime pass zero, so a check that read it instead of
-# the connection's uptime would pass here and show up as a failure.
-sleep 3
-check "unhealthy while no pool is connected" not docker exec "$P-nopool" /usr/local/bin/cashpilot-xmrig-health
-t0=$(date +%s)
-docker stop "$P-nopool" >/dev/null
-took=$(($(date +%s) - t0))
-check "docker stop takes under 10 s (took ${took}s)" test "$took" -lt 10
-check "exits 0 on SIGTERM" test "$(docker inspect -f '{{.State.ExitCode}}' "$P-nopool")" = 0
-# A connected miner, as /2/summary printed it on a real run: the same check
-# against a stand-in wget that prints that answer. The script is single-quoted
-# on purpose: it expands inside the container.
-# shellcheck disable=SC2016
-check "healthy once a pool connection is up" docker run --rm "${HARDEN[@]}" --entrypoint sh "$IMG" -c '
-	mkdir -p /tmp/bin
-	cat >/tmp/bin/wget <<"FAKE"
+# The health script against a stand-in wget that prints a /2/summary answer.
+# The script is single-quoted on purpose: it expands inside the container.
+fake_api() {
+	# shellcheck disable=SC2016
+	docker run --rm "${HARDEN[@]}" -e SUMMARY="$1" --entrypoint sh "$IMG" -c '
+		mkdir -p /tmp/bin
+		cat >/tmp/bin/wget <<"FAKE"
 #!/bin/sh
-cat <<"JSON"
-{
+printf "%s\n" "$SUMMARY"
+FAKE
+		chmod +x /tmp/bin/wget
+		PATH=/tmp/bin:$PATH /usr/local/bin/cashpilot-xmrig-health'
+}
+# A miner with no pool, as /2/summary printed it on a real run: the miner's own
+# uptime is past zero, so a check that read it instead of the connection's
+# uptime would pass here and show up as a failure.
+NOPOOL='{
+    "uptime": 119,
+    "connection": {
+        "pool": "",
+        "ip": null,
+        "uptime": 0,
+        "uptime_ms": 0,
+        "accepted": 0,
+        "rejected": 0
+    }
+}'
+# A connected miner, as /2/summary printed it on a real run.
+CONNECTED='{
     "uptime": 119,
     "connection": {
         "pool": "pool.supportxmr.com:3333",
@@ -126,11 +142,26 @@ cat <<"JSON"
         "accepted": 1,
         "rejected": 0
     }
-}
-JSON
-FAKE
-	chmod +x /tmp/bin/wget
-	PATH=/tmp/bin:$PATH /usr/local/bin/cashpilot-xmrig-health'
+}'
+check "unhealthy while no pool is connected" not fake_api "$NOPOOL"
+check "healthy once a pool connection is up" fake_api "$CONNECTED"
+
+if [[ "${XMRIG_TEST_LIVE:-}" == 1 ]]; then
+	echo "-- a live miner with no network (XMRIG_TEST_LIVE=1)"
+	# XMRig waits for a job that never comes and never hashes.
+	docker run -d --name "$P-nopool" "${HARDEN[@]}" "$IMG" "${MINE[@]}" --http-port=18088 >/dev/null
+	check "the HTTP API answers without a pool" \
+		wait_for 30 docker exec "$P-nopool" wget -qO- -T 2 http://127.0.0.1:18088/2/summary
+	# Let the miner's own uptime pass zero, so a check that read it instead of
+	# the connection's uptime would pass here and show up as a failure.
+	sleep 3
+	check "unhealthy while no pool is connected (live)" not docker exec "$P-nopool" /usr/local/bin/cashpilot-xmrig-health
+	t0=$(date +%s)
+	docker stop "$P-nopool" >/dev/null
+	took=$(($(date +%s) - t0))
+	check "docker stop takes under 10 s (took ${took}s)" test "$took" -lt 10
+	check "exits 0 on SIGTERM" test "$(docker inspect -f '{{.State.ExitCode}}' "$P-nopool")" = 0
+fi
 
 if ((FAILURES)); then
 	echo "FAILED: $FAILURES check(s) on $PLATFORM"

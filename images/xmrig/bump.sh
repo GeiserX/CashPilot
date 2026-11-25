@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# Point the image at XMRig's newest release, only when GitHub reports a valid
-# signature on the release commit.
+# Point the image at XMRig's newest release, only when XMRig itself signed the
+# release commit.
 #
 #   images/xmrig/bump.sh          the newest release (releases/latest)
 #   images/xmrig/bump.sh v6.27.0  that release tag
 #
-# Resolves the tag to its commit, refuses unless GitHub marks that commit's
-# signature verified, then rewrites VERSION, COMMIT and REVISION beside this
-# script. Writes nothing when the version is already pinned, and refuses a
+# Resolves the tag to its commit and refuses unless GitHub marks that commit's
+# signature verified AND the committer is XMRig's own account (GitHub login
+# "xmrig", email support@xmrig.com). GitHub verifies a signature only against
+# a key registered to the account that owns the committer email, so together
+# they mean XMRig's key signed it. "verified" alone also passes a web-UI commit
+# or merge by anyone with write access, which GitHub's web-flow key signs.
+# Then it rewrites VERSION, COMMIT and REVISION beside this script. Writes nothing when the version is already pinned, and refuses a
 # version older than the pin, so a pulled release never moves it backwards.
 # Set GITHUB_TOKEN to raise the API rate limit.
 set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 API=https://api.github.com/repos/xmrig/xmrig
+SIGNER_LOGIN=xmrig
+SIGNER_EMAIL=support@xmrig.com
 CURL=(curl -fsSL --retry 3 -H "Accept: application/vnd.github+json")
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then CURL+=(-H "Authorization: Bearer $GITHUB_TOKEN"); fi
 
@@ -46,13 +52,18 @@ if [[ "$type" == tag ]]; then
 fi
 [[ "$type" == commit && "$sha" =~ ^[0-9a-f]{40}$ ]] || die "$tag does not resolve to a commit (got $type $sha)"
 
-verification=$("${CURL[@]}" "$API/commits/$sha" | jq -c '.commit.verification')
+commit=$("${CURL[@]}" "$API/commits/$sha")
+verification=$(jq -c '.commit.verification' <<<"$commit")
 [[ "$(jq -r '.verified' <<<"$verification")" == true ]] ||
 	die "GitHub does not report a valid signature on $sha ($tag): $verification. Refusing to pin it."
+login=$(jq -r '.committer.login // empty' <<<"$commit")
+email=$(jq -r '.commit.committer.email // empty' <<<"$commit")
+[[ "$login" == "$SIGNER_LOGIN" && "$email" == "$SIGNER_EMAIL" ]] ||
+	die "$sha ($tag) is signed, but committed by '${login:-no account}' <$email>, not XMRig's own $SIGNER_LOGIN <$SIGNER_EMAIL>. Refusing to pin it."
 
 # VERSION goes last: it is what marks the bump done. A run interrupted before
 # it leaves the old VERSION, so the next run redoes the whole bump.
 printf '%s\n' "$sha" >"$DIR/COMMIT"
 printf '1\n' >"$DIR/REVISION"
 printf '%s\n' "$version" >"$DIR/VERSION"
-echo "$version (was $current), commit $sha, signature verified by GitHub"
+echo "$version (was $current), commit $sha, signed by $SIGNER_LOGIN <$SIGNER_EMAIL>, verified by GitHub"
