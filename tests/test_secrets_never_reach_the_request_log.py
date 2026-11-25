@@ -73,6 +73,18 @@ def _send_alert(caplog, **env) -> str:
     return caplog.text
 
 
+@pytest.mark.asyncio
+async def test_herominers_request_logs_omit_the_payout_address(redacting, caplog):
+    address = "kaspa:qp5y3dq23g8nts03peqhvlq9xx4asd2mr84r22zqxqglkle7jf5qvrjsw5lkd"
+    endpoint = "https://kaspa.herominers.com/api/stats_address"
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with _MockedClient() as client:
+            await client.get(endpoint, params={"address": address, "longpoll": "false"})
+
+    assert address[6:] not in caplog.text
+    assert f"{endpoint}?address=<redacted>&longpoll=false" in caplog.text
+
+
 class TestNotifierRequests:
     def test_the_telegram_bot_token_is_not_logged(self, redacting, caplog):
         log = _send_alert(caplog, CASHPILOT_TELEGRAM_BOT_TOKEN=FAKE_BOT_TOKEN, CASHPILOT_TELEGRAM_CHAT_ID="42")
