@@ -3694,6 +3694,13 @@ const CP = (() => {
   // signup_url (no programme, or none found yet) is not a referral link.
   // The new user's bonus goes first when the catalog records one: it is the
   // reason to use this link at all, and it used to sit only on the detail page.
+  // A provider with no account to sign up for (referral.account: false, e.g. a
+  // relay that needs only a wallet): its link opens the provider's site, so the
+  // button says Visit. "Sign Up" there sent people looking for an account form.
+  function hasAccount(svc) {
+    return !(svc.referral && svc.referral.account === false);
+  }
+
   function referralNote(svc) {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url) return '';
@@ -3729,7 +3736,7 @@ const CP = (() => {
     if (svc.manual_only) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
       const manualEnvFields = envInputFields(svc, svc.docker && svc.docker.env);
-      const manualBtnLabel = `Sign Up for ${escapeHtml(svc.name)}`;
+      const manualBtnLabel = `${hasAccount(svc) ? 'Sign Up for' : 'Visit'} ${escapeHtml(svc.name)}`;
       return `
       <div class="card setup-card" id="setup-${svc.slug}">
         <div class="card-header">
@@ -3771,7 +3778,7 @@ const CP = (() => {
         <p class="setup-line setup-links">
           <span>New to ${escapeHtml(svc.name)}?</span>
           <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-            Sign Up
+            ${hasAccount(svc) ? 'Sign Up' : 'Visit'}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
           ${dashboardLink}
@@ -4763,7 +4770,7 @@ const CP = (() => {
     }
     html += `
         <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn ${isDeployed ? 'btn-ghost' : 'btn-primary'} btn-sm">
-          ${isDeployed ? `New to ${escapeHtml(svc.name)}? Sign up` : `Sign up or log in to ${escapeHtml(svc.name)}`}
+          ${!hasAccount(svc) ? `Visit ${escapeHtml(svc.name)}` : isDeployed ? `New to ${escapeHtml(svc.name)}? Sign up` : `Sign up or log in to ${escapeHtml(svc.name)}`}
         </a>
         ${referralNote(svc)}`;
     html += `</div>`;

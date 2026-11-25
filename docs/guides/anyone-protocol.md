@@ -41,9 +41,9 @@ Anyone Protocol (formerly ATOR) is a decentralized onion-routing privacy network
 
 ## Setup Instructions
 
-### 1. Create an account
+### 1. No account, but a wallet
 
-No account creation is needed. Anyone Protocol relays are permissionless -- you just run a node and earn ANYONE tokens based on uptime and bandwidth.
+There is no account to sign up for: Anyone Protocol relays are permissionless. To earn, you need an Ethereum wallet with 100 ANYONE locked for each relay for at least 180 days, and you claim rewards by signing in that wallet. CashPilot reads the rewards by relay fingerprint (step 5).
 
 ### 2. Configure anonrc
 

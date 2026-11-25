@@ -18,6 +18,8 @@ short_description: Decentralized onion routing - incentivized Tor relay nodes
 referral:
   signup_url: "https://anyone.io"
   program: false
+  # No sign-up with Anyone. A relay needs a wallet with a stake, not an account.
+  account: false
 
 docker:
   # CashPilot's own image (images/anyone-protocol/): the project's signed .deb at a
@@ -114,9 +116,11 @@ disclosure:
     Real. Relay traffic is attributed to your connection. Exit relays in
     particular attract abuse complaints; many consumer ISPs prohibit them.
   account_rules: >-
-    No account is needed at all, so there is nothing to limit per account. The
-    project does not publish a per-IP relay limit, and the catalog does not
-    declare one.
+    There is no account to sign up for, so there is nothing to limit per
+    account. To earn you still need an Ethereum wallet with 100 ANYONE locked
+    for each relay for at least 180 days, and CashPilot needs the relay
+    fingerprints to read the rewards. The project does not publish a per-IP
+    relay limit, and the catalog does not declare one.
 
 payout:
   model: external
@@ -152,7 +156,7 @@ rating:
     terms_fit: CashPilot builds its own image from published relay software
     traffic_transparency: Relays other people's traffic unvetted, exits draw abuse
     privacy: Open-source fork of Tor, under Tor's licence
-    identity_checks: No account needed at all
+    identity_checks: No account to sign up for, only a wallet
     support: No pattern found.
     earnings_realism: Not measured.
     longevity: Not checked on a primary source.
@@ -176,7 +180,7 @@ rating:
     source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml
     checked_on: "2026-11-04"
   pros:
-  - text: No account is needed at all.
+  - text: There is no account to sign up for. A relay needs only a wallet, with no identity check.
     criterion: identity_checks
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/anyone-protocol.yml
