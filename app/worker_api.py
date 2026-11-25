@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape as _esc
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -58,6 +58,7 @@ from app import (
     state_backup,
     step_up,
     version,
+    wallet_seed,
 )
 from app.constants import DEPLOY_DEADLINE_SECONDS, MAX_INSTANCES, PROXIED_FORBIDDEN_CAPS
 
@@ -721,6 +722,10 @@ async def _send_heartbeat() -> None:
     # Every deploy this worker runs ends by DEPLOY_DEADLINE_SECONDS, so the UI
     # may let go of the ids of one it got no answer for (main._settle_pending_identities).
     features.append("deploy_deadline")
+    # Keeps a catalog seed_file wallet in the node's own volume, never in its
+    # env, and makes or takes one on deploy (app/wallet_seed.py). The UI sends
+    # a new seed-file deploy to no other worker.
+    features.append(wallet_seed.FEATURE)
     # None, not an empty list, when they could not be read: the UI alerts on a
     # copy this list leaves out, and "could not look" must not read as "gone".
     proxied: list[dict[str, Any]] | None = []
@@ -1331,13 +1336,18 @@ app = FastAPI(title="CashPilot Worker", version=version.current(), lifespan=life
 _SECRET_BODY_PATHS = ("/api/proxied/", "/api/proxy-test")
 
 
+def _secret_body(path: str) -> bool:
+    """Whether a 422 on ``path`` must not echo its input: a proxy secret, or a deploy's env and wallet seed."""
+    return path.startswith(_SECRET_BODY_PATHS) or (path.startswith("/api/containers/") and path.endswith("/deploy"))
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """FastAPI's 422 echoes the rejected input. On the proxy routes that input
     can be a proxy password or a Tailscale auth key, so it is dropped there;
     every other route keeps the default body."""
     errors = exc.errors()
-    if request.url.path.startswith(_SECRET_BODY_PATHS):
+    if _secret_body(request.url.path):
         errors = [{k: v for k, v in err.items() if k not in ("input", "ctx")} for err in errors]
     return JSONResponse(status_code=422, content={"detail": jsonable_errors(errors)})
 
@@ -1463,6 +1473,19 @@ class ResourceSpec(BaseModel):
     cpu_shares: int | None = None
 
 
+class WalletSeedSpec(BaseModel):
+    """What a deploy asks of a seed-file wallet (app/wallet_seed.py).
+
+    generate: make one when the node has none; import: write ``phrase`` when the
+    node has none; migrate: as import, for a phrase CashPilot recorded before
+    the file existed, and a file that holds another one wins; keep: the node
+    must have one already.
+    """
+
+    mode: Literal["generate", "import", "migrate", "keep"]
+    phrase: str | None = None
+
+
 class DeploySpec(BaseModel):
     image: str
     env: dict[str, str] = {}
@@ -1496,6 +1519,10 @@ class DeploySpec(BaseModel):
     # a service routed through a proxy on this worker from the worker's own IP
     # instead (app/route_gate.py, step_up.ACTION_LEAVE_ROUTE).
     route_approval: str | None = None
+    # A service that keeps its wallet seed in a file (catalog seed_file): the
+    # wallet this deploy wants. The phrase rides only here, never in env, and
+    # this worker writes it into the node's own volume (app/wallet_seed.py).
+    wallet_seed: WalletSeedSpec | None = None
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -2470,6 +2497,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     leave_route = await asyncio.to_thread(_validate_route_approval, spec, slug)
     kept_mounts: list[dict[str, str]] = []
     replaced: dict[str, str] = {}
+    wallet: dict[str, Any] = {}
     try:
         container_id = await asyncio.to_thread(
             _deploy_direct,
@@ -2495,9 +2523,15 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             leave_route=leave_route,
             replaced_identity=replaced,
             deadline=deadline,
+            wallet_seed=spec.wallet_seed.model_dump() if spec.wallet_seed else None,
+            wallet=wallet,
         )
         await asyncio.to_thread(lan_fence.refresh_outside)
         response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
+        if wallet:
+            # The phrase only when this deploy made the wallet: the UI shows it
+            # once and keeps nothing (app/wallet_seed.py).
+            response["wallet"] = wallet
         if kept_mounts:
             response["kept_mounts"] = kept_mounts
         # The ids the replaced container ran, for the UI's ledger (a replacement
@@ -2517,6 +2551,11 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         # Raised before the running container was touched (orchestrator.deploy_raw).
         logger.warning("Deploy of %s refused: %s", slug, exc)
         raise HTTPException(status_code=403, detail={"error": exc.error, "message": str(exc)}) from None
+    except orchestrator.WalletSeedRefused as exc:
+        # Before the running container was touched. Structured, so the UI can
+        # offer the way out; the message never holds a phrase.
+        logger.warning("Deploy of %s refused: %s", slug, exc.code)
+        raise HTTPException(status_code=exc.status_code, detail={"error": exc.code, "message": str(exc)}) from None
     except orchestrator.ContainerRuntimeError as exc:
         # Same shape as the network setting; 503 when the daemon could not be
         # asked at all. Mostly raised before the old container was touched; a
@@ -2540,6 +2579,48 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
     except Exception:
         logger.exception("Deploy failed for %s", slug)
         raise HTTPException(status_code=500, detail="Container deployment failed")
+
+
+@app.post("/api/containers/{slug}/wallet-seed")
+async def api_wallet_seed(request: Request, slug: str) -> JSONResponse:
+    """The seed phrase in the node's own file, for the owner's Reveal (app/wallet_seed.py).
+
+    Only with the UI's signed note that the owner re-entered their password for
+    this service on this worker (step_up.ACTION_REVEAL_WALLET_SEED), checked with
+    this worker's own key: neither the shared fleet key nor the admin API key
+    reads it alone. Read from the deployed container, running or not; nothing
+    is logged but that it was read.
+    """
+    _verify_api_key(request)
+    try:
+        step_up.check(
+            _worker_key,
+            request.headers.get(step_up.APPROVAL_HEADER),
+            step_up.ACTION_REVEAL_WALLET_SEED,
+            step_up.reveal_target(slug, CLIENT_ID),
+        )
+    except step_up.StepUpError as exc:
+        raise HTTPException(
+            status_code=403, detail={"error": "step_up_rejected", "message": f"{exc}. Nothing was read."}
+        ) from None
+    svc = orchestrator.get_service(slug) if orchestrator.get_service else None
+    if wallet_seed.seed_var(svc) is None:
+        raise HTTPException(
+            status_code=404, detail={"error": "wallet_none", "message": f"{slug} keeps no wallet seed."}
+        )
+
+    def _read() -> str:
+        container = orchestrator._find_container(slug)
+        if container is None:
+            raise wallet_seed.WalletSeedError(f"{slug} is not deployed on this worker.", "wallet_missing", 404)
+        return wallet_seed.reveal(container, svc)
+
+    try:
+        phrase = await asyncio.to_thread(_read)
+    except wallet_seed.WalletSeedError as exc:
+        raise HTTPException(status_code=exc.status, detail={"error": exc.code, "message": str(exc)}) from None
+    logger.warning("The wallet seed of %s was read for the owner's Reveal", slug)
+    return JSONResponse({"phrase": phrase}, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/containers/{slug}/restart")

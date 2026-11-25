@@ -88,7 +88,7 @@ const document = {
 const deploy = new Function(
   'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink', 'wizardState',
   '_confirmDeviceRenames',
-  `${grab('_routeSelect')}\n${grab('_routeChoice')}\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
+  `${grab('_routeSelect')}\n${grab('_routeChoice')}\nconst _walletRequest = () => undefined;\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
 )(escapeHtml, document, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
   async () => false);
 await deploy('honeygain', [1], { routeRoot: formRoot({ value: '3' }) });
@@ -195,7 +195,7 @@ async function pick(routeValue, tick = []) {
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames',
     ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
-      'deployServiceToWorkers'].map(grab).join('\n')
+      'deployServiceToWorkers'].map(grab).join('\n') + '\nconst _walletRequest = () => undefined;'
       + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
   )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
     async () => false);
@@ -257,7 +257,7 @@ for (const [routeValue, want] of [['0', []], ['', [{ path: '/api/deploy/honeygai
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames',
     ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
-      'deployServiceToWorkers'].map(grab).join('\n')
+      'deployServiceToWorkers'].map(grab).join('\n') + '\nconst _walletRequest = () => undefined;'
       + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
   )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
     async () => false);
@@ -282,7 +282,7 @@ console.log('Instances: a changed count rescales a routed box on its route, neve
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames',
     ['_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
-      'deployServiceToWorkers', 'deployService'].map(grab).join('\n')
+      'deployServiceToWorkers', 'deployService'].map(grab).join('\n') + '\nconst _walletRequest = () => undefined;'
       + '\nreturn { deployServiceToWorkers, deployService };',
   )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
     async () => false);
@@ -301,7 +301,7 @@ console.log('Instances: a changed count rescales a routed box on its route, neve
   const deploy = new Function(
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
     'wizardState', '_confirmDeviceRenames',
-    `${grab('_routeSelect')}\n${grab('_routeChoice')}\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
+    `${grab('_routeSelect')}\n${grab('_routeChoice')}\nconst _walletRequest = () => undefined;\n${grab('_deployToWorkers')}\nreturn _deployToWorkers;`,
   )(escapeHtml, { getElementById: () => null, querySelectorAll: () => [] }, api, () => {},
     async () => { select.value = '7'; return true; }, () => undefined, () => undefined, () => {}, { deployed: [] },
     async () => false);

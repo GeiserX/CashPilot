@@ -845,6 +845,17 @@ class ContainerRuntimeError(RuntimeError):
         self.status_code = status_code
 
 
+class WalletSeedRefused(ContainerRuntimeError):
+    """The wallet step of a deploy said no (app/wallet_seed.py); nothing was touched.
+
+    ``code`` names why for the UI (wallet_exists, wallet_missing, wallet_phrase, ...).
+    """
+
+    def __init__(self, message: str, code: str, status_code: int = 409) -> None:
+        super().__init__(message, status_code)
+        self.code = code
+
+
 class RestoreUnfinishedError(ContainerRuntimeError):
     """Remove without data refused: a restore that did not finish left a half-written volume.
 
@@ -1115,6 +1126,8 @@ def deploy_raw(
     deadline: float | None = None,
     start: bool = True,
     pulled: bool = False,
+    wallet_seed: dict[str, Any] | None = None,
+    wallet: dict[str, Any] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -1134,6 +1147,13 @@ def deploy_raw(
     running container is not touched; a deadline passed after that (a slow
     volume setup or stop) puts the stopped container back and starts it again
     (one inside a proxy tunnel's namespace is left to app/proxy_tunnel.py).
+
+    A service whose catalog keeps its wallet seed in a file (``seed_file``)
+    gets the file ready before the running container is touched, and its seed
+    variable never reaches the new container (app/wallet_seed.py):
+    ``wallet_seed`` is the deploy's choice (None migrates a phrase still in
+    ``env``, or keeps the file), and ``wallet``, when given, is filled with the
+    outcome, the phrase of a wallet made on this deploy included.
 
     ``network_mode="container:<id>"``, ``name`` and ``pulled`` are for
     app/proxy_tunnel.py only (``pulled``: it pulled the image itself, before it
@@ -1156,6 +1176,8 @@ def deploy_raw(
         deadline = time.monotonic() + DEPLOY_DEADLINE_SECONDS
     client = _get_client()
     name = name or _container_name(slug, instance)
+    # A copy: the wallet step takes the seed variable out of it.
+    env = dict(env or {})
     if name.startswith(TUNNEL_PREFIX):
         # Only a tunnel is named so, and is_tunnel_sidecar trusts the name: an
         # earner under it would run from this box's own IP as if it were one.
@@ -1264,6 +1286,7 @@ def deploy_raw(
                 "compose file (comma-separated), then run docker compose up -d."
             )
         _ensure_volumes(client, volumes)
+        _prepare_wallet(client, slug, name, image, env, volumes, wallet_seed, wallet, start and not joined)
         # Stop it the way stop and restart do, with the catalog's timeout, before
         # removing it. remove(force=True) alone is SIGKILL: a storage node gets no
         # chance to flush (storj declares 300 s for that reason) and pays for it
@@ -1326,6 +1349,7 @@ def deploy_raw(
             raise _deploy_failure(exc, restored, slug) from exc
     except NotFound:
         _ensure_volumes(client, volumes)
+        _prepare_wallet(client, slug, name, image, env, volumes, wallet_seed, wallet, start and not joined)
 
     all_labels = {
         LABEL_SERVICE: slug,
@@ -1488,6 +1512,39 @@ def deploy_raw(
     _remove_replaced(replaced, name, slug)
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
+
+
+def _prepare_wallet(
+    client: Any,
+    slug: str,
+    name: str,
+    image: str,
+    env: dict[str, str],
+    volumes: Any,
+    wanted: dict[str, Any] | None,
+    out: dict[str, Any] | None,
+    run: bool,
+) -> None:
+    """deploy_raw's wallet step: the seed file ready, the seed variable out of ``env`` (app/wallet_seed.py).
+
+    Run while the container being replaced still runs, so a refusal costs it
+    nothing. Not for a restore or a proxied copy (``run`` False): a restore's
+    volume is written from the backup after the create, and a proxied copy
+    has no volume of its own.
+    """
+    from app import wallet_seed
+
+    if not run:
+        return
+    svc = get_service(slug) if get_service else None
+    try:
+        result = wallet_seed.prepare(
+            client, svc, name, image, env, volumes if isinstance(volumes, dict) else None, wanted
+        )
+    except wallet_seed.WalletSeedError as exc:
+        raise WalletSeedRefused(str(exc), exc.code, exc.status) from None
+    if out is not None and result:
+        out.update(result)
 
 
 #: Suffix of a container moved aside while its replacement is created.

@@ -218,7 +218,11 @@ class TestDeployRawResources:
             '{"image": "img", "ports": {"9980/tcp": ["127.0.0.1", 9980], "9981/tcp": 9981}}'
         )
         client = self._mock_client()
-        with patch.object(orchestrator, "_get_client", return_value=client):
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            # Ports only: no volume, so no wallet file to prepare (tests/test_wallet_seed_file.py).
+            patch.object(orchestrator, "_prepare_wallet"),
+        ):
             orchestrator.deploy_raw(slug="sia-hostd", image="img", ports=spec.ports)
         sent = client.containers.run.call_args.kwargs["ports"]
         assert convert_port_bindings(sent) == {
