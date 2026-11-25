@@ -132,6 +132,9 @@ const commanded = routedRows(routedSvc([desktopCopy(true)]), undefined);
 check('a Desktop that takes commands has a live Stop button', stopBtn(commanded) && !/disabled/.test(stopBtn(commanded)), stopBtn(commanded) || 'no Stop button');
 const reporting = routedRows(routedSvc([desktopCopy(false)]), undefined);
 check('a Desktop that only reports has Stop off, and says why', /disabled/.test(stopBtn(reporting)) && /^This Desktop only reports/.test(shownTitle(stopBtn(reporting)) || ''), stopBtn(reporting) || 'no Stop button');
+// The switch is not the only reason a Desktop sends no URL: on Windows it waits for
+// the firewall rule, and it needs a private network or Tailscale address.
+check('the reason names the switch, the firewall and the address', ['switch', 'Windows Firewall', 'Tailscale address'].every(w => (shownTitle(stopBtn(reporting)) || '').includes(w)), shownTitle(stopBtn(reporting)) || 'no title');
 const noDocker = routedRows(routedSvc([{...copy('nas', 1), has_docker: false, can_command: false}]), undefined);
 check('a Docker box without Docker still shows its own reason', shownTitle(stopBtn(noDocker)) === 'No Docker access', stopBtn(noDocker) || 'no Stop button');
 const mixed = routedRows(routedSvc([desktopCopy(true), {...copy('nas', 1)}]), undefined).split('class="instance-row"').slice(1);

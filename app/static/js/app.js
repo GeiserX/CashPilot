@@ -2472,7 +2472,7 @@ const CP = (() => {
       const unmanaged = inst.unmanaged || svc.unmanaged;
       const disabledAttr = unmanaged
         ? ' disabled title="Started outside CashPilot — manage it where you started it"'
-        : (noDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it. Turn on its switch to let this server start and stop services there, on its own dashboard."' : ' disabled title="No Docker access"') : '');
+        : (noDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it: it sent no address to take commands at. On its own dashboard, turn on its switch and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address."' : ' disabled title="No Docker access"') : '');
       actionBtns = `<div class="action-btns">
           ${claimBtn}
           ${settingsBtn}
@@ -2529,7 +2529,7 @@ const CP = (() => {
         const iUnmanaged = inst.unmanaged || svc.unmanaged;
         const disabledAttr = iUnmanaged
           ? ' disabled title="Started outside CashPilot — manage it where you started it"'
-          : (iNoDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it. Turn on its switch to let this server start and stop services there, on its own dashboard."' : ' disabled title="No Docker access"') : '');
+          : (iNoDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it: it sent no address to take commands at. On its own dashboard, turn on its switch and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address."' : ' disabled title="No Docker access"') : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
         // `|| '0'` would render an unmeasurable container as a confident 0%.
         // The endpoint sends null when the Docker stats call failed, and an em

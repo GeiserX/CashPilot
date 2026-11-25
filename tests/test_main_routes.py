@@ -221,6 +221,17 @@ class TestGetAllWorkerContainers:
         assert copy["_can_command"] is can_command
         assert copy["_desktop_report_only"] is report_only
 
+    def test_the_report_only_tag_gives_every_reason_a_desktop_sends_no_url(self):
+        """The switch, the Windows Firewall rule and a private or Tailscale address all decide it."""
+        from pathlib import Path
+
+        fleet = (Path(__file__).resolve().parent.parent / "app" / "templates" / "fleet.html").read_text(
+            encoding="utf-8"
+        )
+        [line] = [ln for ln in fleet.splitlines() if "'Desktop, reports only'" in ln]
+        for reason in ("can start and stop services on this computer", "Windows Firewall", "Tailscale address"):
+            assert reason in line, reason
+
     def test_offline_workers_skipped(self):
         """CashPilot-1xg: this fed a worker with NO containers.
 

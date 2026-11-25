@@ -5439,6 +5439,14 @@ async def _check_route(
             status_code=400,
             detail=f"{name} runs once per worker through a proxy. To run more, add workers or proxies.",
         )
+    if await _worker_is_desktop(worker_id):
+        # A joined Desktop serves no /api/proxied routes: it adds a copy through a
+        # proxy only in its own window. It is not too old, so it gets its own answer.
+        raise HTTPException(
+            status_code=409,
+            detail=f"CashPilot Desktop adds copies that run through a proxy only on that computer. Deploy {name} "
+            "through the proxy from CashPilot Desktop there. Nothing was deployed.",
+        )
     if recorded_route is not None and recorded_route != route:
         raise HTTPException(
             status_code=409,
