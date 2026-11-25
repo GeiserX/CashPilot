@@ -3688,12 +3688,6 @@ const CP = (() => {
   //
   // One function rather than two copies: a notice that exists twice drifts, and
   // the wizard's version is the one that matters most.
-  // The Sign Up buttons open the maintainer's referral link, and the person
-  // clicking should know that before the click, not from a README section they
-  // never open. Shown only where the catalog records a referral code: a bare
-  // signup_url (no programme, or none found yet) is not a referral link.
-  // The new user's bonus goes first when the catalog records one: it is the
-  // reason to use this link at all, and it used to sit only on the detail page.
   // A provider with no account to sign up for (referral.account: false, e.g. a
   // relay that needs only a wallet): its link opens the provider's site, so the
   // button says Visit. "Sign Up" there sent people looking for an account form.
@@ -3701,6 +3695,12 @@ const CP = (() => {
     return !(svc.referral && svc.referral.account === false);
   }
 
+  // The Sign Up buttons open the maintainer's referral link, and the person
+  // clicking should know that before the click, not from a README section they
+  // never open. Shown only where the catalog records a referral code: a bare
+  // signup_url (no programme, or none found yet) is not a referral link.
+  // The new user's bonus goes first when the catalog records one: it is the
+  // reason to use this link at all, and it used to sit only on the detail page.
   function referralNote(svc) {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url) return '';
@@ -3721,6 +3721,7 @@ const CP = (() => {
 
   function renderServiceSetupForm(svc, workers) {
     const isDeployed = svc.deployed || false;
+    const accountRequired = hasAccount(svc);
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
     const signupUrl = svc.referral && svc.referral.signup_url
       ? svc.referral.signup_url
@@ -3736,7 +3737,7 @@ const CP = (() => {
     if (svc.manual_only) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
       const manualEnvFields = envInputFields(svc, svc.docker && svc.docker.env);
-      const manualBtnLabel = `${hasAccount(svc) ? 'Sign Up for' : 'Visit'} ${escapeHtml(svc.name)}`;
+      const manualBtnLabel = `${accountRequired ? 'Sign Up for' : 'Visit'} ${escapeHtml(svc.name)}`;
       return `
       <div class="card setup-card" id="setup-${svc.slug}">
         <div class="card-header">
@@ -3778,7 +3779,7 @@ const CP = (() => {
         <p class="setup-line setup-links">
           <span>New to ${escapeHtml(svc.name)}?</span>
           <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-            ${hasAccount(svc) ? 'Sign Up' : 'Visit'}
+            ${accountRequired ? 'Sign Up' : 'Visit'}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
           ${dashboardLink}
@@ -3788,7 +3789,7 @@ const CP = (() => {
           </a>
         </p>
         ${referralNote(svc)}
-        <p class="setup-line muted">Already have an account? Enter your credentials below.</p>
+        ${accountRequired ? '<p class="setup-line muted">Already have an account? Enter your credentials below.</p>' : ''}
       </div>
 
       <!-- IP attribution and LAN isolation, before the Deploy button. Filled

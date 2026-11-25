@@ -12,6 +12,8 @@ short_description: Decentralized VPN on Cosmos - node operators sell bandwidth
 referral:
   signup_url: "https://sentinel.co"
   program: false
+  # Permissionless nodes: no account to sign up for.
+  account: false
 
 docker:
   image: ""

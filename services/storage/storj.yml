@@ -26,6 +26,8 @@ short_description: Decentralized storage node - $1.35/TB stored + $1/TB egress
 
 referral:
   signup_url: "https://storj.dev/node/get-started/setup"
+  # Permissionless since mid-2025: a wallet address and an email, no account.
+  account: false
 
 docker:
   image: storjlabs/storagenode

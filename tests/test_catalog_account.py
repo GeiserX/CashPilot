@@ -16,48 +16,105 @@ import json
 import re
 import shutil
 import subprocess
+from html import unescape
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app import catalog
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# How account_rules says there is no account: "no account", "no signup or
-# account", "no sign-up", "there is no account in the usual sense".
 NO_ACCOUNT = re.compile(r"\bno (?:sign-?up or )?account\b|\bno sign-?up\b", re.I)
+NO_ACCOUNT_SLUGS = (
+    "anyone-protocol",
+    "golem",
+    "noderr",
+    "proxybase-xyz",
+    "sentinel-dvpn",
+    "sia-hostd",
+    "storj",
+)
+ACCOUNT_PROMPT = "Already have an account? Enter your credentials below."
 
 
-def _services():
-    return [s for s in catalog.get_services() if not s.get("custom")]
+@pytest.fixture
+def catalog_client():
+    from app.main import app
+
+    # Exercise the real HTTP responses without starting background jobs or contacting workers.
+    with (
+        patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "admin", "r": "owner"}),
+        patch("app.main.database.get_deployments", new_callable=AsyncMock, return_value=[]) as deployments,
+        patch("app.main._get_all_worker_containers", new_callable=AsyncMock, return_value=[]),
+        patch("app.main.database.list_worker_specs", new_callable=AsyncMock, return_value=[]),
+    ):
+        yield TestClient(app), deployments
+
+
+def _get(client, path):
+    response = client.get(path)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _text_fields(value, path=""):
+    if isinstance(value, str):
+        yield path, value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _text_fields(item, f"{path}.{key}" if path else key)
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            yield from _text_fields(item, f"{path}[{i}]")
 
 
 def test_account_is_a_boolean_or_absent():
-    for svc in _services():
+    for svc in catalog.get_services():
         ref = svc.get("referral") or {}
-        assert ref.get("account", None) in (None, False, True), (
-            f"{svc['slug']}: referral.account must be true, false or absent"
-        )
+        if "account" in ref:
+            assert isinstance(ref["account"], bool), f"{svc['slug']}: referral.account must be a boolean"
 
 
-def test_every_entry_that_says_no_account_says_it_to_the_code():
-    for svc in _services():
-        rules = (svc.get("disclosure") or {}).get("account_rules") or ""
-        if NO_ACCOUNT.search(rules):
-            assert (svc.get("referral") or {}).get("account") is False, (
-                f"{svc['slug']}: account_rules says there is no account, but referral.account is not false, "
-                "so the UI offers a Sign Up button for an account that does not exist"
+def test_every_entry_that_says_no_account_says_it_to_the_code(catalog_client):
+    client, _ = catalog_client
+    claims = set()
+    failures = []
+    for svc in _get(client, "/api/services/available"):
+        slug = svc["slug"]
+        # Text used by the setup and detail cards, including the computed rating.
+        card = {
+            key: svc.get(key)
+            for key in (
+                "name",
+                "category",
+                "description",
+                "short_description",
+                "platforms",
+                "disclosure",
+                "rating_result",
+                "earnings",
+                "payment",
+                "cashout",
+                "route_refusal",
             )
+        }
+        docker = svc.get("docker") or {}
+        card["docker"] = {key: docker.get(key) for key in ("env", "setup")}
+        card["referral"] = {"bonus": (svc.get("referral") or {}).get("bonus")}
+        for path, text in _text_fields(card):
+            if not NO_ACCOUNT.search(text):
+                continue
+            claims.add(slug)
+            if (svc.get("referral") or {}).get("account") is not False:
+                failures.append(f"{slug} {path}: {text!r} requires referral.account: false")
+            if "needed at all" in text.lower():
+                failures.append(f"{slug} {path}: say what setup needs instead of {text!r}")
 
-
-def test_an_entry_without_an_account_does_not_say_one_is_needed_at_all_while_needing_a_wallet():
-    """The Anyone text said no account "at all" while a wallet with a stake is required."""
-    for svc in _services():
-        if (svc.get("referral") or {}).get("account") is False:
-            rules = (svc.get("disclosure") or {}).get("account_rules") or ""
-            assert rules.strip(), f"{svc['slug']}: no account, so account_rules must say what is needed instead"
-            assert "needed at all" not in rules, f"{svc['slug']}: {rules}"
+    assert not failures, "\n".join(failures)
+    assert set(NO_ACCOUNT_SLUGS) <= claims, f"Missing card text for {set(NO_ACCOUNT_SLUGS) - claims}"
 
 
 # ---------------------------------------------------------------------------
@@ -77,8 +134,7 @@ function grab(name) {
   }
   return src.slice(at, i + 1);
 }
-const { svc, deployed } = JSON.parse(process.argv[2]);
-svc.deployed = deployed;
+const { setup, detail } = JSON.parse(process.argv[2]);
 // Every helper the two renderers call that is not under test renders nothing.
 const stubs = {
   escapeHtml: (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
@@ -92,20 +148,23 @@ const env = new Proxy(stubs, {
 const names = ['hasAccount', 'referralNote', 'renderServiceSetupForm', 'renderServiceDetail'];
 const fns = new Function('env', `with (env) { ${names.map(grab).join('\n')}\nreturn { ${names.join(', ')} }; }`)(env);
 console.log(JSON.stringify({
-  setup: fns.renderServiceSetupForm(svc, []),
-  detail: fns.renderServiceDetail(svc, []),
+  setup: fns.renderServiceSetupForm(setup, []),
+  detail: fns.renderServiceDetail(detail, []),
 }));
 """
 
 
-def _render(slug: str, deployed: bool = False) -> dict:
+def _render(catalog_client, slug: str, deployed: bool) -> dict:
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
-    svc = catalog.get_service(slug)
-    assert svc, slug
+    client, deployments = catalog_client
+    deployments.return_value = [{"slug": slug}] if deployed else []
+    setup = next(svc for svc in _get(client, "/api/services/available") if svc["slug"] == slug)
+    detail = _get(client, f"/api/services/{slug}")
+    assert setup["deployed"] is detail["deployed"] is deployed
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps({"svc": svc, "deployed": deployed})],
+        [node, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps({"setup": setup, "detail": detail})],
         capture_output=True,
         text=True,
         check=True,
@@ -116,27 +175,36 @@ def _render(slug: str, deployed: bool = False) -> dict:
 
 def _link_labels(html: str, url: str) -> list[str]:
     """The text of every link to url, tags and whitespace removed."""
-    found = re.findall(rf'<a href="{re.escape(url)}"[^>]*>(.*?)</a>', html, re.S)
+    found = [
+        label for href, label in re.findall(r'<a href="([^"]*)"[^>]*>(.*?)</a>', html, re.S) if unescape(href) == url
+    ]
     assert found, f"no link to {url}"
     return [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m)).strip() for m in found]
 
 
-@pytest.mark.parametrize("slug", ["anyone-protocol", "sia-hostd", "noderr"])
+@pytest.mark.parametrize("slug", NO_ACCOUNT_SLUGS)
 @pytest.mark.parametrize("deployed", [False, True])
-def test_no_account_means_visit_not_sign_up(slug, deployed):
-    url = catalog.get_service(slug)["referral"]["signup_url"]
-    out = _render(slug, deployed)
+def test_no_account_means_visit_not_sign_up(catalog_client, slug, deployed):
+    ref = catalog.get_service(slug)["referral"]
+    url = ref["signup_url"]
+    if slug == "proxybase-xyz":
+        assert ref["code"] in url
+    out = _render(catalog_client, slug, deployed)
     for view in ("setup", "detail"):
         labels = _link_labels(out[view], url)
         assert not any("sign up" in label.lower() for label in labels), f"{slug} {view}: {labels!r}"
         assert any(label.startswith("Visit") for label in labels), f"{slug} {view}: {labels!r}"
+        assert ACCOUNT_PROMPT not in out[view]
+        if slug == "proxybase-xyz":
+            assert "Referral link:" in out[view]
 
 
 @pytest.mark.parametrize("deployed", [False, True])
-def test_a_provider_with_an_account_keeps_sign_up_and_its_referral_link(deployed):
+def test_a_provider_with_an_account_keeps_sign_up_and_its_referral_link(catalog_client, deployed):
     svc = catalog.get_service("honeygain")
     url = svc["referral"]["signup_url"]
     assert svc["referral"].get("code") and svc["referral"]["code"] in url
-    out = _render("honeygain", deployed)
+    out = _render(catalog_client, "honeygain", deployed)
     for view in ("setup", "detail"):
         assert any("sign up" in label.lower() for label in _link_labels(out[view], url)), view
+    assert ACCOUNT_PROMPT in out["setup"]
