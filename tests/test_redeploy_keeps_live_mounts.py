@@ -202,6 +202,7 @@ def _mysterium_spec():
     env = {"UI_ADDRESS": "127.0.0.1", "UDP_PORTS": "10000:10100"}
     return {
         "image": docker["image"],
+        "replace_existing": True,
         "env": env,
         "command": docker["command"].replace("${UDP_PORTS}", env["UDP_PORTS"]),
         "volumes": CATALOG_VOLUMES,

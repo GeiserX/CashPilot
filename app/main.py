@@ -36,7 +36,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -4436,6 +4436,8 @@ class WalletSeedChoice(BaseModel):
 
 class DeployRequest(BaseModel):
     env: dict[str, str] = {}
+    # The owner confirmed that this deploy may replace containers on this box.
+    replace_existing: StrictBool = False
     hostname: str | None = None
     # How many copies of the service this worker runs. None (left out) keeps
     # the number this worker's deployment already has, 1 for a new one.
@@ -5017,7 +5019,7 @@ async def _deploy(
             for env in copy_envs:
                 await _refuse_shared_device_ids(slug, svc, env, worker_id)
 
-        signed: dict[str, Any] = {}
+        options: dict[str, Any] = {}
         password = getattr(body, "step_up_password", None)
         if restore is not None:
             # A restore (api_restore) builds the spec exactly as a deploy does, and
@@ -5039,7 +5041,9 @@ async def _deploy(
             carries_id = new_image and any(str(merged_env.get(k) or "").strip() for k in _per_device_keys(svc))
             approve = await _step_up_critical(request, slug, svc, custom_image, password, device_id=carries_id)
             # Passed only when set, so the plain call keeps its three-argument shape.
-            signed = {"approve": True} if approve else {}
+            options = {"approve": True} if approve else {}
+            if getattr(body, "replace_existing", False) is True:
+                options["replace_existing"] = True
             if route is not None:
                 return await _deploy_routed(
                     slug,
@@ -5059,7 +5063,7 @@ async def _deploy(
                 await _refuse_direct_on_proxied_only(svc, slug, worker_id)
                 await _confirm_leave_route(request, svc, slug, worker_id, password)
                 await _remove_routed_copies(worker_id, slug, [recorded_route])
-                signed["leave_route"] = True
+                options["leave_route"] = True
         held = await _reserve_pending_identities(slug, worker_id, 1, spec.get("env"))
         try:
             result: dict[str, Any] | None = None
@@ -5071,7 +5075,7 @@ async def _deploy(
                         worker_id,
                         slug,
                         {**spec, "moved_mounts": moved_mounts, **_wallet_field(wallet_wanted)},
-                        **signed,
+                        **options,
                     )
             except HTTPException as exc:
                 # A restore is never retried off a route: its worker refuses it
@@ -5080,7 +5084,7 @@ async def _deploy(
                 # refuses a deploy. Same confirmation as above.
                 if restore is not None:
                     raise
-                if _worker_error(exc) != "route_locked" or signed.get("leave_route"):
+                if _worker_error(exc) != "route_locked" or options.get("leave_route"):
                     await _audit_worker_refusal(request, exc, slug, worker_id)
                     raise
             if result is None:
@@ -5089,13 +5093,13 @@ async def _deploy(
                 # A routed copy the box still reports goes first, as above.
                 if leaving := await _routes_on(worker_id, slug):
                     await _remove_routed_copies(worker_id, slug, leaving)
-                signed["leave_route"] = True
+                options["leave_route"] = True
                 try:
                     result = await _proxy_worker_deploy(
                         worker_id,
                         slug,
                         {**spec, "moved_mounts": moved_mounts, **_wallet_field(wallet_wanted)},
-                        **signed,
+                        **options,
                     )
                 except HTTPException as exc:
                     await _audit_worker_refusal(request, exc, slug, worker_id)
@@ -5172,7 +5176,7 @@ async def _deploy(
                     slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
                 )
                 sent = True
-                answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
+                answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **options)
             except HTTPException as exc:
                 if not _outcome_unknown(exc):
                     await _release_pending_identities(slug, worker_id, held)
@@ -7635,7 +7639,13 @@ def _deploy_timeout(slug: str) -> int:
 
 
 async def _proxy_worker_deploy(
-    worker_id: int, slug: str, spec: dict[str, Any], *, approve: bool = False, leave_route: bool = False
+    worker_id: int,
+    slug: str,
+    spec: dict[str, Any],
+    *,
+    approve: bool = False,
+    leave_route: bool = False,
+    replace_existing: bool = False,
 ) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -7651,6 +7661,8 @@ async def _proxy_worker_deploy(
     if leave_route:
         # Only after _confirm_leave_route checked the owner's password.
         spec = {**spec, "route_approval": await _sign_for_worker(worker_id, step_up.ACTION_LEAVE_ROUTE, slug)}
+    if replace_existing:
+        spec["replace_existing"] = True
     return await _proxy_to_worker(
         worker_id, "POST", f"/api/containers/{slug}/deploy", json=spec, timeout=_deploy_timeout(slug)
     )
@@ -12345,14 +12357,14 @@ async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
 
 
 async def _recordable_raw_spec(slug: str, worker_id: int, spec: dict[str, Any]) -> dict[str, Any]:
-    """A raw deploy's spec as it may be recorded: never a wallet choice, never a seed the worker keeps in its file.
+    """A raw deploy's spec without the wallet choice or the approval to replace this container.
 
     A worker that keeps a catalog seed_file wallet takes the phrase out of the
     env before the container sees it (app/wallet_seed.py), so the record drops
     it too. On an older worker the container still runs with it, and the record
     keeps it, as before, for the next redeploy there.
     """
-    recorded = {k: v for k, v in spec.items() if k != "wallet_seed"}
+    recorded = {k: v for k, v in spec.items() if k not in {"wallet_seed", "replace_existing"}}
     key = wallet_seed.seed_key(catalog.get_service(slug))
     env = recorded.get("env")
     if key and isinstance(env, dict) and key in env and wallet_seed.FEATURE in await _worker_features(worker_id):
@@ -12965,9 +12977,10 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
     of that one service on that one box with ``{key: value}`` typed, through
     the deploy path: the record, the route, the image, the fence, the ledger
     and the shared-id check all apply as on any redeploy, and nothing else on
-    the box moves. The body carries ``value`` and, once the owner saw that
-    another box runs it, ``allow_shared_identity``. The proxied copies of the
-    service on that box take ids made from the new one: running ones are
+    the box moves. The body carries ``value`` and the owner's ``replace_existing``
+    confirmation. If another box runs that id, the owner must also give
+    ``allow_shared_identity``. The proxied copies on that box take ids from
+    the new one: running copies are
     rebuilt now and the rest are marked, as after a device rename
     (_refresh_proxied_copies), so none changes id later unseen. Answers what
     the deploy answers, its notes included.
@@ -13021,6 +13034,7 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
     password = body.get("step_up_password")
     deploy = DeployRequest(
         env={key: value},
+        replace_existing=body.get("replace_existing") is True,
         allow_shared_identity=allow,
         step_up_password=password if isinstance(password, str) else None,
     )

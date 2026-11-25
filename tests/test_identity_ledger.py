@@ -1450,7 +1450,11 @@ class TestTheWorkerReportsTheReplacedIds:
             orchestrator._identity_values.clear()
             return TestClient(worker_api.app).post(
                 "/api/containers/honeygain/deploy",
-                json={"image": "honeygain/honeygain", "env": {"HONEYGAIN_DEVICE_NAME": "new"}},
+                json={
+                    "image": "honeygain/honeygain",
+                    "env": {"HONEYGAIN_DEVICE_NAME": "new"},
+                    "replace_existing": True,
+                },
             )
 
     def test_the_answer_names_the_old_containers_ids_as_a_digest(self, db):

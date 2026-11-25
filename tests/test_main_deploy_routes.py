@@ -502,6 +502,32 @@ class TestApiDeploy:
             asyncio.run(main._proxy_worker_deploy(1, "storj", {}))
         assert proxy.call_args.kwargs["timeout"] == expected
 
+    @pytest.mark.parametrize("approve", [False, True], ids=["first-deploy", "approved-redeploy"])
+    def test_dashboard_forwards_replacement_approval_only_for_this_request(self, client, approve):
+        worker = _online_worker()
+        slug = "demo"
+        svc = {"slug": slug, "docker": {"image": "img"}}
+        send = AsyncMock(return_value={"container_id": "new"})
+        save = AsyncMock()
+        body = {"replace_existing": True} if approve else {}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", AsyncMock(return_value=[worker])),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main._proxy_to_worker", send),
+            patch("app.main.database.prior_deployment_spec", AsyncMock(return_value=None)),
+            patch("app.main.database.save_deployment", save),
+            patch("app.main.database.record_health_event", AsyncMock()),
+            patch("app.main._run_collection", AsyncMock()),
+        ):
+            resp = client.post(f"/api/deploy/{slug}", json=body)
+        assert resp.status_code == 200, resp.text
+        assert send.call_args.args == (1, "POST", "/api/containers/demo/deploy")
+        assert ("replace_existing" in send.call_args.kwargs["json"]) is approve
+        if approve:
+            assert send.call_args.kwargs["json"]["replace_existing"] is True
+        assert "replace_existing" not in save.call_args.kwargs["spec"]
+
     def test_deploy_service_not_found(self, client):
         with (
             _auth_owner(),
@@ -1125,6 +1151,25 @@ class TestWorkerCommand:
             # (so it starts earning) and a "start" health event — not silently skip both.
             save_dep.assert_awaited_once()
             health_evt.assert_awaited()
+
+    def test_raw_deploy_forwards_approval_without_saving_it(self, client):
+        worker, mock_client = self._setup()
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_worker", AsyncMock(return_value=worker)),
+            patch("app.main.database.save_deployment", AsyncMock()) as save,
+            patch("app.main.database.record_health_event", AsyncMock()),
+            patch("app.main._run_collection", AsyncMock()),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            response = client.post(
+                "/api/workers/1/command",
+                json={"command": "deploy", "slug": "honeygain", "spec": {"image": "test", "replace_existing": True}},
+            )
+        assert response.status_code == 200, response.text
+        assert mock_client.post.call_args.kwargs["json"]["replace_existing"] is True
+        assert "replace_existing" not in save.call_args.kwargs["spec"]
 
     def test_command_deploy_writer_denied(self, client):
         """A writer must NOT be able to deploy via /api/workers/{id}/command — deploy is

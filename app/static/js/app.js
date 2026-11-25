@@ -4153,7 +4153,7 @@ const CP = (() => {
     }
   }
 
-  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false, routeRoot = null } = {}) {
+  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false, routeRoot = null, replaceWorkers = [] } = {}) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
     // Read once, before anything waits: a Route box changed while the first
     // box deploys must not send another route (or none) to the next one.
@@ -4228,6 +4228,7 @@ const CP = (() => {
     for (const wid of workerIds) {
       try {
         const body = { env };
+        if (replaceWorkers.includes(wid)) body.replace_existing = true;
         if (wallet) body.wallet_seed = wallet;
         if (renameDevices) body.rename_devices = true;
         const image = _imageChoice(slug);
@@ -4662,7 +4663,7 @@ const CP = (() => {
     let ok = 0;
     // A box with only copies left: rebuild those, never its renamed original.
     const jobs = [
-      ...(base ? ids : []).map(id => [id, `/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true } }]),
+      ...(base ? ids : []).map(id => [id, `/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true, replace_existing: true } }]),
       ...(copies ? copyIds : []).map(id => [id, `/api/deploy/${slug}/device-names/copies?worker_id=${id}`, { method: 'POST' }]),
     ];
     for (const [id, url, opts] of jobs) {
@@ -4692,12 +4693,13 @@ const CP = (() => {
     // checks required values against the box's record and names any still
     // missing, so the blank boxes are not refused in the browser.
     const routeRoot = document.getElementById('service-detail-body');
-    if (await _deployToWorkers(slug, [parseInt(workerId)], { rescaleOnly: true, routeRoot })) openServiceDetail(slug);
+    const wid = parseInt(workerId);
+    if (await _deployToWorkers(slug, [wid], { rescaleOnly: true, routeRoot, replaceWorkers: [wid] })) openServiceDetail(slug);
   }
 
   async function redeployOnWorker(slug, workerId) {
     if (!window.confirm(`Redeploy ${slug} on this box? It keeps the settings it was deployed with.`)) return;
-    const body = { env: {} };
+    const body = { env: {}, replace_existing: true };
     if (await _confirmDeviceRenames(slug, [workerId], {})) body.rename_devices = true;
     try {
       const res = await api(`/api/deploy/${slug}?worker_id=${workerId}`, { method: 'POST', body });
@@ -4729,7 +4731,7 @@ const CP = (() => {
     for (const w of workers) {
       try {
         // No env: a blank redeploy keeps the credentials this worker was deployed with.
-        const body = { env: {}, image };
+        const body = { env: {}, image, replace_existing: true };
         if (renameDevices) body.rename_devices = true;
         const res = await api(`/api/deploy/${slug}?worker_id=${w.id}`, { method: 'POST', body });
         // A proxied copy that kept its old name says so here.
@@ -5143,7 +5145,7 @@ const CP = (() => {
     let ok = 0;
     for (const w of workers) {
       try {
-        await api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${w.id}`, { method: 'POST', body: { env: {} } });
+        await api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${w.id}`, { method: 'POST', body: { env: {}, replace_existing: true } });
         ok++;
       } catch (err) {
         toast(`Redeploy on ${w.name} failed: ${err.message}`, 'error');
@@ -5207,11 +5209,15 @@ const CP = (() => {
     // never through a changed Instances count (route 0 would go with it).
     const switchable = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"][data-routed]:not(:disabled)`);
     const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id) && !switchable.includes(id));
+    if (rescaled.length && !window.confirm(
+      `Change the instance count for ${slug}? CashPilot will replace its existing containers on the boxes where you changed the count.`,
+    )) return;
     const again = [...switching, ...rescaled];
     // Only nodes that already run the service: their recorded credentials are
     // reused, so the empty credential boxes are not missing.
     await _deployToWorkers(slug, [...fresh, ...again], {
       rescaleOnly: fresh.length === 0 && again.length > 0,
+      replaceWorkers: rescaled,
       routeRoot: document.getElementById('service-detail-body'),
     });
   }
@@ -5599,7 +5605,7 @@ const CP = (() => {
     if (!window.confirm(`Change the ${row.label} of ${row.service} on ${row.worker}? CashPilot makes this one `
       + 'container again with the new id, and the provider sees a new device.')) return;
     try {
-      const res = await api(`/api/identities/${encodeURIComponent(id)}/change`, { method: 'POST', body: { value } });
+      const res = await api(`/api/identities/${encodeURIComponent(id)}/change`, { method: 'POST', body: { value, replace_existing: true } });
       // The notes a redeploy shows: what it kept, a proxied copy left on its old
       // id, and a device the provider still needs linked, or it earns for nobody.
       const kept = res && res.kept_from_previous_deployment;

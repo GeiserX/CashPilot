@@ -156,6 +156,15 @@ def _deploys(sent):
 # ---------------------------------------------------------------------------
 
 
+def test_device_id_change_forwards_the_owners_replacement_approval(db):
+    _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)
+    [row] = _rows()
+    answer, sent = _change(row["id"], UUID_B, body={"replace_existing": True})
+    assert not isinstance(answer, HTTPException)
+    [deploy] = _deploys(sent)
+    assert deploy["json"]["replace_existing"] is True
+
+
 class TestWhichRows:
     def test_only_an_id_a_deploy_set_and_a_box_runs_now(self, db):
         _deploy("earnapp", {"EARNAPP_UUID": UUID_A}, 1)

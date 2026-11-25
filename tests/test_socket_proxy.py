@@ -498,7 +498,11 @@ async def _noop_lifespan(a):
 
 def _worker_deploy(spec: dict, **patches):
     worker_api.app.router.lifespan_context = _noop_lifespan
-    with patch("app.worker_api._verify_api_key"), patch("app.worker_api.orchestrator.deploy_raw", **patches) as m:
+    with (
+        patch("app.worker_api._verify_api_key"),
+        patch("app.orchestrator.deploy_target_exists", return_value=False),
+        patch("app.worker_api.orchestrator.deploy_raw", **patches) as m,
+    ):
         resp = TestClient(worker_api.app, raise_server_exceptions=False).post(
             "/api/containers/honeygain/deploy", json=spec
         )

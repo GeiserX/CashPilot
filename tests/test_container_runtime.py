@@ -127,7 +127,9 @@ class TestTheWorkerApi:
             patch.object(worker_api, "_verify_api_key"),
             patch.object(worker_api, "_validate_deploy_spec"),
         ):
-            return TestClient(worker_api.app).post("/api/containers/honeygain/deploy", json={"image": "x"})
+            return TestClient(worker_api.app).post(
+                "/api/containers/honeygain/deploy", json={"image": "x", "replace_existing": True}
+            )
 
     def test_a_missing_runtime_is_a_409_that_says_why(self):
         old = MagicMock()

@@ -105,8 +105,8 @@ def _post(client, path, body, workers, recorded=None, role="owner", wid=None, co
         await _mark_pending(proxy_id, worker_id, slug, not current)
         return current
 
-    async def _fake_deploy(worker_id, slug, spec):
-        sent.append(spec)
+    async def _fake_deploy(worker_id, slug, spec, *, replace_existing=False):
+        sent.append({**spec, "replace_existing": True} if replace_existing else spec)
         return {"container_id": "c1"}
 
     by_id = {w["id"]: w for w in workers}
@@ -729,7 +729,7 @@ class TestRunningBoxesCanBeRenamed:
         )
         assert len(confirms) == 1 and "• unraid:" in confirms[0]
         assert [d["url"] for d in deploys] == ["/api/deploy/iproyal?worker_id=3", "/api/deploy/iproyal?worker_id=7"]
-        assert all(d["body"] == {"env": {}, "rename_devices": True} for d in deploys)
+        assert all(d["body"] == {"env": {}, "rename_devices": True, "replace_existing": True} for d in deploys)
 
     def test_cancel_on_the_button_redeploys_nothing(self):
         deploys, confirms, _ = _form(
@@ -774,7 +774,7 @@ class TestRunningBoxesCanBeRenamed:
         deploys, confirms = _form(run="redeploy", workers=[3], renames={"3": [RENAME]}, answer=True)
         # The redeploy question, then the rename question.
         assert len(confirms) == 2 and LEGACY in confirms[1]
-        assert deploys[0]["body"] == {"env": {}, "rename_devices": True}
+        assert deploys[0]["body"] == {"env": {}, "rename_devices": True, "replace_existing": True}
 
     def test_a_box_that_needs_a_value_gets_its_own_redeploy_button(self):
         _, _, note = _form(
@@ -800,7 +800,7 @@ class TestRunningBoxesCanBeRenamed:
         assert note["details"]["open"] is True, "the folded deploy form is opened"
         assert len(confirms) == 1 and LEGACY in confirms[0]
         assert [d["url"] for d in deploys] == ["/api/deploy/iproyal?worker_id=3"]
-        assert deploys[0]["body"] == {"env": {"EMAIL": "me@x.io"}, "rename_devices": True}
+        assert deploys[0]["body"] == {"env": {"EMAIL": "me@x.io"}, "rename_devices": True, "replace_existing": True}
         assert note.get("reopened") is True
 
     # The deploy form shows each required field from its catalog default, never
@@ -829,6 +829,7 @@ class TestRunningBoxesCanBeRenamed:
         assert resp.status_code == 200, resp.text
         assert sent[0]["env"]["EMAIL"] == "me@x.io"
         assert sent[0]["env"]["PASSWORD"] == "stored-pw", "the blank box keeps the stored password"
+        assert sent[0]["replace_existing"] is True
 
     def test_that_redeploy_with_the_missing_value_left_blank_is_refused_by_name(self, client):
         resp, sent = self._form_then_server(client, {"EMAIL": "", "PASSWORD": ""})
@@ -909,7 +910,12 @@ class TestAnImageRedeployShowsItsNotes:
             deployAnswer={"kept_from_previous_deployment": ["proxied copy p4: keeps its old device name (x)"]},
         )
         deploys = [c for c in result["calls"] if c["url"].startswith("/api/deploy/iproyal?")]
-        assert deploys[0]["body"] == {"env": {}, "image": "iproyal/pawns-cli:2", "rename_devices": True}
+        assert deploys[0]["body"] == {
+            "env": {},
+            "image": "iproyal/pawns-cli:2",
+            "rename_devices": True,
+            "replace_existing": True,
+        }
         assert any(
             t["kind"] == "warning"
             and "local" in t["text"]
