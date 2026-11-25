@@ -35,9 +35,9 @@ worker reads that from its own catalog, never from the deploy request.
 | Intel | That vendor's render node, the same way. |
 
 **What it never passes in:** a `card*` node (those control the display), a
-whole `/dev/dri` folder, a GPU of another vendor, extra groups (`GroupAdd`),
-privileged mode, or a capability the catalog entry does not declare. The
-[socket proxy](security-defaults.md#docker-socket-proxy) refuses each of these
+whole `/dev/dri` folder or a GPU of another vendor. It also adds no extra
+groups (`GroupAdd`), no privileged mode and no capability that the catalog
+entry does not declare. The [socket proxy](security-defaults.md#docker-socket-proxy) refuses each of these
 as well.
 
 The worker finds the GPUs in sysfs (`/sys/bus/pci/devices` and

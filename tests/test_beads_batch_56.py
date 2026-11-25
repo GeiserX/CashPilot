@@ -346,8 +346,12 @@ class TestTheDeviceCeilingIsDocumentedWhereItIsEnforced:
         import re
 
         text = (self.ROOT / "docs" / "security-defaults.md").read_text(encoding="utf-8")
+        from app import gpu
+
         claimed = set(re.findall(r"`(/dev/[a-z0-9/_-]+)`", text))
-        assert claimed <= self._ceiling(), f"the doc advertises {claimed - self._ceiling()}, which deploys would refuse"
+        # The GPU grant's render nodes and /dev/kfd have their own ceiling (app/gpu.py).
+        allowed = self._ceiling() | set(gpu.RENDER_NODE_CEILING) | {gpu.KFD}
+        assert claimed <= allowed, f"the doc advertises {claimed - allowed}, which deploys would refuse"
 
     def test_claude_md_no_longer_denies_the_capability(self):
         text = (self.ROOT / "CLAUDE.md").read_text(encoding="utf-8")
