@@ -233,6 +233,16 @@ class TestTheDeploy:
         assert err.value.status_code == 409
         assert "one copy of each service" in err.value.detail
 
+    def test_a_desktop_gets_its_own_answer_for_a_service_that_cannot_scale(self):
+        # Volumes cap the service at one copy; the Desktop answer still comes
+        # first, because it says where more copies can go.
+        desktop = {**_worker(), "system_info": json.dumps({"device_type": "desktop"})}
+        with_volumes = {**SCALABLE, "docker": {**SCALABLE["docker"], "volumes": ["/x:/y"]}}
+        with pytest.raises(HTTPException) as err:
+            _deploy(2, svc=with_volumes, worker=desktop)
+        assert err.value.status_code == 409
+        assert "one copy of each service" in err.value.detail
+
     def test_copies_a_desktop_added_itself_stay_on_a_redeploy(self):
         desktop = {
             **_worker(copies=(1, 2)),

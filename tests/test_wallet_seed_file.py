@@ -224,6 +224,15 @@ class TestAnOlderWorker:
         assert isinstance(result, HTTPException) and result.status_code == 409
         assert sent == []
 
+    def test_a_joined_desktop_is_not_called_too_old(self, db):
+        """A Desktop keeps the seed in a file too, but makes the wallet in its own window."""
+        with patch.object(main, "_worker_is_desktop", AsyncMock(return_value=True)):
+            result, sent = _deploy(dict(ENV), features=self.FEATURES, wallet_seed={"mode": "generate"})
+        assert isinstance(result, HTTPException) and result.status_code == 409
+        assert "too old" not in str(result.detail)
+        assert "CashPilot Desktop" in str(result.detail)
+        assert sent == []
+
     def test_a_running_deployment_keeps_working_the_old_way(self, db):
         """Until the worker is updated, its node still needs the variable."""
         _record_legacy_deployment()

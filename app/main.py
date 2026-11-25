@@ -4844,14 +4844,16 @@ async def _deploy(
     to_desktop = await _worker_is_desktop(worker_id) if copies_involved else False
     running_copies = await _worker_instances(worker_id, slug) if copies_involved and not to_desktop else set()
     if instances > 1:
-        limit, why = scaling_limit(svc)
-        if instances > limit:
-            raise HTTPException(status_code=400, detail=why)
+        # The Desktop answer first: it tells the owner where more copies can go,
+        # which the generic scaling message does not.
         if to_desktop:
             raise HTTPException(
                 status_code=409,
                 detail="CashPilot Desktop runs one copy of each service from here. Add more copies on that computer.",
             )
+        limit, why = scaling_limit(svc)
+        if instances > limit:
+            raise HTTPException(status_code=400, detail=why)
         if "instances" not in await _worker_features(worker_id):
             raise HTTPException(
                 status_code=409,
@@ -5279,6 +5281,15 @@ async def _wallet_choice(
     if not capable:
         if choice is None and (posted or legacy):
             return key, None
+        if await _worker_is_desktop(worker_id):
+            # A joined Desktop keeps the seed in a file too, but it makes or
+            # takes the wallet only in its own window, where it shows a new
+            # phrase once. It is not too old, so it gets its own answer.
+            raise HTTPException(
+                status_code=409,
+                detail="CashPilot Desktop makes and keeps this wallet on that computer. Deploy the service from "
+                "CashPilot Desktop there. Nothing was deployed.",
+            )
         raise HTTPException(
             status_code=409,
             detail="This worker is too old to keep the wallet seed out of CashPilot and out of the container's "
