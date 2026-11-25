@@ -1144,6 +1144,8 @@ img { max-width: 100%; }
   font-size: var(--fs-2);
   white-space: nowrap;
 }
+.device-power-form { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+.power-device-watts { width: 6em; }
 .economics-services {
   padding-top: 12px;
   border-top: 1px solid var(--border-color);

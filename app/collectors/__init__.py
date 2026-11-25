@@ -28,6 +28,7 @@ from app.collectors.salad import SaladCollector
 from app.collectors.storj import StorjCollector
 from app.collectors.supportxmr import SupportXMRCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
+from app.collectors.twominers import TwoMinersETCCollector
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "ocean": OceanCollector,
     "supportxmr": SupportXMRCollector,
     "herominers-kas": HeroMinersKaspaCollector,
+    "2miners-etc": TwoMinersETCCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -80,6 +82,7 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "ocean": ["address"],
     "supportxmr": ["address"],
     "herominers-kas": ["address"],
+    "2miners-etc": ["address"],
 }
 
 # How long each credential actually lasts, and why it matters.

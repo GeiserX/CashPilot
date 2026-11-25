@@ -462,7 +462,7 @@ class TestRunningCostsAreShownWithoutBeingInvented:
 
     def test_a_failed_fetch_leaves_the_card_hidden(self):
         page = self._fleet()
-        block = page[page.index("async function loadFleetEconomics()") :][:1400]
+        block = page[page.index("async function loadFleetEconomics(") :][:1600]
         assert "Leave hidden" in block or "return;   // Leave hidden" in block
 
     def test_the_break_even_tariff_is_shown_in_the_tariff_unit(self):
@@ -483,6 +483,13 @@ class TestRunningCostsAreShownWithoutBeingInvented:
         block = self._fleet()
         block = block[block.index("const breakEven = m =>") :][:900]
         assert "economics.tariff_currency === be.currency" in block
+
+    def test_device_draw_is_saved_under_its_own_config_prefix(self):
+        page = self._fleet()
+        assert "m.kind === 'device'" in page
+        assert 'class="power-device-watts"' in page
+        assert "`power_device_${input.dataset.slug}_watts`" in page
+        assert "!deviceSlugs.has(s.platform)" in page
 
 
 class TestTheDeployStepWarnsBeforeItActs:

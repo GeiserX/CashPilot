@@ -731,6 +731,11 @@ def get_service(slug: str) -> dict[str, Any] | None:
     return dict(svc) if svc else None
 
 
+def draws_device_power(service: dict[str, Any]) -> bool:
+    """Whether a tracked service may have its own equipment drawing power."""
+    return service.get("category") == "mining" or (service.get("requirements") or {}).get("gpu") is True
+
+
 def _sighup_handler(signum: int, frame: Any) -> None:
     logger.info("Received SIGHUP — reloading service catalog")
     load_services()

@@ -1,0 +1,16 @@
+{
+  "slug": "2miners-etc",
+  "currency": "ETC",
+  "fields": ["stats.balance", "stats.lastShare"],
+  "note": "Sample recorded from the 2Miners Ethereum Classic API on 2026-11-25. The pool uses 1e9 units per ETC. Immature, pending and already-paid amounts are separate from the unpaid balance.",
+  "parsed": 0.048277005,
+  "sample": {
+    "stats": {
+      "balance": 48277005,
+      "immature": 459255,
+      "lastShare": 1795641243,
+      "paid": 163385117517,
+      "pending": 0
+    }
+  }
+}

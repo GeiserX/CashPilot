@@ -122,6 +122,7 @@ nav = [
           { Storj = "guides/storj.md" },
         ] },
       { Mining = [
+          { "2Miners ETC" = "guides/2miners-etc.md" },
           { "HeroMiners Kaspa" = "guides/herominers-kas.md" },
           { OCEAN = "guides/ocean.md" },
           { SupportXMR = "guides/supportxmr.md" },

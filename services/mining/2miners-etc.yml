@@ -1,0 +1,102 @@
+name: 2Miners ETC
+slug: 2miners-etc
+category: mining
+status: beta
+website: https://etc.2miners.com/
+description: >
+  Track the unpaid Ethereum Classic balance 2Miners holds for your public
+  ETC payout address. Run your own miner and point it at the pool. CashPilot
+  reads the balance and asks you to confirm payouts when the balance drops.
+short_description: Ethereum Classic mining pool, tracked by your payout address
+
+# The Visit link opens the pool setup guide. Referral programme status is unconfirmed.
+referral:
+  account: false
+  signup_url: https://etc.2miners.com/help
+
+docker:
+  image: ""
+  platforms: []
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  note: "Needs an ETCHash miner pointed at 2Miners"
+
+payment:
+  methods: [crypto]
+  minimum_payout: "0.1 ETC (adjustable)"
+  currency: ETC
+  frequency: "The pool checks your payout threshold every two hours"
+
+cashout:
+  method: auto
+  dashboard_url: https://etc.2miners.com/
+  min_amount: 0.1
+  currency: ETC
+  notes: >
+    2Miners pays your address automatically once you reach your chosen
+    threshold. The lowest threshold for ETC payouts is 0.1 ETC.
+
+platforms: []
+
+collector:
+  type: api
+  quiet_days: 2
+  accrual: pool
+  notes: >
+    Reads stats.balance from the public 2Miners ETC account API, in pool
+    units (1 billion per ETC). An HTTP 404 or a zero last share time means
+    the pool has no record of the address.
+  credential_hint: >
+    Enter the public Ethereum Classic payout address your miner uses on
+    2Miners, starting with <b>0x</b>. Leave out any worker name.
+
+payout:
+  model: external
+  chain: ethereum-classic
+  address_source: collector
+  notes: >
+    The unpaid balance is accrued at 2Miners. The wallet balance is a
+    separate read from Ethereum Classic. Check your wallet for the amount
+    you received before confirming a payout in CashPilot.
+
+disclosure:
+  sells: compute
+  third_party_traffic: "No. Your miner sends mining work to the pool."
+  data_collected: "The pool uses your payout address, your chosen worker names, and your miner's IP address."
+  account_rules: "Anyone can view stats by payout address. The pool asks for worker IP confirmation to change the threshold."
+
+rating:
+  reviewed_on: "2026-11-25"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: unknown
+    traffic_transparency: unknown
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: "The pool API lists payments. No wallet receipt was checked."
+    payout_terms: "2Miners lists a 1% pool fee and a minimum threshold of 0.1 ETC."
+    account_safety: "The pool shows stats by payout address. The review did not check reports of withheld balances."
+    terms_fit: "The pool setup guide lists supported miners. Its terms were not reviewed."
+    traffic_transparency: "The pool setup guide lists mining servers. The connection was not inspected."
+    privacy: "The pool publishes account stats. Its data retention practices were not checked."
+    identity_checks: "The pool setup guide asks for a payout address. Identity rules for payouts were not checked."
+    support: "The pool FAQ lists support options. No support request was tested."
+    earnings_realism: "The pool displays estimates. No estimate was compared with a payout."
+    longevity: "The pool API answered during the check. Its operating history was not verified."
+  cons:
+  - text: "The pool charges a 1% fee and holds payouts until your threshold is reached."
+    criterion: payout_terms
+    kind: terms
+    source: https://etc.2miners.com/
+    checked_on: "2026-11-25"
