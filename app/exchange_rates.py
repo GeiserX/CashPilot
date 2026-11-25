@@ -47,6 +47,7 @@ CRYPTO_IDS: dict[str, str] = {
     # Mining pools that pay in Monero (SupportXMR).
     "XMR": "monero",
     "KAS": "kaspa",
+    "ETC": "ethereum-classic",
 }
 
 CACHE_TTL = 900  # 15 minutes

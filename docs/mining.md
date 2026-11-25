@@ -7,6 +7,7 @@ The **Mining** section of the catalog is for crypto you mine with your own hardw
 | OCEAN | Bitcoin | [OCEAN](guides/ocean.md) |
 | SupportXMR | Monero | [SupportXMR](guides/supportxmr.md) |
 | HeroMiners Kaspa | Kaspa | [HeroMiners Kaspa](guides/herominers-kas.md) |
+| 2Miners ETC | Ethereum Classic | [2Miners ETC](guides/2miners-etc.md) |
 
 ## Accrued is not received
 
