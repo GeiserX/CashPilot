@@ -18,6 +18,7 @@ short_description: Bitcoin mining pool, tracked by your payout address
 referral:
   account: false
   signup_url: "https://ocean.xyz/getstarted"
+  account: false
 
 docker:
   image: ""
