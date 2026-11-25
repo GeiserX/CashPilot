@@ -552,6 +552,19 @@ class TestPageRoutes:
             resp = client.get("/fleet")
             assert resp.status_code == 200
 
+    def test_fleet_add_a_box_names_desktop(self, client):
+        """Add a box tells a Desktop user which screen takes the block.
+
+        The two names are CashPilot Desktop's own screen labels
+        (frontend/src/render/mode.ts): rename them there, rename them here.
+        """
+        with _auth_owner():
+            resp = client.get("/fleet")
+        assert resp.status_code == 200
+        assert "https://github.com/GeiserX/CashPilot-Desktop" in resp.text
+        assert "<strong>Join my CashPilot</strong>" in resp.text
+        assert "<strong>Paste from Add a box</strong>" in resp.text
+
     def test_fleet_no_auth(self, client):
         with _no_auth():
             resp = client.get("/fleet", follow_redirects=False)

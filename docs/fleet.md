@@ -193,6 +193,7 @@ The **Fleet** page lists every box:
 - the containers it reported or, for a phone running the [Android app](https://github.com/GeiserX/CashPilot-android), its earning apps. A box that stopped reporting keeps its last known list, greyed out;
 - **Check isolation** on Docker workers that support it ([what it tests](isolation-check.md)) and **Remove**;
 - **Add a box** at the bottom, with the environment variables for the next worker.
+  A computer with [CashPilot Desktop](https://github.com/GeiserX/CashPilot-Desktop) joins with the same block: pick **Join my CashPilot** (on first run, or in Settings under **How this computer runs**) and paste it into **Paste from Add a box**.
 
 ![The Boxes table on the Fleet page: three Linux boxes reporting, one offline box with its last known containers greyed out, and an Android phone listing its earning apps](images/screenshots/fleet-phone.png)
 
