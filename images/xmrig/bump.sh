@@ -11,8 +11,9 @@
 # a key registered to the account that owns the committer email, so together
 # they mean XMRig's key signed it. "verified" alone also passes a web-UI commit
 # or merge by anyone with write access, which GitHub's web-flow key signs.
-# Then it rewrites VERSION, COMMIT and REVISION beside this script. Writes nothing when the version is already pinned, and refuses a
-# version older than the pin, so a pulled release never moves it backwards.
+# Then it rewrites VERSION, COMMIT and REVISION beside this script. Writes
+# nothing when the version is already pinned, and refuses a version older
+# than the pin, so a pulled release never moves it backwards.
 # Set GITHUB_TOKEN to raise the API rate limit.
 set -euo pipefail
 
