@@ -1371,8 +1371,8 @@ async def lifespan(app: FastAPI):
 
     miner_task = None
     if MINER_TARGETS or MINER_ERRORS:
-        if MINER_ERRORS:
-            logger.warning("Ignored %d invalid entries in CASHPILOT_MINERS", len(MINER_ERRORS))
+        for error in MINER_ERRORS:
+            logger.warning("CASHPILOT_MINERS rejected an entry (%s)", error)
         miner_task = asyncio.create_task(_miner_loop())
 
     if UI_URL:

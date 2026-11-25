@@ -191,7 +191,10 @@ function deviceFixture() {
       return {};
     }
     if (path === '/api/fleet/economics') {
-      return {machines: [{kind: 'device', slug: 'ocean', machine: 'OCEAN', watts: stored, gross_basis: 'accrued'}]};
+      return {
+        machines: [{kind: 'device', slug: 'ocean', machine: 'OCEAN', watts: stored, gross_basis: 'accrued'}],
+        lan_miners: [{watts: 2.65}],
+      };
     }
     const pending = pendingNet;
     pendingNet = null;
@@ -231,6 +234,9 @@ await older;
 check('an older response cannot restore stale watts', racing.editor().value === '25', racing.markup());
 check('the gross tooltip describes period accruals', racing.markup().includes('Accrued at the pool during this period'),
   'the tooltip asserts that past accruals still await payout');
+check('miner watts suggest a starting point without filling the wall draw',
+  racing.markup().includes('Use the miner readings above as a starting point') && racing.editor().value === '25',
+  racing.markup());
 
 const renderMiners = new Function('esc', 'brk', extract('renderMiners') + '; return renderMiners;')(esc, esc);
 const miner = {
@@ -245,6 +251,8 @@ check('miner model and user are escaped', readings.includes('&lt;img src=x&gt;')
 const old = renderMiner({...miner, read_at: new Date(Date.now() - 240000).toISOString()});
 const offlineMiner = renderMiner(miner, {status: 'offline'});
 check('stale and offline miners show the last read in grey', [old, offlineMiner].every(row => row.includes('cell-unknown') && row.includes('Last read')), old + offlineMiner);
+const ahead = renderMiner({...miner, read_at: new Date(Date.now() + 1800000).toISOString()});
+check('a future miner timestamp is grey with a clock hint', ahead.includes('cell-unknown') && ahead.includes('Reading time is ahead'), ahead);
 const missed = renderMiner({...miner, ok: false, error: 'timed out'});
 check('a failed reading has no figures', missed.includes('timed out') && !missed.includes('TH/s') && !missed.includes(' J/TH'), missed);
 check('a worker with no configuration has no miner panel', renderMiners(onlineBox, undefined) === '', 'unexpected miner panel');

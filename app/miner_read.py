@@ -70,7 +70,8 @@ def _endpoint(raw: str) -> SplitResult:
     try:
         ipaddress.ip_address(host)
     except ValueError:
-        if len(host) > 253 or not all(_DNS_LABEL.fullmatch(label) for label in host.rstrip(".").split(".")):
+        dns_name = host.removesuffix(".")
+        if len(dns_name) > 253 or not all(_DNS_LABEL.fullmatch(label) for label in dns_name.split(".")):
             raise ValueError("invalid hostname") from None
     return parsed
 
@@ -324,19 +325,23 @@ def sanitize_snapshot(obj) -> dict | None:
         return None
     devices = obj.get("devices")
     errors = obj.get("errors")
+    rows = {}
+    if isinstance(devices, list):
+        for item in devices[:MAX_DEVICES]:
+            if (row := sanitize_row(item)) is not None:
+                rows.setdefault(row["target"], row)
     return {
         "read_at": _timestamp(obj.get("read_at")),
         "errors": [error for item in errors[:MAX_DEVICES] if (error := _text(item, 200))]
         if isinstance(errors, list)
         else [],
-        "devices": [row for item in devices[:MAX_DEVICES] if (row := sanitize_row(item)) is not None]
-        if isinstance(devices, list)
-        else [],
+        "devices": list(rows.values()),
     }
 
 
-async def _read_target(target: Target) -> dict:
+async def _read_target(target: Target) -> tuple[str | None, dict]:
     row = {"target": target.url, "protocol": target.protocol}
+    ip = None
     try:
         ip = await _resolve(target)
         if target.protocol == "axeos":
@@ -352,16 +357,30 @@ async def _read_target(target: Target) -> dict:
         row.update(ok=False, error=str(exc))
     except (TimeoutError, httpx.TimeoutException):
         row.update(ok=False, error="timed out")
-    except (OSError, httpx.RequestError):
+    except (OSError, UnicodeError, httpx.RequestError):
         row.update(ok=False, error="unreachable")
     row["read_at"] = datetime.now(UTC).isoformat()
-    return row
+    return ip, row
 
 
 async def read_all(targets: list[Target]) -> dict:
-    devices = await asyncio.gather(*(_read_target(target) for target in targets))
+    readings = await asyncio.gather(*(_read_target(target) for target in targets))
+    devices = []
+    seen = set()
+    for target, (ip, reading) in zip(targets, readings, strict=True):
+        row = sanitize_row(reading)
+        if row is None:
+            continue
+        # A DNS name and its literal IP can name one miner. Display the first
+        # successful reading so both aliases do not appear as separate draw.
+        if row["ok"]:
+            endpoint = target.protocol, ip, target.port
+            if endpoint in seen:
+                continue
+            seen.add(endpoint)
+        devices.append(row)
     return {
         "read_at": datetime.now(UTC).isoformat(),
         "errors": [],
-        "devices": [row for data in devices if (row := sanitize_row(data)) is not None],
+        "devices": devices,
     }

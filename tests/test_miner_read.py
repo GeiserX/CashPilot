@@ -92,14 +92,14 @@ def test_avalon_average_and_whatsminer_v2_summary():
 def test_targets_accept_private_endpoints_and_deduplicate():
     targets, errors = miners.parse_targets(
         " axeos://192.168.1.50, cgminer://10.0.0.7:4028, axeos://[fd25::aa]:8080,"
-        "axeos://[::ffff:192.168.1.50]:80,cgminer://unit.local "
+        "axeos://[::ffff:192.168.1.50]:80,cgminer://unit.local. "
     )
     assert not errors
     assert [(target.host, target.port) for target in targets] == [
         ("192.168.1.50", 80),
         ("10.0.0.7", 4028),
         ("fd25::aa", 8080),
-        ("unit.local", 4028),
+        ("unit.local.", 4028),
     ]
     assert targets[2].url == "axeos://[fd25::aa]:8080"
 
@@ -116,6 +116,7 @@ def test_targets_accept_private_endpoints_and_deduplicate():
         "axeos://10.0.0.1:0",
         "axeos://10.0.0.1:65536",
         "axeos://[fd00::1]junk:80",
+        "axeos://unit.local..",
         "axeos://10.0.0.1\n:80",
         "axeos://10.0.\t0.1",
         ",".join(["axeos://10.0.0.1"] * 65),
@@ -148,9 +149,11 @@ def test_out_of_scope_literal_never_becomes_a_target(host):
 
 @pytest.mark.asyncio
 async def test_dns_checks_every_address_and_passes_only_the_pinned_ip(monkeypatch):
-    targets, _ = miners.parse_targets("axeos://unit.local,axeos://second.local")
+    targets, _ = miners.parse_targets("axeos://unit.local,axeos://broken.local,axeos://second.local")
 
     async def resolve(name, port, **_):
+        if name == "broken.local":
+            raise UnicodeError("resolver could not encode the name")
         addrs = ["192.168.1.15", "8.8.8.8"] if name == "unit.local" else ["192.168.1.16"]
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (addr, port)) for addr in addrs]
 
@@ -159,8 +162,19 @@ async def test_dns_checks_every_address_and_passes_only_the_pinned_ip(monkeypatc
     monkeypatch.setattr(miners, "_axeos_get", read)
     devices = (await miners.read_all(targets))["devices"]
     assert devices[0]["error"] == "address not allowed"
-    assert devices[1]["hashrate_ghs"] == 1000
+    assert devices[1]["error"] == "unreachable"
+    assert devices[2]["hashrate_ghs"] == 1000
     read.assert_awaited_once_with("192.168.1.16", 80)
+
+
+@pytest.mark.asyncio
+async def test_one_reading_for_aliases_of_the_same_endpoint(monkeypatch):
+    targets, _ = miners.parse_targets("axeos://unit.local,axeos://192.168.1.16,axeos://unit.local:8080")
+    monkeypatch.setattr(miners, "_resolve", AsyncMock(return_value="192.168.1.16"))
+    monkeypatch.setattr(miners, "_axeos_get", AsyncMock(return_value={"power": 10}))
+
+    devices = (await miners.read_all(targets))["devices"]
+    assert [row["target"] for row in devices] == ["axeos://unit.local", "axeos://unit.local:8080"]
 
 
 def sample(**fields):
@@ -183,7 +197,8 @@ def test_schema_drops_private_and_nonfinite_fields_and_caps_rows():
         pool_url="stratum+tcp://POOL.example:4444/path?secret=fixture",
         uptime_s=0,
     )
-    snap = miners.sanitize_snapshot({"devices": [raw] * 70, "errors": ["x" * 300] * 70})
+    inputs = [{**raw, "target": f"axeos://10.0.0.{index}"} for index in range(1, 71)]
+    snap = miners.sanitize_snapshot({"devices": inputs, "errors": ["x" * 300] * 70})
     assert len(snap["devices"]) == len(snap["errors"]) == 64
     assert len(snap["errors"][0]) == 200
     device = snap["devices"][0]
@@ -203,6 +218,7 @@ def test_schema_drops_private_and_nonfinite_fields_and_caps_rows():
     assert len(device["model"]) == 64
     assert len(device["pool_user"]) == 128
     assert device["uptime_s"] == 0
+    assert len(miners.sanitize_snapshot({"devices": [raw, raw]})["devices"]) == 1
 
 
 def test_bad_rows_are_dropped_and_failed_reads_cannot_claim_figures():

@@ -1710,6 +1710,9 @@ class TestApiFleet:
             )
             assert beat.status_code == 200, beat.text
             stored = upsert.call_args.kwargs["system_info"]
+            stored_device = json.loads(stored)["miners"]["devices"][0]
+            assert "ssid" not in stored_device
+            assert stored_device["hashrate_ghs"] is None
             row = {"id": 1, "name": "box", "system_info": stored}
             with (
                 patch("app.main.database.list_workers", AsyncMock(side_effect=lambda: [row.copy()])),
@@ -1746,7 +1749,8 @@ class TestApiFleet:
         stale = {**fresh, "target": "axeos://10.0.0.21", "read_at": (now - timedelta(minutes=4)).isoformat()}
         unknown = {**fresh, "target": "axeos://10.0.0.22", "watts": None, "hashrate_ghs": 2000}
         failed = {**fresh, "target": "axeos://10.0.0.23", "ok": False}
-        reports = {"read_at": fresh["read_at"], "devices": [fresh, stale, unknown, failed]}
+        ahead = {**fresh, "target": "axeos://10.0.0.24", "read_at": (now + timedelta(minutes=30)).isoformat()}
+        reports = {"read_at": fresh["read_at"], "devices": [fresh, fresh, stale, unknown, failed, ahead]}
         config = {
             "power_price_per_kwh": price,
             "power_currency": currency,

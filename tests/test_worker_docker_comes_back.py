@@ -117,6 +117,19 @@ def _after(events, marker):
     return events[events.index(marker) + 1 :]
 
 
+def test_miner_configuration_errors_are_logged_once(monkeypatch, caplog):
+    targets, errors = worker_api.miner_read.parse_targets("cgminer://8.8.8.8,axeos://user:fixture-password@10.0.0.1")
+    monkeypatch.setattr(worker_api, "MINER_TARGETS", targets)
+    monkeypatch.setattr(worker_api, "MINER_ERRORS", errors)
+    monkeypatch.setattr(worker_api, "_miner_loop", AsyncMock())
+
+    _run(docker_at_start=False, docker_later=False, monkeypatch=monkeypatch)
+
+    logged = [record.getMessage() for record in caplog.records if "CASHPILOT_MINERS" in record.getMessage()]
+    assert logged == [f"CASHPILOT_MINERS rejected an entry ({error})" for error in errors]
+    assert "fixture-password" not in caplog.text
+
+
 class TestDockerComesBackAfterStart:
     def test_the_start_steps_run_once_in_order_then_the_guard_loop_carries_on(self, monkeypatch, caplog):
         caplog.set_level(logging.INFO, logger=worker_api.logger.name)
