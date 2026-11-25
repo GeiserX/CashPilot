@@ -106,6 +106,32 @@ class TestBreakEven:
         assert me.monthly_cost(-5, 0.2) == 0.0
         assert me.monthly_cost(65, -1) == 0.0
 
+    def test_break_even_is_reported_before_a_tariff_is_entered(self):
+        """It needs only gross and watts: the price this machine could stand.
+
+        An 18 W miner earning 0.99 a month uses 13.14 kWh, so it pays for itself
+        below 0.99 / 13.14 = 0.0753 a kWh, whatever the user pays.
+        """
+        out = me.assess_machine(name="bitaxe", monthly_gross=0.99, watts=18.0, price_per_kwh=None)
+        assert out["verdict"] == me.UNKNOWN
+        assert out["break_even_price_per_kwh"] == pytest.approx(0.0753, abs=0.0001)
+        assert out["quality"] == "estimated"
+
+    def test_a_machine_that_earned_nothing_breaks_even_at_zero(self):
+        out = me.assess_machine(name="box", monthly_gross=0.0, watts=65.0, price_per_kwh=None)
+        assert out["break_even_price_per_kwh"] == 0.0
+        assert "loses money at any electricity price" in out["summary"]
+
+    def test_an_unreported_machine_has_no_break_even(self):
+        """None gross is a machine we cannot see, not one that earned nothing."""
+        out = me.assess_machine(name="box", monthly_gross=None, watts=65.0, price_per_kwh=None)
+        assert "break_even_price_per_kwh" not in out
+
+    def test_without_watts_there_is_no_break_even_tariff(self):
+        out = me.assess_machine(name="box", monthly_gross=4.0, watts=None, price_per_kwh=None)
+        assert "break_even_price_per_kwh" not in out
+        assert "guessing would be worse" in out["summary"]
+
 
 class TestFleetRollUp:
     def _machine(self, name, gross, cost, verdict=me.PROFITABLE):
@@ -221,3 +247,83 @@ class TestEndpoint:
     def test_an_empty_fleet_returns_an_empty_summary(self):
         out = self._call()
         assert out["machines"] == []
+
+    def _fx(self, from_usd, to_usd):
+        from unittest.mock import patch
+
+        from app import main
+
+        return (
+            patch.object(main.exchange_rates, "from_usd", from_usd),
+            patch.object(main.exchange_rates, "to_usd", to_usd),
+        )
+
+    def test_break_even_is_in_the_tariff_currency(self):
+        """A price per kWh is read against a bill, so it is in the bill's currency."""
+        a, b = self._fx(lambda v, cur: v * 0.9, lambda v, cur: v / 0.9)
+        with a, b:
+            out = self._call(
+                config={"power_currency": "EUR", "worker_c1_watts": "18"},
+                workers=self.WORKERS,
+                earned={"miner": 0.99},
+                containers=[{"slug": "miner", "status": "running", "_worker_id": 1}],
+            )
+        by_name = {m["machine"]: m for m in out["machines"]}
+        be = by_name["charlie"]["break_even_tariff"]
+        assert be["currency"] == "EUR"
+        assert be["price_per_kwh"] == pytest.approx(0.0753 * 0.9, abs=0.0001)
+        assert by_name["alpha"]["break_even_tariff"] is None, "no watts typed, so no break-even"
+        assert out["tariff_currency"] == "EUR"
+        assert out["tariff_price_per_kwh"] is None, "no tariff typed"
+
+    def test_break_even_without_fx_is_labelled_usd(self):
+        """No rate: the USD figure labelled USD, never USD labelled EUR."""
+        a, b = self._fx(lambda v, cur: None, lambda v, cur: None)
+        with a, b:
+            out = self._call(
+                config={"power_currency": "EUR", "power_price_per_kwh": "0.25", "worker_c1_watts": "18"},
+                workers=self.WORKERS,
+                earned={"miner": 0.99},
+                containers=[{"slug": "miner", "status": "running", "_worker_id": 1}],
+            )
+        be = {m["machine"]: m for m in out["machines"]}["charlie"]["break_even_tariff"]
+        assert be == {"price_per_kwh": pytest.approx(0.0753, abs=0.0001), "currency": "USD"}
+        assert out["tariff_currency"] == "EUR"
+        assert out["tariff_price_per_kwh"] == 0.25
+
+    def test_the_tariff_is_echoed_as_typed_not_converted(self):
+        """The page prints "you pay" next to a local price, so it must be local."""
+        a, b = self._fx(lambda v, cur: v * 0.9, lambda v, cur: v / 0.9)
+        with a, b:
+            out = self._call(
+                config={"power_currency": "EUR", "power_price_per_kwh": "0.25", "worker_c1_watts": "18"},
+                workers=self.WORKERS,
+                earned={"miner": 0.99},
+                containers=[{"slug": "miner", "status": "running", "_worker_id": 1}],
+            )
+        assert out["tariff_price_per_kwh"] == 0.25
+        charlie = {m["machine"]: m for m in out["machines"]}["charlie"]
+        assert charlie["verdict"] == me.LOSING_MONEY
+        assert charlie["break_even_tariff"]["currency"] == "EUR"
+
+
+class TestWorkerWatts:
+    """One reader of the typed machine watts, for every consumer."""
+
+    def test_client_id_wins_over_the_row_id(self):
+        from app import main
+
+        cfg = {"worker_abc_watts": "18", "worker_7_watts": "65"}
+        assert main._worker_watts(cfg, {"id": 7, "client_id": "abc"}) == 18.0
+
+    def test_the_row_id_key_is_still_read(self):
+        from app import main
+
+        assert main._worker_watts({"worker_7_watts": "65"}, {"id": 7, "client_id": "abc"}) == 65.0
+
+    @pytest.mark.parametrize("raw", [None, "", "lots"])
+    def test_absent_or_unreadable_is_none(self, raw):
+        from app import main
+
+        cfg = {} if raw is None else {"worker_abc_watts": raw}
+        assert main._worker_watts(cfg, {"id": 7, "client_id": "abc"}) is None

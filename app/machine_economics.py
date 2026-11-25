@@ -136,7 +136,7 @@ def assess_machine(
 
     if price_per_kwh is None or price_per_kwh <= 0 or watts is None or watts <= 0:
         missing = "your electricity price" if not price_per_kwh else "this machine's power draw"
-        return {
+        out: dict[str, Any] = {
             "machine": name,
             "verdict": UNKNOWN,
             "monthly_gross": round(gross, 4),
@@ -148,6 +148,18 @@ def assess_machine(
                 "whether that covers the electricity, and guessing would be worse than not saying."
             ),
         }
+        # The break-even TARIFF needs only the gross and the draw, not a price:
+        # it is the price this machine could stand. Withholding it until a
+        # tariff is typed hid the one number a user can check against a bill
+        # without telling CashPilot what that bill is.
+        if watts is not None and watts > 0:
+            out["break_even_price_per_kwh"] = round(break_even_price(gross, watts) or 0.0, 4)
+            out["quality"] = "estimated"
+            if gross <= 0:
+                out["summary"] = (
+                    f"{name} earned nothing measurable in the last 30 days, so it loses money at any electricity price."
+                )
+        return out
 
     cost = monthly_cost(watts, price_per_kwh)
     net = gross - cost

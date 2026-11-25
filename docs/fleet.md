@@ -189,7 +189,7 @@ The fleet key is **never sent to the browser on page load**. The fleet dashboard
 The **Fleet** page lists every box:
 
 - each worker with its system, worker version and last report, shown in red once it stops reporting;
-- its wall power draw in watts, which the **Running costs** block below weighs against what the machine earned last month once you enter your electricity price;
+- its wall power draw in watts, which the [Running costs](#running-costs) block weighs against what the machine earned in the last 30 days;
 - the containers it reported or, for a phone running the [Android app](https://github.com/GeiserX/CashPilot-android), its earning apps. A box that stopped reporting keeps its last known list, greyed out;
 - **Check isolation** on Docker workers that support it ([what it tests](isolation-check.md)) and **Remove**;
 - **Add a box** at the bottom, with the environment variables for the next worker.
@@ -198,6 +198,15 @@ The **Fleet** page lists every box:
 ![The Boxes table on the Fleet page: three Linux boxes reporting, one offline box with its last known containers greyed out, and an Android phone listing its earning apps](images/screenshots/fleet-phone.png)
 
 Starting, stopping, restarting and viewing logs happen on the **Dashboard**. There, a service running on several workers shows an expandable row with one sub-row per instance; the main row shows the average CPU and memory (prefixed with `~`), and each sub-row its own figures and buttons.
+
+### Running costs
+
+The **Running costs** block shows, for each machine, what it earned in the last 30 days and what its electricity costs. It needs two numbers from you: the electricity price and currency at the top of the block, and each machine's wall draw in watts in its row of the boxes table.
+
+- **Break-even tariff.** Once a machine has a wattage, its row says "Earns more than its electricity below 0.069 EUR/kWh". That is the electricity price at which the machine's earnings exactly cover its power. If you pay less, it makes money. If you pay more, it costs you money. The line shows before you enter a price, in the currency of your tariff setting (in USD when no exchange rate is available). With a price entered it adds "(you pay 0.250)" so you can compare. A machine that earned nothing in the window loses money at any price, so its break-even is 0.
+- **Every figure rests on the watts you typed.** CashPilot measures no power. Read the draw from a plug meter or the machine's spec, and expect the figures to be only as good as that number.
+- **Per-service figures use the same watts.** Each service's share of the bill comes from the machine's typed draw. It falls back to the hardware the worker reports, then 65 W, only when no draw was typed. `/api/earnings/net` gives a service its own break-even only when its share is at least 5 W, which a plug meter can see.
+- **A VPS: leave the watts empty.** Its bill does not change with power use, so a typed draw would charge it a cost you do not pay.
 
 ## Budgeting a small box
 

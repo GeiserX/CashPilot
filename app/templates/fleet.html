@@ -288,13 +288,26 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // whatever currency the viewer reads in.
     const money = v => (v == null ? '—' : CP.formatCurrency(v));
 
+    // The break-even tariff is a price per kWh in the TARIFF's own unit, read
+    // against an electricity bill. It is not money to display-convert, so it
+    // gets toFixed(3) and the currency code the API returned, never
+    // CP.formatCurrency. "You pay" is added only when both are in one currency.
+    const breakEven = m => {
+      const be = m.break_even_tariff;
+      if (!be || be.price_per_kwh == null) return '';
+      const paid = economics.tariff_price_per_kwh;
+      const yours = paid != null && economics.tariff_currency === be.currency
+        ? ` (you pay ${Number(paid).toFixed(3)})` : '';
+      return `<div class="economics-summary econ-break-even">Earns more than its electricity below <strong>${Number(be.price_per_kwh).toFixed(3)} ${esc(be.currency)}/kWh</strong>${yours}</div>`;
+    };
+
     const rows = machines.map(m => {
       const losing = m.verdict === 'losing_money';
       return `
         <div class="economics-row">
           <div>
             <div class="economics-machine">${brk(m.machine)}</div>
-            <div class="economics-summary">${esc(m.summary)}</div>
+            <div class="economics-summary">${esc(m.summary)}</div>${breakEven(m)}
           </div>
           <div class="economics-figures">
             <span title="gross earnings per month">${money(m.monthly_gross)}</span>${m.monthly_cost == null ? '' : `
