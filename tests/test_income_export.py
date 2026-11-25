@@ -171,6 +171,24 @@ async def test_only_confirmed_payouts_with_recorded_dates_and_rates(client, db):
     ]
 
 
+async def test_earnings_and_payouts_share_one_date_order(client, db):
+    await db.upsert_earnings("earnapp", 10, date=EARLIER)
+    await db.upsert_earnings("earnapp", 12, date=MONDAY)
+    await db.upsert_earnings("honeygain", 20, date=EARLIER)
+    await db.upsert_earnings("honeygain", 23, date=SATURDAY)
+    sunday = "2025-11-16"
+    await db.add_manual_payout("earnapp", 4, paid_on=sunday)
+    await db.add_manual_payout("honeygain", 5, paid_on=EARLIER)
+
+    rows = csv_rows(await client.get(EXPORT, params={"start": EARLIER, "end": MONDAY}))
+    assert [(r["date"], r["kind"], r["service"]) for r in rows] == [
+        (EARLIER, "payout", "honeygain"),
+        (SATURDAY, "earned", "honeygain"),
+        (sunday, "payout", "earnapp"),
+        (MONDAY, "earned", "earnapp"),
+    ]
+
+
 async def test_cointracking_example_maps_a_payout(client, db):
     await db.add_manual_payout("mysterium", 8, "MYST", 0.25, "crypto", MONDAY)
     (payout,) = csv_rows(await client.get(EXPORT))

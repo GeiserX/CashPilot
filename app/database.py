@@ -1799,13 +1799,13 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
 
 
 async def iter_earned_steps(end: str | None = None) -> AsyncIterator[EarnedStep]:
-    """Read native earning steps on a connection reserved for the export."""
+    """Read native earning steps in date order on a connection reserved for the export."""
     query = "SELECT platform, date, balance, currency, fx_rate_usd, source, earned FROM earnings"
     params = ()
     if end is not None:
         query += " WHERE date <= ?"
         params = (end,)
-    query += " ORDER BY platform, date, source"
+    query += " ORDER BY date, platform, source"
     # Earlier readings supply the opening baseline. The live collector can
     # commit on the shared connection while this cursor streams its snapshot.
     steps = _EarnedSteps(priced_only=False)
@@ -4724,6 +4724,20 @@ async def get_payouts(platform: str | None = None, confirmed_only: bool = False)
         return [dict(r) for r in rows]
     finally:
         await db.close()
+
+
+async def iter_confirmed_payouts(start: str, end: str) -> AsyncIterator[aiosqlite.Row]:
+    """Stream confirmed payouts for the export, oldest first."""
+    async with aiosqlite.connect(f"{DB_PATH.resolve().as_uri()}?mode=ro", uri=True) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT platform, amount, currency, fx_rate_usd, method, detected_at "
+            "FROM payouts WHERE confirmed = 1 AND substr(detected_at, 1, 10) BETWEEN ? AND ? "
+            "ORDER BY detected_at, id",
+            (start, end),
+        ) as cursor:
+            async for row in cursor:
+                yield row
 
 
 async def get_confirmed_payout_totals() -> dict[str, float]:

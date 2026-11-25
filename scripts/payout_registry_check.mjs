@@ -288,6 +288,7 @@ const fields = {
   currency: {value: 'USD', add(option) { currencyOptions.push(option.value); }},
 };
 let onReady, onPreset;
+let now = '2026-12-31T23:59:00Z';
 const incomeForm = {
   elements: {namedItem(name) { return fields[name]; }},
   addEventListener(event, callback) { if (event === 'click') onPreset = callback; },
@@ -307,7 +308,7 @@ runInNewContext(payoutScript, {
     },
   },
   Date: class extends Date {
-    constructor() { super('2026-11-25T00:15:00Z'); }
+    constructor() { super(now); }
   },
   Option: function Option(_label, value) { this.value = value; },
   localStorage: {getItem(key) { return key === 'cp-display-currency' ? 'EUR' : null; }},
@@ -316,11 +317,15 @@ onReady?.();
 await new Promise(resolve => setImmediate(resolve));
 
 check('income export loads EUR and selects the saved currency', currencyOptions.join(',') === 'USD,EUR' && fields.currency.value === 'EUR');
-check('income export caps both dates at today in UTC', fields.start.max === '2026-11-25' && fields.end.max === '2026-11-25');
+check('income export caps both dates at today in UTC on load', fields.start.max === '2026-12-31' && fields.end.max === '2026-12-31');
+now = '2027-01-01T00:01:00Z';
 onPreset?.({target: {closest: () => ({dataset: {incomeRange: 'this'}})}});
-check('income export fills this year up to today', fields.start.value === '2026-01-01' && fields.end.value === '2026-11-25');
+check('this year fills the new year after UTC midnight', fields.start.value === '2027-01-01' && fields.end.value === '2027-01-01');
+check('this year refreshes both date limits', fields.start.max === '2027-01-01' && fields.end.max === '2027-01-01');
+now = '2027-01-02T00:01:00Z';
 onPreset?.({target: {closest: () => ({dataset: {incomeRange: 'last'}})}});
-check('income export fills the previous calendar year', fields.start.value === '2025-01-01' && fields.end.value === '2025-12-31');
+check('last year fills the previous calendar year after UTC midnight', fields.start.value === '2026-01-01' && fields.end.value === '2026-12-31');
+check('last year refreshes both date limits', fields.start.max === '2027-01-02' && fields.end.max === '2027-01-02');
 
 if (failures) {
   console.error(`\n${failures} payout-registry render check(s) failed`);

@@ -83,36 +83,42 @@ def _row(
 
 async def iter_rows(start: str, end: str, currency: str, fiat: dict[str, float]) -> AsyncIterator[tuple[str, ...]]:
     days = sorted(fiat)
-    async with aclosing(database.iter_earned_steps(end)) as steps:
-        async for step in steps:
-            if step.date >= start:
+    async with (
+        aclosing(database.iter_earned_steps(end)) as steps,
+        aclosing(database.iter_confirmed_payouts(start, end)) as payouts,
+    ):
+        step = await anext(steps, None)
+        payout = await anext(payouts, None)
+        while step is not None or payout is not None:
+            if payout is not None and (step is None or payout["detected_at"][:10] < step.date):
+                day = payout["detected_at"][:10]
                 yield _row(
-                    step.date,
-                    step.since,
-                    kind_for(step.platform),
-                    step.platform,
-                    step.currency,
-                    step.amount,
-                    step.rate,
+                    day,
+                    "",
+                    "payout",
+                    payout["platform"],
+                    payout["currency"],
+                    max(0.0, payout["amount"]),
+                    database._usd_rate(payout["currency"], payout["fx_rate_usd"]),
                     currency,
-                    rate_on(days, fiat, step.date),
+                    rate_on(days, fiat, day),
+                    payout["method"],
                 )
-
-    for payout in reversed(await database.get_payouts(confirmed_only=True)):
-        day = payout["detected_at"][:10]
-        if start <= day <= end:
-            yield _row(
-                day,
-                "",
-                "payout",
-                payout["platform"],
-                payout["currency"],
-                max(0.0, payout["amount"]),
-                database._usd_rate(payout["currency"], payout["fx_rate_usd"]),
-                currency,
-                rate_on(days, fiat, day),
-                payout["method"],
-            )
+                payout = await anext(payouts, None)
+            elif step is not None:
+                if step.date >= start:
+                    yield _row(
+                        step.date,
+                        step.since,
+                        kind_for(step.platform),
+                        step.platform,
+                        step.currency,
+                        step.amount,
+                        step.rate,
+                        currency,
+                        rate_on(days, fiat, step.date),
+                    )
+                step = await anext(steps, None)
 
 
 async def stream_csv(start: str, end: str, currency: str, fiat: dict[str, float]) -> AsyncIterator[str]:

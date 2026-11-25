@@ -554,6 +554,9 @@
     form.addEventListener('click', function (ev) {
       var button = ev.target.closest('[data-income-range]');
       if (!button) return;
+      var today = new Date().toISOString().slice(0, 10);
+      start.max = today;
+      end.max = today;
       var thisYear = button.dataset.incomeRange === 'this';
       var year = Number(today.slice(0, 4)) - (thisYear ? 0 : 1);
       start.value = year + '-01-01';
