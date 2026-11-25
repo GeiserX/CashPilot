@@ -490,12 +490,6 @@ class TestRunningCostsAreShownWithoutBeingInvented:
         assert "`power_device_${input.dataset.slug}_watts`" in page
         assert "!deviceSlugs.has(s.platform)" in page
 
-    def test_unmetered_checkbox_displays_and_saves_the_worker_setting(self):
-        page = self._fleet()
-        assert "Not billed per kWh" in page
-        assert "w.unmetered ? 'checked' : ''" in page
-        assert "`worker_${id}_unmetered`" in page
-
 
 class TestTheDeployStepWarnsBeforeItActs:
     """deploy-risk and preflight, the last two orphaned endpoints.

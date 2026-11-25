@@ -9595,7 +9595,9 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         }
 
     watts_by_service: dict[str, float] = {}
+    metered_services: set[str] = set()
     unmetered_services: set[str] = set()
+    unread_metered_services: set[str] = set()
     for wid, containers in by_worker.items():
         meta = worker_meta.get(wid) or {}
         info = _safe_json(meta.get("system_info", "{}"), {})
@@ -9619,11 +9621,13 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
                 # nothing rather than computing watts and multiplying by zero.
                 unmetered_services.add(svc)
                 continue
+            metered_services.add(svc)
             # A container whose CPU could not be read contributes no estimate
             # rather than an estimate built from a fabricated 0%. `or 0.0` below
             # would silently turn "unmeasurable" into "idle", which is how a
             # busy service ends up costing nothing on the running-costs card.
             if c.get("cpu_percent") is None:
+                unread_metered_services.add(svc)
                 continue
             host_watts[svc] = host_watts.get(svc, 0.0) + power.estimate_watts(
                 float(c.get("cpu_percent") or 0.0), host_tdp_watts=tdp, container_count=count
@@ -9646,17 +9650,31 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         uses_device_power = catalog.draws_device_power(service) and (
             platform in external or (service.get("requirements") or {}).get("gpu") is True
         )
+        unmetered_only = platform in unmetered_services and platform not in metered_services
         watts: float | None = watts_by_service.get(platform, 0.0)
         watts_source = "cpu_share" if platform in watts_by_service else None
         if gross_basis == "accrued" and platform not in external and platform not in deployed_in_containers:
             # Earnings history survives untracking. A leftover setting cannot
             # tell us how long the equipment ran in the historical window.
             watts = None
+        elif unmetered_only:
+            watts = 0.0
         elif uses_device_power:
-            watts = _device_watts(cfg, platform)
-            watts_source = "entered" if watts is not None else None
+            if platform in unmetered_services:
+                # One entered draw can cover several GPU copies. There is no
+                # measured split to charge only the metered copies.
+                watts = None
+            else:
+                watts = _device_watts(cfg, platform)
+                watts_source = "entered" if watts is not None else None
+        elif platform in unmetered_services and platform in unread_metered_services:
+            # The hosting copy has no per-kWh bill. The metered copy's
+            # missing CPU reading still leaves the combined cost unknown.
+            watts = None
         elif not watts_known:
             watts = None
+        if watts is None:
+            watts_source = None
         cost_attributable = watts_source == "entered" or machine_economics.per_service_is_meaningful(watts)
         # Whole-device watts can be charged directly. A CPU share below smart
         # plug resolution gives no per-service break-even. USD per kWh.
@@ -9670,6 +9688,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
                 else gross,
                 "watts": watts,
                 "watts_source": watts_source,
+                "unmetered": unmetered_only,
                 "hours": hours,
                 "gross_basis": gross_basis,
                 "cost_quality": power.ESTIMATED,
@@ -9720,7 +9739,12 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     can_price = fx_ok and (watts_known or any(row["watts"] is not None for row in rows))
     result = power.summarise(rows, price_per_kwh=price_usd if can_price else 0.0, currency="USD")
     for row, source in zip(result["services"], rows, strict=True):
-        row.update(watts=source["watts"], watts_source=source["watts_source"], gross_basis=source["gross_basis"])
+        row.update(
+            watts=source["watts"],
+            watts_source=source["watts_source"],
+            unmetered=source["unmetered"],
+            gross_basis=source["gross_basis"],
+        )
         if row["platform"] in break_even:
             row["break_even_price_per_kwh"] = break_even[row["platform"]]
     if not watts_known:
@@ -11203,7 +11227,7 @@ def _to_usd_with_stored(amount: float, currency: str, stored_rate: float | None)
     return amount * stored_rate if stored_rate is not None else None
 
 
-def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str, *, default: bool = False) -> bool:
+def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str) -> bool:
     """A per-worker boolean setting, read by client_id with a row-id fallback.
 
     Two problems in one place. Config values are TEXT, so ``bool("false")`` is
@@ -11217,11 +11241,16 @@ def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str, *,
     for key in (f"worker_{_worker_config_key(worker)}_{suffix}", f"worker_{worker.get('id')}_{suffix}"):
         if str(config.get(key, "") or "").strip():
             return _config_flag(config, key)
-    return default
+    return False
 
 
 def _worker_is_metered(config: dict[str, Any], worker: dict[str, Any], info: dict[str, Any]) -> bool:
-    return not _worker_flag(config, worker, "unmetered", default=not power.is_metered(info))
+    key = f"worker_{_worker_config_key(worker)}_unmetered"
+    # This setting has no legacy row-id key. A numeric client ID can match
+    # another worker's row ID, so only look up the key the Fleet page saves.
+    if str(config.get(key) or "").strip():
+        return not _config_flag(config, key)
+    return power.is_metered(info)
 
 
 def _worker_config_key(worker: dict[str, Any]) -> str:

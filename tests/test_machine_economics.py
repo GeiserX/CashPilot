@@ -159,6 +159,19 @@ class TestFleetRollUp:
         assert out["monthly_gross"] == 15.0
         assert out["monthly_net"] == 10.0
 
+    def test_fixed_price_workers_do_not_count_as_unknown_electricity_cost(self):
+        out = me.fleet_summary(
+            [
+                self._machine("home", 10.0, 4.0),
+                self._machine("hosted", 5.0, None, me.NOT_METERED),
+            ]
+        )
+        assert out["cost_known_for"] == 1
+        assert out["cost_unknown_for"] == 0
+        assert out["monthly_net"] == 6.0
+        assert "Costs are known for 1 of 1" in out["summary"]
+        assert "No per-kWh bill for 1" in out["summary"]
+
     def test_a_fleet_with_no_cost_data_reports_no_net(self):
         out = me.fleet_summary([self._machine("a", 10.0, None)])
         assert out["monthly_net"] is None
