@@ -7,8 +7,12 @@ config, users, fleet workers, and compose export.
 import asyncio
 import json
 import os
+import shutil
 import socket
+import subprocess
 from contextlib import asynccontextmanager
+from html.parser import HTMLParser
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -223,14 +227,44 @@ class TestGetAllWorkerContainers:
 
     def test_the_report_only_tag_gives_every_reason_a_desktop_sends_no_url(self):
         """The switch, the Windows Firewall rule and a private or Tailscale address all decide it."""
-        from pathlib import Path
-
-        fleet = (Path(__file__).resolve().parent.parent / "app" / "templates" / "fleet.html").read_text(
-            encoding="utf-8"
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node is not installed")
+        fleet = Path(__file__).resolve().parents[1] / "app/templates/fleet.html"
+        script = r"""
+const source = require('node:fs').readFileSync(process.argv[1], 'utf8');
+function extract(name) {
+    const start = source.indexOf('  function ' + name + '(');
+    const end = source.indexOf('\n  }\n', start);
+    if (start < 0 || end < 0) throw new Error('Cannot find Fleet function ' + name);
+    return source.slice(start, end + 4);
+}
+const rows = {};
+const renderWorkers = new Function('document', 'CP', 'brk', '_isOwner', '_isolation',
+    ['countWorkerNames', 'esc', 'renderWorkers'].map(extract).join('\n') + '\nreturn renderWorkers;'
+)({getElementById: () => rows}, {fmtTimestamp: () => ({title: '', text: ''})}, String, false, {});
+renderWorkers([{id: 1, name: 'Desk', status: 'offline', system_info: {device_type: 'desktop'}}]);
+process.stdout.write(rows.innerHTML);
+"""
+        rendered = subprocess.run(
+            [node, "-e", script, str(fleet)], capture_output=True, text=True, check=True, timeout=30
         )
-        [line] = [ln for ln in fleet.splitlines() if "'Desktop, reports only'" in ln]
-        for reason in ("can start and stop services on this computer", "Windows Firewall", "Tailscale address"):
-            assert reason in line, reason
+
+        titles = []
+
+        class FlagParser(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                if tag == "span" and "flag" in (dict(attrs).get("class") or "").split():
+                    titles.append(next((value for name, value in attrs if name == "title"), ""))
+
+        FlagParser().feed(rendered.stdout)
+        [title] = titles
+        for reason in (
+            '"can start and stop services on this computer"',
+            "Windows Firewall",
+            "private network or Tailscale address",
+        ):
+            assert reason in title, title
 
     def test_offline_workers_skipped(self):
         """CashPilot-1xg: this fed a worker with NO containers.
