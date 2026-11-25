@@ -22,7 +22,7 @@ from urllib.parse import quote, urlsplit
 
 import yaml
 
-from app import arch, health_probe, ratings, traffic_stall, wallet_seed
+from app import arch, gpu, health_probe, ratings, traffic_stall, wallet_seed
 
 logger = logging.getLogger(__name__)
 
@@ -418,6 +418,9 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                     )
                 seen.setdefault(key, i)
         errors.extend(_validate_network_shape(docker, path.name))
+        # The GPU grant (app/gpu.py): only through docker.gpu, never a raw
+        # /dev/dri or /dev/kfd device, never an NVIDIA_ variable of the entry's own.
+        errors.extend(f"{path.name}: {problem}" for problem in gpu.spec_errors(data))
 
     reqs = data.get("requirements")
     if isinstance(reqs, dict):

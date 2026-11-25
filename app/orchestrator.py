@@ -49,7 +49,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from app import route_gate, socket_policy, version  # noqa: E402
+from app import gpu, route_gate, socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
@@ -562,6 +562,10 @@ def _shape(container: Any) -> dict[str, Any]:
         "env_keys": sorted({str(item).split("=", 1)[0] for item in config.get("Env") or []}),
         "entrypoint": [str(part) for part in entrypoint] if isinstance(entrypoint, list) else None,
         "restart_policy": str((host.get("RestartPolicy") or {}).get("Name") or "no"),
+        # The drivers of its GPU device requests (the GPU grant, app/gpu.py).
+        "gpu": sorted(
+            {str(r.get("Driver") or "") for r in host.get("DeviceRequests") or [] if isinstance(r, dict)} - {""}
+        ),
     }
 
 
@@ -735,6 +739,47 @@ def available_runtimes() -> set[str] | None:
                 client.close()
     runtimes = info.get("Runtimes")
     return set(runtimes) if isinstance(runtimes, dict) else set()
+
+
+#: Seconds gpu_runtime_facts keeps its answer: the heartbeat runs every minute,
+#: and a toolkit install needs a Docker restart, which this notices in time.
+GPU_FACTS_TTL = 600.0
+_gpu_facts: tuple[float, dict[str, Any]] | None = None
+
+
+def gpu_runtime_facts() -> dict[str, Any]:
+    """What Docker's /info says about passing in an NVIDIA GPU, cached for GPU_FACTS_TTL.
+
+    ``nvidia_toolkit`` is True when /info lists an ``nvidia`` runtime or a CDI
+    ``nvidia.com/gpu`` device, and None otherwise, never False: Docker can find
+    the toolkit's hook on its PATH with no sign of it in /info.
+    ``default_runtime`` is the runtime a container gets when none is named.
+    Empty when the daemon cannot be asked.
+    """
+    global _gpu_facts
+    now = time.monotonic()
+    if _gpu_facts is not None and now - _gpu_facts[0] < GPU_FACTS_TTL:
+        return dict(_gpu_facts[1])
+    client = None
+    try:
+        client = docker.from_env(timeout=5)
+        info = client.info()
+    except Exception as exc:  # noqa: BLE001 - unknown is an answer here
+        logger.debug("Could not read Docker's GPU facts: %s", exc)
+        return {}
+    finally:
+        if client is not None:
+            with contextlib.suppress(Exception):
+                client.close()
+    runtimes = info.get("Runtimes") if isinstance(info.get("Runtimes"), dict) else {}
+    discovered = info.get("DiscoveredDevices") if isinstance(info.get("DiscoveredDevices"), list) else []
+    cdi_nvidia = any(isinstance(d, dict) and str(d.get("ID") or "").startswith("nvidia.com/gpu") for d in discovered)
+    facts = {
+        "nvidia_toolkit": True if "nvidia" in runtimes or cdi_nvidia else None,
+        "default_runtime": str(info.get("DefaultRuntime") or "") or None,
+    }
+    _gpu_facts = (now, facts)
+    return dict(facts)
 
 
 #: A user-defined bridge the operator created for the earners, so their host
@@ -1194,6 +1239,24 @@ def deploy_raw(
     network = container_network(network_mode)
     runtime = container_runtime(slug, network_mode, runtime)
     dns = container_dns(network)
+    # The GPU this worker's own catalog gives the service (app/gpu.py), never
+    # the request's choice. A proxied copy gets none. Every container without
+    # an NVIDIA grant gets NVIDIA_VISIBLE_DEVICES=void, so a CUDA image cannot
+    # take the GPU through a host whose default runtime is nvidia.
+    gpu_grant = gpu_grant_for_deploy(slug, image, instance)
+    if gpu_grant and joined:
+        raise ContainerRuntimeError(
+            f"{service_name(slug)} needs this machine's GPU, which a proxied copy does not get. Nothing changed.", 400
+        )
+    try:
+        gpu_kwargs = gpu.docker_kwargs(gpu_grant)
+    except gpu.GpuRefused as exc:
+        raise ContainerRuntimeError(
+            f"{exc} Nothing was deployed; the running container was not touched.", 409
+        ) from None
+    if gpu_kwargs["devices"]:
+        devices = [*(devices or []), *gpu_kwargs["devices"]]
+    env.update(gpu.env_for(gpu_grant))
     # Another service's wallet or identity volume is never this container's,
     # whoever asks (the worker API checks it first; this is the backstop).
     refuse_critical_mounts(slug, volumes, client)
@@ -1411,6 +1474,8 @@ def deploy_raw(
         # includes NET_RAW (ARP/DNS spoofing on the bridge), MKNOD, SETUID and
         # SYS_CHROOT.
         devices=devices or None,
+        # Only a catalog GPU grant fills it (app/gpu.py); never the request.
+        device_requests=gpu_kwargs["device_requests"] or None,
         cap_drop=["ALL"],
         cap_add=cap_add or None,
         # no-new-privileges blocks privilege escalation via setuid binaries; privileged
@@ -1715,11 +1780,15 @@ def _deploy_failure(exc: BaseException, restored: str, slug: str = "") -> Contai
         return ContainerRuntimeError(f"{exc} {restored}", exc.status_code)
     refusal = proxy_refusal(exc) if isinstance(exc, APIError) else None
     if refusal:
+        if "device" in refusal and proxy_policy_current() is False and (fix := proxy_policy_fix()):
+            # A GPU grant the proxy's older policy does not know yet.
+            refusal = f"{refusal} The socket proxy is behind this worker: {proxy_policy_fix_text(fix)}"
         return ContainerRuntimeError(f"{refusal} {restored}", 403)
     if isinstance(exc, APIError):
         reason = " ".join(str(exc.explanation or exc).split())[:300]
         return ContainerRuntimeError(
-            f"Docker refused the container: {reason}{_ephemeral_hint(reason, slug)} {restored}"
+            f"Docker refused the container: {reason}{_ephemeral_hint(reason, slug)}{gpu.failure_hint(reason)} "
+            f"{restored}"
         )
     return ContainerRuntimeError(f"The container could not be created: {exc}. {restored}", 500)
 
@@ -2821,6 +2890,22 @@ def catalog_image_matches(slug: str, image: str) -> bool:
         if repo == c_repo and (not c_tag or tag == c_tag) and (not c_digest or digest == c_digest):
             return True
     return False
+
+
+def gpu_grant_for_deploy(slug: str | None, image: str, instance: int) -> dict[str, Any] | None:
+    """Allow a GPU only for the pinned catalog image and only on the first copy."""
+    grant = gpu.grant(slug)
+    if not slug or not grant:
+        return None
+    if instance != 1:
+        raise ContainerRuntimeError(f"{service_name(slug)} uses this machine's GPU and can run only one copy.", 400)
+    if not catalog_image_matches(slug, image):
+        raise ContainerRuntimeError(
+            f"{service_name(slug)} uses this machine's GPU and runs only the image this worker's catalog pins. "
+            "If the catalog image changed, update the worker first. Nothing was deployed.",
+            403,
+        )
+    return grant
 
 
 def _catalog_command_tokens(template: str, env: dict[str, Any]) -> list[str]:

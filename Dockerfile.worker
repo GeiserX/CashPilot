@@ -106,6 +106,8 @@ COPY app/catalog.py ./app/
 COPY app/ratings.py ./app/
 # catalog.py validates each entry's docker.traffic_stall block with it.
 COPY app/traffic_stall.py ./app/
+# The GPU grant (docker.gpu): sysfs read, device requests, the NVIDIA void stamp.
+COPY app/gpu.py ./app/
 COPY services/ ./services/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

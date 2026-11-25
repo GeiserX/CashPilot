@@ -159,7 +159,7 @@ services:
       # The policy's fingerprint. Compose does not recreate a container when
       # only its config's content changes, so this line is what makes
       # `docker compose up -d` restart the proxy on a new policy.
-      - CASHPILOT_PROXY_POLICY=16092b75e37d2917
+      - CASHPILOT_PROXY_POLICY=cfffb1b41a4c3891
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
@@ -184,39 +184,9 @@ services:
     # CASHPILOT_API_KEY secret.
     ports:
       - "${CASHPILOT_WORKER_BIND_ADDR:-127.0.0.1}:8081:8081"
-      # GPU passthrough. COMMENTED OUT ON PURPOSE: Docker refuses to start a
-      # container when a listed device does not exist, so uncommenting this on a
-      # host with no GPU breaks the worker outright (verified: `docker run
-      # --device /dev/does-not-exist` fails).
-      #
-      # Uncomment on a Linux host that HAS a GPU. Without it the worker cannot
-      # see the hardware, so CashPilot reports the GPU as *unknown* and cannot
-      # tell you whether Salad, Nosana, io.net or Vast.ai would earn here. Worse,
-      # a GPU service deployed without the device starts, looks healthy, and
-      # earns nothing -- the same shape as the Mysterium /dev/net/tun failure.
-      #
-      # Intel / AMD -- the kernel exposes the GPU as a DRM render node:
-      # devices:
-      #   - /dev/dri:/dev/dri
-      #
-      # NVIDIA is a DIFFERENT mechanism. /dev/dri does nothing for it, and
-      # installing the NVIDIA Container Toolkit is only the prerequisite -- the
-      # toolkit alone does NOT hand the GPU to a Compose service. You must also
-      # ask for it, with EITHER of these (both are Compose-spec attributes):
-      #
-      # gpus: all
-      #
-      # deploy:
-      #   resources:
-      #     reservations:
-      #       devices:
-      #         - driver: nvidia
-      #           count: all
-      #           capabilities: [gpu]
-      #
-      # Both of these also fail on a host with no NVIDIA GPU (verified: exit 1,
-      # "could not select device driver"), which is why they are commented out
-      # too. Pick ONE; do not set both.
+      # The worker reads host GPU information from sysfs. Leave the GPU
+      # devices on the host so it can grant them to catalog services
+      # that declare docker.gpu. See docs/gpu.md.
     volumes:
       # No Docker socket here: the worker reaches Docker through the proxy's
       # filtered socket in this volume (DOCKER_HOST below).
@@ -243,7 +213,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=16092b75e37d2917
+      - CASHPILOT_PROXY_POLICY=cfffb1b41a4c3891
       # The same two values the proxy gets, so the worker can say what to set
       # before the proxy refuses (the in-app update, a host-folder bind).
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
@@ -340,7 +310,8 @@ configs:
           allow_host_userns: false
           allow_host_cgroupns: false
           allowed_capabilities: [NET_ADMIN, NET_RAW, SETUID, SETGID]
-          allowed_devices: [/dev/net/tun]
+          allowed_devices: [/dev/net/tun, /dev/dri/renderD128, /dev/dri/renderD129, /dev/dri/renderD130, /dev/dri/renderD131, /dev/dri/renderD132, /dev/dri/renderD133, /dev/dri/renderD134, /dev/dri/renderD135, /dev/kfd]
+          allowed_device_requests: [{driver: nvidia, allowed_capabilities: [[gpu]]}]
           allowed_runtimes: [runc, runsc, runsc-hostnet, runsc-hostnet-raw]
           allow_sysctls: true               # the tunnel sidecar turns IPv6 off in its own namespace
           require_no_new_privileges: true

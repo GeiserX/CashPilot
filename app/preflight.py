@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app import arch, catalog, egress
+from app import arch, catalog, egress, gpu
 
 # Verdicts, worst first. The caller shows the worst one that applies.
 EARNS_NOTHING = "will_earn_nothing"
@@ -131,17 +131,10 @@ def assess(
         verdicts.append(EARNS_NOTHING)
 
     # Hardware the container cannot conjure.
-    if reqs.get("gpu"):
-        findings.append(
-            {
-                "verdict": CHECK_YOURSELF,
-                "message": (
-                    "This needs a supported GPU passed through to the container. Without one it "
-                    "will start and then sit idle, earning nothing."
-                ),
-            }
-        )
-        verdicts.append(CHECK_YOURSELF)
+    gpu_findings = _gpu_findings(service, info, already_deployed - {slug} if worker is not None else set())
+    for finding in gpu_findings:
+        findings.append(finding)
+        verdicts.append(finding["verdict"])
 
     min_storage = reqs.get("min_storage")
     if min_storage:
@@ -264,10 +257,13 @@ def assess(
         # An old worker sends no arch, an unusual CPU folds to nothing, or the
         # entry declares no platforms. Say so instead of implying a pass.
         not_checked.append("whether the image has a build for this CPU")
+    summary = _summary(verdict, service)
+    if any(finding["verdict"] == EARNS_NOTHING for finding in gpu_findings):
+        summary = "The worker will refuse this deploy because it cannot provide the required GPU."
     return {
         "slug": slug,
         "verdict": verdict,
-        "summary": _summary(verdict, service),
+        "summary": summary,
         "findings": findings,
         # Say what was NOT checked, so a clean result is not mistaken for a
         # guarantee about things we never looked at.
@@ -275,6 +271,68 @@ def assess(
         "worker_arch": info.get("arch"),
         "blocking": False,  # informed consent, never a block
     }
+
+
+_GPU_CHECK_YOURSELF = (
+    "This needs a supported GPU passed through to the container. Without one it "
+    "will start and then sit idle, earning nothing."
+)
+
+
+def _gpu_findings(service: dict[str, Any], info: dict[str, Any], deployed: set[str]) -> list[dict[str, str]]:
+    """What the worker's GPU report says about a service that needs a GPU.
+
+    An entry CashPilot only tracks (``requirements.gpu`` without ``docker.gpu``)
+    keeps the plain "check yourself": CashPilot passes it no GPU. For a GPU
+    grant (app/gpu.py) the worker's sysfs read decides: a conclusive read
+    without the vendor earns nothing (the worker refuses the deploy too).
+    """
+    reqs = service.get("requirements") or {}
+    grant = gpu.spec_of(service)
+    if not grant:
+        if reqs.get("gpu"):
+            return [{"verdict": CHECK_YOURSELF, "message": _GPU_CHECK_YOURSELF}]
+        return []
+    name = service.get("name") or service.get("slug") or "This service"
+    vendor = grant["vendor"]
+    report = info.get("gpu") if isinstance(info.get("gpu"), dict) else {}
+    vendors = report.get("vendors")
+    if not isinstance(vendors, dict) or not all(isinstance(facts, dict) for facts in vendors.values()):
+        vendors = None
+    findings: list[dict[str, str]] = []
+    host = {
+        "conclusive": vendors is not None and isinstance(report.get("available"), bool),
+        "vendors": vendors,
+        "kfd": (vendors or {}).get("amd", {}).get("kfd"),
+    }
+    if problem := gpu.missing(grant, host):
+        findings.append({"verdict": EARNS_NOTHING, "message": f"{problem} The worker refuses the deploy."})
+    elif vendors is None or vendor not in vendors:
+        findings.append({"verdict": CHECK_YOURSELF, "message": _GPU_CHECK_YOURSELF})
+    elif vendor == "nvidia" and report.get("nvidia_toolkit") is not True:
+        findings.append(
+            {
+                "verdict": CHECK_YOURSELF,
+                "message": f"This machine has an NVIDIA GPU. {name} reaches it only through the NVIDIA "
+                f"Container Toolkit, which CashPilot cannot see from here. If it is not installed, install it "
+                f"({gpu.TOOLKIT_URL}) and run `sudo nvidia-ctk runtime configure --runtime=docker && sudo "
+                "systemctl restart docker` before you deploy.",
+            }
+        )
+    sharing = sorted(
+        (other.get("name") or s)
+        for s in deployed
+        if (other := catalog.get_service(s)) and (other_grant := gpu.spec_of(other)) and other_grant["vendor"] == vendor
+    )
+    if sharing:
+        findings.append(
+            {
+                "verdict": REDUCED,
+                "message": f"{name} shares the GPU with {', '.join(sharing)}, already running on this machine. "
+                "Expect each to earn less than it would alone.",
+            }
+        )
+    return findings
 
 
 def _summary(verdict: str, service: dict[str, Any]) -> str:

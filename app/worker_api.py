@@ -46,6 +46,7 @@ from app import (
     activity,
     egress,
     fleet_key,
+    gpu,
     health_probe,
     isolation_check,
     lan_fence,
@@ -421,18 +422,50 @@ def _gpu_info() -> dict[str, Any]:
     earning. That is the Mysterium /dev/net/tun failure again: healthy-looking
     and worth nothing.
 
-    THE THREE-VALUED PART MATTERS. Inside a container with no device passed
-    through, the absence of nvidia-smi proves nothing about the HOST. So:
+    THE THREE-VALUED PART MATTERS:
 
         available True   we saw a device
-        available False  we looked, found none, and we are NOT in a container,
+        available False  sysfs was read and lists no NVIDIA, AMD or Intel GPU,
                          so the host really has none
-        available None   we could not tell -- in a container with nothing passed
-                         through, which is exactly when a user most needs to know
+        available None   we could not tell (not Linux, WSL, sysfs unreadable)
 
-    Reporting None as False would tell someone their machine has no GPU when it
-    may have an unused one, which is the opposite of the useful answer.
+    sysfs shows the host's PCI bus from inside a container with nothing passed
+    in, so the worker behind the socket proxy reads the host's GPUs there first
+    (app/gpu.py). nvidia-smi and /dev/dri stay as the fallback where sysfs says
+    nothing. Reporting None as False would tell someone their machine has no
+    GPU when it may have an unused one, which is the opposite of the useful answer.
     """
+    info = _gpu_presence()
+    # What Docker says about passing in an NVIDIA GPU (orchestrator.gpu_runtime_facts).
+    facts = orchestrator.gpu_runtime_facts()
+    info["nvidia_toolkit"] = facts.get("nvidia_toolkit")
+    info["default_runtime"] = facts.get("default_runtime")
+    return info
+
+
+def _gpu_presence() -> dict[str, Any]:
+    host = gpu.host_gpus()
+    if host["conclusive"]:
+        vendors = host["vendors"]
+        devices = []
+        for vendor in gpu.VENDORS:
+            if vendor not in vendors:
+                continue
+            nodes = len(vendors[vendor].get("render_nodes") or [])
+            devices.append(
+                f"{gpu.VENDOR_NAMES[vendor]} GPU"
+                + (f" ({nodes} render node{'s' if nodes != 1 else ''})" if nodes else "")
+            )
+        info: dict[str, Any] = {
+            "available": bool(vendors),
+            "devices": devices,
+            "detected_by": "sysfs" if vendors else None,
+            "vendors": vendors,
+        }
+        if not vendors:
+            info["reason"] = "sysfs lists no NVIDIA, AMD or Intel GPU on this machine"
+        return info
+
     devices: list[str] = []
     how = None
 
@@ -487,9 +520,9 @@ def _gpu_info() -> dict[str, Any]:
             "reason": "no GPU is visible from inside this container; the host may still have one that was not passed through",
         }
 
-    # Linux, on the host, with no NVIDIA tool and no render node. This is the
-    # one case where "no" is a real answer.
-    return {"available": False, "devices": [], "detected_by": None}
+    # Linux, sysfs unreadable (or WSL), no NVIDIA tool and no render node. Only
+    # a conclusive sysfs read says "no".
+    return {"available": None, "devices": [], "detected_by": None, "reason": host.get("reason")}
 
 
 def _detect_network_type() -> str:
@@ -805,6 +838,13 @@ async def _send_heartbeat() -> None:
         payload["system_info"]["features"].append("proxied_if_running")
         # Restores a passphrase backup into a new container (POST /api/containers/{slug}/restore).
         payload["system_info"]["features"].append("state_restore")
+        # Gives a catalog service the GPU its own catalog entry declares (docker.gpu, app/gpu.py).
+        payload["system_info"]["features"].append("gpu_grant")
+        payload["system_info"]["gpu_grants"] = {
+            service["slug"]: grant
+            for service in (_catalog_get_services() if _catalog_get_services else [])
+            if not service["slug"].startswith("custom-") and (grant := gpu.spec_of(service))
+        }
         # The services a restore that did not finish left half-written here. The
         # box may hold no container of one, so the dashboard draws its Remove
         # from this list. Left out when it cannot be read.
@@ -1874,8 +1914,39 @@ def _validate_route_approval(spec: DeploySpec, slug: str) -> bool:
     return True
 
 
+def _validate_gpu(slug: str | None, spec: DeploySpec) -> None:
+    """A GPU grant (app/gpu.py) refused before the running container is touched.
+
+    The grant comes from this worker's catalog. It is refused here when the
+    socket proxy runs an older policy, which refuses the GPU, or when sysfs
+    says for sure that this machine has no GPU of that vendor.
+    """
+    try:
+        grant = orchestrator.gpu_grant_for_deploy(slug, spec.image, spec.instance)
+    except orchestrator.ContainerRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    if not grant:
+        return
+    name = orchestrator.service_name(slug or "")
+    if orchestrator.proxy_policy_current() is False and (fix := orchestrator.proxy_policy_fix()):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{name} needs this machine's GPU, and the Docker socket proxy would refuse it: "
+            f"{orchestrator.proxy_policy_fix_text(fix)} Nothing was deployed.",
+        )
+    if problem := gpu.missing(grant, gpu.host_gpus()):
+        raise HTTPException(status_code=409, detail=f"{problem} Nothing was deployed.")
+
+
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
+    if blocked_env := sorted(k for k in spec.env if str(k).upper().startswith(gpu.ENV_PREFIX)):
+        # The void stamp and the GPU grant are this worker's (app/gpu.py): a
+        # request that set NVIDIA_VISIBLE_DEVICES could undo the stamp.
+        raise HTTPException(
+            status_code=403,
+            detail=f"CashPilot sets the {gpu.ENV_PREFIX} variables itself; refused: {', '.join(blocked_env)}",
+        )
     _validate_instance(spec.instance)
     if len(spec.ports) > MAX_PUBLISHED_PORTS:
         raise HTTPException(status_code=400, detail=f"At most {MAX_PUBLISHED_PORTS} ports can be published")
@@ -1905,6 +1976,7 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     if spec.network_mode == "host" and slug not in _catalog_host_network_slugs():
         raise HTTPException(status_code=403, detail=f"Network mode 'host' is not allowed for '{slug}'")
     _validate_fence_gated(spec, slug)
+    _validate_gpu(slug, spec)
     proxy_roots = orchestrator._proxy_bind_roots() if orchestrator.proxied() else None
     compose_dir = os.getenv(orchestrator.COMPOSE_DIR_ENV, "").strip()
     compose_dir = orchestrator.host_path_key(compose_dir) if compose_dir.startswith("/") else ""
@@ -2077,6 +2149,8 @@ def _validate_proxied(slug: str, spec: ProxiedDeploySpec) -> None:
         )
     if spec.earner.devices:
         raise HTTPException(status_code=400, detail="A proxied copy gets no host devices")
+    if gpu.grant(slug):
+        raise HTTPException(status_code=400, detail="A proxied copy gets no GPU")
     _validate_deploy_spec(spec.earner, slug)
     _validate_proxy(spec.proxy)
 
