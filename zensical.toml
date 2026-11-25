@@ -50,6 +50,7 @@ nav = [
       { "App stores" = "app-stores.md" },
       { "How it works" = "how-it-works.md" },
       { "Money waiting: reminders" = "reminders.md" },
+      { Mining = "mining.md" },
       { FAQ = "faq.md" },
       { "How CashPilot compares" = "comparison.md" },
       { "Moving from another tool" = [
@@ -119,6 +120,9 @@ nav = [
       { Storage = [
           { "Sia (hostd)" = "guides/sia-hostd.md" },
           { Storj = "guides/storj.md" },
+        ] },
+      { Mining = [
+          { OCEAN = "guides/ocean.md" },
         ] },
     ] },
   { Configuration = [

@@ -19,7 +19,7 @@ README tables, so the docs should read from it too.
 WHAT IT WRITES
 --------------
 1. The ``Service guides`` section of ``zensical.toml``'s nav, grouped by the
-   catalog's own four categories instead of one flat alphabetical list of 52.
+   catalog's own categories instead of one flat alphabetical list of 52.
 2. ``docs/guides/index.md`` — a filterable index table carrying the fields a
    visitor actually chooses on: category, what it needs (GPU / residential IP /
    storage), whether it runs in Docker or is app-only, payout minimum, status.
@@ -54,6 +54,7 @@ CATEGORY_TITLES = [
     ("depin", "DePIN"),
     ("compute", "GPU Compute"),
     ("storage", "Storage"),
+    ("mining", "Mining"),
 ]
 
 #: Guides under docs/guides/ that are not service guides and must be left alone.
@@ -159,7 +160,7 @@ def render_index(services: list[dict]) -> str:
         ]
         for svc in items:
             payout = str(svc["payment"].get("minimum_payout") or "—").strip() or "—"
-            runs = "Docker" if svc["dockerised"] else "App only"
+            runs = "Docker" if svc["dockerised"] else "Tracked pool" if key == "mining" else "App only"
             status = svc["status"] or "—"
             out.append(f"| [{svc['name']}]({svc['slug']}.md) | {needs(svc)} | {runs} | {payout} | {status} |")
         out.append("")
@@ -218,6 +219,13 @@ def main() -> int:
     services = load_services()
     if not services:
         raise SystemExit("no services found; refusing to write an empty nav")
+
+    # render_nav and render_index list only the categories named above, so a
+    # service in any other category would silently lose its guide from both.
+    titled = {key for key, _title in CATEGORY_TITLES}
+    untitled = sorted({s["category"] for s in services} - titled)
+    if untitled:
+        raise SystemExit(f"categories with no entry in CATEGORY_TITLES, so their guides would be dropped: {untitled}")
 
     # Guard against silently dropping a guide that has no catalog entry.
     on_disk = {p.stem for p in GUIDES.glob("*.md")} - NON_SERVICE_GUIDES

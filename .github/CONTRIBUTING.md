@@ -11,7 +11,7 @@ This is the most impactful way to contribute. Each service is a single YAML file
 3. Update the service table in `README.md`
 4. Submit a PR
 
-Look at any existing YAML file in `services/` for reference. Categories: `bandwidth`, `depin`, `storage`, `compute`.
+Look at any existing YAML file in `services/` for reference. Categories: `bandwidth`, `depin`, `storage`, `compute`, `mining`.
 
 ## Adding an Earnings Collector
 

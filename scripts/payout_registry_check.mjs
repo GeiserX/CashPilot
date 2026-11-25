@@ -258,6 +258,8 @@ const hostileAddr = payoutAddressCell({model: 'external', address: null, address
 check('a hostile address or box name in a multi-wallet row is escaped', !hostileAddr.includes('<img src=x>') && !hostileAddr.includes('"><') && !hostileAddr.includes('<b>box'), hostileAddr);
 const recordGap = payoutAddressCell({model: 'external', address: null, addresses: [], address_missing: false, address_unchecked: 'record'});
 check('a box with no deploy record to read says so', recordGap.includes('No deploy record') && !recordGap.includes('Not set'), recordGap);
+const settingsGap = payoutAddressCell({model: 'external', address: null, addresses: [], address_missing: false, address_unchecked: 'settings'});
+check('a pool address in Settings that could not be read says so, never "Not set"', settingsGap.includes('Saved in Settings, could not be read') && !settingsGap.includes('Not set'), settingsGap);
 check('boxes that could not be read are not called "No box runs it"', runsOnCell({runs_on: [], recorded: true, runs_on_unknown: true}).includes('Could not read the boxes'), 'unknown');
 check('a credentials-only row stays balance only when the boxes are unknown', stateCell({runs_on_unknown: true, tracked_only: true, recorded: true}).includes('balance only'), 'tracked');
 const partlyMissing = payoutAddressCell({model: 'external', address: '0xaaa', addresses: [{address: '0xaaa', servers: ['charlie']}], address_missing: true, address_missing_on: ['alpha']});

@@ -63,7 +63,7 @@ Navigate to [http://localhost:8080](http://localhost:8080) in your browser. Sinc
 
 ### 3. Browse the service catalog
 
-The **Catalog** page lists every service with its platforms, a monthly estimate and what it needs (residential IP, GPU). Filter by category (Bandwidth, DePIN, Storage, Compute) or search by name. **Add** opens the setup wizard on that service, **Details** shows its description, payouts and deploy risk, and services that do not run in Docker get a **Visit** link instead.
+The **Catalog** page lists every service with its platforms, a monthly estimate and what it needs (residential IP, GPU). Filter by category (Bandwidth, DePIN, Storage, Compute, Mining) or search by name. **Add** opens the setup wizard on that service, **Details** shows its description, payouts and deploy risk, and services that do not run in Docker get a **Visit** link instead.
 
 Two kinds of service need a closer look first: services that pay only after you lock up a token stake, such as Anyone Protocol, Sia and Flux, and relays that publish your IP, which may lower what residential bandwidth apps pay you. See [Check two things before you deploy](guides/index.md).
 
@@ -291,14 +291,15 @@ Check free space on the filesystem that holds the directory that applies.
 
 ## Supported Services
 
-CashPilot supports **<!-- n:live -->41<!-- /n --> services** that are active or in beta, across four categories:
+CashPilot supports **<!-- n:live -->42<!-- /n --> services** that are active or in beta, across five categories:
 
 - **Bandwidth Sharing** (<!-- n:bandwidth -->18<!-- /n -->): share your internet bandwidth for passive income
 - **DePIN** (<!-- n:depin -->15<!-- /n -->): decentralized physical infrastructure networks
 - **GPU Compute** (<!-- n:compute -->6<!-- /n -->): rent out your GPU for AI and compute workloads
 - **Storage** (<!-- n:storage -->2<!-- /n -->): share disk space on decentralized storage networks
+- **Mining** (<!-- n:mining -->1<!-- /n -->): track the balance a mining pool holds for your payout address ([Mining](mining.md))
 
-Of these, **<!-- n:docker -->17<!-- /n -->** can be deployed and managed automatically via Docker. The other <!-- n:tracked -->24<!-- /n --> (<!-- n:extension -->18<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes) are listed in the catalog with signup links, and their balances are read where a collector exists.
+Of these, **<!-- n:docker -->17<!-- /n -->** can be deployed and managed automatically via Docker. The other <!-- n:tracked -->25<!-- /n --> (<!-- n:extension -->18<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes, <!-- n:mining -->1<!-- /n --> mining pool) are listed in the catalog with signup links, and their balances are read where a collector exists.
 
 Browse the full catalog in the [Service Guides](guides/index.md) section.
 

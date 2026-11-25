@@ -63,7 +63,7 @@ assert.match(row('storj', { owner: false }), />Manage</);
 console.log('Catalog rows: Add for the owner (encoded, dropped where the service runs everywhere), Details for everyone.');
 
 // ---- The wizard -------------------------------------------------------------
-const CATEGORIES = ['bandwidth', 'storage', 'compute', 'depin'];
+const CATEGORIES = ['bandwidth', 'storage', 'compute', 'depin', 'mining'];
 function stubDom() {
   const cards = CATEGORIES.map(value => {
     const cls = new Set();

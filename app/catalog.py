@@ -36,7 +36,7 @@ _by_slug: dict[str, dict[str, Any]] = {}
 _REQUIRED_FIELDS = {"name", "slug", "category", "status", "description", "docker"}
 
 
-_CATEGORIES = {"bandwidth", "depin", "storage", "compute"}
+_CATEGORIES = {"bandwidth", "depin", "storage", "compute", "mining"}
 #: The keys ``docker.image_by_arch`` may use. The deploy path folds whatever a
 #: worker reports (x86_64, aarch64, armv7l, ...) onto these; a key outside the
 #: set could never be chosen, so it is a mistake and the entry is rejected.
@@ -471,8 +471,21 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
             logger.warning("Validation: %s: %s (rule dropped)", path.name, problem)
         data["obligations"] = kept
 
+    collector = data.get("collector")
+    accrual = collector.get("accrual") if isinstance(collector, dict) else None
+    if accrual is not None and (not isinstance(accrual, str) or accrual not in ACCRUAL_KINDS):
+        # Fails closed: a typo must not quietly turn a pool's unpaid balance
+        # into money the user has, which is what an unknown value would do.
+        errors.append(
+            f"{path.name}: collector.accrual must be one of {', '.join(sorted(ACCRUAL_KINDS))}, got {accrual!r}"
+        )
+
     return errors
 
+
+#: ``collector.accrual`` values: what the collected balance means when it is not
+#: money the user holds. ``pool``: credit a mining pool holds until it pays.
+ACCRUAL_KINDS = frozenset({"pool"})
 
 #: The closed sets of services/_schema.yml `obligations:`. A new value comes
 #: with the first rule that needs it, and with the code that reads it.
