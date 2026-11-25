@@ -36,6 +36,11 @@ _SECRET_PARAM_RE = re.compile(
 )
 # The public payout address in a HeroMiners request identifies this installation's wallet.
 _KASPA_ADDRESS_PARAM_RE = re.compile(r"(\baddress=)kaspa(?::|%3a)[a-z0-9]+", re.IGNORECASE)
+_ONCHAIN_ADDRESS_RE = re.compile(
+    r"(/address/)[A-Za-z0-9]{26,90}(?=[^A-Za-z0-9]|$)"
+    r"|(/addresses/)kaspa(?::|%3a)[a-z0-9]{61,63}(?=/balance)",
+    re.IGNORECASE,
+)
 # A Telegram bot token: ``<bot id>:<35 url-safe characters>``. Matched by shape so
 # a token reaches no log even when it did not come from our own variable.
 _TELEGRAM_TOKEN_RE = re.compile(r"(?<!\d)\d{6,12}:[A-Za-z0-9_-]{30,}")
@@ -92,6 +97,7 @@ def redact(text: str) -> str:
     text = _USERINFO_RE.sub(rf"\1{_REDACTED}@", text)
     text = _TELEGRAM_TOKEN_RE.sub(_REDACTED, text)
     text = _KASPA_ADDRESS_PARAM_RE.sub(rf"\1{_REDACTED}", text)
+    text = _ONCHAIN_ADDRESS_RE.sub(rf"\1\2{_REDACTED}", text)
     return _SECRET_PARAM_RE.sub(rf"\1{_REDACTED}", text)
 
 

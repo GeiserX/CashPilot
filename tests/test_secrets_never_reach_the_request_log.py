@@ -208,6 +208,19 @@ class TestAnyClientRequest:
         assert FAKE_BOT_TOKEN not in record.stack_info
         assert "bot<redacted>/sendMessage" in record.stack_info
 
+    @pytest.mark.parametrize(
+        ("path", "address"),
+        [
+            ("/api/address/{}", "bc1q0pp74ghs25vpn2ah6auz4vkehvzy8z8ddyzts7"),
+            ("/addresses/{}/balance", "kaspa:qz0efmwpt789garsw290g47865tz73pwdm3fufqxymchvun9u8tjxlc3ue4s5"),
+        ],
+    )
+    def test_onchain_addresses_are_redacted_on_public_or_local_explorers(self, redacting, caplog, path, address):
+        with caplog.at_level(logging.INFO):
+            logging.getLogger("httpx").info("HTTP Request: GET %s", f"http://node.local{path.format(address)}")
+        assert address not in caplog.text
+        assert f"http://node.local{path.format('<redacted>')}" in caplog.text
+
     def test_an_ordinary_line_is_left_alone(self, redacting, caplog):
         with caplog.at_level(logging.INFO):
             logging.getLogger("httpx").info(

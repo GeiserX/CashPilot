@@ -47,7 +47,7 @@ REGISTRY = {
         {"slug": "honeygain", "model": "internal", "chain": None, "address": None},
         {"slug": "minty", "model": "minted", "chain": "solana", "address": None},
         {"slug": "mystery", "model": "unknown", "chain": None, "address": None},
-        {"slug": "offchain", "model": "external", "chain": "dogecoin", "address": "D" + "x" * 33},
+        {"slug": "offchain", "model": "external", "chain": "notachain", "address": "D" + "x" * 33},
         {"slug": "noaddr", "model": "external", "chain": "ethereum", "address": None},
     ],
     "summary": {},
@@ -141,6 +141,44 @@ class TestTheResponseSurvivesJson:
         assert data["balances"]["storj"]["amount"] != 0
         assert data["unreadable"] == 2
         assert data["checked"] == 2
+
+    def test_pending_is_exact_and_private_or_disabled_chains_are_not_unreadable(self):
+        from app import onchain
+
+        entries = [
+            {"slug": "ocean", "model": "external", "chain": "bitcoin", "address": "BTC"},
+            {"slug": "supportxmr", "model": "external", "chain": "monero", "address": "XMR"},
+            {"slug": "disabled", "model": "external", "chain": "kaspa", "address": "KAS"},
+            {"slug": "invalid", "model": "external", "chain": "bitcoin", "address": "TYPO"},
+        ]
+        results = {
+            "BTC": onchain._result(
+                onchain.KNOWN, "bitcoin", amount=Decimal("1.12345678"), pending=Decimal("-0.00000001")
+            ),
+            "XMR": onchain._result(onchain.UNSUPPORTED, "monero"),
+            "KAS": onchain._result(onchain.UNSUPPORTED, "kaspa", detail="Turned off"),
+            "TYPO": onchain._result(onchain.INVALID, "bitcoin"),
+        }
+
+        async def fake_balances(pairs):
+            return [results[address] for _, address in pairs]
+
+        with (
+            _as("owner"),
+            patch("app.main.payout_registry.registry", new_callable=AsyncMock, return_value={"entries": entries}),
+            patch("app.main.onchain.balances", side_effect=fake_balances),
+        ):
+            response = _client().get("/api/payout-balances")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert Decimal(data["balances"]["ocean"]["pending"]) == Decimal("-0.00000001")
+        assert data["balances"]["ocean"]["amount"] == "1.12345678"
+        assert data["balances"]["supportxmr"]["private"] is True
+        assert data["balances"]["supportxmr"]["amount"] is None
+        assert data["balances"]["disabled"]["detail"] == "Turned off"
+        assert data["checked"] == 3
+        assert data["unreadable"] == 1
 
 
 class TestItIsOwnerOnly:

@@ -1817,6 +1817,7 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 /* NOT a warning. There is no address to show, and that is correct. Muted so it
    never reads as a value the user failed to supply. */
 .payout-na { color: var(--text-muted); font-style: normal; font-size: var(--fs-2); }
+.payout-pending { color: var(--text-muted); font-size: var(--fs-2); }
 .payout-critical-item { border: none; padding: 6px 0; }
 
 .payout-all .block-head { align-items: center; }

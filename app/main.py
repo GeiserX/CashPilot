@@ -10950,7 +10950,9 @@ async def api_payout_balances(request: Request) -> dict[str, Any]:
     wanted = [
         row
         for row in registry["entries"]
-        if row.get("model") == "external" and row.get("address") and row.get("chain") in onchain.CHAINS
+        if row.get("model") == "external"
+        and row.get("address")
+        and (row.get("chain") in onchain.CHAINS or row.get("chain") in onchain.PRIVATE_CHAINS)
     ]
     results = await onchain.balances([(row["chain"], row["address"]) for row in wanted])
 
@@ -10960,14 +10962,19 @@ async def api_payout_balances(request: Request) -> dict[str, Any]:
         # whole reason the reader uses Decimal in the first place -- a float here
         # would undo it at the last step.
         amount = result.get("amount")
-        balances[row["slug"]] = {**result, "amount": None if amount is None else str(amount)}
+        pending = result.get("pending")
+        balances[row["slug"]] = {
+            **result,
+            "amount": None if amount is None else str(amount),
+            "pending": None if pending is None else str(pending),
+        }
 
     return {
         "balances": balances,
         # Named so the UI can say "3 of 5 addresses could not be checked"
         # instead of quietly showing fewer rows than it did a moment ago.
-        "checked": len(wanted),
-        "unreadable": sum(1 for r in results if r.get("state") != onchain.KNOWN),
+        "checked": sum(row["chain"] in onchain.CHAINS for row in wanted),
+        "unreadable": sum(r.get("state") in (onchain.UNREACHABLE, onchain.INVALID) for r in results),
     }
 
 
