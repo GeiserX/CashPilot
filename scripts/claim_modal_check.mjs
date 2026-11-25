@@ -116,5 +116,26 @@ check('and does not claim the service is missing', !/not in the service catalog/
 // 5. The message is escaped before it reaches innerHTML.
 check('the error detail is escaped', !broken.body.includes('<script'), broken.body);
 
+// SupportXMR pays automatically and also accepts early payout requests.
+const mixedPayout = {
+  platform: 'supportxmr', name: 'SupportXMR', balance: 0.05, currency: 'XMR',
+  cashout: {
+    eligible: true, method: 'auto', min_amount_comparable: 0.01,
+    notes: 'The automatic threshold defaults to 0.1 XMR. You can request a payout from 0.01 XMR.',
+  },
+};
+const claimNodes = {'claim-modal-title': {}, 'claim-modal-body': {}};
+const openClaimModal = new Function(
+  'api', 'escapeHtml', 'formatCurrency', 'openModal', 'document',
+  `${grab('openClaimModal')}; return openClaimModal;`,
+)(async () => [mixedPayout], escapeHtml, (amount, currency) => `${amount} ${currency}`, () => {}, {
+  getElementById: id => claimNodes[id],
+});
+await openClaimModal('supportxmr');
+const mixedPayoutBody = claimNodes['claim-modal-body'].innerHTML;
+check('the two payout thresholds are visible', /0\.1 XMR.*0\.01 XMR/.test(mixedPayoutBody), mixedPayoutBody);
+check('the modal keeps the automatic threshold in the payout notes',
+  !mixedPayoutBody.includes('automatically when the minimum threshold is reached'), mixedPayoutBody);
+
 console.log(bad ? `\nRESULT: FAIL (${bad})` : '\nRESULT: PASS');
 process.exit(bad ? 1 : 0);
