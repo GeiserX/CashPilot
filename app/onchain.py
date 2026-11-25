@@ -83,6 +83,10 @@ class Chain:
 #: benefit.
 CHAINS: dict[str, Chain] = {
     "ethereum": Chain("ethereum", "Ethereum", "ETH", 18, "https://ethereum-rpc.publicnode.com", "evm"),
+    # Ethereum Classic mainnet (eth_chainId 0x3d).
+    "ethereum-classic": Chain(
+        "ethereum-classic", "Ethereum Classic", "ETC", 18, "https://geth-at.etc-network.info", "evm"
+    ),
     "polygon": Chain("polygon", "Polygon", "POL", 18, "https://polygon-bor-rpc.publicnode.com", "evm"),
     "solana": Chain("solana", "Solana", "SOL", 9, "https://api.mainnet-beta.solana.com", "solana"),
 }
@@ -245,7 +249,8 @@ async def balance(chain: str, address: str, *, client: httpx.AsyncClient | None 
         amount = await _read(spec, address, client)
     except Exception as exc:  # noqa: BLE001 - every failure is the same answer: we do not know
         _backoff_until[spec.rpc] = _now() + BACKOFF
-        logger.warning("Could not read %s balance for %s: %s", slug, address[:10] + "...", exc)
+        # The RPC can echo the payout address in its error.
+        logger.warning("Could not read %s balance: %s", slug, type(exc).__name__)
         return _result(UNREACHABLE, slug, detail=f"{type(exc).__name__} while reading the chain.")
     finally:
         if owns_client:
