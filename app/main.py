@@ -26,7 +26,7 @@ import weakref
 from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
@@ -83,6 +83,7 @@ from app import (
     update_check,
     usage,
     version,
+    wallet_seed,
 )
 from app.collectors.base import REGISTER_PENDING
 from app.worker_proxy import _pin_url_to_ip, _validate_worker_url
@@ -3607,8 +3608,9 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
     # serialisable either. Encoding then sanitising fixes both without changing
     # the body for any error that was already fine.
     errors = exc.errors()
-    if request.url.path.startswith("/api/proxies"):
-        # A proxy body carries its password or auth key, and the default 422
+    if request.url.path.startswith(("/api/proxies", "/api/deploy/", "/api/workers/", "/api/services/")):
+        # A proxy body carries its password or auth key, a deploy its env and
+        # a wallet seed phrase, a reveal the password, and the default 422
         # echoes the rejected input.
         errors = [{k: v for k, v in err.items() if k not in ("input", "ctx")} for err in errors]
     return JSONResponse(status_code=422, content={"detail": _json_safe(jsonable_encoder(errors))})
@@ -4419,6 +4421,18 @@ async def api_status(request: Request) -> list[dict[str, Any]]:
     return await _get_all_worker_containers()
 
 
+class WalletSeedChoice(BaseModel):
+    """The deploy form's wallet choice for a service that keeps its seed in a file (app/wallet_seed.py).
+
+    generate: a new wallet, made on the worker and shown once; import: this
+    phrase. Neither is stored here: the phrase goes to the worker that runs the
+    node, into the node's own volume.
+    """
+
+    mode: Literal["generate", "import"]
+    phrase: str | None = None
+
+
 class DeployRequest(BaseModel):
     env: dict[str, str] = {}
     hostname: str | None = None
@@ -4448,6 +4462,9 @@ class DeployRequest(BaseModel):
     # The owner saw that a device id in this deploy already runs on another
     # box and deploys anyway (see _refuse_shared_device_ids).
     allow_shared_identity: bool = False
+    # A service whose catalog keeps its wallet seed in a file: a new wallet or
+    # the owner's own. Left out, a deployment keeps the wallet its node has.
+    wallet_seed: WalletSeedChoice | None = None
 
 
 # repository[:tag][@sha256:digest]; see custom_services.IMAGE_REF.
@@ -4777,8 +4794,17 @@ async def _deploy(
         key: value for key, value in posted_env.items() if value and value != catalog_defaults.get(key, "").strip()
     }
 
+    # A wallet seed kept in a file in the node's own volume (app/wallet_seed.py):
+    # taken out of the env here, so it is never recorded or sent as a variable.
+    seed_key, wallet_wanted = await _wallet_choice(svc, body, worker_id, posted_env, recorded_env, restore)
+    required_conf = docker_conf
+    if wallet_wanted is not None or (seed_key and restore is not None):
+        for held_env in (env, posted_env, typed_env):
+            held_env.pop(seed_key, None)
+        required_conf = {**docker_conf, "env": [v for v in docker_conf.get("env", []) if v.get("key") != seed_key]}
+
     # Validate required env vars are not blank.
-    if missing := _missing_required(docker_conf, body.env, recorded_env):
+    if missing := _missing_required(required_conf, body.env, recorded_env):
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
     # How many copies this worker runs, decided before anything is deployed.
@@ -4877,6 +4903,11 @@ async def _deploy(
     if device_renames:
         pick = "new" if body.rename_devices else "old"
         spec["env"] = {**(spec.get("env") or {}), **{r["key"]: r[pick] for r in device_renames}}
+    if seed_key and (wallet_wanted is not None or restore is not None):
+        # The record of a deployment from before the seed file still holds the
+        # phrase, and the merge brought it back: it goes to the worker as the
+        # wallet (_wallet_choice), never as a variable.
+        spec["env"] = {k: v for k, v in (spec.get("env") or {}).items() if k != seed_key}
 
     # The command always comes from the catalog, filled from the MERGED env.
     #
@@ -5022,7 +5053,10 @@ async def _deploy(
                     result = await _proxy_worker_restore(worker_id, slug, spec, restore)
                 else:
                     result = await _proxy_worker_deploy(
-                        worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed
+                        worker_id,
+                        slug,
+                        {**spec, "moved_mounts": moved_mounts, **_wallet_field(wallet_wanted)},
+                        **signed,
                     )
             except HTTPException as exc:
                 # A restore is never retried off a route: its worker refuses it
@@ -5043,7 +5077,10 @@ async def _deploy(
                 signed["leave_route"] = True
                 try:
                     result = await _proxy_worker_deploy(
-                        worker_id, slug, {**spec, "moved_mounts": moved_mounts}, **signed
+                        worker_id,
+                        slug,
+                        {**spec, "moved_mounts": moved_mounts, **_wallet_field(wallet_wanted)},
+                        **signed,
                     )
                 except HTTPException as exc:
                     await _audit_worker_refusal(request, exc, slug, worker_id)
@@ -5075,6 +5112,12 @@ async def _deploy(
             spec["instances"] = instances
         else:
             spec.pop("instances", None)
+        wallet = result.get("wallet") if isinstance(result.get("wallet"), dict) else None
+        if wallet_wanted is not None:
+            # The public address only, for the payouts page; the phrase is never recorded.
+            address = (wallet or {}).get("address") or (recorded or {}).get("wallet_address")
+            if isinstance(address, str) and address:
+                spec["wallet_address"] = address
         # Read before the save moves the record on: what each replaced copy ran.
         # Bookkeeping: a failed read leaves the proof to the old record alone.
         old_prior: dict[str, Any] | None = None
@@ -5084,6 +5127,9 @@ async def _deploy(
             logger.warning("Could not read the prior spec of %s on worker %s", slug, worker_id, exc_info=True)
         await _record_replaced_copy(slug, worker_id, recorded, old_prior, 1, result, docker_conf)
         await database.save_deployment(slug=slug, container_id=container_id, spec=spec, worker_id=worker_id)
+        if seed_key and wallet_wanted is not None:
+            # The node holds the wallet now: no record on this worker keeps the phrase.
+            await database.forget_env_value(slug, worker_id, seed_key)
         _forget_checked_copies(worker_id, slug)
         # The identity ledger follows what each copy really runs: a copy is recorded
         # once its own deploy succeeded, and one being dropped is retired once its
@@ -5161,7 +5207,89 @@ async def _deploy(
         response["kept_from_previous_deployment"] = divergence
     if restore is not None:
         response["restored"] = {key: result.get(key) for key in ("files", "targets", "started")}
+    if wallet:
+        # A new wallet's phrase travels to this one response and nowhere else:
+        # the page shows it once, and nothing here logs or records it.
+        response["wallet"] = {k: wallet.get(k) for k in ("created", "address", "phrase") if wallet.get(k) is not None}
     return response
+
+
+async def _wallet_choice(
+    svc: dict[str, Any],
+    body: DeployRequest,
+    worker_id: int,
+    posted_env: dict[str, str],
+    recorded_env: dict[str, Any],
+    restore: dict[str, Any] | None,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """The seed variable of a seed-file service, and the wallet this deploy asks its worker for.
+
+    (None, None) for every other service. A wallet: the worker writes the
+    file and the variable goes nowhere. (key, None) goes the old way, with the
+    variable: a worker too old to keep the seed in the file that already runs
+    a deployment with the phrase in its record, which keeps working as it did
+    until the worker is updated. A new wallet on such a worker is refused: it
+    would put the phrase back in CashPilot's record and the container's
+    settings. A restore whose volume brings the file is (key, None) too, and
+    _deploy drops the variable; one from before the file is (None, None).
+    """
+    if svc.get("custom"):
+        return None, None
+    key = wallet_seed.seed_key(svc)
+    if not key:
+        return None, None
+    capable = wallet_seed.FEATURE in await _worker_features(worker_id)
+    choice = body.wallet_seed
+    posted = wallet_seed.normalize(posted_env.get(key))
+    legacy = wallet_seed.normalize(recorded_env.get(key))
+    if restore is not None:
+        # The restored volume brings the file. A record from before the file
+        # means a backup that may not hold one either, so that restore keeps
+        # the variable, as before, and the next redeploy moves it into the file.
+        return (key, None) if capable and not legacy else (None, None)
+    if not capable:
+        if choice is None and (posted or legacy):
+            return key, None
+        raise HTTPException(
+            status_code=409,
+            detail="This worker is too old to keep the wallet seed out of CashPilot and out of the container's "
+            "settings. Update the worker, then deploy again. Nothing was deployed.",
+        )
+    # The owner's own phrase: picked in the form, or posted as the variable by
+    # an API client that predates the choice.
+    own = wallet_seed.normalize(choice.phrase) if choice is not None and choice.mode == "import" else posted
+    wanted: dict[str, Any]
+    if legacy:
+        # Recorded before the seed file, so the node runs this wallet now: the
+        # worker moves it into the file. A new wallet would abandon it, so
+        # "generate" keeps it too, and another phrase is refused.
+        if own and own != legacy:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "wallet_exists",
+                    "message": "This node already runs another wallet, and CashPilot does not replace one. "
+                    "To change wallets, remove the service with its data first. Nothing was deployed.",
+                },
+            )
+        wanted = {"mode": "migrate", "phrase": legacy}
+    elif own:
+        wanted = {"mode": "import", "phrase": own}
+    elif choice is not None:
+        wanted = {"mode": choice.mode}
+    else:
+        wanted = {"mode": "keep"}
+    if wanted["mode"] == "import" and (problem := wallet_seed.phrase_problem(wanted.get("phrase") or "")):
+        # Never echoed: the message names word positions, not words.
+        raise HTTPException(
+            status_code=400, detail={"error": "wallet_phrase", "message": f"{problem} Nothing was deployed."}
+        )
+    return key, wanted
+
+
+def _wallet_field(wanted: dict[str, Any] | None) -> dict[str, Any]:
+    """The deploy body's wallet_seed, only when there is one: an old worker's spec gains nothing."""
+    return {"wallet_seed": wanted} if wanted is not None else {}
 
 
 @app.post("/api/deploy/{slug}/device-names")
@@ -12198,6 +12326,22 @@ async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
     return {"status": "deleted"}
 
 
+async def _recordable_raw_spec(slug: str, worker_id: int, spec: dict[str, Any]) -> dict[str, Any]:
+    """A raw deploy's spec as it may be recorded: never a wallet choice, never a seed the worker keeps in its file.
+
+    A worker that keeps a catalog seed_file wallet takes the phrase out of the
+    env before the container sees it (app/wallet_seed.py), so the record drops
+    it too. On an older worker the container still runs with it, and the record
+    keeps it, as before, for the next redeploy there.
+    """
+    recorded = {k: v for k, v in spec.items() if k != "wallet_seed"}
+    key = wallet_seed.seed_key(catalog.get_service(slug))
+    env = recorded.get("env")
+    if key and isinstance(env, dict) and key in env and wallet_seed.FEATURE in await _worker_features(worker_id):
+        recorded["env"] = {k: v for k, v in env.items() if k != key}
+    return recorded
+
+
 class WorkerCommand(BaseModel):
     command: str  # deploy, stop, restart, start, remove
     slug: str = ""
@@ -12326,7 +12470,7 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         await database.save_deployment(
             slug=slug,
             container_id=container_id,
-            spec=body.spec if isinstance(body.spec, dict) else None,
+            spec=await _recordable_raw_spec(slug, worker_id, body.spec) if isinstance(body.spec, dict) else None,
             worker_id=worker_id,
         )
         _forget_checked_copies(worker_id, slug)
@@ -12696,6 +12840,68 @@ async def api_identity_reveal(request: Request, identity_id: int) -> dict[str, s
         worker_id=row["worker_id"],
     )
     return {"value": row["value"]}
+
+
+class WalletRevealRequest(BaseModel):
+    step_up_password: str | None = None
+
+
+#: Reveals of a wallet seed per owner, and how many fit in the window.
+_WALLET_REVEALS: dict[str, list[float]] = {}
+WALLET_REVEAL_LIMIT = 5
+WALLET_REVEAL_WINDOW = 3600
+
+
+@app.post("/api/services/{slug}/wallet-seed/reveal")
+async def api_wallet_seed_reveal(
+    request: Request, slug: str, body: WalletRevealRequest, worker_id: int | None = None
+) -> JSONResponse:
+    """The seed phrase a node keeps in its own file, read back from its worker (app/wallet_seed.py).
+
+    The owner's password first (step_up.ACTION_REVEAL_WALLET_SEED), and a few
+    reveals an hour at most. The worker checks the approval with its own key.
+    Every reveal is an audit row, never with the phrase, and nothing here keeps it.
+    """
+    user = _require_owner_session(request)
+    if wallet_seed.seed_var(catalog.get_service(slug)) is None:
+        raise HTTPException(status_code=404, detail=f"{slug} keeps no wallet seed")
+    worker_id = await _resolve_worker_id(worker_id)
+    if wallet_seed.FEATURE not in await _worker_features(worker_id):
+        raise HTTPException(
+            status_code=409,
+            detail="This worker is too old to keep the seed in the node's own file, so there is nothing to read "
+            "there. Update the worker, then redeploy the service.",
+        )
+    who = str(user.get("u") or user.get("uid"))
+    now = time.time()
+    recent = [t for t in _WALLET_REVEALS.get(who, []) if now - t < WALLET_REVEAL_WINDOW]
+    if len(recent) >= WALLET_REVEAL_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many seed reveals. Try again in an hour.")
+    if not body.step_up_password:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "step_up_required",
+                "message": "Whoever sees the seed phrase can spend this wallet. Enter your password to see it.",
+            },
+        )
+    await require_step_up(
+        request, body.step_up_password, action=step_up.ACTION_REVEAL_WALLET_SEED, target=f"{slug}|{worker_id}"
+    )
+    _WALLET_REVEALS[who] = [*recent, now]
+    client_id = (await database.get_worker(worker_id) or {}).get("client_id") or ""
+    approval = await _sign_for_worker(
+        worker_id, step_up.ACTION_REVEAL_WALLET_SEED, step_up.reveal_target(slug, client_id)
+    )
+    result = await _proxy_to_worker(
+        worker_id, "POST", f"/api/containers/{slug}/wallet-seed", headers={step_up.APPROVAL_HEADER: approval}
+    )
+    phrase = result.get("phrase") if isinstance(result, dict) else None
+    if not isinstance(phrase, str) or not phrase:
+        raise HTTPException(status_code=502, detail="The worker did not return the seed phrase")
+    # Fail closed, like the identity reveal: no audit row, no phrase.
+    await database.add_audit_event("wallet_seed_reveal", slug, "revealed", actor=user, worker_id=worker_id)
+    return JSONResponse({"phrase": phrase}, headers={"Cache-Control": "no-store"})
 
 
 @app.delete("/api/identities/{identity_id}")

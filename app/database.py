@@ -5164,6 +5164,56 @@ async def prior_deployment_spec(slug: str, worker_id: int, *, clear: bool = Fals
         await db.close()
 
 
+async def forget_env_value(slug: str, worker_id: int, key: str) -> None:
+    """Drop env var ``key`` from every record of ``slug`` on ``worker_id``: its spec, the one it replaced, and the fleet row.
+
+    For a value that must outlive no deploy (a wallet seed the node now keeps in
+    its own file, app/wallet_seed.py). The fleet row is rewritten only while it
+    describes this worker's deploy, which save_deployment just made it.
+
+    Encrypted with the key that sits next to the database, an old copy is as
+    good as the value. So its own connection zeroes what the update replaces
+    (secure_delete, as _activity_connect does), and the WAL, which still holds
+    the frames that wrote it, is emptied after.
+    """
+    db = await _activity_connect()
+    try:
+        cursor = await db.execute(
+            "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
+            (slug, worker_id),
+        )
+        row = await cursor.fetchone()
+        if row:
+            fresh = [
+                _without_env(row[column] or "", slug, key) for column in ("spec_encrypted", "prior_spec_encrypted")
+            ]
+            await db.execute(
+                "UPDATE deployment_specs SET spec_encrypted = COALESCE(?, spec_encrypted), "
+                "prior_spec_encrypted = COALESCE(?, prior_spec_encrypted) WHERE slug = ? AND worker_id = ?",
+                (*fresh, slug, worker_id),
+            )
+        cursor = await db.execute("SELECT spec_encrypted FROM deployments WHERE slug = ?", (slug,))
+        fleet = await cursor.fetchone()
+        if fleet and (blob := _without_env(fleet["spec_encrypted"] or "", slug, key)) is not None:
+            await db.execute("UPDATE deployments SET spec_encrypted = ? WHERE slug = ?", (blob, slug))
+        await db.commit()
+        cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        if (busy := await cursor.fetchone()) and busy[0]:
+            # A reader kept it: the next checkpoint folds and drops those frames.
+            _logger.warning("WAL checkpoint after forgetting %s of %s was busy", key, slug)
+    finally:
+        await db.close()
+
+
+def _without_env(blob: str, slug: str, key: str) -> str | None:
+    """``blob`` re-encrypted without env var ``key``, or None when it has no such key."""
+    spec = _decode_spec(blob, slug)
+    env = (spec or {}).get("env")
+    if not isinstance(env, dict) or key not in env:
+        return None
+    return encrypt_value(json.dumps({**spec, "env": {k: v for k, v in env.items() if k != key}}, sort_keys=True))
+
+
 async def active_identity_values(slug: str, worker_id: int) -> dict[str, dict[str, str]]:
     """Each copy of ``slug`` on a worker with an active row: its active values, by key name."""
     db = await _get_db()

@@ -47,15 +47,20 @@ Uptime matters more than hardware. Sia cuts a host's score steeply below 98% upt
 
 Sia hosting is permissionless. There is no signup, no account and no API key, and there is no referral programme for hosts either.
 
-### 2. Generate a wallet seed
+### 2. The wallet seed
 
-A 12-word BIP-39 seed phrase controls the node's wallet. Generate one and back it up, because it is the only way to reach the earnings:
+A 12-word BIP-39 seed phrase controls the node's wallet. Anyone with the phrase controls the funds, and the phrase is the only way to reach them if the machine is lost.
 
-```bash
-docker run --rm ghcr.io/siafoundation/hostd seed
-```
+CashPilot keeps the phrase in one place only: the file `hostd.yml` in hostd's own data volume, on the machine that runs the node. It is not in CashPilot's database, not in the container's settings (`docker inspect`), not in the logs and not in a CashPilot backup of its own data. hostd reads it from that file.
 
-The command prints the phrase and the wallet address. Anyone with the seed controls the funds. The volume and the container are not a recovery path.
+When you deploy, you pick one of two options:
+
+- **Create a new wallet.** The worker on that machine runs hostd's own `hostd seed` command, offline, and writes the phrase into the file. The dashboard shows the phrase and the wallet address once. Write the words down, then type three of them back to confirm. CashPilot does not keep a copy, so after you close that window, the only ways to see the phrase again are your written copy and **Show seed phrase**.
+- **Use a wallet I already have.** Paste its 12 words. CashPilot checks them (the words and the checksum), sends them to that one worker, and writes them into the file. It keeps no copy.
+
+To see the phrase later, open the service and click **Show seed phrase** on the machine's row. It asks for your password, reads the phrase from the node's file, and writes an entry in the activity log (without the phrase). It allows a few reveals per hour.
+
+A redeploy or an update keeps the wallet in the file. CashPilot never replaces a wallet: to change wallets, remove the service with its data, then deploy again.
 
 ### 3. Port forwarding
 
@@ -70,7 +75,7 @@ Do not forward 9980. CashPilot binds the dashboard to `127.0.0.1` on the host, a
 
 In CashPilot, click **Add** on the **Sia (hostd)** row in **Catalog** (or use **+ Add service**). It asks for:
 
-- **Wallet seed phrase**: the phrase from step 2.
+- **Wallet**: a new wallet, or the seed phrase of one you have (step 2). Your own phrase goes to one box at a time, because one wallet must not run on two nodes. A new wallet on several boxes makes one wallet per box.
 - **Dashboard password**: any long passphrase. It protects the web UI and the local API.
 - **Storage directory**: a host path on your largest disk where renter data will live, for example `/srv/sia`.
 
@@ -86,12 +91,16 @@ ssh -L 9980:127.0.0.1:9980 you@your-server
 
 Then browse to `http://localhost:9980` and sign in with the dashboard password. Wait for the node to finish syncing the blockchain, then:
 
-1. Send some Siacoin to the wallet address from step 2, to cover collateral and proof fees.
+1. Send some Siacoin to the wallet address (shown with a new wallet, and in the dashboard's wallet page), to cover collateral and proof fees.
 2. Add a storage volume at `/storage`, the path the container sees.
 3. Set your prices and collateral. Sia's recommended starting values are on its [configuring your host](https://docs.sia.tech/provide-storage/configuring-your-host) page.
 4. Announce the host.
 
 Renters start sending data over days to weeks as your host builds a reliability history. If no contracts form after a few days, check that 9981 and 9984 are reachable from the internet.
+
+### Deployments made before the seed file
+
+A deployment made by an older CashPilot passed the phrase as `HOSTD_WALLET_SEED` and kept it in CashPilot's database. On its next redeploy or update, the worker writes that phrase into `/data/hostd.yml`, recreates the container without the variable, and CashPilot deletes its stored copy. If the file already holds a phrase, the file wins, as it already does in hostd. The worker must be updated first: until then, the deployment keeps running the old way, and a new wallet on that worker is refused.
 
 ## Docker Configuration
 
@@ -102,14 +111,14 @@ Renters start sending data over days to weeks as your host builds a reliability 
 
 | Variable | Label | Required | Secret | Description |
 |----------|-------|:--------:|:------:|-------------|
-| `HOSTD_WALLET_SEED` | Wallet seed phrase | Yes | Yes | BIP-39 seed phrase controlling the host's Siacoin wallet |
+| `HOSTD_WALLET_SEED` | Wallet seed phrase | Yes | Yes | BIP-39 seed phrase controlling the host's Siacoin wallet. Kept in `/data/hostd.yml`, never passed as this variable (step 2) |
 | `HOSTD_API_PASSWORD` | Dashboard password | Yes | Yes | Password for the hostd web UI and local API |
 | `SIA_STORAGE_DIR` | Storage directory | Yes | No | Host path on your largest disk where renter data is stored |
 
 ### Important Notes
 
 - **Collateral is locked, not spent.** It returns when a contract completes. If the node goes offline or loses renter data and misses a storage proof, it loses that contract's collateral and its revenue. Keep a small SC balance in the wallet too: a proof that cannot pay its fee is a missed proof.
-- **Two kinds of state, two kinds of loss.** The `/data` volume holds the wallet database, host settings and contract state. Losing it loses the node's identity, and the seed phrase stays the only recovery path for funds. The `/storage` directory holds renter data. Losing it fails storage proofs and forfeits the collateral locked against those contracts.
+- **Two kinds of state, two kinds of loss.** The `/data` volume holds the seed phrase (`hostd.yml`), the wallet database, host settings and contract state. Losing it loses the node's identity, and the phrase you wrote down is then the only recovery path for funds. The `/storage` directory holds renter data. Losing it fails storage proofs and forfeits the collateral locked against those contracts.
 - **Earnings scale with data stored, not disk offered.** Offering 4TB earns nothing until renters fill it.
 - **No collector yet.** hostd exposes a local REST API on port 9980 (`/api/wallet`, `/api/metrics`, `/api/settings`) that a future CashPilot collector can read, the same way the Storj collector reads the storagenode dashboard. Until then the balance is in the hostd dashboard.
 

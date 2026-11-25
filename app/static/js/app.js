@@ -98,7 +98,9 @@ const CP = (() => {
       document.getElementById('stepup-submit').onclick = () => finish(input.value || null);
       document.getElementById('stepup-cancel').onclick = () => finish(null);
       document.getElementById('stepup-close').onclick = () => finish(null);
-      input.onkeydown = (e) => { if (e.key === 'Enter') finish(input.value || null); };
+      // preventDefault: focus goes back to the button that opened the prompt,
+      // and the same Enter would press it again and open a second prompt.
+      input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(input.value || null); } };
       overlay.classList.add('open');
       setTimeout(() => input.focus(), 50);
     });
@@ -2020,6 +2022,8 @@ const CP = (() => {
 
   function envInputFields(svc, envs, { withId = true, withHint = true } = {}) {
     return (envs || []).map((env) => {
+      // Never a text box: the seed goes to the node, not into CashPilot.
+      if (env.seed_file) return walletSeedField(svc, env);
       const inputType = env.secret ? 'password' : 'text';
       const id = withId ? `env-${svc.slug}-${env.key}` : '';
       const label = withId
@@ -3928,6 +3932,178 @@ const CP = (() => {
     );
   }
 
+  // -----------------------------------------------------------
+  // Wallet seed kept in the node's own file (catalog seed_file,
+  // app/wallet_seed.py). The phrase never reaches CashPilot's database: the
+  // worker that runs the node makes or takes it, and this page shows a new
+  // one once. Nothing here stores it; the modal forgets it when it closes.
+  // -----------------------------------------------------------
+  let _walletFieldSeq = 0;
+
+  function walletSeedField(svc, env) {
+    const n = ++_walletFieldSeq;
+    const name = `wallet-${svc.slug}-${n}`;
+    return `
+      <div class="form-group wallet-seed" data-wallet-slug="${escapeHtml(svc.slug)}">
+        <div class="form-label">${escapeHtml(env.label || 'Wallet')}</div>
+        <label class="wallet-choice"><input type="radio" name="${name}" value="generate" checked
+          data-action="walletChoice" data-a1="event"> Create a new wallet</label>
+        <label class="wallet-choice"><input type="radio" name="${name}" value="import"
+          data-action="walletChoice" data-a1="event"> Use a wallet I already have</label>
+        <textarea class="form-input wallet-phrase" rows="2" autocomplete="off" autocapitalize="off"
+          spellcheck="false" placeholder="The 12 words of your seed phrase, separated by spaces" hidden></textarea>
+        <div class="form-hint">CashPilot never stores the seed phrase. It lives only in the node's own data
+          volume, on the machine that runs it. A new wallet's phrase is shown once, right after the deploy:
+          write it down. A redeploy keeps the wallet the node already has.</div>
+      </div>`;
+  }
+
+  function walletChoice(event) {
+    const input = event && event.target;
+    const box = input && input.closest('.wallet-seed');
+    const phrase = box && box.querySelector('.wallet-phrase');
+    if (!phrase) return;
+    phrase.hidden = input.value !== 'import';
+    if (phrase.hidden) phrase.value = '';
+  }
+
+  // The wallet box of this service's visible deploy form, or null.
+  function _walletBox(slug) {
+    const boxes = [...document.querySelectorAll(`.wallet-seed[data-wallet-slug="${CSS.escape(slug)}"]`)];
+    return boxes.find(b => b.offsetParent !== null) || boxes[0] || null;
+  }
+
+  // {mode, phrase} for the deploy body, undefined for a service without the
+  // box, or null when the form is not ready (it says why).
+  function _walletRequest(slug, workerIds) {
+    const box = _walletBox(slug);
+    if (!box) return undefined;
+    const picked = box.querySelector('input[type="radio"]:checked');
+    const mode = picked ? picked.value : 'generate';
+    if (mode !== 'import') return { mode: 'generate' };
+    const area = box.querySelector('.wallet-phrase');
+    const phrase = (area && area.value || '').trim().toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+    if (!phrase) {
+      if (area) area.style.borderColor = 'var(--error)';
+      toast('Paste the seed phrase of your wallet', 'warning');
+      return null;
+    }
+    if (workerIds.length > 1) {
+      toast('One wallet runs one node. Pick a single node when you use your own seed phrase.', 'warning');
+      return null;
+    }
+    if (area) area.style.borderColor = '';
+    return { mode: 'import', phrase };
+  }
+
+  // Three distinct word positions (1-based), in order.
+  function _quizPositions(count) {
+    const picks = new Set();
+    const pool = new Uint32Array(16);
+    while (picks.size < Math.min(3, count)) {
+      crypto.getRandomValues(pool);
+      for (const v of pool) {
+        if (picks.size >= Math.min(3, count)) break;
+        picks.add((v % count) + 1);
+      }
+    }
+    return [...picks].sort((a, b) => a - b);
+  }
+
+  // Shows a phrase in the wallet modal. reveal: no quiz, just Close. Resolves
+  // when it closes, to true when the owner proved they wrote it down.
+  function showWalletPhrase(phrase, { title, intro, address, reveal = false } = {}) {
+    const overlay = document.getElementById('wallet-modal');
+    const body = document.getElementById('wallet-modal-body');
+    if (!overlay || !body) return Promise.resolve(false);
+    let words = String(phrase || '').split(' ');
+    document.getElementById('wallet-modal-title').textContent = title || 'Your new wallet';
+    return new Promise((resolve) => {
+      let done = false;
+      let proved = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        watcher.disconnect();
+        // Forget it: nothing of the phrase stays in the page.
+        body.innerHTML = '';
+        words = [];
+        overlay.classList.remove('open');
+        if (!reveal && !proved) {
+          toast('You closed the seed phrase before confirming it. You can see it again from the service page, with your password.', 'warning');
+        }
+        resolve(proved);
+      };
+      const watcher = new MutationObserver(() => { if (!overlay.classList.contains('open')) finish(); });
+      const showWords = () => {
+        body.innerHTML = `
+          <p>${escapeHtml(intro || '')}</p>
+          <ol class="seed-words">${words.map(w => `<li><span class="seed-word">${escapeHtml(w)}</span></li>`).join('')}</ol>
+          ${address ? `<p class="form-hint">Wallet address (public, safe to share): <code class="seed-address">${escapeHtml(address)}</code></p>` : ''}
+          <p class="inline-note inline-note-warn">Whoever has these words can spend this wallet. Write them on paper,
+            in order, and keep them offline. They are the only way to recover the funds if this machine or its disk is lost.</p>
+          <div class="modal-actions modal-actions-end">
+            ${reveal
+              ? '<button class="btn btn-primary" id="wallet-close-btn">Close</button>'
+              : '<button class="btn btn-primary" id="wallet-next-btn">I wrote them down</button>'}
+          </div>`;
+        const next = document.getElementById('wallet-next-btn');
+        if (next) next.onclick = showQuiz;
+        const close = document.getElementById('wallet-close-btn');
+        if (close) close.onclick = finish;
+      };
+      const showQuiz = () => {
+        const asked = _quizPositions(words.length);
+        body.innerHTML = `
+          <p>To check you wrote them down, type these words from your copy.</p>
+          ${asked.map(n => `
+            <div class="form-group">
+              <label class="form-label" for="wallet-quiz-${n}">Word ${n}</label>
+              <input class="form-input wallet-quiz" id="wallet-quiz-${n}" data-pos="${n}" autocomplete="off" autocapitalize="off" spellcheck="false">
+            </div>`).join('')}
+          <div id="wallet-quiz-error" class="form-error" style="display:none;"></div>
+          <div class="modal-actions modal-actions-end">
+            <button class="btn btn-ghost" id="wallet-back-btn">Show the words again</button>
+            <button class="btn btn-primary" id="wallet-check-btn">Check</button>
+          </div>`;
+        document.getElementById('wallet-back-btn').onclick = showWords;
+        document.getElementById('wallet-check-btn').onclick = () => {
+          const wrong = [...body.querySelectorAll('.wallet-quiz')]
+            .filter(i => i.value.trim().toLowerCase() !== words[Number(i.dataset.pos) - 1]);
+          if (wrong.length) {
+            const err = document.getElementById('wallet-quiz-error');
+            const many = wrong.length > 1;
+            err.textContent = `${many ? 'Words' : 'Word'} ${wrong.map(i => i.dataset.pos).join(', ')} ${many ? 'do' : 'does'} not match. Check your copy.`;
+            err.style.display = '';
+            return;
+          }
+          proved = true;
+          toast('Seed phrase confirmed', 'success');
+          finish();
+        };
+        const first = body.querySelector('.wallet-quiz');
+        if (first) setTimeout(() => first.focus(), 50);
+      };
+      showWords();
+      watcher.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+      overlay.classList.add('open');
+    });
+  }
+
+  async function revealWalletSeed(slug, workerId, workerName) {
+    try {
+      const res = await api(`/api/services/${encodeURIComponent(slug)}/wallet-seed/reveal?worker_id=${encodeURIComponent(workerId)}`,
+        { method: 'POST', body: {} });
+      await showWalletPhrase(res.phrase, {
+        title: 'Wallet seed phrase',
+        intro: `The seed phrase of the wallet ${slug} uses on ${workerName}, read from the node's own file.`,
+        reveal: true,
+      });
+    } catch (err) {
+      toast(`Could not show the seed phrase: ${err.message}`, 'error');
+    }
+  }
+
   async function _deployToWorkers(slug, workerIds, { rescaleOnly = false, routeRoot = null } = {}) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
     // Read once, before anything waits: a Route box changed while the first
@@ -3970,6 +4146,12 @@ const CP = (() => {
       return;
     }
 
+    const wallet = rescaleOnly ? undefined : _walletRequest(slug, workerIds);
+    if (wallet === null) {
+      if (statusEl) statusEl.textContent = '';
+      return;
+    }
+
     // Preflight, at the deploy step — which is where the backend's own comments
     // say it belongs, "not buried in an FAQ". It has been computed since 1.10.x
     // and asked by nothing.
@@ -3993,9 +4175,11 @@ const CP = (() => {
 
     let ok = 0, fail = 0;
     const links = new Map();
+    const newWallets = [];
     for (const wid of workerIds) {
       try {
         const body = { env };
+        if (wallet) body.wallet_seed = wallet;
         if (renameDevices) body.rename_devices = true;
         const image = _imageChoice(slug);
         if (image !== undefined) body.image = image;
@@ -4004,6 +4188,7 @@ const CP = (() => {
         if (route !== undefined) body.route = route;
         const res = await api(`/api/deploy/${slug}?worker_id=${wid}`, { method: 'POST', body });
         ok++;
+        if (res && res.wallet && res.wallet.phrase) newWallets.push({ wid, wallet: res.wallet });
         if (res && res.device_link && res.device_link.id) links.set(res.device_link.id, res.device_link);
         // A redeploy rebuilds from the RECORDED spec where it diverges from
         // the catalog. The API has always reported what it kept; nothing
@@ -4024,6 +4209,19 @@ const CP = (() => {
       statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
     }
     _showDeviceLink(slug, statusEl, [...links.values()]);
+    // Last, one at a time: each new wallet's phrase is on screen once.
+    if (wallet) {
+      const area = _walletBox(slug) && _walletBox(slug).querySelector('.wallet-phrase');
+      if (area) area.value = '';
+    }
+    for (const { wid, wallet: made } of newWallets.splice(0)) {
+      const label = document.querySelector(`[data-wid="${CSS.escape(String(wid))}"]`)?.closest('label');
+      const where = (label && label.textContent.trim().split('\n')[0].trim()) || `worker ${wid}`;
+      await showWalletPhrase(made.phrase, {
+        intro: `CashPilot created a new wallet for ${slug} on ${where}. These 12 words are its seed phrase. CashPilot did not keep them.`,
+        address: made.address,
+      });
+    }
     if (ok > 0) {
       toast(`${slug} deployed to ${ok} node(s)`, 'success');
       if (!wizardState.deployed.includes(slug)) {
@@ -4656,6 +4854,7 @@ const CP = (() => {
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
             <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Stop</button>
             <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">Logs</button>
+            ${_isOwner && (inst.container.instance || 1) === 1 && ((svc.docker && svc.docker.env) || []).some(e => e.seed_file) ? `<button class="btn btn-ghost btn-sm" data-action="revealWalletSeed" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Show seed phrase</button>` : ''}
             ${(inst.container.instance || 1) === 1 ? `<button class="btn btn-danger btn-sm" data-action="${svc.custom ? 'removeCustomFromBox' : 'removeService'}" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Remove from this box</button>` : ''}
           </div>` : ''}
         </div>
@@ -6691,6 +6890,8 @@ const CP = (() => {
     submitRestore,
     pickPreviousIdentity,
     useIdentity,
+    walletChoice,
+    revealWalletSeed,
     loadPayoutProgress,
     loadDeployRisk,
     confirmPayout,

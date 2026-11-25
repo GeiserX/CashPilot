@@ -22,7 +22,7 @@ from urllib.parse import quote, urlsplit
 
 import yaml
 
-from app import arch, health_probe, ratings, traffic_stall
+from app import arch, health_probe, ratings, traffic_stall, wallet_seed
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +322,19 @@ def _validate(data: dict[str, Any], path: Path) -> list[str]:
                 }
             ):
                 errors.append(f"{path.name}: docker.env key {key} is secret, so it cannot be an identifier")
+            # A wallet seed kept in a file in the service's own volume (app/wallet_seed.py).
+            seeded = [v for v in declared_env if "seed_file" in v]
+            if len(seeded) > 1:
+                errors.append(f"{path.name}: only one docker.env entry may have a seed_file")
+            targets = {str(m).split(":")[1].rstrip("/") for m in docker.get("volumes") or [] if str(m).count(":") >= 1}
+            for var in seeded:
+                if not isinstance(var.get("seed_file"), dict):
+                    errors.append(f"{path.name}: docker.env {var.get('key')}.seed_file must be a mapping")
+                    continue
+                errors.extend(
+                    f"{path.name}: docker.env {var.get('key')}: {problem}"
+                    for problem in wallet_seed.validate_spec(var, targets)
+                )
         signals = docker.get("health_signals")
         if isinstance(signals, list):
             for i, item in enumerate(signals):

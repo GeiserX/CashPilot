@@ -2412,3 +2412,10 @@ body.gate { display: flex; flex-direction: column; }
 .activity-dims { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 12px; }
 .activity-h3 { font-size: var(--fs-2); font-weight: 600; margin: 0 0 6px; color: var(--text-secondary); }
 .activity-raw summary { cursor: pointer; color: var(--text-secondary); }
+
+/* A wallet seed phrase shown once (app/wallet_seed.py): numbered words in a grid. */
+.seed-words { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 16px; margin: 12px 0; padding-left: 28px; font-family: var(--font-mono); }
+.seed-words li { padding: 2px 0; }
+.seed-address { word-break: break-all; }
+.wallet-choice { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; }
+.wallet-phrase { margin-top: 8px; font-family: var(--font-mono); }

@@ -85,6 +85,18 @@
 #         Never on a secret key: the loader refuses that.
 #       port_range: false (optional) the value is "start:end" with
 #         1 <= start <= end <= 65535. A pattern checks the shape, not the order.
+#       seed_file: (optional, secret keys only) the value is a wallet seed phrase
+#         that lives in a file in the service's own volume instead of this
+#         variable (app/wallet_seed.py). The worker that runs the service
+#         writes it there, creates a new one with the image's own command, or
+#         keeps the one there; CashPilot never stores it, and the container
+#         never gets the variable. The entry stays for clients that predate it.
+#         path: /data/node.yml   a file directly in a folder docker.volumes mounts
+#         key: recoveryPhrase    the YAML key the service reads the phrase from
+#         words: 12              BIP-39 length (12 only)
+#         generate: ["seed"]     command run in the image, offline, to make one
+#         phrase_pattern: ''     regex with one group: the phrase in its output
+#         address_pattern: ''    regex with one group: the wallet address there
 #   ports: ["port:port"]
 #   volumes: ["host:container"]
 #   critical_volumes:          (optional) mounts holding state that CANNOT be recovered
