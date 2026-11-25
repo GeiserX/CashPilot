@@ -127,6 +127,7 @@ nav = [
       { "Running on ARM" = "arm.md" },
       { "Custom services" = "custom-services.md" },
       { "Proxied copies" = "proxies.md" },
+      { "GPU services" = "gpu.md" },
     ] },
   { Security = [
       { "Security defaults" = "security-defaults.md" },

@@ -196,6 +196,20 @@
 #     Only devices on the worker's allow-list may be requested, and only by the
 #     service whose own YAML declares them. A device is a direct line to the
 #     kernel, so the catalog cannot widen that ceiling on its own.
+#     Never a /dev/dri node or /dev/kfd here: a GPU comes only through gpu below.
+#   runtime: runc (optional) the one runtime the service works under. Neither the
+#     deploy request nor the operator's default can change it.
+#   gpu: (optional) the GPU the worker passes in (app/gpu.py, docs/gpu.md). Read by
+#     the worker from its own catalog, never from a deploy request; a custom
+#     service or a proxied copy never gets one.
+#       vendor: nvidia     nvidia | amd | intel
+#       count: 1           1 (default) | "all"
+#       rocm: false        amd only: also pass /dev/kfd
+#     Needs requirements.gpu: true and runtime: runc (gVisor cannot pass DRI
+#     through, and passes NVIDIA only with flags CashPilot does not set), and
+#     cannot be used with network_mode: host. No docker.env key may start with
+#     NVIDIA_: every container without an NVIDIA grant gets
+#     NVIDIA_VISIBLE_DEVICES=void, and a grant's value is Docker's.
 #   privileged: false (optional, security-sensitive — grants the container full host device access)
 #   stop_timeout: 30 (optional, seconds to wait before SIGKILL on stop — default 30).
 #     Also set as the container's own stop timeout, so stops CashPilot does not

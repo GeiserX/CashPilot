@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 
 from app import arch as arch_mod
+from app import gpu
 from app.catalog import fence_gated, get_service, get_services
 from app.constants import (
     CONTAINER_PREFIX,
@@ -208,6 +209,19 @@ def _service_to_compose(
     cap_add = docker_conf.get("cap_add")
     if cap_add:
         compose_svc["cap_add"] = cap_add
+
+    # The GPU the worker would pass in (app/gpu.py). Compose has no sysfs read,
+    # so an AMD or Intel GPU is the first render node; edit it if yours differs.
+    grant = gpu.spec_of(svc)
+    if grant and grant["vendor"] == "nvidia":
+        compose_svc.setdefault("deploy", {})["resources"] = {
+            "reservations": {"devices": [{"driver": "nvidia", "count": grant["count"], "capabilities": ["gpu"]}]}
+        }
+    elif grant:
+        node = gpu.RENDER_NODE_CEILING[0]
+        compose_svc["devices"] = [*compose_svc.get("devices", []), f"{node}:{node}"]
+        if grant["rocm"]:
+            compose_svc["devices"].append(f"{gpu.KFD}:{gpu.KFD}")
 
     # Entrypoint override. EVERY $ is escaped, not just ${VAR}: a shell wrapper
     # uses bare $F and $@, and Compose would fill those from the host's

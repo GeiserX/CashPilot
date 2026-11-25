@@ -57,6 +57,7 @@ from app import (
     egress,
     exchange_rates,
     fleet_key,
+    gpu,
     health_probe,
     ipgeo,
     lan_isolation,
@@ -4507,6 +4508,8 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
     name = svc.get("name") or svc.get("slug") or "This service"
     if egress.devices_per_ip_limit(svc) == 1:
         return 1, f"{name} allows one device per IP address, so a second copy on one machine earns nothing."
+    if gpu.spec_of(svc):
+        return 1, f"{name} uses this machine's GPU, which two copies would share."
     if docker_conf.get("volumes"):
         return 1, f"{name} keeps data in a volume or host directory, which two copies would share."
     if docker_conf.get("ports"):
@@ -4828,6 +4831,13 @@ async def _deploy(
                 status_code=409,
                 detail="This worker is too old to run a service more than once. Update the worker first.",
             )
+    if gpu.spec_of(svc) and "gpu_grant" not in await _worker_features(worker_id):
+        # The worker builds the grant from its own catalog; an older one would
+        # start the service with no GPU, where it runs and earns nothing.
+        raise HTTPException(
+            status_code=409,
+            detail=f"This worker is too old to give {svc.get('name') or slug} a GPU. Update the worker first.",
+        )
 
     # Ports — key is "container_port/protocol" per Docker SDK. A mapping with a
     # host address ("127.0.0.1:9980:9980") becomes [address, port]: a web UI

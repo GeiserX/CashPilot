@@ -262,3 +262,63 @@ class TestParsePort:
     def test_rejects_with_the_mapping_named(self, bad):
         with pytest.raises(ValueError, match="port"):
             catalog.parse_port(bad)
+
+
+class TestGpuBlock:
+    """docker.gpu (app/gpu.py): the loader refuses every shape the worker could misread."""
+
+    def _gpu(self, gpu=None, requirements=None, **docker):
+        return {
+            "name": "Miner",
+            "slug": "miner",
+            "category": "compute",
+            "status": "active",
+            "description": "desc",
+            "requirements": {"gpu": True} if requirements is None else requirements,
+            "docker": {"image": "x:1", "runtime": "runc", "gpu": gpu or {"vendor": "nvidia"}, **docker},
+        }
+
+    def test_a_valid_block_loads(self, tmp_path):
+        for gpu in ({"vendor": "nvidia"}, {"vendor": "intel", "count": "all"}, {"vendor": "amd", "rocm": True}):
+            assert catalog._validate(self._gpu(gpu), tmp_path / "t.yml") == [], gpu
+
+    @pytest.mark.parametrize(
+        ("entry", "error"),
+        [
+            ({"gpu": {"vendor": "matrox"}}, "docker.gpu.vendor must be one of nvidia, amd, intel"),
+            ({"gpu": {"vendor": "nvidia", "count": 2}}, 'docker.gpu.count must be 1 or "all"'),
+            ({"gpu": {"vendor": "nvidia", "count": True}}, 'docker.gpu.count must be 1 or "all"'),
+            ({"gpu": {"vendor": "nvidia", "rocm": True}}, "docker.gpu.rocm is for vendor amd only"),
+            ({"requirements": {}}, "docker.gpu needs requirements.gpu: true"),
+            ({"runtime": "runsc"}, "docker.gpu needs docker.runtime: runc"),
+            ({"network_mode": "host"}, "docker.gpu cannot be used with network_mode: host"),
+            ({"devices": ["/dev/dri/renderD128"]}, "docker.devices /dev/dri/renderD128: a GPU comes only through"),
+            ({"devices": ["/dev/kfd:/dev/kfd"]}, "docker.devices /dev/kfd: a GPU comes only through"),
+            (
+                {"env": [{"key": "NVIDIA_VISIBLE_DEVICES"}]},
+                "docker.env key NVIDIA_VISIBLE_DEVICES: CashPilot sets the NVIDIA_ variables itself",
+            ),
+        ],
+    )
+    def test_each_refusal(self, tmp_path, entry, error):
+        entry = dict(entry)
+        gpu = entry.pop("gpu", None)
+        requirements = entry.pop("requirements", None)
+        data = self._gpu(gpu, requirements, **entry)
+        errors = catalog._validate(data, tmp_path / "t.yml")
+        assert any(error in e for e in errors), errors
+
+    def test_the_device_and_env_rules_hold_without_a_gpu_block(self, tmp_path):
+        data = {
+            "name": "Plain",
+            "slug": "plain",
+            "category": "bandwidth",
+            "status": "active",
+            "description": "desc",
+            "docker": {"image": "x:1", "devices": ["/dev/dri/card0"], "env": [{"key": "NVIDIA_DRIVER_CAPABILITIES"}]},
+        }
+        errors = catalog._validate(data, tmp_path / "t.yml")
+        assert len(errors) == 2, errors
+        # The control: /dev/net/tun is still a device an entry may declare.
+        data["docker"] = {"image": "x:1", "devices": ["/dev/net/tun"]}
+        assert catalog._validate(data, tmp_path / "t.yml") == []

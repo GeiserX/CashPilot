@@ -152,7 +152,7 @@ services:
       # The policy's fingerprint. Compose does not recreate a container when
       # only its config's content changes, so this line is what makes
       # `docker compose up -d` restart the proxy on a new policy.
-      - CASHPILOT_PROXY_POLICY=16092b75e37d2917
+      - CASHPILOT_PROXY_POLICY=cfffb1b41a4c3891
     configs:
       - source: cashpilot_socket_policy
         target: /etc/sockguard/sockguard.yaml
@@ -186,7 +186,7 @@ services:
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.
-      - CASHPILOT_PROXY_POLICY=16092b75e37d2917
+      - CASHPILOT_PROXY_POLICY=cfffb1b41a4c3891
       # The same two values the proxy gets, so the worker can say what to set
       # before the proxy refuses (the in-app update, a host-folder bind).
       - CASHPILOT_COMPOSE_DIR=${CASHPILOT_COMPOSE_DIR:-}
@@ -275,7 +275,8 @@ configs:
           allow_host_userns: false
           allow_host_cgroupns: false
           allowed_capabilities: [NET_ADMIN, NET_RAW, SETUID, SETGID]
-          allowed_devices: [/dev/net/tun]
+          allowed_devices: [/dev/net/tun, /dev/dri/renderD128, /dev/dri/renderD129, /dev/dri/renderD130, /dev/dri/renderD131, /dev/dri/renderD132, /dev/dri/renderD133, /dev/dri/renderD134, /dev/dri/renderD135, /dev/kfd]
+          allowed_device_requests: [{driver: nvidia, allowed_capabilities: [[gpu]]}]
           allowed_runtimes: [runc, runsc, runsc-hostnet, runsc-hostnet-raw]
           allow_sysctls: true               # the tunnel sidecar turns IPv6 off in its own namespace
           require_no_new_privileges: true

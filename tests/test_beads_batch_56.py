@@ -47,8 +47,11 @@ class TestDiskIsReportedOrHonestlyUnknown:
 
 
 class TestGpuNeverClaimsMoreThanItKnows:
-    def _gpu(self, *, system, in_container=False, nvidia=None, nvidia_out="", render_nodes=False):
-        from app import worker_api
+    def _gpu(self, *, system, in_container=False, nvidia=None, nvidia_out="", render_nodes=False, sysfs=None):
+        from app import gpu, orchestrator, worker_api
+
+        # sysfs is read first (app/gpu.py); these cases are the fallback, where it says nothing.
+        host = sysfs or {"conclusive": False, "vendors": {}, "kfd": False, "reason": "sysfs could not be read"}
 
         def fake_exists(self):
             return in_container if str(self) == "/.dockerenv" else False
@@ -64,6 +67,8 @@ class TestGpuNeverClaimsMoreThanItKnows:
             stdout = nvidia_out
 
         with (
+            patch.object(gpu, "host_gpus", return_value=host),
+            patch.object(orchestrator, "gpu_runtime_facts", return_value={}),
             patch.object(worker_api.platform, "system", return_value=system),
             patch.object(worker_api.shutil, "which", return_value=nvidia),
             patch.object(worker_api.subprocess, "run", return_value=_Run()),
@@ -85,10 +90,16 @@ class TestGpuNeverClaimsMoreThanItKnows:
         assert gpu["available"] is True
         assert gpu["detected_by"] == "drm"
 
-    def test_a_bare_linux_host_with_nothing_is_a_real_no(self):
-        """The ONE case where False is honest."""
-        gpu = self._gpu(system="Linux")
+    def test_a_conclusive_sysfs_read_with_nothing_is_a_real_no(self):
+        """The ONE case where False is honest: sysfs listed the PCI bus and no GPU was on it."""
+        gpu = self._gpu(system="Linux", sysfs={"conclusive": True, "vendors": {}, "kfd": False})
         assert gpu["available"] is False
+
+    def test_a_linux_host_whose_sysfs_says_nothing_is_UNKNOWN(self):
+        """No tool and no node, but sysfs unread: that proves nothing about the host."""
+        gpu = self._gpu(system="Linux")
+        assert gpu["available"] is None
+        assert "sysfs" in gpu["reason"]
 
     def test_inside_a_container_with_nothing_visible_is_UNKNOWN(self):
         """The case that matters: a GPU service earning nothing looks fine."""

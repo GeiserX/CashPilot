@@ -1428,6 +1428,15 @@ const CP = (() => {
     if (!hosts) return UNKNOWN_CELL('CashPilot does not know which host runs this service');
     const withGpu = hosts.filter(h => h.gpu && h.gpu.available === true);
     if (withGpu.length) {
+      // A worker that read sysfs names the vendors (app/gpu.py); an older one sends devices only.
+      const GPU_VENDORS = { nvidia: 'NVIDIA', amd: 'AMD', intel: 'Intel' };
+      const vendorNames = new Set(withGpu.flatMap(h => Object.keys(h.gpu.vendors || {}))
+        .map(v => GPU_VENDORS[v]).filter(Boolean));
+      if (vendorNames.size) {
+        const names = [...vendorNames];
+        const detail = withGpu.map(h => `${h.name}: ${(h.gpu.devices || ['present']).join(', ')}`).join(' | ');
+        return `<span title="${escapeHtml(detail)}">${escapeHtml(names.join(', '))}</span>`;
+      }
       const devices = withGpu.flatMap(h => h.gpu.devices || []);
       const label = devices.length ? devices[0] : 'Yes';
       const detail = withGpu.map(h => `${h.name}: ${(h.gpu.devices || ['present']).join(', ')}`).join(' | ');

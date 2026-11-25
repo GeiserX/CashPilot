@@ -110,6 +110,18 @@ def policy_problems(policy: dict, catalog: list[dict]) -> list[str]:
         for dev in docker.get("devices") or []:
             if str(dev).split(":")[0] not in devices:
                 problems.append(f"{svc.get('slug')} needs device {dev}")
+    # The GPU grant (app/gpu.py): one NVIDIA request with the gpu capability,
+    # and render nodes by exact path, never /dev/dri (a prefix opens card*).
+    if create.get("allow_device_requests"):
+        problems.append("device requests allowed without the allowlist")
+    if create.get("allowed_device_requests") != [{"driver": "nvidia", "allowed_capabilities": [["gpu"]]}]:
+        problems.append("the device request allowlist is not exactly nvidia with [[gpu]]")
+    for dev in devices:
+        if dev.rstrip("/") in ("/dev", "/dev/dri") or re.fullmatch(r"/dev/dri/card\d*", dev):
+            problems.append(f"device {dev} allowed: it opens the display control nodes")
+    for dev in ("/dev/dri/renderD128", "/dev/kfd"):
+        if dev not in devices:
+            problems.append(f"device {dev} not allowed: a catalog GPU grant needs it")
     commands = exec_.get("allowed_commands") or []
     for argv in spp.catalog_commands():
         if argv not in commands:
@@ -353,6 +365,14 @@ MUTATIONS = {
     "cross-owner namespaces": lambda p: p["ownership"].update(allow_cross_owner_namespace_sharing=True),
     "unowned images refused": lambda p: p["ownership"].update(allow_unowned_images=False),
     "volume driver opts": lambda p: p["request_body"]["volume"].update(allow_driver_opts=True),
+    "blanket device requests": lambda p: p["request_body"]["container_create"].update(allow_device_requests=True),
+    "dri prefix": lambda p: p["request_body"]["container_create"]["allowed_devices"].append("/dev/dri"),
+    "card node": lambda p: p["request_body"]["container_create"]["allowed_devices"].append("/dev/dri/card0"),
+    "drop nvidia request": lambda p: p["request_body"]["container_create"].update(allowed_device_requests=[]),
+    "amd request": lambda p: p["request_body"]["container_create"]["allowed_device_requests"].append(
+        {"driver": "amd", "allowed_capabilities": [["gpu"]]}
+    ),
+    "drop render nodes": lambda p: p["request_body"]["container_create"].update(allowed_devices=["/dev/net/tun"]),
 }
 
 

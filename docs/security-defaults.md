@@ -22,7 +22,7 @@ These have no off switch. If you need one of them disabled, CashPilot is the wro
 | **Deployed containers drop all capabilities**, get `no-new-privileges`, and a PID limit | These images are third-party and closed-source. They get the minimum kernel surface. Capabilities are granted per-service from the catalog, never globally. |
 | **Privileged containers are refused** | A privileged container is not isolated in any meaningful sense. No service in the catalog needs one. |
 | **System volume roots are blocked** | A container that can mount `/etc` or `/var/run` owns the host. Specific paths can be opted in (tier 2), but the blanket block cannot be removed. |
-| **Host devices are allowlisted, and per-service** | Passing a host device into a container widens what that container can touch, so it is not something to enable casually. A deploy may request a device only if **its own** catalog entry declares it *and* the device is on a fixed ceiling. Today that ceiling is `/dev/net/tun` alone, for [Mysterium](guides/mysterium.md). One service declaring a device does not let any other request it, and anything outside the ceiling is refused rather than quietly dropped. |
+| **Host devices are allowlisted, and per-service** | Passing a host device into a container widens what that container can touch, so it is not something to enable casually. A deploy may request a device only if **its own** catalog entry declares it *and* the device is on a fixed ceiling. Today that ceiling is `/dev/net/tun` alone, for [Mysterium](guides/mysterium.md). One service declaring a device does not let any other request it, and anything outside the ceiling is refused rather than quietly dropped. A GPU comes only through the [GPU grant](gpu.md): the worker gives it to a catalog service whose entry declares `docker.gpu`, never to a custom service or a proxied copy, and never on a request's say-so. Every other container gets `NVIDIA_VISIBLE_DEVICES=void`, so a CUDA image cannot take the GPU through a host whose default runtime is `nvidia`. |
 | **No telemetry** | Absent rather than opt-out. A toggle would imply the capability exists; it does not. There is no code that reports anything about you anywhere. The outbound calls that do exist (the daily release check, a worker's public-IP lookup, exchange rates) carry no identifier, and the first two can be switched off (tier 2). |
 | **Custom services get the catalog hardening and nothing a catalog entry can grant** | An image you add yourself has not been reviewed. It runs with every rule above, no published ports, no host directories and a memory limit, and the worker refuses it any capability, device or host networking. See [custom services](custom-services.md#what-it-is-allowed-to-do). |
 | **Volumes holding irreplaceable state are protected from deletion** | Node identities and generated wallets have no server-side copy. See [what counts as irreplaceable](#irreplaceable-state). |
@@ -192,7 +192,10 @@ dangerous containers, not only dangerous URLs:
   (host networking is allowed, see *What a compromised worker can still do*
   below; the host cgroup namespace is not), `no-new-privileges` required, no unconfined seccomp, AppArmor or
   system paths. Added capabilities only from `NET_ADMIN`, `NET_RAW`, `SETUID`,
-  `SETGID` (what the catalog declares), devices only `/dev/net/tun`, runtimes
+  `SETGID` (what the catalog declares), devices only `/dev/net/tun` and, for
+  the [GPU grant](gpu.md), the render nodes `/dev/dri/renderD128` to
+  `renderD135` and `/dev/kfd` (exact paths, so never a `card*` display node),
+  device requests only `nvidia` with the `gpu` capability, runtimes
   only `runc` and the gVisor ones (the worker refuses any other runtime itself,
   before the running container is touched). Host folders only from
   `CASHPILOT_PROXY_BIND_MOUNTS` and `CASHPILOT_COMPOSE_DIR`, so a bind of `/`

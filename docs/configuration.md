@@ -94,6 +94,14 @@ defensible on its own; together they are impossible to guess.
 
 ## GPU passthrough
 
+!!! note "The worker no longer needs the GPU passed in"
+
+    The worker reads the host's GPUs from sysfs, which every container sees,
+    so it answers **yes** or **no** on a Linux host with nothing passed in. A
+    service gets its GPU from the [GPU grant](gpu.md), never through the
+    worker. The rest of this section only matters for a worker on WSL or on a
+    host whose sysfs it cannot read.
+
 CashPilot reports a worker's GPU as one of three answers, **yes**, **no** or
 **unknown**, and inside a container the honest answer is almost always
 *unknown*: the absence of a GPU there says nothing about the host.
@@ -156,7 +164,8 @@ Once the GPU is actually allocated, the worker finds `nvidia-smi` and reports
 the real model name rather than just a device count.
 
 Passing a device into the worker only lets the **worker** see it. A deployed GPU
-**service** needs the device too. Declare it in that service's catalog entry.
+**service** gets its GPU from its catalog entry's `docker.gpu` block (the
+[GPU grant](gpu.md)).
 
 ## Compose-level
 
