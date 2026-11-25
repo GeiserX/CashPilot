@@ -44,6 +44,8 @@ CRYPTO_IDS: dict[str, str] = {
     "USDC": "usd-coin",
     # Mining pools that pay in Bitcoin (OCEAN).
     "BTC": "bitcoin",
+    # Mining pools that pay in Monero (SupportXMR).
+    "XMR": "monero",
 }
 
 CACHE_TTL = 900  # 15 minutes

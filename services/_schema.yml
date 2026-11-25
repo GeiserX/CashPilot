@@ -377,7 +377,7 @@
 #         registry must flag what it does not know rather than render a blank
 #         that reads as "nothing to see here".
 #
-#   chain: ethereum | polygon | solana | bitcoin | none | ...
+#   chain: ethereum | polygon | solana | bitcoin | monero | none | ...
 #     `none` means NO on-chain surface exists at all, ever — Salad pays PayPal
 #     and gift cards only. Tier 2 (on-chain reconciliation) must skip these
 #     rather than fail to find an address for them.

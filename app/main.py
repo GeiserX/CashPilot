@@ -1483,7 +1483,8 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
         if previous is None:
             return None
         try:
-            withdrawn = await database.withdraw_recovered_payout(result.platform, result.balance - previous)
+            regained = payouts.balance_change(previous, result.balance)
+            withdrawn = await database.withdraw_recovered_payout(result.platform, regained)
         except Exception as exc:  # noqa: BLE001 - must never block detecting a new payout
             withdrawn = False
             logger.warning("Could not check %s for a recovered payout: %s", result.platform, exc)
@@ -9983,7 +9984,8 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         balance = None if result.error else result.balance
         return credential_test.result(outcome, name, balance=balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
-    return credential_test.result(outcome, name)
+    payout_address = (service.get("payout") or {}).get("address_source") == "collector"
+    return credential_test.result(outcome, name, payout_address=payout_address)
 
 
 @app.get("/api/earnings/payouts")
