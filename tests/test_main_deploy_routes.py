@@ -176,15 +176,47 @@ class TestDesktopWalletDeploys:
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": slug, "spec": spec})
         self._assert_wallet_refusal(response, post, fake_wallet_seed)
 
-    @pytest.mark.parametrize("field", ["Env", "unexpected", "approval"])
-    def test_raw_desktop_deploy_requires_exact_schema_keys(self, client, worker_target, fake_wallet_seed, field):
+    @pytest.mark.parametrize(
+        "field", ["HOSTD_WALLET_SEED", "hostd_wallet_seed", "HostD_Wallet_Seed", "hostd-wallet-seed"]
+    )
+    def test_raw_deploy_refuses_legacy_seed_key_spellings(self, client, worker_target, fake_wallet_seed, field):
         _, post = worker_target
-        spec = {"image": "honeygain/honeygain:latest", "env": {}, field: {"HOSTD_WALLET_SEED": fake_wallet_seed}}
+        spec = {
+            "image": "honeygain/honeygain:latest",
+            "env": {
+                "HONEYGAIN_EMAIL": "owner@example.test",
+                "HONEYGAIN_PASSWORD": "test-password",
+                field: fake_wallet_seed,
+            },
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+
+    def test_raw_deploy_refuses_a_seed_in_fields_docker_strips(self, client, worker_target, fake_wallet_seed):
+        _, post = worker_target
+        spec = {"image": "honeygain/honeygain:latest", "env": {}, "approval": [{"walletSeed": fake_wallet_seed}]}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+        assert fake_wallet_seed not in response.text
+
+    def test_raw_deploy_refuses_a_valid_phrase_under_an_unrelated_key(self, client, worker_target):
+        _, post = worker_target
+        # Public BIP-39 test vector for zero entropy.
+        phrase = "abandon " * 11 + "about"
+        spec = {"image": "honeygain/honeygain:latest", "env": {"HONEYGAIN_PASSWORD": phrase}}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, phrase)
+        assert phrase not in response.text
+
+    @pytest.mark.parametrize("field", ["Env", "unexpected", "approval"])
+    def test_raw_desktop_deploy_requires_exact_schema_keys(self, client, worker_target, field):
+        _, post = worker_target
+        spec = {"image": "honeygain/honeygain:latest", "env": {}, field: {"HONEYGAIN_PASSWORD": "test-password"}}
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
         post.assert_not_awaited()
         assert response.status_code == 422
         assert "deploy request" in response.json()["detail"]
-        assert fake_wallet_seed not in response.text
+        assert "test-password" not in response.text
 
     def test_raw_desktop_deploy_accepts_the_desktop_fields(self, client, worker_target):
         _, post = worker_target

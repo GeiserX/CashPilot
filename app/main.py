@@ -7525,28 +7525,40 @@ def _worker_left_restore(resp: Any) -> bool:
     return bool(_worker_restore_answer(resp).get("left"))
 
 
-def _refuse_desktop_wallet_payload(path: str, body: dict[str, Any]) -> None:
+def _refuse_desktop_wallet_payload(path: str, body: dict[str, Any], desktop_json: dict[str, Any] | None) -> None:
     """Check the final request, including raw deploys and rebuilt proxy copies."""
     svc = None
-    spec = body
     match path.split("/"):
-        case ["", "api", "containers", slug, "deploy" | "restore"]:
+        case ["", "api", "containers", slug, "deploy" | "restore"] | ["", "api", "proxied", slug, _, "deploy"]:
             svc = catalog.get_service(slug)
-        case ["", "api", "proxied", slug, _, "deploy"]:
-            svc = catalog.get_service(slug)
-            spec = body.get("earner")
     if wallet_seed.seed_key(svc):
         raise _desktop_wallet_refusal(svc)
-    if not isinstance(spec, dict):
-        return
-    if "wallet_seed" in spec:
-        raise _desktop_wallet_refusal(svc)
-    env = spec.get("env")
-    if isinstance(env, dict) and env:
-        # A raw command can carry a seed variable under a different slug.
-        for service in catalog.get_services():
-            if (key := wallet_seed.seed_key(service)) and key in env:
-                raise _desktop_wallet_refusal(service)
+
+    # Raw commands can carry seed fields for another service. Ignore case and
+    # separators so env vars and JSON field names follow the same rule.
+    separators = re.compile(r"[^a-z0-9]")
+    wallet_fields = dict.fromkeys(("walletseed", "seedphrase", "recoveryphrase", "mnemonic"), svc)
+    for service in catalog.get_services():
+        if key := wallet_seed.seed_key(service):
+            wallet_fields[separators.sub("", key.casefold())] = service
+
+    # Check the raw fields before schema validation and the full spec before
+    # projection to the Desktop schema. Either can hold a seed.
+    pending: list[Any] = [body, desktop_json]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if isinstance(key, str):
+                    field = separators.sub("", key.casefold())
+                    if field in wallet_fields:
+                        raise _desktop_wallet_refusal(wallet_fields[field])
+                    pending.append(key)
+                pending.append(child)
+        elif isinstance(value, (list, tuple)):
+            pending.extend(value)
+        elif isinstance(value, str) and wallet_seed.phrase_problem(value) is None:
+            raise _desktop_wallet_refusal(svc)
 
 
 class _DesktopDeploySpec(BaseModel):
@@ -7560,7 +7572,7 @@ class _DesktopDeploySpec(BaseModel):
 
 
 def _desktop_deploy_body(path: str, spec: dict[str, Any], desktop_json: dict[str, Any] | None) -> dict[str, Any]:
-    _refuse_desktop_wallet_payload(path, spec)
+    _refuse_desktop_wallet_payload(path, spec, desktop_json)
     if not re.fullmatch(r"/api/containers/[a-z0-9][a-z0-9_.-]*/deploy", path):
         raise HTTPException(status_code=409, detail="CashPilot Desktop cannot take this request from the dashboard.")
     try:
