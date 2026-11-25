@@ -14,6 +14,8 @@ short_description: Decentralized compute marketplace - GLM tokens via Yagna agen
 referral:
   signup_url: "https://golem.network"
   program: false
+  # No account: the provider sets a payout wallet in its own setup.
+  account: false
 
 docker:
   image: ""

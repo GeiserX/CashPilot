@@ -23,6 +23,8 @@ referral:
   # The project confirmed on 2026-10-07 that there is no referral programme
   # and no invite parameter on the download page (issue #409).
   program: false
+  # The identity is a wallet the app generates, not an account.
+  account: false
 
 docker:
   image: ""
