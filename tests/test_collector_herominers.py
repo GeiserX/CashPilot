@@ -128,6 +128,15 @@ async def test_503_is_transient_and_omits_the_address(read):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403])
+async def test_refused_public_request_does_not_reject_the_payout_address(read, status):
+    result, _ = await read(lambda _: httpx.Response(status))
+
+    assert result.error_kind == base.KIND_TRANSIENT
+    assert credential_test.classify(result.error, result.error_kind) == credential_test.UNREACHABLE
+
+
+@pytest.mark.asyncio
 async def test_timeout_is_transient_after_retries(read, monkeypatch):
     async def no_sleep(_seconds):
         return None

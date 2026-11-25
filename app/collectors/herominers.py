@@ -55,9 +55,12 @@ class _HeroMinersCollector(BaseCollector):
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             # The request URL contains the payout address.
-            error = f"HeroMiners returned HTTP {exc.response.status_code} {exc.response.reason_phrase}."
+            status = exc.response.status_code
+            error = f"HeroMiners returned HTTP {status} {exc.response.reason_phrase}."
             logger.warning("%s", error)
-            return self._fail(error, base.classify_exception(exc))
+            # This endpoint is public. Only its JSON can reject an address.
+            kind = base.KIND_TRANSIENT if status in (401, 403) else base.classify_exception(exc)
+            return self._fail(error, kind)
         except httpx.RequestError as exc:
             base.log_failure(logger, "HeroMiners", exc)
             return self._fail(base.describe_exception(exc), base.classify_exception(exc))
