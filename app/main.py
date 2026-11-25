@@ -9599,7 +9599,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     for wid, containers in by_worker.items():
         meta = worker_meta.get(wid) or {}
         info = _safe_json(meta.get("system_info", "{}"), {})
-        metered = power.is_metered(info)
+        metered = _worker_is_metered(cfg, meta, info)
         # The draw the user typed for this machine on the Fleet page comes
         # first. It is the only figure here anyone checked against the box;
         # the fleet card already charged it while this endpoint split a 65 W
@@ -10377,7 +10377,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 # this module's "unknown", and it reports that rather than
                 # inventing a net.
                 price_per_kwh=(price or None) if fx_ok else None,
-                metered=power.is_metered(info),
+                metered=_worker_is_metered(config, worker, info),
                 dedicated=_worker_flag(config, worker, "dedicated"),
                 # An empty list counts as zero only when the worker could
                 # reach Docker and read its whole inventory.
@@ -11203,7 +11203,7 @@ def _to_usd_with_stored(amount: float, currency: str, stored_rate: float | None)
     return amount * stored_rate if stored_rate is not None else None
 
 
-def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str) -> bool:
+def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str, *, default: bool = False) -> bool:
     """A per-worker boolean setting, read by client_id with a row-id fallback.
 
     Two problems in one place. Config values are TEXT, so ``bool("false")`` is
@@ -11217,7 +11217,11 @@ def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str) ->
     for key in (f"worker_{_worker_config_key(worker)}_{suffix}", f"worker_{worker.get('id')}_{suffix}"):
         if str(config.get(key, "") or "").strip():
             return _config_flag(config, key)
-    return False
+    return default
+
+
+def _worker_is_metered(config: dict[str, Any], worker: dict[str, Any], info: dict[str, Any]) -> bool:
+    return not _worker_flag(config, worker, "unmetered", default=not power.is_metered(info))
 
 
 def _worker_config_key(worker: dict[str, Any]) -> str:
@@ -12406,6 +12410,7 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # rather than an empty box that silently overwrites what is stored.
         w["watts"] = _worker_watts(config, w)
         w["dedicated"] = _worker_flag(config, w, "dedicated")
+        w["unmetered"] = not _worker_is_metered(config, w, si)
         # Whether this worker ever finished the per-worker-key cutover. Without
         # it the only trace was a UI log line once a minute, which nobody reads,
         # so a worker still authenticating with the SHARED key looked identical

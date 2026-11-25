@@ -657,6 +657,22 @@ class TestTypedMachineWattsAndServiceBreakEven:
     WORKER = [{"id": 1, "client_id": "rig", "system_info": "{}"}]
     BUSY = [{"slug": "miner", "status": "running", "cpu_percent": 100.0, "_worker_id": 1}]
 
+    def test_a_worker_marked_unmetered_has_no_estimated_service_cost(self):
+        config = {
+            "power_price_per_kwh": "0.20",
+            "power_currency": "USD",
+            "worker_rig_watts": "100",
+            "worker_rig_unmetered": "true",
+        }
+        (service,) = self._net(config, self.BUSY, self.WORKER)["services"]
+        assert service["cost"] == 0.0
+        assert service["cost_attributable"] is False
+        assert "break_even_price_per_kwh" not in service
+        config["worker_rig_unmetered"] = "false"
+        (metered,) = self._net(config, self.BUSY, self.WORKER)["services"]
+        assert metered["cost"] == 14.4
+        assert "break_even_price_per_kwh" in metered
+
     @pytest.mark.parametrize(("entered", "cost"), [("", None), ("5e-324", None), ("2", 0.288)])
     def test_a_tracked_pool_uses_only_entered_wall_watts(self, entered, cost):
         out = self._net(

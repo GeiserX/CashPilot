@@ -261,6 +261,27 @@ class TestEndpoint:
         out = self._call()
         assert out["machines"] == []
 
+    def test_the_billing_setting_overrides_the_worker_default_in_both_directions(self):
+        config = {"power_price_per_kwh": "0.20", "power_currency": "USD", "worker_c1_watts": "100"}
+        inputs = {
+            "workers": [{**self.WORKERS[0], "system_info": {"metered": False}}],
+            "earned": {"honeygain": 8.0},
+            "containers": [{"slug": "honeygain", "status": "running", "_worker_id": 1}],
+        }
+        legacy = self._call(config=config, **inputs)["machines"][0]
+        assert legacy["verdict"] == me.NOT_METERED
+        config["worker_c1_unmetered"] = "false"
+        metered = self._call(config=config, **inputs)["machines"][0]
+        assert metered["monthly_cost"] == 14.6
+        assert metered["break_even_tariff"]["price_per_kwh"] == 0.1096
+        config["worker_c1_unmetered"] = "true"
+        unmetered = self._call(config=config, **inputs)["machines"][0]
+        assert unmetered["verdict"] == me.NOT_METERED
+        assert unmetered["monthly_gross"] == 8.0
+        assert unmetered["monthly_cost"] is None
+        assert unmetered["monthly_net"] is None
+        assert unmetered["break_even_tariff"] is None
+
     @pytest.mark.parametrize("watts", [None, "0", "-10", "nan", "inf", "5e-324"])
     def test_a_tracked_pool_with_no_valid_watts_has_unknown_cost(self, watts):
         out = self._call(

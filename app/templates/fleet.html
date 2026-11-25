@@ -484,6 +484,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
               <input type="checkbox" class="power-dedicated" data-client-id="${cid}" ${w.dedicated ? 'checked' : ''}>
               dedicated
             </label>
+            <label class="w-dedicated">
+              <input type="checkbox" class="power-unmetered" data-client-id="${cid}" ${w.unmetered ? 'checked' : ''} ${_isOwner ? '' : 'disabled'}>
+              Not billed per kWh
+            </label>
             <button class="btn btn-link power-save-worker" data-client-id="${cid}">save</button>
           </td>
           <td class="w-ctr" data-label="${isAndroid ? 'Apps' : 'Containers'}">${items.length ? (isAndroid ? renderApps(items, isOnline, w.last_heartbeat) : renderContainers(w, isOnline)) : '<span class="muted">none</span>'}</td>
@@ -934,6 +938,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const id = powerBtn.dataset.clientId;
       const watts = document.querySelector(`.power-watts[data-client-id="${CSS.escape(id)}"]`);
       const dedicated = document.querySelector(`.power-dedicated[data-client-id="${CSS.escape(id)}"]`);
+      const unmetered = document.querySelector(`.power-unmetered[data-client-id="${CSS.escape(id)}"]`);
       const raw = (watts?.value || '').trim();
       const value = Number(raw);
       if (raw !== '' && (!Number.isFinite(value) || value < 0)) {
@@ -946,6 +951,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
           // not, and settings keyed on it are orphaned when a host re-enrols.
           [`worker_${id}_watts`]: raw,
           [`worker_${id}_dedicated`]: dedicated?.checked ? 'true' : 'false',
+          [`worker_${id}_unmetered`]: unmetered?.checked ? 'true' : 'false',
         } } });
         CP.toast('Machine power saved', 'success');
         loadFleetEconomics();
