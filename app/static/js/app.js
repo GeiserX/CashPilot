@@ -3610,7 +3610,10 @@ const CP = (() => {
 
     // Platform notice for manual-only services
     let manualNotice = '';
-    if (isManual) {
+    if (isManual && svc.category === 'mining') {
+      // A pool tracked by payout address: there is no app to install.
+      manualNotice = '<div class="manual-notice">Tracked pool — your miner, your payout address</div>';
+    } else if (isManual) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('/');
       manualNotice = `<div class="manual-notice">${platforms || 'Desktop'} only — earnings tracking available</div>`;
     }
@@ -3724,6 +3727,35 @@ const CP = (() => {
     const dashboardLink = isDeployed && dashboardUrl
       ? `<a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Dashboard</a>`
       : '';
+
+    // A mining pool with no image is tracked by its payout address: CashPilot
+    // runs nothing, and the address goes in Settings, where the collector reads it.
+    if (svc.manual_only && svc.category === 'mining') {
+      return `
+      <div class="card setup-card" id="setup-${svc.slug}">
+        <div class="card-header">
+          <h3 class="section-title">${escapeHtml(svc.name)}</h3>
+          <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
+        </div>
+        <div class="setup-body">
+          <p class="setup-line">
+            <strong>Tracked pool.</strong> CashPilot runs no miner for it. Point your own miner at the pool, then save
+            your payout address and CashPilot reads the balance the pool holds for you.
+          </p>
+          <a href="/settings#collector-${escapeHtml(svc.slug)}" class="btn btn-primary btn-sm">Add your payout address</a>
+          <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+            Start mining on ${escapeHtml(svc.name)}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+          ${dashboardLink}
+          <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+            Setup guide
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          </a>
+          ${referralNote(svc)}
+        </div>
+      </div>`;
+    }
 
     // Manual-only services: show signup link + earnings tracking notice + any env fields
     if (svc.manual_only) {
@@ -6178,6 +6210,14 @@ const CP = (() => {
     const left = items.filter((_, i) => i % 2 === 0).join('');
     const right = items.filter((_, i) => i % 2 === 1).join('');
     container.innerHTML = `<div class="collectors-grid"><div class="collectors-col">${left}</div><div class="collectors-col">${right}</div></div>`;
+    // A link such as /settings#collector-ocean (the setup wizard's) opens that collector.
+    if (/^#collector-[a-z0-9-]+$/.test(location.hash)) {
+      const target = document.getElementById(location.hash.slice(1));
+      if (target) {
+        target.open = true;
+        target.scrollIntoView({ block: 'center' });
+      }
+    }
   }
 
   async function saveCollectorCredentials() {

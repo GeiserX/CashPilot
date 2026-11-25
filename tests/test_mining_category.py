@@ -139,11 +139,32 @@ class TestThePayoutAddressFromSettings:
         assert row["address_missing"] is False
         assert row["address_unchecked"] == "settings"
 
+    def test_unreadable_settings_leave_other_rows_alone(self):
+        with (
+            patch.object(payout_registry.database, "get_deployments", AsyncMock(return_value=[])),
+            patch.object(payout_registry.database, "list_workers", AsyncMock(return_value=[])),
+            patch.object(payout_registry.database, "get_deployment_spec", AsyncMock(return_value=None)),
+            patch.object(payout_registry.database, "get_state_backups", AsyncMock(return_value={})),
+            patch.object(payout_registry.database, "get_config", AsyncMock(side_effect=RuntimeError("db locked"))),
+        ):
+            result = asyncio.run(payout_registry.registry())
+        storj = next(r for r in result["entries"] if r["slug"] == "storj")
+        # An env-sourced address never comes from Settings, so its state is unchanged.
+        assert storj["address_unchecked"] is None and storj["address_missing"] is True
+
     def test_the_entry_function_takes_the_address(self):
         service = catalog.get_service("ocean")
         row = payout_registry.entry(service, None, deployed=False, configured_address=f" {LIVE} ")
         assert row["address"] == LIVE and row["chain"] == "bitcoin"
         assert payout_registry.entry(service, None, deployed=False)["address_missing"] is True
+
+
+class TestThePoolCoinIsPriced:
+    def test_btc_has_its_coingecko_id(self):
+        from app import exchange_rates
+
+        assert exchange_rates.CRYPTO_IDS["BTC"] == "bitcoin"
+        assert catalog.get_service("ocean")["payment"]["currency"] in exchange_rates.CRYPTO_IDS
 
 
 class TestAPoolPayout:

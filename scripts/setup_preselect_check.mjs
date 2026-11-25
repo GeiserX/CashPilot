@@ -159,3 +159,22 @@ const searchOf = href => href.slice(href.indexOf('?'));
   assert.equal(w.body().selected_categories, JSON.stringify(['bandwidth']));
 }
 console.log('/setup?service=<slug> starts the wizard at the setup step with that service picked, and saves only the user\'s categories.');
+
+// ---- A mining pool tracked by payout address --------------------------------
+// It has no image, but it is not an app to install: the wizard says so and
+// sends the user to the Settings field the collector reads.
+{
+  const pool = { slug: 'ocean', name: 'OCEAN', category: 'mining', manual_only: true, platforms: [], docker: { image: '', env: [] },
+    referral: { signup_url: 'https://ocean.xyz/getstarted' }, cashout: { dashboard_url: 'https://ocean.xyz/stats' } };
+  const app = { manual_only: true, slug: 'grass', name: 'Grass', category: 'depin', platforms: ['desktop'], docker: { image: '' } };
+  const referralNote = () => '';
+  const form = new Function('escapeHtml', 'capFirst', 'referralNote', 'envInputFields',
+    `${grab('renderServiceSetupForm')}\nreturn renderServiceSetupForm;`)(escapeHtml, capFirst, referralNote, () => '');
+  const html = form(pool, []);
+  assert.match(html, /<a href="\/settings#collector-ocean"[^>]*>Add your payout address<\/a>/, 'the pool step links to its Settings field');
+  assert.match(html, /CashPilot runs no miner for it/);
+  assert.doesNotMatch(html, /Desktop only|Install the app/, 'a pool is never called a desktop app');
+  assert.match(html, /href="https:\/\/ocean\.xyz\/getstarted"/, 'the signup link stays the catalog one');
+  assert.match(form(app, []), /Desktop only/, 'an app-only service keeps its install text');
+}
+console.log('A mining pool step asks for the payout address in Settings, never for an app install.');

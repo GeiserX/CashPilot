@@ -37,13 +37,15 @@ In your miner's settings, follow [OCEAN's own guide](https://ocean.xyz/getstarte
 - **Username:** your Bitcoin address. You may add a worker name after a dot, such as `bc1q….bitaxe`.
 - **Password:** `x`.
 
-Copy and paste the address. OCEAN does not check it, so a typo mines for an address nobody owns.
+Copy and paste the address. OCEAN does not reject a username that is not a valid Bitcoin address, but the shares from it earn nothing.
 
 ### 2. Track it in CashPilot
 
-1. Open **Settings** and find **OCEAN** under the collectors.
+1. Open **Settings**, go to **Earnings collection** and open **OCEAN**. The setup wizard's **Add your payout address** button opens it for you.
 2. Paste the same Bitcoin address into **Address**, without the `.workername` part.
-3. Save. CashPilot starts reading the balance within the hour, and **Test** checks it at once.
+3. Click **Save credentials**. CashPilot reads the balance at the next hourly run, or at once when you click **Collect now**.
+
+You can also save the address from the dashboard's credentials window. That window checks the address with OCEAN as soon as you save it.
 
 CashPilot stores the address in plain text. It is public: anyone can look up its stats on ocean.xyz, and it unlocks no funds. CashPilot never asks for a key or a seed.
 
