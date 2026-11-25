@@ -6,6 +6,7 @@ Use the catalog's **Mining** section to deploy [XMRig](guides/xmrig.md) on your 
 |---|---|---|
 | OCEAN | Bitcoin | [OCEAN](guides/ocean.md) |
 | SupportXMR | Monero | [SupportXMR](guides/supportxmr.md) |
+| HeroMiners Kaspa | Kaspa | [HeroMiners Kaspa](guides/herominers-kas.md) |
 
 ## Accrued is not received
 

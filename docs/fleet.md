@@ -201,11 +201,13 @@ Starting, stopping, restarting and viewing logs happen on the **Dashboard**. The
 
 ### Running costs
 
-The **Running costs** block shows, for each machine, what it earned in the last 30 days and what its electricity costs. It needs two numbers from you: the electricity price and currency at the top of the block, and each machine's wall draw in watts in its row of the boxes table.
+The **Running costs** block shows earnings for the last 30 days and estimates electricity costs for fleet machines and tracked devices. Enter your electricity price and currency at the top of the block. Set each machine's wall draw in the Boxes table.
+
+- **Tracked devices.** If you track a mining pool or GPU service, enter the total wall draw of all equipment on that account in its **Device** row. Leave the field empty if you do not know the draw. The electricity cost and net stay unknown. Pool figures show what accrued during the period.
 
 - **Break-even tariff.** Once a machine has a wattage, its row says "Earns more than its electricity below 0.069 EUR/kWh". That is the electricity price at which the machine's earnings exactly cover its power. If you pay less, it makes money. If you pay more, it costs you money. The line shows before you enter a price, in the currency of your tariff setting (in USD when no exchange rate is available). With a price entered it adds "(you pay 0.250)" so you can compare. A machine that earned nothing in the window loses money at any price, so its break-even is 0. A machine whose services have no earnings reading at all (no collector, no credentials or no exchange rate) shows no break-even, because CashPilot does not know what it earned.
 - **Every figure rests on the watts you typed.** CashPilot measures no power. Read the draw from a plug meter or the machine's spec, and expect the figures to be only as good as that number.
-- **Per-service figures start from the same watts.** Each service's share of the bill is split from the machine's typed draw by CPU use, and the shares on one machine never add up to more than that draw. They can still differ a little from the machine row, which charges the whole draw. Only when no draw was typed does the split fall back to a 65 W estimate (or the `power_host_tdp_watts` setting, if set), so type the watts. `/api/earnings/net` gives a service its own break-even only when its share is at least 5 W, which a plug meter can see.
+- **Per-service figures start from the same watts.** CPU-based services, including CPU miners, split the machine's draw by CPU use. Their shares never add up to more than the typed draw. Without that value, the split falls back to a 65 W estimate or a configured host TDP. `/api/earnings/net` shows a service's break-even when its CPU share is at least 5 W or you enter its whole-device draw.
 - **A VPS: leave the watts empty.** Its bill does not change with power use, so a typed draw would charge it a cost you do not pay.
 
 ## Budgeting a small box

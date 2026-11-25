@@ -119,20 +119,22 @@ def summarise(
     Each entry needs ``platform``, ``gross``, ``watts`` and ``hours``; anything
     on an unmetered host should arrive with ``watts`` already zeroed.
 
-    A miner may have known costs and unread gross earnings. Pass gross=None
-    for that case. Net needs a tariff and a gross reading for every row.
+    A missing tariff or wattage leaves the cost unknown. Net compares only
+    services with both a known gross and a known cost.
     """
     configured = price_per_kwh > 0
     rows: list[dict[str, Any]] = []
     total_gross = 0.0
     total_cost = 0.0
+    total_net = 0.0
 
     for svc in services:
-        gross = svc.get("gross", 0.0)
-        gross = float(gross or 0.0) if gross is not None else None
+        value = svc.get("gross", 0.0)
+        gross = float(value) if value is not None else None
+        watts = svc.get("watts")
         cost = (
-            energy_cost(float(svc.get("watts") or 0.0), float(svc.get("hours") or 0.0), price_per_kwh)
-            if configured
+            energy_cost(float(watts), float(svc.get("hours") or 0.0), price_per_kwh)
+            if configured and watts is not None
             else None
         )
         row = net_for_service(gross, cost, quality=str(svc.get("cost_quality") or ESTIMATED))
@@ -145,20 +147,29 @@ def summarise(
         # does not care is unaffected.
         row["cost_attributable"] = bool(svc.get("cost_attributable", True))
         rows.append(row)
-        total_gross += gross or 0.0
-        total_cost += cost or 0.0
+        if gross is not None:
+            total_gross += gross
+        if cost is not None:
+            total_cost += cost
+            if gross is not None:
+                total_net += gross - cost
+
+    unknown = [row["platform"] for row in rows if row["cost"] is None]
+    gross_unknown = [row["platform"] for row in rows if row["gross"] is None]
+    cost_known = configured and (not rows or len(unknown) < len(rows))
+    net_known = configured and (not rows or any(row["net"] is not None for row in rows))
 
     return {
         "currency": currency,
         "price_per_kwh": price_per_kwh if configured else None,
         # Without a tariff there is no net to report. Saying so is the point:
         # a zero cost would render gross as net and quietly overstate earnings.
-        "cost_known": configured,
+        "cost_known": cost_known,
+        "cost_unknown_for": unknown,
+        "gross_unknown_for": gross_unknown,
         "services": rows,
-        "total_gross": None if rows and all(r["gross"] is None for r in rows) else round(total_gross, 4),
-        "total_cost": round(total_cost, 4) if configured else None,
-        "total_net": round(total_gross - total_cost, 4)
-        if configured and all(r["gross"] is not None for r in rows)
-        else None,
+        "total_gross": round(total_gross, 4) if not rows or len(gross_unknown) < len(rows) else None,
+        "total_cost": round(total_cost, 4) if cost_known else None,
+        "total_net": round(total_net, 4) if net_known else None,
         "negative_services": [r["platform"] for r in rows if r["negative"]],
     }

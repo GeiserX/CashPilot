@@ -16,6 +16,7 @@ from app.collectors.bytelixir import BytelixirCollector
 from app.collectors.earnapp import EarnAppCollector
 from app.collectors.earnfm import EarnFMCollector
 from app.collectors.grass import GrassCollector
+from app.collectors.herominers import HeroMinersKaspaCollector
 from app.collectors.honeygain import HoneygainCollector
 from app.collectors.iproyal import IPRoyalCollector
 from app.collectors.mystnodes import MystNodesCollector
@@ -49,6 +50,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "salad": SaladCollector,
     "ocean": OceanCollector,
     "supportxmr": SupportXMRCollector,
+    "herominers-kas": HeroMinersKaspaCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -74,9 +76,10 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     # are never passed to the collector — which accepts them already.
     "bytelixir": ["session_cookie", "?remember_web", "?xsrf_token"],
     "salad": ["auth_cookie"],
-    # A public payout address: OCEAN's stats are keyed by it, and it unlocks no funds.
+    # These pools look up stats by a public payout address.
     "ocean": ["address"],
     "supportxmr": ["address"],
+    "herominers-kas": ["address"],
 }
 
 # How long each credential actually lasts, and why it matters.
