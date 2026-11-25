@@ -7525,6 +7525,9 @@ def _worker_left_restore(resp: Any) -> bool:
     return bool(_worker_restore_answer(resp).get("left"))
 
 
+# Stop accidental recovery phrase leaks to CashPilot Desktop. Decode and match
+# saved words across values in request order. Check pasted phrases by checksum
+# within whitespace-separated words in each field.
 async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | None) -> None:
     """Check the final request and fields that may be stripped before the send."""
     svc = None
@@ -7560,21 +7563,29 @@ async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | 
             elif isinstance(value, str):
                 yield value
 
-    # Join values in request order. Keep each key separate so it cannot break a
-    # phrase split across values or join unrelated words into a phrase.
-    texts = [" ".join(string_values(payload)) for payload in payloads if payload is not None]
-    streams = [wallet_seed.phrase_words(text) for text in (*texts, *keys)]
-    if any(wallet_seed.contains_bip39_phrase(words) for words in streams):
+    value_groups = [tuple(string_values(payload)) for payload in payloads if payload is not None]
+    texts = keys | {value for values in value_groups for value in values}
+    if any(wallet_seed.contains_pasted_phrase(text) for text in texts):
         raise _desktop_wallet_refusal(None)
 
     known = {
         f" {' '.join(words)} "
         for phrase in await database.get_saved_wallet_phrases(wallet_fields)
-        if (words := wallet_seed.phrase_words(phrase))
+        if (words := wallet_seed.phrase_words(wallet_seed.decode_phrase_text(phrase)))
     }
-    for words in streams:
-        text = f" {' '.join(words)} "
-        if any(phrase in text for phrase in known):
+    if not known:
+        return
+
+    def matches_saved(text: str) -> bool:
+        words = f" {' '.join(wallet_seed.phrase_words(text))} "
+        return any(phrase in words for phrase in known)
+
+    if any(matches_saved(wallet_seed.decode_phrase_text(key)) for key in keys):
+        raise _desktop_wallet_refusal(None)
+    for values in value_groups:
+        decoded = [wallet_seed.decode_phrase_text(value) for value in values]
+        # A value boundary can separate two words or fall inside a word.
+        if matches_saved(" ".join(decoded)) or matches_saved("".join(decoded)):
             raise _desktop_wallet_refusal(None)
 
 

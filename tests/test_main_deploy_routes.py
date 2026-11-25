@@ -9,6 +9,7 @@ import json
 import os
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import quote, quote_plus
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -105,6 +106,17 @@ def _mock_httpx_resp(status_code=200, json_data=None):
 class TestDesktopWalletDeploys:
     _PHRASE_12 = "abandon " * 11 + "about"
     _PHRASE_24 = "abandon " * 23 + "art"
+    # Round-8 offline fixtures generated and validated by siad and hostd.
+    _LEGACY_SIA = (
+        "orphans deepest spout owed symptoms lukewarm knowledge zesty eternal physics nomad jump across lodge "
+        "womanly axes yanks cocoa pairing pastry vivid itself nineteen ecstatic kickoff lending oxidant aloof adept"
+    )
+    _HOSTD_PHRASE = "cushion board east legend empty place lecture tongue retire repeat avoid acquire"
+    _LOCATION_TAGS = (
+        "airport,beach,bridge,canal,canyon,cave,city,cliff,coast,country,desert,farm,forest,garden,harbor,hill,island,"
+        "jungle,lake,meadow,mountain,ocean,park,river,road,school,ski,stadium,station,street,town,trail,valley,village"
+    )
+    _HOST_NAMES = _LOCATION_TAGS.split(",")[2:14]
     _BAD_CHECKSUM = "people walk home before lunch then enjoy fresh bread near apple tree"
     _LONG_TEXT = (
         "The local community group meets near the river each Thursday. "
@@ -226,7 +238,7 @@ class TestDesktopWalletDeploys:
 
     @pytest.mark.parametrize(
         "shape",
-        ["valid-24", "comma", "hyphen", "split-fields", "embedded", "split-list", "valid-15", "valid-18", "valid-21"],
+        ["valid-24", "comma", "embedded", "newline", "tab", "valid-15", "valid-18", "valid-21"],
     )
     def test_raw_deploy_refuses_a_phrase_in_request_values(self, client, worker_target, shape):
         _, post = worker_target
@@ -235,21 +247,16 @@ class TestDesktopWalletDeploys:
         assert wallet_seed.phrase_problem(self._PHRASE_24, words=24) is None
         env = dict(self._HONEYGAIN_ENV)
         spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
-        if shape == "split-fields":
-            env["HONEYGAIN_PASSWORD"] = " ".join(words[:6])
-            env["HONEYGAIN_DEVICE_NAME"] = " ".join(words[6:])
-        elif shape == "split-list":
-            spec["extra"] = words
-        else:
-            env["HONEYGAIN_PASSWORD"] = {
-                "valid-24": self._PHRASE_24,
-                "comma": ", ".join(words),
-                "hyphen": "-".join(words),
-                "embedded": f"Example text: {self._PHRASE_12} (end of example)",
-                "valid-15": "abandon " * 14 + "address",
-                "valid-18": "abandon " * 17 + "agent",
-                "valid-21": "abandon " * 20 + "admit",
-            }[shape]
+        env["HONEYGAIN_PASSWORD"] = {
+            "valid-24": self._PHRASE_24,
+            "comma": ", ".join(words),
+            "embedded": f"Example text: {self._PHRASE_12} (end of example)",
+            "newline": "\n".join(words),
+            "tab": "\t".join(words),
+            "valid-15": "abandon " * 14 + "address",
+            "valid-18": "abandon " * 17 + "agent",
+            "valid-21": "abandon " * 20 + "admit",
+        }[shape]
         other_http = AsyncMock(side_effect=AssertionError("unexpected outbound HTTP"))
         with patch("httpx.AsyncClient.send", other_http):
             response = client.post(
@@ -259,13 +266,81 @@ class TestDesktopWalletDeploys:
         assert (response.status_code, post.await_count) == (409, 0)
         assert "abandon" not in response.text
 
-    def test_raw_deploy_checks_values_in_the_serialized_body_order(self, client, worker_target):
+    @pytest.mark.parametrize("shape", ["hyphen", "split-fields", "split-list"])
+    def test_raw_deploy_refuses_a_saved_phrase_with_unusual_separators(self, client, worker_target, shape):
         _, post = worker_target
+        asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", self._PHRASE_12))
+        words = self._PHRASE_12.split()
+        env = dict(self._HONEYGAIN_ENV)
+        spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
+        if shape == "hyphen":
+            env["HONEYGAIN_PASSWORD"] = "-".join(words)
+        elif shape == "split-fields":
+            env["HONEYGAIN_PASSWORD"] = " ".join(words[:6])
+            env["HONEYGAIN_DEVICE_NAME"] = " ".join(words[6:])
+        else:
+            spec["extra"] = words
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, self._PHRASE_12)
+        assert "abandon" not in response.text
+
+    def test_raw_deploy_checks_saved_phrase_in_the_serialized_body_order(self, client, worker_target):
+        _, post = worker_target
+        asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", self._PHRASE_12))
         words = self._PHRASE_12.split()
         spec = {"env": {"PASSWORD": " ".join(words[6:])}, "image": "fixture.invalid/" + "-".join(words[:6])}
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
         self._assert_wallet_refusal(response, post, self._PHRASE_12)
         assert "abandon" not in response.text
+
+    @pytest.mark.parametrize(
+        ("phrase", "shape"),
+        [
+            (_LEGACY_SIA, "url-encoded-comma"),
+            (_LEGACY_SIA, "json-escaped-newline"),
+            (_LEGACY_SIA, "json-escaped-tab"),
+            (_HOSTD_PHRASE, "url-encoded-comma"),
+            (_HOSTD_PHRASE, "json-escaped-newline"),
+            (_LEGACY_SIA, "nested-encodings"),
+        ],
+        ids=["sia-url", "sia-json-newline", "sia-json-tab", "hostd-url", "hostd-json", "nested-encodings"],
+    )
+    def test_desktop_refuses_an_encoded_saved_phrase(self, client, worker_target, caplog, phrase, shape):
+        _, post = worker_target
+        asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", phrase))
+        words = phrase.split()
+        value = {
+            "url-encoded-comma": "https://fixture.invalid/?note=" + quote(",".join(words), safe=""),
+            "json-escaped-newline": json.dumps({"note": "\n".join(words)}),
+            "json-escaped-tab": json.dumps({"note": "\t".join(words)}),
+            "nested-encodings": quote_plus(quote(json.dumps(json.dumps({"note": r"\u002b".join(words)})), safe="")),
+        }[shape]
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "NOTE": value},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, phrase)
+        assert all(secret not in response.text and secret not in caplog.text for secret in (phrase, value))
+
+    def test_desktop_refuses_a_saved_phrase_with_a_word_split_between_values(self, client, worker_target):
+        _, post = worker_target
+        asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", self._LEGACY_SIA))
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "PART_1": "Note%3A+or", "PART_2": self._LEGACY_SIA[2:]},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, self._LEGACY_SIA)
+
+    def test_desktop_refuses_an_unsaved_legacy_sia_phrase(self, client, worker_target):
+        _, post = worker_target
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "NOTE": f"Notes: {self._LEGACY_SIA} (end)"},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, self._LEGACY_SIA)
 
     @pytest.mark.parametrize("source", ["credentials", "fleet", "current", "prior"])
     def test_desktop_refuses_a_saved_phrase_even_with_an_invalid_checksum(self, client, worker_target, source):
@@ -321,6 +396,25 @@ class TestDesktopWalletDeploys:
         assert (response.status_code, post.await_count) == (200, 1)
         for key, value in env.items():
             assert post.await_args.kwargs["json"]["env"][key] == value
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            ",".join(f"{name}01" for name in _HOST_NAMES),
+            ",".join(f"{name}.example.test" for name in _HOST_NAMES),
+            _LOCATION_TAGS,
+        ],
+        ids=["numbered-hostnames", "fqdn-list", "location-tags"],
+    )
+    def test_desktop_accepts_hostname_and_location_tag_lists(self, client, worker_target, value):
+        _, post = worker_target
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "NOTE": value},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        assert (response.status_code, post.await_count) == (200, 1)
+        assert post.await_args.kwargs["json"]["env"]["NOTE"] == value
 
     @pytest.mark.parametrize("field", ["Env", "unexpected", "approval"])
     def test_raw_desktop_deploy_requires_exact_schema_keys(self, client, worker_target, field):
