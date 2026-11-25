@@ -64,3 +64,15 @@ fi
 grep -F 'release archive SHA-256 mismatch' <<<"$out"
 docker run "${harden[@]}" --name "$name-after-mismatch" --network none "${mismatch_mount[@]}" \
     --entrypoint sh "$image" -c 'entries=$(ls -A /var/lib/srbminer) && test -z "$entries"'
+
+# A start killed with SIGKILL mid-download leaves its staging folder behind;
+# the next start must clear it.
+docker run "${harden[@]}" --name "$name-stale" --network none "${mismatch_mount[@]}" \
+    --entrypoint sh "$image" -c 'mkdir /var/lib/srbminer/.install.stale && printf x > /var/lib/srbminer/.install.stale/release.tar.gz'
+if timeout 15s docker run "${harden[@]}" --name "$name-clear-stale" --network none \
+    "${mismatch_mount[@]}" "$image" --version >/dev/null 2>&1; then
+    echo "the container ran without a verified executable" >&2
+    exit 1
+fi
+docker run "${harden[@]}" --name "$name-after-stale" --network none "${mismatch_mount[@]}" \
+    --entrypoint sh "$image" -c 'entries=$(ls -A /var/lib/srbminer) && test -z "$entries"'

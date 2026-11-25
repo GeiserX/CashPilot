@@ -20,6 +20,10 @@ verify() {
 if [ ! -x "$miner" ] || ! verify "$binary_hash" "$miner"; then
     release="SRBMiner-Multi-$(printf '%s' "$version" | tr . -)"
     url="https://github.com/doktor83/SRBMiner-Multi/releases/download/$version/$release-Linux.tar.gz"
+    # A container killed with SIGKILL mid-download cannot run its trap, so
+    # clear any staging folder an earlier start left behind. Only one
+    # container uses this volume, so no other install is running now.
+    rm -rf -- "$cache"/.install.*
     tmp=$(mktemp -d "$cache/.install.XXXXXX") ||
         fail "mount a writable volume at $cache for uid 10001"
     cleanup() {
