@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -167,3 +170,103 @@ def test_unmineable_has_no_fixed_minimum_or_chain(unmineable):
     assert "currency" not in unmineable["payment"]
     assert unmineable["payout"]["address_env"] == "WALLET"
     assert unmineable["collector"]["accrual"] == "pool"
+
+
+XMRIG_BINARY = "/usr/local/bin/xmrig"
+
+
+@pytest.fixture(params=["xmrig", "unmineable"])
+def cpu_miner(request):
+    """Every entry that runs the CashPilot XMRig image with a CPU_PERCENT field."""
+    service = catalog.get_service(request.param)
+    assert service is not None
+    return deepcopy(service)
+
+
+def _xmrig_args(entrypoint, tmp_path, cpu_percent, cpus, command=("--url=pool:1", "--no-color")):
+    """The arguments XMRig gets when the catalog's entrypoint runs the command.
+
+    The real wrapper runs with a stand-in ``nproc`` that reports ``cpus`` (None:
+    nproc fails) and a stand-in for the image's XMRig that prints its arguments.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    nproc = bin_dir / "nproc"
+    nproc.write_text("#!/bin/sh\nexit 1\n" if cpus is None else f"#!/bin/sh\necho {cpus}\n")
+    fake = tmp_path / "xmrig"
+    fake.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+    for path in (nproc, fake):
+        path.chmod(0o755)
+    script = entrypoint[2]
+    assert script.count(XMRIG_BINARY) == 1
+    env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    if cpu_percent is not None:
+        env["CPU_PERCENT"] = cpu_percent
+    out = subprocess.run(
+        [*entrypoint[:2], script.replace(XMRIG_BINARY, str(fake)), *entrypoint[3:], *command],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    return out.stdout.splitlines()
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize(
+    ("cpu_percent", "cpus", "threads"),
+    [
+        # XMRig's arm64 build ignores --cpu-max-threads-hint, so 17% of a
+        # 6-core machine started all 6 threads before the wrapper set --threads.
+        ("17", 6, 1),
+        ("1", 6, 1),
+        ("50", 6, 3),
+        ("99", 6, 5),
+        ("17", 12, 2),
+        ("50", 1, 1),
+        ("33", 64, 21),
+    ],
+)
+def test_cpu_percent_caps_the_threads_xmrig_starts(cpu_miner, tmp_path, cpu_percent, cpus, threads):
+    """A share of the CPU threads, rounded down, and never below one."""
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus)
+    assert args == ["--url=pool:1", "--no-color", f"--threads={threads}"]
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize(
+    ("cpu_percent", "cpus"),
+    [
+        ("100", 6),  # no cap: XMRig picks the count itself
+        (None, 6),
+        ("", 6),
+        ("0", 6),
+        ("abc", 6),
+        ("50", None),  # nproc failed: run exactly what the image runs
+        ("50", "x"),
+    ],
+)
+def test_the_wrapper_otherwise_runs_xmrig_unchanged(cpu_miner, tmp_path, cpu_percent, cpus):
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus)
+    assert args == ["--url=pool:1", "--no-color"]
+
+
+def test_the_wrapper_execs_the_images_own_entrypoint(cpu_miner):
+    entrypoint = cpu_miner["docker"]["entrypoint"]
+    assert entrypoint[:2] == ["/bin/sh", "-c"]
+    assert entrypoint[2].rstrip().endswith(f'exec {XMRIG_BINARY} "$@"')
+    dockerfile = (Path(__file__).parent.parent / "images" / "xmrig" / "Dockerfile").read_text()
+    assert f'ENTRYPOINT ["{XMRIG_BINARY}"]' in dockerfile
+    # The hint stays on the command, so XMRig still gets a limit if the wrapper changes nothing.
+    assert "--cpu-max-threads-hint=${CPU_PERCENT}" in cpu_miner["docker"]["command"]
+
+
+def test_every_entry_with_the_xmrig_image_and_cpu_percent_has_the_wrapper():
+    """A new entry on the same image must not bring back the ignored hint."""
+    wrapper = catalog.get_service("xmrig")["docker"]["entrypoint"]
+    for service in catalog.get_services():
+        docker = service.get("docker") or {}
+        keys = {field.get("key") for field in docker.get("env") or []}
+        if "cashpilot-xmrig" in str(docker.get("image")) and "CPU_PERCENT" in keys:
+            assert docker.get("entrypoint") == wrapper, service["slug"]

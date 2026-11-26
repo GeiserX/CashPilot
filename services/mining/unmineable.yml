@@ -48,7 +48,7 @@ docker:
       identifier: true
       pattern: '[A-Za-z0-9_\-]{1,32}'
     - key: CPU_PERCENT
-      label: CPU thread target (%)
+      label: Max CPU threads (%)
       default: "50"
       pattern: '100|[1-9][0-9]?'
     - key: RANDOMX_MODE
@@ -61,6 +61,23 @@ docker:
     --donate-level=1 --cpu-max-threads-hint=${CPU_PERCENT} --cpu-priority=0
     --randomx-mode=${RANDOMX_MODE} --randomx-wrmsr=-1 --randomx-no-numa --http-host=127.0.0.1
     --http-port=18088 --keepalive --no-color --print-time=300
+  # XMRig treats --cpu-max-threads-hint as a hint: its arm64 build ignores it
+  # and starts every thread, and on x86 it rounds to the nearest count. So the
+  # wrapper turns CPU_PERCENT into --threads: that share of the CPU threads the
+  # container may use, rounded down, at least 1. At 100, or when nproc fails,
+  # it adds nothing and XMRig runs exactly as the image would.
+  entrypoint:
+    - /bin/sh
+    - -c
+    - >-
+      case "${CPU_PERCENT-}" in [1-9]|[1-9][0-9])
+      n=$(nproc 2>/dev/null);
+      case "$n" in ''|0*|*[!0-9]*) ;;
+      *) t=$((n * CPU_PERCENT / 100)); [ "$t" -ge 1 ] || t=1; set -- "$@" "--threads=$t" ;;
+      esac ;;
+      esac;
+      exec /usr/local/bin/xmrig "$@"
+    - --
 
 mining:
   dev_fee_percent: 1
