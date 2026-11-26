@@ -4433,10 +4433,17 @@ const CP = (() => {
       return;
     }
 
-    // What you run, then what you could add. Within each, by name.
-    const byName = (x, y) => String(x.name).localeCompare(String(y.name));
-    const running = filtered.filter(x => x.deployed).sort(byName);
-    const rest = filtered.filter(x => !x.deployed).sort(byName);
+    // What you run, then what you could add. Within each, the catalog's
+    // priority first (1 first, the services that pay the project best), then
+    // the rest by category and name. Priority first matches the API, the
+    // wizard, the README and Desktop. The tail sorts by category like Desktop,
+    // but compares names without case, so "io.net" sorts among the i's.
+    const rank = x => (Number.isInteger(x.priority) ? x.priority : Infinity);
+    const byPriority = (x, y) => (rank(x) - rank(y))
+      || String(x.category).localeCompare(String(y.category))
+      || String(x.name).toLowerCase().localeCompare(String(y.name).toLowerCase());
+    const running = filtered.filter(x => x.deployed).sort(byPriority);
+    const rest = filtered.filter(x => !x.deployed).sort(byPriority);
     const group = (label, rows) => rows.length
       ? `<tbody class="cat-group"><tr class="cat-group-row"><th colspan="7" scope="colgroup">${label} <span class="count">${rows.length}</span></th></tr>${rows.map(renderCatalogCard).join('')}</tbody>`
       : '';
