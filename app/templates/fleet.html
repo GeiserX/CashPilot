@@ -1328,19 +1328,24 @@ CASHPILOT_WORKER_NAME=server-name</code>
         } else {
           const path = `${base}/${btn.dataset.cmd}`;
           let out;
-          try {
-            out = await CP.api(path, {method: 'POST'});
-          } catch (err) {
-            if (btn.dataset.cmd === 'start' && err.code === 'confirm_proxy_start_targets') {
-              const targets = err.refusal.expected_containers;
-              const copies = Object.entries(targets).map(([service, id]) => `${service} (${id.slice(0, 12)})`);
-              if (!confirm(`Start needs to replace these containers on ${workerName(Number(wid))}:\n\n${copies.join('\n')}\n\nReplace them and start ${slug}?`)) return;
-              out = await CP.api(path, {method: 'POST', body: {expected_containers: targets}});
-            } else {
-              const current = err.refusal && err.refusal.current_container;
-              if (btn.dataset.cmd !== 'start' || err.code !== 'deploy_target_changed' || !/^[a-f0-9]{64}$/.test(current)) throw err;
-              if (!confirm(`Start may need to replace container ${current.slice(0, 12)} for ${slug} on ${workerName(Number(wid))}. Allow CashPilot to replace it?`)) return;
-              out = await CP.api(path, {method: 'POST', body: {expected_container: current}});
+          let body;
+          while (true) {
+            try {
+              out = await CP.api(path, {method: 'POST', body});
+              break;
+            } catch (err) {
+              if (btn.dataset.cmd !== 'start') throw err;
+              if (err.code === 'confirm_proxy_start_targets') {
+                const {expected_containers, group_approval} = err.refusal;
+                const copies = Object.entries(expected_containers).map(([service, id]) => `${service} (${id})`);
+                if (!confirm(`Start needs to replace these containers on ${workerName(Number(wid))}:\n\n${copies.join('\n')}\n\nReplace them and start ${slug}?`)) return;
+                body = {expected_containers, group_approval};
+              } else {
+                const current = err.refusal && err.refusal.current_container;
+                if (err.code !== 'deploy_target_changed' || !/^[a-f0-9]{64}$/.test(current)) throw err;
+                if (!confirm(`Start may need to replace container ${current.slice(0, 12)} for ${slug} on ${workerName(Number(wid))}. Allow CashPilot to replace it?`)) return;
+                body = {expected_container: current};
+              }
             }
           }
           // Started or stopped, but the worker could not make that last through a power cut.

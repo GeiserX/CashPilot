@@ -76,6 +76,8 @@ _LEGACY_SIA_LENGTHS = (28, 29)
 _LEGACY_SIA_WORD = re.compile(r"[a-z]{3,12}")
 _JSON_STRING_ESCAPES = re.compile(r'(?:\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))+')
 _SPACED_COMMA = re.compile(r"\s*,\s+|\s+,\s*")
+_CSV_QUOTED_FIELD = re.compile(r'"((?:[^"]|"")*)"')
+_QUOTED_CSV = re.compile(rf"{_CSV_QUOTED_FIELD.pattern}(?:[ \t]*,[ \t]*{_CSV_QUOTED_FIELD.pattern})+")
 _PHRASE_TOKEN_EDGES = string.punctuation.replace(",", "") + "‘’“”"
 
 
@@ -180,15 +182,21 @@ def contains_pasted_phrase(text: str) -> bool:
     words = [word.strip(_PHRASE_TOKEN_EDGES) for word in text.split()]
     if contains_bip39_phrase(words) or _contains_legacy_sia_phrase(words):
         return True
-    groups = _SPACED_COMMA.split(text)
-    if len(groups) == 1:
-        return False
+    quoted_csv = _QUOTED_CSV.fullmatch(text.strip()) is not None
+    if quoted_csv:
+        groups = [field.replace('""', '"') for field in _CSV_QUOTED_FIELD.findall(text)]
+        if any(contains_pasted_phrase(field) for field in groups):
+            return True
+    else:
+        groups = _SPACED_COMMA.split(text)
+        if len(groups) == 1:
+            return False
     words_by_group = [[word.strip(_PHRASE_TOKEN_EDGES) for word in group.split()] for group in groups]
     words = [word for group in words_by_group for word in group]
-    if any(len(group) > 1 for group in words_by_group):
+    if not quoted_csv and any(len(group) > 1 for group in words_by_group):
         return contains_bip39_phrase(words) or _contains_legacy_sia_phrase(words)
-    # A list with one word per comma-separated item must itself be a phrase.
-    # A long list of location tags can contain a valid checksum by chance.
+    # For quoted CSV and lists of single-word fields, a phrase that spans fields
+    # must fill the list. A long list of tags can contain a valid checksum by chance.
     return (
         len(words) in _BIP39_LENGTHS
         and contains_bip39_phrase(words, whole=True)

@@ -41,6 +41,9 @@ from app import (  # noqa: E402
     worker_api,
 )
 from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_VERSION, ROLE_TUNNEL  # noqa: E402
+from tests import test_proxy_shared_tunnel  # noqa: E402
+
+proxy_docker = test_proxy_shared_tunnel.docker
 
 WORKER_KEY = "per-worker-key-route"
 
@@ -2067,6 +2070,51 @@ class TestTheUiManagesARoutedService:
         _run(go)
         assert running
         assert not any(path.endswith("/stop") for _, path in ui.paths())
+
+    @pytest.mark.parametrize("capped", [False, True], ids=["uncapped", "capped"])
+    def test_routed_restart_starts_a_stopped_copy(self, db, proxy_docker, capped):
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy(host="203.0.113.9", port=1080)
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            ui.calls.clear()
+            test_proxy_shared_tunnel._deploy("honeygain", proxy_id=pid)
+            if capped:
+                await database.update_proxy_state(pid, {"capped_at": "2026-11-01", "cap_reason": "Proxy cap reached"})
+            name = proxy_tunnel.earner_name("honeygain", pid)
+            copy = proxy_docker.named(name)
+            proxy_tunnel.stop("honeygain", pid)
+
+            with (
+                patch.object(worker_api, "_verify_api_key"),
+                patch.object(worker_api, "_validate_proxy"),
+                patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+            ):
+                worker = TestClient(worker_api.app)
+
+                def dispatch(method, path, body):
+                    if path.startswith("/api/containers/"):
+                        return HTTPException(404, "Container not found")
+                    reply = worker.request(method, path, json=body)
+                    if reply.status_code >= 400:
+                        return HTTPException(reply.status_code, reply.json()["detail"])
+                    return reply.json()
+
+                ui.worker_reply = dispatch
+                with ui.active(patch.object(main, "_require_writer", lambda _: None)):
+                    if capped:
+                        with pytest.raises(HTTPException, match="Proxy cap reached"):
+                            await main._svc_restart(_request(), "honeygain", 1)
+                    else:
+                        response = await main._svc_restart(_request(), "honeygain", 1)
+                        assert response["status"] == "started"
+            assert proxy_docker.named(name) is copy
+            assert copy.status == ("exited" if capped else "running")
+            assert (name in proxy_tunnel.held()) is capped
+            assert not any(path.endswith("/stop") for _, path in ui.paths())
+
+        _run(go)
 
     def test_stop_start_restart_logs_and_remove_reach_the_copy(self, db):
         ui, setup = self._routed(db)

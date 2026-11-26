@@ -4176,6 +4176,9 @@ def test_recovery_conflict_preserves_an_unrecorded_holder(docker, journal, trigg
                 "/api/proxied/honeygain/3/start-checked", json={"proxy": _socks(), "expected_container": changed.id}
             )
         assert reply.status_code == 409, reply.text
+        detail = reply.json()["detail"]
+        assert detail["error"] == "proxy_recovery_conflict"
+        assert "deploy record cannot identify the current container" in detail["message"]
     else:
         row = next(e for e in _heartbeat() if e["slug"] == "honeygain")
         assert "Recovery skipped" in row.get("recovery_skipped", "")
@@ -4204,7 +4207,14 @@ def test_checked_start_can_approve_two_pre_upgrade_copies_together(docker):
         assert question.status_code == 409
         assert question.json()["detail"]["expected_containers"] == ids
         assert all(docker.named(proxy_tunnel.earner_name(slug, 3)).id == cid for slug, cid in ids.items())
-        reply = client.post(path, json={"proxy": _socks(), "expected_containers": ids})
+        reply = client.post(
+            path,
+            json={
+                "proxy": _socks(),
+                "expected_containers": ids,
+                "group_approval": question.json()["detail"]["group_approval"],
+            },
+        )
         assert reply.status_code == 200, reply.text
         neighbor = docker.named(proxy_tunnel.earner_name("earnfm", 3))
         assert neighbor.status not in ("running", "restarting")
@@ -4214,6 +4224,43 @@ def test_checked_start_can_approve_two_pre_upgrade_copies_together(docker):
         )
         assert reply.status_code == 200, reply.text
     assert all(docker.named(proxy_tunnel.earner_name(slug, 3)).status == "running" for slug in slugs)
+
+
+def test_group_start_approval_cannot_start_the_other_copy(docker):
+    for slug in ("honeygain", "earnfm"):
+        _deploy(slug)
+        proxy_tunnel.stop(slug, 3)
+    _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+    os.unlink(proxy_tunnel.CONTAINER_MARKER)
+    originals = {slug: docker.named(proxy_tunnel.earner_name(slug, 3)) for slug in ("honeygain", "earnfm")}
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api, "_validate_proxy"),
+        patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+    ):
+        client = TestClient(worker_api.app)
+        offer = client.post("/api/proxied/honeygain/3/start-checked", json={"proxy": _socks()})
+        assert offer.status_code == 409
+        detail = offer.json()["detail"]
+        body = {
+            "proxy": _socks(),
+            "expected_containers": detail["expected_containers"],
+            "group_approval": detail.get("group_approval"),
+        }
+        wrong_copy = client.post("/api/proxied/earnfm/3/start-checked", json=body)
+        assert wrong_copy.status_code == 409, wrong_copy.text
+        assert wrong_copy.json()["detail"]["error"] == "invalid_proxy_start_approval"
+        for slug, original in originals.items():
+            assert docker.named(proxy_tunnel.earner_name(slug, 3)) is original
+            assert original.status == "exited"
+        swapped = {slug: copy.id for slug, copy in reversed(originals.items())}
+        swapped["earnfm"] = "a" * 64
+        wrong_ids = client.post("/api/proxied/honeygain/3/start-checked", json={**body, "expected_containers": swapped})
+        assert wrong_ids.status_code == 409
+        approved = client.post("/api/proxied/honeygain/3/start-checked", json=body)
+        assert approved.status_code == 200, approved.text
+        assert docker.named(NAME).status == "running"
+        assert docker.named("cashpilot-earnfm-p3").status not in ("running", "restarting")
 
 
 class TestAnOlderWorkersTunnelReplacementFollowups:
@@ -5383,5 +5430,7 @@ class TestARestartInPlace:
             ok = api.post("/api/proxied/honeygain/3/restart")
             proxy_tunnel.stop("honeygain", 3)
             held = api.post("/api/proxied/honeygain/3/restart")
+            report = api.post("/api/proxied/honeygain/3/restart", json={"report_stopped": True})
         assert ok.status_code == 200 and ok.json() == {"status": "restarted", "restarted": NAME}
         assert held.status_code == 409 and "left stopped" in held.json()["detail"]
+        assert report.status_code == 409 and report.json()["detail"]["error"] == "proxied_copy_stopped"

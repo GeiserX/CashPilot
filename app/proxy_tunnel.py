@@ -421,6 +421,10 @@ class RecoveryConflict(ProxyTunnelError):
     """Docker's name holder cannot be tied to the unfinished operation."""
 
 
+class CopyNotRunning(ProxyTunnelError):
+    """In-place Restart refused a stopped copy before taking any action."""
+
+
 def tunnel_image() -> str:
     """The pinned tunnel image this worker uses.
 
@@ -2753,12 +2757,14 @@ def restart(slug: str, proxy_id: int) -> dict[str, Any]:
             raise ProxyTunnelError(
                 f"Could not read which copies are stopped ({exc}); {name} was left as it was"
             ) from None
-        if stopped:
-            raise ProxyTunnelError(f"{name} was stopped by its owner or by the traffic cap, so it was left stopped")
         if unfinished:
             raise ProxyTunnelError(f"{name} was left by a deploy that did not finish, so it was left as it was")
-        if getattr(earner, "status", "") != "running":
-            raise ProxyTunnelError(f"{name} is not running, so it was left as it was")
+        if stopped:
+            raise CopyNotRunning(f"{name} was stopped by its owner or by the traffic cap, so it was left stopped")
+        state = getattr(earner, "status", "")
+        if state != "running":
+            error = CopyNotRunning if state in ("created", "exited") else ProxyTunnelError
+            raise error(f"{name} is not running, so it was left as it was")
         tunnel = _tunnel_of(client, earner, slug, proxy_id)
         if tunnel is None or not _start_in_ready_run(earner, tunnel, slug, restart=True):
             raise ProxyTunnelError(

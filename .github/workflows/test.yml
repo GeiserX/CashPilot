@@ -74,6 +74,9 @@ jobs:
       - name: Fleet staleness behaviour
         run: node scripts/fleet_staleness_check.mjs
 
+      - name: Fleet Start confirmation
+        run: node scripts/fleet_start_check.mjs
+
       # The Disk and GPU columns. Worth running rather than grepping for the
       # same reason as the rest: the first draft iterated `svc.instances`, which
       # is a COUNT, and `for...of` over a number throws — a string assertion

@@ -449,6 +449,22 @@ class TestDesktopWalletDeploys:
         assert (response.status_code, post.await_count) == (200, 1)
         assert post.await_args.kwargs["json"]["env"]["NOTE"] == value
 
+    @pytest.mark.parametrize("raw", [False, True], ids=["catalog", "raw"])
+    def test_desktop_accepts_quoted_csv_location_tags(self, client, worker_target, raw):
+        _, post = worker_target
+        tags = ["international airport", *self._LOCATION_TAGS.split(",")[1:]]
+        value = ", ".join(f'"{tag}"' for tag in tags)
+        env = {**self._HONEYGAIN_ENV, "NOTE": value}
+        if raw:
+            spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
+            response = client.post(
+                "/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec}
+            )
+        else:
+            response = client.post("/api/deploy/honeygain?worker_id=2", json={"env": env})
+        assert (response.status_code, post.await_count) == (200, 1)
+        assert post.await_args.kwargs["json"]["env"]["NOTE"] == value
+
     @pytest.mark.parametrize("field", ["Env", "unexpected", "approval"])
     def test_raw_desktop_deploy_requires_exact_schema_keys(self, client, worker_target, field):
         _, post = worker_target

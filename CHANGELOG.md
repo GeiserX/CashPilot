@@ -15,9 +15,9 @@ Releases before `1.0.0` were recorded by hand and are kept verbatim in
 ### Fixes
 
 - Check the Docker container ID before Proxied Start or recovery replaces a copy. Show why the worker skipped recovery.
-- Approve shared tunnel copies together in Fleet, and restart routed copies in place on older workers.
+- Approve shared tunnel copies together in Fleet, even after approving a single copy. Restart routed copies in place on older workers and start stopped copies through checked Start.
 - Keep unconfirmed legacy recovery phrases when a Desktop container is removed with its data kept or Sia is deployed on another worker.
-- Keep recovery phrases out of deploy errors. Block phrases with mixed spaces and commas while allowing long comma-spaced location tags.
+- Keep recovery phrases out of deploy errors. Block phrases with mixed spaces and commas while allowing long CSV location lists.
 
 ## [2.10.2] - 2026-11-25
 

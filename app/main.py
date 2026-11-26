@@ -3022,17 +3022,23 @@ def _proxied_copies(workers: list[dict[str, Any]]) -> list[tuple[dict[str, Any],
     return out
 
 
-async def _restart_proxied(proxy_id: int, worker_id: int, slug: str) -> dict[str, Any]:
+async def _restart_proxied(proxy_id: int, worker_id: int, slug: str, *, report_stopped: bool = False) -> dict[str, Any]:
     """Restart a proxied copy where it is (worker: proxy_tunnel.restart), under the lock its Stop and Start take.
 
     Never a stop and a start: a start that failed after the stop would leave
     the copy stopped for good. The worker refuses a copy its owner or the cap
-    stopped.
+    stopped. A manual restart requests a structured refusal so the dashboard
+    can ask for checked Start if the copy is stopped.
     """
     proxy = await _proxy_or_404(proxy_id)
     async with _proxy_copy_lock(proxy_id, worker_id, slug):
         return await _proxy_worker_call(
-            worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/restart", proxy["definition"], timeout=90
+            worker_id,
+            "POST",
+            f"/api/proxied/{slug}/{proxy_id}/restart",
+            proxy["definition"],
+            json={"report_stopped": True} if report_stopped else None,
+            timeout=90,
         )
 
 
@@ -7081,7 +7087,12 @@ async def _or_routed(
 async def _routed_command(worker_id: int, slug: str, command: str, proxy_id: int) -> dict[str, Any]:
     """Stop, start or restart a routed service through its proxied copy."""
     if command == "restart":
-        return await _restart_proxied(proxy_id, worker_id, slug)
+        try:
+            return await _restart_proxied(proxy_id, worker_id, slug, report_stopped=True)
+        except HTTPException as exc:
+            if exc.status_code != 409 or _worker_error(exc) != "proxied_copy_stopped":
+                raise
+        command = "start"
     return await _proxied_command(proxy_id, worker_id, slug, command)
 
 
@@ -7452,8 +7463,11 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         return None
     if error == "confirm_proxy_start_targets":
         targets = detail.get("expected_containers")
+        proof = detail.get("group_approval")
         if (
-            isinstance(targets, dict)
+            isinstance(proof, str)
+            and re.fullmatch(r"[0-9a-f]{64}", proof)
+            and isinstance(targets, dict)
             and targets
             and all(
                 re.fullmatch(r"[a-z0-9][a-z0-9_-]*", slug)
@@ -7466,8 +7480,11 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
                 "error": error,
                 "message": "Starting this copy requires replacing containers in its shared tunnel.",
                 "expected_containers": targets,
+                "group_approval": proof,
             }
         return None
+    if error == "proxied_copy_stopped":
+        return {"error": error, "message": "The proxied copy is stopped."}
     if error == "deploy_target_changed":
         actual = detail.get("current_container")
         if isinstance(actual, str) and _DEPLOY_TARGET_ID.fullmatch(actual):
@@ -7504,6 +7521,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "route_unknown",
         # A failed routed deploy whose earner may still run (app/worker_api.py).
         "routed_copy_may_exist",
+        "proxy_recovery_conflict",
+        "invalid_proxy_start_approval",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -8217,8 +8236,8 @@ async def _proxy_worker_call(
     try:
         return await _proxy_to_worker(worker_id, method, path, json=json, timeout=timeout)
     except HTTPException as exc:
-        if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets"):
-            raise  # _safe_worker_detail already verified the IDs and supplies a fixed message.
+        if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
+            raise  # _safe_worker_detail checked the fields and supplies the message.
         raise HTTPException(status_code=exc.status_code, detail=_mask(exc.detail, proxies.secret_values(definition)))
 
 
@@ -8725,6 +8744,7 @@ async def api_add_proxied_copy(
 class ProxiedCopyCommand(BaseModel):
     expected_container: str | None = None
     expected_containers: dict[str, str] | None = None
+    group_approval: str | None = None
 
 
 @app.post("/api/proxies/{proxy_id}/copies/{worker_id}/{slug}/{command}")
@@ -8745,6 +8765,7 @@ async def api_proxied_copy_command(
         command,
         expected=body.expected_container if body else None,
         expected_containers=body.expected_containers if body else None,
+        group_approval=body.group_approval if body else None,
     )
 
 
@@ -8756,6 +8777,7 @@ async def _proxied_command(
     *,
     expected: str | None = None,
     expected_containers: dict[str, str] | None = None,
+    group_approval: str | None = None,
 ) -> dict[str, Any]:
     """Start or stop one proxied copy, with the proxy's current settings and its cap."""
     proxy = await _proxy_or_404(proxy_id)
@@ -8771,7 +8793,11 @@ async def _proxied_command(
                 )
             if expected is None:
                 expected = await _proxied_start_target(worker_id, proxy_id, slug)
-            approval = {"expected_containers": expected_containers} if expected_containers is not None else {}
+            approval = (
+                {"expected_containers": expected_containers, "group_approval": group_approval}
+                if expected_containers is not None
+                else {}
+            )
             result = await _start_proxied_copy(proxy, worker_id, slug, expected=expected, **approval)
         else:
             result = await _proxy_worker_call(
@@ -9049,6 +9075,7 @@ async def _start_proxied_copy(
     *,
     expected: str | None = None,
     expected_containers: dict[str, str] | None = None,
+    group_approval: str | None = None,
 ) -> dict[str, Any]:
     """Start one copy with the current settings and its saved or approved container ID."""
     pid = proxy["id"]
@@ -9057,6 +9084,7 @@ async def _start_proxied_copy(
     body: dict[str, Any] = {"proxy": proxies.worker_proxy_spec(proxy["definition"]), "expected_container": expected}
     if expected_containers is not None:
         body["expected_containers"] = expected_containers
+        body["group_approval"] = group_approval
     try:
         result = await _proxy_worker_call(
             worker_id,
