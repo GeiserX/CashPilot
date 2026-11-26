@@ -23,6 +23,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import docker
@@ -1567,20 +1568,26 @@ def deploy_raw(
         **resource_kwargs,
     )
     created = None
+    created_id: str | None = None
     began = time.monotonic()
     try:
         # Again here: the volumes and the old container's stop come after the
         # check above, and can take long. Past it, the old one is put back.
         _refuse_past(deadline, image)
         try:
-            container = (
-                client.containers.create(**run_kwargs)
-                if gated or not start or on_created is not None
-                else client.containers.run(detach=True, **run_kwargs)
-            )
-            created = container
             if on_created is not None:
-                on_created(container.id)
+                # The ID from Docker's create answer, before the SDK's follow-up
+                # inspect: one that times out must not hide a container that exists.
+                created_id = _create_container_id(client, run_kwargs)
+                on_created(created_id)
+                container = client.containers.get(created_id)
+            else:
+                container = (
+                    client.containers.create(**run_kwargs)
+                    if gated or not start
+                    else client.containers.run(detach=True, **run_kwargs)
+                )
+            created = container
             if not start:
                 # Restore: the caller writes the data, checks it, then starts it.
                 logger.info("Container %s created, not started: %s", name, container.short_id)
@@ -1615,7 +1622,11 @@ def deploy_raw(
         raise
     except Exception as exc:
         conflict = (
-            expected_container is not None and created is None and isinstance(exc, APIError) and exc.status_code == 409
+            expected_container is not None
+            and created is None
+            and created_id is None
+            and isinstance(exc, APIError)
+            and exc.status_code == 409
         )
         restored = _roll_back(
             client,
@@ -1626,7 +1637,7 @@ def deploy_raw(
             identity_before,
             stopped_before,
             held_before=held_before,
-            created=created,
+            created=created if created is not None or created_id is None else SimpleNamespace(id=created_id),
             create_only=not start or conflict or on_created is not None,
             gated=gated,
             joined=joined,
@@ -1639,6 +1650,12 @@ def deploy_raw(
     _remove_replaced(replaced, name, slug)
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
+
+
+def _create_container_id(client: Any, run_kwargs: dict[str, Any]) -> str:
+    """Create the container as ``containers.create`` does, and return Docker's ID without inspecting it."""
+    kwargs = {"command": None, **run_kwargs, "version": client.api._version}
+    return str(client.api.create_container(**docker.models.containers._create_container_args(kwargs))["Id"])
 
 
 def _prepare_wallet(

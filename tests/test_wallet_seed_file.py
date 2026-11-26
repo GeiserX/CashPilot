@@ -186,6 +186,59 @@ def test_cross_worker_save_keeps_a_fleet_only_phrase_when_the_owner_spec_cannot_
     asyncio.run(go())
 
 
+def test_same_worker_save_keeps_a_fleet_only_phrase_as_its_prior(db):
+    async def go():
+        seen = json.dumps([{"slug": SLUG, "container_id": "a" * 12}])
+        desktop = await database.upsert_worker("desktop", containers=seen)
+        await database.save_deployment(SLUG, "a" * 64, spec={"env": {**ENV, KEY: PHRASE}})
+        await database.save_deployment(SLUG, "b" * 64, worker_id=desktop, spec={"env": ENV})
+        assert PHRASE in await database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)})
+        assert KEY not in (await database.get_deployment_spec(SLUG, desktop))["env"]
+
+    asyncio.run(go())
+
+
+def test_confirming_a_phrase_clears_it_from_the_unknown_owner_record(db):
+    async def go():
+        seen = json.dumps([{"slug": SLUG, "container_id": "a" * 12}])
+        desktop = await database.upsert_worker("desktop", containers=seen)
+        await database.upsert_worker("another-desktop", containers=seen)
+        await database.save_deployment(SLUG, "a" * 64, spec={"env": {**ENV, KEY: PHRASE}})
+        await database.save_deployment(SLUG, "b" * 64, worker_id=1, spec={"env": ENV})
+        fields = {wallet_seed.field_name(KEY)}
+        assert PHRASE in await database.get_saved_wallet_phrases(fields)
+        await database.forget_env_value(SLUG, desktop, KEY, confirmed_wallet_seed="another phrase")
+        assert PHRASE in await database.get_saved_wallet_phrases(fields)
+        removed, _ = await database.forget_env_value(SLUG, desktop, KEY, confirmed_wallet_seed=PHRASE)
+        assert removed
+        assert PHRASE not in await database.get_saved_wallet_phrases(fields)
+
+    asyncio.run(go())
+
+
+def test_raw_remove_keeps_the_desktops_phrase_whatever_its_spec_says(db):
+    async def prepare():
+        worker = await database.upsert_worker("desktop", system_info='{"device_type": "desktop"}')
+        await database.save_deployment(SLUG, "a" * 64, worker_id=worker, spec={"env": {**ENV, KEY: PHRASE}})
+        await database.save_deployment(SLUG, "b" * 64, worker_id=worker, spec={"env": ENV})
+        return worker
+
+    worker = asyncio.run(prepare())
+    with (
+        patch.object(auth, "get_current_user", return_value=OWNER),
+        patch.object(main, "_proxy_to_worker", AsyncMock(return_value={"status": "removed"})) as sent,
+    ):
+        response = TestClient(main.app).post(
+            f"/api/workers/{worker}/command",
+            json={"command": "remove", "slug": SLUG, "spec": {"delete_volumes": True}},
+        )
+    assert response.status_code == 200, response.text
+    # The raw removal never asks the worker to delete volumes.
+    assert all("delete_volumes" not in str(call) for call in sent.await_args_list)
+    assert asyncio.run(database.get_deployment(SLUG)) is None
+    assert PHRASE in asyncio.run(database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)}))
+
+
 def test_desktop_keep_data_keeps_the_fleet_only_phrase_with_empty_inventory(db):
     async def prepare():
         desktop = await database.upsert_worker("desktop", containers="[]", system_info='{"device_type": "desktop"}')

@@ -44,9 +44,11 @@ by hand on that box:
 
 1. If `cashpilot-<service>-p<N>` exists, the move finished. Run
    `docker rm cashpilot-<service>-p<N>-moving` (or `-next`).
-2. If it does not exist, run `docker rm` on the `-next` container (if any),
-   then `docker rename cashpilot-<service>-p<N>-moving cashpilot-<service>-p<N>`.
-   If only the `-next` container exists, rename that one instead.
+2. If it does not exist and the `-moving` container exists, run
+   `docker rm cashpilot-<service>-p<N>-next` (if it exists), then
+   `docker rename cashpilot-<service>-p<N>-moving cashpilot-<service>-p<N>`.
+3. If only the `-next` container exists, do not remove it. Run
+   `docker rename cashpilot-<service>-p<N>-next cashpilot-<service>-p<N>`.
 
 Leave out `-v`, so the copy's volumes stay. Then press Start for the copy on
 the Fleet page.

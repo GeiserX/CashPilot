@@ -13681,7 +13681,8 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             # As in _svc_remove: a routed removal the worker has not confirmed
             # keeps the record until _finish_copy_removal drops it.
             await _record_removed_copies(slug, worker_id, result)
-            await _forget_removed_deployment(slug, worker_id, delete_volumes=bool(body.spec.get("delete_volumes")))
+            # This route's removal never sends delete_volumes, so the volumes stay.
+            await _forget_removed_deployment(slug, worker_id, delete_volumes=False)
         # As in _svc_remove: the worker removed the proxied copies with the service.
         # The removal already happened; a failure here must not report it as failed.
         try:

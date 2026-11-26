@@ -2152,20 +2152,19 @@ async def _keep_legacy_fleet_wallet(db: Any, slug: str, key: str, worker_id: int
     owners = await _fleet_container_owners(db, slug, fleet["container_id"])
     if len(owners) == 1:
         owner = next(iter(owners))
-        if owner == worker_id:
-            return
         cursor = await db.execute(
             "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
             (slug, owner),
         )
         spec = await cursor.fetchone()
         if spec is None:
+            # On the same worker too: the save then keeps this spec as its prior.
             await db.execute(
                 "INSERT INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at) VALUES (?, ?, ?, ?)",
                 (slug, owner, fleet["spec_encrypted"], fleet["deployed_at"]),
             )
             return
-        if any(_legacy_wallet_phrase(blob, slug, key) == phrase for blob in spec):
+        if owner == worker_id or any(_legacy_wallet_phrase(blob, slug, key) == phrase for blob in spec):
             return
     else:
         cursor = await db.execute(
@@ -5468,12 +5467,15 @@ async def forget_env_value(
                 await db.execute("UPDATE deployments SET spec_encrypted = ? WHERE slug = ?", (blob, slug))
                 removed = True
         if confirmed_wallet_seed is not None:
-            phrases = await _read_retained_phrases(db, slug, worker_id)
-            if confirmed_wallet_seed in phrases:
-                phrases.remove(confirmed_wallet_seed)
-                await _write_retained_phrases(db, slug, worker_id, phrases)
-                removed = True
-            retained |= bool(phrases)
+            # The owner typed this phrase, so it goes from the unknown-owner record too.
+            for holder in (worker_id, _UNKNOWN_WALLET_WORKER):
+                phrases = await _read_retained_phrases(db, slug, holder)
+                if confirmed_wallet_seed in phrases:
+                    phrases.remove(confirmed_wallet_seed)
+                    await _write_retained_phrases(db, slug, holder, phrases)
+                    removed = True
+                if holder == worker_id:
+                    retained |= bool(phrases)
         await db.commit()
         if removed or confirmed_wallet_seed is None:
             cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")

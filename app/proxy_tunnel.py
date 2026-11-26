@@ -1175,6 +1175,9 @@ def _clone_into(
         _remove_quietly(clone, 2, volumes=False)
         _put_back(client, member, name, was_running)
         raise
+    # Saved before the original goes: once it is gone, recover_moves no longer
+    # sees this move, so a worker that stopped here would keep the old ID.
+    _record_container(name, str(clone.id))
     try:
         member.remove(force=True, v=False)  # its volumes are the clone's now
     except NotFound:
@@ -1184,7 +1187,6 @@ def _clone_into(
     else:
         _set_id(MOVE_MARKER, move, False)
     clone.reload()
-    _record_container(name, str(clone.id))
     return clone
 
 
@@ -2853,6 +2855,10 @@ def remove_all(slug: str) -> list[str]:
             all=True, filters={"label": [f"{LABEL_SERVICE}={slug}", f"{LABEL_MANAGED}=true", LABEL_PROXY]}
         )
 
+    def canonical(container: Any) -> str:
+        # The saved ID is kept under the copy's own name, never a half-moved one's.
+        return str(container.name).removesuffix(MOVING_SUFFIX).removesuffix(STAGED_SUFFIX)
+
     removed: list[str] = []
     left: list[str] = []
     for pid in sorted({_labels(c).get(LABEL_PROXY, "") for c in listing()}):
@@ -2861,6 +2867,8 @@ def remove_all(slug: str) -> list[str]:
             shared_ids = {tid for c in found if _is_earner(c) and (tid := _tunnel_id_of(c))}
             # Earners first, so no tunnel is removed under a running earner.
             found.sort(key=lambda c: _labels(c).get(LABEL_ROLE) == ROLE_TUNNEL)
+            gone: set[str] = set()
+            kept: set[str] = set()
             for container in found:
                 _remove_quietly(container)
                 try:
@@ -2869,9 +2877,14 @@ def remove_all(slug: str) -> list[str]:
                     removed.append(container.name)
                     if _is_earner(container):
                         _set_held(str(container.name), False)
-                        _forget_container(str(container.name))
+                        gone.add(canonical(container))
                 else:
                     left.append(container.name)
+                    if _is_earner(container):
+                        kept.add(canonical(container))
+            # Only once no container of that copy is left: a survivor keeps its record.
+            for name in sorted(gone - kept):
+                _forget_container(name)
             if pid.isdigit():
                 for tid in sorted(shared_ids):
                     tunnel = _get(client, tid)
