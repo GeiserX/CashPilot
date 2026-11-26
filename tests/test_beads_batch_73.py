@@ -60,7 +60,7 @@ class TestAddressValidation:
         assert onchain.address_looks_valid("solana", "0" * 40) is False
 
     def test_an_unknown_chain_is_never_valid(self):
-        assert onchain.address_looks_valid("dogecoin", EVM_ADDR) is False
+        assert onchain.address_looks_valid("notachain", EVM_ADDR) is False
 
 
 class TestTheFourStates:
@@ -116,7 +116,7 @@ class TestTheFourStates:
     @pytest.mark.anyio
     async def test_an_unsupported_chain_says_so(self):
         async with _client(_ok("0x0")) as client:
-            out = await onchain.balance("dogecoin", EVM_ADDR, client=client)
+            out = await onchain.balance("notachain", EVM_ADDR, client=client)
         assert out["state"] == onchain.UNSUPPORTED
         assert out["amount"] is None
 
