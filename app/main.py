@@ -5273,7 +5273,15 @@ async def _deploy(
             await _release_pending_identities(slug, worker_id, held)
     deleted: set[int] = set()
     for n in sorted(c for c in running_copies if c > instances):
-        removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        try:
+            removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        except HTTPException as exc:
+            # 404: the worker has no such copy. The heartbeat that listed it is
+            # older than its removal (a scale-down that went through, a copy
+            # removed by hand), so it is gone, as a removal would leave it.
+            if exc.status_code != 404:
+                raise
+            removed = None
         deleted.add(n)
         # Confirmed gone: keep the id it ran with, even if its row was never
         # written, when the worker's digest proves which one that was.
