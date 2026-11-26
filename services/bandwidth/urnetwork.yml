@@ -2,6 +2,7 @@ name: URnetwork
 slug: urnetwork
 category: bandwidth
 status: active
+priority: 14
 website: https://ur.io
 description: >
   URnetwork is a decentralized VPN and bandwidth-sharing network. You earn by
@@ -14,6 +15,9 @@ short_description: Decentralized VPN/bandwidth - email+password auth, JWT sessio
 referral:
   signup_url: "https://ur.io/c?bonus=1Q3G19"
   code: "1Q3G19"
+  bonus:
+    referrer: "3 GiB a day of free UR data per friend, up to 20 friends (data, not money)"
+    referee: "3 GiB a day of free UR data once you use at least 10 MiB through the app on 2 days within 90 days of joining; otherwise the referral ends"
 
 docker:
   # g4-latest is the channel the provider docs (docs.ur.io/provider) name as the
@@ -36,7 +40,7 @@ docker:
       label: "Email"
       required: true
       secret: false
-      description: "Your URnetwork account email (the login you use at <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). Accounts created via Google/Apple sign-in need a password set first."
+      description: "Your URnetwork account email (the login you use at <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). Accounts created via Google/Apple sign-in need a password set first. Need an account? Sign up with <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
     - key: UR_PASSWORD
       label: "Password"
       required: true

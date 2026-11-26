@@ -37,7 +37,7 @@ docker:
       required: true
       secret: true
       pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}'
-      description: "Your Repocket API key — log in at <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> and copy the API key shown on the bandwidth-earnings page (this is NOT your account password)"
+      description: "Your Repocket API key — log in at <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> and copy the API key shown on the bandwidth-earnings page (this is NOT your account password). Need an account? Sign up with <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
   ports: []
   volumes: []
   command: ""
@@ -85,7 +85,7 @@ platforms: [docker, windows, macos, linux, android]
 collector:
   type: api
   notes: "Earnings collector authenticates separately via Firebase (account email/password) to read the balance — distinct from the container's RP_API_KEY. Per-device earnings visible."
-  credential_hint: "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>)."
+  credential_hint: "Use your Repocket account email and password (same as <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>). Need an account? Sign up with <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>."
 
 payout:
   model: internal

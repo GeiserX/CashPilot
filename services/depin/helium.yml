@@ -11,6 +11,9 @@ short_description: Decentralized wireless network - requires hardware, HNT token
 
 referral:
   signup_url: "https://helium.com"
+  # No deployer referral; Helium Mobile refer-a-friend is US phone-plan bill credit
+  # only (support.hellohelium.com article 17736528, checked 2026-11-26).
+  program: false
 
 docker:
   image: ""

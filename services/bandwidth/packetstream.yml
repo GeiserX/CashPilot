@@ -2,6 +2,7 @@ name: PacketStream
 slug: packetstream
 category: bandwidth
 status: active
+priority: 10
 website: https://packetstream.io
 description: >
   PacketStream is a peer-to-peer bandwidth marketplace where you can sell your
@@ -14,6 +15,9 @@ short_description: Bandwidth sharing - simple CID-based setup
 referral:
   signup_url: "https://packetstream.io/?psr=7xgZ"
   code: "7xgZ"
+  bonus:
+    referrer: "20% of their bandwidth earnings (limited-time Packeter bonus)"
+    referee: "10% bonus credit on your first card or PayPal deposit (proxy customers)"
 
 docker:
   image: packetstream/psclient

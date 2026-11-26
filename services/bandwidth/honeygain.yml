@@ -14,6 +14,9 @@ short_description: Bandwidth sharing - most established platform
 referral:
   signup_url: "https://dashboard.honeygain.com/ref/SERGIB4014"
   code: "SERGIB4014"
+  bonus:
+    referrer: "$5 each time a referred friend reaches the $20 payout threshold"
+    referee: "$3 sign-up bonus with this link"
 
 docker:
   image: honeygain/honeygain

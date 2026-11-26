@@ -14,6 +14,8 @@ short_description: Bandwidth sharing - 15% lifetime referral, works on VPS
 referral:
   signup_url: "https://proxylite.ru/?r=KMUPRZIZ"
   code: "KMUPRZIZ"
+  bonus:
+    referrer: "15% of their earnings for life"
 
 docker:
   image: proxylite/proxyservice
@@ -26,7 +28,7 @@ docker:
       label: "User ID"
       required: true
       secret: false
-      description: "Log in at <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → your User ID is shown on the main dashboard page next to your email"
+      description: "Log in at <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → your User ID is shown on the main dashboard page next to your email. Need an account? Sign up with <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
   ports: []
   volumes: []
   command: ""

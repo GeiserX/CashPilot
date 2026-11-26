@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://deeper.network](https://deeper.network)
+> **Website:** [shop.deeper.network](https://shop.deeper.network?sca_ref=12020100.q8Vxm3SliA)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 

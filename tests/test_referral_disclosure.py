@@ -60,9 +60,7 @@ def test_every_guide_notes_its_referral_link_right_under_it(slug, guide):
 # Guides whose header still links the bare homepage on purpose, each with the
 # reason. Strict xfail: once the header is fixed the case passes, the run goes
 # red, and the entry must be removed.
-_HEADER_PENDING = {
-    "deeper-network": "the shop link's affiliate ID waits on the account owner's confirmation",
-}
+_HEADER_PENDING: dict[str, str] = {}
 
 _MD_HREF = re.compile(r"\]\(([^)\s]+)\)")
 
