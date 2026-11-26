@@ -12,11 +12,12 @@ description: >
   it on-chain once it passes the payout threshold.
 short_description: Bitcoin mining pool, tracked by your payout address
 
-# No referral programme was visible on ocean.xyz on 2026-11-25, but nobody has
-# confirmed there is none, so `program` stays absent and scripts/referral_check.py
-# keeps reporting it until someone does.
+# No referral programme: OCEAN has no accounts to carry a code ("No account is
+# necessary - simply put your Bitcoin address as a worker name"), and its home
+# page, getstarted page, docs and terms name none (checked 2026-11-26).
 referral:
   signup_url: "https://ocean.xyz/getstarted"
+  program: false
   account: false
 
 docker:

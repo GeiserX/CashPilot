@@ -174,6 +174,68 @@ def test_the_new_user_bonus_is_shown_next_to_the_sign_up_button():
     assert "service.referral.bonus.referee" in detail.split("Sign Up", 1)[1]
 
 
+def test_a_code_typed_by_hand_is_shown_with_a_copy_button_next_to_sign_up():
+    """Dawn's extension and Gradient's form never read the code from the link.
+
+    The note then names the code and offers a Copy button, in the app and on the
+    detail page, or every user who signs up from the app credits nobody.
+    """
+    note_fn = APP_JS[APP_JS.index("function referralNote(svc)") :]
+    note_fn = note_fn[: note_fn.index("\n  }\n")]
+    assert "ref.code_entry" in note_fn
+    assert "codeEntryCopy(svc, 'Copy')" in note_fn
+    assert 'data-action="copyText" data-a1="${code}"' in _js_code("codeEntryCopy")
+    detail = (ROOT / "app" / "templates" / "service_detail.html").read_text(encoding="utf-8")
+    after_sign_up = detail.split("Sign Up", 1)[1]
+    assert 'data-action="copyText" data-a1="{{ service.referral.code_entry }}"' in after_sign_up
+
+
+def test_every_typed_code_belongs_to_a_referral_code():
+    """A typed code with no referral code would ask users to type something unchecked."""
+    for svc in catalog.get_services():
+        ref = svc.get("referral") or {}
+        if ref.get("code_entry"):
+            assert ref["code_entry"] == ref.get("code"), f"{svc['slug']}: code_entry must equal referral.code"
+
+
+def _code_entry_services() -> list[dict]:
+    return [s for s in catalog.get_services() if (s.get("referral") or {}).get("code_entry")]
+
+
+def test_every_guide_of_a_typed_code_tells_the_reader_to_type_it():
+    """The link does not carry a code_entry code, so the guide must name it."""
+    services = _code_entry_services()
+    assert services, "no service sets referral.code_entry, so this test checks nothing"
+    for svc in services:
+        guide = ROOT / "docs" / "guides" / f"{svc['slug']}.md"
+        if guide.exists():
+            text = guide.read_text(encoding="utf-8")
+            assert f"`{svc['referral']['code_entry']}`" in text, f"{guide.name}: never names the code to type"
+
+
+def test_a_new_guide_for_a_typed_code_tells_the_reader_to_type_it():
+    from scripts.new_service_stub import code_entry_note, render
+
+    svc = _code_entry_services()[0]
+    header = render(svc["slug"]).split("## Description", 1)[0]
+    assert code_entry_note(svc) and code_entry_note(svc) in header
+    assert f"`{svc['referral']['code_entry']}`" in header
+    assert code_entry_note(catalog.get_service("honeygain")) == ""
+
+
+def test_the_catalog_row_shows_a_typed_code_beside_visit():
+    """A manual-only service's row has only Visit, which opens the signup page.
+
+    Dawn's extension never reads the code from that link, so the row must offer
+    the code itself, or a user who signs up from the catalog credits nobody.
+    """
+    body = _js_code("renderCatalogCard")
+    visit = body[body.index(">Visit</a>") :]
+    assert "codeEntryCopy(svc," in visit[:400]
+    copy_fn = _js_code("codeEntryCopy")
+    assert 'data-action="copyText"' in copy_fn and "aria-label" in copy_fn
+
+
 def test_the_detail_page_never_prints_na_for_a_missing_bonus():
     """A row of N/A hid the bonus where it existed and said nothing where it did not."""
     detail = (ROOT / "app" / "templates" / "service_detail.html").read_text(encoding="utf-8")

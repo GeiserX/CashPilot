@@ -14,6 +14,7 @@ short_description: DePIN network backed by Pantera Capital - node rewards ended 
 referral:
   signup_url: "https://app.gradient.network/signup?referralCode=YSKMY7"
   code: "YSKMY7"
+  code_entry: "YSKMY7"
 
 docker:
   image: ""

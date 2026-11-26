@@ -14,6 +14,7 @@ short_description: DePIN validator - browser extension earns DAWN points
 referral:
   signup_url: "https://infrastructure.finance/validator-extension?code=2QLQV97F"
   code: "2QLQV97F"
+  code_entry: "2QLQV97F"
 
 docker:
   image: ""

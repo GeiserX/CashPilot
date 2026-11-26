@@ -27,6 +27,12 @@
 #         scripts/referral_check.py proves it stays anchored in signup_url
 #         (query value, bare query key, or path segment), so a domain
 #         migration cannot silently strip the attribution.
+#   code_entry: (optional) the code the user must type by hand. Set it when
+#         the provider's signup does not read the code from the link, such
+#         as a browser extension that asks for it. ALWAYS QUOTED, and equal
+#         to code: scripts/referral_check.py fails it otherwise. The UI shows
+#         it with a Copy button next to Sign Up, so a user who signs up
+#         there still credits the referral.
 #   program: Whether the PROVIDER runs a referral program. Three-valued, and
 #            absent is not "no":
 #              true    verified to run one (true + no code = actionable gap)
