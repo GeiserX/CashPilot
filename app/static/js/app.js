@@ -1762,7 +1762,7 @@ const CP = (() => {
         const wid = inst.worker_id != null
           ? ` data-a2="${escapeHtml(String(inst.worker_id))}"${inst.instance > 1 ? ` data-a3="${escapeHtml(String(inst.instance))}"` : ''}`
           : '';
-        const controllable = _canWrite && !inst.unmanaged && !svc.unmanaged && inst.has_docker && !inst.is_android;
+        const controllable = _canWrite && !inst.unmanaged && !svc.unmanaged && inst.can_command && !inst.is_android;
         if (inst.held) {
           // The worker's fence guard keeps it stopped (a fence-gated node): Start
           // is refused for the same reason, so the card says why and offers what works.
@@ -1938,7 +1938,7 @@ const CP = (() => {
   // The copies "Stop on all servers" would act on: CashPilot's own containers
   // that are not already stopped.
   function stoppableCopies(svc) {
-    return (svc.instance_details || []).filter(inst => inst.has_docker && !inst.unmanaged && !inst.is_android
+    return (svc.instance_details || []).filter(inst => inst.can_command && !inst.unmanaged && !inst.is_android
       && inst.worker_id != null && !['exited', 'stopped', 'dead'].includes(String(inst.status || '').toLowerCase()));
   }
 
@@ -2205,8 +2205,14 @@ const CP = (() => {
     return Number.isInteger(id) && id > 0 ? id : undefined;
   }
 
+  // A joined Desktop that takes commands reports a URL too, so it is a deploy target.
+  // One without a URL only reports what runs on it.
   function onlineDeployWorkers(workers) {
     return (workers || []).filter(w => w.status === 'online' && w.url);
+  }
+
+  function isDesktopWorker(w) {
+    return ((w && w.system_info) || {}).device_type === 'desktop';
   }
 
   function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
@@ -2226,7 +2232,9 @@ const CP = (() => {
       if (maxInstances) {
         const capable = ((w.system_info || {}).features || []).includes('instances');
         const locked = maxInstances <= 1 || !capable;
-        const why = maxInstances <= 1 ? '' : (capable ? '' : ' title="Update this worker to run more than one copy"');
+        const why = maxInstances <= 1 ? ''
+          : (isDesktopWorker(w) ? ' title="CashPilot Desktop runs one copy of each service from here"'
+            : (capable ? '' : ' title="Update this worker to run more than one copy"'));
         instancesBox = `
         <span class="instances-box"${why}>Instances
           <input class="form-input instances-input" type="number" min="1" max="${maxInstances}" step="1"
@@ -2237,6 +2245,7 @@ const CP = (() => {
       <label class="worker-pick">
         <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : ''}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
+        ${isDesktopWorker(w) ? '<span class="badge" title="CashPilot Desktop: it runs the image its own catalog pins, one copy per service">Desktop</span>' : ''}
         ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
         ${deployed
           ? '<span class="badge badge-deployed">Deployed</span>'
@@ -2479,7 +2488,7 @@ const CP = (() => {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
       const wParam = inst.worker_id != null ? ` data-a2="${inst.worker_id}"` : '';
-      const noDocker = !inst.has_docker || inst.is_android;
+      const noDocker = !inst.can_command || inst.is_android;
       // Started outside CashPilot — matched by IMAGE, not by a CashPilot label,
       // so every container command targets a name that does not exist and
       // answers "404 Container not found" for a row this same screen calls
@@ -2488,18 +2497,18 @@ const CP = (() => {
       const unmanaged = inst.unmanaged || svc.unmanaged;
       const disabledAttr = unmanaged
         ? ' disabled title="Started outside CashPilot — manage it where you started it"'
-        : (noDocker ? ' disabled title="No Docker access"' : '');
+        : (noDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it: it sent no address to take commands at. On its own dashboard, turn on its switch and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address."' : ' disabled title="No Docker access"') : '');
       actionBtns = `<div class="action-btns">
           ${claimBtn}
           ${settingsBtn}
           ${_canWrite ? `
-          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Restart"${disabledAttr}>
+          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Restart">
             ${ICON_RESTART}
           </button>
-          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Stop"${disabledAttr}>
+          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Stop">
             ${ICON_STOP}
           </button>
-          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Logs"${disabledAttr}>
+          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Logs">
             ${ICON_LOGS}
           </button>` : ''}
         </div>`;
@@ -2534,7 +2543,7 @@ const CP = (() => {
         const wParam = inst.worker_id != null
           ? ` data-a2="${inst.worker_id}"${(inst.instance || 1) > 1 ? ` data-a3="${inst.instance}"` : ''}`
           : '';
-        const iNoDocker = !inst.has_docker || inst.is_android;
+        const iNoDocker = !inst.can_command || inst.is_android;
         // The mixed case this whole change is built around. The ROW keeps its
         // buttons because a managed instance can still be controlled — but the
         // external instance in that same row cannot, and its sub-row was still
@@ -2545,7 +2554,7 @@ const CP = (() => {
         const iUnmanaged = inst.unmanaged || svc.unmanaged;
         const disabledAttr = iUnmanaged
           ? ' disabled title="Started outside CashPilot — manage it where you started it"'
-          : (iNoDocker ? ' disabled title="No Docker access"' : '');
+          : (iNoDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it: it sent no address to take commands at. On its own dashboard, turn on its switch and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address."' : ' disabled title="No Docker access"') : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
         // `|| '0'` would render an unmeasurable container as a confident 0%.
         // The endpoint sends null when the Docker stats call failed, and an em
@@ -2574,13 +2583,13 @@ const CP = (() => {
           <td class="c-act">
             <div class="action-btns">
               ${_canWrite ? `
-              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Restart on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Restart on ${nodeLabel}">
                 ${ICON_RESTART}
               </button>
-              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Stop on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Stop on ${nodeLabel}">
                 ${ICON_STOP}
               </button>
-              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Logs on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Logs on ${nodeLabel}">
                 ${ICON_LOGS}
               </button>` : ''}
             </div>
@@ -5954,8 +5963,8 @@ const CP = (() => {
     if (!container) return;
     try {
       const workers = await api('/api/workers').catch(() => []);
-      // Only workers with a command URL can answer /api/update-info; a paired Desktop or phone cannot.
-      const online = onlineDeployWorkers(workers);
+      // Only Docker workers answer /api/update-info; a Desktop updates itself and a phone has no URL.
+      const online = onlineDeployWorkers(workers).filter(w => !isDesktopWorker(w));
       if (!online.length) {
         container.innerHTML = `<p class="block-empty">No Docker worker is online, so the install cannot be inspected or updated right now.</p>`;
         return;

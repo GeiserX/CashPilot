@@ -218,7 +218,10 @@ class TestTheMixedServiceSubRowsHonourTheFlag:
         """The control: the pre-existing disable must not be swallowed."""
         source = self._js()
         i = source.index("const iUnmanaged")
-        assert "iNoDocker ? ' disabled title=\"No Docker access\"'" in source[i : i + 400]
+        block = source[i : i + 600]
+        # A report-only Desktop says why in its own words; a Docker box keeps this one.
+        assert "(iNoDocker ? (inst.desktop_report_only ?" in block
+        assert "' disabled title=\"No Docker access\"'" in block
 
     def test_both_render_paths_now_check_it(self):
         """Single-instance and multi-instance are separate code paths.

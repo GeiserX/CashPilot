@@ -36,7 +36,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -250,6 +250,12 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
         sys_info = _safe_json(w.get("system_info", "{}"), {})
         worker_has_docker = sys_info.get("docker_available", False)
         is_android = placement.is_android(sys_info)
+        # Whether this box takes container commands (start, stop, restart, logs).
+        # A joined Desktop never reports docker_available: it takes commands when
+        # it reports a command URL, and only reports what runs there when it does not.
+        is_desktop = placement.is_desktop(sys_info)
+        worker_can_command = bool(w.get("url")) if is_desktop else bool(worker_has_docker)
+        desktop_report_only = is_desktop and not worker_can_command
         worker_name = w.get("name", "worker")
 
         # Docker containers (from Docker-based workers only — skip for Android)
@@ -316,6 +322,8 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                             "_node": worker_name,
                             "_worker_id": w.get("id"),
                             "_has_docker": worker_has_docker,
+                            "_can_command": worker_can_command,
+                            "_desktop_report_only": desktop_report_only,
                             "_is_android": False,
                         }
                     )
@@ -352,6 +360,8 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
                         "_node": worker_name,
                         "_worker_id": w.get("id"),
                         "_has_docker": worker_has_docker,
+                        "_can_command": worker_can_command,
+                        "_desktop_report_only": desktop_report_only,
                         "_is_android": False,
                     }
                 )
@@ -395,11 +405,19 @@ async def _get_all_worker_containers(workers: list[dict[str, Any]] | None = None
 
 
 async def _resolve_worker_id(worker_id: int | None) -> int:
-    """Auto-select a worker only when one online worker has a command URL."""
+    """Auto-select a worker only when one online Docker worker has a command URL.
+
+    A joined Desktop that takes commands has a URL too, but it is picked only by
+    its id: a deploy that names no worker keeps going where it went before.
+    """
     if worker_id is not None:
         return worker_id
     workers = await database.list_workers()
-    online = [w for w in workers if w["status"] == "online" and w.get("url")]
+    online = [
+        w
+        for w in workers
+        if w["status"] == "online" and w.get("url") and not placement.is_desktop(placement.system_info(w))
+    ]
     if len(online) == 1:
         return online[0]["id"]
     if len(online) == 0:
@@ -4004,6 +4022,12 @@ async def api_services_deployed(request: Request) -> list[dict[str, Any]]:
                 "memory": None if inst.get("memory_mb") is None else f"{float(inst['memory_mb']):.1f} MB",
                 "container_name": inst.get("name", ""),
                 "has_docker": inst.get("_has_docker", False),
+                # Whether its box takes start, stop, restart and logs: a Docker
+                # worker with Docker, or a joined Desktop that reports a command URL.
+                "can_command": inst.get("_can_command", False),
+                # A joined Desktop that only reports, so the UI can say why its
+                # buttons are off.
+                "desktop_report_only": inst.get("_desktop_report_only", False),
                 "is_android": inst.get("_is_android", False),
                 # Started outside CashPilot: it has no CashPilot label, so the
                 # container commands cannot target it and the UI must not offer
@@ -4842,12 +4866,19 @@ async def _deploy(
         await _confirm_deploy_targets(worker_id, slug, keys)
     # Read only when copies are involved, so a plain deploy asks the worker
     # record nothing it did not ask before.
-    running_copies = (
-        await _worker_instances(worker_id, slug)
-        if body.instances is not None or (recorded or {}).get("instances")
-        else set()
-    )
+    # A joined Desktop takes one copy per service from here, and any copy it added
+    # itself stays its own: the server neither sends copy 2+ nor removes them.
+    copies_involved = body.instances is not None or (recorded or {}).get("instances")
+    to_desktop = await _worker_is_desktop(worker_id) if copies_involved else False
+    running_copies = await _worker_instances(worker_id, slug) if copies_involved and not to_desktop else set()
     if instances > 1:
+        # The Desktop answer first: it tells the owner where more copies can go,
+        # which the generic scaling message does not.
+        if to_desktop:
+            raise HTTPException(
+                status_code=409,
+                detail="CashPilot Desktop runs one copy of each service from here. Add more copies on that computer.",
+            )
         limit, why = scaling_limit(svc)
         if instances > limit:
             raise HTTPException(status_code=400, detail=why)
@@ -5263,6 +5294,16 @@ async def _deploy(
     return response
 
 
+def _desktop_wallet_refusal(svc: dict[str, Any] | None, *, recovery: str = "") -> HTTPException:
+    service = svc or {}
+    name = service.get("name") or service.get("slug") or "This service"
+    return HTTPException(
+        status_code=409,
+        detail=f"{name} runs only on the machine that holds its wallet. Deploy it from CashPilot Desktop on that machine."
+        + recovery,
+    )
+
+
 async def _wallet_choice(
     svc: dict[str, Any],
     body: DeployRequest,
@@ -5287,8 +5328,27 @@ async def _wallet_choice(
     key = wallet_seed.seed_key(svc)
     if not key:
         return None, None
-    capable = wallet_seed.FEATURE in await _worker_features(worker_id)
     choice = body.wallet_seed
+    if await _worker_is_desktop(worker_id):
+        if restore is not None:
+            raise _desktop_wallet_refusal(svc)
+        # Legacy records do not prove that the owner saw the phrase. The
+        # import field is filled by the owner, so a match proves they have it.
+        confirmed = wallet_seed.normalize(choice.phrase) if choice is not None and choice.mode == "import" else ""
+        removed, retained = await database.forget_env_value(
+            svc["slug"], worker_id, key, confirmed_wallet_seed=confirmed
+        )
+        recovery = ""
+        if retained:
+            recovery = (
+                " CashPilot kept a saved seed phrase because it could be your only copy."
+                ' If the wallet is in CashPilot Desktop, use "Reveal seed phrase" there to see it.'
+                ' To clear the saved copy, choose "Use a wallet I already have" and enter the phrase.'
+            )
+        elif removed:
+            recovery = " CashPilot cleared the saved seed phrase that you supplied."
+        raise _desktop_wallet_refusal(svc, recovery=recovery)
+    capable = wallet_seed.FEATURE in await _worker_features(worker_id)
     posted = wallet_seed.normalize(posted_env.get(key))
     legacy = wallet_seed.normalize(recorded_env.get(key))
     if restore is not None:
@@ -5461,6 +5521,14 @@ async def _check_route(
         raise HTTPException(
             status_code=400,
             detail=f"{name} runs once per worker through a proxy. To run more, add workers or proxies.",
+        )
+    if await _worker_is_desktop(worker_id):
+        # A joined Desktop serves no /api/proxied routes: it adds a copy through a
+        # proxy only in its own window. It is not too old, so it gets its own answer.
+        raise HTTPException(
+            status_code=409,
+            detail=f"CashPilot Desktop adds copies that run through a proxy only on that computer. Deploy {name} "
+            "through the proxy from CashPilot Desktop there. Nothing was deployed.",
         )
     if recorded_route is not None and recorded_route != route:
         raise HTTPException(
@@ -7317,7 +7385,16 @@ async def _get_verified_worker_url(worker: dict[str, Any]) -> tuple[str, dict[st
     # The worker then read as online from its heartbeats while every deploy,
     # start, stop, restart and logs call failed 401, with nothing connecting
     # the two symptoms.
-    auth_key = await _confirmed_worker_key(cid) or FLEET_API_KEY
+    auth_key = await _confirmed_worker_key(cid)
+    if not auth_key and placement.is_desktop(placement.system_info(worker)):
+        # A joined Desktop takes only the key this server issued to it, never the
+        # shared one, so the shared key is not sent to it at all.
+        raise HTTPException(
+            status_code=503,
+            detail="This Desktop has not finished joining, so it has no key of its own yet. "
+            "Wait for its next heartbeat and try again.",
+        )
+    auth_key = auth_key or FLEET_API_KEY
     headers: dict[str, str] = {}
     if auth_key:
         headers["Authorization"] = f"Bearer {auth_key}"
@@ -7507,6 +7584,99 @@ def _worker_left_restore(resp: Any) -> bool:
     return bool(_worker_restore_answer(resp).get("left"))
 
 
+# Stop accidental recovery phrase leaks to CashPilot Desktop. Decode and match
+# saved words across values in request order. Check pasted phrases by checksum
+# within whitespace-separated words in each field.
+async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | None) -> None:
+    """Check the final request and fields that may be stripped before the send."""
+    svc = None
+    slug = None
+    match path.split("/"):
+        case ["", "api", "containers", slug, "deploy" | "restore"] | ["", "api", "proxied", slug, _, "deploy"]:
+            svc = catalog.get_service(slug)
+    if wallet_seed.seed_key(svc):
+        raise _desktop_wallet_refusal(svc)
+
+    # Raw commands can carry seed fields for another service. Ignore case and
+    # separators so env vars and JSON field names follow the same rule.
+    wallet_fields = dict.fromkeys(("walletseed", "seedphrase", "recoveryphrase", "mnemonic"))
+    for service in catalog.get_services():
+        if key := wallet_seed.seed_key(service):
+            wallet_fields[wallet_seed.field_name(key)] = service
+
+    keys = {slug} if slug else set()
+
+    def string_values(payload: dict[str, Any]) -> Iterable[str]:
+        pending: list[tuple[str | None, Any]] = [(None, payload)]
+        while pending:
+            key, value = pending.pop()
+            if isinstance(key, str):
+                field = wallet_seed.field_name(key)
+                if field in wallet_fields:
+                    raise _desktop_wallet_refusal(wallet_fields[field])
+                keys.add(key)
+            if isinstance(value, dict):
+                pending.extend(reversed(value.items()))
+            elif isinstance(value, (list, tuple)):
+                pending.extend((None, child) for child in reversed(value))
+            elif isinstance(value, str):
+                yield value
+
+    value_groups = [tuple(string_values(payload)) for payload in payloads if payload is not None]
+    texts = keys | {value for values in value_groups for value in values}
+    if any(wallet_seed.contains_pasted_phrase(text) for text in texts):
+        raise _desktop_wallet_refusal(None)
+
+    known = {
+        f" {' '.join(words)} "
+        for phrase in await database.get_saved_wallet_phrases(wallet_fields)
+        if (words := wallet_seed.phrase_words(wallet_seed.decode_phrase_text(phrase)))
+    }
+    if not known:
+        return
+
+    def matches_saved(text: str) -> bool:
+        words = f" {' '.join(wallet_seed.phrase_words(text))} "
+        return any(phrase in words for phrase in known)
+
+    if any(matches_saved(wallet_seed.decode_phrase_text(key)) for key in keys):
+        raise _desktop_wallet_refusal(None)
+    for values in value_groups:
+        decoded = [wallet_seed.decode_phrase_text(value) for value in values]
+        # A value boundary can separate two words or fall inside a word.
+        if matches_saved(" ".join(decoded)) or matches_saved("".join(decoded)):
+            raise _desktop_wallet_refusal(None)
+
+
+class _DesktopDeploySpec(BaseModel):
+    """The JSON fields CashPilot Desktop's workerDeploySpec reads."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    image: str
+    env: dict[str, str] = Field(default_factory=dict)
+    instance: int = 1
+
+
+async def _desktop_deploy_body(path: str, spec: dict[str, Any], desktop_json: dict[str, Any] | None) -> dict[str, Any]:
+    deploy_path = re.fullmatch(r"/api/containers/[a-z0-9][a-z0-9_.-]*/deploy", path)
+    body = None
+    if deploy_path:
+        # Validation errors carry submitted values, including credentials.
+        with contextlib.suppress(ValidationError):
+            body = _DesktopDeploySpec.model_validate(spec if desktop_json is None else desktop_json).model_dump(
+                exclude_unset=True
+            )
+    # Walk the serialized body too. Model field order can differ from the raw
+    # request, and projection can remove fields between two parts of a phrase.
+    await _refuse_desktop_wallet_payload(path, spec, desktop_json, body)
+    if not deploy_path:
+        raise HTTPException(status_code=409, detail="CashPilot Desktop cannot take this request from the dashboard.")
+    if body is None:
+        raise HTTPException(status_code=422, detail="Invalid CashPilot Desktop deploy request.")
+    return body
+
+
 async def _proxy_to_worker(
     worker_id: int,
     method: str,
@@ -7518,6 +7688,7 @@ async def _proxy_to_worker(
     marked: bool = False,
     allow_plain_http: bool = True,
     headers: dict[str, str] | None = None,
+    desktop_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Proxy one request to a worker's REST API and return its parsed JSON.
 
@@ -7531,6 +7702,8 @@ async def _proxy_to_worker(
     the URL this call sends to, not one read earlier (the restore's passphrase).
     """
     worker = await database.get_worker(worker_id)
+    if json is not None and worker and placement.is_desktop(placement.system_info(worker)):
+        json = await _desktop_deploy_body(path, json, desktop_json)
     extra = headers
     url, headers = await _get_verified_worker_url(worker)
     if extra:
@@ -7703,15 +7876,18 @@ async def _worker_deploy_target(
     worker_id: int, slug: str, instance: int = 1, proxy_id: int | None = None
 ) -> tuple[str, bool]:
     """Read the live deploy target, with a compatibility check for old workers."""
+    desktop = proxy_id is None and await _worker_is_desktop(worker_id)
     base = f"/api/containers/{slug}" if proxy_id is None else f"/api/proxied/{slug}/{proxy_id}"
     params = {"instance": str(instance)} if proxy_id is None else None
     endpoint = "deploy-checked" if proxy_id is None else "deploy"
-    try:
-        state = await _proxy_to_worker(worker_id, "GET", f"{base}/{endpoint}", params=params)
-    except HTTPException as exc:
-        if exc.status_code not in (404, 405):
-            raise
-        state = {}
+    state = {}
+    # Desktop has no checked route. Its container list queries Docker directly.
+    if not desktop:
+        try:
+            state = await _proxy_to_worker(worker_id, "GET", f"{base}/{endpoint}", params=params)
+        except HTTPException as exc:
+            if exc.status_code not in (404, 405):
+                raise
     if isinstance(state, dict):
         target = state.get("expected_container")
         if isinstance(target, str) and _DEPLOY_TARGET_ID.fullmatch(target):
@@ -7726,7 +7902,7 @@ async def _worker_deploy_target(
         if instance > 1
         else f"Container for {slug} not found"
     )
-    if not (isinstance(state, dict) and state.get("exists") is True):
+    if not desktop and not (isinstance(state, dict) and state.get("exists") is True):
         if isinstance(state, dict) and state.get("exists") is False:
             return "none", False
         try:
@@ -7743,6 +7919,7 @@ async def _worker_deploy_target(
         rows = await _proxy_to_worker(worker_id, "GET", "/api/containers")
     else:
         rows = _proxied_reportable(await database.get_worker(worker_id))
+    found = False
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict) or egress.container_slug(row) != slug:
             continue
@@ -7750,9 +7927,12 @@ async def _worker_deploy_target(
             instance if proxy_id is None else proxy_id
         ):
             continue
+        found = True
         target = row.get("container_id")
         if isinstance(target, str) and target != "none" and _DEPLOY_TARGET_ID.fullmatch(target):
             return target, False
+    if desktop and isinstance(rows, list) and not found:
+        return "none", False
     raise HTTPException(
         status_code=409,
         detail="A container already exists. Update the worker so CashPilot can identify it before replacing it.",
@@ -7769,7 +7949,8 @@ async def _ask_deploy_confirmation(worker_id: int, slug: str, targets: dict[str,
     ]
     message = f"Replace these containers for {slug} on {name}?\n\n" + "\n".join(copies)
     if old:
-        message += "\n\nUpdate this worker so it can verify the container ID itself."
+        product = "CashPilot-Desktop" if placement.is_desktop(placement.system_info(worker)) else "this worker"
+        message += f"\n\nUpdate {product} so it can verify the container ID itself."
     raise HTTPException(
         status_code=409,
         detail={"error": "confirm_deploy_targets", "message": message, "expected_containers": targets},
@@ -7798,6 +7979,7 @@ async def _send_worker_deploy(
     proxy_id: int | None = None,
     definition: dict[str, Any] | None = None,
     timeout: float = 30,
+    desktop_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Send the exact expectation on every deploy. Serialize the legacy fallback on this dashboard."""
     if not isinstance(expected, str) or not _DEPLOY_TARGET_ID.fullmatch(expected):
@@ -7817,7 +7999,9 @@ async def _send_worker_deploy(
                 timeout=timeout,
             )
         route = "deploy-checked" if checked else "deploy"
-        return await _proxy_to_worker(worker_id, "POST", f"/api/containers/{slug}/{route}", json=body, timeout=timeout)
+        return await _proxy_to_worker(
+            worker_id, "POST", f"/api/containers/{slug}/{route}", json=body, timeout=timeout, desktop_json=desktop_json
+        )
 
     locks = _worker_deploy_locks.setdefault(asyncio.get_running_loop(), {})
     async with locks.setdefault((worker_id, slug), asyncio.Lock()):
@@ -7826,11 +8010,12 @@ async def _send_worker_deploy(
             key = str(instance) if proxy_id is None else f"p{proxy_id}"
             if current != "none" and expected == "none":
                 await _ask_deploy_confirmation(worker_id, slug, {key: current}, old=True)
+            product = "CashPilot-Desktop" if await _worker_is_desktop(worker_id) else "the worker"
             raise HTTPException(
                 status_code=409,
                 detail={
                     "error": "deploy_target_changed",
-                    "message": "The deploy target changed. Review it again and update the worker.",
+                    "message": f"The deploy target changed. Review it again and update {product}.",
                     "current_container": current,
                 },
             )
@@ -7863,7 +8048,15 @@ async def _proxy_worker_deploy(
     if leave_route:
         # Only after _confirm_leave_route checked the owner's password.
         spec = {**spec, "route_approval": await _sign_for_worker(worker_id, step_up.ACTION_LEAVE_ROUTE, slug)}
-    return await _send_worker_deploy(worker_id, slug, spec, expected=expected_container, timeout=_deploy_timeout(slug))
+    return await _send_worker_deploy(
+        worker_id,
+        slug,
+        spec,
+        expected=expected_container,
+        timeout=_deploy_timeout(slug),
+        # Desktop gets its runtime settings from its own catalog.
+        desktop_json={key: spec[key] for key in _DesktopDeploySpec.model_fields if key in spec},
+    )
 
 
 async def _image_for_worker(worker_id: int, slug: str, spec: dict[str, Any]) -> dict[str, Any]:
@@ -8363,6 +8556,8 @@ async def api_add_proxied_copy(
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
     if svc.get("status") in _UNDEPLOYABLE_STATUSES:
         raise HTTPException(status_code=409, detail=f"Service '{slug}' is no longer available for deployment")
+    if wallet_seed.seed_key(svc) and await _worker_is_desktop(body.worker_id):
+        raise _desktop_wallet_refusal(svc)
     if why := proxies.refusal(svc):
         raise HTTPException(status_code=400, detail=why)
     worker_id = await _resolve_worker_id(body.worker_id)
@@ -11820,6 +12015,7 @@ async def api_update_info(request: Request, worker_id: int | None = None) -> dic
     """Everything the settings card needs: versions + what an update would do."""
     _require_owner(request)
     wid = await _resolve_worker_id(worker_id)
+    await _refuse_desktop_update(wid)
     info = await _proxy_to_worker(wid, "GET", "/api/update/info")
     check = update_check.state()
     current = version.current()
@@ -11850,7 +12046,23 @@ async def api_update(request: Request, worker_id: int | None = None) -> dict[str
     """
     _require_owner(request)
     wid = await _resolve_worker_id(worker_id)
+    await _refuse_desktop_update(wid)
     return await _proxy_to_worker(wid, "POST", "/api/update/self", timeout=120)
+
+
+async def _worker_is_desktop(worker_id: int) -> bool:
+    """Whether this worker row is a joined CashPilot Desktop."""
+    worker = await database.get_worker(worker_id) or {}
+    return placement.is_desktop(placement.system_info(worker))
+
+
+async def _refuse_desktop_update(worker_id: int) -> None:
+    """A joined Desktop takes deploys and stops, but it updates itself from its own app."""
+    if await _worker_is_desktop(worker_id):
+        raise HTTPException(
+            status_code=409,
+            detail="CashPilot Desktop updates itself from its own app. Pick a Docker worker here.",
+        )
 
 
 @app.get("/api/env-info")
@@ -13022,6 +13234,9 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         # An approval comes only from the password step-up of /api/deploy; one
         # pasted into a raw spec is dropped, so this route can never run another
         # image than the catalog's on a service with critical volumes.
+        # The dashboard consumes the container approval before sending the Desktop spec.
+        expected = body.spec.get("expected_container", "none")
+        original_spec = {key: value for key, value in body.spec.items() if key != "expected_container"}
         body.spec.pop("approval", None)
         # The same for leaving a route, and a route this spec claims is not
         # one it deploys: this route runs on the worker's own IP only.
@@ -13046,8 +13261,9 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         copy = _copy_number(body.spec)
         held = await _reserve_pending_identities(body.slug, worker_id, copy if copy and copy > 0 else 1, raw_env)
         try:
+            # The Desktop schema must also reject fields the Docker route strips.
             result = await _send_worker_deploy(
-                worker_id, body.slug, body.spec, expected=body.spec.get("expected_container", "none")
+                worker_id, body.slug, body.spec, expected=expected, desktop_json=original_spec
             )
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, body.slug, worker_id)
