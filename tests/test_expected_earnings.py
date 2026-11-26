@@ -140,7 +140,7 @@ class TestEndpoint:
         stats=None,
         slug="ocean",
         btc_usd=90000.0,
-        span=30,
+        covered=30,
         measured=None,
     ):
         from tests.test_machine_economics import TestEndpoint as Base
@@ -155,21 +155,19 @@ class TestEndpoint:
         bitcoin = AsyncMock(return_value=stats or known)
         readings = {} if hashrate is None else {slug: hashrate}
         to_usd = (lambda amount, currency: amount * btc_usd if currency == "BTC" else None) if btc_usd else None
-        span_read = AsyncMock(return_value=span)
         with (
             patch("app.main._pool_hashrate", readings),
             patch("app.main.network_stats.bitcoin", bitcoin),
-            patch("app.main.database.get_reading_span_days", span_read),
             patch("app.main.exchange_rates.to_usd", to_usd or (lambda amount, currency: None)),
         ):
             out = Base()._call(
                 config={"power_currency": "USD", "power_price_per_kwh": "0.20", "power_device_ocean_watts": "18"},
                 earned={slug: 0.85},
                 measured=measured,
+                covered={} if covered is None else {slug: covered},
                 deployments=[{"slug": slug, "status": "external"}],
             )
         (device,) = out["machines"]
-        self.span_read = span_read
         return device, bitcoin
 
     def test_a_bitcoin_pool_with_a_hashrate_gets_an_estimate_next_to_its_credit(self):
@@ -187,7 +185,7 @@ class TestEndpoint:
         assert device["monthly_gross"] == 0.85
 
     def test_a_few_days_of_credit_get_the_estimate_for_the_same_days(self):
-        device, _ = self._device(span=3)
+        device, _ = self._device(covered=3)
         expected = device["expected"]
         per_day = network_stats.expected_btc_per_day(1.2e12, DIFFICULTY, REWARD_BTC)
         assert expected["credited_days"] == 3
@@ -195,19 +193,17 @@ class TestEndpoint:
         assert expected["credited_days_usd"] == pytest.approx(per_day * 3 * 90000.0, abs=0.0001)
         # The 30-day figure stays a 30-day figure.
         assert expected["monthly_coin"] == pytest.approx(per_day * 30, abs=1e-8)
-        self.span_read.assert_awaited_once_with("ocean", days=30)
 
-    @pytest.mark.parametrize("span", [None, 0])
-    def test_no_span_of_readings_means_no_same_days_comparison(self, span):
-        expected = self._device(span=span)[0]["expected"]
+    @pytest.mark.parametrize("covered", [None, 0])
+    def test_no_covered_days_means_no_same_days_comparison(self, covered):
+        expected = self._device(covered=covered)[0]["expected"]
         assert expected["credited_days"] is None
         assert "credited_days_coin" not in expected
 
-    def test_an_unread_credit_is_not_compared_and_the_span_is_not_read(self):
+    def test_an_unread_credit_is_not_compared(self):
         device, _ = self._device(measured=set())
         assert device["monthly_gross"] is None
         assert device["expected"]["credited_days"] is None
-        self.span_read.assert_not_awaited()
 
     def test_the_estimate_never_changes_gross_cost_or_net(self):
         with_estimate, _ = self._device()
@@ -311,41 +307,128 @@ class TestCollectionLoop:
         assert readings == {}
 
 
-class TestReadingSpan:
-    @pytest.fixture
-    def db(self, tmp_path):
-        from app import database
+BTC_USD = 90000.0
 
-        with (
-            patch.object(database, "DB_DIR", tmp_path),
-            patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"),
+
+@pytest.fixture
+def real_db(tmp_path):
+    from app import database
+
+    with (
+        patch.object(database, "DB_DIR", tmp_path),
+        patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"),
+    ):
+        asyncio.run(database.init_db())
+        yield database
+
+
+def _insert(database, platform, days_ago, balance, fx=BTC_USD, source="server"):
+    async def go():
+        conn = await database._get_db()
+        await conn.execute(
+            "INSERT INTO earnings (platform, balance, currency, date, fx_rate_usd, source)"
+            " VALUES (?, ?, 'BTC', date('now', ?), ?, ?)",
+            (platform, balance, f"-{days_ago} days", fx, source),
+        )
+        await conn.commit()
+        await conn.close()
+
+    asyncio.run(go())
+
+
+def _covered(database, days=30):
+    covered: dict[str, int] = {}
+    asyncio.run(database.get_earned_by_platform(days=days, covered_days=covered))
+    return covered
+
+
+class TestCoveredDays:
+    """The days ``get_earned_by_platform`` really credits, per platform."""
+
+    def test_a_continuously_priced_series_covers_first_to_last_reading(self, real_db):
+        for days_ago, balance in ((3, 0.001), (1, 0.002), (0, 0.003)):
+            _insert(real_db, "ocean", days_ago, balance)
+        _insert(real_db, "other", 20, 1.0)
+        assert _covered(real_db) == {"ocean": 3}
+
+    def test_readings_older_than_the_window_do_not_count(self, real_db):
+        for days_ago, balance in ((45, 0.001), (5, 0.002), (0, 0.003)):
+            _insert(real_db, "ocean", days_ago, balance)
+        assert _covered(real_db) == {"ocean": 5}
+
+    def test_the_days_around_an_unpriced_reading_are_not_covered(self, real_db):
+        for days_ago, balance, fx in (
+            (26, 0.010, BTC_USD),
+            (25, 0.011, BTC_USD),
+            (24, 0.012, None),
+            (2, 0.020, BTC_USD),
+            (1, 0.021, BTC_USD),
         ):
-            asyncio.run(database.init_db())
-            yield database
+            _insert(real_db, "ocean", days_ago, balance, fx=fx)
+        assert _covered(real_db) == {"ocean": 2}
 
-    def _insert(self, database, platform, days_ago):
-        async def go():
-            conn = await database._get_db()
-            await conn.execute(
-                "INSERT INTO earnings (platform, balance, currency, date) VALUES (?, 0.001, 'BTC', date('now', ?))",
-                (platform, f"-{days_ago} days"),
-            )
-            await conn.commit()
-            await conn.close()
+    def test_two_sources_over_the_same_days_cover_them_once(self, real_db):
+        for source in ("server", "client-1"):
+            for days_ago, balance in ((4, 0.001), (2, 0.002)):
+                _insert(real_db, "ocean", days_ago, balance, source=source)
+        assert _covered(real_db) == {"ocean": 2}
 
-        asyncio.run(go())
+    def test_a_single_reading_covers_nothing(self, real_db):
+        _insert(real_db, "ocean", 0, 0.001)
+        assert _covered(real_db) == {}
 
-    def test_the_span_is_the_days_between_the_first_and_last_reading(self, db):
-        for days_ago in (3, 1, 0):
-            self._insert(db, "ocean", days_ago)
-        self._insert(db, "other", 20)
-        assert asyncio.run(db.get_reading_span_days("ocean")) == 3
 
-    def test_readings_older_than_the_window_do_not_count(self, db):
-        self._insert(db, "ocean", 45)
-        self._insert(db, "ocean", 5)
-        self._insert(db, "ocean", 0)
-        assert asyncio.run(db.get_reading_span_days("ocean", days=30)) == 5
+class TestEndpointOnARealDatabase:
+    """The credited sum and the days it covers, both read from the real table."""
 
-    def test_no_reading_is_none(self, db):
-        assert asyncio.run(db.get_reading_span_days("ocean")) is None
+    def _device(self, database):
+        from unittest.mock import MagicMock
+
+        from app import main
+
+        known = {
+            "state": network_stats.KNOWN,
+            "difficulty": DIFFICULTY,
+            "reward_btc_per_block": REWARD_BTC,
+            "reward_blocks": 144,
+            "source": "mempool.space",
+        }
+        config = {"power_currency": "USD", "power_price_per_kwh": "0.20", "power_device_ocean_watts": "18"}
+        with (
+            patch.object(main, "_require_auth_api", lambda r: None),
+            patch.object(main.database, "get_config", AsyncMock(return_value=config)),
+            patch.object(main.database, "list_workers", AsyncMock(return_value=[])),
+            patch.object(
+                main.database, "get_deployments", AsyncMock(return_value=[{"slug": "ocean", "status": "external"}])
+            ),
+            patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=[])),
+            patch("app.main._pool_hashrate", {"ocean": (1.2e12, "2026-11-26T10:00:00+00:00")}),
+            patch("app.main.network_stats.bitcoin", AsyncMock(return_value=known)),
+            patch("app.main.exchange_rates.to_usd", lambda amount, currency: amount * BTC_USD),
+        ):
+            out = asyncio.run(main.api_fleet_economics(MagicMock()))
+        (device,) = out["machines"]
+        return device
+
+    def test_the_estimate_covers_only_the_priced_days_the_credit_covers(self, real_db):
+        readings = (
+            (40, 0.001, BTC_USD),  # outside the window: its 0.009 BTC gain to day 26 is old
+            (26, 0.010, BTC_USD),
+            (25, 0.011, BTC_USD),  # credited: 0.001 BTC over 1 day
+            (24, 0.012, None),  # no rate: drops the baseline
+            (2, 0.020, BTC_USD),
+            (1, 0.0205, BTC_USD),  # credited: 0.0005 BTC over 1 day
+        )
+        for days_ago, balance, fx in readings:
+            _insert(real_db, "ocean", days_ago, balance, fx=fx)
+
+        device = self._device(real_db)
+        expected = device["expected"]
+        per_day = network_stats.expected_btc_per_day(1.2e12, DIFFICULTY, REWARD_BTC)
+        # Old earnings stay out: only the two priced one-day deltas are credited.
+        assert device["monthly_gross"] == pytest.approx(0.0015 * BTC_USD)
+        # Compared over those 2 days, not the 25 from the first to the last reading.
+        assert expected["credited_days"] == 2
+        assert expected["credited_days_coin"] == pytest.approx(per_day * 2, abs=1e-8)
+        assert expected["credited_days_usd"] == pytest.approx(per_day * 2 * BTC_USD, abs=0.0001)
+        assert expected["monthly_coin"] == pytest.approx(per_day * 30, abs=1e-8)

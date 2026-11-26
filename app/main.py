@@ -10912,7 +10912,10 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # hosting only such services would get a 0.0 break-even tariff and "loses
     # money at any electricity price" on a gross nobody ever read.
     measured: set[str] = set()
-    earned = await database.get_earned_by_platform(days=30, measured=measured)
+    # The days each platform's credit really covers, for the expected-earnings
+    # comparison on device rows.
+    covered: dict[str, int] = {}
+    earned = await database.get_earned_by_platform(days=30, measured=measured, covered_days=covered)
     containers = await _get_all_worker_containers(raw_workers)
 
     # Attribute each service's gross to the worker running it. A service on two
@@ -11019,7 +11022,9 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
             watts=watts,
             gross_basis=gross_basis,
             break_even_tariff=_break_even_local(device.get("break_even_price_per_kwh"), tariff_currency),
-            expected=await _expected_earnings(slug, service, credited=device["monthly_gross"] is not None),
+            expected=await _expected_earnings(
+                slug, service, credited_days=covered.get(slug) if device["monthly_gross"] is not None else None
+            ),
         )
         _add_heat_fields(device, config, heat_prefix, tariff_currency)
         assessed.append(device)
@@ -11891,7 +11896,9 @@ def _device_watts(config: dict[str, Any], slug: str) -> float | None:
     return watts if math.isfinite(watts) and watts >= 1 else None
 
 
-async def _expected_earnings(slug: str, service: dict[str, Any], *, credited: bool = False) -> dict[str, Any] | None:
+async def _expected_earnings(
+    slug: str, service: dict[str, Any], *, credited_days: int | None = None
+) -> dict[str, Any] | None:
     """What the pool's reported hashrate should earn in 30 days, on average.
 
     An ESTIMATE from the network's difficulty and recent block rewards, before
@@ -11900,10 +11907,12 @@ async def _expected_earnings(slug: str, service: dict[str, Any], *, credited: bo
     carried a hashrate. None when there is nothing to estimate from; a network
     read that failed says so rather than estimating 0.
 
-    The credited figure sums only the readings inside the window, so a pool
-    tracked for 3 days has 3 days of credit. ``credited_days`` is that span, and
-    ``credited_days_coin`` / ``_usd`` the estimate for the same days, so the two
-    figures on the row always cover the same period.
+    The credited figure sums only the priced deltas inside the window, so a pool
+    tracked for 3 days has 3 days of credit, and days around an unpriced reading
+    have none. ``credited_days`` is the number of days those deltas cover (from
+    ``get_earned_by_platform``), and ``credited_days_coin`` / ``_usd`` the
+    estimate for as many days, so the two figures on the row always cover the
+    same length of time.
     """
     reading = _pool_hashrate.get(slug)
     currency = str((service.get("payment") or {}).get("currency") or "").upper()
@@ -11928,10 +11937,13 @@ async def _expected_earnings(slug: str, service: dict[str, Any], *, credited: bo
         "source": stats["source"],
         "credited_days": None,
     }
-    span = await database.get_reading_span_days(slug, days=30) if credited else None
-    if span is not None and span >= 1:
-        period = priced(per_day * span)
-        out |= {"credited_days": span, "credited_days_coin": period["coin"], "credited_days_usd": period["usd"]}
+    if credited_days is not None and credited_days >= 1:
+        period = priced(per_day * credited_days)
+        out |= {
+            "credited_days": credited_days,
+            "credited_days_coin": period["coin"],
+            "credited_days_usd": period["usd"],
+        }
     return out
 
 

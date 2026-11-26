@@ -3660,7 +3660,9 @@ def quiet_verdict(
     return {"days_flat": days, "last_increase": ordered[-1], "since": ordered[-1], "usual_gap_days": usual_gap}
 
 
-async def get_earned_by_platform(days: int = 30, measured: set[str] | None = None) -> dict[str, float]:
+async def get_earned_by_platform(
+    days: int = 30, measured: set[str] | None = None, covered_days: dict[str, int] | None = None
+) -> dict[str, float]:
     """USD earned per platform over the trailing window.
 
     Deliberately NOT the latest balance. A balance is a running total; charging
@@ -3677,6 +3679,12 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
     MYST at $0.40 subtracts to a loss and clamps to zero, hiding 10 MYST that
     really was earned, while an unchanged balance at a risen rate invents
     earnings out of nothing.
+
+    ``covered_days`` receives, per platform, how many days the counted deltas
+    span: only the intervals between two priced readings of one series, merged
+    across series. An unpriced reading drops its baseline, so the days around it
+    earn nothing here and are not counted as covered either. Anything compared
+    with this sum must use these days, never the first-to-last reading span.
     """
     db = await _get_db()
     try:
@@ -3696,6 +3704,10 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
         # one provider account interleave into a single series whose deltas are
         # meaningless: each drop clamps to zero, so the total is understated.
         previous: dict[tuple[str, str], tuple[str, float, float | None]] = {}
+        # The day (ordinal) of each series' baseline, and the days each
+        # platform's counted deltas cover.
+        previous_day: dict[tuple[str, str], int] = {}
+        covered: dict[str, set[int]] = {}
         unpriced: set[str] = set()
         for row in rows:
             platform = row["platform"]
@@ -3708,6 +3720,7 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
             # USD is parity by definition. Trusting a stored rate on a USD row
             # would let a bad rate rewrite money the collector reported exactly.
             rate = _usd_rate(currency, row["fx_rate_usd"])
+            day = datetime.fromisoformat(str(row["date"])[:10]).toordinal()
             earned.setdefault(platform, 0.0)
 
             if rate is None:
@@ -3729,33 +3742,15 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
                     # At least one priced delta: the 0.0 a platform starts at is
                     # a measurement now, not just the absence of one.
                     measured.add(platform)
+                if covered_days is not None:
+                    covered.setdefault(platform, set()).update(range(previous_day[series], day))
             previous[series] = (currency, balance, row["earned"])
+            previous_day[series] = day
 
         _report_unpriced(f"per-platform:{days}", unpriced, f"the {days}-day per-platform totals")
+        if covered_days is not None:
+            covered_days.update({platform: len(spanned) for platform, spanned in covered.items()})
         return earned
-    finally:
-        await db.close()
-
-
-async def get_reading_span_days(platform: str, days: int = 30) -> int | None:
-    """Days between the first and the last reading of ``platform`` inside the window.
-
-    The span ``get_earned_by_platform`` really covers for this platform: its sum
-    is not scaled to the window, so three days of readings give three days of
-    earnings. None when there is no reading in the window.
-    """
-    db = await _get_db()
-    try:
-        cursor = await db.execute(
-            "SELECT MIN(date) AS first, MAX(date) AS last FROM earnings WHERE platform = ? AND date >= date('now', ?)",
-            (platform, f"-{max(1, int(days))} days"),
-        )
-        row = await cursor.fetchone()
-        if not row or not row["first"] or not row["last"]:
-            return None
-        first = datetime.fromisoformat(str(row["first"])[:10]).date()
-        last = datetime.fromisoformat(str(row["last"])[:10]).date()
-        return (last - first).days
     finally:
         await db.close()
 
