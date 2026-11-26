@@ -18,7 +18,7 @@ referral:
   # referred account spends on rentals. Nothing is paid on host earnings.
   program: true
   bonus:
-    referrer: "3% of what referred renters spend, for the life of their account"
+    referrer: "3% of what referred renters spend, for the life of their account, as referral credits; up to 75% can be cashed out from a dedicated referral account"
 
 docker:
   image: ""

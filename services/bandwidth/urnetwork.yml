@@ -17,7 +17,7 @@ referral:
   code: "1Q3G19"
   bonus:
     referrer: "3 GiB a day of free UR data per friend, up to 20 friends (data, not money)"
-    referee: "3 GiB a day of free UR data once you have used the app on 2 days"
+    referee: "3 GiB a day of free UR data once you use at least 10 MiB through the app on 2 days within 90 days of joining; otherwise the referral ends"
 
 docker:
   # g4-latest is the channel the provider docs (docs.ur.io/provider) name as the
