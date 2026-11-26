@@ -1112,7 +1112,9 @@ class TestStorageAndRoutes:
                 patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxied_if_running"}),
                 patch.object(main, "_proxy_worker_call", side_effect=rename_lands),
             ):
-                notes = await main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], old, pending_only=True)
+                notes = await main._refresh_proxied_copies(
+                    "honeygain", 7, svc, svc["docker"], old, pending_only=True, expected={f"p{pid}": "a" * 64}
+                )
             return notes, [c["rename_pending"] for c in await database.list_proxied_copies(pid)]
 
         notes, marks = _run(go)
@@ -1310,8 +1312,11 @@ class TestStorageAndRoutes:
             async def worker_call(worker_id, method, path, definition, *, json=None, timeout=30):
                 running.append(json["earner"]["env"]["DEVICE"])
                 if json.get("only_if_running"):
+                    assert json["expected_container"] == "a" * 64
                     in_rebuild.set()
                     await release.wait()
+                else:
+                    assert json["expected_container"] == "b" * 64
                 return {"status": "deployed", "exit": {}}
 
             with (
@@ -1328,11 +1333,23 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "list_workers", new_callable=AsyncMock, return_value=[]),
                 patch.object(main, "_proxy_worker_call", side_effect=worker_call),
             ):
-                tasks = [asyncio.create_task(main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], new))]
+                tasks = [
+                    asyncio.create_task(
+                        main._refresh_proxied_copies(
+                            "honeygain", 7, svc, svc["docker"], new, expected={f"p{pid}": "a" * 64}
+                        )
+                    )
+                ]
                 try:
                     await _within(in_rebuild.wait(), "the rebuild to reach the worker")
                     add = asyncio.create_task(
-                        main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                        main.api_add_proxied_copy(
+                            pid,
+                            main.ProxyCopyRequest(
+                                worker_id=7, slug="honeygain", expected_containers={f"p{pid}": "b" * 64}
+                            ),
+                            {},
+                        )
                     )
                     tasks.append(add)
                     # Let the add run as far as it can while the rebuild is still on the worker.
@@ -1386,8 +1403,11 @@ class TestStorageAndRoutes:
             async def worker_call(worker_id, method, path, definition, *, json=None, timeout=30):
                 running.append(json["earner"]["env"]["DEVICE"])
                 if json.get("only_if_running"):
+                    assert json["expected_container"] == "a" * 64
                     in_rebuild.set()
                     await release.wait()
+                else:
+                    assert json["expected_container"] == "b" * 64
                 return {"status": "deployed", "exit": {}}
 
             async def settle(proxy_id, worker_id, slug, built_from):
@@ -1415,12 +1435,24 @@ class TestStorageAndRoutes:
                 patch.object(main.database, "settle_proxied_copy_rename_pending", side_effect=settle),
                 patch.object(main, "_proxy_worker_call", side_effect=worker_call),
             ):
-                tasks = [asyncio.create_task(main._refresh_proxied_copies("honeygain", 7, svc, svc["docker"], new))]
+                tasks = [
+                    asyncio.create_task(
+                        main._refresh_proxied_copies(
+                            "honeygain", 7, svc, svc["docker"], new, expected={f"p{pid}": "a" * 64}
+                        )
+                    )
+                ]
                 try:
                     await _within(in_rebuild.wait(), "the rebuild to reach the worker")
                     tasks.append(
                         asyncio.create_task(
-                            main.api_add_proxied_copy(pid, main.ProxyCopyRequest(worker_id=7, slug="honeygain"), {})
+                            main.api_add_proxied_copy(
+                                pid,
+                                main.ProxyCopyRequest(
+                                    worker_id=7, slug="honeygain", expected_containers={f"p{pid}": "b" * 64}
+                                ),
+                                {},
+                            )
                         )
                     )
                     for _ in range(20):

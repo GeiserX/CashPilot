@@ -202,7 +202,8 @@ def test_a_deploy_records_each_copys_start_before_deploying_it():
     body = source[source.index("async def api_deploy(") :]
     body = body[: body.index("\n@app.")]
     loop = body[body.index("for n in range(2, instances + 1):") :]
-    assert loop.index("instance=n") < loop.index("await _proxy_worker_deploy(worker_id, slug, _instance_spec(")
+    copy_deploy = re.search(r"await _proxy_worker_deploy\(\s*worker_id,\s*slug,\s*_instance_spec\(", loop)
+    assert copy_deploy and loop.index("instance=n") < copy_deploy.start()
     starts = re.findall(r'record_health_event\(\s*slug, "start"[^)]*\)', body)
     # A service routed through a proxy runs one copy only (_deploy_routed).
     starts = [call for call in starts if "through proxy" not in call]
