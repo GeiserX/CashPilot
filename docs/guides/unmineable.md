@@ -71,7 +71,7 @@ The balance CashPilot shows is accrued, not received. When unMineable pays you,
 the balance drops and the dashboard asks you to confirm the payout. Only a
 confirmed payout counts as received. See [Mining](../mining.md).
 
-CashPilot prices BNB, BTC, DOGE, ETC, KAS, LTC, SHIB, TRX, USDT, USDC and XMR.
+CashPilot prices BNB, BTC, DOGE, ETC, KAS, LTC, PRL, SHIB, TRX, USDT, USDC and XMR.
 Any other coin is tracked in its own units, without a value in your currency.
 
 ## Check the power cost
