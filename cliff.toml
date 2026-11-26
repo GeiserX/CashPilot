@@ -75,6 +75,9 @@ protect_breaking_commits = true
 commit_preprocessors = [
   { pattern = "(?i)MacBook-only", replace = "machine-specific" },
   { pattern = "(?i)MacBook|Mac ?mini", replace = "a maintainer machine" },
+  # 5a9b0a7 (#838) was squash-merged with an empty title. main has moved on,
+  # so the title is restored here, not by rewriting history.
+  { pattern = '^\s*\(#838\)', replace = "fix(economics): stop charging fixed-price workers for electricity (#838)" },
 ]
 filter_commits = false
 topo_order = false
