@@ -84,7 +84,7 @@ await run.renderAttention([], [{id: 7, name: 'nas', status: 'offline', system_in
 check('an offline server still says containers', /Its containers may still be running/.test(list.innerHTML));
 
 // A Docker copy keeps its container wording.
-await run.renderAttention([{slug: 'honeygain', name: 'Honeygain', instance_details: [{node: 'nas', worker_id: 7, status: 'exited', has_docker: true, container_name: 'cashpilot-honeygain', instance: 1, hints: []}]}], [{id: 7, name: 'nas', status: 'online'}]);
+await run.renderAttention([{slug: 'honeygain', name: 'Honeygain', instance_details: [{node: 'nas', worker_id: 7, status: 'exited', has_docker: true, can_command: true, container_name: 'cashpilot-honeygain', instance: 1, hints: []}]}], [{id: 7, name: 'nas', status: 'online'}]);
 check('a Docker copy still says container is exited', /container is exited/.test(list.innerHTML) && />Down</.test(list.innerHTML));
 
 if (bad) {

@@ -448,6 +448,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const cid = esc(w.client_id || w.id);
       const flags = [
         isAndroid ? flag('plain', '', 'Android') : '',
+        sysInfo.device_type === 'desktop'
+          ? (w.url
+            ? flag('plain', 'CashPilot Desktop. You can deploy services to it and stop them from here. It runs the images its own catalog pins.', 'Desktop')
+            : flag('plain', 'CashPilot Desktop that only reports what runs on it: it sent no address to take commands at. To deploy to it from here, on its dashboard turn on &quot;can start and stop services on this computer&quot; and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address.', 'Desktop, reports only'))
+          : '',
         dockerLost
           ? flag('warn', 'This worker reports in but cannot reach Docker, so CashPilot cannot start, stop or see its containers. '
               + (sysInfo.docker_access === 'socket' ? 'Restart the worker container on that machine.'

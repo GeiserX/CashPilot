@@ -96,7 +96,7 @@ const routedRows = new Function(
 )(escapeHtml, formatCurrency, () => '', () => '', () => '', () => '', () => '', () => [], () => '', true, true, '', '', '');
 const copy = (node, workerId, route) => ({
   node, worker_id: workerId, status: 'running', cpu: '1.00', memory: '10.0 MB', container_name: '',
-  has_docker: true, is_android: false, instance: 1, ...(route ? {route} : {}),
+  has_docker: true, can_command: true, is_android: false, instance: 1, ...(route ? {route} : {}),
 });
 const routedSvc = details => ({
   slug: 'honeygain', name: 'Honeygain', container_status: 'running', instances: details.length,
@@ -117,6 +117,30 @@ check('a direct service shows no route', !/badge-routed/.test(direct), 'rendered
 
 const hostile = routedRows(routedSvc([copy('box', 1, {proxy_id: 3, exit_ip: '<img src=x onerror=alert(1)>', exit_country: '"><b>'})]), undefined);
 check('the exit is escaped', !/<img|<b>/.test(hostile) && /&lt;img/.test(hostile), 'an exit IP reached the row as HTML');
+
+// ---------------------------------------------------------------- joined Desktop
+// A joined Desktop never reports docker_available, so has_docker is false on its
+// copies. One that reports a command URL takes start, stop, restart and logs all the
+// same (can_command); one without a URL only reports, and its row says so.
+const desktopCopy = (canCommand) => ({
+  ...copy('my-pc', 5), has_docker: false, can_command: canCommand, desktop_report_only: !canCommand,
+});
+const stopBtn = html => (html.match(/<button[^>]*data-action="stopService"[^>]*>/) || [''])[0];
+// A browser keeps the FIRST of two title attributes, so the reason must come first.
+const shownTitle = tag => (tag.match(/title="([^"]*)"/) || [])[1];
+const commanded = routedRows(routedSvc([desktopCopy(true)]), undefined);
+check('a Desktop that takes commands has a live Stop button', stopBtn(commanded) && !/disabled/.test(stopBtn(commanded)), stopBtn(commanded) || 'no Stop button');
+const reporting = routedRows(routedSvc([desktopCopy(false)]), undefined);
+check('a Desktop that only reports has Stop off, and says why', /disabled/.test(stopBtn(reporting)) && /^This Desktop only reports/.test(shownTitle(stopBtn(reporting)) || ''), stopBtn(reporting) || 'no Stop button');
+// The switch is not the only reason a Desktop sends no URL: on Windows it waits for
+// the firewall rule, and it needs a private network or Tailscale address.
+check('the reason names the switch, the firewall and the address', ['switch', 'Windows Firewall', 'Tailscale address'].every(w => (shownTitle(stopBtn(reporting)) || '').includes(w)), shownTitle(stopBtn(reporting)) || 'no title');
+const noDocker = routedRows(routedSvc([{...copy('nas', 1), has_docker: false, can_command: false}]), undefined);
+check('a Docker box without Docker still shows its own reason', shownTitle(stopBtn(noDocker)) === 'No Docker access', stopBtn(noDocker) || 'no Stop button');
+const mixed = routedRows(routedSvc([desktopCopy(true), {...copy('nas', 1)}]), undefined).split('class="instance-row"').slice(1);
+check('a Desktop copy row in a multi-copy service has a live Stop button', mixed.length === 2 && stopBtn(mixed[0]) && !/disabled/.test(stopBtn(mixed[0])), mixed[0] || 'no instance rows');
+const stoppable = new Function(`${grab('stoppableCopies')}; return stoppableCopies;`)();
+check('Stop on all servers includes a Desktop that takes commands', stoppable({instance_details: [desktopCopy(true), desktopCopy(false)]}).length === 1, 'wrong count');
 
 // ---------------------------------------------------------------- expand
 // Load the real delegate.js against a document that records its listener.
