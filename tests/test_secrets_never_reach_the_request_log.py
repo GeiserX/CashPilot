@@ -187,6 +187,18 @@ async def test_an_onchain_address_echoed_in_the_reason_phrase_is_not_logged(reda
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("address", ["0x" + "cd" * 20, "4" + "B" * 94])
+async def test_unmineable_request_logs_omit_the_payout_address(redacting, caplog, address):
+    endpoint = "https://api.unminable.com/v4/address"
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with _MockedClient() as client:
+            await client.get(f"{endpoint}/{address}", params={"coin": "SHIB"})
+
+    assert address not in caplog.text
+    assert f"{endpoint}/<redacted>?coin=SHIB" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_axeos_request_logs_omit_the_lan_address_and_reason(redacting, caplog):
     transport = httpx.MockTransport(
         lambda _: httpx.Response(200, extensions={"reason_phrase": b"fixture-ssid 192.168.1.50"})

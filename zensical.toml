@@ -127,6 +127,7 @@ nav = [
           { "HeroMiners Kaspa" = "guides/herominers-kas.md" },
           { OCEAN = "guides/ocean.md" },
           { SupportXMR = "guides/supportxmr.md" },
+          { "unMineable (CPU mining, paid in your coin)" = "guides/unmineable.md" },
           { "XMRig (Monero CPU mining)" = "guides/xmrig.md" },
         ] },
     ] },

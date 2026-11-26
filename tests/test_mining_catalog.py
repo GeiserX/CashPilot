@@ -111,3 +111,59 @@ def test_a_second_miner_on_the_same_worker_shares_cpu(xmrig):
     messages = [f["message"] for f in result["findings"]]
     assert any("shares its CPU" in message for message in messages)
     assert not any("shares the same connection" in message for message in messages)
+
+
+@pytest.fixture
+def unmineable():
+    service = catalog.get_service("unmineable")
+    assert service is not None
+    return deepcopy(service)
+
+
+def _user_token(service, env):
+    args = orchestrator._catalog_command_tokens(service["docker"]["command"], env)
+    [user] = [arg for arg in args if arg.startswith("--user=")]
+    return args, user
+
+
+def test_every_unmineable_worker_carries_the_referral_code(unmineable):
+    code = unmineable["referral"]["code"]
+    assert code == "awk6-j1z0"
+    assert unmineable["referral"]["program"] is True
+    assert code in unmineable["referral"]["signup_url"]
+    args, user = _user_token(unmineable, {"PAYOUT_COIN": "SHIB", "WALLET": "0x" + "ab" * 20, "WORKER_NAME": "rig-1"})
+    assert user == f"--user=SHIB:0x{'ab' * 20}.rig-1#{code}"
+    assert "--url=stratum+ssl://rx.unmineable.com:443" in args
+    assert "--algo=rx/0" in args
+    assert "--donate-level=1" in args
+    assert unmineable["docker"]["image"] == catalog.get_service("xmrig")["docker"]["image"]
+    assert "#awk6-j1z0" in unmineable["mining"]["pool_fee_note"]
+    guide = (Path(__file__).parents[1] / "docs/guides/unmineable.md").read_text()
+    assert f"#{code}" in guide and "0.25%" in guide and "0.75%" in guide
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("WALLET", f"{WALLET}.other#someone-else"),
+        ("WALLET", f"{WALLET}#someone-else"),
+        ("WALLET", f"XMR:{WALLET}"),
+        ("WALLET", f"{WALLET} --url=stratum+tcp://evil.example:3333"),
+        ("WORKER_NAME", "rig#someone-else"),
+        ("WORKER_NAME", "rig.two"),
+        ("PAYOUT_COIN", "XMR:other"),
+        ("PAYOUT_COIN", "X"),
+    ],
+)
+def test_no_field_can_replace_or_drop_the_referral_code(unmineable, key, value):
+    pattern = next(field["pattern"] for field in unmineable["docker"]["env"] if field["key"] == key)
+    assert not re.fullmatch(pattern, value)
+
+
+def test_unmineable_has_no_fixed_minimum_or_chain(unmineable):
+    # One entry pays in many coins: the collector reports each coin's threshold.
+    assert "min_amount" not in unmineable["cashout"]
+    assert "chain" not in unmineable["payout"]
+    assert "currency" not in unmineable["payment"]
+    assert unmineable["payout"]["address_env"] == "WALLET"
+    assert unmineable["collector"]["accrual"] == "pool"
