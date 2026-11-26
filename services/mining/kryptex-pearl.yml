@@ -2,7 +2,6 @@ name: Kryptex Pool (Pearl)
 slug: kryptex-pearl
 category: mining
 status: beta
-priority: 21
 website: https://pool.kryptex.com/en/prl
 description: >-
   Mine Pearl with KRig on one NVIDIA GPU. Kryptex converts the rewards to Bitcoin
