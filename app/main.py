@@ -1498,7 +1498,7 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
             result.balance,
             catalog.get_service(result.platform),
             result.currency,
-            getattr(result, "payout_threshold", None),
+            threshold=getattr(result, "payout_threshold", None),
         )
         if not probable:
             return None

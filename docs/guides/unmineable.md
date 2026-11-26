@@ -3,6 +3,8 @@
 > **Category:** Mining | **Status:** Beta
 >
 > **Website:** [unmineable.com](https://unmineable.com/?ref=awk6-j1z0)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 unMineable lets your CPU mine and pays you in a coin you choose, such as SHIB,
 DOGE or XMR. CashPilot runs XMRig on a Linux Docker worker with an amd64 or
