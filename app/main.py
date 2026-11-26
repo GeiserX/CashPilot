@@ -9664,6 +9664,9 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # Only metered copies land in unread_metered_services, so a miner on a
     # fixed-price worker is never here: it costs nothing, reading or not.
     miners_without_cpu = unread_metered_services & running_miners
+    # A GPU miner is charged its entered device watts, so only a miner priced
+    # from its CPU share makes the cost unknown here.
+    cpu_miner_cost_unknown = False
     rows = []
     break_even: dict[str, float] = {}
     for platform, service in services.items():
@@ -9698,6 +9701,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             # Without its CPU reading on a metered machine the cost is unknown,
             # never the 0 W that a missing reading would otherwise produce.
             watts = None
+            cpu_miner_cost_unknown = True
         elif not watts_known:
             watts = None
         if watts is None:
@@ -9774,7 +9778,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         )
         if row["platform"] in break_even:
             row["break_even_price_per_kwh"] = break_even[row["platform"]]
-    if miners_without_cpu:
+    if cpu_miner_cost_unknown:
         result["cost_unavailable_reason"] = "A running miner has no CPU reading, so its electricity cost is unknown."
     if not watts_known:
         result["watts_unavailable"] = True

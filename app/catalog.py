@@ -259,7 +259,13 @@ def _validate_mining(data: dict[str, Any], name: str) -> list[str]:
 def mining_facts(service: dict[str, Any]) -> dict[str, Any] | None:
     """Mining fee information from the validated catalog."""
     mining = service.get("mining")
-    return mining if isinstance(mining, dict) else None
+    if not isinstance(mining, dict):
+        return None
+    payout = service.get("payout")
+    model = payout.get("model") if isinstance(payout, dict) else None
+    # The deploy card says where rewards wait. Only an external payout reaches
+    # the user's wallet; an internal one stays on the pool's account.
+    return {**mining, "payout_model": model} if model else dict(mining)
 
 
 def _validate(data: dict[str, Any], path: Path) -> list[str]:

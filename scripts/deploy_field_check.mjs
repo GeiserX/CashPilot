@@ -31,6 +31,18 @@ assert.match(riskBody.innerHTML, /https:\/\/example.com\/\?a=1&amp;b=2/);
 assert.match(riskBody.innerHTML, /CashPilot lists tracked pool balances as accrued/);
 console.log('A miner shows its fee, source and pool note before deploy.');
 
+const fillInternalRisk = new Function('api', 'escapeHtml', `${grab('fillDeployRisk')}\nreturn fillDeployRisk;`)(
+  async () => ({
+    mining: { dev_fee_percent: 0, dev_fee_source: 'https://example.com/', payout_model: 'internal' },
+  }),
+  escapeHtml,
+);
+const internalBody = { innerHTML: '' };
+await fillInternalRisk({ dataset: { slug: 'kryptex-pearl' }, style: {}, querySelector: () => internalBody });
+assert.match(internalBody.innerHTML, /keeps your balance in its account until you request a withdrawal/);
+assert.doesNotMatch(internalBody.innerHTML, /Payouts arrive in your wallet/);
+console.log('A pool that holds the balance does not promise wallet payouts.');
+
 const warnings = [];
 const confirmPreflight = new Function(
   'api', '_instancesFor', 'window', `${grab('_confirmPreflight')}\nreturn _confirmPreflight;`,

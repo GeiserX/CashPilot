@@ -1113,7 +1113,9 @@ const CP = (() => {
         <div class="deploy-risk-block deploy-risk-info">
           <div class="deploy-risk-headline">Miner fee: ${escapeHtml(String(mining.dev_fee_percent))}% of hashing time</div>
           ${mining.pool_fee_note ? `<div class="deploy-risk-body-text">${escapeHtml(mining.pool_fee_note)}</div>` : ''}
-          <div class="deploy-risk-body-text">The pool holds rewards until its payout threshold. CashPilot lists tracked pool balances as accrued. Payouts arrive in your wallet.</div>
+          <div class="deploy-risk-body-text">${mining.payout_model === 'internal'
+            ? 'The pool keeps your balance in its account until you request a withdrawal. Check the balance on the pool dashboard.'
+            : 'The pool holds rewards until its payout threshold. CashPilot lists tracked pool balances as accrued. Payouts arrive in your wallet.'}</div>
           <div class="deploy-risk-source"><a href="${escapeHtml(mining.dev_fee_source)}" target="_blank" rel="noopener noreferrer">Miner fee source</a></div>
         </div>`;
     }
