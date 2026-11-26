@@ -4884,10 +4884,13 @@ async def _deploy(
             keys.extend(await _proxied_rebuild_targets(slug, worker_id, route))
         await _confirm_deploy_targets(worker_id, slug, keys)
     # Read only when copies are involved, so a plain deploy asks the worker
-    # record nothing it did not ask before.
+    # record nothing it did not ask before. A service limited to one copy is
+    # always read: a scale-down whose removal failed has already saved the lower
+    # count, and its leftover copies (a GPU miner's would share the one GPU) go
+    # on this deploy.
     # A joined Desktop takes one copy per service from here, and any copy it added
     # itself stays its own: the server neither sends copy 2+ nor removes them.
-    copies_involved = body.instances is not None or (recorded or {}).get("instances")
+    copies_involved = body.instances is not None or (recorded or {}).get("instances") or scaling_limit(svc)[0] == 1
     to_desktop = await _worker_is_desktop(worker_id) if copies_involved else False
     running_copies = await _worker_instances(worker_id, slug) if copies_involved and not to_desktop else set()
     if instances > 1:
@@ -9289,14 +9292,15 @@ async def api_service_remove(
 
 
 @app.get("/api/compose/{slug}", response_class=PlainTextResponse)
-async def api_compose_single(request: Request, slug: str, arch: str | None = None):
+async def api_compose_single(request: Request, slug: str, arch: str | None = None, worker_id: int | None = None):
     """Export a docker-compose.yml for a single service."""
     _require_auth_api(request)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    gpu_host = await _compose_gpu_host(worker_id)
     try:
-        return compose_generator.generate_compose_single(slug, arch=_compose_arch(arch))
+        return compose_generator.generate_compose_single(slug, arch=_compose_arch(arch), gpu_host=gpu_host)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -9306,6 +9310,19 @@ class ComposeMultiRequest(BaseModel):
     # amd64, arm64 or arm (a raw machine name such as aarch64 is accepted too).
     # Absent means the catalog's default image, which is the amd64 build.
     arch: str | None = None
+    # The worker the file is for: an AMD or Intel GPU entry names its render node.
+    worker_id: int | None = None
+
+
+async def _compose_gpu_host(worker_id: int | None) -> dict[str, Any] | None:
+    """The GPU read of the worker an export is for, from its last heartbeat; None without one."""
+    if worker_id is None:
+        return None
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    info = _decoded_worker(worker).get("system_info")
+    return gpu.host_from_report(info.get("gpu") if isinstance(info, dict) else None)
 
 
 def _compose_arch(value: str | None) -> str | None:
@@ -9329,17 +9346,20 @@ async def api_compose_multi(
 ):
     """Export a docker-compose.yml for multiple services."""
     try:
-        return compose_generator.generate_compose_multi(body.slugs, arch=_compose_arch(body.arch))
+        return compose_generator.generate_compose_multi(
+            body.slugs, arch=_compose_arch(body.arch), gpu_host=await _compose_gpu_host(body.worker_id)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.get("/api/compose", response_class=PlainTextResponse)
-async def api_compose_all(request: Request, arch: str | None = None):
+async def api_compose_all(request: Request, arch: str | None = None, worker_id: int | None = None):
     """Export a docker-compose.yml for ALL services with Docker images."""
     _require_auth_api(request)
+    gpu_host = await _compose_gpu_host(worker_id)
     try:
-        return compose_generator.generate_compose_all(arch=_compose_arch(arch))
+        return compose_generator.generate_compose_all(arch=_compose_arch(arch), gpu_host=gpu_host)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

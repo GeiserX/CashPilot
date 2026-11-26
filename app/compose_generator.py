@@ -100,11 +100,35 @@ def _volume_mapping(volume: str, env: dict[str, str], unfilled: dict[str, str]) 
     return re.sub(r"\$\{(\w+)\}", fill, volume)
 
 
+class GpuExportRefused(ValueError):
+    """An AMD or Intel GPU entry whose render node the export cannot know."""
+
+
+def _gpu_paths(svc: dict[str, Any], grant: dict[str, Any], gpu_host: dict[str, Any] | None) -> list[str]:
+    """The device paths a deploy on the target worker would pass in, or GpuExportRefused."""
+    name = svc.get("name") or svc.get("slug") or "This service"
+    vendor = gpu.VENDOR_NAMES[grant["vendor"]]
+    if gpu_host is None:
+        raise GpuExportRefused(
+            f"{name} needs an {vendor} GPU, which a compose file passes in by the render node of the machine it "
+            "runs on, and those differ from machine to machine. Export it for the worker that will run it "
+            "(worker_id), so the file names that worker's node, or deploy it from the dashboard."
+        )
+    try:
+        return gpu.render_devices(grant, gpu_host)
+    except gpu.GpuRefused as exc:
+        raise GpuExportRefused(
+            f"{name} needs an {vendor} GPU, and CashPilot cannot tell which render node this worker would pass "
+            f"in: {exc} So it has no compose export for this worker. Deploy it from the dashboard."
+        ) from None
+
+
 def _service_to_compose(
     svc: dict[str, Any],
     env_vars: dict[str, str] | None = None,
     hostname: str | None = None,
     arch: str | None = None,
+    gpu_host: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Convert a single YAML service definition to a compose service block.
 
@@ -210,18 +234,20 @@ def _service_to_compose(
     if cap_add:
         compose_svc["cap_add"] = cap_add
 
-    # The GPU the worker would pass in (app/gpu.py). Compose has no sysfs read,
-    # so an AMD or Intel GPU is the first render node; edit it if yours differs.
+    # The GPU the worker would pass in (app/gpu.py). An AMD or Intel GPU goes in
+    # by its render node, which differs per machine: renderD128 can be another
+    # vendor's GPU. So the file names the node a deploy on the target worker
+    # picks, from that worker's own read, or there is no export.
     grant = gpu.spec_of(svc)
     if grant and grant["vendor"] == "nvidia":
         compose_svc.setdefault("deploy", {})["resources"] = {
             "reservations": {"devices": [{"driver": "nvidia", "count": grant["count"], "capabilities": ["gpu"]}]}
         }
     elif grant:
-        node = gpu.RENDER_NODE_CEILING[0]
-        compose_svc["devices"] = [*compose_svc.get("devices", []), f"{node}:{node}"]
-        if grant["rocm"]:
-            compose_svc["devices"].append(f"{gpu.KFD}:{gpu.KFD}")
+        compose_svc["devices"] = [
+            *compose_svc.get("devices", []),
+            *(f"{p}:{p}" for p in _gpu_paths(svc, grant, gpu_host)),
+        ]
 
     # Entrypoint override. EVERY $ is escaped, not just ${VAR}: a shell wrapper
     # uses bare $F and $@, and Compose would fill those from the host's
@@ -277,8 +303,13 @@ def generate_compose_single(
     env_vars: dict[str, str] | None = None,
     hostname: str | None = None,
     arch: str | None = None,
+    gpu_host: dict[str, Any] | None = None,
 ) -> str:
-    """Generate a docker-compose.yml for a single service."""
+    """Generate a docker-compose.yml for a single service.
+
+    ``gpu_host`` is the target worker's GPU read (``gpu.host_from_report``),
+    which an AMD or Intel GPU entry needs to name its render node.
+    """
     svc = get_service(slug)
     if not svc:
         raise ValueError(f"Unknown service: {slug}")
@@ -295,7 +326,7 @@ def generate_compose_single(
             "export. Deploy it from the dashboard."
         )
 
-    compose_svc = _service_to_compose(svc, env_vars, hostname, arch)
+    compose_svc = _service_to_compose(svc, env_vars, hostname, arch, gpu_host)
     if not compose_svc:
         raise ValueError(f"Service {slug} has no Docker image")
 
@@ -313,8 +344,16 @@ def generate_compose_multi(
     env_map: dict[str, dict[str, str]] | None = None,
     hostname: str | None = None,
     arch: str | None = None,
+    gpu_host: dict[str, Any] | None = None,
+    *,
+    skip_unknown_gpu: bool = False,
 ) -> str:
-    """Generate a docker-compose.yml for multiple services."""
+    """Generate a docker-compose.yml for multiple services.
+
+    A named AMD or Intel GPU entry whose render node ``gpu_host`` cannot give
+    refuses the export; ``skip_unknown_gpu`` (the export of everything) leaves
+    it out instead.
+    """
     services: dict[str, Any] = {}
     env_map = env_map or {}
 
@@ -324,7 +363,12 @@ def generate_compose_multi(
             continue
         if svc.get("status") in UNDEPLOYABLE_STATUSES or fence_gated(svc):
             continue
-        compose_svc = _service_to_compose(svc, env_map.get(slug), hostname, arch)
+        try:
+            compose_svc = _service_to_compose(svc, env_map.get(slug), hostname, arch, gpu_host)
+        except GpuExportRefused:
+            if skip_unknown_gpu:
+                continue
+            raise
         if compose_svc:
             services[f"{CONTAINER_PREFIX}{slug}"] = compose_svc
 
@@ -339,11 +383,12 @@ def generate_compose_all(
     env_map: dict[str, dict[str, str]] | None = None,
     hostname: str | None = None,
     arch: str | None = None,
+    gpu_host: dict[str, Any] | None = None,
 ) -> str:
     """Generate a docker-compose.yml for ALL services with Docker images."""
     all_svcs = get_services()
     slugs = [s.get("slug", s["name"].lower().replace(" ", "-")) for s in all_svcs if s.get("docker", {}).get("image")]
-    return generate_compose_multi(slugs, env_map, hostname, arch)
+    return generate_compose_multi(slugs, env_map, hostname, arch, gpu_host, skip_unknown_gpu=True)
 
 
 def _dump_compose(compose: dict, name: str) -> str:

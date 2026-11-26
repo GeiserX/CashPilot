@@ -258,6 +258,28 @@ class TestTheDeploy:
         with pytest.raises(HTTPException):
             _deploy(0)
 
+    def test_a_plain_redeploy_finishes_a_failed_scale_down_of_a_one_copy_service(self):
+        """A scale-down saves the lower count before it removes the extra copies.
+
+        When the removal failed, the record already says one copy. A service
+        limited to one copy (here a GPU miner, whose second copy would share the
+        one GPU) still has its copies read, so the next plain redeploy removes it.
+        """
+        gpu_miner = {
+            **SCALABLE,
+            "requirements": {"devices_per_ip": 0, "gpu": True},
+            "docker": {**SCALABLE["docker"], "runtime": "runc", "gpu": {"vendor": "nvidia"}},
+        }
+        info = json.dumps(
+            {"features": ["instances"], "gpu_grants": {"demo": {"vendor": "nvidia", "count": 1, "rocm": False}}}
+        )
+        worker = {**_worker(copies=(1, 2)), "system_info": info}
+        recorded = {"image": "demo/demo", "env": {"TOKEN": "t"}}
+        deploys, deletes, record = _deploy(None, svc=gpu_miner, recorded=recorded, worker=worker)
+        assert [d.get("instance", 1) for d in deploys] == [1]
+        assert deletes == [("DELETE", "/api/containers/demo/instances/2")]
+        assert "instances" not in record
+
 
 def _container(name, slug="demo", instance=None):
     c = MagicMock()

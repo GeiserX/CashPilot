@@ -483,10 +483,6 @@ def test_compose_export_reserves_the_gpu():
     assert nvidia["deploy"]["resources"]["reservations"]["devices"] == [
         {"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}
     ]
-    amd = {**MINER, "docker": {**MINER["docker"], "gpu": {"vendor": "amd", "rocm": True}}}
-    out = compose_generator._service_to_compose(amd, {}, None, None)
-    assert out["devices"] == ["/dev/dri/renderD128:/dev/dri/renderD128", "/dev/kfd:/dev/kfd"]
-    assert "deploy" not in out
 
 
 def _gpu_report(**kw):
@@ -574,3 +570,290 @@ def test_the_drift_fingerprint_of_an_entry_without_gpu_is_unchanged():
     assert drift.catalog_fingerprint(plain) != drift.catalog_fingerprint(with_gpu)
     # The value fixed before the GPU grant existed: an "Ignore" made then still holds.
     assert drift.catalog_fingerprint(plain) == "80a78e6a8ec77667"
+
+
+# ---------------------------------------------------------------------------
+# Follow-ups: each miner gets its own GPU, and a grant that is gone is noticed
+# ---------------------------------------------------------------------------
+
+AMD_ROCM = {**MINER, "docker": {**MINER["docker"], "gpu": {"vendor": "amd", "rocm": True}}}
+AMD = {**MINER, "docker": {**MINER["docker"], "gpu": {"vendor": "amd"}}}
+INTEL = {**MINER, "docker": {**MINER["docker"], "gpu": {"vendor": "intel"}}}
+
+
+def intel_igpu_and_amd_card(root: Path) -> Path:
+    """An Intel iGPU holds renderD128 and an AMD card renderD129, with ROCm loaded."""
+    _pci(root, "0000:00:02.0", "0x8086", "0x030000")
+    _pci(root, "0000:03:00.0", "0x1002", "0x030000")
+    _render(root, 128, "0x8086")
+    _render(root, 129, "0x1002")
+    (root / "class" / "kfd" / "kfd").mkdir(parents=True)
+    return root
+
+
+def _export_catalog(services: dict[str, dict]):
+    """The catalog as both the routes (app.catalog) and the export (its own import) read it."""
+    from contextlib import ExitStack
+
+    from app import compose_generator
+
+    stack = ExitStack()
+    stack.enter_context(_catalog(services))
+    stack.enter_context(patch.object(compose_generator, "get_service", side_effect=lambda slug: services.get(slug)))
+    stack.enter_context(patch.object(compose_generator, "get_services", return_value=list(services.values())))
+    return stack
+
+
+def _heartbeat_gpu(root: Path) -> dict:
+    """The heartbeat's gpu report of a worker whose sysfs is ``root``."""
+    host = read(root)
+    with patch.object(gpu, "host_gpus", return_value=host):
+        return worker_api._gpu_presence()
+
+
+def test_the_export_names_the_render_node_the_deploy_picks(tmp_path):
+    """renderD128 is the Intel iGPU here: the AMD miner must get renderD129, as the deploy gives it."""
+    from app import compose_generator
+
+    host = read(intel_igpu_and_amd_card(tmp_path))
+    deployed = gpu.docker_kwargs(gpu.spec_of(AMD_ROCM), host)["devices"]
+    assert deployed == ["/dev/dri/renderD129:/dev/dri/renderD129:rwm", "/dev/kfd:/dev/kfd:rwm"]
+    amd = compose_generator._service_to_compose(AMD_ROCM, {}, None, None, host)
+    assert amd["devices"] == ["/dev/dri/renderD129:/dev/dri/renderD129", "/dev/kfd:/dev/kfd"]
+    assert "deploy" not in amd
+    intel = compose_generator._service_to_compose(INTEL, {}, None, None, host)
+    assert intel["devices"] == ["/dev/dri/renderD128:/dev/dri/renderD128"]
+
+
+def test_the_export_takes_the_node_from_the_workers_heartbeat(tmp_path):
+    from app import compose_generator
+
+    host = gpu.host_from_report(_heartbeat_gpu(intel_igpu_and_amd_card(tmp_path)))
+    with _export_catalog({"gpuminer": AMD_ROCM}):
+        text = compose_generator.generate_compose_single("gpuminer", gpu_host=host)
+    assert "/dev/dri/renderD129:/dev/dri/renderD129" in text and "/dev/kfd:/dev/kfd" in text
+    assert "renderD128" not in text
+
+
+@pytest.mark.parametrize(
+    ("report", "says"),
+    [
+        # No worker named: the node differs per machine.
+        (None, "Export it for the worker that will run it"),
+        ({"available": None, "reason": "this is WSL"}, "this is WSL"),
+        # A worker older than the grant sends no vendors.
+        ({}, "does not list its GPUs"),
+        ({"available": True, "vendors": {"intel": {"render_nodes": ["/dev/dri/renderD128"]}}}, "no AMD GPU"),
+    ],
+)
+def test_the_export_refuses_when_it_cannot_know_the_node(report, says):
+    from app import compose_generator
+
+    gpu_host = None if report is None else gpu.host_from_report(report)
+    with _export_catalog({"gpuminer": AMD_ROCM}), pytest.raises(ValueError) as err:
+        compose_generator.generate_compose_single("gpuminer", gpu_host=gpu_host)
+    assert says in str(err.value)
+    assert "renderD128" not in str(err.value)
+
+
+def test_a_named_gpu_entry_refuses_a_multi_export_and_the_export_of_everything_leaves_it_out():
+    from app import compose_generator
+
+    plain = {"slug": "plain", "name": "Plain", "status": "active", "docker": {"image": "example/plain:1"}}
+    services = {"gpuminer": AMD_ROCM, "plain": plain}
+    with _export_catalog(services):
+        with pytest.raises(ValueError, match="needs an AMD GPU"):
+            compose_generator.generate_compose_multi(["plain", "gpuminer"])
+        everything = compose_generator.generate_compose_all()
+    assert "cashpilot-plain" in everything and "cashpilot-gpuminer" not in everything
+
+
+def test_the_export_route_reads_the_named_workers_gpus(tmp_path):
+    report = _heartbeat_gpu(intel_igpu_and_amd_card(tmp_path))
+    worker = {"id": 3, "system_info": json.dumps({"gpu": report})}
+
+    async def run(worker_id):
+        with (
+            _export_catalog({"gpuminer": AMD_ROCM}),
+            patch.object(main, "_require_auth_api", lambda request: {"id": 1}),
+            patch.object(main.database, "get_worker", AsyncMock(side_effect=lambda wid: worker if wid == 3 else None)),
+        ):
+            return await main.api_compose_single(MagicMock(), "gpuminer", worker_id=worker_id)
+
+    import asyncio
+
+    assert "/dev/dri/renderD129:/dev/dri/renderD129" in asyncio.run(run(3))
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(run(None))
+    assert err.value.status_code == 400 and "worker_id" in err.value.detail
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(run(9))
+    assert err.value.status_code == 404
+
+
+# The Docker endpoint: this machine's sysfs describes only a daemon on this machine.
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["tcp://10.0.0.5:2375", "ssh://admin@nas", "https://docker.example:2376", "npipe://otherbox/pipe/docker_engine"],
+)
+def test_a_remote_docker_endpoint_says_nothing_about_its_gpus(tmp_path, endpoint):
+    root = intel_igpu_and_amd_card(tmp_path)
+    with (
+        patch.object(gpu.platform, "system", return_value="Linux"),
+        patch.object(gpu.platform, "release", return_value="6.12.54-Unraid"),
+    ):
+        host = gpu.host_gpus(root, docker_host=endpoint)
+    assert host["conclusive"] is False and host["vendors"] == {}
+    assert "network endpoint" in host["reason"]
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["", "unix:///var/run/docker.sock", "unix:///run/cashpilot-docker/docker.sock", "npipe:////./pipe/x"]
+)
+def test_a_local_docker_endpoint_is_read(tmp_path, endpoint):
+    root = intel_igpu_and_amd_card(tmp_path)
+    with (
+        patch.object(gpu.platform, "system", return_value="Linux"),
+        patch.object(gpu.platform, "release", return_value="6.12.54-Unraid"),
+    ):
+        assert gpu.host_gpus(root, docker_host=endpoint)["conclusive"] is True
+
+
+def test_docker_host_decides_what_the_deploy_trusts(tmp_path, monkeypatch):
+    """Behind a remote DOCKER_HOST: NVIDIA relies on Docker's device request, AMD and Intel stay refused."""
+    root = intel_igpu_and_amd_card(tmp_path)
+    monkeypatch.setenv("DOCKER_HOST", "tcp://192.0.2.7:2375")
+    host = read(root)
+    assert host["conclusive"] is False
+    nvidia = gpu.docker_kwargs(gpu.spec_of(MINER), host)
+    assert [r.driver for r in nvidia["device_requests"]] == ["nvidia"]
+    with pytest.raises(gpu.GpuRefused, match="could not read this machine's GPUs"):
+        gpu.docker_kwargs(gpu.spec_of(AMD_ROCM), host)
+    monkeypatch.setenv("DOCKER_HOST", "unix:///run/cashpilot-docker/docker.sock")
+    assert read(root)["conclusive"] is True
+
+
+# A failed read is "could not tell", never "no GPU".
+
+
+@pytest.mark.parametrize("which", ["class", "vendor"])
+def test_an_empty_pci_attribute_is_an_unknown_not_a_no(tmp_path, which):
+    _pci(tmp_path, "0000:03:00.0", "0x1002", "0x030000")
+    (tmp_path / "bus" / "pci" / "devices" / "0000:03:00.0" / which).write_text("\n")
+    host = read(tmp_path)
+    assert host["conclusive"] is False and host["vendors"] == {}
+    assert "is empty" in host["reason"]
+
+
+def test_an_empty_render_node_vendor_is_an_unknown(tmp_path):
+    _pci(tmp_path, "0000:03:00.0", "0x1002", "0x030000")
+    _render(tmp_path, 128, "")
+    assert read(tmp_path)["conclusive"] is False
+
+
+def test_a_render_node_with_no_vendor_id_is_not_a_pci_gpu(tmp_path):
+    """An ARM board's own GPU has a render node and no PCI vendor: none of the three, and a sure read."""
+    (tmp_path / "bus" / "pci" / "devices").mkdir(parents=True)
+    (tmp_path / "class" / "drm" / "renderD128" / "device").mkdir(parents=True)
+    host = read(tmp_path)
+    assert host["conclusive"] is True and host["vendors"] == {}
+
+
+@pytest.mark.parametrize("path", [("class", "kfd", "kfd"), ("module", "nvidia")])
+def test_a_presence_check_that_fails_is_an_unknown(tmp_path, path):
+    """A path that loops (or is denied) is not "absent": Path.exists answered False for it."""
+    root = intel_igpu_and_amd_card(tmp_path)
+    target = root.joinpath(*path)
+    if target.exists():
+        target.rmdir()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(target.name)  # points at itself: ELOOP
+    host = read(root)
+    assert host["conclusive"] is False and host["vendors"] == {}
+
+
+def test_a_denied_kfd_check_is_an_unknown_not_a_crash(tmp_path):
+    root = intel_igpu_and_amd_card(tmp_path)
+    real_stat = Path.stat
+
+    def stat(self, *args, **kwargs):
+        if self.name == "kfd" and self.parent.name == "kfd":
+            raise PermissionError(13, "Permission denied")
+        return real_stat(self, *args, **kwargs)
+
+    with patch.object(Path, "stat", stat):
+        host = read(root)
+    assert host["conclusive"] is False
+    assert "Permission denied" in host["reason"]
+
+
+def test_a_clean_read_with_no_gpu_and_no_drm_class_stays_sure(tmp_path):
+    _pci(tmp_path, "0000:00:1f.3", "0x8086", "0x040380")
+    host = read(tmp_path)
+    assert host["conclusive"] is True and host["vendors"] == {} and host["kfd"] is False
+
+
+# Drift: a GPU the catalog does not grant is drift, and a grant needs its devices.
+
+_BASE_SHAPE = {"cap_add": [], "network_mode": "bridge", "devices": [], "gpu": []}
+_PLAIN = {"slug": "plain", "docker": {"image": "x"}}
+
+
+def _gpu_drift(svc, **shape):
+    return [f for f in drift.container_drift(svc, {**_BASE_SHAPE, **shape}, None) if "GPU" in f or "device" in f]
+
+
+def test_drift_flags_an_nvidia_request_the_catalog_no_longer_grants():
+    assert _gpu_drift(_PLAIN, gpu=["nvidia"]) == [
+        "still has GPU access (nvidia device request), which the catalog no longer grants"
+    ]
+    # The grant moved to AMD: the request is left over and the render node is missing.
+    assert _gpu_drift(AMD, gpu=["nvidia"]) == [
+        "still has GPU access (nvidia device request), which the catalog no longer grants",
+        "missing GPU, which the catalog now passes in",
+    ]
+
+
+def test_drift_flags_render_nodes_under_an_nvidia_grant():
+    found = _gpu_drift(MINER, gpu=["nvidia"], devices=["/dev/dri/renderD128", "/dev/kfd"])
+    assert found == ["still has device /dev/dri/renderD128, /dev/kfd, which the catalog no longer passes in"]
+    # The grant moved from AMD to NVIDIA: the node stays, the request is missing.
+    assert _gpu_drift(MINER, devices=["/dev/dri/renderD129"]) == [
+        "still has device /dev/dri/renderD129, which the catalog no longer passes in",
+        "missing GPU, which the catalog now passes in",
+    ]
+
+
+def test_drift_needs_a_render_node_and_checks_kfd_on_its_own():
+    assert _gpu_drift(AMD_ROCM, devices=["/dev/dri/renderD129"]) == [
+        "missing device /dev/kfd, which the catalog now passes in"
+    ]
+    assert _gpu_drift(AMD_ROCM, devices=["/dev/kfd"]) == ["missing GPU, which the catalog now passes in"]
+    # rocm was dropped from the grant: /dev/kfd is left over.
+    assert _gpu_drift(AMD, devices=["/dev/dri/renderD129", "/dev/kfd"]) == [
+        "still has device /dev/kfd, which the catalog no longer passes in"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("svc", "shape"),
+    [
+        (MINER, {"gpu": ["nvidia"]}),
+        (AMD_ROCM, {"devices": ["/dev/dri/renderD129", "/dev/kfd"]}),
+        (INTEL, {"devices": ["/dev/dri/renderD128"]}),
+        (
+            {**MINER, "docker": {**MINER["docker"], "gpu": {"vendor": "intel", "count": "all"}}},
+            {"devices": ["/dev/dri/renderD128", "/dev/dri/renderD129"]},
+        ),
+        # An older worker sends no request list: nothing is claimed about it.
+        (MINER, {"gpu": None}),
+        (_PLAIN, {}),
+    ],
+)
+def test_an_unchanged_valid_grant_is_no_drift(svc, shape):
+    shape = {**_BASE_SHAPE, **shape}
+    if shape.get("gpu") is None:
+        shape.pop("gpu")
+    assert [f for f in drift.container_drift(svc, shape, None) if "GPU" in f or "device" in f] == []

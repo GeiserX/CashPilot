@@ -236,14 +236,36 @@ def container_drift(
     if missing := want_devices - have_devices:
         found.append(f"missing device {_names(missing)}, which the catalog now passes in")
     grant = gpu.spec_of(svc)
-    # A GPU grant's render nodes and /dev/kfd are picked by the worker from the
-    # host (app/gpu.py), so they are the catalog's even though it names none.
-    gpu_devices = {d for d in have_devices if gpu.in_ceiling(d)} if grant else set()
+    nvidia_grant = bool(grant) and grant["vendor"] == "nvidia"
+    # An AMD or Intel grant's render nodes (and /dev/kfd for ROCm) are picked by
+    # the worker from the host (app/gpu.py), so they are the catalog's even
+    # though it names none. Any other GPU node, with no grant or an NVIDIA one,
+    # is flagged below like any device the catalog does not pass in.
+    gpu_devices = (
+        {d for d in have_devices if d in gpu.RENDER_NODE_CEILING or (grant["rocm"] and d == gpu.KFD)}
+        if grant and not nvidia_grant
+        else set()
+    )
     if extra := have_devices - want_devices - gpu_devices:
         found.append(f"still has device {_names(extra)}, which the catalog no longer passes in")
-    if grant and "gpu" in shape and not shape.get("gpu") and not gpu_devices:
-        # "gpu" in shape: a worker older than the grant sends no request list.
-        found.append("missing GPU, which the catalog now passes in")
+    # "gpu" in shape: a worker older than the grant sends no request list, and
+    # then nothing is known about the requests.
+    if "gpu" in shape:
+        # A GPU device request only an NVIDIA grant makes. One left from a grant
+        # the catalog removed or changed keeps the GPU until a redeploy.
+        have_requests = {str(d) for d in shape.get("gpu") or []}
+        if extra := have_requests - ({"nvidia"} if nvidia_grant else set()):
+            found.append(f"still has GPU access ({_names(extra)} device request), which the catalog no longer grants")
+        if nvidia_grant and "nvidia" not in have_requests:
+            found.append("missing GPU, which the catalog now passes in")
+    if grant and not nvidia_grant:
+        # An AMD or Intel grant needs a render node: /dev/kfd alone is no GPU. A
+        # ROCm grant also needs /dev/kfd, which a container made before rocm was
+        # set lacks.
+        if not gpu_devices & set(gpu.RENDER_NODE_CEILING):
+            found.append("missing GPU, which the catalog now passes in")
+        elif grant["rocm"] and gpu.KFD not in gpu_devices:
+            found.append(f"missing device {gpu.KFD}, which the catalog now passes in")
 
     if shape.get("privileged") and not docker_conf.get("privileged"):
         found.append("runs privileged, which CashPilot no longer allows")
