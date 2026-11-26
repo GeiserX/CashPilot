@@ -10,7 +10,11 @@ Kryptex account and holds it until you request a withdrawal.
     <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 2. Set up a Linux amd64 CashPilot worker with an NVIDIA GPU and
-   [NVIDIA Container Toolkit](../gpu.md).
+   [NVIDIA Container Toolkit](../gpu.md). KRig 1.8.2 mines Pearl on NVIDIA
+   Volta (sm_70) and newer, such as GTX 1600 and RTX 2000 to 5000 cards.
+   Pascal (GTX 1000) and older cards do not work, and this entry does not use
+   AMD or Intel GPUs. See the
+   [KRig 1.8.2 GPU list](https://github.com/kryptex/krig-miner/blob/v1.8.2/GPUs.md).
 3. Select **Kryptex Pool (Pearl)** in the **Mining** catalog. Enter the verified
    account email and a worker name. Use a different name for each machine.
 4. Deploy. CashPilot grants one NVIDIA GPU and connects KRig to
