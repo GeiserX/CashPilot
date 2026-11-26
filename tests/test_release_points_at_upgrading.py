@@ -36,11 +36,14 @@ def release_step() -> dict:
 
 
 def test_the_release_body_links_to_the_upgrade_notes():
-    body = str(release_step().get("body") or "")
+    step = release_step()
+    body = str(step.get("body") or "")
     assert UPGRADING_URL in body, f"the release body does not link to {UPGRADING_URL}: {body!r}"
+    # The action reads body_path before body, so it would silently drop the line.
+    assert "body_path" not in step, "body_path takes priority over body and would drop the UPGRADING.md line"
 
 
-def test_the_link_names_a_file_that_exists_on_main():
+def test_the_link_names_a_file_in_the_repo():
     """The URL is absolute, so a renamed file would leave a dead link."""
     match = re.fullmatch(r"https://github\.com/GeiserX/CashPilot/blob/main/(.+)", UPGRADING_URL)
     assert match and (ROOT / match.group(1)).is_file(), f"{UPGRADING_URL} names no file in the repo"
