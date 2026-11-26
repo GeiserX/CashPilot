@@ -268,8 +268,9 @@ class TestLinkFailureHint:
         assert worker_api._link_hint_logged is False
 
 
-def _drive_heartbeat(outcome, json_body=None, extra_patches=()):
-    """Run _send_heartbeat once through a mocked transport.
+@contextlib.contextmanager
+def _heartbeat_client(outcome, json_body=None, extra_patches=()):
+    """Provide a mocked heartbeat transport.
 
     outcome: int = HTTP status of the reply; BaseException = raised by post;
     None = generic network failure.
@@ -295,8 +296,66 @@ def _drive_heartbeat(outcome, json_body=None, extra_patches=()):
     ):
         for p in extra_patches:
             stack.enter_context(p)
+        yield client
+
+
+def _drive_heartbeat(outcome, json_body=None, extra_patches=()):
+    with _heartbeat_client(outcome, json_body, extra_patches):
         asyncio.run(worker_api._send_heartbeat())
     return worker_api._consecutive_heartbeat_failures
+
+
+@pytest.mark.parametrize("raw", ["", "axeos://10.0.0.1", "axeos://8.8.8.8"])
+def test_heartbeat_advertises_miner_reads_only_when_configured(raw):
+    targets, errors = worker_api.miner_read.parse_targets(raw)
+    snapshot = {"read_at": "2026-11-25T12:00:00Z", "devices": [], "errors": errors}
+    with _heartbeat_client(
+        200,
+        extra_patches=(
+            patch.object(worker_api, "MINER_TARGETS", targets),
+            patch.object(worker_api, "MINER_ERRORS", errors),
+            patch.object(worker_api, "_miner_snapshot", snapshot if targets else None),
+            patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+        ),
+    ) as client:
+        asyncio.run(worker_api._send_heartbeat())
+    info = client.post.await_args.kwargs["json"]["system_info"]
+    assert ("miner_read" in info["features"]) is bool(raw)
+    assert ("miners" in info) is bool(raw)
+    if targets:
+        assert info["miners"] == snapshot
+    if errors:
+        assert info["miners"]["errors"] == errors
+
+
+@pytest.mark.asyncio
+async def test_hanging_miner_poll_does_not_hold_up_heartbeat():
+    polling = asyncio.Event()
+    targets = worker_api.miner_read.parse_targets("axeos://10.0.0.1")[0]
+
+    async def stalled_read(_targets):
+        polling.set()
+        await asyncio.Future()
+
+    with _heartbeat_client(
+        200,
+        extra_patches=(
+            patch.object(worker_api, "MINER_TARGETS", targets),
+            patch.object(worker_api, "MINER_ERRORS", []),
+            patch.object(worker_api, "_miner_snapshot", None),
+            patch.object(worker_api.miner_read, "read_all", stalled_read),
+            patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+        ),
+    ) as client:
+        poll = asyncio.create_task(worker_api._miner_loop())
+        try:
+            await asyncio.wait_for(polling.wait(), 2)
+            await asyncio.wait_for(worker_api._send_heartbeat(), 2)
+        finally:
+            poll.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await poll
+    assert client.post.await_args.kwargs["json"]["system_info"]["miners"]["read_at"] is None
 
 
 class TestCounterWiring:
