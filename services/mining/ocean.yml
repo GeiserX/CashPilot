@@ -12,7 +12,7 @@ description: >
   it on-chain once it passes the payout threshold.
 short_description: Bitcoin mining pool, tracked by your payout address
 
-# No referral programme: OCEAN has no accounts to carry a code ("No account
+# No referral programme: OCEAN has no accounts to carry a code ("No account is
 # necessary - simply put your Bitcoin address as a worker name"), and its home
 # page, getstarted page, docs and terms name none (checked 2026-11-26).
 referral:
