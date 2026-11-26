@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import math
+import os
 import re
+import shutil
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -167,3 +171,148 @@ def test_unmineable_has_no_fixed_minimum_or_chain(unmineable):
     assert "currency" not in unmineable["payment"]
     assert unmineable["payout"]["address_env"] == "WALLET"
     assert unmineable["collector"]["accrual"] == "pool"
+
+
+XMRIG_BINARY = "/usr/local/bin/xmrig"
+
+
+@pytest.fixture(params=["xmrig", "unmineable"])
+def cpu_miner(request):
+    """Every entry that runs the CashPilot XMRig image with a CPU_PERCENT field."""
+    service = catalog.get_service(request.param)
+    assert service is not None
+    return deepcopy(service)
+
+
+def _xmrig_args(entrypoint, tmp_path, cpu_percent, cpus, machine="aarch64", command=("--url=pool:1", "--no-color")):
+    """The arguments XMRig gets when the catalog's entrypoint runs the command.
+
+    The real wrapper runs with a stand-in ``nproc`` that reports ``cpus`` (None:
+    nproc fails), a stand-in ``uname -m`` that reports ``machine`` (None: it
+    fails) and a stand-in for the image's XMRig that prints its arguments.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stand_ins = {
+        "nproc": "exit 1" if cpus is None else f"echo {cpus}",
+        "uname": "exit 1" if machine is None else f"echo {machine}",
+    }
+    for name, body in stand_ins.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+    fake = tmp_path / "xmrig"
+    fake.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+    for path in (*bin_dir.iterdir(), fake):
+        path.chmod(0o755)
+    script = entrypoint[2]
+    assert script.count(XMRIG_BINARY) == 1
+    env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    if cpu_percent is not None:
+        env["CPU_PERCENT"] = cpu_percent
+    out = subprocess.run(
+        [*entrypoint[:2], script.replace(XMRIG_BINARY, str(fake)), *entrypoint[3:], *command],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    return out.stdout.splitlines()
+
+
+def _xmrig_x86_threads(cpus, hint):
+    """The thread count XMRig v6.27.0 on x86 derives from a hint, before its CPU cache limit.
+
+    HwlocCpuInfo::threads: round(threads * hint / 100) with C's round (half away
+    from zero), at least 1. A hint of 100 or more sets no limit.
+    """
+    if hint >= 100:
+        return cpus
+    return max(math.floor(cpus * (hint / 100.0) + 0.5), 1)
+
+
+ARGS = ["--url=pool:1", "--no-color"]
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize("machine", ["aarch64", "armv8l", None])
+@pytest.mark.parametrize(
+    ("cpu_percent", "cpus", "threads"),
+    [
+        # XMRig's arm64 build ignores --cpu-max-threads-hint, so 17% of a
+        # 6-core machine started all 6 threads before the wrapper set --threads.
+        ("17", 6, 1),
+        ("1", 6, 1),
+        ("50", 6, 3),
+        ("99", 6, 5),
+        ("17", 12, 2),
+        ("50", 1, 1),
+        ("33", 64, 21),
+    ],
+)
+def test_off_x86_cpu_percent_sets_the_threads_xmrig_starts(cpu_miner, tmp_path, machine, cpu_percent, cpus, threads):
+    """A share of the CPU threads, rounded down, and never below one."""
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus, machine)
+    assert args == [*ARGS, f"--threads={threads}"]
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize("cpus", [1, 2, 6, 12, 16, 24, 32, 64, 99, 100])
+@pytest.mark.parametrize("cpu_percent", [1, 17, 25, 33, 50, 75, 99])
+def test_on_x86_the_last_hint_rounds_to_the_capped_count(cpu_miner, tmp_path, cpu_percent, cpus):
+    """On x86 the hint stays, so XMRig keeps its CPU cache limit, but it lands on the rounded-down share.
+
+    --threads there would start more threads than fit the cache: on a 6-core,
+    12-thread CPU with 12 MB L3, 75% would start 9 where 100% starts 6.
+    """
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, str(cpu_percent), cpus, "x86_64")
+    assert args[:-1] == ARGS
+    assert not any(arg.startswith("--threads") for arg in args)
+    flag, _, hint = args[-1].partition("=")
+    assert flag == "--cpu-max-threads-hint"
+    # XMRig keeps the last value of a repeated option (BaseTransform::set).
+    assert _xmrig_x86_threads(cpus, int(hint)) == max(cpus * cpu_percent // 100, 1)
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+def test_on_x86_above_100_threads_the_hint_is_too_coarse_so_threads_is_set(cpu_miner, tmp_path):
+    assert _xmrig_x86_threads(101, 50) == 51  # 1% steps cannot say 50 of 101
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, "50", 101, "x86_64")
+    assert args == [*ARGS, "--threads=50"]
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize("machine", ["aarch64", "x86_64"])
+@pytest.mark.parametrize(
+    ("cpu_percent", "cpus"),
+    [
+        ("100", 6),  # no cap: XMRig picks the count itself
+        (None, 6),
+        ("", 6),
+        ("0", 6),
+        ("abc", 6),
+        ("50", None),  # nproc failed: run exactly what the image runs
+        ("50", "x"),
+    ],
+)
+def test_the_wrapper_otherwise_runs_xmrig_unchanged(cpu_miner, tmp_path, machine, cpu_percent, cpus):
+    assert _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus, machine) == ARGS
+
+
+def test_the_wrapper_execs_the_images_own_entrypoint(cpu_miner):
+    entrypoint = cpu_miner["docker"]["entrypoint"]
+    assert entrypoint[:2] == ["/bin/sh", "-c"]
+    assert entrypoint[2].rstrip().endswith(f'exec {XMRIG_BINARY} "$@"')
+    dockerfile = (Path(__file__).parent.parent / "images" / "xmrig" / "Dockerfile").read_text()
+    assert f'ENTRYPOINT ["{XMRIG_BINARY}"]' in dockerfile
+    # The hint stays on the command, so XMRig still gets a limit if the wrapper changes nothing.
+    assert "--cpu-max-threads-hint=${CPU_PERCENT}" in cpu_miner["docker"]["command"]
+
+
+def test_every_entry_with_the_xmrig_image_and_cpu_percent_has_the_wrapper():
+    """A new entry on the same image must not bring back the ignored hint."""
+    wrapper = catalog.get_service("xmrig")["docker"]["entrypoint"]
+    for service in catalog.get_services():
+        docker = service.get("docker") or {}
+        keys = {field.get("key") for field in docker.get("env") or []}
+        if "cashpilot-xmrig" in str(docker.get("image")) and "CPU_PERCENT" in keys:
+            assert docker.get("entrypoint") == wrapper, service["slug"]
