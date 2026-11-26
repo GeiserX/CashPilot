@@ -177,3 +177,25 @@ async def test_ethereum_classic_rpc_error_keeps_the_payout_address_out_of_logs(c
     assert result["state"] == onchain.UNREACHABLE and result["amount"] is None
     assert "Could not read ethereum-classic balance" in caplog.text
     assert ADDRESS not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_ethereum_classic_reads_from_its_own_endpoint_override(monkeypatch):
+    # The ETC chain and the per-chain endpoint override came from two separate PRs.
+    monkeypatch.setenv("CASHPILOT_ONCHAIN_URL_ETHEREUM_CLASSIC", "http://etc-node.local:8545")
+    hosts = []
+
+    def respond(request):
+        hosts.append(request.url.host)
+        return httpx.Response(200, json={"result": hex(2 * 10**18)})
+
+    onchain.reset_state()
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            result = await onchain.balance("ethereum-classic", ADDRESS, client=client)
+    finally:
+        onchain.reset_state()
+
+    assert hosts == ["etc-node.local"]
+    assert result["state"] == onchain.KNOWN and result["amount"] == Decimal(2)
+    assert result["source"] == "etc-node.local"

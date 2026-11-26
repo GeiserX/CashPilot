@@ -30,7 +30,7 @@ Left out: [earning-machine](https://github.com/jf-m/earning-machine) and [passiv
 
 ## Side by side
 
-CashPilot's column describes v1.64.0, except the proxy, Docker socket and LAN isolation rows, which describe v1.71.1 (`0170dee`, 2026-11-06), and Mysterium's network in the container settings row, which describes the release after 2.0.6 (`01e7310`). The other columns describe the commits in the table above.
+CashPilot's column describes v1.64.0, except the proxy, Docker socket and LAN isolation rows, which describe v1.71.1 (`0170dee`, 2026-11-06), and Mysterium's network in the container settings row, which describes the release after 2.0.6 (`01e7310`). The outbound-call row includes the explorer calls in the [current on-chain guide](onchain.md). The other columns describe the commits in the table above.
 
 | | CashPilot | money4band 5.0.0 | IGM | InternetIncome | CashFactory | HA add-ons |
 |---|---|---|---|---|---|---|
@@ -51,7 +51,7 @@ CashPilot's column describes v1.64.0, except the proxy, Docker socket and LAN is
 | UI | Web UI, plus Desktop, Android, MCP and Home Assistant clients | CLI, menus and a local web dashboard bound to 127.0.0.1 by default ([code][m4b-bind]) | CLI, menus, and per the README a web UI on port 4747 reachable on the LAN ([README][igm-webui]) | None, a script | A bookmarks page on port 80 plus Portainer ([README][cf-ui]) | The Home Assistant add-on panel |
 | Commits on the default branch, 2026-08-06 to 2026-11-04 | 286 | 6, all docs (5.0.0 is on a separate history) | 6 | 31 | 0 | 23 |
 | Latest release | v1.64.0, 2026-11-04 | 5.0.0, 2026-07-25 | 3.0.0-beta.9, 2026-09-23 | No versioned releases | v1.10, 2024-07-17 | 2.0.6, 2026-11-03 |
-| Outbound calls besides the apps | GitHub releases once a day (`CASHPILOT_UPDATE_CHECK=off` stops it, [code][cp-update]); `api.ipify.org`, `ifconfig.me` or `icanhazip.com` once an hour from each worker, for its public IP (`CASHPILOT_EGRESS_DETECT=off` stops it, [code][cp-egress]); CoinGecko and Frankfurter for exchange rates ([code][cp-rates]); public Ethereum, Polygon and Solana RPC nodes for on-chain balances ([code][cp-onchain]); each provider, for collectors. The browser loads Google Fonts ([template][cp-cdn]) and Chart.js from jsDelivr ([template][cp-chartjs]) | GitHub releases, for its update check ([code][m4b-updater]); Docker Hub and ghcr.io, to check image tags ([code][m4b-registry]); when you run the IP check, `api.ipify.org`, `ifconfig.me` or `icanhazip.com` for your public IP and `ip-api.com` over plain HTTP for IP scores ([code][m4b-ipscore]) | GitHub releases ([code][igm-version]); `api.ipify.org`, `ifconfig.me` or `icanhazip.com` for your public IP ([code][igm-ifconfig]); `ip-api.com` over plain HTTP for IP scores ([code][igm-ipscore]). The closed binary was not checked | None found | None found | None found |
+| Outbound calls besides the apps | GitHub releases once a day (`CASHPILOT_UPDATE_CHECK=off` stops it, [code][cp-update]); `api.ipify.org`, `ifconfig.me` or `icanhazip.com` once an hour from each worker, for its public IP (`CASHPILOT_EGRESS_DETECT=off` stops it, [code][cp-egress]); CoinGecko and Frankfurter for exchange rates ([code][cp-rates]); mempool.space, api.kaspa.org and public Ethereum, Polygon and Solana RPC nodes for [on-chain balances](onchain.md); each provider, for collectors. The browser loads Google Fonts ([template][cp-cdn]) and Chart.js from jsDelivr ([template][cp-chartjs]) | GitHub releases, for its update check ([code][m4b-updater]); Docker Hub and ghcr.io, to check image tags ([code][m4b-registry]); when you run the IP check, `api.ipify.org`, `ifconfig.me` or `icanhazip.com` for your public IP and `ip-api.com` over plain HTTP for IP scores ([code][m4b-ipscore]) | GitHub releases ([code][igm-version]); `api.ipify.org`, `ifconfig.me` or `icanhazip.com` for your public IP ([code][igm-ifconfig]); `ip-api.com` over plain HTTP for IP scores ([code][igm-ipscore]). The closed binary was not checked | None found | None found | None found |
 
 None of the projects sends usage telemetry in the code we read. IGM's closed binary could not be read.
 
@@ -160,7 +160,6 @@ We did not check whether each app on each list still pays out.
 [cp-update]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/update_check.py#L80
 [cp-rates]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/exchange_rates.py#L101-L119
 [cp-egress]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/worker_api.py#L313
-[cp-onchain]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/onchain.py#L84-L88
 [cp-cdn]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/templates/base.html#L12-L16
 [cp-chartjs]: https://github.com/GeiserX/CashPilot/blob/c7a12bd4a1e5ce06f5be0ad303afc14c28ec17b8/app/templates/base.html#L254
 [cp-proxy-deploy]: https://github.com/GeiserX/CashPilot/blob/0170deec45c1a5fe6e72682b94adc07e5878d2bf/app/proxy_tunnel.py#L336-L350

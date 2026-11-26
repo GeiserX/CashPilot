@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from app import onchain
+
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCE = ROOT / "docs" / "configuration.md"
 
@@ -37,11 +39,17 @@ def _read_in_code() -> set[str]:
     names: set[str] = set()
     for path in (ROOT / "app").rglob("*.py"):
         names |= set(_READ.findall(path.read_text(encoding="utf-8")))
+    names.update(chain.endpoint_variable for chain in onchain.CHAINS.values())
     return names
 
 
 def _documented() -> set[str]:
-    return set(re.findall(r"CASHPILOT_[A-Z0-9_]+", REFERENCE.read_text(encoding="utf-8")))
+    text = REFERENCE.read_text(encoding="utf-8")
+    names = set(re.findall(r"CASHPILOT_[A-Z0-9_]+", text))
+    if "`CASHPILOT_ONCHAIN_URL_<CHAIN>`" in text:
+        names.discard("CASHPILOT_ONCHAIN_URL_")
+        names.update(chain.endpoint_variable for chain in onchain.CHAINS.values())
+    return names
 
 
 class TestTheReferenceCoversWhatTheCodeReads:

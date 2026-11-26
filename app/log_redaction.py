@@ -36,6 +36,11 @@ _SECRET_PARAM_RE = re.compile(
 )
 # The public payout address in a HeroMiners request identifies this installation's wallet.
 _KASPA_ADDRESS_PARAM_RE = re.compile(r"(\baddress=)kaspa(?::|%3a)[a-z0-9]+", re.IGNORECASE)
+_ONCHAIN_ADDRESS_RE = re.compile(
+    r"(/address/)(bc1[a-z0-9]{11,87}|[13][a-z0-9]{13,34})(?=[^a-z0-9]|$)"
+    r"|(/addresses/)kaspa(?::|%3a)([a-z0-9]{61,63})(?=/balance)",
+    re.IGNORECASE,
+)
 # 2Miners puts the ETC payout address in the account stats path.
 _TWO_MINERS_ADDRESS_RE = re.compile(r"\betc\.2miners\.com/api/accounts/(0x[0-9a-f]{40})\b", re.IGNORECASE)
 # unMineable puts the payout address of any coin in the address stats path.
@@ -54,6 +59,9 @@ _USERINFO_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/?#\s@'\"]+@", re.IGNORECA
 _SECRET_ENV = ("CASHPILOT_TELEGRAM_BOT_TOKEN",)
 # URLs whose path and query are the secret (a webhook token, an ntfy topic).
 _SECRET_URL_ENV = ("CASHPILOT_NTFY_URL", "CASHPILOT_WEBHOOK_URL")
+# On-chain endpoint overrides (app/onchain.py, one per chain). A private node or
+# a paid RPC URL often carries its access token in the path.
+_SECRET_URL_ENV_PREFIX = "CASHPILOT_ONCHAIN_URL_"
 
 
 def _configured_secrets() -> list[tuple[str, str]]:
@@ -63,17 +71,20 @@ def _configured_secrets() -> list[tuple[str, str]]:
         value = os.getenv(name, "").strip()
         if value:
             pairs.append((value, _REDACTED))
-    for name in _SECRET_URL_ENV:
+    names = [*_SECRET_URL_ENV, *sorted(n for n in os.environ if n.startswith(_SECRET_URL_ENV_PREFIX))]
+    for name in names:
         value = os.getenv(name, "").strip()
         if not value:
             continue
         # httpx logs str(request.url), which is normalized: lowercase host, no
         # default port, spaces and non-ASCII percent-encoded. Match that form as
         # well as the raw value, or an operator's ``https://Hooks.Example.com/...``
-        # or ``https://ntfy.sh:443/topic`` reaches the log untouched.
-        forms = [value]
-        with contextlib.suppress(Exception):  # an unparsable URL keeps only its raw form
-            forms.append(str(httpx.URL(value)))
+        # or ``https://ntfy.sh:443/topic`` reaches the log untouched. The
+        # on-chain client strips a trailing slash before it builds the request.
+        forms = [value, value.rstrip("/")]
+        for raw in forms[:2]:
+            with contextlib.suppress(Exception):  # an unparsable URL keeps only its raw form
+                forms.append(str(httpx.URL(raw)))
         for form in dict.fromkeys(forms):
             try:
                 parts = urlsplit(form)
@@ -98,6 +109,12 @@ def redact(text: str) -> str:
     text = _USERINFO_RE.sub(rf"\1{_REDACTED}@", text)
     text = _TELEGRAM_TOKEN_RE.sub(_REDACTED, text)
     text = _KASPA_ADDRESS_PARAM_RE.sub(rf"\1{_REDACTED}", text)
+    # The reason phrase on the same line can repeat an address from the path,
+    # in any case, and a Kaspa address as ``kaspa:`` or ``kaspa%3a``.
+    onchain = {address for match in _ONCHAIN_ADDRESS_RE.finditer(text) for address in match.group(2, 4) if address}
+    text = _ONCHAIN_ADDRESS_RE.sub(rf"\1\3{_REDACTED}", text)
+    for address in onchain:
+        text = re.sub(rf"(?:kaspa(?::|%3a))?{re.escape(address)}", _REDACTED, text, flags=re.IGNORECASE)
     text = _AXEOS_REQUEST_RE.sub(rf'\1{_REDACTED}\2"', text)
     # HTTPX logs the reason phrase on the same line. It can repeat the address.
     for address in _TWO_MINERS_ADDRESS_RE.findall(text):
