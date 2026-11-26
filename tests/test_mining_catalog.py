@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import re
 import shutil
@@ -183,19 +184,24 @@ def cpu_miner(request):
     return deepcopy(service)
 
 
-def _xmrig_args(entrypoint, tmp_path, cpu_percent, cpus, command=("--url=pool:1", "--no-color")):
+def _xmrig_args(entrypoint, tmp_path, cpu_percent, cpus, machine="aarch64", command=("--url=pool:1", "--no-color")):
     """The arguments XMRig gets when the catalog's entrypoint runs the command.
 
     The real wrapper runs with a stand-in ``nproc`` that reports ``cpus`` (None:
-    nproc fails) and a stand-in for the image's XMRig that prints its arguments.
+    nproc fails), a stand-in ``uname -m`` that reports ``machine`` (None: it
+    fails) and a stand-in for the image's XMRig that prints its arguments.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    nproc = bin_dir / "nproc"
-    nproc.write_text("#!/bin/sh\nexit 1\n" if cpus is None else f"#!/bin/sh\necho {cpus}\n")
+    stand_ins = {
+        "nproc": "exit 1" if cpus is None else f"echo {cpus}",
+        "uname": "exit 1" if machine is None else f"echo {machine}",
+    }
+    for name, body in stand_ins.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
     fake = tmp_path / "xmrig"
     fake.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
-    for path in (nproc, fake):
+    for path in (*bin_dir.iterdir(), fake):
         path.chmod(0o755)
     script = entrypoint[2]
     assert script.count(XMRIG_BINARY) == 1
@@ -213,7 +219,22 @@ def _xmrig_args(entrypoint, tmp_path, cpu_percent, cpus, command=("--url=pool:1"
     return out.stdout.splitlines()
 
 
+def _xmrig_x86_threads(cpus, hint):
+    """The thread count XMRig v6.27.0 on x86 derives from a hint, before its CPU cache limit.
+
+    HwlocCpuInfo::threads: round(threads * hint / 100) with C's round (half away
+    from zero), at least 1. A hint of 100 or more sets no limit.
+    """
+    if hint >= 100:
+        return cpus
+    return max(math.floor(cpus * (hint / 100.0) + 0.5), 1)
+
+
+ARGS = ["--url=pool:1", "--no-color"]
+
+
 @pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize("machine", ["aarch64", "armv8l", None])
 @pytest.mark.parametrize(
     ("cpu_percent", "cpus", "threads"),
     [
@@ -228,13 +249,39 @@ def _xmrig_args(entrypoint, tmp_path, cpu_percent, cpus, command=("--url=pool:1"
         ("33", 64, 21),
     ],
 )
-def test_cpu_percent_caps_the_threads_xmrig_starts(cpu_miner, tmp_path, cpu_percent, cpus, threads):
+def test_off_x86_cpu_percent_sets_the_threads_xmrig_starts(cpu_miner, tmp_path, machine, cpu_percent, cpus, threads):
     """A share of the CPU threads, rounded down, and never below one."""
-    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus)
-    assert args == ["--url=pool:1", "--no-color", f"--threads={threads}"]
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus, machine)
+    assert args == [*ARGS, f"--threads={threads}"]
 
 
 @pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize("cpus", [1, 2, 6, 12, 16, 24, 32, 64, 99, 100])
+@pytest.mark.parametrize("cpu_percent", [1, 17, 25, 33, 50, 75, 99])
+def test_on_x86_the_last_hint_rounds_to_the_capped_count(cpu_miner, tmp_path, cpu_percent, cpus):
+    """On x86 the hint stays, so XMRig keeps its CPU cache limit, but it lands on the rounded-down share.
+
+    --threads there would start more threads than fit the cache: on a 6-core,
+    12-thread CPU with 12 MB L3, 75% would start 9 where 100% starts 6.
+    """
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, str(cpu_percent), cpus, "x86_64")
+    assert args[:-1] == ARGS
+    assert not any(arg.startswith("--threads") for arg in args)
+    flag, _, hint = args[-1].partition("=")
+    assert flag == "--cpu-max-threads-hint"
+    # XMRig keeps the last value of a repeated option (BaseTransform::set).
+    assert _xmrig_x86_threads(cpus, int(hint)) == max(cpus * cpu_percent // 100, 1)
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+def test_on_x86_above_100_threads_the_hint_is_too_coarse_so_threads_is_set(cpu_miner, tmp_path):
+    assert _xmrig_x86_threads(101, 50) == 51  # 1% steps cannot say 50 of 101
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, "50", 101, "x86_64")
+    assert args == [*ARGS, "--threads=50"]
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize("machine", ["aarch64", "x86_64"])
 @pytest.mark.parametrize(
     ("cpu_percent", "cpus"),
     [
@@ -247,9 +294,8 @@ def test_cpu_percent_caps_the_threads_xmrig_starts(cpu_miner, tmp_path, cpu_perc
         ("50", "x"),
     ],
 )
-def test_the_wrapper_otherwise_runs_xmrig_unchanged(cpu_miner, tmp_path, cpu_percent, cpus):
-    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus)
-    assert args == ["--url=pool:1", "--no-color"]
+def test_the_wrapper_otherwise_runs_xmrig_unchanged(cpu_miner, tmp_path, machine, cpu_percent, cpus):
+    assert _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus, machine) == ARGS
 
 
 def test_the_wrapper_execs_the_images_own_entrypoint(cpu_miner):
