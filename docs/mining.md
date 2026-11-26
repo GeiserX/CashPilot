@@ -1,6 +1,6 @@
 # Mining
 
-Use the catalog's **Mining** section to deploy [XMRig](guides/xmrig.md) on your own CPU or track a pool you already use. To track a pool, give CashPilot your public payout address. CashPilot reads the unpaid balance the pool holds for you.
+Use the catalog's **Mining** section to deploy [XMRig](guides/xmrig.md) or [unMineable](guides/unmineable.md) on your own CPU, or track a pool you already use. To track a pool, give CashPilot your public payout address. CashPilot reads the unpaid balance the pool holds for you.
 
 | Pool | Coin | Guide |
 |---|---|---|
@@ -8,6 +8,7 @@ Use the catalog's **Mining** section to deploy [XMRig](guides/xmrig.md) on your 
 | SupportXMR | Monero | [SupportXMR](guides/supportxmr.md) |
 | HeroMiners Kaspa | Kaspa | [HeroMiners Kaspa](guides/herominers-kas.md) |
 | 2Miners ETC | Ethereum Classic | [2Miners ETC](guides/2miners-etc.md) |
+| unMineable | The coin you choose | [unMineable](guides/unmineable.md) |
 
 ## Accrued is not received
 

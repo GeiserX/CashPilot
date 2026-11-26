@@ -1493,7 +1493,13 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
             # The drop was one bad reading, not a cashout: the question is taken back.
             logger.info("%s balance recovered; withdrew the probable payout question", result.platform)
             return None
-        probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform), result.currency)
+        probable = payouts.detect(
+            previous,
+            result.balance,
+            catalog.get_service(result.platform),
+            result.currency,
+            getattr(result, "payout_threshold", None),
+        )
         if not probable:
             return None
         payout_id = await database.record_probable_payout(
@@ -10307,7 +10313,11 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         balance = None if result.error else result.balance
         return credential_test.result(outcome, name, balance=balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
-    payout_address = (service.get("payout") or {}).get("address_source") == "collector"
+    # A pool read by public payout address, whether or not CashPilot also
+    # deploys its miner: there is no cookie or password to expire.
+    from app.collectors import _COLLECTOR_ARGS
+
+    payout_address = "address" in _COLLECTOR_ARGS.get(slug, [])
     return credential_test.result(outcome, name, payout_address=payout_address)
 
 
