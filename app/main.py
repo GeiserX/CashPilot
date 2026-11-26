@@ -11379,7 +11379,14 @@ def _add_heat_fields(row: dict[str, Any], config: dict[str, Any], prefix: str, t
     """The keys the Fleet heat form posts to, what is stored there, and the
     heating-months break-even in the tariff's currency."""
     row["heat_prefix"] = prefix
-    row["heat_settings"] = {suffix: str(config.get(f"{prefix}_{suffix}") or "") for suffix in _HEAT_SUFFIXES}
+    settings = {suffix: str(config.get(f"{prefix}_{suffix}") or "").strip() for suffix in _HEAT_SUFFIXES}
+    # Shown the way the credit reads them, so "Resistive" or "01,11" stored by
+    # an import or a raw API call does not show the form as something else.
+    settings["heat"] = settings["heat"].lower()
+    months = machine_economics.parse_heat_months(settings["heat_months"])
+    if months is not None:
+        settings["heat_months"] = ",".join(str(month) for month in sorted(months))
+    row["heat_settings"] = settings
     row["break_even_tariff_heating"] = _break_even_local(row.get("break_even_price_per_kwh_heating"), tariff_currency)
 
 

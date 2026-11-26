@@ -730,6 +730,52 @@ class TestHeatEndpoint:
         assert out["monthly_heat_credit"] == 14.6
         assert out["monthly_net"] == 1.0
 
+    def test_the_form_shows_stored_values_the_way_the_credit_reads_them(self):
+        config = self._config(worker_c1_heat=" Resistive ", worker_c1_heat_months="01,02, 11")
+        (rig,) = self._call(config=config, workers=self.WORKER, earned={"xmrig": 1.0}, containers=self.MINER)[
+            "machines"
+        ]
+        assert rig["heat"]["months"] == [1, 2, 11]
+        assert rig["heat_settings"]["heat"] == "resistive"
+        assert rig["heat_settings"]["heat_months"] == "1,2,11"
+
+    @pytest.mark.parametrize("months, share", [("11", 25 / 30), ("6", 0.0), ("10,11", 1.0)])
+    def test_the_endpoint_scales_the_credit_by_todays_heating_share(self, months, share):
+        """On 2026-11-25 the last 30 days hold 25 November days and 5 October days."""
+        from datetime import UTC, datetime
+        from unittest.mock import patch
+
+        from app import catalog, main
+
+        class Nov25(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 11, 25, 12, tzinfo=UTC)
+
+        config = self._config(
+            worker_c1_heat_months=months,
+            power_device_pool_watts="100",
+            power_device_pool_heat="heat_pump",
+            power_device_pool_heat_cop="4",
+            power_device_pool_heat_months=months,
+        )
+        real_get_service = catalog.get_service
+        services = {"pool": {"name": "Bitaxe pool", "category": "mining"}}
+        with (
+            patch.object(main, "datetime", Nov25),
+            patch.object(catalog, "get_service", lambda slug: services.get(slug) or real_get_service(slug)),
+        ):
+            out = self._call(
+                config=config,
+                workers=self.WORKER,
+                earned={"xmrig": 1.0, "pool": 2.0},
+                containers=self.MINER,
+                deployments=[{"slug": "pool", "status": "external"}],
+            )
+        by_kind = {m["kind"]: m for m in out["machines"]}
+        assert by_kind["machine"]["heat_credit"] == pytest.approx(14.6 * share, abs=0.0001)
+        assert by_kind["device"]["heat_credit"] == pytest.approx(14.6 / 4 * share, abs=0.0001)
+
     def test_a_fixed_price_worker_has_zero_heat_credit(self):
         out = self._call(
             config=self._config(worker_c1_unmetered="true"),

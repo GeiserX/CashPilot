@@ -314,6 +314,12 @@ check('switching to fuel shows the fuel price field', heat.form().fields['.heat-
 const rendersBefore = heat.renders();
 await heat.refresh();
 check('a Fleet refresh keeps a touched heat form', heat.renders() === rendersBefore, 'the draft was re-rendered away');
+heat.form().fields['.heat-source'].value = 'heat_pump';
+await heat.refresh();
+check('an undone heat edit no longer holds the refresh', heat.renders() === rendersBefore + 1,
+  'a form back at its saved state still blocked the refresh');
+heat.form().fields['.heat-source'].value = 'fuel';
+await heat.refresh();
 heat.form().fields['.heat-source'].value = 'resistive';
 heat.form().months.forEach(m => { m.checked = false; });
 await heat.submit();
@@ -325,7 +331,7 @@ await heat.submit();
 check('Save posts the heat keys under the row prefix', JSON.stringify(heat.posts.at(-1)) === JSON.stringify({
   worker_rig_heat: 'resistive', worker_rig_heat_cop: '3', worker_rig_heat_price: '', worker_rig_heat_months: '6,7',
 }), JSON.stringify(heat.posts));
-check('a saved heat form re-renders', heat.renders() > rendersBefore, 'the refresh after Save was held');
+check('a saved heat form re-renders', heat.renders() > rendersBefore + 1, 'the refresh after Save was held');
 
 const fresh = heatFixture({row: {heat: null, heat_credit: undefined,
   heat_settings: {heat: '', heat_cop: '', heat_price: '', heat_months: ''}, break_even_tariff_heating: null}});

@@ -264,6 +264,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
   // exist because the answer is often "this machine is not worth leaving on",
   // and softening that would defeat the point of computing it.
   let fleetEconomicsRequest = 0;
+  // A heat form's current choices, compared with what it rendered with, so
+  // an edit that is undone no longer holds the refresh.
+  function heatState(form) {
+    const months = Array.from(form.querySelectorAll('.heat-month')).filter(box => box.checked).map(box => box.value);
+    return [form.querySelector('.heat-source').value, form.querySelector('.heat-cop').value.trim(),
+      form.querySelector('.heat-price').value.trim(), months.join(',')].join('|');
+  }
   async function loadFleetEconomics(savedDevice) {
     const card = document.getElementById('fleet-economics-card');
     const body = document.getElementById('fleet-economics-body');
@@ -277,7 +284,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
             || input.form.querySelector('button').disabled)
     ) || Array.from(body.querySelectorAll('.heat-form')).some(form =>
       form.dataset.prefix !== savedDevice
-        && (form.dataset.dirty === '1' || form.matches(':focus-within') || form.querySelector('button').disabled)
+        && (heatState(form) !== form.dataset.initial || form.matches(':focus-within')
+            || form.querySelector('button').disabled)
     );
     if (editing()) return;
     const request = ++fleetEconomicsRequest;
@@ -351,10 +359,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
               `<option value="${value}"${value === source ? ' selected' : ''}>${label}</option>`).join('')}</select>
           </label>
           <label class="heat-cop-field"${source === 'heat_pump' ? '' : ' hidden'}>Heat pump COP
-            <input type="number" min="1" max="10" step="0.1" class="form-input heat-cop" value="${esc(hs.heat_cop)}">
+            <input type="number" min="1" max="10" step="any" class="form-input heat-cop" value="${esc(hs.heat_cop)}">
           </label>
           <label class="heat-price-field"${source === 'fuel' ? '' : ' hidden'}>Fuel cost per kWh of heat (${esc(economics.tariff_currency || '')})
-            <input type="number" min="0" step="0.001" class="form-input heat-price" value="${esc(hs.heat_price)}">
+            <input type="number" min="0" step="any" class="form-input heat-price" value="${esc(hs.heat_price)}">
           </label>
           <fieldset class="heat-months"><legend>Months you heat</legend>${HEAT_MONTHS.map((label, i) =>
             `<label><input type="checkbox" class="heat-month" value="${i + 1}"${ticked.has(String(i + 1)) ? ' checked' : ''}> ${label}</label>`).join('')}</fieldset>
@@ -440,6 +448,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
     card.style.display = '';
     body.innerHTML = rows + services;
+    body.querySelectorAll('.heat-form').forEach(form => { form.dataset.initial = heatState(form); });
   }
 
   // How many workers share each display name.
@@ -1029,7 +1038,6 @@ CASHPILOT_WORKER_NAME=server-name</code>
         [`${prefix}_heat_price`]: price,
         [`${prefix}_heat_months`]: months.join(','),
       } } });
-      form.dataset.dirty = '';
       CP.toast('Heat setting saved', 'success');
       await loadFleetEconomics(prefix);
     } catch (err) {
@@ -1039,17 +1047,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
   }
 
-  // A touched heat form holds the Fleet refresh until it is saved, and the
-  // COP or fuel price field shows only for the source that uses it.
-  ['input', 'change'].forEach(type => document.getElementById('fleet-economics-body').addEventListener(type, function(e) {
-    const form = e.target.closest && e.target.closest('.heat-form');
-    if (!form) return;
-    form.dataset.dirty = '1';
-    if (e.target.classList.contains('heat-source')) {
-      form.querySelector('.heat-cop-field').hidden = e.target.value !== 'heat_pump';
-      form.querySelector('.heat-price-field').hidden = e.target.value !== 'fuel';
-    }
-  }));
+  // The COP or fuel price field shows only for the source that uses it.
+  document.getElementById('fleet-economics-body').addEventListener('change', function(e) {
+    if (!e.target.classList || !e.target.classList.contains('heat-source')) return;
+    const form = e.target.closest('.heat-form');
+    form.querySelector('.heat-cop-field').hidden = e.target.value !== 'heat_pump';
+    form.querySelector('.heat-price-field').hidden = e.target.value !== 'fuel';
+  });
 
   document.getElementById('fleet-workers').addEventListener('click', async function(e) {
     // Per-machine power. machine_economics needs BOTH a tariff and a wattage;
