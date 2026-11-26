@@ -489,6 +489,13 @@ class TestLogsEndpoint:
         assert resp.status_code == 503
 
 
+_OLD_UI_REFUSAL = (
+    "This worker runs CashPilot v3.0.0 and replaces an existing container only when the UI confirms "
+    "which container it replaces, and this UI is too old to do that. Update the UI, then redeploy. "
+    "Nothing was changed."
+)
+
+
 @pytest.mark.parametrize("route", ["deploy", "deploy-checked"])
 def test_deploy_requires_the_current_id_for_a_replacement(route):
     from types import SimpleNamespace
@@ -527,9 +534,22 @@ def test_deploy_requires_the_current_id_for_a_replacement(route):
         assert state.json() == {"exists": False, "expected_container": "none"}
         first = client.post(path, json={"image": "img"}, headers=_auth())
         assert first.status_code == 200
-        refused = client.post(path, json={"image": "img"}, headers=_auth())
+        with patch.dict(os.environ, {"CASHPILOT_VERSION": "3.0.0"}):
+            refused = client.post(path, json={"image": "img"}, headers=_auth())
         assert refused.status_code == 409
-        assert refused.json()["detail"]["current_container"] == original
+        if route == "deploy":
+            # A UI older than the checked deploy sends no expected_container and
+            # shows only a plain-string 409 detail: it reads why, not "HTTP 409".
+            assert refused.json()["detail"] == _OLD_UI_REFUSAL
+        else:
+            assert refused.json()["detail"]["current_container"] == original
+        assert current == original
+        # The current UI always sends the field, and gets the structured refusal on both routes.
+        new_ui = client.post(path, json={"image": "img", "expected_container": "none"}, headers=_auth())
+        assert new_ui.status_code == 409
+        assert new_ui.json()["detail"]["error"] == "deploy_target_changed"
+        assert new_ui.json()["detail"]["current_container"] == original
+        assert current == original
 
         desktop = client.post(path, json={"image": "img", "replace_existing": True}, headers=_auth())
         assert desktop.status_code == 409
@@ -543,6 +563,15 @@ def test_deploy_requires_the_current_id_for_a_replacement(route):
         assert replay.status_code == 409
         assert replay.json()["detail"]["current_container"] == successor
         assert current == successor
+
+
+@pytest.mark.parametrize("build", ["dev", "latest"])
+def test_old_ui_refusal_names_no_version_for_a_non_release_build(build):
+    exc = worker_api.orchestrator.DeployTargetChanged("abc")
+    refusal = worker_api._deploy_target_error(exc)
+    with patch.dict(os.environ, {"CASHPILOT_VERSION": build}):
+        old_ui = worker_api._old_ui_target_error(refusal, worker_api.CheckedDeploySpec(image="img"))
+    assert old_ui.detail.startswith("This worker runs a newer CashPilot and replaces an existing container")
 
 
 def test_checked_deploy_inventory_fails_closed_if_docker_cannot_be_read():
