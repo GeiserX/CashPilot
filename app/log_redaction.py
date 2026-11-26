@@ -43,6 +43,8 @@ _ONCHAIN_ADDRESS_RE = re.compile(
 )
 # 2Miners puts the ETC payout address in the account stats path.
 _TWO_MINERS_ADDRESS_RE = re.compile(r"\betc\.2miners\.com/api/accounts/(0x[0-9a-f]{40})\b", re.IGNORECASE)
+# Preserve the AxeOS status code. The address and reason phrase can both carry device data.
+_AXEOS_REQUEST_RE = re.compile(r'\A(HTTP Request: GET http://)[^/\s]+(/api/system/info "[^ ]+ [0-9]{3}).*\Z', re.DOTALL)
 # A Telegram bot token: ``<bot id>:<35 url-safe characters>``. Matched by shape so
 # a token reaches no log even when it did not come from our own variable.
 _TELEGRAM_TOKEN_RE = re.compile(r"(?<!\d)\d{6,12}:[A-Za-z0-9_-]{30,}")
@@ -100,6 +102,7 @@ def redact(text: str) -> str:
     text = _TELEGRAM_TOKEN_RE.sub(_REDACTED, text)
     text = _KASPA_ADDRESS_PARAM_RE.sub(rf"\1{_REDACTED}", text)
     text = _ONCHAIN_ADDRESS_RE.sub(rf"\1\2{_REDACTED}", text)
+    text = _AXEOS_REQUEST_RE.sub(rf'\1{_REDACTED}\2"', text)
     # HTTPX logs the reason phrase on the same line. It can repeat the address.
     for address in _TWO_MINERS_ADDRESS_RE.findall(text):
         text = re.sub(address, _REDACTED, text, flags=re.IGNORECASE)

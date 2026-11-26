@@ -118,6 +118,20 @@ async def test_2miners_refusal_keeps_the_payout_address_out_of_logs_and_alerts(r
     assert "https://etc.2miners.com/api/accounts/<redacted>" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_axeos_request_logs_omit_the_lan_address_and_reason(redacting, caplog):
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(200, extensions={"reason_phrase": b"fixture-ssid 192.168.1.50"})
+    )
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with httpx.AsyncClient(transport=transport) as client:
+            await client.get("http://192.168.1.50:8080/api/system/info")
+
+    assert "192.168.1.50" not in caplog.text
+    assert "fixture-ssid" not in caplog.text
+    assert 'http://<redacted>/api/system/info "HTTP/1.1 200"' in caplog.text
+
+
 class TestNotifierRequests:
     def test_the_telegram_bot_token_is_not_logged(self, redacting, caplog):
         log = _send_alert(caplog, CASHPILOT_TELEGRAM_BOT_TOKEN=FAKE_BOT_TOKEN, CASHPILOT_TELEGRAM_CHAT_ID="42")
