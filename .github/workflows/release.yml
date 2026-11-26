@@ -402,10 +402,16 @@ jobs:
       # Announced as soon as the tag exists: the images were built and pushed
       # before this job started, so nothing below can leave a version announced
       # without them.
+      # The generated notes list PR titles only, so a release that needs a
+      # manual step would not say so. The action puts `body` first and the
+      # generated notes after it. `append_body` stays unset: on a re-run, when
+      # the release already exists, it would keep the old body and add the
+      # line and the notes a second time.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: ${{ needs.release.outputs.new_tag }}
+          body: "Upgrading? Read https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md first."
           generate_release_notes: true
           draft: false
           prerelease: false
