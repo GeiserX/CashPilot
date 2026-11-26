@@ -790,6 +790,13 @@ class TestWorkerUpdateEndpoints:
 
 
 class TestUiUpdateRoutes:
+    @pytest.fixture(autouse=True)
+    def _a_docker_worker(self):
+        # The update routes look the worker up to refuse a Desktop; these tests
+        # target a Docker worker.
+        with patch("app.main.database.get_worker", new_callable=AsyncMock, return_value={"id": 1}):
+            yield
+
     def test_update_info_merges_worker_facts_with_release_state(self):
         worker_facts = {"compose_managed": True, "working_dir": "/srv/x", "updater_running": False}
         with (

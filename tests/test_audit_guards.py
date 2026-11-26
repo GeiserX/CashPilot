@@ -95,6 +95,7 @@ class TestMutatingEndpointsSitAboveViewer:
 
     LADDER = {
         "api_test_credentials": "_require_owner",
+        "api_income_csv": "_require_owner",
         "api_confirm_payout": "_require_writer",
         "api_reject_payout": "_require_writer",
     }
@@ -364,7 +365,7 @@ class TestADetectedPayoutActuallyReachesTheUser:
 
         from app import main
 
-        result = MagicMock(platform="honeygain", balance=0.10, currency="USD")
+        result = MagicMock(platform="honeygain", balance=0.10, currency="USD", payout_threshold=None)
 
         async def run():
             with (

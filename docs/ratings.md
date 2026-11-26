@@ -78,6 +78,7 @@ What a cited con or pro may rest on:
 | <a href="#storj">Storj</a> | D | 9 of 20 | 3 | <span class="ratings-con" title="CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.">CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.</span> | 2026-11-04 |
 | <a href="#xmrig">XMRig (Monero CPU mining)</a> | D | 9 of 20 | 4 | <span class="ratings-con" title="A payout requires enough XMR to meet your pool threshold.">A payout requires enough XMR to meet your pool threshold.</span> | 2026-11-25 |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | <span class="ratings-con" title="The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.">The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.</span> | 2026-11-04 |
+| <a href="#unmineable">unMineable (CPU mining, paid in your coin)</a> | D | 8 of 20 | 4 | <span class="ratings-con" title="unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin&#x27;s threshold.">unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin's threshold.</span> | 2026-11-26 |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | <span class="ratings-con" title="EarnApp&#x27;s help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.">EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.</span> | 2026-11-04 |
 | <a href="#golem">Golem Network</a> | D | 7 of 20 | 6 | <span class="ratings-con" title="CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.">CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.</span> | 2026-11-04 |
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | <span class="ratings-con" title="Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days.">Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days.</span> | 2026-11-04 |
@@ -351,6 +352,37 @@ What a cited con or pro may rest on:
 - Honeygain publishes its own Docker image, honeygain/honeygain. [Source](https://hub.docker.com/r/honeygain/honeygain), checked 2026-11-04.
 - The terms name the operator, Honeygain UAB, registered in Vilnius, Lithuania. [Source](https://www.honeygain.com/terms-of-use/), checked 2026-11-04.
 - Honeygain's press page says it was founded in 2019. [Source](https://www.honeygain.com/press-area/), checked 2026-11-04.
+
+<a id="unmineable"></a>
+
+### unMineable (CPU mining, paid in your coin)
+
+**Grade D**, 8 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-26. Setup guide: [unMineable (CPU mining, paid in your coin)](guides/unmineable.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We tested pool shares and read the balance. We did not verify a payout. |
+| Payout terms | Fair | Paid in the coin you choose once its threshold is reached, after a 0.75% platform fee with the referral code. |
+| Account safety | Unknown | We did not review how unMineable handles disputes or withheld balances. |
+| Fit with how CashPilot runs it | Fair | CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS. |
+| Traffic transparency | Good | The miner submits shares to unMineable over one outbound connection. |
+| Privacy | Fair | The miner is open source. Address stats are public on unmineable.com by design. |
+| Identity checks | Good | unMineable lets a worker mine to a public address without an account. |
+| Support | Unknown | We did not test unMineable's support. |
+| Earnings realism | Fair | Hashrate, electricity prices and unMineable's conversion rate vary. |
+| Longevity | Unknown | We did not review unMineable's long-term operation. |
+
+**Cons**
+
+- unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin's threshold. [Source](https://unmineable.com/referrals), checked 2026-11-26.
+- Some hosting providers prohibit cryptocurrency mining. [Source](https://www.hetzner.com/legal/cloud-server/), checked 2026-11-26.
+- The extra electricity can cost more than the coins earned. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md), checked 2026-11-26.
+- Address stats, including the balance, are public to anyone who knows the address. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md), checked 2026-11-26.
+
+**Pros**
+
+- The miner sends hashes to the pool and does not relay anyone else's traffic. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md), checked 2026-11-26.
+- You can mine to a public address in the coin you choose without creating an account. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md), checked 2026-11-26.
 
 <a id="earnapp"></a>
 

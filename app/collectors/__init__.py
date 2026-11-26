@@ -29,6 +29,7 @@ from app.collectors.storj import StorjCollector
 from app.collectors.supportxmr import SupportXMRCollector
 from app.collectors.traffmonetizer import TraffmonetizerCollector
 from app.collectors.twominers import TwoMinersETCCollector
+from app.collectors.unmineable import UnMineableCollector
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ COLLECTOR_MAP: dict[str, type[BaseCollector]] = {
     "supportxmr": SupportXMRCollector,
     "herominers-kas": HeroMinersKaspaCollector,
     "2miners-etc": TwoMinersETCCollector,
+    "unmineable": UnMineableCollector,
 }
 
 # Map of slug -> list of config keys needed to instantiate the collector
@@ -83,6 +85,8 @@ _COLLECTOR_ARGS: dict[str, list[str]] = {
     "supportxmr": ["address"],
     "herominers-kas": ["address"],
     "2miners-etc": ["address"],
+    # unMineable pays in the coin you pick, so its stats need the coin too.
+    "unmineable": ["address", "coin"],
 }
 
 # How long each credential actually lasts, and why it matters.

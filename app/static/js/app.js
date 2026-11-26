@@ -42,6 +42,10 @@ const CP = (() => {
             && window.confirm(`${asked.message}\n\nDeploy anyway?`)) {
           return api(path, { ...opts, sharedOk: true, body: { ...opts.body, allow_shared_identity: true } });
         }
+        if (asked && asked.error === 'confirm_deploy_targets' && opts.body
+            && !opts.body.expected_containers && window.confirm(asked.message)) {
+          return api(path, { ...opts, body: { ...opts.body, expected_containers: asked.expected_containers } });
+        }
         // detail can be a structured refusal ({error, message, ...}); surface
         // its message instead of the useless "[object Object]".
         let detail = data && data.detail;
@@ -1760,7 +1764,7 @@ const CP = (() => {
         const wid = inst.worker_id != null
           ? ` data-a2="${escapeHtml(String(inst.worker_id))}"${inst.instance > 1 ? ` data-a3="${escapeHtml(String(inst.instance))}"` : ''}`
           : '';
-        const controllable = _canWrite && !inst.unmanaged && !svc.unmanaged && inst.has_docker && !inst.is_android;
+        const controllable = _canWrite && !inst.unmanaged && !svc.unmanaged && inst.can_command && !inst.is_android;
         if (inst.held) {
           // The worker's fence guard keeps it stopped (a fence-gated node): Start
           // is refused for the same reason, so the card says why and offers what works.
@@ -1936,7 +1940,7 @@ const CP = (() => {
   // The copies "Stop on all servers" would act on: CashPilot's own containers
   // that are not already stopped.
   function stoppableCopies(svc) {
-    return (svc.instance_details || []).filter(inst => inst.has_docker && !inst.unmanaged && !inst.is_android
+    return (svc.instance_details || []).filter(inst => inst.can_command && !inst.unmanaged && !inst.is_android
       && inst.worker_id != null && !['exited', 'stopped', 'dead'].includes(String(inst.status || '').toLowerCase()));
   }
 
@@ -2203,8 +2207,14 @@ const CP = (() => {
     return Number.isInteger(id) && id > 0 ? id : undefined;
   }
 
+  // A joined Desktop that takes commands reports a URL too, so it is a deploy target.
+  // One without a URL only reports what runs on it.
   function onlineDeployWorkers(workers) {
     return (workers || []).filter(w => w.status === 'online' && w.url);
+  }
+
+  function isDesktopWorker(w) {
+    return ((w && w.system_info) || {}).device_type === 'desktop';
   }
 
   function workerCheckboxList(svc, onlineWorkers, checkboxClass) {
@@ -2224,7 +2234,9 @@ const CP = (() => {
       if (maxInstances) {
         const capable = ((w.system_info || {}).features || []).includes('instances');
         const locked = maxInstances <= 1 || !capable;
-        const why = maxInstances <= 1 ? '' : (capable ? '' : ' title="Update this worker to run more than one copy"');
+        const why = maxInstances <= 1 ? ''
+          : (isDesktopWorker(w) ? ' title="CashPilot Desktop runs one copy of each service from here"'
+            : (capable ? '' : ' title="Update this worker to run more than one copy"'));
         instancesBox = `
         <span class="instances-box"${why}>Instances
           <input class="form-input instances-input" type="number" min="1" max="${maxInstances}" step="1"
@@ -2235,6 +2247,7 @@ const CP = (() => {
       <label class="worker-pick">
         <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : ''}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
+        ${isDesktopWorker(w) ? '<span class="badge" title="CashPilot Desktop: it runs the image its own catalog pins, one copy per service">Desktop</span>' : ''}
         ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
         ${deployed
           ? '<span class="badge badge-deployed">Deployed</span>'
@@ -2477,7 +2490,7 @@ const CP = (() => {
       // Single instance — build container buttons targeting the right node
       const inst = details[0] || {};
       const wParam = inst.worker_id != null ? ` data-a2="${inst.worker_id}"` : '';
-      const noDocker = !inst.has_docker || inst.is_android;
+      const noDocker = !inst.can_command || inst.is_android;
       // Started outside CashPilot — matched by IMAGE, not by a CashPilot label,
       // so every container command targets a name that does not exist and
       // answers "404 Container not found" for a row this same screen calls
@@ -2486,18 +2499,18 @@ const CP = (() => {
       const unmanaged = inst.unmanaged || svc.unmanaged;
       const disabledAttr = unmanaged
         ? ' disabled title="Started outside CashPilot — manage it where you started it"'
-        : (noDocker ? ' disabled title="No Docker access"' : '');
+        : (noDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it: it sent no address to take commands at. On its own dashboard, turn on its switch and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address."' : ' disabled title="No Docker access"') : '');
       actionBtns = `<div class="action-btns">
           ${claimBtn}
           ${settingsBtn}
           ${_canWrite ? `
-          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Restart"${disabledAttr}>
+          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Restart">
             ${ICON_RESTART}
           </button>
-          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Stop"${disabledAttr}>
+          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Stop">
             ${ICON_STOP}
           </button>
-          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Logs"${disabledAttr}>
+          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Logs">
             ${ICON_LOGS}
           </button>` : ''}
         </div>`;
@@ -2532,7 +2545,7 @@ const CP = (() => {
         const wParam = inst.worker_id != null
           ? ` data-a2="${inst.worker_id}"${(inst.instance || 1) > 1 ? ` data-a3="${inst.instance}"` : ''}`
           : '';
-        const iNoDocker = !inst.has_docker || inst.is_android;
+        const iNoDocker = !inst.can_command || inst.is_android;
         // The mixed case this whole change is built around. The ROW keeps its
         // buttons because a managed instance can still be controlled — but the
         // external instance in that same row cannot, and its sub-row was still
@@ -2543,7 +2556,7 @@ const CP = (() => {
         const iUnmanaged = inst.unmanaged || svc.unmanaged;
         const disabledAttr = iUnmanaged
           ? ' disabled title="Started outside CashPilot — manage it where you started it"'
-          : (iNoDocker ? ' disabled title="No Docker access"' : '');
+          : (iNoDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it: it sent no address to take commands at. On its own dashboard, turn on its switch and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address."' : ' disabled title="No Docker access"') : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
         // `|| '0'` would render an unmeasurable container as a confident 0%.
         // The endpoint sends null when the Docker stats call failed, and an em
@@ -2572,13 +2585,13 @@ const CP = (() => {
           <td class="c-act">
             <div class="action-btns">
               ${_canWrite ? `
-              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Restart on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Restart on ${nodeLabel}">
                 ${ICON_RESTART}
               </button>
-              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Stop on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Stop on ${nodeLabel}">
                 ${ICON_STOP}
               </button>
-              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam} title="Logs on ${nodeLabel}"${disabledAttr}>
+              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Logs on ${nodeLabel}">
                 ${ICON_LOGS}
               </button>` : ''}
             </div>
@@ -4166,7 +4179,7 @@ const CP = (() => {
     }
   }
 
-  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false, routeRoot = null } = {}) {
+  async function _deployToWorkers(slug, workerIds, { rescaleOnly = false, routeRoot = null, replaceWorkers = [] } = {}) {
     const statusEl = document.getElementById(`deploy-status-${slug}`);
     // Read once, before anything waits: a Route box changed while the first
     // box deploys must not send another route (or none) to the next one.
@@ -4241,6 +4254,7 @@ const CP = (() => {
     for (const wid of workerIds) {
       try {
         const body = { env };
+        if (replaceWorkers.includes(wid)) body.replace_existing = true;
         if (wallet) body.wallet_seed = wallet;
         if (renameDevices) body.rename_devices = true;
         const image = _imageChoice(slug);
@@ -4675,8 +4689,8 @@ const CP = (() => {
     let ok = 0;
     // A box with only copies left: rebuild those, never its renamed original.
     const jobs = [
-      ...(base ? ids : []).map(id => [id, `/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true } }]),
-      ...(copies ? copyIds : []).map(id => [id, `/api/deploy/${slug}/device-names/copies?worker_id=${id}`, { method: 'POST' }]),
+      ...(base ? ids : []).map(id => [id, `/api/deploy/${slug}?worker_id=${id}`, { method: 'POST', body: { env: {}, rename_devices: true, replace_existing: true } }]),
+      ...(copies ? copyIds : []).map(id => [id, `/api/deploy/${slug}/device-names/copies?worker_id=${id}`, { method: 'POST', body: { replace_existing: true } }]),
     ];
     for (const [id, url, opts] of jobs) {
       try {
@@ -4705,12 +4719,13 @@ const CP = (() => {
     // checks required values against the box's record and names any still
     // missing, so the blank boxes are not refused in the browser.
     const routeRoot = document.getElementById('service-detail-body');
-    if (await _deployToWorkers(slug, [parseInt(workerId)], { rescaleOnly: true, routeRoot })) openServiceDetail(slug);
+    const wid = parseInt(workerId);
+    if (await _deployToWorkers(slug, [wid], { rescaleOnly: true, routeRoot, replaceWorkers: [wid] })) openServiceDetail(slug);
   }
 
   async function redeployOnWorker(slug, workerId) {
     if (!window.confirm(`Redeploy ${slug} on this box? It keeps the settings it was deployed with.`)) return;
-    const body = { env: {} };
+    const body = { env: {}, replace_existing: true };
     if (await _confirmDeviceRenames(slug, [workerId], {})) body.rename_devices = true;
     try {
       const res = await api(`/api/deploy/${slug}?worker_id=${workerId}`, { method: 'POST', body });
@@ -4742,7 +4757,7 @@ const CP = (() => {
     for (const w of workers) {
       try {
         // No env: a blank redeploy keeps the credentials this worker was deployed with.
-        const body = { env: {}, image };
+        const body = { env: {}, image, replace_existing: true };
         if (renameDevices) body.rename_devices = true;
         const res = await api(`/api/deploy/${slug}?worker_id=${w.id}`, { method: 'POST', body });
         // A proxied copy that kept its old name says so here.
@@ -5156,7 +5171,7 @@ const CP = (() => {
     let ok = 0;
     for (const w of workers) {
       try {
-        await api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${w.id}`, { method: 'POST', body: { env: {} } });
+        await api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${w.id}`, { method: 'POST', body: { env: {}, replace_existing: true } });
         ok++;
       } catch (err) {
         toast(`Redeploy on ${w.name} failed: ${err.message}`, 'error');
@@ -5220,11 +5235,15 @@ const CP = (() => {
     // never through a changed Instances count (route 0 would go with it).
     const switchable = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"][data-routed]:not(:disabled)`);
     const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id) && !switchable.includes(id));
+    if (rescaled.length && !window.confirm(
+      `Change the instance count for ${slug}? CashPilot will replace its existing containers on the boxes where you changed the count.`,
+    )) return;
     const again = [...switching, ...rescaled];
     // Only nodes that already run the service: their recorded credentials are
     // reused, so the empty credential boxes are not missing.
     await _deployToWorkers(slug, [...fresh, ...again], {
       rescaleOnly: fresh.length === 0 && again.length > 0,
+      replaceWorkers: rescaled,
       routeRoot: document.getElementById('service-detail-body'),
     });
   }
@@ -5609,10 +5628,10 @@ const CP = (() => {
     const input = document.getElementById(`identity-change-value-${id}`);
     const value = input ? input.value.trim() : '';
     if (!row || !value) { toast('Type the new id first', 'warning'); return; }
-    if (!window.confirm(`Change the ${row.label} of ${row.service} on ${row.worker}? CashPilot makes this one `
-      + 'container again with the new id, and the provider sees a new device.')) return;
+    if (!window.confirm(`Change the ${row.label} of ${row.service} on ${row.worker}? CashPilot rebuilds `
+      + 'this service’s instances on this worker and its running proxied copies. The provider may see new devices.')) return;
     try {
-      const res = await api(`/api/identities/${encodeURIComponent(id)}/change`, { method: 'POST', body: { value } });
+      const res = await api(`/api/identities/${encodeURIComponent(id)}/change`, { method: 'POST', body: { value, replace_existing: true } });
       // The notes a redeploy shows: what it kept, a proxied copy left on its old
       // id, and a device the provider still needs linked, or it earns for nobody.
       const kept = res && res.kept_from_previous_deployment;
@@ -5946,8 +5965,8 @@ const CP = (() => {
     if (!container) return;
     try {
       const workers = await api('/api/workers').catch(() => []);
-      // Only workers with a command URL can answer /api/update-info; a paired Desktop or phone cannot.
-      const online = onlineDeployWorkers(workers);
+      // Only Docker workers answer /api/update-info; a Desktop updates itself and a phone has no URL.
+      const online = onlineDeployWorkers(workers).filter(w => !isDesktopWorker(w));
       if (!online.length) {
         container.innerHTML = `<p class="block-empty">No Docker worker is online, so the install cannot be inspected or updated right now.</p>`;
         return;
@@ -6697,23 +6716,24 @@ const CP = (() => {
   // -----------------------------------------------------------
   // Currency selector (settings page)
   // -----------------------------------------------------------
+  function partitionFiatCodes(fiat) {
+    const codes = Object.keys(fiat).sort();
+    const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'PLN', 'SEK', 'NOK', 'DKK', 'CZK', 'HUF', 'RON'];
+    return [popular.filter(code => codes.includes(code)), codes.filter(code => !popular.includes(code))];
+  }
+
   async function populateCurrencyDropdown() {
     const select = document.getElementById('settings-currency');
     if (!select) return;
 
     await loadExchangeRates();
-    const fiatCodes = Object.keys(_exchangeRates.fiat || {}).sort();
-
-    const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'PLN', 'SEK', 'NOK', 'DKK', 'CZK', 'HUF', 'RON'];
+    const [popular, remaining] = partitionFiatCodes(_exchangeRates.fiat || {});
     const options = [];
 
     for (const code of popular) {
-      if (fiatCodes.includes(code)) {
-        options.push(`<option value="${code}"${code === _displayCurrency ? ' selected' : ''}>${code}</option>`);
-      }
+      options.push(`<option value="${code}"${code === _displayCurrency ? ' selected' : ''}>${code}</option>`);
     }
 
-    const remaining = fiatCodes.filter(c => !popular.includes(c));
     if (remaining.length > 0) {
       options.push('<option disabled>──────────</option>');
       for (const code of remaining) {
@@ -6913,6 +6933,7 @@ const CP = (() => {
 
   return {
     api,
+    partitionFiatCodes,
     checkForUpdate,
     toast,
     openModal,

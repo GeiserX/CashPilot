@@ -353,7 +353,9 @@ class TestStatusAndListEndpoints:
 
 class TestDeployEndpointErrors:
     def test_generic_exception_returns_500(self):
-        with patch("app.worker_api.orchestrator.deploy_raw", side_effect=Exception("boom")):
+        with (
+            patch("app.worker_api.orchestrator.deploy_raw", side_effect=Exception("boom")),
+        ):
             resp = _client().post(
                 "/api/containers/honeygain/deploy",
                 json={"image": "img"},
@@ -485,3 +487,70 @@ class TestLogsEndpoint:
         with patch("app.worker_api.orchestrator.get_service_logs", side_effect=RuntimeError("no docker")):
             resp = _client().get("/api/containers/honeygain/logs", headers=_auth())
         assert resp.status_code == 503
+
+
+@pytest.mark.parametrize("route", ["deploy", "deploy-checked"])
+def test_deploy_requires_the_current_id_for_a_replacement(route):
+    from types import SimpleNamespace
+
+    from docker.errors import NotFound
+
+    client = _client()
+    path = f"/api/containers/honeygain/{route}"
+    current = None
+    original = "a" * 64
+    successor = "b" * 64
+
+    def lookup(name):
+        assert name == "cashpilot-honeygain"
+        if current is None:
+            raise NotFound(name)
+        return SimpleNamespace(id=current)
+
+    def deploy(**kwargs):
+        nonlocal current
+        assert worker_api.route_gate.deploying("honeygain")._is_owned()
+        worker_api.orchestrator.require_deploy_target(
+            kwargs["expected_container"], None if current is None else lookup("cashpilot-honeygain")
+        )
+        current = original if current is None else successor
+        return current
+
+    docker = MagicMock()
+    docker.containers.get.side_effect = lookup
+    with (
+        patch.object(worker_api.orchestrator, "_get_client", return_value=docker),
+        patch.object(worker_api.orchestrator, "deploy_raw", side_effect=deploy),
+        patch.object(worker_api.lan_fence, "refresh_outside"),
+    ):
+        state = client.get("/api/containers/honeygain/deploy-checked", headers=_auth())
+        assert state.json() == {"exists": False, "expected_container": "none"}
+        first = client.post(path, json={"image": "img"}, headers=_auth())
+        assert first.status_code == 200
+        refused = client.post(path, json={"image": "img"}, headers=_auth())
+        assert refused.status_code == 409
+        assert refused.json()["detail"]["current_container"] == original
+
+        desktop = client.post(path, json={"image": "img", "replace_existing": True}, headers=_auth())
+        assert desktop.status_code == 409
+        assert desktop.json()["detail"]["current_container"] == original
+
+        state = client.get("/api/containers/honeygain/deploy-checked", headers=_auth())
+        assert state.json() == {"exists": True, "expected_container": original}
+        approved = {"image": "img", "expected_container": original}
+        assert client.post(path, json=approved, headers=_auth()).status_code == 200
+        replay = client.post(path, json=approved, headers=_auth())
+        assert replay.status_code == 409
+        assert replay.json()["detail"]["current_container"] == successor
+        assert current == successor
+
+
+def test_checked_deploy_inventory_fails_closed_if_docker_cannot_be_read():
+    with patch.object(worker_api.orchestrator, "_get_client", side_effect=RuntimeError("Docker offline")):
+        assert _client().get("/api/containers/honeygain/deploy-checked", headers=_auth()).status_code == 503
+
+
+def test_checked_routes_require_worker_auth():
+    path = "/api/containers/honeygain/deploy-checked"
+    assert _client().get(path).status_code == 401
+    assert _client().post(path, json={"image": "img"}).status_code == 401

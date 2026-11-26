@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -50,6 +51,13 @@ CRYPTO_IDS: dict[str, str] = {
     "ETC": "ethereum-classic",
     # Pearl mined by KRig. Kryptex account balances are credited in BTC.
     "PRL": "pearl-2",
+    # Coins unMineable pays out that are not already listed above. Any other
+    # coin is still tracked, in its own units, without a price.
+    "BNB": "binancecoin",
+    "DOGE": "dogecoin",
+    "LTC": "litecoin",
+    "SHIB": "shiba-inu",
+    "TRX": "tron",
 }
 
 CACHE_TTL = 900  # 15 minutes
@@ -193,6 +201,59 @@ async def fetch_daily_usd_prices(currency: str) -> dict[str, float]:
         # A timeout has an empty str(); name its class so the line says what failed.
         logger.warning("rate history for %s failed: %s", currency, str(exc) or type(exc).__name__)
         return {}
+
+
+class UnknownFiat(ValueError):
+    """Frankfurter has no daily rates for this currency and range."""
+
+
+async def fetch_daily_fiat_rates(currency: str, start: str, end: str) -> dict[str, float] | None:
+    """Return USD-to-fiat ECB rates by day, or None if the response is unusable."""
+    if currency == "USD":
+        return {start: 1.0}
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"https://api.frankfurter.dev/v1/{start}..{end}",
+                params={"from": "USD", "to": currency},
+            )
+        if response.status_code == 404:
+            raise UnknownFiat(currency)
+        response.raise_for_status()
+
+        payload = response.json()
+        if payload["base"] != "USD":
+            logger.warning("daily %s rates from Frankfurter refused: base is not USD", currency)
+            return None
+        rates = {}
+        for day, quoted in payload["rates"].items():
+            rate = quoted[currency]
+            if (
+                date.fromisoformat(day).isoformat() != day
+                or day > end
+                or isinstance(rate, bool)
+                or not isinstance(rate, (int, float))
+                or not math.isfinite(rate)
+                or rate <= 0
+            ):
+                logger.warning("daily %s rates from Frankfurter refused: bad rate or date", currency)
+                return None
+            rates[day] = float(rate)
+        # A quote from after the start cannot price the opening days.
+        if not rates or min(rates) > start:
+            logger.warning("daily %s rates from Frankfurter refused: they do not cover %s", currency, start)
+            return None
+        return rates
+    except UnknownFiat:
+        raise
+    except httpx.HTTPStatusError as exc:
+        logger.warning("daily %s rates from Frankfurter failed: HTTP %s", currency, exc.response.status_code)
+        return None
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError, OverflowError) as exc:
+        # The class only: an exception message can quote the response body.
+        logger.warning("daily %s rates from Frankfurter failed: %s", currency, type(exc).__name__)
+        return None
 
 
 def rates_stale() -> bool:

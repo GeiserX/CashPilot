@@ -35,12 +35,15 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io
+import json
 import re
 import tarfile
 import time
+from collections.abc import Callable, Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote_plus
 
 import yaml
 
@@ -65,6 +68,18 @@ LABEL_HELPER = "cashpilot.wallet-helper"
 GENERATE_TIMEOUT = 60
 
 _WORDLIST_FILE = Path(__file__).with_name("bip39_english.txt")
+_BIP39_LENGTHS = (12, 15, 18, 21, 24)
+_LEGACY_SIA_WORDLIST_FILE = Path(__file__).with_name("sia_legacy_english.txt")
+_LEGACY_SIA_BASE = 1626
+_LEGACY_SIA_LENGTHS = (28, 29)
+_LEGACY_SIA_WORD = re.compile(r"[a-z]{3,12}")
+_JSON_STRING_ESCAPES = re.compile(r'(?:\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))+')
+_PASTED_WORD_SEPARATOR = re.compile(r"\s*,\s+|\s+,\s*|\s+")
+
+
+def field_name(key: str) -> str:
+    """Compare wallet field names without case or separators."""
+    return re.sub(r"[^a-z0-9]", "", key.casefold())
 
 
 class WalletSeedError(Exception):
@@ -143,6 +158,90 @@ def normalize(phrase: Any) -> str:
     return " ".join(str(phrase or "").lower().split())
 
 
+def decode_phrase_text(text: str) -> str:
+    """Peel URL and JSON string escapes, including escapes inside other text."""
+    while True:
+        decoded = _JSON_STRING_ESCAPES.sub(lambda match: json.loads(f'"{match[0]}"'), unquote_plus(text))
+        if decoded == text:
+            return text
+        text = decoded
+
+
+def phrase_words(text: str) -> list[str]:
+    """Split text at every non-letter for exact matches against saved phrases."""
+    return "".join(char if char.isalpha() else " " for char in text.lower()).split()
+
+
+def contains_pasted_phrase(text: str) -> bool:
+    """Scan one value for a recovery phrase pasted as whitespace-separated words."""
+    # A comma can accompany whitespace. A bare comma stays part of its token.
+    words = _PASTED_WORD_SEPARATOR.split(text.lower())
+    return contains_bip39_phrase(words) or _contains_legacy_sia_phrase(words)
+
+
+def contains_bip39_phrase(words: Sequence[str]) -> bool:
+    """Check every BIP-39 length within each run of English BIP-39 words."""
+    if len(words) < _BIP39_LENGTHS[0]:
+        return False
+    wordlist = _wordlist()
+    return _contains_checked_phrase([wordlist.get(word, -1) for word in words], _BIP39_LENGTHS, _valid_checksum)
+
+
+@lru_cache(maxsize=1)
+def _legacy_sia_wordlist() -> dict[str, int]:
+    words = [line for line in _LEGACY_SIA_WORDLIST_FILE.read_text().splitlines() if line and not line.startswith("#")]
+    prefixes = {word[:3]: index for index, word in enumerate(words)}
+    if len(words) != _LEGACY_SIA_BASE or len(prefixes) != _LEGACY_SIA_BASE:
+        raise RuntimeError(f"{_LEGACY_SIA_WORDLIST_FILE.name} must hold {_LEGACY_SIA_BASE} words with unique prefixes")
+    return prefixes
+
+
+def _contains_legacy_sia_phrase(words: Sequence[str]) -> bool:
+    if len(words) < _LEGACY_SIA_LENGTHS[0]:
+        return False
+    wordlist = _legacy_sia_wordlist()
+    # siad recognizes the first three letters of each English word.
+    indices = [wordlist.get(word[:3], -1) if _LEGACY_SIA_WORD.fullmatch(word) else -1 for word in words]
+    return _contains_checked_phrase(indices, _LEGACY_SIA_LENGTHS, _valid_legacy_sia_checksum)
+
+
+def _contains_checked_phrase(
+    indices: Sequence[int], lengths: tuple[int, ...], valid_checksum: Callable[[Sequence[int]], bool]
+) -> bool:
+    run = 0
+    for end, index in enumerate(indices, 1):
+        run = run + 1 if index >= 0 else 0
+        for length in lengths:
+            if length > run:
+                break
+            if valid_checksum(indices[end - length : end]):
+                return True
+    return False
+
+
+def _valid_checksum(indices: Sequence[int]) -> bool:
+    bits = 0
+    for index in indices:
+        bits = (bits << 11) | index
+    checksum_bits = len(indices) * 11 // 33
+    entropy = (bits >> checksum_bits).to_bytes(len(indices) * 11 * 32 // 33 // 8, "big")
+    return hashlib.sha256(entropy).digest()[0] >> (8 - checksum_bits) == bits & ((1 << checksum_bits) - 1)
+
+
+def _valid_legacy_sia_checksum(indices: Sequence[int]) -> bool:
+    # entropy-mnemonics uses little-endian digits with values 1 through the base.
+    packed = 0
+    for index in reversed(indices):
+        packed = packed * _LEGACY_SIA_BASE + index + 1
+    data = bytearray()
+    while packed:
+        packed, byte = divmod(packed - 1, 256)
+        data.append(byte)
+    if len(data) != 38:
+        return False
+    return hashlib.blake2b(data[:32], digest_size=32).digest()[:6] == data[32:]
+
+
 def phrase_problem(phrase: str, words: int = 12) -> str | None:
     """Why ``phrase`` is not a valid BIP-39 phrase of ``words`` words, or None.
 
@@ -164,12 +263,7 @@ def phrase_problem(phrase: str, words: int = 12) -> str | None:
             + (" are not BIP-39 words." if many else " is not a BIP-39 word.")
             + " Check the spelling."
         )
-    bits = 0
-    for word in found:
-        bits = (bits << 11) | wordlist[word]
-    checksum_bits = words * 11 // 33
-    entropy = (bits >> checksum_bits).to_bytes(words * 11 * 32 // 33 // 8, "big")
-    if hashlib.sha256(entropy).digest()[0] >> (8 - checksum_bits) != bits & ((1 << checksum_bits) - 1):
+    if not _valid_checksum([wordlist[word] for word in found]):
         return "The words are all valid, but the phrase does not check out. One of them is probably wrong."
     return None
 

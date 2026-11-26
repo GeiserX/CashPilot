@@ -315,6 +315,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       return `<div class="economics-summary econ-break-even">Earns more than its electricity below <strong>${Number(be.price_per_kwh).toFixed(3)} ${esc(be.currency)}/kWh</strong>${yours}</div>`;
     };
 
+    const hasMinerWatts = (economics.lan_miners || []).some(miner => miner.watts >= 1);
     const rows = machines.map(m => {
       const losing = m.verdict === 'losing_money';
       const device = m.kind === 'device';
@@ -340,7 +341,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
                        data-slug="${esc(m.slug)}" value="${esc(m.watts)}">
               </label>
               <button class="btn btn-link" type="submit">Save</button>
-            </form>` : ''}
+            </form>${hasMinerWatts && m.gross_basis === 'accrued' ? `
+              <div class="economics-note">Use the miner readings above as a starting point. Enter the total wall draw for the miners that use this pool account.</div>` : ''}` : ''}
           </div>
         </div>`;
     }).join('');
@@ -446,6 +448,11 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const cid = esc(w.client_id || w.id);
       const flags = [
         isAndroid ? flag('plain', '', 'Android') : '',
+        sysInfo.device_type === 'desktop'
+          ? (w.url
+            ? flag('plain', 'CashPilot Desktop. You can deploy services to it and stop them from here. It runs the images its own catalog pins.', 'Desktop')
+            : flag('plain', 'CashPilot Desktop that only reports what runs on it: it sent no address to take commands at. To deploy to it from here, on its dashboard turn on &quot;can start and stop services on this computer&quot; and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address.', 'Desktop, reports only'))
+          : '',
         dockerLost
           ? flag('warn', 'This worker reports in but cannot reach Docker, so CashPilot cannot start, stop or see its containers. '
               + (sysInfo.docker_access === 'socket' ? 'Restart the worker container on that machine.'
@@ -515,7 +522,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
           </td>
         </tr>
         ${_isolation[w.id] && _isolation[w.id] !== 'running' ? `<tr class="worker-detail"><td colspan="7">${renderIsolation(_isolation[w.id])}</td></tr>` : ''}
-        ${isOnline && !isAndroid ? renderFence(w, sysInfo) : ''}`;
+        ${isOnline && !isAndroid ? renderFence(w, sysInfo) : ''}
+        ${renderMiners(w, sysInfo.miners)}`;
     }
     container.innerHTML = `
       <table class="fleet-table">
@@ -528,6 +536,70 @@ CASHPILOT_WORKER_NAME=server-name</code>
     for (const input of container.querySelectorAll('.power-unmetered')) {
       if (billingEdits.has(input.dataset.clientId)) input.checked = billingEdits.get(input.dataset.clientId);
     }
+  }
+
+  function renderMiners(worker, snapshot) {
+    if (!snapshot) return '';
+    const warnings = snapshot.errors.map(error => `<span class="flag flag-warn">${brk(error)}</span>`).join(' ');
+    const number = value => value.toLocaleString(undefined, {maximumSignificantDigits: 5});
+    const difficulty = value => {
+      const units = ['', 'k', 'M', 'G', 'T', 'P', 'E'];
+      const scale = value > 0 ? Math.min(units.length - 1, Math.max(0, Math.floor(Math.log10(value) / 3))) : 0;
+      return number(value / 1000 ** scale) + units[scale];
+    };
+    const devices = snapshot.devices.map(device => {
+      const elapsed = (Date.now() - Date.parse(device.read_at)) / 1000;
+      const ahead = elapsed < 0;
+      const stale = worker.status !== 'online' || ahead || elapsed > 180;
+      const state = stale ? 'unknown' : device.ok ? 'ok' : 'fail';
+      const status = stale ? 'Stale' : device.ok ? 'Reading' : 'Read failed';
+      const clock = ahead ? 'Reading time is ahead of this browser'
+        : `${stale ? 'Last read' : 'Read'} ${Math.floor(elapsed)} s ago`;
+      const when = `<span title="${esc(device.read_at)}">${esc(clock)}</span>`;
+      const label = [device.target, device.model, device.firmware].filter(Boolean).map(brk).join(' · ');
+      const values = [];
+      if (device.ok) {
+        const ths = device.hashrate_ghs == null ? null : device.hashrate_ghs / 1000;
+        if (ths != null) values.push(`${esc(number(ths))} TH/s`);
+        if (device.hashrate_avg_ghs != null) {
+          values.push(`${esc(number(device.hashrate_avg_ghs / 1000))} TH/s avg`);
+        }
+        if (device.watts != null) {
+          const powerNote = device.protocol === 'axeos'
+            ? 'Reported by the device: DC at the board, before power-supply loss.'
+            : 'Power reported by the device.';
+          values.push(`<span title="${powerNote}">${esc(number(device.watts))} W</span>`);
+          const efficiency = device.watts / ths;
+          if (ths > 0 && Number.isFinite(efficiency)) values.push(`${esc(number(efficiency))} J/TH`);
+        }
+        if (device.temp_c != null) values.push(`${esc(number(device.temp_c))} °C`);
+        if (device.vr_temp_c != null) values.push(`${esc(number(device.vr_temp_c))} °C regulator`);
+        if (device.best_diff != null) {
+          values.push(`Best ${esc(difficulty(device.best_diff))}`);
+        }
+        const pool = device.pool_url && device.pool_url.split('://')[1];
+        if (pool) values.push(`Pool ${brk(pool)}`);
+        if (device.pool_user) values.push(`User ${brk(device.pool_user)}`);
+        if (device.uptime_s != null) {
+          const hours = Math.floor(device.uptime_s / 3600);
+          const minutes = Math.floor(device.uptime_s % 3600 / 60);
+          const seconds = device.uptime_s % 60;
+          const uptime = hours ? `${hours} h ${minutes} m` : minutes ? `${minutes} m ${seconds} s` : `${seconds} s`;
+          values.push(`Up ${esc(uptime)}`);
+        }
+      } else {
+        values.push(esc(device.error));
+      }
+      values.push(when);
+      return `<li${stale ? ' class="muted"' : ''}>
+        <span class="cell cell-${state}" role="img" aria-label="${status}"></span> ${label}
+        <div class="cell-sub">${values.join(' · ')}</div>
+      </li>`;
+    }).join('');
+    return `<tr class="worker-detail"><td colspan="7">
+      <div class="detail-label">Miners this worker reads</div>
+      ${warnings}${devices ? `<ul class="worker-miner-list">${devices}</ul>` : snapshot.read_at ? '' : 'Waiting for the first reading'}
+    </td></tr>`;
   }
 
   // Turning isolation on, per worker id: {busy}, {done}, or {error}.
@@ -609,8 +681,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
     _fenceSwitch[workerId] = { busy: `Moving ${service} behind the fence…` };
     loadFleet();
     try {
-      // An empty body redeploys from the recorded spec; a fence-gated service lands on the fenced bridge.
-      await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: {} });
+      // Redeploy from the recorded spec. A fence-gated service lands on the fenced bridge.
+      await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: { replace_existing: true } });
       _movedBehindFence.add(`${workerId}:${slug}`);
       _fenceSwitch[workerId] = { done: `${service} was redeployed behind the fence.` };
     } catch (err) {
@@ -646,8 +718,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       _fenceSwitch[workerId] = { busy: `Moving ${slug} (${i + 1} of ${slugs.length})…` };
       loadFleet();
       try {
-        // An empty body redeploys from the recorded spec, onto the new network.
-        await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: {} });
+        // Redeploy from the recorded spec onto the new network.
+        await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: { replace_existing: true } });
         moved.push(slug);
       } catch (err) {
         failed.push(`${slug} (${err.message})`);

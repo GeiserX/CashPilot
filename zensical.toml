@@ -50,6 +50,7 @@ nav = [
       { "App stores" = "app-stores.md" },
       { "How it works" = "how-it-works.md" },
       { "Money waiting: reminders" = "reminders.md" },
+      { "Income export for taxes" = "income-export.md" },
       { FAQ = "faq.md" },
       { "How CashPilot compares" = "comparison.md" },
       { "Moving from another tool" = [
@@ -126,6 +127,7 @@ nav = [
           { "Kryptex Pool (Pearl)" = "guides/kryptex-pearl.md" },
           { OCEAN = "guides/ocean.md" },
           { SupportXMR = "guides/supportxmr.md" },
+          { "unMineable (CPU mining, paid in your coin)" = "guides/unmineable.md" },
           { "XMRig (Monero CPU mining)" = "guides/xmrig.md" },
         ] },
     ] },
@@ -133,6 +135,7 @@ nav = [
   { Configuration = [
       { "Configuration reference" = "configuration.md" },
       { "Multi-node fleet management" = "fleet.md" },
+      { "LAN miner readings" = "mining-devices.md" },
       { "Running on ARM" = "arm.md" },
       { "Custom services" = "custom-services.md" },
       { "Proxied copies" = "proxies.md" },

@@ -361,11 +361,7 @@ class TestTheWorkerDeployRoute:
         Deployed direct beside it, the same account would run from the box's IP and the proxy's.
         """
         route_gate.mark("honeygain", 3)
-        copy = MagicMock()
-        copy.name = proxy_tunnel.earner_name("honeygain", 3)
-        copy.labels = {LABEL_MANAGED: "true", "cashpilot.service": "honeygain", "cashpilot.proxy": "3"}
-        worker.docker.containers.get.side_effect = None
-        worker.docker.containers.get.return_value = copy
+        (copy,) = _copies_on(worker.docker, (3, "honeygain"))
         approval = step_up.sign(WORKER_KEY, step_up.ACTION_LEAVE_ROUTE, "honeygain")
         resp = worker("POST", "/api/containers/honeygain/deploy", {**BODY, "route_approval": approval})
         assert resp.status_code == 409, resp.text
@@ -454,7 +450,7 @@ class TestTheWorkerProxiedRoutes:
         """The real proxy_tunnel.deploy, which picks the tunnel under its lock, with no Docker below it."""
         seen = {}
 
-        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
+        def deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
             seen["own_tunnel"] = own_tunnel
             seen["marked_first"] = route_gate.routed().get(slug)
             if isinstance(outcome, Exception):
@@ -760,7 +756,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copy_made = threading.Event()
         copies = []
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
             if threading.current_thread() is routed_thread:
                 raise RuntimeError("tunnel did not start")
             copies.append(own_tunnel)
@@ -821,7 +817,9 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(
             proxy_tunnel,
             "_deploy",
-            lambda slug, pid, earner, proxy, own_ip, *, own_tunnel, deadline: make(slug, pid, own_tunnel),
+            lambda slug, pid, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None: make(
+                slug, pid, own_tunnel
+            ),
         )
         # A start of a copy whose tunnel is gone rebuilds it by the route it reads.
         monkeypatch.setattr(
@@ -880,7 +878,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copies = []
         copy_done = threading.Event()
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
             if threading.current_thread() is routed_thread:
                 raise RuntimeError("tunnel did not start")
             copies.append(own_tunnel)
@@ -916,7 +914,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         copy_made = threading.Event()
         copies = []
 
-        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline):
+        def tunnel_deploy(slug, proxy_id, earner, proxy, own_ip, *, own_tunnel, deadline, expected_container=None):
             copies.append(own_tunnel)
             copy_made.set()
             return {"container_id": "c"}
@@ -931,7 +929,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
         monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
         monkeypatch.setattr(orchestrator, "deploy_raw", deploy_raw)
-        assert worker_api._deploy_direct(slug="honeygain", leave_route=True) == "direct-id"
+        assert worker_api._deploy_direct(slug="honeygain", instance=1, leave_route=True) == "direct-id"
         assert copy_made.wait(5)
         assert route_gate.routed() == {}
         assert copies == [False]  # never a tunnel of its own that no route covers
@@ -953,7 +951,8 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
         monkeypatch.setattr(orchestrator, "deploy_raw", deploy_raw)
         assert (
-            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", leave_route=True) == "direct-id"
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", instance=1, leave_route=True)
+            == "direct-id"
         )
         assert held_at == {"pull": False, "deploy": False}
         assert route_gate.routed() == {}
@@ -977,7 +976,8 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         client.images.pull.side_effect = lambda image: steps.append(("pull", image))
         client.containers.run.side_effect = lambda **kw: steps.append("run") or MagicMock(id="direct-id")
         assert (
-            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", leave_route=True) == "direct-id"
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:1", instance=1, leave_route=True)
+            == "direct-id"
         )
         assert steps == [("pull", "honeygain/honeygain:1"), "run"]
 
@@ -996,7 +996,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         client.images.pull.side_effect = ImageNotFound("manifest for honeygain/honeygain:typo not found")
         client.images.get.side_effect = ImageNotFound("No such image: honeygain/honeygain:typo")
         with pytest.raises(orchestrator.ContainerRuntimeError) as err:
-            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:typo", leave_route=True)
+            worker_api._deploy_direct(slug="honeygain", image="honeygain/honeygain:typo", instance=1, leave_route=True)
         assert "manifest for honeygain/honeygain:typo not found" in str(err.value)
         assert client.images.pull.call_count == 1
         client.containers.run.assert_not_called()
@@ -1045,7 +1045,6 @@ class TestAWorkerThatStartsWithoutDocker:
             patch.object(worker_api.lan_fence, "guard", return_value={}),
             patch.object(worker_api.proxy_tunnel, "recover_moves", return_value=[]),
             patch.object(worker_api.proxy_tunnel, "sweep_test_tunnels", return_value=[]),
-            patch.object(worker_api, "_migrate_proxied"),
         ):
             asyncio.run(run())
         return hold.call_count
@@ -1365,6 +1364,25 @@ class TestTheUiDeploysARoute:
 
         error = _run(go)
         assert error.status_code == 409 and "too old" in str(error.detail)
+        assert ui.calls == []
+
+    def test_a_joined_desktop_is_not_called_too_old_for_a_route(self, db):
+        """A Desktop serves no /api/proxied routes: it adds routed copies in its own window."""
+        row = _worker_row(features=())
+        row["system_info"] = json.dumps({"device_type": "desktop", "egress_ip": "93.184.216.34"})
+        row["url"] = "http://192.168.1.30:8086"
+        ui = _Ui(row)
+
+        async def go():
+            pid = await ui.proxy()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            return exc.value
+
+        error = _run(go)
+        assert error.status_code == 409
+        assert "too old" not in str(error.detail)
+        assert "CashPilot Desktop" in str(error.detail) and "on that computer" in str(error.detail)
         assert ui.calls == []
 
 

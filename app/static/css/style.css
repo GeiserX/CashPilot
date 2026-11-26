@@ -1763,6 +1763,8 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .fleet-table .w-act .btn { white-space: nowrap; margin: 0 0 4px 4px; }
 .fleet-table .worker-off td { color: var(--text-muted); }
 .fleet-table .worker-detail td { background: none; padding: 0 0 12px 17px; }
+.worker-miner-list { list-style: none; padding: 0; margin: 4px 0 0; }
+.worker-miner-list li + li { margin-top: 8px; }
 .flag { font-size: var(--fs-1); margin-left: 8px; padding: 0 4px; border: 1px solid var(--border-light); border-radius: 2px; color: var(--text-secondary); font-weight: 400; }
 .flag-warn { color: var(--warning); border-color: var(--warning); }
 .flag-link { font-size: var(--fs-1); margin-left: 6px; }
@@ -1820,6 +1822,9 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .payout-critical-item { border: none; padding: 6px 0; }
 
 .payout-all .block-head { align-items: center; }
+
+.income-export-note { color: var(--text-secondary); font-size: var(--fs-2); margin: 8px 0 12px; }
+.income-export-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
 
 /* ----- Settings ----- */
 .settings-layout { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 36px; align-items: start; }
