@@ -8,7 +8,7 @@
 
 ## Description
 
-MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on blockchain technology. You earn MYST tokens by running a node that provides VPN, proxy, and data scraping services to users. Requires NET_ADMIN, SETUID and SETGID capabilities and a TUN device, which it uses inside its own network namespace on the fenced earner bridge. Includes a built-in web UI for node management. Works on both residential and VPS connections.
+MystNodes (Mysterium Network) is a decentralized VPN and proxy network built on blockchain technology. You earn MYST tokens by running a node that provides VPN, proxy, and data scraping services to users. Requires NET_ADMIN, SETUID and SETGID capabilities and a TUN device, which it uses inside its own network namespace on the fenced earner bridge. Includes a built-in web UI for node management. Works on both residential and VPS connections, but the referral bonus is paid only for nodes on a residential IP.
 
 ## Earning Estimates
 

@@ -49,7 +49,7 @@ Each device needs its own 64-character hex UUID. Make one with:
 cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1
 ```
 
-The API key is optional: it is shown on the main page of [peer.proxyrack.com](https://peer.proxyrack.com), and with it the container registers itself on your account.
+The API key is optional: it is shown on the main page of [peer.proxyrack.com](https://peer.proxyrack.com), and with it the container registers itself on your account. Need an account? Sign up with [peer.proxyrack.com](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn).
 
 ### 3. Deploy with CashPilot
 
@@ -57,7 +57,7 @@ In the CashPilot web UI, open **Catalog** and click **Add** on the **ProxyRack**
 
 ### 4. Link the device to your account
 
-Until the device is on your account it earns for nobody. Sign in to [peer.proxyrack.com](https://peer.proxyrack.com), open **Devices**, choose **Add device** and paste the UUID. If you entered an API key, the container registers itself. Check that the device is listed there anyway.
+Until the device is on your account it earns for nobody. Sign in to [peer.proxyrack.com](https://peer.proxyrack.com) (need an account? Sign up with [peer.proxyrack.com](https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn)), open **Devices**, choose **Add device** and paste the UUID. If you entered an API key, the container registers itself. Check that the device is listed there anyway.
 
 ## Docker Configuration
 

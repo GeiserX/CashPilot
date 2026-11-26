@@ -30,6 +30,11 @@ Monero address. Keep your wallet keys and recovery phrase in your wallet.
 4. Leave **Pool** set to MoneroOcean or enter another pool's host and port. For
    SupportXMR you can use `stratum+ssl://pool.supportxmr.com:9000`. Check its
    current fees and threshold in the [SupportXMR guide](supportxmr.md).
+   For another XMR option, add the [unMineable](unmineable.md) entry instead of
+   XMRig. It runs XMRig against
+   [unMineable](https://unmineable.com/?ref=awk6-j1z0), can pay you in XMR or
+   another coin, and charges a 0.75% fee with CashPilot's referral code.
+   <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 5. Set **Max CPU threads (%)**. CashPilot starts that share of the machine's
    CPU threads, rounded down and at least one. For example, 17% of 6 threads
    is 1 thread and 50% is 3. At 100, XMRig picks the count itself. The log
