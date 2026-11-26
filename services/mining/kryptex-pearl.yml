@@ -28,13 +28,13 @@ docker:
       required: true
       secret: false
       description: The verified email on your Kryptex account.
-      pattern: '[A-Za-z0-9_+%.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+      pattern: '[A-Za-z0-9_+%.\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'
     - key: WORKER_NAME
       label: Worker name
       required: true
       identifier: true
       description: Give each machine a distinct name in your Kryptex account.
-      pattern: '[A-Za-z0-9_-]{1,32}'
+      pattern: '[A-Za-z0-9_\-]{1,32}'
   volumes:
     - "kryptex-pearl-cache:/var/lib/krig"
   command: >-
@@ -50,7 +50,9 @@ mining:
 
 requirements:
   gpu: true
-  note: Linux amd64 and an NVIDIA GPU with NVIDIA Container Toolkit
+  note: >-
+    Linux amd64, an NVIDIA GPU from Volta (sm_70) or newer, and NVIDIA
+    Container Toolkit
   hosting_note: >-
     This machine reports a hosting connection. Check your provider's terms
     before mining. Some providers, including Hetzner Cloud, prohibit it.
