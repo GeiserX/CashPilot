@@ -9,9 +9,12 @@ description: >
   the pool balance and asks you to confirm payouts when the balance drops.
 short_description: Kaspa mining pool, tracked by your payout address
 
-# The Visit link opens the pool dashboard. Referral programme status is unconfirmed.
+# The Visit link opens the pool dashboard. No referral programme: HeroMiners has
+# no accounts to carry a code ("There is no account and no KYC on any of the
+# pools"), and its site, FAQ and help pages name none (checked 2026-11-26).
 referral:
   account: false
+  program: false
   signup_url: https://kaspa.herominers.com/?lang=en
 
 docker:
