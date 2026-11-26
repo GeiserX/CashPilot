@@ -4418,9 +4418,13 @@ const CP = (() => {
 
     // What you run, then what you could add. Within each, the catalog's
     // priority first (1 first, the services that pay the project best), then
-    // the rest by name: the same order as the API, the wizard and the README.
+    // the rest by category and name. Priority first matches the API, the
+    // wizard, the README and Desktop; the category-then-name tail matches
+    // Desktop exactly.
     const rank = x => (Number.isInteger(x.priority) ? x.priority : Infinity);
-    const byPriority = (x, y) => (rank(x) - rank(y)) || String(x.name).localeCompare(String(y.name));
+    const byPriority = (x, y) => (rank(x) - rank(y))
+      || String(x.category).localeCompare(String(y.category))
+      || String(x.name).localeCompare(String(y.name));
     const running = filtered.filter(x => x.deployed).sort(byPriority);
     const rest = filtered.filter(x => !x.deployed).sort(byPriority);
     const group = (label, rows) => rows.length

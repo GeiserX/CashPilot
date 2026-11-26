@@ -4,7 +4,8 @@
 services whose referral programme pays the project best. A later redesign of the
 Catalog page sorted both groups by name again, so Anyone Protocol and Bitping,
 which pay nothing, sat above Honeygain. The page has to keep the same order as
-the API, the setup wizard and the README: priority first, then by name.
+the API, the setup wizard, the README and Desktop: priority first, then the
+rest by category and name, as Desktop sorts them.
 
 filterCatalog runs in node against a stub DOM, with the real catalog as input.
 """
@@ -75,7 +76,7 @@ def _page_services() -> list[dict]:
 
 
 def _expected(services: list[dict]) -> list[str]:
-    key = lambda s: (*catalog.priority_key(s), str(s["name"]).lower())  # noqa: E731
+    key = lambda s: (*catalog.priority_key(s), s["category"], str(s["name"]).lower())  # noqa: E731
     return [s["slug"] for s in sorted(services, key=key)]
 
 
@@ -83,7 +84,7 @@ class TestTheRealCatalog:
     def test_honeygain_is_the_first_bandwidth_row(self):
         assert _groups(_page_services(), "bandwidth")["Not running"][0] == "honeygain"
 
-    def test_every_tab_lists_by_priority_then_name(self):
+    def test_every_tab_lists_by_priority_then_category_then_name(self):
         services = _page_services()
         for category in ["all", *sorted({s["category"] for s in services})]:
             shown = [s for s in services if category == "all" or s["category"] == category]
@@ -92,9 +93,9 @@ class TestTheRealCatalog:
 
 class TestBothGroups:
     ROWS = [
-        {"slug": "alpha", "name": "Alpha", "category": "bandwidth"},
+        {"slug": "alpha", "name": "alpha", "category": "bandwidth"},
         {"slug": "zeta", "name": "Zeta", "category": "bandwidth", "priority": 2},
-        {"slug": "beta", "name": "beta", "category": "bandwidth"},
+        {"slug": "beta", "name": "Beta", "category": "bandwidth"},
         {"slug": "mu", "name": "Mu", "category": "bandwidth", "priority": 1},
         {"slug": "omega", "name": "Omega", "category": "bandwidth", "priority": 3},
     ]
@@ -107,3 +108,11 @@ class TestBothGroups:
 
     def test_entries_without_a_priority_follow_by_name_whatever_the_case(self):
         assert _groups(self.ROWS)["Not running"] == ["mu", "zeta", "omega", "alpha", "beta"]
+
+    def test_the_all_tab_groups_entries_without_a_priority_by_category(self):
+        rows = [
+            {"slug": "aaa-miner", "name": "Aaa", "category": "mining"},
+            {"slug": "zzz-proxy", "name": "Zzz", "category": "bandwidth"},
+            {"slug": "top", "name": "Top", "category": "mining", "priority": 1},
+        ]
+        assert _groups(rows)["Not running"] == ["top", "zzz-proxy", "aaa-miner"]
