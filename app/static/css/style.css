@@ -603,6 +603,9 @@ img { max-width: 100%; }
 
 /* Smaller and muted, but next to the link it describes, never only in a footer. */
 .referral-note { margin: 12px 0; font-size: var(--fs-2); color: var(--text-muted); }
+.referral-code { margin: 12px 0 0; }
+.referral-code code { user-select: all; }
+.referral-code .btn { margin-left: 6px; }
 
 .instances-box {
   display: flex;
@@ -1719,7 +1722,7 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .detail-label { font-size: var(--fs-1); color: var(--text-muted); font-weight: 400; margin-bottom: 1px; }
 .detail-value { font-size: var(--fs-3); color: var(--text-primary); }
 .sd-links { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 16px; }
-.sd-links .referral-note { flex-basis: 100%; margin: 2px 0 0; }
+.sd-links .referral-note, .sd-links .referral-code { flex-basis: 100%; margin: 2px 0 0; }
 .sd-targets { margin: 12px 0; }
 .sd-actions { display: flex; gap: 8px; align-items: center; }
 .sd-status { font-size: var(--fs-2); color: var(--text-secondary); }

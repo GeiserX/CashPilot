@@ -176,6 +176,29 @@ def test_the_new_user_bonus_is_shown_next_to_the_sign_up_button():
     assert "service.referral.bonus.referee" in detail.split("Sign Up", 1)[1]
 
 
+def test_a_code_typed_by_hand_is_shown_with_a_copy_button_next_to_sign_up():
+    """Dawn's extension and Gradient's form never read the code from the link.
+
+    The note then names the code and offers a Copy button, in the app and on the
+    detail page, or every user who signs up from the app credits nobody.
+    """
+    note_fn = APP_JS[APP_JS.index("function referralNote(svc)") :]
+    note_fn = note_fn[: note_fn.index("\n  }\n")]
+    assert "ref.code_entry" in note_fn
+    assert 'data-action="copyText" data-a1="${escapeHtml(ref.code_entry)}"' in note_fn
+    detail = (ROOT / "app" / "templates" / "service_detail.html").read_text(encoding="utf-8")
+    after_sign_up = detail.split("Sign Up", 1)[1]
+    assert 'data-action="copyText" data-a1="{{ service.referral.code_entry }}"' in after_sign_up
+
+
+def test_every_typed_code_belongs_to_a_referral_code():
+    """A typed code with no referral code would ask users to type something unchecked."""
+    for svc in catalog.get_services():
+        ref = svc.get("referral") or {}
+        if ref.get("code_entry"):
+            assert ref["code_entry"] == ref.get("code"), f"{svc['slug']}: code_entry must equal referral.code"
+
+
 def test_the_detail_page_never_prints_na_for_a_missing_bonus():
     """A row of N/A hid the bonus where it existed and said nothing where it did not."""
     detail = (ROOT / "app" / "templates" / "service_detail.html").read_text(encoding="utf-8")

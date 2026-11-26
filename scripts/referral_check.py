@@ -11,6 +11,9 @@ The registry is three-valued, because absent is not "no":
     referral.code       the referral code itself. Its presence means the
                         provider has a program AND a code exists; the checker
                         proves the code still appears in signup_url.
+    referral.code_entry the code the user must type by hand, where the
+                        signup does not read it from the link. Optional;
+                        when present it must equal referral.code.
     referral.program    true  = provider verified to run a program
                               (with no code yet, that is an ACTION item)
                         false = provider verified NOT to run one
@@ -126,6 +129,21 @@ def audit(services: list[dict]) -> dict[str, list[str]]:
                 )
             if program is False:
                 errors.append(f"{slug}: has a referral.code but says program: false -- one of the two is wrong")
+
+        # The code a user types by hand where the link does not carry it. The UI
+        # shows this value with a Copy button, so a typo or a stale copy of an old
+        # code sends every hand-typed signup to nobody: it must BE the code.
+        entry = ref.get("code_entry")
+        if entry is not None:
+            if not isinstance(entry, str):
+                errors.append(
+                    f"{slug}: referral.code_entry must be a quoted string, got {type(entry).__name__} {entry!r}"
+                )
+            elif entry != code:
+                errors.append(
+                    f"{slug}: referral.code_entry {entry!r} must equal referral.code {code!r} -- "
+                    f"the UI asks users to type it, so any other value credits nobody"
+                )
 
         if svc.get("status") in EARNING_STATUSES and code is None:
             if not signup:

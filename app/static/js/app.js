@@ -3740,12 +3740,19 @@ const CP = (() => {
   // signup_url (no programme, or none found yet) is not a referral link.
   // The new user's bonus goes first when the catalog records one: it is the
   // reason to use this link at all, and it used to sit only on the detail page.
+  // Some signups never read the code from the link (Dawn's extension asks for
+  // it, Gradient's form ignores the URL): referral.code_entry is then the code
+  // to type, shown with a Copy button so a user who signs up here still
+  // credits the referral.
   function referralNote(svc) {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url) return '';
     const referee = ref.bonus && ref.bonus.referee;
     const bonus = referee ? `<strong>New-user bonus with this link:</strong> ${escapeHtml(referee)}. ` : '';
-    return `<p class="referral-note">${bonus}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>`;
+    const typed = ref.code_entry
+      ? `<p class="referral-code">When ${escapeHtml(svc.name)} asks for a referral code, type <code>${escapeHtml(ref.code_entry)}</code>. The link does not fill it in. <button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="${escapeHtml(ref.code_entry)}">Copy</button></p>`
+      : '';
+    return `${typed}<p class="referral-note">${bonus}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>`;
   }
 
   function collectorCredentialsNotice(slug) {
