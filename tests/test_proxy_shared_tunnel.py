@@ -4616,6 +4616,31 @@ class TestALegacyPairNeverStartsInATunnelThatRestartsByItself:
         assert clone.attrs["HostConfig"]["NetworkMode"] == f"container:{shared.id}" and clone.status == "running"
         assert proxy_tunnel.held() == set()
 
+    def test_a_pair_with_no_saved_id_is_never_moved_by_the_heartbeat(self, docker):
+        # A worker before 2.2.0 saved no container ID: the move is a replacement nobody approved.
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
+        _made_by_an_older_worker(legacy)
+        proxy_tunnel._forget_container("cashpilot-earnfm-p4")
+        earner = docker.named("cashpilot-earnfm-p4")
+        earner.stop()  # its own crash
+        starts = earner.starts
+        _heartbeat()
+        _heartbeat()
+        assert docker.named("cashpilot-earnfm-p4") is earner and earner.status == "exited"
+        assert earner.starts == starts and docker.tunnels() == [legacy]
+        assert legacy.id in proxy_tunnel._recovery_skipped
+
+    def test_a_start_with_no_settings_refuses_a_pair_with_no_saved_id(self, docker):
+        legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
+        _made_by_an_older_worker(legacy)
+        proxy_tunnel._forget_container("cashpilot-earnfm-p4")
+        proxy_tunnel.stop("earnfm", 4)
+        earner = docker.named("cashpilot-earnfm-p4")
+        with pytest.raises(orchestrator.DeployTargetChanged):
+            proxy_tunnel.start("earnfm", 4, None, None)
+        assert docker.named("cashpilot-earnfm-p4") is earner and earner.status == "exited"
+        assert all(not proxy_tunnel._is_shared(t) for t in docker.tunnels())
+
     def test_no_earner_start_reaches_docker_in_such_a_tunnel(self, docker):
         legacy = _legacy_pair(docker, "earnfm", proxy_id=4)
         _made_by_an_older_worker(legacy)

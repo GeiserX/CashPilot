@@ -46,8 +46,8 @@ with a link to the page for each part, and then
   [OCEAN](guides/ocean.md), [SupportXMR](guides/supportxmr.md),
   [HeroMiners Kaspa](guides/herominers-kas.md),
   [2Miners ETC](guides/2miners-etc.md) and unMineable from your public payout
-  address. It shows what your hashrate should earn next to what the pool
-  credited. [Mining](mining.md)
+  address. For OCEAN it also shows what your hashrate should earn next to what
+  the pool credited. [Mining](mining.md)
 - **Miners on your network.** Set `CASHPILOT_MINERS` on a worker, and Fleet
   shows the hashrate, temperature and power of Bitaxe (AxeOS) and cgminer
   devices. [LAN miner readings](mining-devices.md)
@@ -88,7 +88,9 @@ gives each miner its own GPU, and it notices when a grant is gone. A custom serv
   is needed to redeploy a running service, because it sends the confirmation
   that 3.0 asks for.
 - **[CashPilot for Android](https://github.com/GeiserX/CashPilot-android)** and
-  the Home Assistant integration need no update.
+  the Home Assistant integration need no update. Home Assistant shows every
+  balance in USD with 2 decimals, so read coin balances from a mining pool in
+  CashPilot.
 
 ## Upgrading from 2.x
 
@@ -128,12 +130,15 @@ has the details and the commands for each of these:
   deploys a service that uses a GPU.
 - A service that sets an `NVIDIA_` variable is refused until you remove it.
 - A proxied copy made before 3.0 asks you once to approve its containers.
-- Scripts that call `POST /api/deploy/{slug}` must confirm a replacement in a
-  second call.
+- Scripts must confirm in a second call before any route replaces a running
+  container: deploy, rename, device ID change and import-draft deploy. A
+  proxied copy's Start may also ask for its containers and a `group_approval`
+  in return.
 
 ### Rolling back
 
 3.0 adds one table to the database and changes no other, so 2.10.2 opens the
 same database. To go back, put back the 2.10 compose file on the UI host and
 on every worker host, and run `docker compose up -d --force-recreate` on each.
-Move the UI and every worker back together.
+Move the UI and every worker back together. 2.10.2 has no Mining catalog, so
+remove the mining services you deployed on 3.0 before you go back.

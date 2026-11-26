@@ -29,12 +29,16 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 on 2.x. The risk is a worker that reaches 3.0 before the UI. A 3.0 worker
 replaces a running container only when the UI confirms which container it
 replaces, and a 2.x UI cannot do that. So it refuses every redeploy, settings
-change, rename and proxied rebuild of a container that already runs. The 2.x
-UI shows the worker's answer: "This worker runs CashPilot v3.0.0 and replaces an
+change, rename and proxied rebuild of a container that already runs. It also
+refuses the Start of a proxied copy made before 3.0 when that Start must move
+the copy into a new tunnel. Such a copy has no saved container ID yet. It
+stays down, also when the traffic cap reset would start it again. The 2.x UI
+shows the worker's answer: "This worker runs CashPilot v3.0.0 and replaces an
 existing container only when the UI confirms which container it replaces, and
 this UI is too old to do that. Update the UI, then redeploy. Nothing was
-changed." The Fleet page marks that worker in amber, because it is on another
-release series.
+changed." For a Start, the answer ends in "then Start the copy again". The
+Fleet page marks that worker in amber, because it is on another release
+series.
 
 The other order works. A 3.0 UI still deploys to a 2.10 worker: it reads the
 running containers itself and asks you to approve a replacement.
@@ -68,9 +72,10 @@ and names the fix. Its status page and the dashboard's update card say the
 policy is out of date.
 
 **What to do.** Run the command the worker's status page shows. It rewrites
-only the policy block of your compose file. Check the diff, use the new file,
-then run `docker compose up -d --force-recreate cashpilot-socket-proxy
-cashpilot-worker`. Or take this release's compose file.
+only the policy block of your compose file and its `CASHPILOT_PROXY_POLICY`
+fingerprint lines. Check the diff, use the new file, then run
+`docker compose up -d --force-recreate cashpilot-socket-proxy cashpilot-worker`.
+Or take this release's compose file.
 
 ### The GPU lines in the worker's compose file are gone
 
@@ -101,15 +106,29 @@ CashPilot, or ask for a catalog entry.
 **Affects you if** a script or an AI agent calls the CashPilot API, or you use
 [cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp).
 
-- `POST /api/deploy/{slug}` no longer replaces a running container in one
-  call. That covers a redeploy and a change in the number of copies, because a
-  change in copies redeploys copy 1 first. A call that does not confirm gets
-  HTTP 409 `deploy_target_changed`.
+- No owner route replaces a running container in one call any more. These
+  routes now need a confirmation:
+  - `POST /api/deploy/{slug}`, for a redeploy or a change in the number of
+    copies (a change in copies redeploys copy 1 first)
+  - `POST /api/deploy/{slug}/device-names/copies`, the rename of proxied
+    copies
+  - `POST /api/identities/{id}/change`, a device ID change
+  - `POST /api/import/drafts/{slug}/deploy`, the deploy of an import draft
+- A call that does not confirm gets HTTP 409. The error is
+  `deploy_target_changed` for a 3.0 worker, and `confirm_deploy_targets` for a
+  joined Desktop or a 2.x worker. Handle both.
 - To confirm, send the call with `"replace_existing": true`. The answer is
   HTTP 409 with `"error": "confirm_deploy_targets"`, a `message` to show the
   owner, and `expected_containers`, the container ID of each copy. Send the
   same call again with that `expected_containers` object. The worker replaces
-  only those containers.
+  only those containers. The import-draft route takes no
+  `replace_existing`. It replaces a running container only when the call
+  sends `expected_containers`.
+- The Start of a proxied copy
+  (`POST /api/proxies/{proxy_id}/copies/{worker_id}/{slug}/start`) can answer
+  HTTP 409 with `"error": "confirm_proxy_start_targets"`,
+  `expected_containers` and `group_approval`. Send the Start again with both
+  fields as you got them.
 - `GET /api/workers` returns `watts` as a number or `null`. Before 3.0 it was a
   string, empty when not set. Each worker also has a new `unmetered` field.
 - `GET /api/earnings/breakdown` keeps 12 decimals instead of 4.
@@ -172,8 +191,15 @@ the Home Assistant integration with this server.
   [releases page](https://github.com/GeiserX/CashPilot-Desktop/releases).
 - **cashpilot-mcp 0.4.0 or later** is needed to redeploy a running service,
   because it sends the confirmation that 3.0 asks for.
+- CashPilot Desktop 2.0 has its own upgrade steps. Its pairing moves to a new
+  file once, so a later downgrade to 1.x needs a new join. When the server
+  refuses its key (HTTP 401), you must join again by hand. It also refuses
+  `NVIDIA_` variables, so a 1.x custom service that sets one cannot be
+  redeployed until you remove them.
 - The Android app and the Home Assistant integration talk to 3.0 as they did
-  to 2.x. They need no update.
+  to 2.x. They need no update. Home Assistant shows every balance in USD with
+  2 decimals, so a coin balance from a mining pool shows wrong there (0.0006
+  XMR shows as 0.00). Read coin balances in CashPilot.
 
 **What to do.** Upgrade this server to 3.0 before you upgrade a Desktop to
 2.0. Update cashpilot-mcp to 0.4.0.
@@ -183,7 +209,9 @@ the Home Assistant integration with this server.
 3.0 adds one table to the database and changes no other, so 2.10.2 opens the
 same database. To go back, put back the 2.10 compose file on the UI host and
 on every worker host, and run `docker compose up -d --force-recreate` on each.
-Move the UI and every worker back together.
+Move the UI and every worker back together. 2.10.2 has no Mining catalog, so
+remove the mining services you deployed on 3.0 before you go back. A container
+that got a GPU on 3.0 keeps it on 2.10.2 until something redeploys it.
 
 ---
 
