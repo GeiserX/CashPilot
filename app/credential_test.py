@@ -170,7 +170,8 @@ def message(
         if payout_address:
             return (
                 f"CashPilot could not verify this payout address with {service_name}. "
-                "Check it against the address your miner uses. If your miner is new, try again after it sends shares."
+                "Check it, and the coin if the pool asks for one, against what your miner uses. "
+                "If your miner is new, try again after it sends shares."
             )
         return (
             f"{service_name} rejected these credentials. If they are a browser cookie or token, "

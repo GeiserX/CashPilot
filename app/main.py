@@ -1499,12 +1499,13 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
     then never shown to anybody, which defeats the point of asking.
     """
     try:
-        previous = await database.get_latest_balance(result.platform)
+        # Another currency means the user switched coins: no drop to compare.
+        previous = await database.get_latest_balance(result.platform, result.currency)
         if previous is None:
             return None
         try:
             regained = payouts.balance_change(previous, result.balance)
-            withdrawn = await database.withdraw_recovered_payout(result.platform, regained)
+            withdrawn = await database.withdraw_recovered_payout(result.platform, regained, currency=result.currency)
         except Exception as exc:  # noqa: BLE001 - must never block detecting a new payout
             withdrawn = False
             logger.warning("Could not check %s for a recovered payout: %s", result.platform, exc)
@@ -1512,7 +1513,13 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
             # The drop was one bad reading, not a cashout: the question is taken back.
             logger.info("%s balance recovered; withdrew the probable payout question", result.platform)
             return None
-        probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform), result.currency)
+        probable = payouts.detect(
+            previous,
+            result.balance,
+            catalog.get_service(result.platform),
+            result.currency,
+            threshold=getattr(result, "payout_threshold", None),
+        )
         if not probable:
             return None
         payout_id = await database.record_probable_payout(
@@ -10503,7 +10510,11 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         balance = None if result.error else result.balance
         return credential_test.result(outcome, name, balance=balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
-    payout_address = (service.get("payout") or {}).get("address_source") == "collector"
+    # A pool read by public payout address, whether or not CashPilot also
+    # deploys its miner: there is no cookie or password to expire.
+    from app.collectors import _COLLECTOR_ARGS
+
+    payout_address = "address" in _COLLECTOR_ARGS.get(slug, [])
     return credential_test.result(outcome, name, payout_address=payout_address)
 
 
@@ -10750,6 +10761,10 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     # leaves the declared minimum alone.
     balance_currency = (history[-1].get("currency") if history else None) or None
     confirmed = await database.get_payouts(platform=slug, confirmed_only=True)
+    if balance_currency:
+        # A multi-coin pool after a coin switch: payouts in the old coin are
+        # not this balance's unit, so they cannot be added to it.
+        confirmed = [p for p in confirmed if (p.get("currency") or "USD").upper() == balance_currency.upper()]
     # A provider read node by node reports its own lifetime, settlements
     # included (issue #488); balance plus confirmed payouts would miss every
     # settlement, since none is ever asked about.
