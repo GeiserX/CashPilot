@@ -17,7 +17,8 @@ import re
 import secrets
 import sqlite3
 import time
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import AsyncIterator, Collection, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -1715,6 +1716,52 @@ def _earned_step(before: tuple[str, float, float | None], balance: float, earned
     return balance - before[1]
 
 
+@dataclass(frozen=True)
+class EarnedStep:
+    platform: str
+    source: str
+    since: str
+    date: str
+    currency: str
+    amount: float
+    rate: float | None
+
+
+class _EarnedSteps:
+    """Take native deltas between consecutive readings of each source."""
+
+    def __init__(self, *, priced_only: bool = True) -> None:
+        self.priced_only = priced_only
+        self.unpriced: set[str] = set()
+        self.previous: dict[tuple[str, str], tuple[str, float, float | None, str]] = {}
+
+    def feed(self, row: aiosqlite.Row) -> EarnedStep | None:
+        platform = row["platform"]
+        # Readings from before the source column belong to the server series.
+        source = row["source"] or "server"
+        series = (platform, source)
+        currency = (row["currency"] or "USD").upper()
+        rate = _usd_rate(currency, row["fx_rate_usd"])
+        if rate is None:
+            if _is_a_pricing_gap(currency):
+                self.unpriced.add(platform)
+            if self.priced_only:
+                self.previous.pop(series, None)
+                return None
+
+        balance = float(row["balance"] or 0.0)
+        earned = row["earned"]
+        day = row["date"]
+        before = self.previous.get(series)
+        self.previous[series] = (currency, balance, earned, day)
+        if before is None or before[0] != currency:
+            return None
+
+        # Clamp per source so a payout drop cannot cancel another source's gain.
+        amount = max(0.0, _earned_step(before[:3], balance, earned))
+        return EarnedStep(platform, source, before[3], day, currency, amount, rate)
+
+
 async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
     """USD earned per calendar date, summed across platforms.
 
@@ -1743,36 +1790,32 @@ async def _usd_earned_per_date(db: Any) -> tuple[dict[str, float], set[str]]:
         """
     )
     per_date: dict[str, float] = {}
-    # Keyed by (platform, SOURCE) for the same reason as get_earned_by_platform:
-    # two machines sampling one provider account interleave into a series whose
-    # deltas are meaningless, and every drop clamps to zero, so the total comes
-    # out understated while looking plausible.
-    previous: dict[tuple[str, str], tuple[str, float, float | None]] = {}
-    unpriced: set[str] = set()
+    steps = _EarnedSteps()
     for row in await cursor.fetchall():
-        platform = row["platform"]
-        # Absent source means a row written before the column existed; those
-        # were all this server's own, so they join the 'server' series rather
-        # than forming a phantom one.
-        series = (platform, (row["source"] or "server"))
-        currency = (row["currency"] or "USD").upper()
-        rate = _usd_rate(currency, row["fx_rate_usd"])
-        if rate is None:
-            previous.pop(series, None)
-            if _is_a_pricing_gap(currency):
-                unpriced.add(platform)
-            continue
-        balance = float(row["balance"] or 0.0)
-        earned = row["earned"]
-        before = previous.get(series)
-        if before is not None and before[0] == currency:
-            # Clamped per platform BEFORE summing: a payout drops one
-            # platform's balance, and an unclamped drop would cancel real
-            # earnings on another platform in the same day's total.
-            gained = max(0.0, _earned_step(before, balance, earned)) * rate
-            per_date[row["date"]] = per_date.get(row["date"], 0.0) + gained
-        previous[series] = (currency, balance, earned)
-    return per_date, unpriced
+        step = steps.feed(row)
+        if step is not None and step.rate is not None:
+            per_date[step.date] = per_date.get(step.date, 0.0) + step.amount * step.rate
+    return per_date, steps.unpriced
+
+
+async def iter_earned_steps(end: str | None = None) -> AsyncIterator[EarnedStep]:
+    """Read native earning steps in date order on a connection reserved for the export."""
+    query = "SELECT platform, date, balance, currency, fx_rate_usd, source, earned FROM earnings"
+    params = ()
+    if end is not None:
+        query += " WHERE date <= ?"
+        params = (end,)
+    query += " ORDER BY date, platform, source"
+    # Earlier readings supply the opening baseline. The live collector can
+    # commit on the shared connection while this cursor streams its snapshot.
+    steps = _EarnedSteps(priced_only=False)
+    async with aiosqlite.connect(f"{DB_PATH.resolve().as_uri()}?mode=ro", uri=True) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(query, params) as cursor:
+            async for row in cursor:
+                step = steps.feed(row)
+                if step is not None and step.amount > 0 and step.currency not in UNPRICED_BY_DESIGN:
+                    yield step
 
 
 async def get_earnings_dashboard_summary() -> dict[str, Any]:
@@ -4667,6 +4710,20 @@ async def get_payouts(platform: str | None = None, confirmed_only: bool = False)
         return [dict(r) for r in rows]
     finally:
         await db.close()
+
+
+async def iter_confirmed_payouts(start: str, end: str) -> AsyncIterator[aiosqlite.Row]:
+    """Stream confirmed payouts for the export, oldest first."""
+    async with aiosqlite.connect(f"{DB_PATH.resolve().as_uri()}?mode=ro", uri=True) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT platform, amount, currency, fx_rate_usd, method, detected_at "
+            "FROM payouts WHERE confirmed = 1 AND substr(detected_at, 1, 10) BETWEEN ? AND ? "
+            "ORDER BY detected_at, id",
+            (start, end),
+        ) as cursor:
+            async for row in cursor:
+                yield row
 
 
 async def get_confirmed_payout_totals() -> dict[str, float]:

@@ -51,6 +51,7 @@ nav = [
       { "How it works" = "how-it-works.md" },
       { "Money waiting: reminders" = "reminders.md" },
       { "On-chain payout balances" = "onchain.md" },
+      { "Income export for taxes" = "income-export.md" },
       { FAQ = "faq.md" },
       { "How CashPilot compares" = "comparison.md" },
       { "Moving from another tool" = [
