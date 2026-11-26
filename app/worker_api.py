@@ -2968,6 +2968,10 @@ async def api_remove_instance(request: Request, slug: str, instance: int) -> dic
     try:
         result = await asyncio.to_thread(orchestrator.remove_instance, slug, instance)
         return {"status": "removed", **result}
+    except orchestrator.ContainerNotFoundError as exc:
+        # A code, so the UI tells "this box has no such copy" from any other 404
+        # (an unknown route on an older worker, a proxy in between).
+        raise HTTPException(status_code=404, detail={"error": "copy_not_found", "message": str(exc)})
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:

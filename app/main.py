@@ -5276,10 +5276,13 @@ async def _deploy(
         try:
             removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
         except HTTPException as exc:
-            # 404: the worker has no such copy. The heartbeat that listed it is
-            # older than its removal (a scale-down that went through, a copy
-            # removed by hand), so it is gone, as a removal would leave it.
-            if exc.status_code != 404:
+            # The worker looked and has no such copy: the heartbeat that listed
+            # it is older than its removal (a scale-down that went through, a
+            # copy removed by hand), so it is gone, as a removal would leave it.
+            # Only its own copy_not_found says so. Any other 404 (no worker
+            # record, an older worker without the route, a proxy) proves
+            # nothing, so the deploy fails and the copy stays recorded.
+            if not _worker_copy_not_found(exc):
                 raise
             removed = None
         deleted.add(n)
@@ -7493,6 +7496,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "route_unknown",
         # A failed routed deploy whose earner may still run (app/worker_api.py).
         "routed_copy_may_exist",
+        # The scale-down found no such copy on the box (app/worker_api.py).
+        "copy_not_found",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -7562,6 +7567,12 @@ def _worker_refusal_text(resp: Any, sent: dict[str, Any] | None) -> str | None:
     if len(text) > _WORKER_TEXT_MAX:
         text = text[: _WORKER_TEXT_MAX - 1].rstrip() + "\u2026"
     return text
+
+
+def _worker_copy_not_found(exc: HTTPException) -> bool:
+    """The worker's own answer that it has no such copy of the service."""
+    detail = exc.detail
+    return exc.status_code == 404 and isinstance(detail, dict) and detail.get("error") == "copy_not_found"
 
 
 def _worker_failure_text(status: int) -> str:
