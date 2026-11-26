@@ -183,7 +183,10 @@ def _worker_client():
 
 
 def _worker_deploy(spec: dict, **patches):
-    with patch("app.worker_api._verify_api_key"), patch("app.worker_api.orchestrator.deploy_raw", **patches):
+    with (
+        patch("app.worker_api._verify_api_key"),
+        patch("app.worker_api.orchestrator.deploy_raw", **patches),
+    ):
         return _worker_client().post("/api/containers/honeygain/deploy", json=spec)
 
 

@@ -609,8 +609,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
     _fenceSwitch[workerId] = { busy: `Moving ${service} behind the fence…` };
     loadFleet();
     try {
-      // An empty body redeploys from the recorded spec; a fence-gated service lands on the fenced bridge.
-      await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: {} });
+      // Redeploy from the recorded spec. A fence-gated service lands on the fenced bridge.
+      await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: { replace_existing: true } });
       _movedBehindFence.add(`${workerId}:${slug}`);
       _fenceSwitch[workerId] = { done: `${service} was redeployed behind the fence.` };
     } catch (err) {
@@ -646,8 +646,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       _fenceSwitch[workerId] = { busy: `Moving ${slug} (${i + 1} of ${slugs.length})…` };
       loadFleet();
       try {
-        // An empty body redeploys from the recorded spec, onto the new network.
-        await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: {} });
+        // Redeploy from the recorded spec onto the new network.
+        await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: { replace_existing: true } });
         moved.push(slug);
       } catch (err) {
         failed.push(`${slug} (${err.message})`);

@@ -34,6 +34,19 @@ def schema_path():
 
 
 @pytest.fixture(autouse=True)
+def _worker_deploy_inventory(request, monkeypatch):
+    """Most controller tests mock the deploy transport and have no live worker inventory."""
+    if request.node.get_closest_marker("real_worker_deploy_inventory"):
+        return
+    from app import main
+
+    async def target(worker_id, slug, instance=1, proxy_id=None):
+        return ("none", False) if proxy_id is None else ("none", True)
+
+    monkeypatch.setattr(main, "_worker_deploy_target", target)
+
+
+@pytest.fixture(autouse=True)
 def _no_custom_images(request):
     """No worker runs a custom image, unless a test asks for the real lookup.
 
