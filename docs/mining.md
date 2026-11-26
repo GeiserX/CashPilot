@@ -1,6 +1,6 @@
 # Mining
 
-Use the catalog's **Mining** section to deploy [XMRig](guides/xmrig.md) or [unMineable](guides/unmineable.md) on your own CPU, or track a pool you already use. To track a pool, give CashPilot your public payout address. CashPilot reads the unpaid balance the pool holds for you.
+Use the catalog's **Mining** section to deploy [XMRig](guides/xmrig.md) or [unMineable](guides/unmineable.md) on your own CPU or [SRBMiner-Multi](guides/srbminer-multi.md) on an NVIDIA GPU, or track a pool you already use. To track a pool, give CashPilot your public payout address. CashPilot reads the unpaid balance the pool holds for you.
 
 | Pool | Coin | Guide |
 |---|---|---|
