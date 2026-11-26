@@ -112,19 +112,21 @@ def counts() -> dict[str, int]:
     every = catalog.get_services()
     live = _live()
     status = [str(s.get("status")) for s in every]
+    mining = _selected(MINING)
+    hosted_miners = sum(_is_dockerable(s) for s in mining)
     out = {
         "catalogued": len(every),
         "live": len(live),
         "active": status.count("active"),
         "beta": status.count("beta"),
         "retired": sum(st in {"broken", "dead", "dropped"} for st in status),
-        "docker": len(_selected(DOCKER)),
+        "docker": len(_selected(DOCKER)) + hosted_miners,
         "extension": len(_selected(EXTENSION)),
         "gpu": len(_selected(GPU)),
-        "mining": len(_selected(MINING)),
+        "mining_pools": len(mining) - hosted_miners,
         "collectors": len(COLLECTOR_MAP),
     }
-    out["tracked"] = out["extension"] + out["gpu"] + out["mining"]
+    out["tracked"] = out["extension"] + out["gpu"] + out["mining_pools"]
     for category in ("bandwidth", "depin", "compute", "storage", "mining"):
         out[category] = sum(s.get("category") == category for s in live)
     return out

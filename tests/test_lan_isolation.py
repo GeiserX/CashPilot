@@ -173,7 +173,17 @@ class TestEndpoints:
     def test_deploy_risk_for_a_storage_node_has_no_attribution_notice(self):
         from app import main
 
-        assert self._call(main.api_deploy_risk, "storj")["attribution"] is None
+        risk = self._call(main.api_deploy_risk, "storj")
+        assert risk["attribution"] is None
+        assert risk["mining"] is None
+
+    def test_deploy_risk_shows_the_fee_before_deploying_xmrig(self):
+        from app import main
+
+        risk = self._call(main.api_deploy_risk, "xmrig")
+        assert risk["mining"]["dev_fee_percent"] == 1
+        assert risk["mining"]["dev_fee_source"].endswith("/src/donate.h")
+        assert "MoneroOcean" in risk["mining"]["pool_fee_note"]
 
     def test_an_unknown_service_is_a_404(self):
         from fastapi import HTTPException

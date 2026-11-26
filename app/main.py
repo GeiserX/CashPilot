@@ -4791,11 +4791,23 @@ async def _deploy(
     # operator relocating a mount, which is how a redeploy moves a node off the
     # directory that holds its identity.
     catalog_defaults = {var["key"]: str(var.get("default", "")) for var in docker_conf.get("env", [])}
+    # Mining forms show public defaults as placeholders. A posted value for
+    # one of these controls was entered, even when it resets to the default.
+    miner_defaults = {
+        var["key"]
+        for var in docker_conf.get("env", [])
+        if catalog.mining_facts(svc)
+        and var.get("default")
+        and "{hostname}" not in str(var["default"])
+        and not (var.get("secret") or var.get("identifier") or var.get("per_device"))
+    }
     # Stripped once and used stripped: "/mnt/s " is not a different path from
     # "/mnt/s", and sent as typed it becomes a host directory with a space in it.
     posted_env = {key: str(value).strip() for key, value in (body.env or {}).items()}
     typed_env = {
-        key: value for key, value in posted_env.items() if value and value != catalog_defaults.get(key, "").strip()
+        key: value
+        for key, value in posted_env.items()
+        if value and (key in miner_defaults or value != catalog_defaults.get(key, "").strip())
     }
 
     # A wallet seed kept in a file in the node's own volume (app/wallet_seed.py):
@@ -9569,6 +9581,8 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # says code reading "service" matched nothing in production while its tests
     # passed, which is precisely what happened here again.
     running = [c for c in statuses if egress.container_slug(c) and str(c.get("status", "")).lower() == "running"]
+    running_slugs = {egress.container_slug(container) for container in running}
+    running_miners = {slug for slug in running_slugs if slug and catalog.mining_facts(catalog.get_service(slug) or {})}
 
     # Group by WORKER and keep it that way through the watt calculation. Each
     # host pays its own idle draw, so collapsing a multi-host fleet into one
@@ -9584,10 +9598,15 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # electricity from a running total would be meaningless arithmetic.
     measured: set[str] = set()
     earned = await database.get_earned_by_platform(max(1, int(days)), measured=measured)
-    services = {platform: catalog.get_service(platform) or {} for platform in earned}
+    # Include running miners even when a separate pool reports their earnings.
+    platforms = [*earned, *sorted(running_miners - earned.keys())]
+    services = {platform: catalog.get_service(platform) or {} for platform in platforms}
     deployed_in_containers = {egress.container_slug(c) for c in statuses}
     external: set[str] = set()
-    if any(catalog.draws_device_power(service) for service in services.values()):
+    if any(
+        platform not in deployed_in_containers and catalog.draws_device_power(service)
+        for platform, service in services.items()
+    ):
         external = {
             d["slug"]
             for d in await database.get_deployments()
@@ -9642,10 +9661,13 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         for svc, w in host_watts.items():
             watts_by_service[svc] = watts_by_service.get(svc, 0.0) + w
 
+    # Only metered copies land in unread_metered_services, so a miner on a
+    # fixed-price worker is never here: it costs nothing, reading or not.
+    miners_without_cpu = unread_metered_services & running_miners
     rows = []
     break_even: dict[str, float] = {}
-    for platform, gross in earned.items():
-        service = services[platform]
+    for platform, service in services.items():
+        gross = earned.get(platform)
         gross_basis = _gross_basis(service)
         uses_device_power = catalog.draws_device_power(service) and (
             platform in external or (service.get("requirements") or {}).get("gpu") is True
@@ -9671,6 +9693,11 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             # The hosting copy has no per-kWh bill. The metered copy's
             # missing CPU reading still leaves the combined cost unknown.
             watts = None
+        elif platform in miners_without_cpu:
+            # A running miner draws power whether or not a pool has paid yet.
+            # Without its CPU reading on a metered machine the cost is unknown,
+            # never the 0 W that a missing reading would otherwise produce.
+            watts = None
         elif not watts_known:
             watts = None
         if watts is None:
@@ -9678,7 +9705,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         cost_attributable = watts_source == "entered" or machine_economics.per_service_is_meaningful(watts)
         # Whole-device watts can be charged directly. A CPU share below smart
         # plug resolution gives no per-service break-even. USD per kWh.
-        if cost_attributable and watts and platform in measured:
+        if gross is not None and cost_attributable and watts and platform in measured:
             break_even[platform] = round(float(gross) / (watts / 1000.0 * hours), 4)
         rows.append(
             {
@@ -9747,6 +9774,8 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         )
         if row["platform"] in break_even:
             row["break_even_price_per_kwh"] = break_even[row["platform"]]
+    if miners_without_cpu:
+        result["cost_unavailable_reason"] = "A running miner has no CPU reading, so its electricity cost is unknown."
     if not watts_known:
         result["watts_unavailable"] = True
         result["cost_unavailable_reason"] = (
@@ -10639,6 +10668,7 @@ async def api_deploy_risk(request: Request, slug: str) -> dict[str, Any]:
         "slug": slug,
         "attribution": lan_isolation.attribution_notice(service),
         "isolation": lan_isolation.assess(service),
+        "mining": catalog.mining_facts(service),
     }
 
 

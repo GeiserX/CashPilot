@@ -1,6 +1,6 @@
 # Mining
 
-The **Mining** section of the catalog is for crypto you mine with your own hardware. Today it tracks a pool you already mine on: you point your miner at the pool, give CashPilot the payout address, and CashPilot reads what the pool holds for you. CashPilot runs no miner for these entries.
+Use the catalog's **Mining** section to deploy [XMRig](guides/xmrig.md) on your own CPU or track a pool you already use. To track a pool, give CashPilot your public payout address. CashPilot reads the unpaid balance the pool holds for you.
 
 | Pool | Coin | Guide |
 |---|---|---|

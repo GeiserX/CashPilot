@@ -116,12 +116,13 @@ class TestTheWizardDoesNotPrefillATemplate:
     def test_a_template_is_still_shown_as_a_hint(self):
         """Hiding it entirely would lose the only clue about the format."""
         source = without_comments(APP_JS.read_text(encoding="utf-8"))
-        assert "defaultIsTemplate ? String(env.default)" in source
+        assert "showPlaceholder = defaultIsTemplate || minerDefault" in source
+        assert "showPlaceholder ? String(env.default)" in source
 
     def test_an_ordinary_default_is_still_prefilled(self):
         """The control: this must not empty every field in the wizard."""
         source = without_comments(APP_JS.read_text(encoding="utf-8"))
-        assert "defaultIsTemplate ? '' : (env.default || '')" in source
+        assert "showPlaceholder ? '' : (env.default || '')" in source
 
 
 class TestTheCatalogStillContainsTheCaseThisIsAbout:

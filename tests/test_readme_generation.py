@@ -164,7 +164,7 @@ class TestGeneratedCounts:
     def test_the_counts_add_up(self):
         c = gen.counts()
         assert c["active"] + c["beta"] + c["retired"] == c["catalogued"]
-        assert c["docker"] + c["extension"] + c["gpu"] + c["mining"] == c["live"]
+        assert c["docker"] + c["tracked"] == c["live"]
         assert c["bandwidth"] + c["depin"] + c["compute"] + c["storage"] + c["mining"] == c["live"]
 
     def test_every_counted_doc_uses_markers_and_is_current(self):
