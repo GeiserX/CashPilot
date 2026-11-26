@@ -4,10 +4,12 @@ These routes proxy commands to workers via httpx, so we mock the httpx calls
 and the database layer.
 """
 
+import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import quote, quote_plus
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
@@ -15,6 +17,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app import catalog, database, wallet_seed
 from app.main import app
 
 
@@ -100,6 +103,429 @@ def _mock_httpx_resp(status_code=200, json_data=None):
     return resp
 
 
+class TestDesktopWalletDeploys:
+    _PHRASE_12 = "abandon " * 11 + "about"
+    _PHRASE_24 = "abandon " * 23 + "art"
+    # Round-8 offline fixtures generated and validated by siad and hostd.
+    _LEGACY_SIA = (
+        "orphans deepest spout owed symptoms lukewarm knowledge zesty eternal physics nomad jump across lodge "
+        "womanly axes yanks cocoa pairing pastry vivid itself nineteen ecstatic kickoff lending oxidant aloof adept"
+    )
+    _HOSTD_PHRASE = "cushion board east legend empty place lecture tongue retire repeat avoid acquire"
+    _LOCATION_TAGS = (
+        "airport,beach,bridge,canal,canyon,cave,city,cliff,coast,country,desert,farm,forest,garden,harbor,hill,island,"
+        "jungle,lake,meadow,mountain,ocean,park,river,road,school,ski,stadium,station,street,town,trail,valley,village"
+    )
+    _HOST_NAMES = _LOCATION_TAGS.split(",")[2:14]
+    _BAD_CHECKSUM = "people walk home before lunch then enjoy fresh bread near apple tree"
+    _LONG_TEXT = (
+        "The local community group meets near the river each Thursday. "
+        "Our volunteers prepare meals for anyone who needs one."
+    )
+    _HONEYGAIN_ENV = {"HONEYGAIN_EMAIL": "owner@example.test", "HONEYGAIN_PASSWORD": "test-password"}
+
+    @pytest.fixture(autouse=True)
+    def desktop_db(self, tmp_path):
+        with patch.object(database, "DB_DIR", tmp_path), patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"):
+            asyncio.run(database.init_db())
+            yield
+
+    @pytest.fixture
+    def worker_target(self):
+        worker = {
+            **_online_worker(2, url="http://192.168.1.30:8086"),
+            "client_id": "desk",
+            "system_info": json.dumps({"device_type": "desktop"}),
+        }
+        post = AsyncMock(return_value=_mock_httpx_resp(200, {"container_id": "c1"}))
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
+            patch("app.main._validate_worker_url", return_value=(worker["url"], None)),
+            patch("app.main.database.forget_env_value", new_callable=AsyncMock, return_value=(False, False)),
+            patch("app.main.database.prior_deployment_spec", new_callable=AsyncMock, return_value=None),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main.database.record_identities", new_callable=AsyncMock),
+            patch("app.main._spawn", lambda coro: coro.close()),
+            patch("httpx.AsyncClient.post", post),
+        ):
+            yield worker, post
+
+    @pytest.fixture
+    def fake_wallet_seed(self):
+        return " ".join(f"fake-test-word-{index}" for index in range(12))
+
+    @pytest.fixture
+    def hostd_env(self):
+        return {"HOSTD_API_PASSWORD": "test-password", "SIA_STORAGE_DIR": "/srv/sia"}
+
+    def _assert_wallet_refusal(self, response, post, fake_wallet_seed=None):
+        if fake_wallet_seed is not None:
+            seed_was_sent = any(fake_wallet_seed in json.dumps(call.kwargs["json"]) for call in post.await_args_list)
+            assert not seed_was_sent, "The web server sent the wallet seed to the Desktop"
+        assert not post.await_count, "The web server sent a request to the Desktop"
+        assert response.status_code == 409
+        assert "runs only on the machine that holds its wallet" in response.json()["detail"]
+
+    @pytest.mark.parametrize("source", ["posted", "recorded"])
+    def test_legacy_seed_never_reaches_desktop(self, client, worker_target, fake_wallet_seed, hostd_env, source):
+        _, post = worker_target
+        env = {**hostd_env, "HOSTD_WALLET_SEED": fake_wallet_seed}
+        recorded = {"env": env} if source == "recorded" else None
+        with patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded):
+            response = client.post("/api/deploy/sia-hostd?worker_id=2", json={"env": {} if recorded else env})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+
+    def test_wallet_choice_stays_off_desktop_even_if_it_advertises_support(self, client, worker_target, hostd_env):
+        worker, post = worker_target
+        worker["system_info"] = json.dumps({"device_type": "desktop", "features": ["wallet_seed_file"]})
+        response = client.post(
+            "/api/deploy/sia-hostd?worker_id=2", json={"env": hostd_env, "wallet_seed": {"mode": "generate"}}
+        )
+        self._assert_wallet_refusal(response, post)
+
+    @pytest.mark.parametrize(
+        ("slug", "field"),
+        [
+            ("sia-hostd", "env"),
+            ("sia-hostd", "wallet_seed"),
+            ("other-service", "env"),
+            ("other-service", "wallet_seed"),
+        ],
+    )
+    def test_raw_deploy_never_forwards_a_wallet_seed(self, client, worker_target, fake_wallet_seed, slug, field):
+        _, post = worker_target
+        spec = (
+            {"env": {"HOSTD_WALLET_SEED": fake_wallet_seed}}
+            if field == "env"
+            else {"wallet_seed": {"mode": "import", "phrase": fake_wallet_seed}}
+        )
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": slug, "spec": spec})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+
+    @pytest.mark.parametrize(
+        "field", ["HOSTD_WALLET_SEED", "hostd_wallet_seed", "HostD_Wallet_Seed", "hostd-wallet-seed"]
+    )
+    def test_raw_deploy_refuses_legacy_seed_key_spellings(self, client, worker_target, fake_wallet_seed, field):
+        _, post = worker_target
+        spec = {
+            "image": "honeygain/honeygain:latest",
+            "env": {
+                "HONEYGAIN_EMAIL": "owner@example.test",
+                "HONEYGAIN_PASSWORD": "test-password",
+                field: fake_wallet_seed,
+            },
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+
+    def test_raw_deploy_refuses_a_seed_in_fields_docker_strips(self, client, worker_target, fake_wallet_seed):
+        _, post = worker_target
+        spec = {"image": "honeygain/honeygain:latest", "env": {}, "approval": [{"walletSeed": fake_wallet_seed}]}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+        assert fake_wallet_seed not in response.text
+
+    def test_raw_deploy_refuses_a_valid_phrase_under_an_unrelated_key(self, client, worker_target):
+        _, post = worker_target
+        # Public BIP-39 test vector for zero entropy.
+        phrase = "abandon " * 11 + "about"
+        spec = {"image": "honeygain/honeygain:latest", "env": {"HONEYGAIN_PASSWORD": phrase}}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, phrase)
+        assert phrase not in response.text
+
+    @pytest.mark.parametrize(
+        "shape",
+        ["valid-24", "comma", "embedded", "newline", "tab", "valid-15", "valid-18", "valid-21"],
+    )
+    def test_raw_deploy_refuses_a_phrase_in_request_values(self, client, worker_target, shape):
+        _, post = worker_target
+        words = self._PHRASE_12.split()
+        assert wallet_seed.phrase_problem(self._PHRASE_12) is None
+        assert wallet_seed.phrase_problem(self._PHRASE_24, words=24) is None
+        env = dict(self._HONEYGAIN_ENV)
+        spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
+        env["HONEYGAIN_PASSWORD"] = {
+            "valid-24": self._PHRASE_24,
+            "comma": ", ".join(words),
+            "embedded": f"Example text: {self._PHRASE_12} (end of example)",
+            "newline": "\n".join(words),
+            "tab": "\t".join(words),
+            "valid-15": "abandon " * 14 + "address",
+            "valid-18": "abandon " * 17 + "agent",
+            "valid-21": "abandon " * 20 + "admit",
+        }[shape]
+        other_http = AsyncMock(side_effect=AssertionError("unexpected outbound HTTP"))
+        with patch("httpx.AsyncClient.send", other_http):
+            response = client.post(
+                "/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec}
+            )
+        other_http.assert_not_awaited()
+        assert (response.status_code, post.await_count) == (409, 0)
+        assert "abandon" not in response.text
+
+    @pytest.mark.parametrize("shape", ["hyphen", "split-fields", "split-list"])
+    def test_raw_deploy_refuses_a_saved_phrase_with_unusual_separators(self, client, worker_target, shape):
+        _, post = worker_target
+        asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", self._PHRASE_12))
+        words = self._PHRASE_12.split()
+        env = dict(self._HONEYGAIN_ENV)
+        spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
+        if shape == "hyphen":
+            env["HONEYGAIN_PASSWORD"] = "-".join(words)
+        elif shape == "split-fields":
+            env["HONEYGAIN_PASSWORD"] = " ".join(words[:6])
+            env["HONEYGAIN_DEVICE_NAME"] = " ".join(words[6:])
+        else:
+            spec["extra"] = words
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, self._PHRASE_12)
+        assert "abandon" not in response.text
+
+    def test_raw_deploy_checks_saved_phrase_in_the_serialized_body_order(self, client, worker_target):
+        _, post = worker_target
+        asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", self._PHRASE_12))
+        words = self._PHRASE_12.split()
+        spec = {"env": {"PASSWORD": " ".join(words[6:])}, "image": "fixture.invalid/" + "-".join(words[:6])}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, self._PHRASE_12)
+        assert "abandon" not in response.text
+
+    @pytest.mark.parametrize(
+        ("phrase", "shape"),
+        [
+            (_LEGACY_SIA, "url-encoded-comma"),
+            (_LEGACY_SIA, "json-escaped-newline"),
+            (_LEGACY_SIA, "json-escaped-tab"),
+            (_HOSTD_PHRASE, "url-encoded-comma"),
+            (_HOSTD_PHRASE, "json-escaped-newline"),
+            (_LEGACY_SIA, "nested-encodings"),
+        ],
+        ids=["sia-url", "sia-json-newline", "sia-json-tab", "hostd-url", "hostd-json", "nested-encodings"],
+    )
+    def test_desktop_refuses_an_encoded_saved_phrase(self, client, worker_target, caplog, phrase, shape):
+        _, post = worker_target
+        asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", phrase))
+        words = phrase.split()
+        value = {
+            "url-encoded-comma": "https://fixture.invalid/?note=" + quote(",".join(words), safe=""),
+            "json-escaped-newline": json.dumps({"note": "\n".join(words)}),
+            "json-escaped-tab": json.dumps({"note": "\t".join(words)}),
+            "nested-encodings": quote_plus(quote(json.dumps(json.dumps({"note": r"\u002b".join(words)})), safe="")),
+        }[shape]
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "NOTE": value},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, phrase)
+        assert all(secret not in response.text and secret not in caplog.text for secret in (phrase, value))
+
+    def test_desktop_refuses_a_saved_phrase_with_a_word_split_between_values(self, client, worker_target):
+        _, post = worker_target
+        asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", self._LEGACY_SIA))
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "PART_1": "Note%3A+or", "PART_2": self._LEGACY_SIA[2:]},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, self._LEGACY_SIA)
+
+    def test_desktop_refuses_an_unsaved_legacy_sia_phrase(self, client, worker_target):
+        _, post = worker_target
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "NOTE": f"Notes: {self._LEGACY_SIA} (end)"},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, self._LEGACY_SIA)
+
+    @pytest.mark.parametrize("source", ["credentials", "fleet", "current", "prior"])
+    def test_desktop_refuses_a_saved_phrase_even_with_an_invalid_checksum(self, client, worker_target, source):
+        _, post = worker_target
+        words = self._BAD_CHECKSUM.split()
+        saved = " / ".join(words).upper()
+        seed_key = "HOSTD_WALLET_SEED"
+        stored = {"env": {seed_key: saved}}
+        empty = {"env": {}}
+
+        async def save():
+            if source == "credentials":
+                await database.set_config(f"sia-hostd_{seed_key}", saved)
+            elif source == "fleet":
+                await database.save_deployment("sia-hostd", "old", spec=stored)
+            else:
+                await database.save_deployment("sia-hostd", "old", spec=stored, worker_id=1)
+                if source == "prior":
+                    await database.save_deployment("sia-hostd", "new", spec=empty, worker_id=1)
+                else:
+                    await database.save_deployment("sia-hostd", "another", spec=empty)
+
+        asyncio.run(save())
+        env = {
+            **self._HONEYGAIN_ENV,
+            "HONEYGAIN_PASSWORD": "Entry: " + "-".join(words[:6]),
+            "HONEYGAIN_DEVICE_NAME": ", ".join(words[6:]) + " (end)",
+        }
+        response = client.post("/api/deploy/honeygain?worker_id=2", json={"env": env})
+        self._assert_wallet_refusal(response, post)
+        assert words[0] not in response.text
+
+    @pytest.mark.parametrize(
+        ("slug", "env", "raw"),
+        [
+            ("honeygain", {**_HONEYGAIN_ENV, "HONEYGAIN_PASSWORD": _BAD_CHECKSUM}, True),
+            ("honeygain", {**_HONEYGAIN_ENV, "HONEYGAIN_PASSWORD": _LONG_TEXT}, False),
+            ("honeygain", {**_HONEYGAIN_ENV, "HONEYGAIN_PASSWORD": "abandon " * 10 + "about"}, True),
+            ("iproyal", {"IPROYALPAWNS_EMAIL": "owner@example.test", "IPROYALPAWNS_PASSWORD": _LONG_TEXT}, False),
+            ("packetstream", {"CID": "review-fixture"}, True),
+            ("traffmonetizer", {"TRAFFMONETIZER_TOKEN": "review-fixture"}, False),
+        ],
+    )
+    def test_desktop_accepts_ordinary_deploy_values(self, client, worker_target, slug, env, raw):
+        _, post = worker_target
+        assert all(word in wallet_seed._wordlist() for word in self._BAD_CHECKSUM.split())
+        assert "does not check out" in wallet_seed.phrase_problem(self._BAD_CHECKSUM)
+        if raw:
+            spec = {"image": catalog.get_service(slug)["docker"]["image"], "env": env}
+            response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": slug, "spec": spec})
+        else:
+            response = client.post(f"/api/deploy/{slug}?worker_id=2", json={"env": env})
+        assert (response.status_code, post.await_count) == (200, 1)
+        for key, value in env.items():
+            assert post.await_args.kwargs["json"]["env"][key] == value
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            ",".join(f"{name}01" for name in _HOST_NAMES),
+            ",".join(f"{name}.example.test" for name in _HOST_NAMES),
+            _LOCATION_TAGS,
+        ],
+        ids=["numbered-hostnames", "fqdn-list", "location-tags"],
+    )
+    def test_desktop_accepts_hostname_and_location_tag_lists(self, client, worker_target, value):
+        _, post = worker_target
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "NOTE": value},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        assert (response.status_code, post.await_count) == (200, 1)
+        assert post.await_args.kwargs["json"]["env"]["NOTE"] == value
+
+    @pytest.mark.parametrize("field", ["Env", "unexpected", "approval"])
+    def test_raw_desktop_deploy_requires_exact_schema_keys(self, client, worker_target, field):
+        _, post = worker_target
+        spec = {"image": "honeygain/honeygain:latest", "env": {}, field: {"HONEYGAIN_PASSWORD": "test-password"}}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        post.assert_not_awaited()
+        assert response.status_code == 422
+        assert "deploy request" in response.json()["detail"]
+        assert "test-password" not in response.text
+
+    def test_raw_desktop_deploy_accepts_the_desktop_fields(self, client, worker_target):
+        _, post = worker_target
+        spec = {"image": "honeygain/honeygain:latest", "env": {"EMAIL": "user@example.test"}, "instance": 1}
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        assert response.status_code == 200
+        post.assert_awaited_once()
+        assert post.await_args.kwargs["json"] == spec
+
+    @pytest.mark.real_worker_deploy_inventory
+    @pytest.mark.parametrize("raw", [False, True], ids=["canonical", "raw-command"])
+    def test_desktop_deploy_uses_legacy_route_and_requires_replacement_approval(self, client, worker_target, raw):
+        worker, post = worker_target
+        slug = "honeygain"
+        env = {**self._HONEYGAIN_ENV, "HONEYGAIN_DEVICE_NAME": "test-desktop"}
+        image = catalog.get_service(slug)["docker"]["image"]
+        spec = {"image": image, "env": env}
+        if raw:
+            path = "/api/workers/2/command"
+            body = {"command": "deploy", "slug": slug, "spec": {**spec, "instance": 1}}
+            spec = body["spec"]
+        else:
+            path = f"/api/deploy/{slug}?worker_id=2"
+            body = {"env": env}
+        first = "a" * 12
+        second = "b" * 12
+        other_copy = {"slug": slug, "instance": 2, "container_id": "c" * 12}
+
+        async def inventory(url, **kwargs):
+            assert url == f"{worker['url']}/api/containers"
+            rows = [other_copy]
+            if post.await_count:
+                rows.append({"slug": slug, "instance": 1, "container_id": first if post.await_count == 1 else second})
+            return _mock_httpx_resp(200, rows)
+
+        with patch("httpx.AsyncClient.get", side_effect=inventory) as get:
+            response = client.post(path, json=body)
+            assert response.status_code == 200, response.text
+            assert post.await_count == 1
+
+            response = client.post(path, json=body)
+            assert response.status_code == 409, response.text
+            detail = response.json()["detail"]
+            assert detail["error"] == "confirm_deploy_targets"
+            assert "Update CashPilot-Desktop" in detail["message"]
+            assert detail["expected_containers"] == {"1": first}
+            assert post.await_count == 1
+
+            if raw:
+                approved = {**body, "spec": {**spec, "expected_container": first}}
+            else:
+                approved = {**body, "expected_containers": detail["expected_containers"]}
+            response = client.post(path, json=approved)
+            assert response.status_code == 200, response.text
+
+            response = client.post(path, json=approved)
+            assert response.status_code == 409, response.text
+            assert response.json()["detail"]["current_container"] == second
+
+        assert get.await_count == 4
+        assert post.await_count == 2
+        for call in post.await_args_list:
+            assert call.args == (f"{worker['url']}/api/containers/{slug}/deploy",)
+            assert call.kwargs["json"] == spec
+
+    def test_fleet_copy_gets_the_wallet_refusal(self, client, worker_target):
+        _, post = worker_target
+        with patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"definition": {}, "state": {}}):
+            response = client.post("/api/proxies/1/copies", json={"worker_id": 2, "slug": "sia-hostd"})
+        self._assert_wallet_refusal(response, post)
+
+    def test_fleet_copy_cannot_forward_a_seed_recorded_under_another_slug(
+        self, client, worker_target, fake_wallet_seed
+    ):
+        worker, post = worker_target
+        worker["system_info"] = json.dumps({"device_type": "desktop", "features": ["proxy_tunnel"]})
+        recorded = {"image": "test", "env": {"HOSTD_WALLET_SEED": fake_wallet_seed}}
+        copy = {"worker_id": 2, "slug": "honeygain"}
+        with (
+            patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"definition": {}, "state": {}}),
+            patch("app.main.database.get_deployment_spec", new_callable=AsyncMock, return_value=recorded),
+            patch("app.main.database.list_proxied_copies", new_callable=AsyncMock, side_effect=[[], [copy]]),
+            patch("app.main.database.save_proxied_copy", new_callable=AsyncMock),
+            patch("app.main.database.delete_proxied_copy", new_callable=AsyncMock) as delete_copy,
+        ):
+            response = client.post("/api/proxies/1/copies", json={"worker_id": 2, "slug": "honeygain"})
+        self._assert_wallet_refusal(response, post, fake_wallet_seed)
+        delete_copy.assert_awaited_once_with(1, 2, "honeygain")
+
+    def test_older_docker_worker_still_receives_legacy_seed(self, client, worker_target, fake_wallet_seed, hostd_env):
+        worker, post = worker_target
+        worker["system_info"] = json.dumps({"docker_available": True, "features": []})
+        env = {**hostd_env, "HOSTD_WALLET_SEED": fake_wallet_seed}
+        response = client.post("/api/deploy/sia-hostd?worker_id=2", json={"env": env})
+        assert response.status_code == 200
+        post.assert_awaited_once()
+        spec = post.await_args.kwargs["json"]
+        assert spec["env"].get("HOSTD_WALLET_SEED") == fake_wallet_seed
+        assert "wallet_seed" not in spec
+
+
 # ---------------------------------------------------------------------------
 # Deploy route
 # ---------------------------------------------------------------------------
@@ -152,6 +578,39 @@ class TestApiDeploy:
 
         assert resp.status_code == 503, resp.text
         assert resp.json()["detail"] == message
+
+    def test_deploy_goes_to_a_desktop_that_takes_commands_with_its_own_key(self, client):
+        """A joined Desktop that reports a command URL is a box the server deploys to."""
+        desktop = {
+            **_online_worker(2, url="http://192.168.1.30:8086"),
+            "client_id": "desk",
+            "system_info": json.dumps({"device_type": "desktop", "arch": "x86_64"}),
+        }
+        sent = {}
+
+        async def post(self, url, json=None, params=None, headers=None, **kwargs):
+            sent.update(url=url, headers=headers, json=json)
+            return _mock_httpx_resp(200, {"status": "deployed", "container_id": "abc123def456"})
+
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=[desktop]),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=desktop),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.30:8086", None)),
+            patch("app.main.FLEET_API_KEY", "shared-key"),
+            patch("app.main.catalog.get_service", return_value={"slug": "honeygain", "docker": {"image": "test"}}),
+            patch("app.main.database.get_saved_wallet_phrases", new_callable=AsyncMock, return_value=set()),
+            patch("app.main.database.save_deployment", new_callable=AsyncMock),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("httpx.AsyncClient.post", post),
+        ):
+            resp = client.post("/api/deploy/honeygain?worker_id=2", json={})
+
+        assert resp.status_code == 200, resp.text
+        assert sent["url"] == "http://192.168.1.30:8086/api/containers/honeygain/deploy"
+        assert sent["headers"]["Authorization"] == "Bearer desk-key"
+        assert sent["json"] == {"image": "test", "env": {}}
 
     def test_deploy_success(self, client):
         svc = {
@@ -502,20 +961,20 @@ class TestApiDeploy:
             asyncio.run(main._proxy_worker_deploy(1, "storj", {}))
         assert proxy.call_args.kwargs["timeout"] == expected
 
+    @pytest.mark.real_worker_deploy_inventory
     @pytest.mark.parametrize("approve", [False, True], ids=["first-deploy", "approved-redeploy"])
     def test_dashboard_forwards_the_expected_container_only_for_this_request(self, client, approve):
         worker = _online_worker()
         slug = "demo"
         svc = {"slug": slug, "docker": {"image": "img"}}
-        send = AsyncMock(return_value={"container_id": "new"})
         save = AsyncMock()
         expected = "a" * 64 if approve else "none"
+        send = AsyncMock(side_effect=[{"expected_container": expected}, {"container_id": "new"}])
         body = {"expected_containers": {"1": expected}} if approve else {}
         with (
             _auth_owner(),
             patch("app.main.database.list_workers", AsyncMock(return_value=[worker])),
             patch("app.main.catalog.get_service", return_value=svc),
-            patch("app.main._worker_deploy_target", AsyncMock(return_value=("none", True))),
             patch("app.main._proxy_to_worker", send),
             patch("app.main.database.prior_deployment_spec", AsyncMock(return_value=None)),
             patch("app.main.database.save_deployment", save),
@@ -524,7 +983,10 @@ class TestApiDeploy:
         ):
             resp = client.post(f"/api/deploy/{slug}", json=body)
         assert resp.status_code == 200, resp.text
-        assert send.call_args.args == (1, "POST", "/api/containers/demo/deploy-checked")
+        assert [call.args for call in send.await_args_list] == [
+            (1, "GET", "/api/containers/demo/deploy-checked"),
+            (1, "POST", "/api/containers/demo/deploy-checked"),
+        ]
         assert send.call_args.kwargs["json"]["expected_container"] == expected
         assert "expected_container" not in save.call_args.kwargs["spec"]
 
@@ -959,6 +1421,44 @@ class TestServiceManagement:
         ):
             resp = client.post("/api/services/honeygain/stop")
             assert resp.status_code == 200
+
+    def test_stop_on_a_desktop_that_takes_commands_sends_its_own_key(self, client):
+        _, mock_client = self._setup_proxy()
+        desktop = {
+            **_online_worker(2, url="http://192.168.1.30:8086"),
+            "client_id": "desk",
+            "system_info": json.dumps({"device_type": "desktop"}),
+        }
+        with (
+            _auth_writer(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=desktop),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.30:8086", None)),
+            patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            resp = client.post("/api/services/honeygain/stop?worker_id=2")
+        assert resp.status_code == 200, resp.text
+        assert mock_client.post.call_args.args[0] == "http://192.168.1.30:8086/api/containers/honeygain/stop"
+        assert mock_client.post.call_args.kwargs["headers"]["Authorization"] == "Bearer desk-key"
+
+    def test_a_desktop_is_not_offered_the_docker_update(self, client):
+        desktop = {
+            **_online_worker(2, url="http://192.168.1.30:8086"),
+            "system_info": json.dumps({"device_type": "desktop"}),
+        }
+        send = AsyncMock()
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=desktop),
+            patch("app.main._proxy_to_worker", send),
+        ):
+            info = client.get("/api/update-info?worker_id=2")
+            update = client.post("/api/update?worker_id=2")
+        assert info.status_code == 409 and update.status_code == 409, (info.text, update.text)
+        assert "updates itself from its own app" in info.json()["detail"]
+        send.assert_not_awaited()
 
     def test_start_service(self, client):
         worker, mock_client = self._setup_proxy()

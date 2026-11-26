@@ -145,7 +145,7 @@ class TestTheDeployRouteSendsTheWorkerItsBuild:
         """Return (JSON the worker received, spec the dashboard recorded)."""
         sent = {}
 
-        async def _fake_hop(worker_id, method, path, *, json=None, params=None, timeout=30):
+        async def _fake_hop(worker_id, method, path, *, json=None, **kwargs):
             sent.update(json or {})
             return {"container_id": "abc123"}
 
@@ -200,7 +200,7 @@ class TestTheDeployRouteSendsTheWorkerItsBuild:
         worker = {"id": 1, "name": "w", "status": "online", "url": "http://10.0.0.2:8081"}
         sent = {}
 
-        async def _fake_hop(worker_id, method, path, *, json=None, params=None, timeout=30):
+        async def _fake_hop(worker_id, method, path, *, json=None, **kwargs):
             sent.update(json or {})
             return {"container_id": "abc123"}
 

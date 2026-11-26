@@ -17,7 +17,7 @@ import re
 import secrets
 import sqlite3
 import time
-from collections.abc import AsyncIterator, Collection, Mapping, Sequence
+from collections.abc import AsyncIterator, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -36,7 +36,7 @@ except ImportError as exc:  # pragma: no cover - only after an aiosqlite upgrade
     ) from exc
 from cryptography.fernet import Fernet, InvalidToken
 
-from app import catalog, themes, usage
+from app import catalog, themes, usage, wallet_seed
 from app.exchange_rates import HISTORY_DAYS, UNPRICED_BY_DESIGN
 
 _logger = logging.getLogger(__name__)
@@ -2275,6 +2275,54 @@ def _decode_spec(blob: str, slug: str) -> dict[str, Any] | None:
         _logger.warning("Recorded spec for %s is not valid JSON; falling back to the catalog", slug)
         return None
     return spec if isinstance(spec, dict) else None
+
+
+async def get_saved_wallet_phrases(fields: Collection[str]) -> set[str]:
+    """Read wallet fields across the owner's credentials and deployment records."""
+    db = await _get_db()
+    try:
+        # Read the fleet row and both worker versions in the same snapshot.
+        # Another worker may already have replaced the fleet copy of a seed.
+        cursor = await db.execute(
+            """
+            SELECT key AS name, value, 1 AS is_config FROM config
+            UNION
+            SELECT slug, spec_encrypted, 0 FROM deployments WHERE spec_encrypted <> ''
+            UNION
+            SELECT slug, env_vars_encrypted, 0 FROM deployments WHERE env_vars_encrypted <> ''
+            UNION
+            SELECT slug, spec_encrypted, 0 FROM deployment_specs
+            UNION
+            SELECT slug, prior_spec_encrypted, 0 FROM deployment_specs WHERE prior_spec_encrypted IS NOT NULL
+            """
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+
+    phrases: set[str] = set()
+    suffixes = tuple(fields)
+    for name, value, is_config in rows:
+        if is_config:
+            # Saved service credentials prefix their field with the service slug.
+            if value and wallet_seed.field_name(name).endswith(suffixes):
+                phrases.add(decrypt_value(value))
+        elif spec := _decode_spec(value, name):
+            phrases.update(_wallet_phrases_in_spec(spec, fields))
+    return phrases
+
+
+def _wallet_phrases_in_spec(value: Any, fields: Collection[str]) -> Iterator[str]:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if wallet_seed.field_name(key) in fields:
+                phrase = child.get("phrase") if isinstance(child, dict) else child
+                if isinstance(phrase, str) and phrase:
+                    yield phrase
+            yield from _wallet_phrases_in_spec(child, fields)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _wallet_phrases_in_spec(child, fields)
 
 
 async def get_deployments() -> list[dict[str, Any]]:
@@ -4554,7 +4602,9 @@ async def record_probable_payout(
         await db.close()
 
 
-async def withdraw_recovered_payout(platform: str, regained: float, within_hours: int = 24) -> bool:
+async def withdraw_recovered_payout(
+    platform: str, regained: float, within_hours: int = 24, currency: str | None = None
+) -> bool:
     """Delete a recent unconfirmed payout guess, and its alert, once the money came back.
 
     A provider that answers 0 (or a bad number) for one reading and then recovers
@@ -4570,16 +4620,22 @@ async def withdraw_recovered_payout(platform: str, regained: float, within_hours
     On the shared connection another task could commit between the two deletes
     (leaving an alert with no question behind it if the second one failed), and a
     rollback there would also throw away that task's unsaved work.
+
+    With ``currency``, only a question in that currency can be withdrawn: on a
+    multi-coin pool a rise of 500 SHIB says nothing about a 0.03 XMR payout.
     """
+    query = (
+        "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? AND detected_at >= datetime('now', ?)"
+    )
+    params: list[Any] = [platform, float(regained), f"-{int(within_hours)} hours"]
+    if currency is not None:
+        query += " AND UPPER(COALESCE(currency, 'USD')) = UPPER(?)"
+        params.append(currency or "USD")
     DB_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
         await db.execute("BEGIN IMMEDIATE")
         try:
-            cursor = await db.execute(
-                "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? "
-                "AND detected_at >= datetime('now', ?)",
-                (platform, float(regained), f"-{int(within_hours)} hours"),
-            )
+            cursor = await db.execute(query, params)
             withdrawn = cursor.rowcount > 0
             if withdrawn:
                 await db.execute("DELETE FROM alerts WHERE kind = 'payout' AND subject = ?", (platform,))
@@ -4961,22 +5017,29 @@ async def get_node_totals() -> dict[str, dict[str, Any]]:
         await db.close()
 
 
-async def get_latest_balance(platform: str) -> float | None:
+async def get_latest_balance(platform: str, currency: str | None = None) -> float | None:
     """The most recent recorded balance for a platform, or None if never seen.
 
     None matters: a first-ever reading has nothing to compare against, and
     treating an absent history as zero would make every initial collection look
     like a huge gain — or, for payout detection, make the first reading after a
     fresh install look like a drop.
+
+    With ``currency``, a latest reading in another currency is also None: a
+    multi-coin pool whose user switched coins has nothing comparable either.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT balance FROM earnings WHERE platform = ? ORDER BY date DESC, id DESC LIMIT 1",
+            "SELECT balance, currency FROM earnings WHERE platform = ? ORDER BY date DESC, id DESC LIMIT 1",
             (platform,),
         )
         row = await cursor.fetchone()
-        return float(row["balance"]) if row else None
+        if row is None:
+            return None
+        if currency is not None and (row["currency"] or "USD").upper() != (currency or "USD").upper():
+            return None
+        return float(row["balance"])
     finally:
         await db.close()
 
@@ -5221,12 +5284,15 @@ async def prior_deployment_spec(slug: str, worker_id: int, *, clear: bool = Fals
         await db.close()
 
 
-async def forget_env_value(slug: str, worker_id: int, key: str) -> None:
+async def forget_env_value(
+    slug: str, worker_id: int, key: str, *, confirmed_wallet_seed: str | None = None
+) -> tuple[bool, bool]:
     """Drop env var ``key`` from every record of ``slug`` on ``worker_id``: its spec, the one it replaced, and the fleet row.
 
-    For a value that must outlive no deploy (a wallet seed the node now keeps in
-    its own file, app/wallet_seed.py). The fleet row is rewritten only while it
-    describes this worker's deploy, which save_deployment just made it.
+    After a Docker deploy the node holds the seed in its file and save_deployment
+    just wrote this worker's fleet row. For a refused Desktop deploy, verify
+    fleet row ownership and that each seed matches the owner's supplied copy.
+    An empty confirmation keeps every nonempty seed. Returns (removed, retained).
 
     Encrypted with the key that sits next to the database, an old copy is as
     good as the value. So its own connection zeroes what the update replaces
@@ -5235,40 +5301,73 @@ async def forget_env_value(slug: str, worker_id: int, key: str) -> None:
     """
     db = await _activity_connect()
     try:
+        if confirmed_wallet_seed is not None:
+            # Keep the ownership check and the rewrites in one SQLite snapshot.
+            await db.execute("BEGIN IMMEDIATE")
         cursor = await db.execute(
             "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
             (slug, worker_id),
         )
         row = await cursor.fetchone()
+        removed = retained = False
         if row:
-            fresh = [
-                _without_env(row[column] or "", slug, key) for column in ("spec_encrypted", "prior_spec_encrypted")
-            ]
-            await db.execute(
-                "UPDATE deployment_specs SET spec_encrypted = COALESCE(?, spec_encrypted), "
-                "prior_spec_encrypted = COALESCE(?, prior_spec_encrypted) WHERE slug = ? AND worker_id = ?",
-                (*fresh, slug, worker_id),
-            )
-        cursor = await db.execute("SELECT spec_encrypted FROM deployments WHERE slug = ?", (slug,))
+            current, kept_current = _without_env(row["spec_encrypted"], slug, key, confirmed_wallet_seed)
+            prior, kept_prior = _without_env(row["prior_spec_encrypted"], slug, key, confirmed_wallet_seed)
+            retained = kept_current or kept_prior
+            if current is not None or prior is not None:
+                await db.execute(
+                    "UPDATE deployment_specs SET spec_encrypted = COALESCE(?, spec_encrypted), "
+                    "prior_spec_encrypted = COALESCE(?, prior_spec_encrypted) WHERE slug = ? AND worker_id = ?",
+                    (current, prior, slug, worker_id),
+                )
+                removed = True
+        cursor = await db.execute("SELECT container_id, spec_encrypted FROM deployments WHERE slug = ?", (slug,))
         fleet = await cursor.fetchone()
-        if fleet and (blob := _without_env(fleet["spec_encrypted"] or "", slug, key)) is not None:
-            await db.execute("UPDATE deployments SET spec_encrypted = ? WHERE slug = ?", (blob, slug))
+        if fleet and (
+            confirmed_wallet_seed is None or await _fleet_spec_belongs_to_worker(db, slug, worker_id, fleet, row)
+        ):
+            blob, kept_fleet = _without_env(fleet["spec_encrypted"], slug, key, confirmed_wallet_seed)
+            retained |= kept_fleet
+            if blob is not None:
+                await db.execute("UPDATE deployments SET spec_encrypted = ? WHERE slug = ?", (blob, slug))
+                removed = True
         await db.commit()
-        cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        if (busy := await cursor.fetchone()) and busy[0]:
-            # A reader kept it: the next checkpoint folds and drops those frames.
-            _logger.warning("WAL checkpoint after forgetting %s of %s was busy", key, slug)
+        if removed or confirmed_wallet_seed is None:
+            cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            if (busy := await cursor.fetchone()) and busy[0]:
+                # A reader kept it: the next checkpoint folds and drops those frames.
+                _logger.warning("WAL checkpoint after forgetting %s of %s was busy", key, slug)
+        return removed, retained
     finally:
         await db.close()
 
 
-def _without_env(blob: str, slug: str, key: str) -> str | None:
-    """``blob`` re-encrypted without env var ``key``, or None when it has no such key."""
-    spec = _decode_spec(blob, slug)
+async def _fleet_spec_belongs_to_worker(
+    db: Any, slug: str, worker_id: int, fleet: aiosqlite.Row, spec: aiosqlite.Row | None
+) -> bool:
+    """Match the fleet container to a heartbeat, or its encrypted spec to the same save."""
+    if recorded_id := fleet["container_id"]:
+        cursor = await db.execute("SELECT id, containers FROM workers")
+        owners = {row["id"] for row in await cursor.fetchall() if _runs_container(row["containers"], slug, recorded_id)}
+        if owners:
+            return owners == {worker_id}
+    # save_deployment writes the same Fernet token to both rows. Two saves of
+    # the same settings still have different tokens.
+    blob = fleet["spec_encrypted"] or ""
+    return spec is not None and blob.startswith(_ENC_PREFIX) and blob == spec["spec_encrypted"]
+
+
+def _without_env(blob: str | None, slug: str, key: str, confirmed_wallet_seed: str | None) -> tuple[str | None, bool]:
+    """Return an updated encrypted spec, and whether an unconfirmed seed was kept."""
+    spec = _decode_spec(blob or "", slug)
     env = (spec or {}).get("env")
     if not isinstance(env, dict) or key not in env:
-        return None
-    return encrypt_value(json.dumps({**spec, "env": {k: v for k, v in env.items() if k != key}}, sort_keys=True))
+        return None, False
+    if confirmed_wallet_seed is not None:
+        saved = wallet_seed.normalize(env[key])
+        if saved and saved != confirmed_wallet_seed:
+            return None, True
+    return encrypt_value(json.dumps({**spec, "env": {k: v for k, v in env.items() if k != key}}, sort_keys=True)), False
 
 
 async def active_identity_values(slug: str, worker_id: int) -> dict[str, dict[str, str]]:

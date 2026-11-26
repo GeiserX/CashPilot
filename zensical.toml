@@ -127,6 +127,7 @@ nav = [
           { OCEAN = "guides/ocean.md" },
           { "SRBMiner-Multi (GPU mining)" = "guides/srbminer-multi.md" },
           { SupportXMR = "guides/supportxmr.md" },
+          { "unMineable (CPU mining, paid in your coin)" = "guides/unmineable.md" },
           { "XMRig (Monero CPU mining)" = "guides/xmrig.md" },
         ] },
     ] },
@@ -134,6 +135,7 @@ nav = [
   { Configuration = [
       { "Configuration reference" = "configuration.md" },
       { "Multi-node fleet management" = "fleet.md" },
+      { "LAN miner readings" = "mining-devices.md" },
       { "Running on ARM" = "arm.md" },
       { "Custom services" = "custom-services.md" },
       { "Proxied copies" = "proxies.md" },

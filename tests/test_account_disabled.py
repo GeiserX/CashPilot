@@ -587,6 +587,7 @@ def _pawns(account_disabled: bool) -> dict:
                 "worker_id": w,
                 "status": "restarting",
                 "has_docker": True,
+                "can_command": True,
                 "container_name": "cashpilot-iproyal",
                 "fatal": "account_disabled",
             }
