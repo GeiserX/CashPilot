@@ -1008,7 +1008,7 @@ class StartTargetsChanged(ProxyTunnelError):
 
 def _require_settled_move(client: Any, name: str) -> None:
     """A staged or aside container is never a target the owner can approve."""
-    canonical = name.removesuffix(STAGED_SUFFIX).removesuffix(MOVING_SUFFIX)
+    canonical = name.removesuffix(STAGED_SUFFIX).removesuffix(MOVING_SUFFIX).removesuffix(orchestrator.REPLACED_SUFFIX)
     if canonical != name:
         raise RecoveryConflict(f"Recovery skipped for {canonical}. A container still holds {name}.")
     for suffix in (STAGED_SUFFIX, MOVING_SUFFIX):
@@ -1024,10 +1024,21 @@ def _move_expected(client: Any, member: Any, target: _StartApproval | None) -> s
     current = orchestrator.deploy_target(client, name)
     orchestrator.require_deploy_target(expected, current)
     orchestrator.require_deploy_target(expected, member)
-    _require_resolved_deploy(member, _get(client, name + orchestrator.REPLACED_SUFFIX))
-    if _recorded_failed(member):
-        raise RecoveryConflict(f"Recovery skipped for {name}. Its previous deploy has not been settled.")
+    _require_settled_deploy(client, member)
     return expected
+
+
+def _require_settled_deploy(client: Any, member: Any) -> None:
+    """A copy whose redeploy is not settled is never moved, nor offered for approval.
+
+    Its old earner aside (KEPT_MARKER may make it the copy) and the recorded
+    pair are what the heartbeat settles it by (_settle_replaced). A clone of
+    the replacement would match neither."""
+    name = str(member.name)
+    aside = _get(client, name + orchestrator.REPLACED_SUFFIX)
+    _require_resolved_deploy(member, aside)
+    if aside is not None or _recorded_failed(member):
+        raise RecoveryConflict(f"Recovery skipped for {name}. Its previous deploy has not been settled.")
 
 
 def _check_move_targets(client: Any, members: list[Any], target: _StartApproval | None) -> None:
@@ -1050,7 +1061,7 @@ def _check_move_targets(client: Any, members: list[Any], target: _StartApproval 
             _require_settled_move(client, name)
             current = orchestrator.deploy_target(client, name)
             orchestrator.require_deploy_target(member.id, current)
-            _require_resolved_deploy(member, _get(client, name + orchestrator.REPLACED_SUFFIX))
+            _require_settled_deploy(client, member)
             approvals[_labels(member)[LABEL_SERVICE]] = str(member.id)
         raise StartTargetsChanged(approvals) from None
 
@@ -1126,7 +1137,7 @@ def _clone_into(
     # replacement must explicitly hide NVIDIA devices like a fresh deploy.
     environment = [entry for entry in cfg.get("Env") or [] if not entry.upper().startswith(gpu.ENV_PREFIX)]
     environment.extend(f"{key}={value}" for key, value in gpu.VOID_ENV.items())
-    clone = client.containers.create(
+    run_kwargs = dict(
         image=cfg.get("Image") or _image_of(member),
         name=staged,
         environment=environment,
@@ -1148,12 +1159,18 @@ def _clone_into(
         restart_policy={"Name": "no"},
         **{k: v for k, v in optional.items() if v is not None},
     )
-    move = _created_key(name, str(member.id), str(clone.id))
+    # The ID from Docker's create answer, recorded before the SDK's inspect:
+    # one that times out leaves a clone recover_moves can identify.
+    clone_id = orchestrator._create_container_id(client, run_kwargs)
+    move = _created_key(name, str(member.id), clone_id)
     try:
-        _record_pair(MOVE_MARKER, name, str(member.id), str(clone.id))
+        _record_pair(MOVE_MARKER, name, str(member.id), clone_id)
+        clone = client.containers.get(clone_id)
         orchestrator.require_deploy_target(expected, orchestrator.deploy_target(client, name))
     except Exception:
-        _remove_quietly(clone, 2, volumes=False)
+        # By its ID, never its name. One Docker keeps is settled by the move record.
+        with contextlib.suppress(Exception):
+            client.api.remove_container(clone_id, force=True, v=False)
         raise
     try:
         with contextlib.suppress(Exception):
@@ -2857,7 +2874,10 @@ def remove_all(slug: str) -> list[str]:
 
     def canonical(container: Any) -> str:
         # The saved ID is kept under the copy's own name, never a half-moved one's.
-        return str(container.name).removesuffix(MOVING_SUFFIX).removesuffix(STAGED_SUFFIX)
+        name = str(container.name)
+        for suffix in (orchestrator.REPLACED_SUFFIX, MOVING_SUFFIX, STAGED_SUFFIX):
+            name = name.removesuffix(suffix)
+        return name
 
     removed: list[str] = []
     left: list[str] = []

@@ -2164,7 +2164,9 @@ async def _keep_legacy_fleet_wallet(db: Any, slug: str, key: str, worker_id: int
                 (slug, owner, fleet["spec_encrypted"], fleet["deployed_at"]),
             )
             return
-        if owner == worker_id or any(_legacy_wallet_phrase(blob, slug, key) == phrase for blob in spec):
+        # The same worker's save makes its current spec the prior: only that one keeps the phrase.
+        kept = [spec["spec_encrypted"]] if owner == worker_id else list(spec)
+        if any(_legacy_wallet_phrase(blob, slug, key) == phrase for blob in kept):
             return
     else:
         cursor = await db.execute(

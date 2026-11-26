@@ -285,6 +285,38 @@ class TestDeployRawJoined:
         new.remove.assert_called_once()
         assert names.get(name) is old
 
+    def test_the_id_first_create_sends_what_the_sdk_create_sends(self):
+        """_create_container_id uses docker-py's private argument builder: an SDK that changes it fails here."""
+        import docker
+        from docker.models.containers import ContainerCollection
+
+        client = docker.DockerClient(base_url="unix:///nonexistent.sock", version="1.45")
+        kwargs = {
+            "image": "honeygain/honeygain:1",
+            "name": "cashpilot-honeygain-p3-next",
+            "environment": ["A=1"],
+            "labels": {"cashpilot.service": "honeygain"},
+            "network_mode": "container:sidecar-id",
+            "cap_drop": ["ALL"],
+            "cap_add": ["NET_ADMIN"],
+            "security_opt": ["no-new-privileges:true"],
+            "privileged": False,
+            "restart_policy": {"Name": "no"},
+            "volumes": {"hg-data": {"bind": "/data", "mode": "rw"}},
+            "mem_limit": 268435456,
+            "entrypoint": ["/app/run"],
+            "log_config": {"Type": "json-file", "Config": {}},
+        }
+        with (
+            patch.object(client.api, "create_container", return_value={"Id": "c" * 64}) as low,
+            patch.object(ContainerCollection, "get"),
+        ):
+            client.containers.create(**kwargs)
+            sdk = low.call_args
+            low.reset_mock()
+            assert orchestrator._create_container_id(client, kwargs) == "c" * 64
+        assert low.call_args == sdk
+
     def test_a_normal_container_keeps_its_restart_policy(self):
         client = MagicMock()
         client.containers.get.side_effect = NotFound("none")

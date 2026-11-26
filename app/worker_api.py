@@ -2204,18 +2204,19 @@ def _deploy_target_error(exc: orchestrator.DeployTargetChanged) -> HTTPException
     )
 
 
-def _old_ui_target_error(exc: HTTPException, spec: BaseModel) -> HTTPException | None:
-    """The refusal a UI older than the checked deploy can show, or None.
+def _old_ui_target_error(exc: HTTPException, spec: BaseModel | None, *, then: str = "redeploy") -> HTTPException | None:
+    """The refusal a UI older than the checked deploy or Start can show, or None.
 
-    Such a UI sends no ``expected_container`` and forwards only a plain-string
-    409 detail, so the structured refusal reached its owner as "HTTP 409".
+    Such a UI sends no ``expected_container`` (a Start may send no body at
+    all) and forwards only a plain-string 409 detail, so the structured
+    refusal reached its owner as "HTTP 409".
     """
     detail = exc.detail
     if (
         exc.status_code != 409
         or not isinstance(detail, dict)
-        or detail.get("error") != "deploy_target_changed"
-        or "expected_container" in spec.model_fields_set
+        or detail.get("error") not in ("deploy_target_changed", "confirm_proxy_start_targets")
+        or (spec is not None and "expected_container" in spec.model_fields_set)
     ):
         return None
     # A build from a branch or a checkout reports "latest" or "dev": no number to name.
@@ -2223,7 +2224,7 @@ def _old_ui_target_error(exc: HTTPException, spec: BaseModel) -> HTTPException |
     return HTTPException(
         status_code=409,
         detail=f"This worker runs {worker} and replaces an existing container only when the UI confirms "
-        "which container it replaces, and this UI is too old to do that. Update the UI, then redeploy. "
+        f"which container it replaces, and this UI is too old to do that. Update the UI, then {then}. "
         "Nothing was changed.",
     )
 
@@ -2497,7 +2498,7 @@ async def api_proxied_start(
             expectation["expected_containers"] = spec.expected_containers
         result = await asyncio.to_thread(proxy_tunnel.start, slug, proxy_id, proxy, own_ip, **expectation)
     except proxy_tunnel.StartTargetsChanged as exc:
-        raise HTTPException(
+        refusal = HTTPException(
             status_code=409,
             detail={
                 "error": "confirm_proxy_start_targets",
@@ -2505,10 +2506,17 @@ async def api_proxied_start(
                 "expected_containers": exc.targets,
                 "group_approval": _sign_proxy_start(slug, proxy_id, exc.targets),
             },
-        ) from None
+        )
     except Exception as exc:  # noqa: BLE001
-        raise _proxy_http_error(exc) from None
-    return {"status": "started", **result}
+        refusal = _proxy_http_error(exc)
+    else:
+        return {"status": "started", **result}
+    # Only the legacy URL: the checked one is the current UI's, which reads the structured answer.
+    if request.url.path.endswith("/start") and (
+        old_ui := _old_ui_target_error(refusal, spec, then="Start the copy again")
+    ):
+        raise old_ui from None
+    raise refusal from None
 
 
 @app.post("/api/proxied/{slug}/{proxy_id}/restart")

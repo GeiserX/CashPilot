@@ -7087,10 +7087,18 @@ def _merge_recorded_spec(
 # /api/{action}/{slug} and the service-scoped /api/services/{slug}/... — with identical
 # behavior. Both sets of routes delegate to these helpers so the writer-guard, worker
 # resolution, proxy, and bookkeeping live in exactly one place per action.
-async def _forget_removed_deployment(slug: str, worker_id: int, *, delete_volumes: bool) -> None:
+async def _seed_to_keep(slug: str, worker_id: int, *, delete_volumes: bool) -> str | None:
+    """The wallet seed key a removal from a Desktop keeps the phrase of, or None.
+
+    Read before the worker is asked: a worker row deleted while the removal
+    runs must not make its phrase look like a Docker worker's."""
     seed_key = wallet_seed.seed_key(catalog.get_service(slug))
-    if seed_key and not delete_volumes and await _worker_is_desktop(worker_id):
-        await database.remove_deployment(slug, worker_id=worker_id, keep_wallet_seed=seed_key)
+    return seed_key if seed_key and not delete_volumes and await _worker_is_desktop(worker_id) else None
+
+
+async def _forget_removed_deployment(slug: str, worker_id: int, *, keep_wallet_seed: str | None) -> None:
+    if keep_wallet_seed:
+        await database.remove_deployment(slug, worker_id=worker_id, keep_wallet_seed=keep_wallet_seed)
     else:
         await database.remove_deployment(slug, worker_id=worker_id)
 
@@ -7296,6 +7304,7 @@ async def _svc_remove(
         # The delete the owner agreed to is of a partial restore: the worker
         # refuses it once that restore is gone (a later one may have succeeded).
         params = {**(params or {}), "only_if_restore_unfinished": "true"}
+    keep_wallet_seed = await _seed_to_keep(slug, worker_id, delete_volumes=delete_volumes)
     # Before the worker is asked: once it removes the proxied copies, its next
     # heartbeat no longer lists them to prove their ids. A failed removal
     # leaves them running, so the rows this writes stay right.
@@ -7340,7 +7349,7 @@ async def _svc_remove(
             worker_id=worker_id,
         )
     await _record_removed_copies(slug, worker_id, result)
-    await _forget_removed_deployment(slug, worker_id, delete_volumes=delete_volumes)
+    await _forget_removed_deployment(slug, worker_id, keep_wallet_seed=keep_wallet_seed)
     # The worker removed the service's proxied copies with it (worker_api
     # remove_all), so their records go too. The removal itself already
     # happened; a failure here must not report it as failed.
@@ -13600,6 +13609,8 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             lambda pid: _routed_command(worker_id, body.slug, command, pid),
         )
     elif body.command == "remove":
+        # This route's removal never sends delete_volumes, so the volumes stay.
+        keep_wallet_seed = await _seed_to_keep(body.slug, worker_id, delete_volumes=False)
         # As in _svc_remove: before the worker removes the proxied copies.
         await _record_removed_proxied_copies(worker_id, body.slug)
         result = await _or_routed(
@@ -13686,8 +13697,7 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             # As in _svc_remove: a routed removal the worker has not confirmed
             # keeps the record until _finish_copy_removal drops it.
             await _record_removed_copies(slug, worker_id, result)
-            # This route's removal never sends delete_volumes, so the volumes stay.
-            await _forget_removed_deployment(slug, worker_id, delete_volumes=False)
+            await _forget_removed_deployment(slug, worker_id, keep_wallet_seed=keep_wallet_seed)
         # As in _svc_remove: the worker removed the proxied copies with the service.
         # The removal already happened; a failure here must not report it as failed.
         try:

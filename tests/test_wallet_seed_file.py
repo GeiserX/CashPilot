@@ -198,6 +198,19 @@ def test_same_worker_save_keeps_a_fleet_only_phrase_as_its_prior(db):
     asyncio.run(go())
 
 
+def test_same_worker_save_keeps_a_fleet_only_phrase_its_own_spec_never_held(db):
+    async def go():
+        seen = json.dumps([{"slug": SLUG, "container_id": "a" * 12}])
+        desktop = await database.upsert_worker("desktop", containers=seen)
+        await database.save_deployment(SLUG, "c" * 64, worker_id=desktop, spec={"env": ENV})
+        await database.save_deployment(SLUG, "a" * 64, spec={"env": {**ENV, KEY: PHRASE}})
+        await database.save_deployment(SLUG, "b" * 64, worker_id=desktop, spec={"env": {**ENV, "OTHER": "1"}})
+        assert PHRASE in await database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)})
+        assert KEY not in (await database.get_deployment_spec(SLUG, desktop))["env"]
+
+    asyncio.run(go())
+
+
 def test_confirming_a_phrase_clears_it_from_the_unknown_owner_record(db):
     async def go():
         seen = json.dumps([{"slug": SLUG, "container_id": "a" * 12}])
@@ -236,6 +249,36 @@ def test_raw_remove_keeps_the_desktops_phrase_whatever_its_spec_says(db):
     # The raw removal never asks the worker to delete volumes.
     assert all("delete_volumes" not in str(call) for call in sent.await_args_list)
     assert asyncio.run(database.get_deployment(SLUG)) is None
+    assert PHRASE in asyncio.run(database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)}))
+
+
+@pytest.mark.parametrize("route", ["services", "command"])
+def test_a_desktop_deleted_during_the_remove_keeps_its_phrase(db, route):
+    async def prepare():
+        worker = await database.upsert_worker("desktop", system_info='{"device_type": "desktop"}')
+        await database.save_deployment(SLUG, "a" * 64, worker_id=worker, spec={"env": {**ENV, KEY: PHRASE}})
+        await database.save_deployment(SLUG, "b" * 64, worker_id=worker, spec={"env": ENV})
+        return worker
+
+    worker = asyncio.run(prepare())
+
+    async def removed_while_the_worker_row_goes(*_a, **_kw):
+        # The owner deletes the worker while its Remove is on the way.
+        await database.delete_worker(worker)
+        return {"status": "removed"}
+
+    with (
+        patch.object(auth, "get_current_user", return_value=OWNER),
+        patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=removed_while_the_worker_row_goes)),
+        patch.object(main, "_proxy_worker_command", AsyncMock(side_effect=removed_while_the_worker_row_goes)),
+    ):
+        api = TestClient(main.app)
+        if route == "services":
+            response = api.delete(f"/api/services/{SLUG}?worker_id={worker}")
+        else:
+            response = api.post(f"/api/workers/{worker}/command", json={"command": "remove", "slug": SLUG})
+    assert response.status_code == 200, response.text
+    assert asyncio.run(database.get_worker(worker)) is None
     assert PHRASE in asyncio.run(database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)}))
 
 
