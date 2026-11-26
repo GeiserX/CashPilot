@@ -43,7 +43,7 @@ class TestValidation:
 
 class TestTheRealCatalog:
     def test_honeygain_leads_the_catalog(self):
-        """Honeygain pays the referrer 30% and is the biggest earner in the fleet."""
+        """Honeygain pays the referrer $5 per friend who reaches its payout minimum and is the biggest earner in the fleet."""
         services = catalog.get_services()
         assert services[0]["slug"] == "honeygain"
 

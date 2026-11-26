@@ -71,6 +71,8 @@ You need Docker on a Linux, macOS or Windows host, amd64 or arm64. Open [http://
 **Crypto mining (8):** [unMineable (CPU mining, paid in your coin)](https://unmineable.com/?ref=awk6-j1z0), [Kryptex Pool (Pearl)](https://pool.kryptex.com/?ref=2444cca8), [2Miners ETC](https://etc.2miners.com/help), [HeroMiners Kaspa](https://kaspa.herominers.com/?lang=en), [OCEAN](https://ocean.xyz/getstarted), [SRBMiner-Multi (GPU mining)](https://github.com/doktor83/SRBMiner-Multi/releases), [SupportXMR](https://supportxmr.com), [XMRig (Monero CPU mining)](https://xmrig.com)
 <!-- END GENERATED: mining-services -->
 
+> Dawn Internet's link does not pass the code on. Create the account in the DAWN Validator extension and enter referral code `2QLQV97F` when it asks.
+>
 > \* EarnApp's help centre **prohibits** Docker containers, VMs, hosting services and home servers, with account termination and cancellation of pending payments as the stated penalty, which is exactly how CashPilot deploys it. Read the [guide](https://geiserx.github.io/CashPilot/guides/earnapp/) before deploying.
 >
 > These lists are **generated from the service YAML** by `scripts/generate_readme_tables.py` and checked in CI, so they cannot drift from the catalog. Edit the YAML, not the list.

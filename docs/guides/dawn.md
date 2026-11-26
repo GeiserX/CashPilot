@@ -10,7 +10,7 @@
 
 ## Description
 
-DAWN runs a validator network that checks bandwidth and coverage for the AI infrastructure financed through the DAWN protocol. The DAWN Validator browser extension takes part in these proof-of-bandwidth and coverage checks and earns DAWN points while it runs. The points have no cash value yet. Create the account in the extension and enter referral code 2QLQV97F when it asks.
+DAWN runs a validator network that checks bandwidth and coverage for the AI infrastructure financed through the DAWN protocol. The DAWN Validator browser extension takes part in these proof-of-bandwidth and coverage checks and earns DAWN rewards while it runs. The rewards have no settled cash value yet. Create the account in the extension and enter referral code 2QLQV97F when it asks.
 
 ## Earning Estimates
 

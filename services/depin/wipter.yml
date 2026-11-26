@@ -14,7 +14,7 @@ referral:
   signup_url: "https://wipter.com/register?via=FB1373FBDA"
   code: "FB1373FBDA"
   bonus:
-    referrer: "10% of their traffic earnings once they reach the payout minimum, no cap"
+    referrer: "10% of their traffic earnings once they reach the payout minimum, for as many friends as you refer"
     referee: "$5 sign-up bonus"
 
 docker:
