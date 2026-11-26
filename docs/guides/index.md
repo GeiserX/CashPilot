@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**57 services** across 5 categories. The table is sortable — click a heading to reorder it.
+**58 services** across 5 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -112,6 +112,7 @@ Setup and configuration for every service CashPilot supports.
 | [HeroMiners Kaspa](herominers-kas.md) | — | Tracked pool | 1 KAS (adjustable) | beta |
 | [OCEAN](ocean.md) | — | Tracked pool | 0.01048576 BTC | beta |
 | [SupportXMR](supportxmr.md) | — | Tracked pool | 0.1 XMR (automatic), 0.01 XMR on request | beta |
+| [unMineable (CPU mining, paid in your coin)](unmineable.md) | — | Docker | Set per coin by unMineable (0.03 XMR on 2026-11-26) | beta |
 | [XMRig (Monero CPU mining)](xmrig.md) | — | Docker | 0.003 XMR (MoneroOcean, after you lower it) | beta |
 
 ## Not a service guide

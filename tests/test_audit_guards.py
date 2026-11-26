@@ -365,7 +365,7 @@ class TestADetectedPayoutActuallyReachesTheUser:
 
         from app import main
 
-        result = MagicMock(platform="honeygain", balance=0.10, currency="USD")
+        result = MagicMock(platform="honeygain", balance=0.10, currency="USD", payout_threshold=None)
 
         async def run():
             with (

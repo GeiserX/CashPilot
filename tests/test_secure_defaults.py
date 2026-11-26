@@ -30,6 +30,7 @@ PUBLIC_COLLECTOR_FIELDS = {
     "api_url": "a URL the user pastes; it is not a credential",
     "fingerprints": "public relay identifiers, published by the network itself",
     "address": "a public payout address the pool's own stats page is keyed by; it unlocks no funds",
+    "coin": "the ticker of the coin a pool pays, such as XMR; it identifies nobody",
 }
 
 

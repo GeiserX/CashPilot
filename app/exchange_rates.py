@@ -49,6 +49,13 @@ CRYPTO_IDS: dict[str, str] = {
     "XMR": "monero",
     "KAS": "kaspa",
     "ETC": "ethereum-classic",
+    # Coins unMineable pays out that are not already listed above. Any other
+    # coin is still tracked, in its own units, without a price.
+    "BNB": "binancecoin",
+    "DOGE": "dogecoin",
+    "LTC": "litecoin",
+    "SHIB": "shiba-inu",
+    "TRX": "tron",
 }
 
 CACHE_TTL = 900  # 15 minutes

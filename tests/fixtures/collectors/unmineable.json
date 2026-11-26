@@ -1,0 +1,26 @@
+{
+  "slug": "unmineable",
+  "currency": "XMR",
+  "fields": ["data.balance", "data.payment_threshold", "data.fresh", "data.err_flags"],
+  "note": "Sample from the unMineable API on 2026-11-26 for the Monero General Fund donation address with coin=XMR (address and chain list removed). Amounts are decimal strings in coin units. The other fields are unused.",
+  "parsed": 0.00071092,
+  "sample": {
+    "success": true,
+    "msg": "Ok",
+    "data": {
+      "balance": "0.00071092",
+      "balance_payable": "0.00071092",
+      "precision": "8",
+      "payment_threshold": "0.03",
+      "mining_fee": "1",
+      "auto": false,
+      "enabled": true,
+      "maintenance_message": null,
+      "enabled_auto_only": false,
+      "uuid": "7a7812ea-6a3d-4932-b64d-f7cd1fcd4038",
+      "fresh": false,
+      "network": "XMR",
+      "err_flags": {"payment_error": false, "missing_memo": false, "not_activated": false, "restricted": false}
+    }
+  }
+}
