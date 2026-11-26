@@ -26,7 +26,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 import httpx  # noqa: E402
 import pytest  # noqa: E402
 
-from app import log_redaction, notify, onchain  # noqa: E402
+from app import log_redaction, network_stats, notify, onchain  # noqa: E402
 from app.collectors import base, twominers  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +84,29 @@ async def test_herominers_request_logs_omit_the_payout_address(redacting, caplog
 
     assert address[6:] not in caplog.text
     assert f"{endpoint}?address=<redacted>&longpoll=false" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "address", ["bc1q4efd2vns8qwawg3nt4xxzs9053shh0q3x0tuu9", "1BoatSLRHtKNngkdXEeobR76b53LETtpyT"]
+)
+async def test_ocean_request_logs_omit_the_payout_address(redacting, caplog, address):
+    """The OCEAN read is also where the expected-earnings hashrate comes from."""
+    reason = f"Unknown {address.upper()}".encode()
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json={}, extensions={"reason_phrase": reason}))
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with httpx.AsyncClient(transport=transport) as client:
+            await client.get(f"https://api.ocean.xyz/v1/statsnap/{address}")
+
+    assert address.lower() not in caplog.text.lower()
+    assert "https://api.ocean.xyz/v1/statsnap/<redacted>" in caplog.text
+
+
+def test_an_ocean_path_without_an_address_stays_readable(redacting, caplog):
+    line = 'HTTP Request: GET https://api.ocean.xyz/v1/blocks/1 "HTTP/1.1 200 OK" took 1.21s'
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("httpx").info(line)
+    assert line in caplog.text
 
 
 @pytest.mark.asyncio
@@ -161,6 +184,29 @@ async def test_a_token_in_an_onchain_endpoint_path_is_not_logged(
     assert "HTTP Request:" in caplog.text
     assert FAKE_NODE_TOKEN not in caplog.text
     assert "https://node.example/<redacted>" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_token_in_the_bitcoin_endpoint_is_not_logged_by_the_network_stats_read(redacting, caplog, monkeypatch):
+    """The expected-earnings read uses the same Bitcoin endpoint, so the same redaction must cover it."""
+    sent = []
+
+    def answer(request):
+        sent.append(str(request.url))
+        return httpx.Response(503)
+
+    network_stats.reset_state()
+    monkeypatch.setenv("CASHPILOT_ONCHAIN_URL_BITCOIN", f"https://node.example/v3/{FAKE_NODE_TOKEN}")
+    with caplog.at_level(logging.INFO):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as client:
+            result = await network_stats.bitcoin(client=client)
+    network_stats.reset_state()
+
+    assert result["state"] == network_stats.UNREACHABLE
+    assert sent and FAKE_NODE_TOKEN in sent[0]
+    assert "HTTP Request:" in caplog.text
+    assert FAKE_NODE_TOKEN not in caplog.text
+    assert "https://node.example/<redacted>/v1/mining/hashrate/3d" in caplog.text
 
 
 @pytest.mark.asyncio

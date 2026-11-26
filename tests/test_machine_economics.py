@@ -196,7 +196,9 @@ class TestItNeverActsOnTheNumber:
 
 
 class TestEndpoint:
-    def _call(self, config=None, workers=None, earned=None, containers=None, measured=None, deployments=None):
+    def _call(
+        self, config=None, workers=None, earned=None, containers=None, measured=None, deployments=None, covered=None
+    ):
         import asyncio
         import json
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -229,9 +231,11 @@ class TestEndpoint:
 
         # Every platform in `earned` counts as read unless `measured` says
         # otherwise, the way the real reader marks a priced delta.
-        async def fake_earned(days=30, measured=None, _read=measured):
+        async def fake_earned(days=30, measured=None, covered_days=None, _read=measured):
             if measured is not None:
                 measured.update((earned or {}) if _read is None else _read)
+            if covered_days is not None:
+                covered_days.update(covered or {})
             return earned or {}
 
         return asyncio.run(run())

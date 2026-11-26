@@ -43,6 +43,10 @@ services:
 ```
 
 Use the Esplora or Kaspa API base URL when configuring Bitcoin or Kaspa.
+The Bitcoin endpoint also gives the network difficulty and block rewards for the
+[expected earnings](fleet.md#running-costs) of a Bitcoin pool. That read needs a
+mempool backend (its `/v1/mining` API); a plain Esplora server answers only the
+balance lookup, and the pool's row then shows no expected amount.
 For Ethereum, Polygon and Solana, set the corresponding variables
 `CASHPILOT_ONCHAIN_URL_ETHEREUM`, `CASHPILOT_ONCHAIN_URL_POLYGON` or
 `CASHPILOT_ONCHAIN_URL_SOLANA` to a node's RPC URL. Use an HTTP or HTTPS URL

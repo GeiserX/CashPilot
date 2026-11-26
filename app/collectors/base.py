@@ -55,6 +55,10 @@ class EarningsResult:
     # multi-coin pool), where the catalog's single ``cashout.min_amount``
     # cannot be right for every coin. None means use the catalog's.
     payout_threshold: float | None = None
+    # The hashrate the pool measured for this account, in hashes per second,
+    # when its answer carries one. Only feeds the expected-earnings estimate on
+    # the Fleet page; None means the pool did not say, never 0 H/s.
+    hashrate: float | None = None
 
     def __post_init__(self) -> None:
         # An empty error is falsy, so the collection loop would store the 0.0
