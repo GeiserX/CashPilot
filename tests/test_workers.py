@@ -137,9 +137,7 @@ class TestHeartbeatClientId:
                 replies[kind] = _run(
                     api_worker_heartbeat(
                         _request(),
-                        SimpleNamespace(
-                            name=kind, url="", client_id=kind, containers=[], apps=[], system_info=info
-                        ),
+                        SimpleNamespace(name=kind, url="", client_id=kind, containers=[], apps=[], system_info=info),
                     )
                 )
         assert "desktop_commands" in replies["desktop"]["features"]
