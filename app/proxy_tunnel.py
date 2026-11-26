@@ -229,16 +229,24 @@ def _recorded_containers() -> dict[str, str]:
         return {}
 
 
-def _record_container(name: str, container_id: str) -> None:
+def _record_container(name: str, container_id: str | None) -> None:
+    """Save the container ID of ``name``, or with None drop it (the copy was removed)."""
     try:
         with _held_lock:
             records = _read_names(CONTAINER_MARKER)
-            records = {entry for entry in records if not entry.startswith(f"{name}@")}
-            _write_names(CONTAINER_MARKER, records | {f"{name}@{container_id}"})
+            kept = {entry for entry in records if not entry.startswith(f"{name}@")}
+            if container_id is not None:
+                _write_names(CONTAINER_MARKER, kept | {f"{name}@{container_id}"})
+            elif kept != records:
+                _write_names(CONTAINER_MARKER, kept)
     except OSError as exc:
-        # The deploy or move has committed. Losing the record makes later moves
-        # ask for approval (or skip), so it is safe to report this as a success.
+        # The deploy, move or removal has committed. A lost or stale record makes
+        # later moves ask for approval (or skip), so it is safe to report success.
         logger.warning("Could not save the container ID of %s: %s", name, exc)
+
+
+def _forget_container(name: str) -> None:
+    _record_container(name, None)
 
 
 def _flush_unchanged(path: str) -> None:
@@ -2499,11 +2507,15 @@ def _start(
         ):
             raise ProxyTunnelError("Expected full Docker IDs for all copies in the Start approval.", 422)
         expected_container = expected_containers[slug]
+    elif expected_container == "none":
+        # A Start needs its earner, so "none" can never be the container meant.
+        # It says only that the caller saw no saved ID: this worker's own record applies.
+        expected_container = None
     # The old earner a failed redeploy left aside is the copy, never the
     # failed container under its name.
     earner = orchestrator.deploy_target(client, name)
     _require_settled_move(client, name)
-    if expected_container not in (None, "none"):
+    if expected_container is not None:
         orchestrator.require_deploy_target(expected_container, earner)
     if earner is not None:
         _require_resolved_deploy(earner, _get(client, name + orchestrator.REPLACED_SUFFIX))
@@ -2823,6 +2835,7 @@ def _remove(slug: str, proxy_id: int, *, drop_shared: bool = True) -> list[str]:
         elif drop_shared and _is_shared(candidate, proxy_id):
             removed += _drop_if_empty(client, candidate)
     _set_held(name, False)
+    _forget_container(name)
     return removed
 
 
@@ -2856,6 +2869,7 @@ def remove_all(slug: str) -> list[str]:
                     removed.append(container.name)
                     if _is_earner(container):
                         _set_held(str(container.name), False)
+                        _forget_container(str(container.name))
                 else:
                     left.append(container.name)
             if pid.isdigit():
@@ -3718,7 +3732,10 @@ def _replace_restarting(
 #: Tunnel id -> time.monotonic() of the heartbeat's last failed try to replace it (_replace_restarting_tunnels).
 _replace_failed: dict[str, float] = {}
 _recovery_skipped: set[str] = set()
-RECOVERY_SKIPPED = "Recovery skipped because a container ID in this tunnel does not match the worker's saved ID."
+RECOVERY_SKIPPED = (
+    "Recovery skipped because a container in this tunnel does not match the worker's saved ID, "
+    "or the worker has no saved ID for it yet."
+)
 #: Seconds an image pull under the proxy's lock waits for the tunnel image: the
 #: heartbeat's replacement (_replace_restarting_tunnels) and a start (_pull_deadline).
 REPLACE_PULL_SECONDS = 60

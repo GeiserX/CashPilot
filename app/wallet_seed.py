@@ -179,13 +179,12 @@ def contains_pasted_phrase(text: str) -> bool:
     return contains_bip39_phrase(words) or _contains_legacy_sia_phrase(words)
 
 
-def contains_bip39_phrase(words: Sequence[str], *, whole: bool = False) -> bool:
+def contains_bip39_phrase(words: Sequence[str]) -> bool:
     """Check every BIP-39 length within each run of English BIP-39 words."""
     if len(words) < _BIP39_LENGTHS[0]:
         return False
     wordlist = _wordlist()
-    lengths = (len(words),) if whole else _BIP39_LENGTHS
-    return _contains_checked_phrase([wordlist.get(word, -1) for word in words], lengths, _valid_checksum)
+    return _contains_checked_phrase([wordlist.get(word, -1) for word in words], _BIP39_LENGTHS, _valid_checksum)
 
 
 @lru_cache(maxsize=1)
@@ -197,14 +196,13 @@ def _legacy_sia_wordlist() -> dict[str, int]:
     return prefixes
 
 
-def _contains_legacy_sia_phrase(words: Sequence[str], *, whole: bool = False) -> bool:
+def _contains_legacy_sia_phrase(words: Sequence[str]) -> bool:
     if len(words) < _LEGACY_SIA_LENGTHS[0]:
         return False
     wordlist = _legacy_sia_wordlist()
     # siad recognizes the first three letters of each English word.
     indices = [wordlist.get(word[:3], -1) if _LEGACY_SIA_WORD.fullmatch(word) else -1 for word in words]
-    lengths = (len(words),) if whole else _LEGACY_SIA_LENGTHS
-    return _contains_checked_phrase(indices, lengths, _valid_legacy_sia_checksum)
+    return _contains_checked_phrase(indices, _LEGACY_SIA_LENGTHS, _valid_legacy_sia_checksum)
 
 
 def _contains_checked_phrase(

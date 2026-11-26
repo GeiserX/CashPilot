@@ -2041,6 +2041,35 @@ class TestTheUiManagesARoutedService:
 
         return ui, setup
 
+    @pytest.mark.parametrize("command", ["start", "restart"])
+    @pytest.mark.parametrize("error", ["deploy_target_changed", "confirm_proxy_start_targets"])
+    def test_a_routed_start_that_needs_approval_points_at_the_fleet_page(self, db, command, error):
+        ui, setup = self._routed(db)
+        refusal = {"error": error, "message": "needs approval", "current_container": "a" * 64}
+
+        def worker(method, path, body):
+            if path.startswith("/api/containers/"):
+                return HTTPException(404, "Container not found")
+            if path.endswith("/restart"):
+                return HTTPException(409, {"error": "proxied_copy_stopped", "message": "stopped"})
+            assert path.endswith("/start-checked")
+            return HTTPException(409, refusal)
+
+        async def go():
+            await setup()
+            ui.worker_reply = worker
+            with ui.active(patch.object(main, "_require_writer", lambda r: None)), pytest.raises(HTTPException) as err:
+                if command == "start":
+                    await main.api_service_start(_request(), "honeygain", worker_id=1)
+                else:
+                    await main._svc_restart(_request(), "honeygain", 1)
+            return err.value
+
+        err = _run(go)
+        assert err.status_code == 409 and isinstance(err.detail, str)
+        assert "Proxies on the Fleet page" in err.detail and "Redeploy" not in err.detail
+        assert not any(path.endswith("/stop") for _, path in ui.paths())
+
     def test_routed_restart_does_not_stop_an_older_workers_copy(self, db):
         ui, setup = self._routed(db)
         running = True

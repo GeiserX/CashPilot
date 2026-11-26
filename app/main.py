@@ -1051,7 +1051,7 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
             if (
                 proxy is None
                 or copy.get("removing_since")
-                or copy.get("stopped_by_cap")
+                or (copy.get("stopped_by_cap") and (pid, wid, slug) not in _proxy_start_needs_approval)
                 or (proxy.get("state") or {}).get("capped_at")
                 or slug in _account_disabled
             ):
@@ -1073,6 +1073,10 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
                 None,
             )
             base = {"svc": svc, "box": box, "proxy": pname, "earner": earner, "created_at": copy.get("created_at")}
+            if copy.get("stopped_by_cap"):
+                # The cap no longer holds, but the worker refused to start the copy again without approval.
+                faults[_proxied_subject(earner, wid)] = {**base, "what": "start_needs_approval"}
+                continue
             if entry is None or entry.get("status") == "missing":
                 faults[_proxied_subject(earner, wid)] = {**base, "what": "copy_missing"}
                 continue
@@ -1162,8 +1166,16 @@ def _proxied_alert_text(fault: dict[str, Any], since: datetime) -> tuple[str, st
         return (
             f"CashPilot: skipped recovery for {svc} on {box}",
             f"CashPilot skipped recovery for {svc} through {proxy} on {box}. "
-            "A container ID in the tunnel does not match the worker's saved ID. "
-            "Review the copies under Proxies on the Fleet page.",
+            "A container in the tunnel does not match the worker's saved ID, or the worker has no saved ID "
+            "for it yet. Review the copies under Proxies on the Fleet page.",
+        )
+    if fault["what"] == "start_needs_approval":
+        earner = fault["earner"]
+        return (
+            f"CashPilot: {svc} on {box} needs your approval to start",
+            f"The traffic cap of {proxy} no longer holds, but CashPilot did not start {svc} ({earner}) on {box} "
+            "again: that would replace a container the worker cannot match to its saved ID. Press Start for "
+            "this copy under Proxies on the Fleet page to review the containers.",
         )
     if fault["what"] == "tunnel_stuck":
         tunnel, copies = fault["tunnel"], ", ".join(sorted(fault["copies"]))
@@ -7126,7 +7138,18 @@ async def _routed_command(worker_id: int, slug: str, command: str, proxy_id: int
             if exc.status_code != 409 or _worker_error(exc) != "proxied_copy_stopped":
                 raise
         command = "start"
-    return await _proxied_command(proxy_id, worker_id, slug, command)
+    try:
+        return await _proxied_command(proxy_id, worker_id, slug, command)
+    except HTTPException as exc:
+        if command != "start" or not _start_needs_approval(exc):
+            raise
+        # Only the Fleet page can show the containers and send the owner's approval.
+        # A redeploy would recreate the copy, which is what this refusal protects.
+        raise HTTPException(
+            status_code=409,
+            detail=f"Starting {slug} would replace a container the worker cannot match to its saved ID. "
+            "Press Start for this copy under Proxies on the Fleet page to review it. Nothing was changed.",
+        ) from None
 
 
 async def _remove_routed(worker_id: int, slug: str) -> dict[str, Any]:
@@ -8851,8 +8874,6 @@ async def _proxied_command(
                 raise HTTPException(
                     status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap"
                 )
-            if expected is None:
-                expected = await _proxied_start_target(worker_id, proxy_id, slug)
             approval = (
                 {"expected_containers": expected_containers, "group_approval": group_approval}
                 if expected_containers is not None
@@ -8865,6 +8886,7 @@ async def _proxied_command(
             )
         # A start or stop by hand is the owner's decision; a later reset must not undo it.
         await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
+        _proxy_start_needs_approval.discard((proxy_id, worker_id, slug))
     return result
 
 
@@ -9113,19 +9135,15 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
     return started
 
 
-async def _proxied_start_target(worker_id: int, pid: int, slug: str) -> str:
-    entries = _proxied_reportable(await database.get_worker(worker_id)) or []
-    return next(
-        (
-            saved
-            for entry in entries
-            if entry.get("proxy_id") == pid
-            and egress.container_slug(entry) == slug
-            and isinstance(saved := entry.get("recorded_container"), str)
-            and re.fullmatch(r"[0-9a-f]{64}", saved)
-        ),
-        "none",
-    )
+# Copies whose Start without an approval the worker refused, because it would
+# replace a container the worker cannot match to its saved ID. A copy the cap
+# stopped stays down until the owner approves it, so _proxied_copy_check says so.
+_proxy_start_needs_approval: set[tuple[int, int, str]] = set()
+
+
+def _start_needs_approval(exc: HTTPException) -> bool:
+    """The worker's refusal of a Start that only the owner's approval of the containers can clear."""
+    return exc.status_code == 409 and _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets")
 
 
 async def _start_proxied_copy(
@@ -9137,7 +9155,11 @@ async def _start_proxied_copy(
     expected_containers: dict[str, str] | None = None,
     group_approval: str | None = None,
 ) -> dict[str, Any]:
-    """Start one copy with the current settings and its saved or approved container ID."""
+    """Start one copy with the current settings and its saved or approved container ID.
+
+    Without ``expected`` the worker compares against its own saved ID, which is
+    fresher than the last heartbeat. A worker older than this UI has no checked
+    Start and never compared IDs, so it gets the plain Start it always had."""
     pid = proxy["id"]
     if expected is not None and expected != "none" and not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise HTTPException(status_code=422, detail="Expected a full Docker container ID or 'none'.")
@@ -9156,8 +9178,19 @@ async def _start_proxied_copy(
         )
     except HTTPException as exc:
         if exc.status_code == 405 or (exc.status_code == 404 and exc.detail == _worker_failure_text(404)):
-            raise HTTPException(status_code=409, detail="Update this worker before starting a proxied copy.") from None
-        raise
+            result = await _proxy_worker_call(
+                worker_id,
+                "POST",
+                f"/api/proxied/{slug}/{pid}/start",
+                proxy["definition"],
+                json={"proxy": body["proxy"]},
+                timeout=90,
+            )
+        else:
+            if expected is None and expected_containers is None and _start_needs_approval(exc):
+                _proxy_start_needs_approval.add((pid, worker_id, slug))
+            raise
+    _proxy_start_needs_approval.discard((pid, worker_id, slug))
     if isinstance(result, dict) and result.get("durable") is False:
         logger.warning("Started %s through proxy %s: %s", slug, pid, result.get("warning"))
     return result

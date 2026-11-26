@@ -2063,7 +2063,7 @@ class TestReviewFollowUps:
         assert renamed["name"] == "Renamed" and renamed["secrets"]["password"] is True
         assert (stored["host"], stored["password"]) == ("pr.example.net", PASSWORD)
 
-    def test_start_sends_the_recorded_container_and_preserves_the_workers_409(self, db):
+    def test_start_leaves_the_id_to_the_worker_and_preserves_its_409(self, db):
         expected, current = "a" * 64, "b" * 64
         conflict = {"error": "deploy_target_changed", "current_container": current}
         call = AsyncMock(side_effect=HTTPException(409, conflict))
@@ -2096,7 +2096,8 @@ class TestReviewFollowUps:
             assert err.value.status_code == 409 and err.value.detail == conflict
 
         _run(go)
-        assert call.await_args.kwargs["json"]["expected_container"] == expected
+        # The heartbeat's ID can be a minute old (a redeploy since); the worker's own record is not.
+        assert call.await_args.kwargs["json"]["expected_container"] is None
         call.assert_awaited_once()
 
     def test_a_start_by_hand_sends_the_proxy_as_stored_now(self, db):
@@ -2161,3 +2162,84 @@ class TestReviewFollowUps:
         for gb in ("0.0000000001", "2000000"):
             with pytest.raises(proxies.ProxyInputError, match=r"between 0\.001 and 1,000,000 GB"):
                 proxies.clean_definition({**_socks(), "cap_gb": gb})
+
+
+def _cap_reset(worker_reply):
+    """Reset a capped proxy whose copy ``a`` on worker 7 the cap stopped; return the paths, the marks and the result."""
+    proxy = {"id": 1, "definition": {"name": "P"}, "state": {"used_bytes": 5, "capped_at": "x", "cap_reason": "y"}}
+    copies = [{"proxy_id": 1, "worker_id": 7, "slug": "a", "stopped_by_cap": 1}]
+    stored = dict(proxy)
+    paths: list[str] = []
+
+    async def update(_pid, state):
+        stored["state"] = state
+
+    async def call(worker_id, method, path, definition, **kw):
+        paths.append(path)
+        reply = worker_reply(path, kw.get("json"))
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    with (
+        patch.object(main.database, "get_proxy", new_callable=AsyncMock, side_effect=lambda _pid: dict(stored)),
+        patch.object(main.database, "update_proxy_state", new_callable=AsyncMock, side_effect=update),
+        patch.object(main.database, "clear_alerts", new_callable=AsyncMock),
+        patch.object(main.database, "list_proxied_copies", new_callable=AsyncMock, return_value=copies),
+        patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock) as mark,
+        patch.object(main, "_proxy_worker_call", call),
+    ):
+        started = asyncio.run(main._reset_proxy(proxy))
+    return paths, mark, started
+
+
+class TestStartAcrossVersions:
+    @pytest.fixture(autouse=True)
+    def _no_pending_approvals(self, monkeypatch):
+        monkeypatch.setattr(main, "_proxy_start_needs_approval", set())
+
+    def test_a_cap_reset_on_an_older_worker_uses_its_plain_start(self):
+        def older_worker(path, body):
+            if path.endswith("/start-checked"):
+                return HTTPException(404, main._worker_failure_text(404))
+            assert set(body) == {"proxy"}
+            return {"status": "started"}
+
+        paths, mark, started = _cap_reset(older_worker)
+        assert paths == ["/api/proxied/a/1/start-checked", "/api/proxied/a/1/start"]
+        assert started == ["a on worker 7"]
+        mark.assert_awaited_with(1, 7, "a", False)
+
+    def test_an_owner_start_on_an_older_worker_uses_its_plain_start(self, db):
+        paths: list[str] = []
+
+        async def call(worker_id, method, path, **kw):
+            paths.append(path)
+            if path.endswith("/start-checked"):
+                raise HTTPException(405, "Method Not Allowed")
+            return {"status": "started"}
+
+        async def go():
+            pid = (await main.api_create_proxy(_Req(_socks()), {}))["id"]
+            with patch.object(main, "_proxy_to_worker", AsyncMock(side_effect=call)):
+                out = await main.api_proxied_copy_command(pid, 7, "honeygain", "start", {})
+            return pid, out
+
+        pid, out = _run(go)
+        assert out == {"status": "started"}
+        assert paths == [f"/api/proxied/honeygain/{pid}/start-checked", f"/api/proxied/honeygain/{pid}/start"]
+
+    @pytest.mark.parametrize("error", ["deploy_target_changed", "confirm_proxy_start_targets"])
+    def test_a_cap_reset_the_worker_refuses_without_approval_is_remembered_for_the_alert(self, error):
+        refusal = HTTPException(409, {"error": error, "message": "needs approval"})
+        paths, mark, started = _cap_reset(lambda path, body: refusal)
+        assert started == [] and paths == ["/api/proxied/a/1/start-checked"]
+        assert not any(call.args[3] is False for call in mark.await_args_list), "the cap's mark stays"
+        assert main._proxy_start_needs_approval == {(1, 7, "a")}
+        # The next start that goes through clears it.
+        _cap_reset(lambda path, body: {"status": "started"})
+        assert main._proxy_start_needs_approval == set()
+
+    def test_another_refusal_of_a_cap_reset_is_not_an_approval_fault(self):
+        _cap_reset(lambda path, body: HTTPException(503, "The tunnel is not ready"))
+        assert main._proxy_start_needs_approval == set()

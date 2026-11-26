@@ -4314,7 +4314,7 @@ class TestAnOlderWorkersTunnelReplacementFollowups:
         assert docker.named(NAME) is replacement and replacement.status == "running"
         assert docker.tunnels() == [old]
         assert "Recovery skipped" in caplog.text
-        assert "container ID" in entry["recovery_skipped"]
+        assert entry["recovery_skipped"] == proxy_tunnel.RECOVERY_SKIPPED and "saved ID" in entry["recovery_skipped"]
 
     def test_worker_start_checks_the_exact_id_before_moving_a_legacy_copy(self, docker):
         _legacy_pair(docker, "honeygain", proxy=_socks())
@@ -5464,3 +5464,69 @@ class TestARestartInPlace:
         assert ok.status_code == 200 and ok.json() == {"status": "restarted", "restarted": NAME}
         assert held.status_code == 409 and "left stopped" in held.json()["detail"]
         assert report.status_code == 409 and report.json()["detail"]["error"] == "proxied_copy_stopped"
+
+
+class TestContainerIdGuardsHold:
+    """The ID checks that keep a container CashPilot did not make out of a move, a recovery or a failed deploy."""
+
+    @pytest.mark.parametrize("record", ["none", "other-clone"])
+    def test_recover_moves_keeps_the_aside_copy_when_another_container_holds_the_name(self, docker, record):
+        _deploy("honeygain")
+        aside = docker.named(NAME)
+        aside.stop()
+        aside.rename(NAME + proxy_tunnel.MOVING_SUFFIX)
+        stranger = docker.create(name=NAME, image="x/y:1", labels=dict(aside.labels))
+        if record == "other-clone":
+            proxy_tunnel._record_pair(proxy_tunnel.MOVE_MARKER, NAME, aside.id, "f" * 64)
+        conflicts: dict[str, str] = {}
+        assert proxy_tunnel.recover_moves(0, conflicts=conflicts) == []
+        assert "move record cannot identify" in conflicts[NAME]
+        assert docker.by_id.get(aside.id) is aside and aside.name == NAME + proxy_tunnel.MOVING_SUFFIX
+        assert docker.named(NAME) is stranger
+
+    def test_a_failed_deploy_keeps_a_container_another_client_put_under_the_name(self, docker):
+        made: list[Any] = []
+
+        def raced_then_failed(*, slug, name, network_mode, labels, **_kw):
+            # Another client creates the container; this deploy never saw it created (no on_created).
+            made.append(
+                docker.create(
+                    name=name,
+                    image="x/y:1",
+                    network_mode=network_mode,
+                    labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
+                )
+            )
+            raise orchestrator.ContainerRuntimeError("409 Conflict: the name is in use")
+
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=raced_then_failed),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        (other,) = made
+        assert docker.by_id.get(other.id) is other and docker.named(NAME) is other
+        assert other.id not in proxy_tunnel._read_names(proxy_tunnel.FAILED_MARKER)
+
+    def test_a_start_that_sends_none_uses_the_workers_saved_id(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        proxy_tunnel.stop("honeygain", 3)
+        _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+        assert proxy_tunnel._recorded_containers()[NAME] == earner.id
+        proxy_tunnel.start("honeygain", 3, _socks(), None, expected_container="none")
+        moved = docker.named(NAME)
+        assert moved.status == "running" and moved.id != earner.id
+        assert proxy_tunnel._recorded_containers()[NAME] == moved.id
+
+    @pytest.mark.parametrize("how", ["remove", "remove_all"])
+    def test_removing_a_copy_drops_its_saved_id(self, docker, how):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        assert {NAME, "cashpilot-earnfm-p3"} <= set(proxy_tunnel._recorded_containers())
+        if how == "remove":
+            proxy_tunnel.remove("honeygain", 3)
+        else:
+            proxy_tunnel.remove_all("honeygain")
+        assert NAME not in proxy_tunnel._recorded_containers()
+        assert "cashpilot-earnfm-p3" in proxy_tunnel._recorded_containers()
