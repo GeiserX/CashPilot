@@ -12,10 +12,12 @@ description: >
   it passes your payout threshold.
 short_description: Monero mining pool, tracked by your payout address
 
-# The catalog uses this link to open the pool's website. The referral audit
-# reports the programme as unknown until its status is confirmed.
+# The catalog uses this link to open the pool's website. No referral programme:
+# SupportXMR has no accounts to carry a code (your Monero address is the
+# username), and its site and help pages name none (checked 2026-11-26).
 referral:
   account: false
+  program: false
   signup_url: "https://supportxmr.com"
 
 docker:

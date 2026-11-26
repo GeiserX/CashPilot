@@ -9,9 +9,13 @@ description: >
   reads the balance and asks you to confirm payouts when the balance drops.
 short_description: Ethereum Classic mining pool, tracked by your payout address
 
-# The Visit link opens the pool setup guide. Referral programme status is unconfirmed.
+# The Visit link opens the pool setup guide. No referral programme: 2Miners has
+# no accounts to carry a code (you mine to your wallet address), and its site,
+# FAQ and help pages name none (checked 2026-11-26). The ?ref= links on its help
+# page are 2Miners' own codes for exchanges and rig rentals, not a pool programme.
 referral:
   account: false
+  program: false
   signup_url: https://etc.2miners.com/help
 
 docker:
