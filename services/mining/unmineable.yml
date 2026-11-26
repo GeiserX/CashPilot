@@ -2,6 +2,7 @@ name: unMineable (CPU mining, paid in your coin)
 slug: unmineable
 category: mining
 status: beta
+priority: 20
 website: https://unmineable.com
 description: >-
   Mine with your CPU and get paid in the coin you choose, such as SHIB, DOGE or

@@ -2,6 +2,7 @@ name: ProxyRack
 slug: proxyrack
 category: bandwidth
 status: active
+priority: 13
 website: https://peer.proxyrack.com
 description: >
   ProxyRack's Peer program lets you earn by sharing your bandwidth as part of
@@ -32,7 +33,7 @@ docker:
       label: "API Key"
       required: false
       secret: true
-      description: "Log in at <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → API Key is shown on the main dashboard page (auto-registers device if provided)"
+      description: "Log in at <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → API Key is shown on the main dashboard page (auto-registers device if provided). Need an account? Sign up with <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
     - key: DEVICE_NAME
       identifier: true
       label: "Device name"
@@ -114,7 +115,7 @@ platforms: [docker, windows, macos, linux]
 collector:
   type: api
   notes: "Dashboard behind Cloudflare. May need API key from browser session. Per-device earnings visible."
-  credential_hint: "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value."
+  credential_hint: "Log in at <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, press F12 → Network, find any API request and copy the <b>Api-Key</b> header value. Need an account? Sign up with <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>."
 
 payout:
   model: internal
