@@ -4485,7 +4485,9 @@ const CP = (() => {
       const code = svc.referral && svc.referral.code_entry;
       actionBtn = [
         `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`,
-        code ? codeEntryCopy(svc, `Code ${escapeHtml(code)}`) : '',
+        // On its own line: the action cell does not wrap, and both buttons on one
+        // line push a phone-width table past the screen edge.
+        code ? `<span class="cat-act-code">${codeEntryCopy(svc, `Code ${escapeHtml(code)}`)}</span>` : '',
       ].filter(Boolean).join(' ');
     }
 

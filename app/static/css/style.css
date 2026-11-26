@@ -1691,6 +1691,8 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 .catalog-table .num, .catalog-table th.num { text-align: right; }
 .catalog-table .cat-est { font-family: var(--font-mono); font-size: var(--fs-2); white-space: nowrap; }
 .catalog-table .cat-act { text-align: right; width: 1%; white-space: nowrap; padding-right: 0; }
+.catalog-table .cat-act-code { display: block; margin-top: 4px; white-space: normal; }
+.catalog-table .cat-act-code .btn { white-space: normal; line-height: 1.2; }
 .catalog-list { margin-bottom: 8px; }
 
 /* Wizard service picks reuse .service-card as a plain bordered row */
