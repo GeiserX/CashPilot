@@ -22,6 +22,7 @@ import pytest  # noqa: E402
 
 pytest.importorskip("docker")
 
+import requests  # noqa: E402
 from docker.errors import APIError, NotFound  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -48,6 +49,9 @@ def _own_held_marker(tmp_path):
         patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / ".proxied_failed")),
         patch.object(proxy_tunnel, "KEPT_MARKER", str(tmp_path / ".proxied_kept")),
         patch.object(proxy_tunnel, "NEW_MARKER", str(tmp_path / ".proxied_new")),
+        patch.object(proxy_tunnel, "CREATED_MARKER", str(tmp_path / ".proxied_created")),
+        patch.object(proxy_tunnel, "MOVE_MARKER", str(tmp_path / ".proxied_moves")),
+        patch.object(proxy_tunnel, "CONTAINER_MARKER", str(tmp_path / ".proxied_containers")),
     ):
         yield
 
@@ -223,6 +227,95 @@ class TestDeployRawJoined:
             assert "until its proxy tunnel is ready" in str(err.value)
         else:
             old.start.assert_called_once()
+
+    def test_a_create_whose_inspect_fails_is_rolled_back_by_its_docker_id(self):
+        """docker-py inspects a new container before it returns it: the ID comes from the create answer."""
+        client = MagicMock()
+        client.api._version = "1.45"
+        tunnel = MagicMock(labels={"cashpilot.managed": "true", "cashpilot.role": "tunnel"})
+        old = MagicMock(status="running", labels={"cashpilot.service": "honeygain", "cashpilot.proxy": "3"})
+        old.attrs = {"Mounts": [], "HostConfig": {}}
+        new = MagicMock(id="b" * 64, status="created")
+        name = "cashpilot-honeygain-p3"
+        names = {"sidecar-id": tunnel, name: old}
+
+        def get(key):
+            if key == new.id:
+                raise requests.exceptions.ReadTimeout("inspect timed out")
+            if key in names:
+                return names[key]
+            raise NotFound("none")
+
+        def rename(to):
+            names.pop(next(k for k, v in names.items() if v is old))
+            names[to] = old
+
+        def create_container(**kwargs):
+            assert kwargs["name"] == name and kwargs["host_config"]["NetworkMode"] == "container:sidecar-id"
+            names[name] = new
+            return {"Id": new.id}
+
+        def sdk_create(**_kw):
+            # docker-py's ContainerCollection.create: create, then inspect.
+            names[name] = new
+            return get(new.id)
+
+        new.remove.side_effect = lambda **_kw: names.pop(name)
+        old.rename.side_effect = rename
+        client.containers.get.side_effect = get
+        client.containers.create.side_effect = sdk_create
+        client.api.create_container.side_effect = create_container
+        client.images.get.return_value.attrs = {"Config": {"Entrypoint": ["/app/run"], "Cmd": []}}
+        seen: list[str] = []
+        with (
+            patch.object(orchestrator, "_get_client", return_value=client),
+            patch.object(orchestrator, "container_network", return_value=None),
+            patch.object(orchestrator, "container_dns", return_value=None),
+            patch.object(orchestrator, "_ensure_volumes"),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            orchestrator.deploy_raw(
+                slug="honeygain",
+                image="honeygain/honeygain:1",
+                network_mode="container:sidecar-id",
+                name=name,
+                on_created=seen.append,
+            )
+        assert seen == [new.id]
+        new.remove.assert_called_once()
+        assert names.get(name) is old
+
+    def test_the_id_first_create_sends_what_the_sdk_create_sends(self):
+        """_create_container_id uses docker-py's private argument builder: an SDK that changes it fails here."""
+        import docker
+        from docker.models.containers import ContainerCollection
+
+        client = docker.DockerClient(base_url="unix:///nonexistent.sock", version="1.45")
+        kwargs = {
+            "image": "honeygain/honeygain:1",
+            "name": "cashpilot-honeygain-p3-next",
+            "environment": ["A=1"],
+            "labels": {"cashpilot.service": "honeygain"},
+            "network_mode": "container:sidecar-id",
+            "cap_drop": ["ALL"],
+            "cap_add": ["NET_ADMIN"],
+            "security_opt": ["no-new-privileges:true"],
+            "privileged": False,
+            "restart_policy": {"Name": "no"},
+            "volumes": {"hg-data": {"bind": "/data", "mode": "rw"}},
+            "mem_limit": 268435456,
+            "entrypoint": ["/app/run"],
+            "log_config": {"Type": "json-file", "Config": {}},
+        }
+        with (
+            patch.object(client.api, "create_container", return_value={"Id": "c" * 64}) as low,
+            patch.object(ContainerCollection, "get"),
+        ):
+            client.containers.create(**kwargs)
+            sdk = low.call_args
+            low.reset_mock()
+            assert orchestrator._create_container_id(client, kwargs) == "c" * 64
+        assert low.call_args == sdk
 
     def test_a_normal_container_keeps_its_restart_policy(self):
         client = MagicMock()
@@ -535,7 +628,7 @@ class TestOrder:
     def test_an_earner_left_stopped_by_a_reboot_starts_only_once_its_tunnel_is_ready(self):
         earner = _container("cashpilot-x-p1", "x", proxy=1, status="exited")
         tunnel = _container("cashpilot-tunnel-x-p1", "x", proxy=1, role="tunnel")
-        client = MagicMock()
+        client = _client_with(earner, tunnel)
         client.containers.list.return_value = [earner, tunnel]
         tunnel.exec_run.return_value = (1, b"")  # /run/ready not written yet
         with (
@@ -1053,8 +1146,9 @@ class TestStartAppliesTheStoredProxy:
         earner, tunnel = self._pair()
         with (
             patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "_recorded_containers", return_value={earner.name: earner.id}),
             patch.object(proxy_tunnel, "resolve_proxy_ip", side_effect=proxy_tunnel.ProxyTunnelError("no such host")),
-            pytest.raises(proxy_tunnel.ProxyTunnelError),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="no such host"),
         ):
             proxy_tunnel.start("x", 1, _socks(host="gw.example.net"), None)
         tunnel.start.assert_not_called()

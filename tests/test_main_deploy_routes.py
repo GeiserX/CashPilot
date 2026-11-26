@@ -103,6 +103,54 @@ def _mock_httpx_resp(status_code=200, json_data=None):
     return resp
 
 
+def recovery_phrase_formats(phrase):
+    words = phrase.split()
+    midpoint = len(words) // 2
+    halves = (" ".join(words[:midpoint]), " ".join(words[midpoint:]))
+
+    def csv(fields):
+        return ", ".join(map(json.dumps, fields))
+
+    return {
+        "spaces": phrase,
+        "uppercase": phrase.upper(),
+        "tabs": "\t".join(words),
+        "newlines": "\n".join(words),
+        "mixed-whitespace": "".join(word + ("\n\t" if i % 2 else "  ") for i, word in enumerate(words)),
+        "single-quoted": "'" + phrase + "'",
+        "double-quoted": json.dumps(phrase),
+        "curly-quoted": "“" + phrase + "”",
+        "comma-space": ", ".join(words),
+        "comma-tab": ",\t".join(words),
+        "comma-newline": ",\n".join(words),
+        "space-comma": " ,".join(words),
+        "comma-only": ",".join(words),
+        "mixed-comma-first": phrase.replace(" ", ", ", 1),
+        "mixed-comma-middle": ", ".join(halves),
+        "mixed-comma-last": ", ".join((phrase.rsplit(" ", 1)[0], words[-1])),
+        "mixed-compact": phrase.replace(" ", ",", 1),
+        "quoted-all-words": csv(words),
+        "quoted-multiword-fields": csv(halves),
+        "quoted-field-with-inner-comma": csv(("fixture123", phrase.replace(" ", ", ", 1))),
+        "quoted-field-with-whole-phrase": csv(("fixture123", phrase, "fixture456")),
+        "quoted-words-with-label": csv(("fixture123", *words)),
+        "quoted-multiword-fields-with-label": csv(("fixture123", *halves)),
+        "quoted-multiword-fields-with-trailing-label": csv((*halves, "fixture123")),
+        "quoted-multiword-fields-with-padded-field": csv(("fixture123 " + halves[0], halves[1])),
+        "quoted-multiword-fields-tight": ",".join(map(json.dumps, halves)),
+        "semicolon": ";".join(words),
+        "semicolon-space": "; ".join(words),
+        "hyphen": "-".join(words),
+        "slash": "/".join(words),
+        "slash-spaced": " / ".join(words),
+        "pipe": "|".join(words),
+        "plus": "+".join(words),
+        "url-encoded": quote(", ".join(words), safe=""),
+        "json-newline-escapes": json.dumps("\n".join(words)),
+        "json-tab-escapes": json.dumps("\t".join(words)),
+    }
+
+
 class TestDesktopWalletDeploys:
     _PHRASE_12 = "abandon " * 11 + "about"
     _PHRASE_24 = "abandon " * 23 + "art"
@@ -333,6 +381,38 @@ class TestDesktopWalletDeploys:
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
         self._assert_wallet_refusal(response, post, self._LEGACY_SIA)
 
+    @pytest.mark.parametrize("phrase", [_PHRASE_12, _LEGACY_SIA])
+    def test_desktop_refuses_an_unsaved_phrase_wrapped_in_quotes(self, client, worker_target, phrase):
+        _, post = worker_target
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "NOTE": f'"{phrase}"'},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, phrase)
+
+    def test_invalid_env_value_does_not_echo_a_recovery_phrase_in_its_key(self, client, worker_target):
+        _, post = worker_target
+        response = client.post("/api/deploy/honeygain?worker_id=2", json={"env": {self._PHRASE_12: {"wrong": "type"}}})
+        assert response.status_code == 422
+        assert self._PHRASE_12 not in response.text
+        post.assert_not_awaited()
+
+    @pytest.mark.parametrize("phrase", [_PHRASE_12, _LEGACY_SIA], ids=["bip39", "sia"])
+    @pytest.mark.parametrize("raw", [False, True], ids=["catalog", "raw"])
+    def test_desktop_refuses_mixed_recovery_phrase_separators(self, client, worker_target, phrase, raw):
+        _, post = worker_target
+        pasted = phrase.replace(" ", ", ", 1)
+        env = {**self._HONEYGAIN_ENV, "NOTE": pasted}
+        if raw:
+            spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
+            response = client.post(
+                "/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec}
+            )
+        else:
+            response = client.post("/api/deploy/honeygain?worker_id=2", json={"env": env})
+        self._assert_wallet_refusal(response, post, pasted)
+
     def test_desktop_refuses_an_unsaved_legacy_sia_phrase(self, client, worker_target):
         _, post = worker_target
         spec = {
@@ -402,9 +482,10 @@ class TestDesktopWalletDeploys:
         [
             ",".join(f"{name}01" for name in _HOST_NAMES),
             ",".join(f"{name}.example.test" for name in _HOST_NAMES),
-            _LOCATION_TAGS,
+            ",".join(_LOCATION_TAGS.split(",")[:8]),
+            ", ".join(_LOCATION_TAGS.split(",")[:8]),
         ],
-        ids=["numbered-hostnames", "fqdn-list", "location-tags"],
+        ids=["numbered-hostnames", "fqdn-list", "location-tags", "spaced-location-tags"],
     )
     def test_desktop_accepts_hostname_and_location_tag_lists(self, client, worker_target, value):
         _, post = worker_target
@@ -415,6 +496,45 @@ class TestDesktopWalletDeploys:
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
         assert (response.status_code, post.await_count) == (200, 1)
         assert post.await_args.kwargs["json"]["env"]["NOTE"] == value
+
+    @pytest.mark.parametrize("raw", [False, True], ids=["catalog", "raw"])
+    @pytest.mark.parametrize("saved", [False, True], ids=["unsaved", "saved"])
+    @pytest.mark.parametrize(
+        "phrase",
+        [_PHRASE_12, _PHRASE_24, _HOSTD_PHRASE, _LEGACY_SIA],
+        ids=["bip39-12", "bip39-24", "hostd", "legacy-sia"],
+    )
+    def test_desktop_never_forwards_the_phrase_format_matrix(self, client, worker_target, phrase, raw, saved):
+        _, post = worker_target
+        if saved:
+            asyncio.run(database.set_config("sia-hostd_HOSTD_WALLET_SEED", phrase))
+        leaks = {}
+        for shape, value in recovery_phrase_formats(phrase).items():
+            post.reset_mock()
+            response = self._deploy_with_note(client, raw, value)
+            if (response.status_code, post.await_count) != (409, 0):
+                leaks[shape] = (response.status_code, post.await_count)
+                continue
+            assert phrase not in response.text and value not in response.json()["detail"], shape
+        assert not leaks, leaks
+
+    @pytest.mark.parametrize("raw", [False, True], ids=["catalog", "raw"])
+    @pytest.mark.parametrize("quoted", [True, False], ids=["quoted", "plain"])
+    def test_desktop_names_the_csv_field_when_its_words_match_a_phrase(self, client, worker_target, raw, quoted):
+        _, post = worker_target
+        tags = ["international airport", *self._LOCATION_TAGS.split(",")[1:]]
+        value = ", ".join(map(json.dumps, tags)) if quoted else ",".join(tags)
+        response = self._deploy_with_note(client, raw, value)
+        self._assert_wallet_refusal(response, post)
+        assert "NOTE" in response.json()["detail"]
+        assert value not in response.json()["detail"]
+
+    def _deploy_with_note(self, client, raw, value):
+        env = {**self._HONEYGAIN_ENV, "NOTE": value}
+        if raw:
+            spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
+            return client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        return client.post("/api/deploy/honeygain?worker_id=2", json={"env": env})
 
     @pytest.mark.parametrize("field", ["Env", "unexpected", "approval"])
     def test_raw_desktop_deploy_requires_exact_schema_keys(self, client, worker_target, field):
@@ -1033,6 +1153,8 @@ class TestApiDeploy:
             assert refused.status_code == 409
             detail = refused.json()["detail"]
             assert "Update this worker" in detail["message"]
+            assert "container IDs this worker last reported" in detail["message"]
+            assert "could replace a different container" in detail["message"]
             assert detail["expected_containers"] == {"1": first[:12]}
             assert current == first and len(sent) == 1
 

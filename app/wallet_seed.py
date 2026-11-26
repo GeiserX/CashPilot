@@ -74,7 +74,8 @@ _LEGACY_SIA_BASE = 1626
 _LEGACY_SIA_LENGTHS = (28, 29)
 _LEGACY_SIA_WORD = re.compile(r"[a-z]{3,12}")
 _JSON_STRING_ESCAPES = re.compile(r'(?:\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))+')
-_PASTED_WORD_SEPARATOR = re.compile(r"\s*,\s+|\s+,\s*|\s+")
+# Keep numbered identifiers and dotted hostnames intact while splitting lists and prose.
+_PASTED_WORD = re.compile(r"[^\W_]+(?:\.[^\W_]+)*")
 
 
 def field_name(key: str) -> str:
@@ -173,9 +174,8 @@ def phrase_words(text: str) -> list[str]:
 
 
 def contains_pasted_phrase(text: str) -> bool:
-    """Scan one value for a recovery phrase pasted as whitespace-separated words."""
-    # A comma can accompany whitespace. A bare comma stays part of its token.
-    words = _PASTED_WORD_SEPARATOR.split(text.lower())
+    """Check for valid recovery phrases anywhere in a decoded value."""
+    words = _PASTED_WORD.findall(decode_phrase_text(text).lower())
     return contains_bip39_phrase(words) or _contains_legacy_sia_phrase(words)
 
 

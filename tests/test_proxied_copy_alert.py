@@ -472,3 +472,34 @@ const tagsNow = () => [...els['attention-list'].innerHTML.matchAll(/class="attn-
         # Numbered when sent, not when answered: a poll in flight while a
         # services refresh reads newer alerts must not count as the newer read.
         assert body.index("const read = ++_attentionReads;") < body.index("api('/api/collector-alerts')")
+
+
+class TestACapStartThatNeedsApprovalSaysSo:
+    """After a cap reset the worker can refuse to start a copy without the owner's approval of its containers."""
+
+    @pytest.fixture(autouse=True)
+    def _pending(self, monkeypatch):
+        monkeypatch.setattr(main, "_proxy_start_needs_approval", set())
+
+    def test_a_refused_start_after_a_reset_alerts_with_the_way_to_approve(self):
+        main._proxy_start_needs_approval.add((3, 1, "earnfm"))
+        alerts = _Alerts([_copy("earnfm", stopped_by_cap=1)])
+        _past_grace(alerts, [_worker([_entry("earnfm", status="exited", tunnel="exited", held=True)])])
+        assert list(alerts.rows) == ["cashpilot-earnfm-p3@1"]
+        assert alerts.titles == ["CashPilot: Earn.fm on alpha needs your approval to start"]
+        assert "Proxies on the Fleet page" in alerts.rows["cashpilot-earnfm-p3@1"]
+        # Once a start goes through, or the owner decides, the alert clears.
+        main._proxy_start_needs_approval.clear()
+        alerts.run([_worker([_entry("earnfm", status="exited", tunnel="exited", held=True)])])
+        assert not alerts.rows
+
+    def test_a_copy_the_cap_still_holds_raises_nothing(self):
+        main._proxy_start_needs_approval.add((3, 1, "earnfm"))
+        alerts = _Alerts([_copy("earnfm", stopped_by_cap=1)], proxies=[_proxy(capped_at="x")])
+        _past_grace(alerts, [_worker([_entry("earnfm", status="exited", tunnel="exited", held=True)])])
+        assert not alerts.rows
+
+    def test_control_a_copy_the_cap_stopped_with_no_refusal_raises_nothing(self):
+        alerts = _Alerts([_copy("earnfm", stopped_by_cap=1)])
+        _past_grace(alerts, [_worker([_entry("earnfm", status="exited", tunnel="exited", held=True)])])
+        assert not alerts.rows

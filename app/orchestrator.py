@@ -20,8 +20,10 @@ import secrets
 import shlex
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import docker
@@ -1213,6 +1215,7 @@ def deploy_raw(
     pulled: bool = False,
     wallet_seed: dict[str, Any] | None = None,
     wallet: dict[str, Any] | None = None,
+    on_created: Callable[[str], None] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -1565,17 +1568,25 @@ def deploy_raw(
         **resource_kwargs,
     )
     created = None
+    created_id: str | None = None
     began = time.monotonic()
     try:
         # Again here: the volumes and the old container's stop come after the
         # check above, and can take long. Past it, the old one is put back.
         _refuse_past(deadline, image)
         try:
-            container = (
-                client.containers.create(**run_kwargs)
-                if gated or not start
-                else client.containers.run(detach=True, **run_kwargs)
-            )
+            if on_created is not None:
+                # The ID from Docker's create answer, before the SDK's follow-up
+                # inspect: one that times out must not hide a container that exists.
+                created_id = _create_container_id(client, run_kwargs)
+                on_created(created_id)
+                container = client.containers.get(created_id)
+            else:
+                container = (
+                    client.containers.create(**run_kwargs)
+                    if gated or not start
+                    else client.containers.run(detach=True, **run_kwargs)
+                )
             created = container
             if not start:
                 # Restore: the caller writes the data, checks it, then starts it.
@@ -1586,6 +1597,7 @@ def deploy_raw(
                 # Left created, not started, when the fence is not confirmed: the guard
                 # starts it as soon as it is, and nothing runs before that.
                 _require_fence(slug)
+            if gated or on_created is not None:
                 container.start()
         except ContainerNetworkError:
             raise
@@ -1593,7 +1605,7 @@ def deploy_raw(
             # No answer is not a refusal: Docker may still be starting it. A
             # create-only (restore) or gated create that got none was never
             # started, so there is nothing to wait for.
-            if not _outcome_unknown(exc) or not start or (gated and created is None):
+            if not _outcome_unknown(exc) or not start or (created is None and (gated or on_created is not None)):
                 raise
             container = created = _await_start(client, name, created, began, exc)
         if gated:
@@ -1610,7 +1622,11 @@ def deploy_raw(
         raise
     except Exception as exc:
         conflict = (
-            expected_container is not None and created is None and isinstance(exc, APIError) and exc.status_code == 409
+            expected_container is not None
+            and created is None
+            and created_id is None
+            and isinstance(exc, APIError)
+            and exc.status_code == 409
         )
         restored = _roll_back(
             client,
@@ -1621,8 +1637,8 @@ def deploy_raw(
             identity_before,
             stopped_before,
             held_before=held_before,
-            created=created,
-            create_only=not start or conflict,
+            created=created if created is not None or created_id is None else SimpleNamespace(id=created_id),
+            create_only=not start or conflict or on_created is not None,
             gated=gated,
             joined=joined,
         )
@@ -1634,6 +1650,12 @@ def deploy_raw(
     _remove_replaced(replaced, name, slug)
     logger.info("Container %s started: %s", name, container.short_id)
     return container.id
+
+
+def _create_container_id(client: Any, run_kwargs: dict[str, Any]) -> str:
+    """Create the container as ``containers.create`` does, and return Docker's ID without inspecting it."""
+    kwargs = {"command": None, **run_kwargs, "version": client.api._version}
+    return str(client.api.create_container(**docker.models.containers._create_container_args(kwargs))["Id"])
 
 
 def _prepare_wallet(

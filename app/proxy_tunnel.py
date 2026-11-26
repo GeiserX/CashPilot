@@ -57,6 +57,7 @@ import tarfile
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote, unquote
@@ -142,21 +143,19 @@ _held_lock = threading.Lock()
 #: failed one is in: one that started and exited is no proof the deploy went
 #: through, and taking it for the copy would remove the old earner.
 FAILED_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_failed")
-#: Old earners a redeploy is about to move aside, one container id per line,
-#: written before deploy_raw runs and cleared once the deploy says how it
-#: ended. While one is aside it is the copy, whatever holds its name: the
-#: failure of a deploy that died, or whose failure could not be recorded in
-#: FAILED_MARKER, is never taken for a success that removes it. A deploy is
-#: reported as done only once its old earner is gone or no longer here.
+#: Ids of previous copies a redeploy moves aside until it records the outcome.
 KEPT_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_kept")
-#: The same for a first deploy, which has no old earner to keep: copy names,
-#: one per line, written before deploy_raw creates the earner and cleared
-#: before the deploy is reported as done. While a name is here, whatever holds
-#: it is a deploy that died or failed, never the copy: it is never started,
-#: carries no identity proof, and goes. A redeploy over what such a deploy left
-#: first binds the record to that container (``<name>@<id>``, _new_key), so a
-#: record it then fails to clear never names the replacement.
+#: Names of unfinished first deploys, or the specific holders a legacy marker
+#: was bound to. These intent markers cannot authorize removal on their own.
 NEW_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_new")
+# Only successful deploys and checked moves write these full Docker IDs.
+# An inventory read never gives a container permission to be replaced.
+CONTAINER_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_containers")
+
+# Full IDs from Docker's create response. The older intent markers alone
+# cannot prove that the container currently under a name belongs to a deploy.
+CREATED_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_created")
+MOVE_MARKER = os.path.join(os.getenv("CASHPILOT_DATA_DIR", "/data"), ".proxied_moves")
 
 
 def _read_names(path: str) -> set[str]:
@@ -222,6 +221,34 @@ def _sync_folder(path: str) -> None:
             os.close(folder)
 
 
+def _recorded_containers() -> dict[str, str]:
+    try:
+        return dict(line.split("@", 1) for line in _read_names(CONTAINER_MARKER) if "@" in line)
+    except OSError as exc:
+        logger.warning("Could not read the saved proxied container IDs: %s", exc)
+        return {}
+
+
+def _record_container(name: str, container_id: str | None) -> None:
+    """Save the container ID of ``name``, or with None drop it (the copy was removed)."""
+    try:
+        with _held_lock:
+            records = _read_names(CONTAINER_MARKER)
+            kept = {entry for entry in records if not entry.startswith(f"{name}@")}
+            if container_id is not None:
+                _write_names(CONTAINER_MARKER, kept | {f"{name}@{container_id}"})
+            elif kept != records:
+                _write_names(CONTAINER_MARKER, kept)
+    except OSError as exc:
+        # The deploy, move or removal has committed. A lost or stale record makes
+        # later moves ask for approval (or skip), so it is safe to report success.
+        logger.warning("Could not save the container ID of %s: %s", name, exc)
+
+
+def _forget_container(name: str) -> None:
+    _record_container(name, None)
+
+
 def _flush_unchanged(path: str) -> None:
     """For a write that finds the marker already says so: flush its folder anyway.
 
@@ -238,23 +265,47 @@ def held() -> set[str]:
     return _read_names(HELD_MARKER)
 
 
-def _failed_replacement(container: Any) -> bool:
-    """Whether ``container``, holding a copy's name beside its old earner aside, is a failed deploy's.
+def _created_key(name: str, previous: str, container_id: str) -> str:
+    return f"{name}@{previous}@{container_id}"
 
-    One that never ran, or one _recorded_failed names. Raises OSError when a
-    marker cannot be read."""
-    return _never_ran(container) or _recorded_failed(container)
+
+def _record_pair(path: str, name: str, previous: str, container_id: str) -> None:
+    with _held_lock:
+        try:
+            records = _read_names(path)
+            records = {line for line in records if not line.startswith(f"{name}@")}
+            _write_names(path, records | {_created_key(name, previous, container_id)})
+        except OSError as exc:
+            raise ProxyTunnelError(f"Could not record the created container for {name}.") from exc
+
+
+def _record_created(name: str, previous: str, container_id: str) -> None:
+    _record_pair(CREATED_MARKER, name, previous, container_id)
+
+
+def _forget_created(name: str, previous: str, container_id: str) -> None:
+    _set_id(CREATED_MARKER, _created_key(name, previous, container_id), False)
+
+
+def _created_by_deploy(holder: Any, previous: str = "none") -> bool:
+    return _created_key(str(holder.name), previous, str(holder.id)) in _read_names(CREATED_MARKER)
 
 
 def _aside_is_copy(holder: Any, aside: Any) -> bool:
-    """Whether the old earner ``aside`` is still the copy beside ``holder``, which holds its name.
+    """An unfinished redeploy can restore its old copy only over the replacement it created."""
+    return (
+        not _going(aside)
+        and _created_by_deploy(holder, str(aside.id))
+        and (str(aside.id) in _read_names(KEPT_MARKER) or _recorded_failed(holder))
+    )
 
-    So when the holder is a failed replacement, or when the redeploy that
-    moved ``aside`` never recorded how it ended (KEPT_MARKER) and ``aside``
-    can still run. Raises OSError when a marker cannot be read."""
-    if _failed_replacement(holder):
-        return True
-    return not _going(aside) and str(getattr(aside, "id", "")) in _read_names(KEPT_MARKER)
+
+def _require_resolved_deploy(holder: Any, aside: Any | None) -> None:
+    """Refuse to touch a name holder that an interrupted deploy cannot identify."""
+    name = str(holder.name)
+    previous = str(aside.id) if aside is not None else "none"
+    if (aside is not None or _recorded_failed(holder)) and not _created_by_deploy(holder, previous):
+        raise RecoveryConflict(f"Recovery skipped for {name}. The deploy record cannot identify the current container")
 
 
 def _going(container: Any | None) -> bool:
@@ -372,6 +423,14 @@ class ProxyTunnelError(RuntimeError):
 
 class _RecordNotFlushed(ProxyTunnelError):
     """A stop or start is in the marker, but its folder could not be flushed (_NotFlushed)."""
+
+
+class RecoveryConflict(ProxyTunnelError):
+    """Docker's name holder cannot be tied to the unfinished operation."""
+
+
+class CopyNotRunning(ProxyTunnelError):
+    """In-place Restart refused a stopped copy before taking any action."""
 
 
 def tunnel_image() -> str:
@@ -934,7 +993,82 @@ def _tunnel_of(client: Any, earner: Any | None, slug: str, proxy_id: int) -> Any
 # ---------------------------------------------------------------------------
 
 
-def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = None) -> Any:
+@dataclass(frozen=True)
+class _StartApproval:
+    selected: str
+    expected: dict[str, str]
+    grouped: bool = False
+
+
+class StartTargetsChanged(ProxyTunnelError):
+    def __init__(self, targets: dict[str, str]):
+        super().__init__("Starting this copy requires replacing the listed containers in its shared tunnel.")
+        self.targets = targets
+
+
+def _require_settled_move(client: Any, name: str) -> None:
+    """A staged or aside container is never a target the owner can approve."""
+    canonical = name.removesuffix(STAGED_SUFFIX).removesuffix(MOVING_SUFFIX).removesuffix(orchestrator.REPLACED_SUFFIX)
+    if canonical != name:
+        raise RecoveryConflict(f"Recovery skipped for {canonical}. A container still holds {name}.")
+    for suffix in (STAGED_SUFFIX, MOVING_SUFFIX):
+        if _get(client, name + suffix) is not None:
+            raise RecoveryConflict(f"Recovery skipped for {name}. A container still holds {name + suffix}.")
+
+
+def _move_expected(client: Any, member: Any, target: _StartApproval | None) -> str:
+    name = str(member.name)
+    _require_settled_move(client, name)
+    saved = _recorded_containers().get(name, "none") if target is None or not target.grouped else "none"
+    expected = target.expected.get(name, saved) if target is not None else saved
+    current = orchestrator.deploy_target(client, name)
+    orchestrator.require_deploy_target(expected, current)
+    orchestrator.require_deploy_target(expected, member)
+    _require_settled_deploy(client, member)
+    return expected
+
+
+def _require_settled_deploy(client: Any, member: Any) -> None:
+    """A copy whose redeploy is not settled is never moved, nor offered for approval.
+
+    Its old earner aside (KEPT_MARKER may make it the copy) and the recorded
+    pair are what the heartbeat settles it by (_settle_replaced). A clone of
+    the replacement would match neither."""
+    name = str(member.name)
+    aside = _get(client, name + orchestrator.REPLACED_SUFFIX)
+    _require_resolved_deploy(member, aside)
+    if aside is not None or _recorded_failed(member):
+        raise RecoveryConflict(f"Recovery skipped for {name}. Its previous deploy has not been settled.")
+
+
+def _check_move_targets(client: Any, members: list[Any], target: _StartApproval | None) -> None:
+    try:
+        for member in members:
+            _move_expected(client, member, target)
+    except orchestrator.DeployTargetChanged:
+        if target is None or not members:
+            raise
+        affected = {str(member.name): member for member in members}
+        if target.selected not in affected:
+            selected = orchestrator.deploy_target(client, target.selected)
+            if selected is None:
+                raise
+            affected[target.selected] = selected
+        if len(affected) == 1:
+            raise
+        approvals = {}
+        for name, member in sorted(affected.items()):
+            _require_settled_move(client, name)
+            current = orchestrator.deploy_target(client, name)
+            orchestrator.require_deploy_target(member.id, current)
+            _require_settled_deploy(client, member)
+            approvals[_labels(member)[LABEL_SERVICE]] = str(member.id)
+        raise StartTargetsChanged(approvals) from None
+
+
+def _clone_into(
+    client: Any, member: Any, tunnel: Any, *, start: bool | None = None, target: _StartApproval | None = None
+) -> Any:
     """Recreate ``member`` inside ``tunnel``'s namespace, from what Docker recorded.
 
     A container's network namespace is fixed when it is created, so moving an
@@ -969,16 +1103,12 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
     cfg = attrs.get("Config") or {}
     hc = attrs.get("HostConfig") or {}
     name = str(member.name)
+    expected = _move_expected(client, member, target)
     service = _labels(member).get(LABEL_SERVICE)
     was_running = getattr(member, "status", "") in _LIVE
     _refuse_unmovable(member)
     staged = name + STAGED_SUFFIX
     aside = name + MOVING_SUFFIX
-    for leftover_name in (staged, aside):
-        if (leftover := _get(client, leftover_name)) is not None:
-            if not (_is_earner(leftover) and _labels(leftover).get(LABEL_SERVICE) == service):
-                raise ProxyTunnelError(f"A container named {leftover_name} that CashPilot did not create is in the way")
-            _remove_quietly(leftover, 2, volumes=False)  # they may be the member's own
     optional = {
         "entrypoint": cfg.get("Entrypoint"),
         "command": cfg.get("Cmd"),
@@ -1007,7 +1137,7 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
     # replacement must explicitly hide NVIDIA devices like a fresh deploy.
     environment = [entry for entry in cfg.get("Env") or [] if not entry.upper().startswith(gpu.ENV_PREFIX)]
     environment.extend(f"{key}={value}" for key, value in gpu.VOID_ENV.items())
-    clone = client.containers.create(
+    run_kwargs = dict(
         image=cfg.get("Image") or _image_of(member),
         name=staged,
         environment=environment,
@@ -1029,6 +1159,19 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         restart_policy={"Name": "no"},
         **{k: v for k, v in optional.items() if v is not None},
     )
+    # The ID from Docker's create answer, recorded before the SDK's inspect:
+    # one that times out leaves a clone recover_moves can identify.
+    clone_id = orchestrator._create_container_id(client, run_kwargs)
+    move = _created_key(name, str(member.id), clone_id)
+    try:
+        _record_pair(MOVE_MARKER, name, str(member.id), clone_id)
+        clone = client.containers.get(clone_id)
+        orchestrator.require_deploy_target(expected, orchestrator.deploy_target(client, name))
+    except Exception:
+        # By its ID, never its name. One Docker keeps is settled by the move record.
+        with contextlib.suppress(Exception):
+            client.api.remove_container(clone_id, force=True, v=False)
+        raise
     try:
         with contextlib.suppress(Exception):
             member.stop(timeout=orchestrator._get_stop_timeout(service or ""))
@@ -1049,12 +1192,17 @@ def _clone_into(client: Any, member: Any, tunnel: Any, *, start: bool | None = N
         _remove_quietly(clone, 2, volumes=False)
         _put_back(client, member, name, was_running)
         raise
+    # Saved before the original goes: once it is gone, recover_moves no longer
+    # sees this move, so a worker that stopped here would keep the old ID.
+    _record_container(name, str(clone.id))
     try:
         member.remove(force=True, v=False)  # its volumes are the clone's now
     except NotFound:
-        pass
+        _set_id(MOVE_MARKER, move, False)
     except Exception as exc:  # noqa: BLE001 - a leftover only: recover_moves removes it
         logger.warning("Could not remove %s after it moved: %s", aside, exc)
+    else:
+        _set_id(MOVE_MARKER, move, False)
     clone.reload()
     return clone
 
@@ -1101,7 +1249,7 @@ def _put_back(client: Any, member: Any, name: str, was_running: bool) -> None:
                 _start_in_ready_run(member, home, _labels(member).get(LABEL_SERVICE, ""))
 
 
-def _move_members(client: Any, old: Any, new: Any) -> None:
+def _move_members(client: Any, old: Any, new: Any, *, target: _StartApproval | None = None) -> None:
     """Every earner of ``old`` into ``new``. On a failure the ones moved go back, unless no earner starts in ``old``.
 
     No earner starts in a tunnel Docker restarts on its own (_start_in_ready_run),
@@ -1110,10 +1258,12 @@ def _move_members(client: Any, old: Any, new: Any) -> None:
     ``new`` stays with them (the caller keeps a tunnel copies live in): the
     heartbeat finishes the change later (_finish_staged), and the copies left
     in ``old`` move then."""
+    members = _members(client, old)
+    _check_move_targets(client, members, target)
     moved: list[Any] = []
     try:
-        for member in _members(client, old):
-            moved.append(_clone_into(client, member, new))
+        for member in members:
+            moved.append(_clone_into(client, member, new, target=target))
     except Exception:
         with contextlib.suppress(Exception):
             old.reload()
@@ -1152,6 +1302,7 @@ def _ensure_tunnel(
     deadline: float | None = None,
     keep: str | None = None,
     expected_container: str | None = None,
+    move_target: _StartApproval | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """The proxy's shared tunnel, running on the given settings and ready; with
     ``slug``, the routed service's own tunnel through the proxy instead.
@@ -1204,7 +1355,7 @@ def _ensure_tunnel(
             raise ProxyTunnelError("Wait for the worker to recover the previous tunnel change before deploying.")
         # A change that died after it began moving copies: finish it first.
         with _swap_lock:
-            current = _finish_staged(client, leftover, current, final)
+            current = _finish_staged(client, leftover, current, final, target=move_target)
     broken = False
     # An older worker's tunnel, which Docker restarts on its own, is never used
     # as it is: replaced before any earner starts in it (_restarts_by_itself).
@@ -1227,6 +1378,8 @@ def _ensure_tunnel(
             # thrown away, on every try.
             for member in members:
                 _refuse_unmovable(member)
+            if expected_container is None:
+                _check_move_targets(client, members, move_target)
         # Before anything changes: the replacement must carry the recorded address.
         files = _carry_own_ip(current, files, replacing=True, broken=broken)
     # Left by a deploy that died midway, on this name only if it is ours. A young
@@ -1268,7 +1421,7 @@ def _ensure_tunnel(
                         raise ProxyTunnelError(
                             "Could not keep the approved container in its tunnel during replacement."
                         )
-                    _move_members(client, current, new)
+                    _move_members(client, current, new, target=move_target)
                     _remove_quietly(current, SIDECAR_STOP_SECONDS)
             new.rename(final)
     except Exception:
@@ -1602,7 +1755,9 @@ def _moving(client: Any, proxy_id: str) -> list[str]:
     return [str(c.name) for c in found if _is_earner(c) and str(c.name).endswith((STAGED_SUFFIX, MOVING_SUFFIX))]
 
 
-def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) -> Any:
+def _finish_staged(
+    client: Any, staged: Any, current: Any | None, final: str, *, target: _StartApproval | None = None
+) -> Any:
     """Finish a tunnel change a worker died in: the staged tunnel had proved its
     exit before any copy moved into it, so the copies left in ``current`` move
     across and it takes the final name. Returns the tunnel under ``final``.
@@ -1612,14 +1767,15 @@ def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) ->
     Refused while a copy of the proxy is still half moved: recover_moves must
     settle it first, or its container aside would be taken for a copy."""
     if half := _moving(client, _labels(staged).get(LABEL_PROXY, "")):
-        raise ProxyTunnelError(
-            f"{', '.join(sorted(half))} {'is' if len(half) == 1 else 'are'} still being moved into a new tunnel; "
-            "the worker settles that within a few minutes. Try again then."
+        raise RecoveryConflict(
+            f"Recovery skipped. {', '.join(sorted(half))} {'is' if len(half) == 1 else 'are'} still being moved "
+            "into a new tunnel."
         )
+    members = _members(client, current) if current is not None else []
+    _check_move_targets(client, members, target)
     run = getattr(staged, "status", "") == "running"
     if current is not None and (
-        getattr(current, "status", "") in _LIVE
-        or any(getattr(m, "status", "") in _LIVE for m in _members(client, current))
+        getattr(current, "status", "") in _LIVE or any(getattr(m, "status", "") in _LIVE for m in members)
     ):
         # The current tunnel runs (after a reboot with every copy still down,
         # too): its copies never move into one that has not proved its exit
@@ -1637,8 +1793,10 @@ def _finish_staged(client: Any, staged: Any, current: Any | None, final: str) ->
             return _undo_staged(client, staged, current, f"The new tunnel of {final} {why}")
         run = True
     if current is not None:
-        for member in _members(client, current):
-            _clone_into(client, member, staged, start=run and getattr(member, "status", "") in _LIVE)
+        members = _members(client, current)
+        _check_move_targets(client, members, target)
+        for member in members:
+            _clone_into(client, member, staged, start=run and getattr(member, "status", "") in _LIVE, target=target)
         _remove_quietly(current, SIDECAR_STOP_SECONDS)
     staged.rename(final)
     logger.info("Finished moving the copies of %s into its new tunnel", final)
@@ -1866,6 +2024,14 @@ def _deploy(
         else:
             _drop_if_empty(client, tunnel)
         raise
+    previous_id = "none" if first else str(previous.id)
+    created_id = None
+
+    def on_created(container_id: str) -> None:
+        nonlocal created_id
+        created_id = container_id
+        _record_created(name, previous_id, container_id)
+
     try:
         container_id = orchestrator.deploy_raw(
             slug=slug,
@@ -1882,10 +2048,14 @@ def _deploy(
             deadline=deadline,
             pulled=True,
             expected_container=expected_container,
+            on_created=on_created,
         )
         # Recorded as done before it is reported, or undone below: a record
         # left saying otherwise would have the heartbeat undo it.
         _commit(client, name, None if first else previous, clear_new=first)
+        _record_container(name, str(container_id))
+        if first:
+            _forget_created(name, previous_id, str(container_id))
     except Exception as exc:
         # docker-py's run leaves the container created when only its start
         # fails; the heartbeat would start it later, outside the owner's view.
@@ -1908,8 +2078,7 @@ def _deploy(
             if (
                 not isinstance(exc, orchestrator.DeployTargetChanged)
                 and left is not None
-                and _is_ours(left, slug, proxy_id)
-                and (previous is None or left.id != previous.id)
+                and left.id == created_id
                 and (first or not _going(_get(client, str(previous.id))))
             ):
                 _set_failed(str(left.id), True)
@@ -1919,6 +2088,8 @@ def _deploy(
                     left = None
             if first and (left is None or isinstance(exc, orchestrator.DeployTargetChanged)):
                 _set_new(name, False)
+            if created_id and (left is None or left.id != created_id):
+                _forget_created(name, previous_id, created_id)
         except Exception as exc:  # noqa: BLE001 - the deploy's own error is the one reported
             logger.warning("Could not check what the failed deploy of %s left: %s", name, redact(str(exc)))
         with contextlib.suppress(Exception):
@@ -2040,7 +2211,7 @@ def _put_old_back(client: Any, name: str, slug: str, proxy_id: int, was_held: bo
         _start_when_ready(old, sidecar, slug, ready=True)
 
 
-def _settle_before_deploy(client: Any, name: str, slug: str, proxy_id: int) -> None:
+def _settle_before_deploy(client: Any, name: str, slug: str, proxy_id: int, *, expected: str | None = None) -> None:
     """Settle an old earner a failed redeploy left aside, before a deploy or a start touches anything.
 
     deploy_raw takes a ``<name>-replaced`` of the same copy for a leftover and
@@ -2051,10 +2222,13 @@ def _settle_before_deploy(client: Any, name: str, slug: str, proxy_id: int) -> N
     proxy's lock.
     """
     aside_name = name + orchestrator.REPLACED_SUFFIX
-    if not _is_aside_of(_get(client, aside_name), name):
+    aside = _get(client, aside_name)
+    if not _is_aside_of(aside, name):
         return  # none, or not this copy's old earner: deploy_raw's to handle, as before
     try:
-        _settle_replaced(client, _get(client, aside_name))
+        _settle_replaced(client, aside, expected=expected)
+    except (RecoveryConflict, orchestrator.DeployTargetChanged):
+        raise
     except Exception as exc:  # noqa: BLE001 - what is left is checked below
         logger.warning("Could not settle %s before a deploy: %s", aside_name, redact(str(exc)))
     current = _get(client, name)
@@ -2078,33 +2252,21 @@ def _settle_before_deploy(client: Any, name: str, slug: str, proxy_id: int) -> N
         )
 
 
-def _settle_replaced(client: Any, aside: Any) -> str | None:
-    """An old earner deploy_raw left aside (``<name>-replaced``) with no deploy of its proxy running. What it did.
-
-    A worker that died between the move aside and the new earner, a rename
-    back that failed, or a removal Docker refused leaves one. When its copy
-    holds the name again it is a leftover and goes; when the name is free, or
-    held by a failed deploy's replacement Docker would not remove, it is the
-    copy and gets its name back, stopped: the heartbeat starts it once its
-    tunnel is ready, unless it is held. "Failed" is _failed_replacement: one
-    that never ran, or one the failed deploy recorded, which may have started
-    and exited. The caller holds the proxy's lock.
-    """
-    labels = _labels(aside)
-    slug, pid = labels.get(LABEL_SERVICE, ""), labels.get(LABEL_PROXY, "")
+def _settle_replaced(client: Any, aside: Any, *, expected: str | None = None) -> str | None:
+    """Settle a redeploy using the IDs it recorded, under the proxy's lock."""
     aside_name = str(aside.name)
     name = aside_name.removesuffix(orchestrator.REPLACED_SUFFIX)
     if name == aside_name or not _is_aside_of(aside, name):
         return None
-    current = _get(client, name)
+    current = orchestrator.deploy_target(client, name)
+    orchestrator.require_deploy_target(expected, current)
     if current is None:
         aside.rename(name)
         _set_kept(str(aside.id), False)
         return f"restored {name}"
     if current.id == aside.id:
         return None  # one container under both names: a stale read of one already restored
-    if not (_is_ours(current, slug, int(pid)) and _is_earner(current)):
-        return None
+    _require_resolved_deploy(current, aside)
     try:
         failed = _aside_is_copy(current, aside)
     except OSError as exc:
@@ -2118,10 +2280,12 @@ def _settle_replaced(client: Any, aside: Any) -> str | None:
         _set_failed(str(current.id), False)
         aside.rename(name)
         _set_kept(str(aside.id), False)
+        _forget_created(name, str(aside.id), str(current.id))
         return f"restored {name}"
     # As deploy_raw would have removed it once its replacement ran.
     _remove_quietly(aside, 2, volumes=False)
     _remove_anonymous_volumes(client, aside)
+    _forget_created(name, str(aside.id), str(current.id))
     return f"removed {aside_name}"
 
 
@@ -2135,11 +2299,6 @@ def _is_aside_of(aside: Any | None, name: str) -> bool:
         and pid.isdigit()
         and name == earner_name(labels.get(LABEL_SERVICE, ""), int(pid))
     )
-
-
-def _never_ran(container: Any) -> bool:
-    """Created and never started: Docker keeps a container in "created" only until its first start."""
-    return getattr(container, "status", "") == "created"
 
 
 _LIVE = ("running", "restarting")
@@ -2313,7 +2472,15 @@ def _halt(
     return was_running, half_failure
 
 
-def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip: str | None = None) -> dict[str, Any]:
+def start(
+    slug: str,
+    proxy_id: int,
+    proxy: dict[str, Any] | None = None,
+    own_ip: str | None = None,
+    *,
+    expected_container: str | None = None,
+    expected_containers: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Start one copy: its tunnel ready first, then the earner.
 
     ``proxy`` is the proxy as it is stored now, so an edit (a new password,
@@ -2329,7 +2496,8 @@ def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip:
     """
     with route_gate.deploying(slug), _deploy_lock(proxy_id):
         try:
-            return _start(slug, proxy_id, proxy, own_ip)
+            approval = {"expected_containers": expected_containers} if expected_containers is not None else {}
+            return _start(slug, proxy_id, proxy, own_ip, expected_container, **approval)
         except orchestrator.PastDeadline:
             # Only a start's tunnel image pull has a deadline here (_pull_deadline):
             # not the deploy limit the error names, nor a setting to fix.
@@ -2340,13 +2508,47 @@ def start(slug: str, proxy_id: int, proxy: dict[str, Any] | None = None, own_ip:
             ) from None
 
 
-def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str | None) -> dict[str, Any]:
+def _start(
+    slug: str,
+    proxy_id: int,
+    proxy: dict[str, Any] | None,
+    own_ip: str | None,
+    expected_container: str | None,
+    *,
+    expected_containers: dict[str, str] | None = None,
+) -> dict[str, Any]:
     client = orchestrator._get_client()
     name = earner_name(slug, proxy_id)
+    if expected_containers is not None:
+        if slug not in expected_containers or any(
+            not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", copy_slug) or not re.fullmatch(r"[0-9a-f]{64}", cid)
+            for copy_slug, cid in expected_containers.items()
+        ):
+            raise ProxyTunnelError("Expected full Docker IDs for all copies in the Start approval.", 422)
+        expected_container = expected_containers[slug]
+    elif expected_container == "none":
+        # A Start needs its earner, so "none" can never be the container meant.
+        # It says only that the caller saw no saved ID: this worker's own record applies.
+        expected_container = None
     # The old earner a failed redeploy left aside is the copy, never the
     # failed container under its name.
-    _settle_before_deploy(client, name, slug, proxy_id)
-    earner = _get(client, name)
+    earner = orchestrator.deploy_target(client, name)
+    _require_settled_move(client, name)
+    if expected_container is not None:
+        orchestrator.require_deploy_target(expected_container, earner)
+    if earner is not None:
+        _require_resolved_deploy(earner, _get(client, name + orchestrator.REPLACED_SUFFIX))
+    _settle_before_deploy(client, name, slug, proxy_id, expected=expected_container)
+    earner = orchestrator.deploy_target(client, name)
+    if expected_containers is None:
+        saved = expected_container if expected_container is not None else _recorded_containers().get(name, "none")
+        target = _StartApproval(name, {name: saved})
+    else:
+        target = _StartApproval(
+            name,
+            {earner_name(copy_slug, proxy_id): cid for copy_slug, cid in expected_containers.items()},
+            grouped=True,
+        )
     if not _is_ours(earner, slug, proxy_id):
         raise ValueError(f"No proxied copy of {slug} through proxy {proxy_id} on this worker")
     # One a deploy that failed or never said it went through left is never the
@@ -2395,7 +2597,11 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
                     f"Docker could not start {retired.name} ({exc}), so {name} was not started"
                 ) from None
         else:
-            shared, exit_info = _ensure_tunnel(client, proxy_id, proxy, own_ip, slug=key, deadline=_pull_deadline())
+            if _tunnel_id_of(earner) != getattr(_get(client, final), "id", None):
+                _move_expected(client, earner, target)
+            shared, exit_info = _ensure_tunnel(
+                client, proxy_id, proxy, own_ip, slug=key, deadline=_pull_deadline(), move_target=target
+            )
     else:
         if tunnel is None:
             raise ProxyTunnelError(
@@ -2406,7 +2612,7 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
         if _is_shared(tunnel) and _restarts_by_itself(tunnel):
             # An older worker's tunnel: replaced on the settings it holds before
             # the earner starts, which is recreated in the replacement.
-            tunnel, exit_info = _replace_restarting(client, tunnel, deadline=_pull_deadline())
+            tunnel, exit_info = _replace_restarting(client, tunnel, deadline=_pull_deadline(), move_target=target)
             earner = _get(client, name)
             if earner is None:
                 raise ProxyTunnelError(f"{name} disappeared while its tunnel was replaced")
@@ -2428,7 +2634,7 @@ def _start(slug: str, proxy_id: int, proxy: dict[str, Any] | None, own_ip: str |
                 # tunnel (a routed service's in its own). A legacy tunnel goes
                 # with it.
                 with _swap_lock:
-                    _clone_into(client, earner, shared, start=False)
+                    _clone_into(client, earner, shared, start=False, target=target)
                     if tunnel is not None and not _is_shared(tunnel):
                         _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
                     elif tunnel is not None and tunnel.id != shared.id:
@@ -2592,12 +2798,14 @@ def restart(slug: str, proxy_id: int) -> dict[str, Any]:
             raise ProxyTunnelError(
                 f"Could not read which copies are stopped ({exc}); {name} was left as it was"
             ) from None
-        if stopped:
-            raise ProxyTunnelError(f"{name} was stopped by its owner or by the traffic cap, so it was left stopped")
         if unfinished:
             raise ProxyTunnelError(f"{name} was left by a deploy that did not finish, so it was left as it was")
-        if getattr(earner, "status", "") != "running":
-            raise ProxyTunnelError(f"{name} is not running, so it was left as it was")
+        if stopped:
+            raise CopyNotRunning(f"{name} was stopped by its owner or by the traffic cap, so it was left stopped")
+        state = getattr(earner, "status", "")
+        if state != "running":
+            error = CopyNotRunning if state in ("created", "exited") else ProxyTunnelError
+            raise error(f"{name} is not running, so it was left as it was")
         tunnel = _tunnel_of(client, earner, slug, proxy_id)
         if tunnel is None or not _start_in_ready_run(earner, tunnel, slug, restart=True):
             raise ProxyTunnelError(
@@ -2646,6 +2854,7 @@ def _remove(slug: str, proxy_id: int, *, drop_shared: bool = True) -> list[str]:
         elif drop_shared and _is_shared(candidate, proxy_id):
             removed += _drop_if_empty(client, candidate)
     _set_held(name, False)
+    _forget_container(name)
     return removed
 
 
@@ -2663,6 +2872,13 @@ def remove_all(slug: str) -> list[str]:
             all=True, filters={"label": [f"{LABEL_SERVICE}={slug}", f"{LABEL_MANAGED}=true", LABEL_PROXY]}
         )
 
+    def canonical(container: Any) -> str:
+        # The saved ID is kept under the copy's own name, never a half-moved one's.
+        name = str(container.name)
+        for suffix in (orchestrator.REPLACED_SUFFIX, MOVING_SUFFIX, STAGED_SUFFIX):
+            name = name.removesuffix(suffix)
+        return name
+
     removed: list[str] = []
     left: list[str] = []
     for pid in sorted({_labels(c).get(LABEL_PROXY, "") for c in listing()}):
@@ -2671,6 +2887,8 @@ def remove_all(slug: str) -> list[str]:
             shared_ids = {tid for c in found if _is_earner(c) and (tid := _tunnel_id_of(c))}
             # Earners first, so no tunnel is removed under a running earner.
             found.sort(key=lambda c: _labels(c).get(LABEL_ROLE) == ROLE_TUNNEL)
+            gone: set[str] = set()
+            kept: set[str] = set()
             for container in found:
                 _remove_quietly(container)
                 try:
@@ -2679,8 +2897,14 @@ def remove_all(slug: str) -> list[str]:
                     removed.append(container.name)
                     if _is_earner(container):
                         _set_held(str(container.name), False)
+                        gone.add(canonical(container))
                 else:
                     left.append(container.name)
+                    if _is_earner(container):
+                        kept.add(canonical(container))
+            # Only once no container of that copy is left: a survivor keeps its record.
+            for name in sorted(gone - kept):
+                _forget_container(name)
             if pid.isdigit():
                 for tid in sorted(shared_ids):
                     tunnel = _get(client, tid)
@@ -2732,77 +2956,87 @@ def sweep_test_tunnels(min_age: float = 0.0) -> list[str]:
     return swept
 
 
-def recover_moves(min_age: float | None = None) -> list[str]:
-    """Finish or undo moves a worker died in (see _clone_into). Returns what it did.
-
-    Run at worker start and by the heartbeat. Per copy:
-
-    * its container is aside (``<name>-moving``) and its clone already holds
-      the name: the move finished; the aside one is removed;
-    * aside, and the name is free: it gets its name back and the half-made
-      clone goes, unless the tunnel it lived in is gone while the clone's
-      exists, in which case the clone takes the name instead;
-    * a clone (``<name>-next``) with no aside one: it takes the name when the
-      name is free, or is removed as a leftover when the copy holds it.
-
-    A clone younger than ``min_age`` (default STAGED_STALE_SECONDS) may belong
-    to a move another worker on this daemon is making, and is left alone.
-    """
+def recover_moves(min_age: float | None = None, *, conflicts: dict[str, str] | None = None) -> list[str]:
+    """Finish interrupted moves whose original and staged Docker IDs are in the move record."""
     if min_age is None:
         min_age = STAGED_STALE_SECONDS
     client = orchestrator._get_client()
-    done: list[str] = []
-
-    def earners() -> dict[str, Any]:
-        found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
-        return {str(c.name): c for c in found if _is_earner(c)}
-
-    by_name = earners()
-    for aside_name, aside in sorted(by_name.items()):
-        if not aside_name.endswith(MOVING_SUFFIX):
+    found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
+    names = {
+        str(c.name).removesuffix(MOVING_SUFFIX).removesuffix(STAGED_SUFFIX): _labels(c).get(LABEL_PROXY, "")
+        for c in found
+        if _is_earner(c) and str(c.name).endswith((MOVING_SUFFIX, STAGED_SUFFIX))
+    }
+    done = []
+    for name, pid in sorted(names.items()):
+        if not pid.isdigit():
             continue
-        name = aside_name.removesuffix(MOVING_SUFFIX)
-        clone = by_name.get(name + STAGED_SUFFIX)
-        if clone is not None and _age_seconds(clone) < min_age:
-            continue
-        if name in by_name and _age_seconds(by_name[name]) < min_age:
-            continue  # may be the clone of a move still running; its aside one is the way back
-        try:
-            if name in by_name:
-                _remove_quietly(aside, 2, volumes=False)
-                done.append(f"removed {aside_name}")
-            elif (
-                clone is not None and _get(client, _tunnel_id_of(aside)) is None and _get(client, _tunnel_id_of(clone))
-            ):
-                clone.rename(name)
-                _remove_quietly(aside, 2, volumes=False)
-                done.append(f"finished {name}")
-            else:
-                if clone is not None:
-                    _remove_quietly(clone, 2, volumes=False)
-                aside.rename(name)
-                done.append(f"restored {name}")
-        except Exception as exc:  # noqa: BLE001 - the next pass tries again
-            logger.warning("Could not recover the move of %s: %s", name, exc)
-    by_name = earners()
-    for staged_name, clone in sorted(by_name.items()):
-        if not staged_name.endswith(STAGED_SUFFIX) or _age_seconds(clone) < min_age:
-            continue
-        name = staged_name.removesuffix(STAGED_SUFFIX)
-        if name + MOVING_SUFFIX in by_name:
+        lock = _deploy_lock(int(pid))
+        if not lock.acquire(blocking=False):
             continue
         try:
-            if name in by_name:
-                _remove_quietly(clone, 2, volumes=False)
-                done.append(f"removed {staged_name}")
-            else:
-                clone.rename(name)
-                done.append(f"finished {name}")
+            if result := _settle_move(client, name, min_age):
+                done.append(result)
+                logger.info("Recovered an interrupted move: %s", result)
+        except RecoveryConflict as exc:
+            if conflicts is not None:
+                conflicts[name] = str(exc)
+            logger.warning("%s", exc)
         except Exception as exc:  # noqa: BLE001 - the next pass tries again
-            logger.warning("Could not recover the move of %s: %s", name, exc)
-    for line in done:
-        logger.info("A move a worker died in: %s", line)
+            logger.warning("Could not recover the move of %s: %s", name, redact(str(exc)))
+        finally:
+            lock.release()
     return done
+
+
+def _settle_move(client: Any, name: str, min_age: float) -> str | None:
+    holder = _get(client, name)
+    aside = _get(client, name + MOVING_SUFFIX)
+    staged = _get(client, name + STAGED_SUFFIX)
+    if aside is None and staged is None:
+        return None
+    if any(c is not None and _age_seconds(c) < min_age for c in (holder, staged)):
+        return None
+    marker = next((key for key in _read_names(MOVE_MARKER) if key.startswith(f"{name}@")), "")
+    _, _, pair = marker.partition("@")
+    old_id, _, clone_id = pair.partition("@")
+    if (
+        not old_id
+        or not clone_id
+        or (aside is not None and aside.id != old_id)
+        or (staged is not None and staged.id != clone_id)
+        or (holder is not None and holder.id != (clone_id if aside is not None else old_id))
+    ):
+        raise RecoveryConflict(f"Recovery skipped for {name}. The move record cannot identify the current containers.")
+
+    if holder is not None and aside is not None:
+        _remove_quietly(aside, 2, volumes=False)
+        _record_container(name, clone_id)
+        result = f"removed {aside.name}"
+    elif (
+        holder is None
+        and staged is not None
+        and (
+            aside is None
+            or (_get(client, _tunnel_id_of(aside)) is None and _get(client, _tunnel_id_of(staged)) is not None)
+        )
+    ):
+        staged.rename(name)
+        if aside is not None:
+            _remove_quietly(aside, 2, volumes=False)
+        _record_container(name, clone_id)
+        result = f"finished {name}"
+    else:
+        if staged is not None:
+            staged_name = str(staged.name)
+            _remove_quietly(staged, 2, volumes=False)
+        if aside is not None:
+            aside.rename(name)
+            result = f"restored {name}"
+        else:
+            result = f"removed {staged_name}"
+    _set_id(MOVE_MARKER, marker, False)
+    return result
 
 
 def _finish_stale_staged(client: Any, staged: Any) -> str | None:
@@ -2844,26 +3078,30 @@ def _finish_stale_staged(client: Any, staged: Any) -> str | None:
         lock.release()
 
 
-def _settle_replaced_unless_busy(client: Any, aside: Any) -> None:
+def _settle_replaced_unless_busy(client: Any, aside: Any) -> str | None:
     """_settle_replaced under the proxy's lock; skipped while a change to that proxy runs (its own aside)."""
     pid = _labels(aside).get(LABEL_PROXY, "")
     if not pid.isdigit():
-        return
+        return None
     lock = _deploy_lock(int(pid))
     if not lock.acquire(blocking=False):
-        return
+        return None
     try:
         # Read again under the lock: the listing is from before it, and a deploy
         # that held it may have given this container its name back since.
         aside.reload()
         if done := _settle_replaced(client, aside):
             logger.info("An old earner a redeploy left aside: %s", done)
+    except RecoveryConflict as exc:
+        logger.warning("%s", exc)
+        return str(exc)
     except NotFound:
         pass
     except Exception as exc:  # noqa: BLE001 - the next heartbeat tries again
         logger.warning("Could not settle %s: %s", aside.name, exc)
     finally:
         lock.release()
+    return None
 
 
 def _drop_empty_shared(client: Any, tunnel: Any) -> None:
@@ -2949,6 +3187,9 @@ def _migrate_into(
     client: Any, proxy_id: int, tunnels: list[Any], key: str | None, *, deadline: float | None = None
 ) -> list[str]:
     """Move the legacy pairs ``tunnels`` into the proxy's shared tunnel, or with ``key`` that routed service's own."""
+    for tunnel in tunnels:
+        for member in _members(client, tunnel):
+            _move_expected(client, member, None)
     ready = _shared_ready(client, proxy_id, key)
     if ready is not None and _restarts_by_itself(ready[0]):
         # An older worker's shared tunnel: no copy starts in it, so it is
@@ -3074,7 +3315,11 @@ def _start_when_ready(earner: Any, sidecar: Any, slug: str, *, ready: bool) -> N
             return  # moved aside (or back) since it was listed: the next beat sees it as it is
         aside = _get(orchestrator._get_client(), f"{earner.name}{orchestrator.REPLACED_SUFFIX}")
         try:
+            _require_resolved_deploy(earner, aside)
             failed = _aside_is_copy(earner, aside) if aside is not None else _recorded_failed(earner)
+        except RecoveryConflict as exc:
+            logger.warning("%s", exc)
+            return
         except OSError as exc:
             logger.warning("Could not read which replacements failed (%s); not starting %s", exc, earner.name)
             return  # not known: nothing is started, nothing removed
@@ -3091,6 +3336,7 @@ def _start_when_ready(earner: Any, sidecar: Any, slug: str, *, ready: bool) -> N
             _set_failed(str(earner.id), False)
             _set_new(str(earner.name), False)
             _set_new(_new_key(str(earner.name), str(earner.id)), False)
+            _forget_created(str(earner.name), "none", str(earner.id))
             return
         if ready:
             # Read again under the lock: what the caller saw may describe a run
@@ -3187,16 +3433,19 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
         found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
     except Exception as exc:  # noqa: BLE001 - the heartbeat says it could not look
         raise ProxyTunnelError(f"Could not list proxied copies: {redact(str(exc))}") from None
+    conflicts: dict[str, str] = {}
     # Moves a worker died in come first: a copy aside or staged is still a copy.
     if any(str(getattr(c, "name", "")).endswith((STAGED_SUFFIX, MOVING_SUFFIX)) for c in found):
         with contextlib.suppress(Exception):
-            recover_moves()
+            recover_moves(conflicts=conflicts)
             found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
     # An old earner a redeploy left aside, with no deploy of its proxy running:
     # removed beside its replacement, or the copy again when the name is free.
     if any(str(getattr(c, "name", "")).endswith(orchestrator.REPLACED_SUFFIX) and _is_earner(c) for c in found):
         for aside in [c for c in found if str(getattr(c, "name", "")).endswith(orchestrator.REPLACED_SUFFIX)]:
-            _settle_replaced_unless_busy(client, aside)
+            name = str(aside.name).removesuffix(orchestrator.REPLACED_SUFFIX)
+            if conflict := _settle_replaced_unless_busy(client, aside):
+                conflicts[name] = conflict
         with contextlib.suppress(Exception):
             found = client.containers.list(all=True, filters={"label": [f"{LABEL_MANAGED}=true", LABEL_PROXY]})
     # A staged tunnel past any change's timeout: one copies live in (staged or
@@ -3326,6 +3575,7 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
             and _is_shared(sidecar)
             and not _restarts_by_itself(sidecar)
             and key not in unproven
+            and str(earner.name) not in conflicts
             and getattr(sidecar, "status", "") == "exited"
             and str(earner.name) not in stopped
             and not _failed_or_unknown(earner)
@@ -3335,6 +3585,7 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
     stats = orchestrator._collect_stats_bulk(list(live.values())) if collect_stats else {}
     exits = {tid: _read_exit(t) for tid, t in live.items()}
     out: list[dict[str, Any]] = []
+    recorded = _recorded_containers()
     for (slug, proxy_id), (earner, sidecar) in sorted(pairs.items()):
         exit_info = exits.get(sidecar.id) if sidecar is not None else None
         aside = (slug, proxy_id) in unproven
@@ -3346,8 +3597,19 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
                 failed = _recorded_failed(earner)
             except OSError:
                 failed = True  # not known; _start_when_ready reads it again and does nothing
+        name = str(earner.name) if earner is not None and not aside else earner_name(slug, proxy_id)
+        conflict = conflicts.get(name)
+        if earner is not None and not aside and conflict is None and failed:
+            try:
+                _require_resolved_deploy(earner, None)
+            except RecoveryConflict as exc:
+                conflict = str(exc)
+                logger.warning("%s", conflict)
+            except OSError:
+                pass
         if (
-            not aside
+            not conflict
+            and not aside
             and earner is not None
             and (failed or earner_action(earner, sidecar, exit_info is not None) is not None)
         ):
@@ -3376,9 +3638,15 @@ def _status(collect_stats: bool) -> list[dict[str, Any]]:
                 "exit_country": (exit_info or {}).get("country"),
             }
         )
+        if conflict:
+            out[-1]["recovery_skipped"] = conflict
+        elif sidecar is not None and sidecar.id in _recovery_skipped:
+            out[-1]["recovery_skipped"] = RECOVERY_SKIPPED
+        if not aside and earner is not None and (saved := recorded.get(str(earner.name))):
+            out[-1]["recorded_container"] = saved
         if stopped is not None and earner is not None:
             out[-1]["held"] = out[-1]["name"] in stopped
-        if earner is not None and not aside and not failed:
+        if earner is not None and not aside and not failed and not conflict:
             # The keyed hash of the device ids it runs with, never the ids: the
             # UI's proof before it records this copy in the identity ledger.
             out[-1].update(orchestrator._identity_entry(earner, slug))
@@ -3407,7 +3675,9 @@ def _restarts_by_itself(container: Any) -> bool:
     return str(policy or "no") != "no"
 
 
-def _replace_restarting(client: Any, tunnel: Any, *, deadline: float | None = None) -> tuple[Any, dict[str, Any]]:
+def _replace_restarting(
+    client: Any, tunnel: Any, *, deadline: float | None = None, move_target: _StartApproval | None = None
+) -> tuple[Any, dict[str, Any]]:
     """Replace ``tunnel``, a shared tunnel an older worker made, with one Docker never restarts on its own.
 
     Returns the tunnel its copies live in now, ready. On the settings it holds,
@@ -3438,6 +3708,7 @@ def _replace_restarting(client: Any, tunnel: Any, *, deadline: float | None = No
 
     ``deadline`` bounds the image pull (start_sidecar). The caller holds the
     proxy's lock, never _swap_lock."""
+    _check_move_targets(client, _members(client, tunnel), move_target)
     pid = int(_labels(tunnel).get(LABEL_PROXY, ""))
     key = _own_key(tunnel)
     final = shared_tunnel_name(pid, key)
@@ -3464,7 +3735,7 @@ def _replace_restarting(client: Any, tunnel: Any, *, deadline: float | None = No
         if (exit_info := _read_exit(target)) is None:
             raise ProxyTunnelError(f"{tunnel.name} is replaced once {final} is ready")
         with _swap_lock:
-            _move_members(client, tunnel, target)
+            _move_members(client, tunnel, target, target=move_target)
             _remove_quietly(tunnel, SIDECAR_STOP_SECONDS)
         logger.info(
             "Moved the copies of %s, which an older worker made to restart by itself, into %s", tunnel.name, final
@@ -3477,13 +3748,27 @@ def _replace_restarting(client: Any, tunnel: Any, *, deadline: float | None = No
     if host := files.get("proxy_host"):
         files["proxy_ip"] = resolve_proxy_ip(host)
     files = _with_digest(files)
-    replaced = _ensure_tunnel(client, pid, None, files.get("own_ip") or None, files=files, slug=key, deadline=deadline)
+    replaced = _ensure_tunnel(
+        client,
+        pid,
+        None,
+        files.get("own_ip") or None,
+        files=files,
+        slug=key,
+        deadline=deadline,
+        move_target=move_target,
+    )
     logger.info("Replaced %s, which an older worker made to restart by itself", tunnel.name)
     return replaced
 
 
 #: Tunnel id -> time.monotonic() of the heartbeat's last failed try to replace it (_replace_restarting_tunnels).
 _replace_failed: dict[str, float] = {}
+_recovery_skipped: set[str] = set()
+RECOVERY_SKIPPED = (
+    "Recovery skipped because a container in this tunnel does not match the worker's saved ID, "
+    "or the worker has no saved ID for it yet."
+)
 #: Seconds an image pull under the proxy's lock waits for the tunnel image: the
 #: heartbeat's replacement (_replace_restarting_tunnels) and a start (_pull_deadline).
 REPLACE_PULL_SECONDS = 60
@@ -3546,6 +3831,7 @@ def _replace_restarting_tunnels() -> None:
         )
     except Exception:  # noqa: BLE001 - _status reports a listing that fails
         return
+    _recovery_skipped.intersection_update(t.id for t in found)
     for tunnel in found:
         pid = _labels(tunnel).get(LABEL_PROXY, "")
         if (
@@ -3579,6 +3865,11 @@ def _replace_restarting_tunnels() -> None:
                 elif not _migrate_proxy(client, int(pid), [tunnel], deadline=deadline):
                     raise ProxyTunnelError("its copy could not move into the proxy's shared tunnel yet")
                 _replace_failed.pop(tunnel.id, None)
+                _recovery_skipped.discard(tunnel.id)
+            except orchestrator.DeployTargetChanged:
+                _replace_failed[tunnel.id] = time.monotonic()
+                _recovery_skipped.add(tunnel.id)
+                logger.warning("%s Tunnel: %s", RECOVERY_SKIPPED, tunnel.name)
             except Exception as exc:  # noqa: BLE001 - it stays as it is, and no earner starts in it
                 _replace_failed[tunnel.id] = time.monotonic()
                 text = str(exc) if isinstance(exc, ProxyTunnelError) else redact(str(exc))

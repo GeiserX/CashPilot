@@ -19,6 +19,40 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
+## After 2.10.2: a proxied copy may ask you to approve its containers once
+
+**Affects you if** you run copies through a proxy (Proxies on the Fleet page).
+
+The worker now saves the full container ID of each proxied copy when it
+deploys or moves it. It replaces a copy only if that copy still has the saved
+ID. Copies made before this release have no saved ID yet.
+
+- The first Start that must move such a copy into a new tunnel asks you to
+  approve the containers. Approve them once. After that the ID is saved.
+- A copy the traffic cap stopped is not started again by itself if it needs
+  this approval. A Fleet alert says so. Press Start for the copy on the Fleet
+  page.
+- Automatic recovery of a tunnel skips such copies and shows a "skipped
+  recovery" alert. Stop the copy, then Start it on the Fleet page.
+- A worker on 2.5 or older made tunnels that Docker restarts by itself.
+  Upgrade that worker to 2.10.2 first, so it replaces them for you.
+
+A worker before this release that stopped in the middle of a move can leave a
+container named `cashpilot-<service>-p<N>-moving` or `-next`. The worker no
+longer settles these by itself, and Start for that copy is refused. Settle it
+by hand on that box:
+
+1. If `cashpilot-<service>-p<N>` exists, the move finished. Run
+   `docker rm cashpilot-<service>-p<N>-moving` (or `-next`).
+2. If it does not exist and the `-moving` container exists, run
+   `docker rm cashpilot-<service>-p<N>-next` (if it exists), then
+   `docker rename cashpilot-<service>-p<N>-moving cashpilot-<service>-p<N>`.
+3. If only the `-next` container exists, do not remove it. Run
+   `docker rename cashpilot-<service>-p<N>-next cashpilot-<service>-p<N>`.
+
+Leave out `-v`, so the copy's volumes stay. Then press Start for the copy on
+the Fleet page.
+
 ## After 2.10.2: take the new proxy policy before you deploy a service that uses a GPU
 
 **Affects you if** your worker runs behind `cashpilot-socket-proxy` and you

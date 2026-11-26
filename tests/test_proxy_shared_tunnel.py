@@ -194,6 +194,13 @@ class FakeDocker:
         self.updates: list[str] = []  # container updates asked for, every one refused
         self.containers = self
         self.images = self
+        self.api = self
+
+    # the low-level API, by ID
+    def remove_container(self, container_id, force=False, v=False):
+        if container_id not in self.by_id:
+            raise NotFound(container_id)
+        self.by_id[container_id].remove(force=force, v=v)
 
     # images
     def pull(self, image):
@@ -255,7 +262,7 @@ def _fake_deploy_raw(docker: FakeDocker):
     inside a tunnel's namespace is never started there (orchestrator._start_again).
     """
 
-    def deploy_raw(*, slug, image, env, network_mode, labels, name, deadline=None, **_kw):
+    def deploy_raw(*, slug, image, env, network_mode, labels, name, deadline=None, on_created=None, **_kw):
         if deadline is not None:
             orchestrator._refuse_past(deadline, image)
         old = docker.named(name)
@@ -269,6 +276,7 @@ def _fake_deploy_raw(docker: FakeDocker):
                 leftover.remove(force=True, v=True)
             old.rename(f"{name}{orchestrator.REPLACED_SUFFIX}")
         all_labels = {**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true", "cashpilot.deployed-by": "worker"}
+        c = None
         try:
             if deadline is not None:
                 orchestrator._refuse_past(deadline, image)
@@ -282,8 +290,13 @@ def _fake_deploy_raw(docker: FakeDocker):
                 security_opt=["no-new-privileges:true"],
                 restart_policy={"Name": "no"},
             )
+            if on_created is not None:
+                on_created(c.id)
             c.start()
         except Exception:
+            # As orchestrator._roll_back: the one this deploy created goes by its ID first.
+            if c is not None and c.id in docker.by_id:
+                c.remove(force=True)
             if old is not None:
                 old.rename(name)
                 if was_running and not network_mode.startswith("container:"):
@@ -307,15 +320,21 @@ def docker(tmp_path):
         patch.object(proxy_tunnel, "_wait_ready", lambda c, timeout=0.3: real_wait(c, timeout)),
         patch.object(orchestrator, "_get_client", return_value=d),
         patch.object(orchestrator, "deploy_raw", side_effect=_fake_deploy_raw(d)),
+        # Docker's create answer, as orchestrator._create_container_id reads it: the ID only.
+        patch.object(orchestrator, "_create_container_id", lambda client, kw: client.containers.create(**kw).id),
         patch.object(orchestrator, "container_network", return_value=None),
         patch.object(orchestrator, "_get_stop_timeout", return_value=1),
         patch.object(proxy_tunnel, "HELD_MARKER", str(tmp_path / ".proxied_held")),
         patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / ".proxied_failed")),
         patch.object(proxy_tunnel, "KEPT_MARKER", str(tmp_path / ".proxied_kept")),
         patch.object(proxy_tunnel, "NEW_MARKER", str(tmp_path / ".proxied_new")),
+        patch.object(proxy_tunnel, "CONTAINER_MARKER", str(tmp_path / ".proxied_containers")),
+        patch.object(proxy_tunnel, "CREATED_MARKER", str(tmp_path / ".proxied_created")),
+        patch.object(proxy_tunnel, "MOVE_MARKER", str(tmp_path / ".proxied_moves")),
         patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": IMAGE}),
         patch.object(proxy_tunnel.time, "sleep", lambda _s: None),
         patch.dict(proxy_tunnel._replace_failed, clear=True),
+        patch.object(proxy_tunnel, "_recovery_skipped", set()),
     ):
         yield d
 
@@ -611,7 +630,10 @@ class TestOneTunnelPerProxy:
         def failed_and_left(*, slug, image, env, network_mode, labels, name, **_kw):
             earner.stop()
             earner.rename(f"{name}{orchestrator.REPLACED_SUFFIX}")
-            docker.create(image=image, name=name, labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"})
+            created = docker.create(
+                image=image, name=name, labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"}
+            )
+            _kw["on_created"](created.id)
             raise orchestrator.ContainerRuntimeError("start failed; the previous container is kept as -replaced")
 
         with (
@@ -665,6 +687,7 @@ class TestOneTunnelPerProxy:
                 network_mode=network_mode,
                 labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
             )
+            _kw["on_created"](new.id)
             real_remove = new.remove
 
             def stuck_remove(force=False, v=False):
@@ -1055,7 +1078,7 @@ def _legacy_pair(docker, slug, proxy_id=3, *, proxy=None, running=True):
         proxy_tunnel._secret_tar(proxy_tunnel.secret_files(proxy, "192.0.2.1", f"{slug}-p{proxy_id}")),
     )
     tunnel.start()
-    _fake_deploy_raw(docker)(
+    container_id = _fake_deploy_raw(docker)(
         slug=slug,
         image=f"{slug}/{slug}:1",
         env={"K": slug},
@@ -1063,6 +1086,7 @@ def _legacy_pair(docker, slug, proxy_id=3, *, proxy=None, running=True):
         labels={LABEL_PROXY: str(proxy_id)},
         name=proxy_tunnel.earner_name(slug, proxy_id),
     )
+    proxy_tunnel._record_container(proxy_tunnel.earner_name(slug, proxy_id), container_id)
     if not running:
         tunnel.stop()
         docker.named(proxy_tunnel.earner_name(slug, proxy_id)).stop()
@@ -1307,6 +1331,7 @@ class TestMoves:
         a.rename("cashpilot-a-p3-moving")
         clone = docker.create(name="cashpilot-a-p3-next", image="a/a:1", labels=dict(a.labels))
         clone.attrs["Created"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        proxy_tunnel._record_pair(proxy_tunnel.MOVE_MARKER, "cashpilot-a-p3", a.id, clone.id)
         with patch.object(proxy_tunnel, "STAGED_STALE_SECONDS", 0):
             assert proxy_tunnel.recover_moves() == ["restored cashpilot-a-p3"]
 
@@ -1335,12 +1360,15 @@ class TestMoves:
         # b: aside, with a half-made clone and the name free.
         b = docker.named("cashpilot-b-p3")
         b.rename("cashpilot-b-p3-moving")
-        docker.create(
+        b_clone = docker.create(
             name="cashpilot-b-p3-next", image="b/b:1", labels=dict(b.labels), network_mode=f"container:{tunnel.id}"
         )
         # c: only a clone, the name free.
         c = docker.named("cashpilot-c-p3")
         c.rename("cashpilot-c-p3-next")
+        proxy_tunnel._record_pair(proxy_tunnel.MOVE_MARKER, "cashpilot-a-p3", twin.id, a.id)
+        proxy_tunnel._record_pair(proxy_tunnel.MOVE_MARKER, "cashpilot-b-p3", b.id, b_clone.id)
+        proxy_tunnel._record_pair(proxy_tunnel.MOVE_MARKER, "cashpilot-c-p3", "gone", c.id)
         assert sorted(proxy_tunnel.recover_moves()) == [
             "finished cashpilot-c-p3",
             "removed cashpilot-a-p3-moving",
@@ -1379,6 +1407,7 @@ class TestMoves:
             labels={LABEL_MANAGED: "true", LABEL_SERVICE: "m2", LABEL_PROXY: "3"},
             network_mode=f"container:{staged.id}",
         )
+        proxy_tunnel._record_pair(proxy_tunnel.MOVE_MARKER, "cashpilot-m2-p3", "gone", m2.id)
         _heartbeat()
         assert m2.id in docker.by_id and m2.name == "cashpilot-m2-p3"
         # The change was finished instead: every copy in one tunnel, under its name.
@@ -1638,12 +1667,13 @@ class TestThirdReview:
         _deploy("honeygain")
 
         def created_then_failed(*, name, network_mode, labels, slug, **_kw):
-            docker.create(
+            created = docker.create(
                 name=name,
                 image="x",
                 network_mode=network_mode,
                 labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
             )
+            _kw["on_created"](created.id)
             raise APIError("500 Server Error: start failed")
 
         with patch.object(orchestrator, "deploy_raw", side_effect=created_then_failed), pytest.raises(APIError):
@@ -2343,6 +2373,7 @@ class TestAroundDeployRaw:
                 network_mode=network_mode,
                 labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
             )
+            _kw["on_created"](new.id)
             real_remove = new.remove
 
             def stuck_remove(force=False, v=False):
@@ -2379,7 +2410,10 @@ class TestAroundDeployRaw:
         def failed_and_left(*, slug, image, env, network_mode, labels, name, **_kw):
             earner.stop()
             earner.rename(f"{name}{orchestrator.REPLACED_SUFFIX}")
-            docker.create(image=image, name=name, labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"})
+            created = docker.create(
+                image=image, name=name, labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"}
+            )
+            _kw["on_created"](created.id)
             raise orchestrator.ContainerRuntimeError("start failed")
 
         real_remove_quietly = proxy_tunnel._remove_quietly
@@ -2491,6 +2525,7 @@ def _failing_redeploy(docker, earner, *, state="created"):
             network_mode=network_mode,
             labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
         )
+        _kw["on_created"](failed.id)
         if state == "exited":
             failed.start()
             failed.stop()
@@ -2716,6 +2751,7 @@ class TestAFailureThatCannotBeRecorded:
                 network_mode=network_mode,
                 labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
             )
+            _kw["on_created"](failed.id)
             real_remove = failed.remove
 
             def stuck_remove(force=False, v=False):
@@ -2826,6 +2862,7 @@ class TestAFailureThatCannotBeRecorded:
                 network_mode=network_mode,
                 labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
             )
+            _kw["on_created"](failed.id)
             real_remove = failed.remove
 
             def stuck_remove(force=False, v=False):
@@ -4134,7 +4171,272 @@ def _older_tunnel_retired_beside_a_current_one(docker):
     return old, current
 
 
+@pytest.mark.parametrize("journal", ["kept", "first"])
+@pytest.mark.parametrize("trigger", ["start", "heartbeat"])
+def test_recovery_conflict_preserves_an_unrecorded_holder(docker, journal, trigger, caplog):
+    _deploy("honeygain" if journal == "kept" else "earnfm")
+    tunnel = docker.named("cashpilot-tunnel-p3")
+    if journal == "kept":
+        old = docker.named(NAME)
+        old.stop()
+        old.rename(NAME + orchestrator.REPLACED_SUFFIX)
+        proxy_tunnel._set_kept(old.id, True, strict=True)
+    else:
+        proxy_tunnel._set_new(NAME, True, strict=True)
+    _fake_deploy_raw(docker)(
+        slug="honeygain",
+        image="honeygain/honeygain:1",
+        env={},
+        labels={LABEL_PROXY: "3"},
+        network_mode=f"container:{tunnel.id}",
+        name=NAME,
+    )
+    changed = docker.named(NAME)
+    if trigger == "start":
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_validate_proxy"),
+            patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+        ):
+            reply = TestClient(worker_api.app).post(
+                "/api/proxied/honeygain/3/start-checked", json={"proxy": _socks(), "expected_container": changed.id}
+            )
+        assert reply.status_code == 409, reply.text
+        detail = reply.json()["detail"]
+        assert detail["error"] == "proxy_recovery_conflict"
+        assert "deploy record cannot identify the current container" in detail["message"]
+    else:
+        row = next(e for e in _heartbeat() if e["slug"] == "honeygain")
+        assert "Recovery skipped" in row.get("recovery_skipped", "")
+        assert "Recovery skipped" in caplog.text
+    assert docker.named(NAME) is changed and changed.status == "running"
+
+
+def test_checked_start_can_approve_two_pre_upgrade_copies_together(docker):
+    _deploy("honeygain")
+    _deploy("earnfm")
+    _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+    os.unlink(proxy_tunnel.CONTAINER_MARKER)
+    slugs = ("honeygain", "earnfm")
+    ids = {slug: docker.named(proxy_tunnel.earner_name(slug, 3)).id for slug in slugs}
+    for slug in slugs:
+        proxy_tunnel.stop(slug, 3)
+
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api, "_validate_proxy"),
+        patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+    ):
+        client = TestClient(worker_api.app)
+        path = "/api/proxied/honeygain/3/start-checked"
+        question = client.post(path, json={"proxy": _socks(), "expected_container": ids["honeygain"]})
+        assert question.status_code == 409
+        assert question.json()["detail"]["expected_containers"] == ids
+        assert all(docker.named(proxy_tunnel.earner_name(slug, 3)).id == cid for slug, cid in ids.items())
+        reply = client.post(
+            path,
+            json={
+                "proxy": _socks(),
+                "expected_containers": ids,
+                "group_approval": question.json()["detail"]["group_approval"],
+            },
+        )
+        assert reply.status_code == 200, reply.text
+        neighbor = docker.named(proxy_tunnel.earner_name("earnfm", 3))
+        assert neighbor.status not in ("running", "restarting")
+        assert str(neighbor.name) in proxy_tunnel.held()
+        reply = client.post(
+            "/api/proxied/earnfm/3/start-checked", json={"proxy": _socks(), "expected_container": neighbor.id}
+        )
+        assert reply.status_code == 200, reply.text
+    assert all(docker.named(proxy_tunnel.earner_name(slug, 3)).status == "running" for slug in slugs)
+
+
+def test_group_start_approval_cannot_start_the_other_copy(docker):
+    for slug in ("honeygain", "earnfm"):
+        _deploy(slug)
+        proxy_tunnel.stop(slug, 3)
+    _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+    os.unlink(proxy_tunnel.CONTAINER_MARKER)
+    originals = {slug: docker.named(proxy_tunnel.earner_name(slug, 3)) for slug in ("honeygain", "earnfm")}
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api, "_validate_proxy"),
+        patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+    ):
+        client = TestClient(worker_api.app)
+        offer = client.post("/api/proxied/honeygain/3/start-checked", json={"proxy": _socks()})
+        assert offer.status_code == 409
+        detail = offer.json()["detail"]
+        body = {
+            "proxy": _socks(),
+            "expected_containers": detail["expected_containers"],
+            "group_approval": detail.get("group_approval"),
+        }
+        wrong_copy = client.post("/api/proxied/earnfm/3/start-checked", json=body)
+        assert wrong_copy.status_code == 409, wrong_copy.text
+        assert wrong_copy.json()["detail"]["error"] == "invalid_proxy_start_approval"
+        for slug, original in originals.items():
+            assert docker.named(proxy_tunnel.earner_name(slug, 3)) is original
+            assert original.status == "exited"
+        swapped = {slug: copy.id for slug, copy in reversed(originals.items())}
+        swapped["earnfm"] = "a" * 64
+        wrong_ids = client.post("/api/proxied/honeygain/3/start-checked", json={**body, "expected_containers": swapped})
+        assert wrong_ids.status_code == 409
+        assert wrong_ids.json()["detail"]["error"] == "invalid_proxy_start_approval"
+        approved = client.post("/api/proxied/honeygain/3/start-checked", json=body)
+        assert approved.status_code == 200, approved.text
+        assert docker.named(NAME).status == "running"
+        assert docker.named("cashpilot-earnfm-p3").status not in ("running", "restarting")
+
+
+@pytest.mark.parametrize("saved_selected", [True, False], ids=["known-selected", "unrecorded-selected"])
+def test_checked_start_reports_the_unsettled_neighbor_instead_of_offering_it(docker, saved_selected):
+    for slug in ("honeygain", "earnfm"):
+        _deploy(slug)
+        proxy_tunnel.stop(slug, 3)
+    tunnel = docker.named("cashpilot-tunnel-p3")
+    _made_by_an_older_worker(tunnel)
+    selected = docker.named(NAME)
+    neighbor = docker.named("cashpilot-earnfm-p3")
+    neighbor.rename(neighbor.name + proxy_tunnel.MOVING_SUFFIX)
+    if not saved_selected:
+        proxy_tunnel._forget_container(NAME)
+        assert NAME not in proxy_tunnel._recorded_containers()
+    before = set(docker.by_id)
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api, "_validate_proxy"),
+        patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+    ):
+        reply = TestClient(worker_api.app).post(
+            "/api/proxied/honeygain/3/start-checked",
+            json={"proxy": _socks(), "expected_container": selected.id if saved_selected else "none"},
+        )
+    assert reply.status_code == 409
+    detail = reply.json()["detail"]
+    assert detail["error"] == "proxy_recovery_conflict", detail
+    assert neighbor.name in detail["message"]
+    assert "group_approval" not in detail
+    assert set(docker.by_id) == before and docker.named(tunnel.name) is tunnel
+    assert docker.named(NAME) is selected and selected.status == "exited"
+    assert docker.named(neighbor.name) is neighbor and neighbor.status == "exited"
+
+
+@pytest.mark.parametrize("aside_in", ["same-tunnel", "other-tunnel", "replacement-elsewhere"])
+def test_checked_start_never_offers_or_moves_a_copy_whose_redeploy_is_unsettled(docker, aside_in):
+    for slug in ("honeygain", "earnfm"):
+        _deploy(slug)
+        proxy_tunnel.stop(slug, 3)
+    tunnel = docker.named("cashpilot-tunnel-p3")
+    _made_by_an_older_worker(tunnel)
+    selected = docker.named(NAME)
+    # A redeploy of the neighbor that stopped before it was committed: the
+    # original is aside and kept, its replacement holds the name.
+    neighbor = "cashpilot-earnfm-p3"
+    original = docker.named(neighbor)
+    original.rename(neighbor + orchestrator.REPLACED_SUFFIX)
+    if aside_in == "other-tunnel":
+        original.attrs["HostConfig"]["NetworkMode"] = "container:" + "f" * 64
+    elsewhere = "container:" + "e" * 64
+    replacement = docker.create(
+        name=neighbor,
+        image="earnfm/earnfm:2",
+        labels=dict(original.labels),
+        network_mode=elsewhere if aside_in == "replacement-elsewhere" else f"container:{tunnel.id}",
+    )
+    proxy_tunnel._record_created(neighbor, original.id, replacement.id)
+    proxy_tunnel._set_kept(original.id, True)
+    before = set(docker.by_id)
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api, "_validate_proxy"),
+        patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+    ):
+        reply = TestClient(worker_api.app).post(
+            "/api/proxied/honeygain/3/start-checked", json={"proxy": _socks(), "expected_container": selected.id}
+        )
+    assert reply.status_code == 409
+    detail = reply.json()["detail"]
+    assert detail["error"] == "proxy_recovery_conflict", detail
+    assert neighbor in detail["message"]
+    assert set(docker.by_id) == before
+    assert docker.named(neighbor) is replacement and docker.named(neighbor + orchestrator.REPLACED_SUFFIX) is original
+
+
+@pytest.mark.parametrize("body", [{"proxy": "socks"}, None], ids=["2.x-body", "no-body"])
+def test_an_older_uis_start_that_needs_approval_gets_a_plain_refusal(docker, body):
+    _deploy("honeygain")
+    proxy_tunnel.stop("honeygain", 3)
+    _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+    proxy_tunnel._forget_container(NAME)
+    earner = docker.named(NAME)
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api, "_validate_proxy"),
+        patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+        patch.dict(os.environ, {"CASHPILOT_VERSION": "3.0.0"}),
+    ):
+        client = TestClient(worker_api.app)
+        json_body = {"proxy": _socks()} if body is not None else None
+        refused = client.post("/api/proxied/honeygain/3/start", json=json_body)
+        # The current UI sends the field on the checked URL, and gets the structured refusal.
+        new_ui = client.post(
+            "/api/proxied/honeygain/3/start-checked", json={"proxy": _socks(), "expected_container": "none"}
+        )
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == (
+        "This worker runs CashPilot v3.0.0 and replaces an existing container only when the UI confirms "
+        "which container it replaces, and this UI is too old to do that. Update the UI, then Start the copy "
+        "again. Nothing was changed."
+    )
+    assert new_ui.status_code == 409 and new_ui.json()["detail"]["error"] == "deploy_target_changed"
+    assert docker.named(NAME) is earner and earner.status == "exited"
+
+
 class TestAnOlderWorkersTunnelReplacementFollowups:
+    def test_recovery_skips_a_copy_with_a_changed_container_id(self, docker, caplog):
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        original = docker.named(NAME)
+        original.remove(force=True)
+        _fake_deploy_raw(docker)(
+            slug="honeygain",
+            image="honeygain/honeygain:1",
+            env={},
+            network_mode=f"container:{old.id}",
+            labels={LABEL_PROXY: "3"},
+            name=NAME,
+        )
+        replacement = docker.named(NAME)
+        (entry,) = _heartbeat()
+
+        assert docker.named(NAME) is replacement and replacement.status == "running"
+        assert docker.tunnels() == [old]
+        assert "Recovery skipped" in caplog.text
+        assert entry["recovery_skipped"] == proxy_tunnel.RECOVERY_SKIPPED and "saved ID" in entry["recovery_skipped"]
+
+    def test_worker_start_checks_the_exact_id_before_moving_a_legacy_copy(self, docker):
+        _legacy_pair(docker, "honeygain", proxy=_socks())
+        earner = docker.named(NAME)
+        path = "/api/proxied/honeygain/3/start"
+        body = {"proxy": _socks(), "expected_container": "b" * 64}
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_validate_proxy"),
+            patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+        ):
+            client = TestClient(worker_api.app)
+            reply = client.post(path, json=body)
+            assert reply.status_code == 409, reply.text
+            assert reply.json()["detail"]["error"] == "deploy_target_changed"
+            assert reply.json()["detail"]["current_container"] == earner.id
+            assert docker.named(NAME) is earner
+            reply = client.post(path, json={**body, "expected_container": earner.id})
+            assert reply.status_code == 200, reply.text
+            assert docker.named(NAME).id != earner.id
+
     def test_copies_moved_before_a_failure_stay_running_in_the_new_tunnel_never_recreated_twice(self, docker):
         """Moved back into the older tunnel, where no earner starts, each copy was recreated a second time and left
         stopped, and the heartbeat did it again every five minutes while the other copy's fault lasted."""
@@ -5259,5 +5561,212 @@ class TestARestartInPlace:
             ok = api.post("/api/proxied/honeygain/3/restart")
             proxy_tunnel.stop("honeygain", 3)
             held = api.post("/api/proxied/honeygain/3/restart")
+            report = api.post("/api/proxied/honeygain/3/restart", json={"report_stopped": True})
         assert ok.status_code == 200 and ok.json() == {"status": "restarted", "restarted": NAME}
         assert held.status_code == 409 and "left stopped" in held.json()["detail"]
+        assert report.status_code == 409 and report.json()["detail"]["error"] == "proxied_copy_stopped"
+
+
+class TestContainerIdGuardsHold:
+    """The ID checks that keep a container CashPilot did not make out of a move, a recovery or a failed deploy."""
+
+    @pytest.mark.parametrize("record", ["none", "other-clone"])
+    def test_recover_moves_keeps_the_aside_copy_when_another_container_holds_the_name(self, docker, record):
+        _deploy("honeygain")
+        aside = docker.named(NAME)
+        aside.stop()
+        aside.rename(NAME + proxy_tunnel.MOVING_SUFFIX)
+        stranger = docker.create(name=NAME, image="x/y:1", labels=dict(aside.labels))
+        if record == "other-clone":
+            proxy_tunnel._record_pair(proxy_tunnel.MOVE_MARKER, NAME, aside.id, "f" * 64)
+        conflicts: dict[str, str] = {}
+        assert proxy_tunnel.recover_moves(0, conflicts=conflicts) == []
+        assert "move record cannot identify" in conflicts[NAME]
+        assert docker.by_id.get(aside.id) is aside and aside.name == NAME + proxy_tunnel.MOVING_SUFFIX
+        assert docker.named(NAME) is stranger
+
+    def test_a_failed_deploy_keeps_a_container_another_client_put_under_the_name(self, docker):
+        made: list[Any] = []
+
+        def raced_then_failed(*, slug, name, network_mode, labels, **_kw):
+            # Another client creates the container; this deploy never saw it created (no on_created).
+            made.append(
+                docker.create(
+                    name=name,
+                    image="x/y:1",
+                    network_mode=network_mode,
+                    labels={**labels, LABEL_SERVICE: slug, LABEL_MANAGED: "true"},
+                )
+            )
+            raise orchestrator.ContainerRuntimeError("409 Conflict: the name is in use")
+
+        with (
+            patch.object(orchestrator, "deploy_raw", side_effect=raced_then_failed),
+            pytest.raises(orchestrator.ContainerRuntimeError),
+        ):
+            _deploy("honeygain")
+        (other,) = made
+        assert docker.by_id.get(other.id) is other and docker.named(NAME) is other
+        assert other.id not in proxy_tunnel._read_names(proxy_tunnel.FAILED_MARKER)
+
+    def test_a_start_that_sends_none_uses_the_workers_saved_id(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        proxy_tunnel.stop("honeygain", 3)
+        _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+        assert proxy_tunnel._recorded_containers()[NAME] == earner.id
+        proxy_tunnel.start("honeygain", 3, _socks(), None, expected_container="none")
+        moved = docker.named(NAME)
+        assert moved.status == "running" and moved.id != earner.id
+        assert proxy_tunnel._recorded_containers()[NAME] == moved.id
+
+    def test_a_move_saves_the_new_id_before_the_original_goes(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        proxy_tunnel.stop("honeygain", 3)
+        _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+        real_remove = FakeContainer.remove
+
+        class WorkerStopped(BaseException):
+            pass
+
+        def remove_then_stop(self, force=False, v=False):
+            real_remove(self, force=force, v=v)
+            if self.id == earner.id:
+                raise WorkerStopped  # the worker exits just after Docker removed the original
+
+        with patch.object(FakeContainer, "remove", remove_then_stop), pytest.raises(WorkerStopped):
+            proxy_tunnel.start("honeygain", 3, _socks(), None, expected_container="none")
+        moved = docker.named(NAME)
+        assert earner.id not in docker.by_id and moved.id != earner.id
+        assert proxy_tunnel._recorded_containers()[NAME] == moved.id
+
+    def test_removing_both_halves_of_a_move_drops_the_saved_id(self, docker):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        earner = docker.named(NAME)
+        earner.rename(NAME + proxy_tunnel.MOVING_SUFFIX)
+        docker.create(name=NAME + proxy_tunnel.STAGED_SUFFIX, image="x/y:1", labels=dict(earner.labels))
+        assert NAME in proxy_tunnel._recorded_containers()
+        proxy_tunnel.remove_all("honeygain")
+        assert docker.named(NAME + proxy_tunnel.MOVING_SUFFIX) is None
+        assert docker.named(NAME + proxy_tunnel.STAGED_SUFFIX) is None
+        assert NAME not in proxy_tunnel._recorded_containers()
+        assert "cashpilot-earnfm-p3" in proxy_tunnel._recorded_containers()
+
+    def test_a_half_of_a_move_docker_keeps_keeps_the_saved_id(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        earner.rename(NAME + proxy_tunnel.MOVING_SUFFIX)
+        staged = docker.create(name=NAME + proxy_tunnel.STAGED_SUFFIX, image="x/y:1", labels=dict(earner.labels))
+        real_remove = FakeContainer.remove
+
+        def refuse_staged(self, force=False, v=False):
+            if self.id != staged.id:  # Docker answers, and keeps this one
+                real_remove(self, force=force, v=v)
+
+        with patch.object(FakeContainer, "remove", refuse_staged), pytest.raises(proxy_tunnel.ProxyTunnelError):
+            proxy_tunnel.remove_all("honeygain")
+        assert docker.named(NAME + proxy_tunnel.STAGED_SUFFIX) is staged
+        assert NAME in proxy_tunnel._recorded_containers()
+
+    @pytest.mark.parametrize("aside_kept", [True, False], ids=["docker-keeps-the-aside", "only-the-aside-left"])
+    def test_a_redeploys_aside_counts_as_the_copy_when_removing_all(self, docker, aside_kept):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        aside = docker.create(name=NAME + orchestrator.REPLACED_SUFFIX, image="x/y:1", labels=dict(earner.labels))
+        real_remove = FakeContainer.remove
+
+        def keep_the_aside(self, force=False, v=False):
+            if self.id != aside.id:  # Docker answers, and keeps this one
+                real_remove(self, force=force, v=v)
+
+        if aside_kept:
+            # A container of the copy survives under its -replaced name: the saved ID stays.
+            with patch.object(FakeContainer, "remove", keep_the_aside), pytest.raises(proxy_tunnel.ProxyTunnelError):
+                proxy_tunnel.remove_all("honeygain")
+            assert docker.named(NAME) is None and docker.named(aside.name) is aside
+            assert NAME in proxy_tunnel._recorded_containers()
+        else:
+            # Only the aside was left: removing it removes the last of the copy.
+            real_remove(earner)
+            proxy_tunnel.remove_all("honeygain")
+            assert docker.named(aside.name) is None
+            assert NAME not in proxy_tunnel._recorded_containers()
+
+    @pytest.mark.parametrize("removal", ["removed", "docker-keeps-it"])
+    def test_a_clone_whose_inspect_fails_is_identified_by_its_docker_id(self, docker, removal):
+        """docker-py inspects a new container before it returns it: the clone's ID comes from the create answer."""
+        import requests
+
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        proxy_tunnel.stop("honeygain", 3)
+        _made_by_an_older_worker(docker.named("cashpilot-tunnel-p3"))
+        staged = NAME + proxy_tunnel.STAGED_SUFFIX
+        real_create, real_get = FakeDocker.create, FakeDocker.get
+
+        def created(self, **kw):
+            return real_create(self, **kw).id
+
+        def sdk_create(self, **kw):
+            # docker-py's ContainerCollection.create: create, then an inspect that times out.
+            if kw["name"] == staged:
+                real_create(self, **kw)
+                raise requests.exceptions.ReadTimeout("inspect timed out")
+            return real_create(self, **kw)
+
+        def inspect_times_out(self, key):
+            found = real_get(self, key)
+            if found.name == staged and key == found.id:
+                raise requests.exceptions.ReadTimeout("inspect timed out")
+            return found
+
+        def refuse(self, container_id, force=False, v=False):
+            raise requests.exceptions.ReadTimeout("remove timed out")
+
+        with (
+            patch.object(orchestrator, "_create_container_id", lambda client, kw: created(client, **kw)),
+            patch.object(FakeDocker, "create", sdk_create),
+            patch.object(FakeDocker, "get", inspect_times_out),
+            patch.object(FakeDocker, "remove_container", refuse) if removal != "removed" else contextlib.nullcontext(),
+            pytest.raises(requests.exceptions.ReadTimeout),
+        ):
+            proxy_tunnel.start("honeygain", 3, _socks(), None, expected_container="none")
+        assert docker.named(NAME) is earner
+        if removal == "removed":
+            assert docker.named(staged) is None
+        else:
+            # The move record names the clone: the heartbeat removes it, never by its name alone.
+            leftover = docker.named(staged)
+            for c in (earner, leftover):
+                c.attrs["Created"] = "2026-01-01T00:00:00Z"
+            conflicts: dict[str, str] = {}
+            assert proxy_tunnel.recover_moves(0, conflicts=conflicts) == [f"removed {staged}"], conflicts
+            assert docker.named(staged) is None and docker.named(NAME) is earner
+        proxy_tunnel.start("honeygain", 3, _socks(), None, expected_container="none")
+        assert docker.named(NAME).status == "running"
+
+    def test_a_failed_created_id_record_reports_its_own_error_and_keeps_the_copy(self, docker):
+        _deploy("honeygain")
+        earner = docker.named(NAME)
+        refused = proxy_tunnel.ProxyTunnelError(f"Could not record the created container for {NAME}.")
+        with (
+            patch.object(proxy_tunnel, "_record_created", side_effect=refused),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="Could not record the created container"),
+        ):
+            _deploy("honeygain")
+        assert docker.named(NAME) is earner
+        assert [c.name for c in docker.by_id.values() if c.labels.get(LABEL_SERVICE) == "honeygain"] == [NAME]
+
+    @pytest.mark.parametrize("how", ["remove", "remove_all"])
+    def test_removing_a_copy_drops_its_saved_id(self, docker, how):
+        _deploy("honeygain")
+        _deploy("earnfm")
+        assert {NAME, "cashpilot-earnfm-p3"} <= set(proxy_tunnel._recorded_containers())
+        if how == "remove":
+            proxy_tunnel.remove("honeygain", 3)
+        else:
+            proxy_tunnel.remove_all("honeygain")
+        assert NAME not in proxy_tunnel._recorded_containers()
+        assert "cashpilot-earnfm-p3" in proxy_tunnel._recorded_containers()

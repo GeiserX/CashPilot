@@ -41,6 +41,9 @@ from app import (  # noqa: E402
     worker_api,
 )
 from app.constants import LABEL_MANAGED, LABEL_PROXY, LABEL_ROLE, LABEL_VERSION, ROLE_TUNNEL  # noqa: E402
+from tests import test_proxy_shared_tunnel  # noqa: E402
+
+proxy_docker = test_proxy_shared_tunnel.docker
 
 WORKER_KEY = "per-worker-key-route"
 
@@ -825,7 +828,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(
             proxy_tunnel,
             "_start",
-            lambda slug, pid, proxy, own_ip: make(slug, pid, proxy_tunnel._routed_here(slug, pid)),
+            lambda slug, pid, proxy, own_ip, expected_container: make(slug, pid, proxy_tunnel._routed_here(slug, pid)),
         )
         monkeypatch.setattr(
             proxy_tunnel,
@@ -2038,6 +2041,110 @@ class TestTheUiManagesARoutedService:
 
         return ui, setup
 
+    @pytest.mark.parametrize("command", ["start", "restart"])
+    @pytest.mark.parametrize("error", ["deploy_target_changed", "confirm_proxy_start_targets"])
+    def test_a_routed_start_that_needs_approval_points_at_the_fleet_page(self, db, command, error):
+        ui, setup = self._routed(db)
+        refusal = {"error": error, "message": "needs approval", "current_container": "a" * 64}
+
+        def worker(method, path, body):
+            if path.startswith("/api/containers/"):
+                return HTTPException(404, "Container not found")
+            if path.endswith("/restart"):
+                return HTTPException(409, {"error": "proxied_copy_stopped", "message": "stopped"})
+            assert path.endswith("/start-checked")
+            return HTTPException(409, refusal)
+
+        async def go():
+            await setup()
+            ui.worker_reply = worker
+            with ui.active(patch.object(main, "_require_writer", lambda r: None)), pytest.raises(HTTPException) as err:
+                if command == "start":
+                    await main.api_service_start(_request(), "honeygain", worker_id=1)
+                else:
+                    await main._svc_restart(_request(), "honeygain", 1)
+            return err.value
+
+        err = _run(go)
+        assert err.status_code == 409 and isinstance(err.detail, str)
+        assert "Proxies on the Fleet page" in err.detail and "Redeploy" not in err.detail
+        assert not any(path.endswith("/stop") for _, path in ui.paths())
+
+    def test_routed_restart_does_not_stop_an_older_workers_copy(self, db):
+        ui, setup = self._routed(db)
+        running = True
+
+        def old_worker(method, path, body):
+            nonlocal running
+            if path.startswith("/api/containers/"):
+                return HTTPException(404, "Container not found")
+            if path.endswith("/stop"):
+                running = False
+                return {"status": "stopped", "was_running": True}
+            if path.endswith("/start-checked"):
+                return HTTPException(404, main._worker_failure_text(404))
+            assert path.endswith("/restart")
+            assert running
+            return {"status": "restarted"}
+
+        async def go():
+            await setup()
+            ui.worker_reply = old_worker
+            with ui.active(patch.object(main, "_require_writer", lambda r: None)):
+                try:
+                    await main._svc_restart(_request(), "honeygain", 1)
+                except HTTPException as exc:
+                    assert exc.status_code in (404, 409)
+
+        _run(go)
+        assert running
+        assert not any(path.endswith("/stop") for _, path in ui.paths())
+
+    @pytest.mark.parametrize("capped", [False, True], ids=["uncapped", "capped"])
+    def test_routed_restart_starts_a_stopped_copy(self, db, proxy_docker, capped):
+        ui = _Ui()
+
+        async def go():
+            pid = await ui.proxy(host="203.0.113.9", port=1080)
+            await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            ui.calls.clear()
+            test_proxy_shared_tunnel._deploy("honeygain", proxy_id=pid)
+            if capped:
+                await database.update_proxy_state(pid, {"capped_at": "2026-11-01", "cap_reason": "Proxy cap reached"})
+            name = proxy_tunnel.earner_name("honeygain", pid)
+            copy = proxy_docker.named(name)
+            proxy_tunnel.stop("honeygain", pid)
+
+            with (
+                patch.object(worker_api, "_verify_api_key"),
+                patch.object(worker_api, "_validate_proxy"),
+                patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+            ):
+                worker = TestClient(worker_api.app)
+
+                def dispatch(method, path, body):
+                    if path.startswith("/api/containers/"):
+                        return HTTPException(404, "Container not found")
+                    reply = worker.request(method, path, json=body)
+                    if reply.status_code >= 400:
+                        return HTTPException(reply.status_code, reply.json()["detail"])
+                    return reply.json()
+
+                ui.worker_reply = dispatch
+                with ui.active(patch.object(main, "_require_writer", lambda _: None)):
+                    if capped:
+                        with pytest.raises(HTTPException, match="Proxy cap reached"):
+                            await main._svc_restart(_request(), "honeygain", 1)
+                    else:
+                        response = await main._svc_restart(_request(), "honeygain", 1)
+                        assert response["status"] == "started"
+            assert proxy_docker.named(name) is copy
+            assert copy.status == ("exited" if capped else "running")
+            assert (name in proxy_tunnel.held()) is capped
+            assert not any(path.endswith("/stop") for _, path in ui.paths())
+
+        _run(go)
+
     def test_stop_start_restart_logs_and_remove_reach_the_copy(self, db):
         ui, setup = self._routed(db)
 
@@ -2061,9 +2168,8 @@ class TestTheUiManagesARoutedService:
         # Each asks for the container first; its 404 is what sends it to the copy.
         assert [c for c in ui.paths() if c[1].startswith("/api/proxied/")] == [
             ("POST", f"{base}/stop"),
-            ("POST", f"{base}/start"),
-            ("POST", f"{base}/stop"),
-            ("POST", f"{base}/start"),
+            ("POST", f"{base}/start-checked"),
+            ("POST", f"{base}/restart"),
             ("GET", f"{base}/logs"),
             ("DELETE", base),
         ]

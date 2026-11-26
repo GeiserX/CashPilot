@@ -1051,7 +1051,7 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
             if (
                 proxy is None
                 or copy.get("removing_since")
-                or copy.get("stopped_by_cap")
+                or (copy.get("stopped_by_cap") and (pid, wid, slug) not in _proxy_start_needs_approval)
                 or (proxy.get("state") or {}).get("capped_at")
                 or slug in _account_disabled
             ):
@@ -1073,8 +1073,15 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
                 None,
             )
             base = {"svc": svc, "box": box, "proxy": pname, "earner": earner, "created_at": copy.get("created_at")}
+            if copy.get("stopped_by_cap"):
+                # The cap no longer holds, but the worker refused to start the copy again without approval.
+                faults[_proxied_subject(earner, wid)] = {**base, "what": "start_needs_approval"}
+                continue
             if entry is None or entry.get("status") == "missing":
                 faults[_proxied_subject(earner, wid)] = {**base, "what": "copy_missing"}
+                continue
+            if entry.get("recovery_skipped"):
+                faults[_proxied_subject(earner, wid)] = {**base, "what": "recovery_skipped"}
                 continue
             # A copy the owner or the cap stopped: its tunnel may be down with it.
             # An older worker does not say; then only what is gone counts.
@@ -1155,6 +1162,21 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
 def _proxied_alert_text(fault: dict[str, Any], since: datetime) -> tuple[str, str]:
     """The push title and the message of one proxied-copy fault."""
     svc, box, proxy = fault["svc"], fault["box"], fault["proxy"]
+    if fault["what"] == "recovery_skipped":
+        return (
+            f"CashPilot: skipped recovery for {svc} on {box}",
+            f"CashPilot skipped recovery for {svc} through {proxy} on {box}. "
+            "A container in the tunnel does not match the worker's saved ID, or the worker has no saved ID "
+            "for it yet. Review the copies under Proxies on the Fleet page.",
+        )
+    if fault["what"] == "start_needs_approval":
+        earner = fault["earner"]
+        return (
+            f"CashPilot: {svc} on {box} needs your approval to start",
+            f"The traffic cap of {proxy} no longer holds, but CashPilot did not start {svc} ({earner}) on {box} "
+            "again: that would replace a container the worker cannot match to its saved ID. Press Start for "
+            "this copy under Proxies on the Fleet page to review the containers.",
+        )
     if fault["what"] == "tunnel_stuck":
         tunnel, copies = fault["tunnel"], ", ".join(sorted(fault["copies"]))
         try:
@@ -3031,17 +3053,23 @@ def _proxied_copies(workers: list[dict[str, Any]]) -> list[tuple[dict[str, Any],
     return out
 
 
-async def _restart_proxied(proxy_id: int, worker_id: int, slug: str) -> None:
+async def _restart_proxied(proxy_id: int, worker_id: int, slug: str, *, report_stopped: bool = False) -> dict[str, Any]:
     """Restart a proxied copy where it is (worker: proxy_tunnel.restart), under the lock its Stop and Start take.
 
     Never a stop and a start: a start that failed after the stop would leave
     the copy stopped for good. The worker refuses a copy its owner or the cap
-    stopped.
+    stopped. A manual restart requests a structured refusal so the dashboard
+    can ask for checked Start if the copy is stopped.
     """
     proxy = await _proxy_or_404(proxy_id)
     async with _proxy_copy_lock(proxy_id, worker_id, slug):
-        await _proxy_worker_call(
-            worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/restart", proxy["definition"], timeout=90
+        return await _proxy_worker_call(
+            worker_id,
+            "POST",
+            f"/api/proxied/{slug}/{proxy_id}/restart",
+            proxy["definition"],
+            json={"report_stopped": True} if report_stopped else None,
+            timeout=90,
         )
 
 
@@ -3654,6 +3682,12 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
         # a wallet seed phrase, a reveal the password, and the default 422
         # echoes the rejected input.
         errors = [{k: v for k, v in err.items() if k not in ("input", "ctx")} for err in errors]
+        if request.url.path.startswith("/api/deploy/"):
+            for error in errors:
+                loc = error.get("loc", ())
+                if len(loc) > 2 and loc[:2] == ("body", "env"):
+                    error["loc"] = (*loc[:2], "<environment key>")
+
     return JSONResponse(status_code=422, content={"detail": _json_safe(jsonable_encoder(errors))})
 
 
@@ -7053,6 +7087,22 @@ def _merge_recorded_spec(
 # /api/{action}/{slug} and the service-scoped /api/services/{slug}/... — with identical
 # behavior. Both sets of routes delegate to these helpers so the writer-guard, worker
 # resolution, proxy, and bookkeeping live in exactly one place per action.
+async def _seed_to_keep(slug: str, worker_id: int, *, delete_volumes: bool) -> str | None:
+    """The wallet seed key a removal from a Desktop keeps the phrase of, or None.
+
+    Read before the worker is asked: a worker row deleted while the removal
+    runs must not make its phrase look like a Docker worker's."""
+    seed_key = wallet_seed.seed_key(catalog.get_service(slug))
+    return seed_key if seed_key and not delete_volumes and await _worker_is_desktop(worker_id) else None
+
+
+async def _forget_removed_deployment(slug: str, worker_id: int, *, keep_wallet_seed: str | None) -> None:
+    if keep_wallet_seed:
+        await database.remove_deployment(slug, worker_id=worker_id, keep_wallet_seed=keep_wallet_seed)
+    else:
+        await database.remove_deployment(slug, worker_id=worker_id)
+
+
 async def _route_on(worker_id: int, slug: str) -> int | None:
     """The proxy ``slug`` is routed through on this worker by its record, or None."""
     try:
@@ -7090,9 +7140,24 @@ async def _or_routed(
 async def _routed_command(worker_id: int, slug: str, command: str, proxy_id: int) -> dict[str, Any]:
     """Stop, start or restart a routed service through its proxied copy."""
     if command == "restart":
-        await _proxied_command(proxy_id, worker_id, slug, "stop")
+        try:
+            return await _restart_proxied(proxy_id, worker_id, slug, report_stopped=True)
+        except HTTPException as exc:
+            if exc.status_code != 409 or _worker_error(exc) != "proxied_copy_stopped":
+                raise
         command = "start"
-    return await _proxied_command(proxy_id, worker_id, slug, command)
+    try:
+        return await _proxied_command(proxy_id, worker_id, slug, command)
+    except HTTPException as exc:
+        if command != "start" or not _start_needs_approval(exc):
+            raise
+        # Only the Fleet page can show the containers and send the owner's approval.
+        # A redeploy would recreate the copy, which is what this refusal protects.
+        raise HTTPException(
+            status_code=409,
+            detail=f"Starting {slug} would replace a container the worker cannot match to its saved ID. "
+            "Press Start for this copy under Proxies on the Fleet page to review it. Nothing was changed.",
+        ) from None
 
 
 async def _remove_routed(worker_id: int, slug: str) -> dict[str, Any]:
@@ -7239,6 +7304,7 @@ async def _svc_remove(
         # The delete the owner agreed to is of a partial restore: the worker
         # refuses it once that restore is gone (a later one may have succeeded).
         params = {**(params or {}), "only_if_restore_unfinished": "true"}
+    keep_wallet_seed = await _seed_to_keep(slug, worker_id, delete_volumes=delete_volumes)
     # Before the worker is asked: once it removes the proxied copies, its next
     # heartbeat no longer lists them to prove their ids. A failed removal
     # leaves them running, so the rows this writes stay right.
@@ -7283,7 +7349,7 @@ async def _svc_remove(
             worker_id=worker_id,
         )
     await _record_removed_copies(slug, worker_id, result)
-    await database.remove_deployment(slug, worker_id=worker_id)
+    await _forget_removed_deployment(slug, worker_id, keep_wallet_seed=keep_wallet_seed)
     # The worker removed the service's proxied copies with it (worker_api
     # remove_all), so their records go too. The removal itself already
     # happened; a failure here must not report it as failed.
@@ -7460,6 +7526,30 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     # test raise TypeError and turn a 409 into a 500. Require a string.
     if not isinstance(error, str):
         return None
+    if error == "confirm_proxy_start_targets":
+        targets = detail.get("expected_containers")
+        proof = detail.get("group_approval")
+        if (
+            isinstance(proof, str)
+            and re.fullmatch(r"[0-9a-f]{64}", proof)
+            and isinstance(targets, dict)
+            and targets
+            and all(
+                re.fullmatch(r"[a-z0-9][a-z0-9_-]*", slug)
+                and isinstance(cid, str)
+                and re.fullmatch(r"[0-9a-f]{64}", cid)
+                for slug, cid in targets.items()
+            )
+        ):
+            return {
+                "error": error,
+                "message": "Starting this copy requires replacing containers in its shared tunnel.",
+                "expected_containers": targets,
+                "group_approval": proof,
+            }
+        return None
+    if error == "proxied_copy_stopped":
+        return {"error": error, "message": "The proxied copy is stopped."}
     if error == "deploy_target_changed":
         actual = detail.get("current_container")
         if isinstance(actual, str) and _DEPLOY_TARGET_ID.fullmatch(actual):
@@ -7496,6 +7586,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "route_unknown",
         # A failed routed deploy whose earner may still run (app/worker_api.py).
         "routed_copy_may_exist",
+        "proxy_recovery_conflict",
+        "invalid_proxy_start_approval",
         # The scale-down found no such copy on the box (app/worker_api.py).
         "copy_not_found",
     ):
@@ -7627,7 +7719,7 @@ def _worker_left_restore(resp: Any) -> bool:
 
 # Stop accidental recovery phrase leaks to CashPilot Desktop. Decode and match
 # saved words across values in request order. Check pasted phrases by checksum
-# within whitespace-separated words in each field.
+# across common separators and encodings within each field.
 async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | None) -> None:
     """Check the final request and fields that may be stripped before the send."""
     svc = None
@@ -7647,26 +7739,45 @@ async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | 
 
     keys = {slug} if slug else set()
 
-    def string_values(payload: dict[str, Any]) -> Iterable[str]:
-        pending: list[tuple[str | None, Any]] = [(None, payload)]
+    def string_values(payload: dict[str, Any]) -> Iterable[tuple[tuple[str | int, ...], str]]:
+        pending: list[tuple[tuple[str | int, ...], Any]] = [((), payload)]
         while pending:
-            key, value = pending.pop()
+            field_path, value = pending.pop()
+            key = field_path[-1] if field_path else None
             if isinstance(key, str):
                 field = wallet_seed.field_name(key)
                 if field in wallet_fields:
                     raise _desktop_wallet_refusal(wallet_fields[field])
                 keys.add(key)
             if isinstance(value, dict):
-                pending.extend(reversed(value.items()))
+                pending.extend(((*field_path, name), child) for name, child in reversed(value.items()))
             elif isinstance(value, (list, tuple)):
-                pending.extend((None, child) for child in reversed(value))
+                pending.extend(((*field_path, i), value[i]) for i in reversed(range(len(value))))
             elif isinstance(value, str):
-                yield value
+                yield field_path, value
 
     value_groups = [tuple(string_values(payload)) for payload in payloads if payload is not None]
-    texts = keys | {value for values in value_groups for value in values}
-    if any(wallet_seed.contains_pasted_phrase(text) for text in texts):
+    if any(wallet_seed.contains_pasted_phrase(key) for key in keys):
         raise _desktop_wallet_refusal(None)
+    for values in value_groups:
+        for field_path, value in values:
+            if wallet_seed.contains_pasted_phrase(value):
+                # Field names have also been checked. Only display ordinary env names or known schema keys.
+                root = field_path[0]
+                if (
+                    root == "env"
+                    and len(field_path) > 1
+                    and isinstance(key := field_path[1], str)
+                    and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", key)
+                ):
+                    location = f"environment variable {key}"
+                elif root in ("image", "command", "entrypoint", "slug", "name"):
+                    location = f"the {root} field"
+                else:
+                    location = "a deploy field"
+                raise _desktop_wallet_refusal(
+                    None, recovery=f" Words in {location} match a recovery phrase. Change that field and try again."
+                )
 
     known = {
         f" {' '.join(words)} "
@@ -7683,7 +7794,7 @@ async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | 
     if any(matches_saved(wallet_seed.decode_phrase_text(key)) for key in keys):
         raise _desktop_wallet_refusal(None)
     for values in value_groups:
-        decoded = [wallet_seed.decode_phrase_text(value) for value in values]
+        decoded = [wallet_seed.decode_phrase_text(value) for _, value in values]
         # A value boundary can separate two words or fall inside a word.
         if matches_saved(" ".join(decoded)) or matches_saved("".join(decoded)):
             raise _desktop_wallet_refusal(None)
@@ -7991,7 +8102,10 @@ async def _ask_deploy_confirmation(worker_id: int, slug: str, targets: dict[str,
     message = f"Replace these containers for {slug} on {name}?\n\n" + "\n".join(copies)
     if old:
         product = "CashPilot-Desktop" if placement.is_desktop(placement.system_info(worker)) else "this worker"
-        message += f"\n\nUpdate {product} so it can verify the container ID itself."
+        message += (
+            "\n\nThese are the container IDs this worker last reported. It could replace a different container."
+            f"\n\nUpdate {product} so it can verify the container ID itself."
+        )
     raise HTTPException(
         status_code=409,
         detail={"error": "confirm_deploy_targets", "message": message, "expected_containers": targets},
@@ -8214,8 +8328,8 @@ async def _proxy_worker_call(
     try:
         return await _proxy_to_worker(worker_id, method, path, json=json, timeout=timeout)
     except HTTPException as exc:
-        if _worker_error(exc) == "deploy_target_changed":
-            raise  # _safe_worker_detail already verified the container ID and supplies a fixed message.
+        if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
+            raise  # _safe_worker_detail checked the fields and supplies the message.
         raise HTTPException(status_code=exc.status_code, detail=_mask(exc.detail, proxies.secret_values(definition)))
 
 
@@ -8719,16 +8833,44 @@ async def api_add_proxied_copy(
     return response
 
 
+class ProxiedCopyCommand(BaseModel):
+    expected_container: str | None = None
+    expected_containers: dict[str, str] | None = None
+    group_approval: str | None = None
+
+
 @app.post("/api/proxies/{proxy_id}/copies/{worker_id}/{slug}/{command}")
 async def api_proxied_copy_command(
-    proxy_id: int, worker_id: int, slug: str, command: str, _auth: dict[str, Any] = Depends(_require_owner)
+    proxy_id: int,
+    worker_id: int,
+    slug: str,
+    command: str,
+    _auth: dict[str, Any] = Depends(_require_owner),
+    body: ProxiedCopyCommand | None = None,
 ) -> dict[str, Any]:
     if command not in ("start", "stop"):
         raise HTTPException(status_code=400, detail="The command is start or stop")
-    return await _proxied_command(proxy_id, worker_id, slug, command)
+    return await _proxied_command(
+        proxy_id,
+        worker_id,
+        slug,
+        command,
+        expected=body.expected_container if body else None,
+        expected_containers=body.expected_containers if body else None,
+        group_approval=body.group_approval if body else None,
+    )
 
 
-async def _proxied_command(proxy_id: int, worker_id: int, slug: str, command: str) -> dict[str, Any]:
+async def _proxied_command(
+    proxy_id: int,
+    worker_id: int,
+    slug: str,
+    command: str,
+    *,
+    expected: str | None = None,
+    expected_containers: dict[str, str] | None = None,
+    group_approval: str | None = None,
+) -> dict[str, Any]:
     """Start or stop one proxied copy, with the proxy's current settings and its cap."""
     proxy = await _proxy_or_404(proxy_id)
     if command == "start" and proxy["state"].get("capped_at"):
@@ -8741,17 +8883,19 @@ async def _proxied_command(proxy_id: int, worker_id: int, slug: str, command: st
                 raise HTTPException(
                     status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap"
                 )
-        result = await _proxy_worker_call(
-            worker_id,
-            "POST",
-            f"/api/proxied/{slug}/{proxy_id}/{command}",
-            proxy["definition"],
-            # The proxy as stored now, so an edit since the deploy reaches the copy.
-            json={"proxy": proxies.worker_proxy_spec(proxy["definition"])} if command == "start" else None,
-            timeout=90,
-        )
+            approval = (
+                {"expected_containers": expected_containers, "group_approval": group_approval}
+                if expected_containers is not None
+                else {}
+            )
+            result = await _start_proxied_copy(proxy, worker_id, slug, expected=expected, **approval)
+        else:
+            result = await _proxy_worker_call(
+                worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/stop", proxy["definition"], timeout=90
+            )
         # A start or stop by hand is the owner's decision; a later reset must not undo it.
         await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
+        _proxy_start_needs_approval.discard((proxy_id, worker_id, slug))
     return result
 
 
@@ -9000,19 +9144,64 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
     return started
 
 
-async def _start_proxied_copy(proxy: dict[str, Any], worker_id: int, slug: str) -> dict[str, Any]:
-    """Start one copy with the proxy's current settings."""
-    result = await _proxy_worker_call(
-        worker_id,
-        "POST",
-        f"/api/proxied/{slug}/{proxy['id']}/start",
-        proxy["definition"],
-        json={"proxy": proxies.worker_proxy_spec(proxy["definition"])},
-        timeout=90,
-    )
-    # Started, but the worker could not make its record durable: still a start.
+# Copies whose Start without an approval the worker refused, because it would
+# replace a container the worker cannot match to its saved ID. A copy the cap
+# stopped stays down until the owner approves it, so _proxied_copy_check says so.
+_proxy_start_needs_approval: set[tuple[int, int, str]] = set()
+
+
+def _start_needs_approval(exc: HTTPException) -> bool:
+    """The worker's refusal of a Start that only the owner's approval of the containers can clear."""
+    return exc.status_code == 409 and _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets")
+
+
+async def _start_proxied_copy(
+    proxy: dict[str, Any],
+    worker_id: int,
+    slug: str,
+    *,
+    expected: str | None = None,
+    expected_containers: dict[str, str] | None = None,
+    group_approval: str | None = None,
+) -> dict[str, Any]:
+    """Start one copy with the current settings and its saved or approved container ID.
+
+    Without ``expected`` the worker compares against its own saved ID, which is
+    fresher than the last heartbeat. A worker older than this UI has no checked
+    Start and never compared IDs, so it gets the plain Start it always had."""
+    pid = proxy["id"]
+    if expected is not None and expected != "none" and not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise HTTPException(status_code=422, detail="Expected a full Docker container ID or 'none'.")
+    body: dict[str, Any] = {"proxy": proxies.worker_proxy_spec(proxy["definition"]), "expected_container": expected}
+    if expected_containers is not None:
+        body["expected_containers"] = expected_containers
+        body["group_approval"] = group_approval
+    try:
+        result = await _proxy_worker_call(
+            worker_id,
+            "POST",
+            f"/api/proxied/{slug}/{pid}/start-checked",
+            proxy["definition"],
+            json=body,
+            timeout=90,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 405 or (exc.status_code == 404 and exc.detail == _worker_failure_text(404)):
+            result = await _proxy_worker_call(
+                worker_id,
+                "POST",
+                f"/api/proxied/{slug}/{pid}/start",
+                proxy["definition"],
+                json={"proxy": body["proxy"]},
+                timeout=90,
+            )
+        else:
+            if expected is None and expected_containers is None and _start_needs_approval(exc):
+                _proxy_start_needs_approval.add((pid, worker_id, slug))
+            raise
+    _proxy_start_needs_approval.discard((pid, worker_id, slug))
     if isinstance(result, dict) and result.get("durable") is False:
-        logger.warning("Started %s through proxy %s: %s", slug, proxy["id"], result.get("warning"))
+        logger.warning("Started %s through proxy %s: %s", slug, pid, result.get("warning"))
     return result
 
 
@@ -13420,6 +13609,8 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             lambda pid: _routed_command(worker_id, body.slug, command, pid),
         )
     elif body.command == "remove":
+        # This route's removal never sends delete_volumes, so the volumes stay.
+        keep_wallet_seed = await _seed_to_keep(body.slug, worker_id, delete_volumes=False)
         # As in _svc_remove: before the worker removes the proxied copies.
         await _record_removed_proxied_copies(worker_id, body.slug)
         result = await _or_routed(
@@ -13506,7 +13697,7 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             # As in _svc_remove: a routed removal the worker has not confirmed
             # keeps the record until _finish_copy_removal drops it.
             await _record_removed_copies(slug, worker_id, result)
-            await database.remove_deployment(slug, worker_id=worker_id)
+            await _forget_removed_deployment(slug, worker_id, keep_wallet_seed=keep_wallet_seed)
         # As in _svc_remove: the worker removed the proxied copies with the service.
         # The removal already happened; a failure here must not report it as failed.
         try:

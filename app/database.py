@@ -446,6 +446,15 @@ CREATE TABLE IF NOT EXISTS deployment_specs (
     PRIMARY KEY (slug, worker_id)
 );
 
+-- A Desktop removal can keep the wallet while forgetting its deployment.
+-- Hold any unconfirmed legacy phrases outside the active deploy records.
+CREATE TABLE IF NOT EXISTS retained_wallet_phrases (
+    slug               TEXT    NOT NULL,
+    worker_id          INTEGER NOT NULL,
+    phrases_encrypted  TEXT    NOT NULL,
+    PRIMARY KEY (slug, worker_id)
+);
+
 -- Services the user added from an image reference (app/custom_services.py).
 -- The whole definition is one Fernet-encrypted JSON blob, like a deployment
 -- spec: its env holds credentials, and encrypting all of it means no value
@@ -2090,8 +2099,17 @@ async def save_deployment(
         if existing:
             spec_encrypted = existing.get("spec_encrypted") or ""
 
-    db = await _get_db()
+    seed_key = None
+    if spec_encrypted and spec is not None and worker_id is not None:
+        from app import catalog
+
+        seed_key = wallet_seed.seed_key(catalog.get_service(slug))
+    # The fleet lookup and write need their own SQLite transaction.
+    db = await _activity_connect() if seed_key else await _get_db()
     try:
+        if seed_key:
+            await db.execute("BEGIN IMMEDIATE")
+            await _keep_legacy_fleet_wallet(db, slug, seed_key, worker_id)
         await db.execute(
             """
             INSERT OR REPLACE INTO deployments
@@ -2123,6 +2141,46 @@ async def save_deployment(
         await db.commit()
     finally:
         await db.close()
+
+
+async def _keep_legacy_fleet_wallet(db: Any, slug: str, key: str, worker_id: int) -> None:
+    """Keep a fleet-only phrase when another deployment takes its place."""
+    cursor = await db.execute("SELECT * FROM deployments WHERE slug = ?", (slug,))
+    fleet = await cursor.fetchone()
+    if not fleet or not (phrase := _legacy_wallet_phrase(fleet["spec_encrypted"], slug, key)):
+        return
+    owners = await _fleet_container_owners(db, slug, fleet["container_id"])
+    if len(owners) == 1:
+        owner = next(iter(owners))
+        cursor = await db.execute(
+            "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
+            (slug, owner),
+        )
+        spec = await cursor.fetchone()
+        if spec is None:
+            # On the same worker too: the save then keeps this spec as its prior.
+            await db.execute(
+                "INSERT INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at) VALUES (?, ?, ?, ?)",
+                (slug, owner, fleet["spec_encrypted"], fleet["deployed_at"]),
+            )
+            return
+        # The same worker's save makes its current spec the prior: only that one keeps the phrase.
+        kept = [spec["spec_encrypted"]] if owner == worker_id else list(spec)
+        if any(_legacy_wallet_phrase(blob, slug, key) == phrase for blob in kept):
+            return
+    else:
+        cursor = await db.execute(
+            "SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id)
+        )
+        if not owners and _fleet_spec_matches(await cursor.fetchone(), fleet):
+            return
+        owner = _UNKNOWN_WALLET_WORKER
+    await _retain_phrases(db, slug, owner, {phrase})
+
+
+def _legacy_wallet_phrase(blob: str | None, slug: str, key: str) -> str:
+    env = (_decode_spec(blob or "", slug) or {}).get("env")
+    return wallet_seed.normalize(env.get(key)) if isinstance(env, dict) else ""
 
 
 async def get_deployment_spec(slug: str, worker_id: int | None = None) -> dict[str, Any] | None:
@@ -2297,10 +2355,12 @@ async def get_saved_wallet_phrases(fields: Collection[str]) -> set[str]:
             """
         )
         rows = await cursor.fetchall()
+        cursor = await db.execute("SELECT slug, phrases_encrypted FROM retained_wallet_phrases")
+        retained = await cursor.fetchall()
     finally:
         await db.close()
 
-    phrases: set[str] = set()
+    phrases = {phrase for slug, blob in retained for phrase in _retained_phrases(blob, slug)}
     suffixes = tuple(fields)
     for name, value, is_config in rows:
         if is_config:
@@ -2345,7 +2405,7 @@ async def get_deployment(slug: str) -> dict[str, Any] | None:
         await db.close()
 
 
-async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
+async def remove_deployment(slug: str, worker_id: int | None = None, *, keep_wallet_seed: str | None = None) -> None:
     """Forget a deployment. ``worker_id`` forgets it on that worker only.
 
     Only that worker's spec goes: the service may still run on other machines,
@@ -2357,12 +2417,71 @@ async def remove_deployment(slug: str, worker_id: int | None = None) -> None:
     another worker's last heartbeat listing the service, which also covers
     deployments made before specs were kept per worker.
     """
-    db = await _get_db()
+    db = await _activity_connect() if keep_wallet_seed else await _get_db()
     try:
+        if keep_wallet_seed and worker_id is not None:
+            await db.execute("BEGIN IMMEDIATE")
+            await _keep_removed_wallet(db, slug, worker_id, keep_wallet_seed)
         await _forget_deployment(db, slug, worker_id)
         await db.commit()
     finally:
         await db.close()
+
+
+def _retained_phrases(blob: str | None, slug: str) -> set[str]:
+    decoded = _decode_spec(blob or "", slug) or {}
+    return set(decoded.get("phrases") or [])
+
+
+async def _read_retained_phrases(db: Any, slug: str, worker_id: int) -> set[str]:
+    cursor = await db.execute(
+        "SELECT phrases_encrypted FROM retained_wallet_phrases WHERE slug = ? AND worker_id = ?", (slug, worker_id)
+    )
+    row = await cursor.fetchone()
+    return _retained_phrases(row["phrases_encrypted"], slug) if row else set()
+
+
+async def _write_retained_phrases(db: Any, slug: str, worker_id: int, phrases: set[str]) -> None:
+    if phrases:
+        blob = encrypt_value(json.dumps({"phrases": sorted(phrases)}))
+        await db.execute(
+            "INSERT OR REPLACE INTO retained_wallet_phrases (slug, worker_id, phrases_encrypted) VALUES (?, ?, ?)",
+            (slug, worker_id, blob),
+        )
+    else:
+        await db.execute("DELETE FROM retained_wallet_phrases WHERE slug = ? AND worker_id = ?", (slug, worker_id))
+
+
+# A retained phrase with no confirmed owner is never installed on a worker.
+_UNKNOWN_WALLET_WORKER = 0
+
+
+async def _retain_phrases(db: Any, slug: str, worker_id: int, phrases: set[str]) -> None:
+    if phrases:
+        saved = await _read_retained_phrases(db, slug, worker_id)
+        if not phrases <= saved:
+            await _write_retained_phrases(db, slug, worker_id, saved | phrases)
+
+
+async def _keep_removed_wallet(db: Any, slug: str, worker_id: int, key: str) -> None:
+    cursor = await db.execute(
+        "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
+        (slug, worker_id),
+    )
+    worker = await cursor.fetchone()
+    blobs = list(worker) if worker else []
+    cursor = await db.execute("SELECT container_id, spec_encrypted FROM deployments WHERE slug = ?", (slug,))
+    fleet = await cursor.fetchone()
+    if fleet and (phrase := _legacy_wallet_phrase(fleet["spec_encrypted"], slug, key)):
+        owners = await _fleet_container_owners(db, slug, fleet["container_id"])
+        if owners == {worker_id} or (not owners and _fleet_spec_matches(worker, fleet)):
+            blobs.append(fleet["spec_encrypted"])
+        else:
+            owner = next(iter(owners)) if len(owners) == 1 else _UNKNOWN_WALLET_WORKER
+            await _retain_phrases(db, slug, owner, {phrase})
+    await _retain_phrases(
+        db, slug, worker_id, {phrase for blob in blobs if (phrase := _legacy_wallet_phrase(blob, slug, key))}
+    )
 
 
 async def _forget_deployment(db: Any, slug: str, worker_id: int | None) -> None:
@@ -5349,6 +5468,16 @@ async def forget_env_value(
             if blob is not None:
                 await db.execute("UPDATE deployments SET spec_encrypted = ? WHERE slug = ?", (blob, slug))
                 removed = True
+        if confirmed_wallet_seed is not None:
+            # The owner typed this phrase, so it goes from the unknown-owner record too.
+            for holder in (worker_id, _UNKNOWN_WALLET_WORKER):
+                phrases = await _read_retained_phrases(db, slug, holder)
+                if confirmed_wallet_seed in phrases:
+                    phrases.remove(confirmed_wallet_seed)
+                    await _write_retained_phrases(db, slug, holder, phrases)
+                    removed = True
+                if holder == worker_id:
+                    retained |= bool(phrases)
         await db.commit()
         if removed or confirmed_wallet_seed is None:
             cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -5364,11 +5493,18 @@ async def _fleet_spec_belongs_to_worker(
     db: Any, slug: str, worker_id: int, fleet: aiosqlite.Row, spec: aiosqlite.Row | None
 ) -> bool:
     """Match the fleet container to a heartbeat, or its encrypted spec to the same save."""
-    if recorded_id := fleet["container_id"]:
-        cursor = await db.execute("SELECT id, containers FROM workers")
-        owners = {row["id"] for row in await cursor.fetchall() if _runs_container(row["containers"], slug, recorded_id)}
-        if owners:
-            return owners == {worker_id}
+    owners = await _fleet_container_owners(db, slug, fleet["container_id"])
+    return owners == {worker_id} if owners else _fleet_spec_matches(spec, fleet)
+
+
+async def _fleet_container_owners(db: Any, slug: str, recorded_id: str) -> set[int]:
+    if not recorded_id:
+        return set()
+    cursor = await db.execute("SELECT id, containers FROM workers")
+    return {row["id"] for row in await cursor.fetchall() if _runs_container(row["containers"], slug, recorded_id)}
+
+
+def _fleet_spec_matches(spec: aiosqlite.Row | None, fleet: aiosqlite.Row) -> bool:
     # save_deployment writes the same Fernet token to both rows. Two saves of
     # the same settings still have different tokens.
     blob = fleet["spec_encrypted"] or ""
