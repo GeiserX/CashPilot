@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from contextlib import aclosing
 from datetime import UTC, date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
@@ -92,7 +93,6 @@ async def test_export_auth(db, monkeypatch, credential, status):
 
 
 async def test_blank_dates_use_oldest_income_and_today(client, db):
-    assert await db.oldest_income_date() is None
     await db.upsert_earnings("honeygain", 10, date=SATURDAY)
     await db.add_manual_payout("mysterium", 1, paid_on=EARLIER)
     response = await client.get(EXPORT, params={"start": "", "end": ""})
@@ -236,7 +236,15 @@ async def test_fiat_rates_only_need_to_cover_saved_history(client, db, monkeypat
     (earned,) = csv_rows(response)
     assert earned["local_value"] == "1.82"
     assert response.headers["content-disposition"].endswith(f'1998-12-30_{MONDAY}-EUR.csv"')
-    fetch.assert_awaited_once_with("EUR", EARLIER, MONDAY)
+    fetch.assert_awaited_once_with("EUR", MONDAY, MONDAY)
+
+
+async def test_empty_history_needs_no_rates(client, db, monkeypatch):
+    fetch = AsyncMock()
+    monkeypatch.setattr(exchange_rates, "fetch_daily_fiat_rates", fetch)
+    response = await client.get(EXPORT, params={"start": EARLIER, "end": MONDAY, "currency": "EUR"})
+    assert csv_rows(response) == []
+    fetch.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -264,6 +272,7 @@ async def test_bad_query_does_not_request_rates_or_export(client, db, monkeypatc
 async def test_rate_failure_precedes_audit_and_stream(client, db, monkeypatch, unknown, status):
     fetch = AsyncMock(return_value=None, side_effect=exchange_rates.UnknownFiat("EUR") if unknown else None)
     monkeypatch.setattr(exchange_rates, "fetch_daily_fiat_rates", fetch)
+    await db.add_manual_payout("mysterium", 1, paid_on=EARLIER)
     response = await client.get(EXPORT, params={"currency": "EUR"})
     assert response.status_code == status
     assert "content-disposition" not in response.headers
@@ -425,24 +434,25 @@ async def test_frankfurter_failure_logs_reason_without_body(monkeypatch, caplog,
     assert "secret" not in caplog.text
 
 
-async def test_payout_confirmed_during_the_request_is_exported(client, db, monkeypatch):
-    # The oldest saved date is MONDAY when the request starts; a past-dated payout
-    # confirmed while the rates are fetched moves it to SATURDAY, inside the range.
+async def test_payout_confirmed_before_the_stream_opens_is_exported(client, db, monkeypatch):
+    # The oldest saved date is MONDAY when the request starts. A past-dated payout
+    # commits after every other read and just before the payout query opens.
     await db.add_manual_payout("honeygain", 12.5, "USD", 1, "card", MONDAY)
-    calls = []
+    query = database.iter_confirmed_payouts
 
-    async def fetch(currency, start, end):
-        calls.append((currency, start, end))
-        if len(calls) == 1:
-            await db.add_manual_payout("mysterium", 8, "MYST", 0.25, "crypto", SATURDAY)
-        return {EARLIER: 0.9, MONDAY: 0.91}
+    async def late_payout(start, end):
+        await db.add_manual_payout("mysterium", 8, "MYST", 0.25, "crypto", SATURDAY)
+        async with aclosing(query(start, end)) as rows:
+            async for row in rows:
+                yield row
 
+    fetch = AsyncMock(return_value={EARLIER: 0.9, MONDAY: 0.91})
     monkeypatch.setattr(exchange_rates, "fetch_daily_fiat_rates", fetch)
+    monkeypatch.setattr(database, "iter_confirmed_payouts", late_payout)
     response = await client.get(EXPORT, params={"start": EARLIER, "end": MONDAY, "currency": "EUR"})
-    rows = csv_rows(response)
-    assert [(r["date"], r["service"], r["local_rate"]) for r in rows] == [
+    assert [(r["date"], r["service"], r["local_rate"]) for r in csv_rows(response)] == [
         (SATURDAY, "mysterium", "0.9"),
         (MONDAY, "honeygain", "0.91"),
     ]
-    assert calls == [("EUR", MONDAY, MONDAY), ("EUR", SATURDAY, MONDAY)]
+    fetch.assert_awaited_once_with("EUR", SATURDAY, MONDAY)
     assert response.headers["content-disposition"].endswith(f'{EARLIER}_{MONDAY}-EUR.csv"')

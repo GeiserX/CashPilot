@@ -1818,20 +1818,6 @@ async def iter_earned_steps(end: str | None = None) -> AsyncIterator[EarnedStep]
                     yield step
 
 
-async def oldest_income_date() -> str | None:
-    """Earliest earnings reading or confirmed payout available for an export."""
-    async with (
-        await _get_db() as db,
-        db.execute(
-            "SELECT MIN(day) FROM ("
-            "SELECT MIN(date) AS day FROM earnings "
-            "UNION ALL SELECT substr(MIN(detected_at), 1, 10) FROM payouts WHERE confirmed = 1)"
-        ) as cursor,
-    ):
-        row = await cursor.fetchone()
-    return row[0]
-
-
 async def get_earnings_dashboard_summary() -> dict[str, Any]:
     """Return aggregated earnings stats for the dashboard."""
     db = await _get_db()

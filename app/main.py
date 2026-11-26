@@ -10254,26 +10254,25 @@ async def api_income_csv(
     if start and start > end:
         raise HTTPException(status_code=400, detail="The start date must be on or before the end date.")
 
-    oldest = start
-    if not oldest or currency != "USD":
-        oldest = min(await database.oldest_income_date() or end, end)
-    start = start or oldest
-    # Rates before the oldest saved date cannot price any row.
-    export_start = max(start, oldest)
-    fiat = await _income_fiat_rates(currency, export_start, end)
+    first_day = None
 
-    await database.add_audit_event("income_export", f"{start}..{end}", "exported", actor=user, detail=currency)
-    # A past-dated payout confirmed during the awaits above can move the oldest
-    # date earlier, still inside the requested range. Widen the rows and the
-    # rates to it, so the file holds every payout saved when the stream starts.
-    while export_start > start:
-        moved = max(start, min(await database.oldest_income_date() or end, end))
-        if moved >= export_start:
-            break
-        fiat = await _income_fiat_rates(currency, moved, end)
-        export_start = moved
+    async def rates_from(day: str) -> dict[str, float]:
+        nonlocal first_day
+        first_day = day
+        return await _income_fiat_rates(currency, day, end)
+
+    # Blank start means all history. The first chunk fetches the rates, so a
+    # rate failure still answers with an error status rather than a cut file.
+    chunks = income_export.stream_csv(start or "", end, currency, rates_from)
+    try:
+        first = await anext(chunks)
+        start = start or first_day or end
+        await database.add_audit_event("income_export", f"{start}..{end}", "exported", actor=user, detail=currency)
+    except BaseException:
+        await chunks.aclose()
+        raise
     return StreamingResponse(
-        income_export.stream_csv(export_start, end, currency, fiat),
+        income_export.resume(first, chunks),
         media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="cashpilot-income-{start}_{end}-{currency}.csv"',

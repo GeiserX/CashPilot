@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import math
 from bisect import bisect_right
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from io import StringIO
 
@@ -81,8 +81,22 @@ def _row(
     )
 
 
-async def iter_rows(start: str, end: str, currency: str, fiat: dict[str, float]) -> AsyncIterator[tuple[str, ...]]:
-    days = sorted(fiat)
+async def iter_rows(
+    start: str, end: str, currency: str, rates_from: Callable[[str], Awaitable[dict[str, float]]]
+) -> AsyncIterator[tuple[str, ...]]:
+    # Rows come out in date order, so rates fetched from the first row's day
+    # cover every row. A separate oldest-date read could miss a payout saved
+    # between that read and the query below.
+    fiat: dict[str, float] | None = None
+    days: list[str] = []
+
+    async def local_rate(day: str) -> float | None:
+        nonlocal fiat, days
+        if fiat is None:
+            fiat = await rates_from(day)
+            days = sorted(fiat)
+        return rate_on(days, fiat, day)
+
     async with (
         aclosing(database.iter_earned_steps(end)) as steps,
         aclosing(database.iter_confirmed_payouts(start, end)) as payouts,
@@ -101,7 +115,7 @@ async def iter_rows(start: str, end: str, currency: str, fiat: dict[str, float])
                     max(0.0, payout["amount"]),
                     database._usd_rate(payout["currency"], payout["fx_rate_usd"]),
                     currency,
-                    rate_on(days, fiat, day),
+                    await local_rate(day),
                     payout["method"],
                 )
                 payout = await anext(payouts, None)
@@ -116,17 +130,19 @@ async def iter_rows(start: str, end: str, currency: str, fiat: dict[str, float])
                         step.amount,
                         step.rate,
                         currency,
-                        rate_on(days, fiat, step.date),
+                        await local_rate(step.date),
                     )
                 step = await anext(steps, None)
 
 
-async def stream_csv(start: str, end: str, currency: str, fiat: dict[str, float]) -> AsyncIterator[str]:
+async def stream_csv(
+    start: str, end: str, currency: str, rates_from: Callable[[str], Awaitable[dict[str, float]]]
+) -> AsyncGenerator[str]:
     with StringIO() as buffer:
         writer = csv.writer(buffer)
         writer.writerow(HEADER)
         count = 0
-        async with aclosing(iter_rows(start, end, currency, fiat)) as rows:
+        async with aclosing(iter_rows(start, end, currency, rates_from)) as rows:
             async for row in rows:
                 writer.writerow(row)
                 count += 1
@@ -137,3 +153,11 @@ async def stream_csv(start: str, end: str, currency: str, fiat: dict[str, float]
                     count = 0
         if buffer.tell():
             yield buffer.getvalue()
+
+
+async def resume(first: str, chunks: AsyncGenerator[str]) -> AsyncIterator[str]:
+    """Send a chunk read ahead, then the rest of the stream."""
+    async with aclosing(chunks):
+        yield first
+        async for chunk in chunks:
+            yield chunk
