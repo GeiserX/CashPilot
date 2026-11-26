@@ -235,6 +235,25 @@ class TestPayoutUsesTheCoinsOwnThreshold:
         assert payout["amount"] == pytest.approx(0.0305) and not payout["confirmed"]
         assert payout["currency"] == "XMR"
 
+    @pytest.mark.asyncio
+    async def test_switching_coins_is_not_a_payout(self, tmp_path, monkeypatch):
+        from app import database, main
+        from app.collectors.base import EarningsResult
+
+        monkeypatch.setattr(database, "DB_DIR", tmp_path)
+        monkeypatch.setattr(database, "DB_PATH", tmp_path / "cashpilot.db")
+        monkeypatch.setattr(main, "_push_alert", AsyncMock())
+        await database.init_db()
+        await database.upsert_earnings(SLUG, 150_000.0, "SHIB")
+
+        # The same address now mines XMR: 150000 SHIB to 0.001 XMR is no drop.
+        await main._detect_payout(EarningsResult(platform=SLUG, balance=0.001, currency="XMR", payout_threshold=0.03))
+
+        assert await database.get_payouts(SLUG) == []
+        assert await database.get_latest_balance(SLUG) == 150_000.0
+        assert await database.get_latest_balance(SLUG, "shib") == 150_000.0
+        assert await database.get_latest_balance(SLUG, "XMR") is None
+
 
 @pytest.mark.parametrize("address", [FUND, f"{FUND}.rig"])
 def test_credential_check_gives_payout_address_advice(monkeypatch, address):

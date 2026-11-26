@@ -1480,7 +1480,8 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
     then never shown to anybody, which defeats the point of asking.
     """
     try:
-        previous = await database.get_latest_balance(result.platform)
+        # Another currency means the user switched coins: no drop to compare.
+        previous = await database.get_latest_balance(result.platform, result.currency)
         if previous is None:
             return None
         try:

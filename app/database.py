@@ -4961,22 +4961,29 @@ async def get_node_totals() -> dict[str, dict[str, Any]]:
         await db.close()
 
 
-async def get_latest_balance(platform: str) -> float | None:
+async def get_latest_balance(platform: str, currency: str | None = None) -> float | None:
     """The most recent recorded balance for a platform, or None if never seen.
 
     None matters: a first-ever reading has nothing to compare against, and
     treating an absent history as zero would make every initial collection look
     like a huge gain — or, for payout detection, make the first reading after a
     fresh install look like a drop.
+
+    With ``currency``, a latest reading in another currency is also None: a
+    multi-coin pool whose user switched coins has nothing comparable either.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT balance FROM earnings WHERE platform = ? ORDER BY date DESC, id DESC LIMIT 1",
+            "SELECT balance, currency FROM earnings WHERE platform = ? ORDER BY date DESC, id DESC LIMIT 1",
             (platform,),
         )
         row = await cursor.fetchone()
-        return float(row["balance"]) if row else None
+        if row is None:
+            return None
+        if currency is not None and (row["currency"] or "USD").upper() != (currency or "USD").upper():
+            return None
+        return float(row["balance"])
     finally:
         await db.close()
 
