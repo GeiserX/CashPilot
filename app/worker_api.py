@@ -468,6 +468,10 @@ def _gpu_presence() -> dict[str, Any]:
         if not vendors:
             info["reason"] = "sysfs lists no NVIDIA, AMD or Intel GPU on this machine"
         return info
+    if not gpu.local_endpoint(os.environ.get("DOCKER_HOST", "")):
+        # Docker may run on another machine: nvidia-smi and /dev/dri below
+        # would describe this one, so say why nothing is known instead.
+        return {"available": None, "devices": [], "detected_by": None, "reason": host["reason"]}
 
     devices: list[str] = []
     how = None

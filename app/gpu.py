@@ -270,7 +270,9 @@ def host_from_report(report: Any) -> dict[str, Any]:
     """
     report = report if isinstance(report, dict) else {}
     vendors = report.get("vendors")
-    if not isinstance(vendors, dict) or not all(isinstance(facts, dict) for facts in vendors.values()):
+    if not isinstance(vendors, dict) or not all(
+        isinstance(facts, dict) and isinstance(facts.get("render_nodes", []), list) for facts in vendors.values()
+    ):
         vendors = None
     host: dict[str, Any] = {
         "conclusive": vendors is not None and isinstance(report.get("available"), bool),

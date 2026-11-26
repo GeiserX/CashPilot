@@ -55,6 +55,12 @@ def watchtower(root: Path) -> Path:
     return root
 
 
+@pytest.fixture(autouse=True)
+def _local_docker(monkeypatch):
+    """The tests read a fake sysfs as Docker's own: a remote DOCKER_HOST in the shell must not change that."""
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+
+
 def read(root: Path, system: str = "Linux", release: str = "6.12.54-Unraid") -> dict:
     with (
         patch.object(gpu.platform, "system", return_value=system),
@@ -691,6 +697,38 @@ def test_the_export_route_reads_the_named_workers_gpus(tmp_path):
     assert err.value.status_code == 404
 
 
+def test_the_multi_and_all_export_routes_read_the_named_workers_gpus(tmp_path):
+    report = _heartbeat_gpu(intel_igpu_and_amd_card(tmp_path))
+    worker = {"id": 3, "system_info": json.dumps({"gpu": report})}
+    plain = {"slug": "plain", "name": "Plain", "status": "active", "docker": {"image": "example/plain:1"}}
+
+    async def run(call):
+        with (
+            _export_catalog({"gpuminer": AMD_ROCM, "plain": plain}),
+            patch.object(main, "_require_auth_api", lambda request: {"id": 1}),
+            patch.object(main.database, "get_worker", AsyncMock(side_effect=lambda wid: worker if wid == 3 else None)),
+        ):
+            return await call()
+
+    import asyncio
+
+    body = main.ComposeMultiRequest(slugs=["gpuminer"], worker_id=3)
+    multi = asyncio.run(run(lambda: main.api_compose_multi(MagicMock(), body, {"id": 1})))
+    assert "/dev/dri/renderD129:/dev/dri/renderD129" in multi
+    everything = asyncio.run(run(lambda: main.api_compose_all(MagicMock(), worker_id=3)))
+    assert "/dev/dri/renderD129:/dev/dri/renderD129" in everything and "cashpilot-plain" in everything
+    assert "cashpilot-gpuminer" not in asyncio.run(run(lambda: main.api_compose_all(MagicMock())))
+
+
+def test_a_malformed_heartbeat_refuses_the_export_and_is_no_crash():
+    from app import compose_generator
+
+    host = gpu.host_from_report({"available": True, "vendors": {"amd": {"render_nodes": 5}}})
+    assert host["conclusive"] is False
+    with _export_catalog({"gpuminer": AMD_ROCM}), pytest.raises(ValueError, match="needs an AMD GPU"):
+        compose_generator.generate_compose_single("gpuminer", gpu_host=host)
+
+
 # The Docker endpoint: this machine's sysfs describes only a daemon on this machine.
 
 
@@ -733,6 +771,22 @@ def test_docker_host_decides_what_the_deploy_trusts(tmp_path, monkeypatch):
         gpu.docker_kwargs(gpu.spec_of(AMD_ROCM), host)
     monkeypatch.setenv("DOCKER_HOST", "unix:///run/cashpilot-docker/docker.sock")
     assert read(root)["conclusive"] is True
+
+
+def test_the_heartbeat_says_why_behind_a_remote_docker_endpoint(tmp_path, monkeypatch):
+    """The nvidia-smi and /dev/dri fallbacks read the worker's own machine, not Docker's."""
+    root = intel_igpu_and_amd_card(tmp_path)
+    monkeypatch.setenv("DOCKER_HOST", "ssh://admin@nas")
+    host = read(root)
+    with (
+        patch.object(gpu, "host_gpus", return_value=host),
+        patch.object(worker_api.shutil, "which", return_value="/usr/bin/nvidia-smi"),
+        patch.object(worker_api.subprocess, "run") as smi,
+    ):
+        report = worker_api._gpu_presence()
+    smi.assert_not_called()
+    assert report["available"] is None and "network endpoint" in report["reason"]
+    assert "network endpoint" in gpu.host_from_report(report)["reason"]
 
 
 # A failed read is "could not tell", never "no GPU".
@@ -787,6 +841,20 @@ def test_a_denied_kfd_check_is_an_unknown_not_a_crash(tmp_path):
         host = read(root)
     assert host["conclusive"] is False
     assert "Permission denied" in host["reason"]
+
+
+def test_a_drm_listing_that_fails_is_an_unknown(tmp_path):
+    root = intel_igpu_and_amd_card(tmp_path)
+    real_iterdir = Path.iterdir
+
+    def iterdir(self):
+        if self.name == "drm":
+            raise PermissionError(13, "Permission denied")
+        return real_iterdir(self)
+
+    with patch.object(Path, "iterdir", iterdir):
+        host = read(root)
+    assert host["conclusive"] is False and "Permission denied" in host["reason"]
 
 
 def test_a_clean_read_with_no_gpu_and_no_drm_class_stays_sure(tmp_path):
