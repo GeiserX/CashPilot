@@ -48,6 +48,8 @@ CRYPTO_IDS: dict[str, str] = {
     "XMR": "monero",
     "KAS": "kaspa",
     "ETC": "ethereum-classic",
+    # Pearl mined by KRig. Kryptex account balances are credited in BTC.
+    "PRL": "pearl-2",
 }
 
 CACHE_TTL = 900  # 15 minutes
