@@ -7,8 +7,12 @@ config, users, fleet workers, and compose export.
 import asyncio
 import json
 import os
+import shutil
 import socket
+import subprocess
 from contextlib import asynccontextmanager
+from html.parser import HTMLParser
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
@@ -135,6 +139,22 @@ class TestResolveWorkerId:
         ):
             asyncio.run(_resolve_worker_id(None))
 
+    def test_a_desktop_that_takes_commands_is_never_picked_by_default(self):
+        """It is a deploy target by its id; a deploy that names no worker still goes to the Docker worker."""
+        from app.main import _resolve_worker_id
+
+        workers = [
+            {"id": 1, "status": "online", "url": "http://192.168.1.1:8081"},
+            {
+                "id": 2,
+                "status": "online",
+                "url": "http://192.168.1.2:8086",
+                "system_info": json.dumps({"device_type": "desktop"}),
+            },
+        ]
+        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
+            assert asyncio.run(_resolve_worker_id(None)) == 1
+
 
 class TestGetAllWorkerContainers:
     def test_docker_containers(self):
@@ -174,6 +194,77 @@ class TestGetAllWorkerContainers:
         assert len(result) == 1
         assert result[0]["slug"] == "earnapp"
         assert result[0]["_is_android"] is True
+
+    @pytest.mark.parametrize(
+        ("system_info", "url", "can_command", "report_only"),
+        [
+            # A joined Desktop never sends docker_available: its command URL decides.
+            ({"device_type": "desktop"}, "http://192.168.1.30:8086", True, False),
+            ({"device_type": "desktop"}, "", False, True),
+            # Docker workers keep what they had: Docker access decides, URL or not.
+            ({"docker_available": True}, "", True, False),
+            ({"docker_available": False}, "http://192.168.1.1:8081", False, False),
+        ],
+    )
+    def test_which_copies_take_commands(self, system_info, url, can_command, report_only):
+        from app.main import _get_all_worker_containers
+
+        workers = [
+            {
+                "id": 3,
+                "name": "box",
+                "status": "online",
+                "url": url,
+                "system_info": json.dumps(system_info),
+                "containers": json.dumps([{"slug": "honeygain", "name": "cashpilot-honeygain", "status": "running"}]),
+                "apps": "[]",
+            }
+        ]
+        with patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers):
+            [copy] = asyncio.run(_get_all_worker_containers())
+        assert copy["_can_command"] is can_command
+        assert copy["_desktop_report_only"] is report_only
+
+    def test_the_report_only_tag_gives_every_reason_a_desktop_sends_no_url(self):
+        """The switch, the Windows Firewall rule and a private or Tailscale address all decide it."""
+        node = shutil.which("node")
+        if node is None:
+            pytest.skip("node is not installed")
+        fleet = Path(__file__).resolve().parents[1] / "app/templates/fleet.html"
+        script = r"""
+const source = require('node:fs').readFileSync(process.argv[1], 'utf8');
+function extract(name) {
+    const start = source.indexOf('  function ' + name + '(');
+    const end = source.indexOf('\n  }\n', start);
+    if (start < 0 || end < 0) throw new Error('Cannot find Fleet function ' + name);
+    return source.slice(start, end + 4);
+}
+const rows = {querySelectorAll: () => []};
+const renderWorkers = new Function('document', 'CP', 'brk', '_isOwner', '_isolation',
+    ['countWorkerNames', 'esc', 'renderWorkers'].map(extract).join('\n') + '\nreturn renderWorkers;'
+)({getElementById: () => rows}, {fmtTimestamp: () => ({title: '', text: ''})}, String, false, {});
+renderWorkers([{id: 1, name: 'Desk', status: 'offline', system_info: {device_type: 'desktop'}}]);
+process.stdout.write(rows.innerHTML);
+"""
+        rendered = subprocess.run(
+            [node, "-e", script, str(fleet)], capture_output=True, text=True, check=True, timeout=30
+        )
+
+        titles = []
+
+        class FlagParser(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                if tag == "span" and "flag" in (dict(attrs).get("class") or "").split():
+                    titles.append(next((value for name, value in attrs if name == "title"), ""))
+
+        FlagParser().feed(rendered.stdout)
+        [title] = titles
+        for reason in (
+            '"can start and stop services on this computer"',
+            "Windows Firewall",
+            "private network or Tailscale address",
+        ):
+            assert reason in title, title
 
     def test_offline_workers_skipped(self):
         """CashPilot-1xg: this fed a worker with NO containers.
@@ -2617,6 +2708,35 @@ class TestOutboundWorkerAuth:
         connecting the two.
         """
         assert self._auth(("worker-1-key", False)) == "Bearer shared-key"
+
+    def _desktop(self):
+        return {**self._worker(), "system_info": json.dumps({"device_type": "desktop"})}
+
+    def test_a_joined_desktop_gets_the_key_this_server_issued_to_it(self):
+        import app.main as m
+
+        with (
+            patch("app.main.FLEET_API_KEY", "shared-key"),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=("desk-key", True)),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.5:8081", None)),
+        ):
+            _, headers = asyncio.run(m._get_verified_worker_url(self._desktop()))
+        assert headers["Authorization"] == "Bearer desk-key"
+
+    @pytest.mark.parametrize("key_state", [(None, False), ("desk-key", False)])
+    def test_a_desktop_never_gets_the_shared_key(self, key_state):
+        """A joined Desktop takes only its own key, so the shared one is never sent to it."""
+        import app.main as m
+
+        with (
+            patch("app.main.FLEET_API_KEY", "shared-key"),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=key_state),
+            patch("app.main._validate_worker_url", return_value=("http://192.168.1.5:8081", None)),
+            pytest.raises(m.HTTPException) as caught,
+        ):
+            asyncio.run(m._get_verified_worker_url(self._desktop()))
+        assert caught.value.status_code == 503
+        assert "not finished joining" in caught.value.detail
 
 
 # ---------------------------------------------------------------------------
