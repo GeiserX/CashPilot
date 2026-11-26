@@ -267,17 +267,24 @@ const workerSaveSource = html.slice(
 );
 const buildWorkerPower = new Function(
   'document', 'CP', 'esc', 'brk', 'CSS', '_isOwner', '_isolation', 'loadFleetEconomics', 'loadPowerSettings',
-  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), workerSaveSource, 'return loadFleet;'].join('\n'),
+  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), extract('renderMiners'), workerSaveSource, 'return loadFleet;'].join('\n'),
 );
 
 function workerPowerFixture(owner = true) {
-  const stored = {id: 1, client_id: 'rig', name: 'Rig', watts: 100, unmetered: false};
+  const stored = {
+    id: 1, client_id: 'rig', name: 'Rig', watts: 100, unmetered: false,
+    system_info: {miners: {devices: [miner], errors: [], read_at: miner.read_at}},
+  };
   const posts = [];
-  let fields, button, click, holdWorkers;
+  let fields, button, click, holdWorkers, rendered = '';
   const workers = {
     addEventListener: (_, handler) => { click = handler; },
     querySelectorAll: () => fields ? [fields.unmetered] : [],
     set innerHTML(markup) {
+      // loadFleet catches a render that throws and shows this state instead.
+      // Fail here, or a missing helper surfaces later as a save that never posted.
+      if (markup.includes('Failed to load fleet data')) throw new Error('worker power fixture: ' + markup.trim());
+      rendered = markup;
       const billing = markup.match(/class="power-unmetered"[^>]*>/)?.[0] ?? '';
       const checked = /\bchecked\b/.test(billing);
       fields = {
@@ -311,7 +318,7 @@ function workerPowerFixture(owner = true) {
   };
   const refresh = buildWorkerPower(document, {...CP, api, toast() {}}, esc, esc, {escape: String}, owner, {}, () => {}, () => {});
   return {
-    refresh, posts, stored, fields: () => fields, button: () => button,
+    refresh, posts, stored, fields: () => fields, button: () => button, markup: () => rendered,
     save: () => click({target: {closest: selector => selector === '.power-save-worker' ? button : null}}),
     holdNextRefresh() {
       let release;
@@ -323,6 +330,9 @@ function workerPowerFixture(owner = true) {
 
 const workerPower = workerPowerFixture();
 await workerPower.refresh();
+check('a box row shows its miners next to its billing setting',
+  workerPower.markup().includes('Miners this worker reads') && workerPower.markup().includes('power-unmetered'),
+  workerPower.markup());
 workerPower.fields().unmetered.checked = true;
 await workerPower.refresh();
 check('refresh preserves an unsaved billing edit', workerPower.fields().unmetered.checked, 'the checked draft was lost');
