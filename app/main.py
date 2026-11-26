@@ -68,6 +68,7 @@ from app import (
     metrics,
     miner_read,
     net_activity,
+    network_stats,
     notify,
     obligations,
     onchain,
@@ -736,6 +737,10 @@ _disabled_by_logs: set[str] = set()
 # Platforms whose collector read a balance on its last run. A balance read means
 # the account works again, whatever an old container log still says.
 _collected_ok_last_run: set[str] = set()
+# The hashrate each pool reported on its last good read: slug -> (H/s, when).
+# Only for the expected-earnings estimate on the Fleet page; filled by the
+# first collection, which runs at startup.
+_pool_hashrate: dict[str, tuple[float, str]] = {}
 # When the collector last read a balance for a service that declares an
 # account_disabled signal, kept in the config table so it survives a restart.
 # A refusal from a run that ended before it is history: a stopped copy keeps
@@ -2357,6 +2362,10 @@ async def _run_collection() -> None:
                         earned=earned,
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
+                    if getattr(result, "hashrate", None) is not None:
+                        _pool_hashrate[result.platform] = (float(result.hashrate), datetime.now(UTC).isoformat())
+                    else:
+                        _pool_hashrate.pop(result.platform, None)
                     platforms_ok += 1
                     collected_ok.add(result.platform)
                     if getattr(result, "unlinked_devices", None):
@@ -11002,6 +11011,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
             watts=watts,
             gross_basis=gross_basis,
             break_even_tariff=_break_even_local(device.get("break_even_price_per_kwh"), tariff_currency),
+            expected=await _expected_earnings(slug, service),
         )
         _add_heat_fields(device, config, heat_prefix, tariff_currency)
         assessed.append(device)
@@ -11871,6 +11881,34 @@ def _device_watts(config: dict[str, Any], slug: str) -> float | None:
         return None
     # Match the Fleet field's 1 W minimum, including values saved through the API.
     return watts if math.isfinite(watts) and watts >= 1 else None
+
+
+async def _expected_earnings(slug: str, service: dict[str, Any]) -> dict[str, Any] | None:
+    """What the pool's reported hashrate should earn in 30 days, on average.
+
+    An ESTIMATE from the network's difficulty and recent block rewards, before
+    the pool's fee and luck. It is shown next to what the pool credited, never
+    as money owed. Bitcoin pools only, and only when the pool's own answer
+    carried a hashrate. None when there is nothing to estimate from; a network
+    read that failed says so rather than estimating 0.
+    """
+    reading = _pool_hashrate.get(slug)
+    currency = str((service.get("payment") or {}).get("currency") or "").upper()
+    if reading is None or currency != "BTC":
+        return None
+    hashrate, measured_at = reading
+    out: dict[str, Any] = {"estimate": True, "currency": "BTC", "hashrate_hs": hashrate, "measured_at": measured_at}
+    stats = await network_stats.bitcoin()
+    if stats["state"] != network_stats.KNOWN:
+        return out | {"state": stats["state"], "detail": stats.get("detail")}
+    coin = network_stats.expected_btc_per_day(hashrate, stats["difficulty"], stats["reward_btc_per_block"]) * 30
+    usd = exchange_rates.to_usd(coin, "BTC")
+    return out | {
+        "state": network_stats.KNOWN,
+        "monthly_coin": round(coin, 8),
+        "monthly_usd": round(usd, 4) if usd is not None else None,
+        "source": stats["source"],
+    }
 
 
 def _gross_basis(service: dict[str, Any]) -> str:

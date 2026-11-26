@@ -371,6 +371,28 @@ CASHPILOT_WORKER_NAME=server-name</code>
       </details>`;
     };
 
+    // What the pool's reported hashrate should earn, next to what the pool
+    // credited. An estimate from the network's difficulty and recent block
+    // rewards, before the pool's fee and luck: never shown as money owed.
+    const HASH_UNITS = ['H/s', 'kH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s', 'EH/s'];
+    const hashrate = hs => {
+      let value = Number(hs), unit = 0;
+      while (value >= 1000 && unit < HASH_UNITS.length - 1) { value /= 1000; unit += 1; }
+      return `${value.toFixed(2)} ${HASH_UNITS[unit]}`;
+    };
+    const expectedLine = m => {
+      const ex = m.expected;
+      if (!ex) return '';
+      if (ex.state !== 'known') {
+        return `<div class="economics-summary econ-expected">No expected figure for ${hashrate(ex.hashrate_hs)}: ${esc(ex.detail || 'the network stats could not be read.')}</div>`;
+      }
+      const usd = ex.monthly_usd == null ? '' : ` (about ${money(ex.monthly_usd)})`;
+      const credited = m.monthly_gross == null
+        ? 'CashPilot has not read what the pool credited yet.'
+        : `The pool credited ${money(m.monthly_gross)} in the last 30 days.`;
+      return `<div class="economics-summary econ-expected" title="Estimated from the network difficulty and the average reward of recent blocks (${esc(ex.source)}), before the pool's fee. A pool can credit more or less in any month.">Expected at the hashrate the pool last reported (${hashrate(ex.hashrate_hs)}): <strong>${Number(ex.monthly_coin).toFixed(8)} ${esc(ex.currency)}</strong>${usd} in 30 days, before the pool's fee. This is an estimate, not money owed. ${credited}</div>`;
+    };
+
     const hasMinerWatts = (economics.lan_miners || []).some(miner => miner.watts >= 1);
     const rows = machines.map(m => {
       const losing = m.verdict === 'losing_money';
@@ -380,7 +402,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
         <div class="economics-row">
           <div>
             <div class="economics-machine">${brk(m.machine)}${device ? ' <small class="muted">Device</small>' : ''}</div>
-            <div class="economics-summary">${esc(m.summary)}</div>${breakEven(m)}${heatLine(m)}${heatForm(m)}
+            <div class="economics-summary">${esc(m.summary)}</div>${breakEven(m)}${expectedLine(m)}${heatLine(m)}${heatForm(m)}
           </div>
           <div>
             <div class="economics-figures">

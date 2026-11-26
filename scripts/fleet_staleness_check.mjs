@@ -390,6 +390,37 @@ const heatViewer = heatFixture({owner: false});
 await heatViewer.refresh();
 check('viewers get no heat form', !heatViewer.markup().includes('heat-form'), heatViewer.markup());
 
+// Expected earnings: an estimate next to what the pool credited, never money owed.
+const poolRow = {kind: 'device', slug: 'ocean', machine: 'OCEAN', gross_basis: 'accrued', heat: null, heat_credit: undefined,
+  monthly_gross: 0.85, break_even_tariff: null, break_even_tariff_heating: null};
+const expected = heatFixture({row: {...poolRow, expected: {estimate: true, state: 'known', currency: 'BTC',
+  hashrate_hs: 1.2e12, monthly_coin: 0.0000169, monthly_usd: 0.99, source: 'mempool<b>.space'}}});
+await expected.refresh();
+check('the expected line shows the hashrate, the coin amount and its USD value',
+  expected.markup().includes('Expected at the hashrate the pool last reported (1.20 TH/s): <strong>0.00001690 BTC</strong> (about $0.99) in 30 days'),
+  expected.markup());
+check('the expected line says it is an estimate, not money owed',
+  expected.markup().includes('This is an estimate, not money owed.'), expected.markup());
+check('the expected line sits next to what the pool credited',
+  expected.markup().includes('The pool credited $0.85 in the last 30 days.'), expected.markup());
+check('the estimate source is escaped', expected.markup().includes('mempool&lt;b&gt;.space')
+  && !expected.markup().includes('mempool<b>'), expected.markup());
+const unread = heatFixture({row: {...poolRow, monthly_gross: null, expected: {estimate: true, state: 'known',
+  currency: 'BTC', hashrate_hs: 5e14, monthly_coin: 0.007, monthly_usd: null, source: 'mempool.space'}}});
+await unread.refresh();
+check('no credit read yet is said, never shown as zero',
+  unread.markup().includes('CashPilot has not read what the pool credited yet.') && unread.markup().includes('(500.00 TH/s)')
+  && !unread.markup().includes('(about'), unread.markup());
+const failed = heatFixture({row: {...poolRow, expected: {estimate: true, state: 'unreachable', currency: 'BTC',
+  hashrate_hs: 1.2e12, detail: 'ReadTimeout <x> while reading the network stats.'}}});
+await failed.refresh();
+check('a failed network read shows no expected amount',
+  failed.markup().includes('No expected figure for 1.20 TH/s: ReadTimeout &lt;x&gt;')
+  && !failed.markup().includes('Expected at the hashrate'), failed.markup());
+const none = heatFixture({row: {...poolRow, expected: null}});
+await none.refresh();
+check('no estimate, no expected line', !none.markup().includes('econ-expected'), none.markup());
+
 const fleetSource = html.slice(
   html.indexOf('  // Lazily fetch the plaintext key'),
   html.indexOf('  // Running costs: per machine,'),
