@@ -82,6 +82,12 @@ async def test_an_address_unmineable_has_never_seen_is_unknown_not_zero(read):
     "data",
     [
         {"fresh": None},
+        # Only a JSON boolean counts. A string or a number must not read as
+        # false, or the 0 of an address unMineable has never seen is saved.
+        {"fresh": "true", "balance": "0"},
+        {"fresh": "false"},
+        {"fresh": 0, "balance": "0"},
+        {"fresh": 1, "balance": "0"},
         {"balance": None},
         {"balance": 0.5},
         {"balance": "-1"},
@@ -100,6 +106,14 @@ async def test_an_invalid_balance_or_threshold_is_an_error_not_zero(read, data):
         else:
             body["data"][key] = value
     result, _ = await read(lambda _: httpx.Response(200, json=body))
+
+    assert result.error and result.error_kind == base.KIND_SHAPE
+    assert result.payout_threshold is None
+
+
+@pytest.mark.asyncio
+async def test_a_null_fresh_flag_is_an_error_not_zero(read):
+    result, _ = await read(lambda _: httpx.Response(200, json=_reply(balance="0", fresh=None)))
 
     assert result.error and result.error_kind == base.KIND_SHAPE
     assert result.payout_threshold is None
@@ -142,12 +156,31 @@ async def test_a_rejected_address_or_coin_needs_a_person(read, msg, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("status", "kind"), [(403, base.KIND_TRANSIENT), (503, base.KIND_TRANSIENT), (404, None)])
+@pytest.mark.parametrize(
+    ("status", "kind"),
+    [
+        (401, base.KIND_TRANSIENT),
+        (403, base.KIND_TRANSIENT),
+        (429, base.KIND_TRANSIENT),
+        (503, base.KIND_TRANSIENT),
+        (404, None),
+    ],
+)
 async def test_a_refused_public_request_does_not_reject_the_address(read, status, kind):
     result, _ = await read(lambda _: httpx.Response(status, text="nope"))
 
     assert result.error == f"unMineable returned HTTP {status}."
     assert result.error_kind == kind
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 429, 503])
+@pytest.mark.parametrize("msg", ["Invalid address.", "Invalid or missing coin."])
+async def test_a_refused_request_stays_temporary_whatever_its_body_says(read, status, msg):
+    result, _ = await read(lambda _: httpx.Response(status, json={"success": False, "msg": msg}))
+
+    assert result.error == f"unMineable returned HTTP {status}."
+    assert result.error_kind == base.KIND_TRANSIENT
 
 
 @pytest.mark.asyncio
