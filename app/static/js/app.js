@@ -3740,12 +3740,29 @@ const CP = (() => {
   // signup_url (no programme, or none found yet) is not a referral link.
   // The new user's bonus goes first when the catalog records one: it is the
   // reason to use this link at all, and it used to sit only on the detail page.
+  // Some signups never read the code from the link (Dawn's extension asks for
+  // it, Gradient's form ignores the URL): referral.code_entry is then the code
+  // to type, shown with a Copy button so a user who signs up here still
+  // credits the referral.
   function referralNote(svc) {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url) return '';
     const referee = ref.bonus && ref.bonus.referee;
     const bonus = referee ? `<strong>New-user bonus with this link:</strong> ${escapeHtml(referee)}. ` : '';
-    return `<p class="referral-note">${bonus}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>`;
+    const typed = ref.code_entry
+      ? `<p class="referral-code">When ${escapeHtml(svc.name)} asks for a referral code, type <code>${escapeHtml(ref.code_entry)}</code>. The link does not fill it in. ${codeEntryCopy(svc, 'Copy')}</p>`
+      : '';
+    return `${typed}<p class="referral-note">${bonus}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>`;
+  }
+
+  // The Copy button for a code typed by hand (referral.code_entry), or '' when the
+  // link carries the code. Its accessible name says what it copies.
+  function codeEntryCopy(svc, label) {
+    const ref = svc.referral || {};
+    if (!ref.code || !ref.signup_url || !ref.code_entry) return '';
+    const code = escapeHtml(ref.code_entry);
+    const name = escapeHtml(`Copy ${svc.name}'s referral code ${ref.code_entry}`);
+    return `<button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="${code}" aria-label="${name}" title="${name}">${label}</button>`;
   }
 
   function collectorCredentialsNotice(slug) {
@@ -4462,7 +4479,16 @@ const CP = (() => {
       actionBtn = [addLink(`Add ${svc.name}`), detailsBtn].filter(Boolean).join(' ');
     } else {
       const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
-      actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;
+      // Visit opens the signup page. Where the signup never reads the code from
+      // the link (Dawn's extension), the code sits right beside it, or a user
+      // who signs up from this row credits nobody.
+      const code = svc.referral && svc.referral.code_entry;
+      actionBtn = [
+        `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`,
+        // On its own line: the action cell does not wrap, and both buttons on one
+        // line push a phone-width table past the screen edge.
+        code ? `<span class="cat-act-code">${codeEntryCopy(svc, `Code ${escapeHtml(code)}`)}</span>` : '',
+      ].filter(Boolean).join(' ');
     }
 
     // Platform list — add Docker if service has a Docker image

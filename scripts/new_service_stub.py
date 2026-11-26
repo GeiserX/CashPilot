@@ -86,6 +86,19 @@ def referral_note(service: dict) -> str:
     return f"<small>{note}</small>"
 
 
+def code_entry_note(service: dict) -> str:
+    """The line that tells a guide reader to type the code, when the link does not carry it.
+
+    Empty unless the catalog sets referral.code_entry: some signups (a browser
+    extension, a form that ignores the URL) never read the code from the link,
+    and a reader who only clicks it credits nobody.
+    """
+    ref = service.get("referral") or {}
+    if not referral_note(service) or not ref.get("code_entry"):
+        return ""
+    return f"When the signup asks for a referral code, type `{ref['code_entry']}`: the link does not fill it in."
+
+
 def render(slug: str) -> str:
     service = catalog.get_service(slug)
     if not service:
@@ -97,6 +110,7 @@ def render(slug: str) -> str:
     website = service.get("website", "")
     signup = (service.get("referral") or {}).get("signup_url") or website
     note = referral_note(service)
+    typed = code_entry_note(service)
     return TEMPLATE.format(
         name=service.get("name", slug),
         slug=slug,
@@ -107,7 +121,7 @@ def render(slug: str) -> str:
         # nobody (tests/test_referral_disclosure.py fails a guide that has one).
         website_label=(urlsplit(website).hostname or website).removeprefix("www."),
         header_url=signup if note else website,
-        header_note=f"\n>\n> {note}" if note else "",
+        header_note=(f"\n>\n> {note}" if note else "") + (f"\n>\n> {typed}" if typed else ""),
         description=service.get("description", "").strip(),
         earnings=(f"${low} - ${high} (estimate)" if low is not None and high is not None else "Not documented"),
         methods=", ".join(payment.get("methods") or []) or "Not documented",

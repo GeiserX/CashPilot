@@ -267,3 +267,43 @@ class TestTheRealCatalog:
         )
         assert result.returncode == 2, result.stdout + result.stderr
         assert "not found" in result.stderr
+
+
+class TestTheTypedCode:
+    """referral.code_entry is shown to users as the code to type by hand.
+
+    Dawn's extension and Gradient's form never read the code from the link, so
+    the UI asks the user to type it. A value that differs from the code credits
+    nobody, and nothing else would notice.
+    """
+
+    def test_a_code_entry_equal_to_the_code_is_clean(self):
+        svc = _svc(referral={"signup_url": "https://example.com/?ref=MYCODE", "code": "MYCODE", "code_entry": "MYCODE"})
+        assert referral_check.audit([svc]) == {"errors": [], "actions": [], "unknowns": []}
+
+    def test_a_code_entry_that_differs_from_the_code_is_an_error(self):
+        svc = _svc(
+            referral={"signup_url": "https://example.com/?ref=MYCODE", "code": "MYCODE", "code_entry": "OLDCODE"}
+        )
+        f = referral_check.audit([svc])
+        assert len(f["errors"]) == 1
+        assert "must equal referral.code" in f["errors"][0]
+
+    def test_a_code_entry_without_a_code_is_an_error(self):
+        svc = _svc(referral={"signup_url": "https://example.com/", "program": True, "code_entry": "MYCODE"})
+        f = referral_check.audit([svc])
+        assert len(f["errors"]) == 1
+        assert "must equal referral.code" in f["errors"][0]
+
+    def test_an_unquoted_code_entry_is_a_type_error(self):
+        svc = _svc(referral={"signup_url": "https://example.com/?ref=123", "code": "123", "code_entry": 123})
+        f = referral_check.audit([svc])
+        assert len(f["errors"]) == 1
+        assert "quoted string" in f["errors"][0]
+
+    def test_the_extension_only_signups_carry_their_typed_code(self):
+        """Dawn and Gradient tell users to type the code; the catalog must say so too."""
+        services = {s["slug"]: s for s in referral_check.load_services(ROOT / "services")}
+        for slug in ("dawn", "gradient"):
+            ref = services[slug]["referral"]
+            assert ref.get("code_entry") == ref["code"], slug
