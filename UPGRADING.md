@@ -114,6 +114,9 @@ CashPilot, or ask for a catalog entry.
     copies
   - `POST /api/identities/{id}/change`, a device ID change
   - `POST /api/import/drafts/{slug}/deploy`, the deploy of an import draft
+  - `POST /api/proxies/{proxy_id}/copies`, when the copy already runs
+  - `POST /api/workers/{worker_id}/command` with `"command": "deploy"`, when
+    the service already runs on that worker
 - A call that does not confirm gets HTTP 409. The error is
   `deploy_target_changed` for a 3.0 worker, and `confirm_deploy_targets` for a
   joined Desktop or a 2.x worker. Handle both.
@@ -124,6 +127,15 @@ CashPilot, or ask for a catalog entry.
   only those containers. The import-draft route takes no
   `replace_existing`. It replaces a running container only when the call
   sends `expected_containers`.
+- Adding a proxied copy that already runs takes no `replace_existing`
+  either. The answer is HTTP 409 `confirm_deploy_targets` with
+  `expected_containers` keyed `p<proxy_id>`. Send the same call again with
+  that object.
+- The worker command deploy reads `expected_container` from its `spec`: the
+  container ID it may replace, or `"none"`, which is the default. When the
+  service already runs, the answer is HTTP 409 `deploy_target_changed` with
+  `current_container`. Send the deploy again with that ID as
+  `spec.expected_container`.
 - The Start of a proxied copy
   (`POST /api/proxies/{proxy_id}/copies/{worker_id}/{slug}/start`) can answer
   HTTP 409 with `"error": "confirm_proxy_start_targets"`,

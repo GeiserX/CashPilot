@@ -131,7 +131,8 @@ has the details and the commands for each of these:
 - A service that sets an `NVIDIA_` variable is refused until you remove it.
 - A proxied copy made before 3.0 asks you once to approve its containers.
 - Scripts must confirm in a second call before any route replaces a running
-  container: deploy, rename, device ID change and import-draft deploy. A
+  container: deploy, rename, device ID change, import-draft deploy, adding a
+  proxied copy that already runs, and the worker command deploy. A
   proxied copy's Start may also ask for its containers and a `group_approval`
   in return.
 

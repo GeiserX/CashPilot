@@ -275,9 +275,11 @@ the proxy's current tunnel.
 
 Since 3.0 the worker recreates a copy only while the copy still has the
 container ID the worker saved for it. A copy with no saved ID, which is every
-copy made before 3.0, asks you to approve its containers on its next Start.
-Until then the heartbeat does not replace its tunnel. It skips that tunnel, and
-the Fleet page shows a "Recovery skipped" alert
+copy made before 3.0, asks you to approve its containers the first time a
+Start must move or recreate it. A copy in a healthy shared tunnel starts
+without asking. The heartbeat does not replace the tunnel of a copy with no
+saved ID. It skips that tunnel, and the Fleet page shows a "skipped recovery"
+alert
 ([UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#a-proxied-copy-may-ask-you-to-approve-its-containers-once)).
 
 A copy still in a legacy one-tunnel-per-copy pair never starts in its old
