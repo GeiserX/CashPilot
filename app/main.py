@@ -10212,6 +10212,23 @@ async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
     return {"ok": True, "id": payout_id, "removed": True}
 
 
+async def _income_fiat_rates(currency: str, start: str, end: str) -> dict[str, float]:
+    """Daily USD-to-fiat rates for the income download, or the HTTP error to answer."""
+    try:
+        fiat = await exchange_rates.fetch_daily_fiat_rates(currency, start, end)
+    except exchange_rates.UnknownFiat:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No daily ECB rate for {currency} in this date range. Export in USD or choose a supported currency.",
+        )
+    if fiat is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not get the daily exchange rates. Try again or export in USD.",
+        )
+    return fiat
+
+
 @app.get("/api/earnings/income.csv")
 async def api_income_csv(
     request: Request, start: str | None = None, end: str | None = None, currency: str = "USD"
@@ -10243,20 +10260,18 @@ async def api_income_csv(
     start = start or oldest
     # Rates before the oldest saved date cannot price any row.
     export_start = max(start, oldest)
-    try:
-        fiat = await exchange_rates.fetch_daily_fiat_rates(currency, export_start, end)
-    except exchange_rates.UnknownFiat:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No daily ECB rate for {currency} in this date range. Export in USD or choose a supported currency.",
-        )
-    if fiat is None:
-        raise HTTPException(
-            status_code=502,
-            detail="Could not get the daily exchange rates. Try again or export in USD.",
-        )
+    fiat = await _income_fiat_rates(currency, export_start, end)
 
     await database.add_audit_event("income_export", f"{start}..{end}", "exported", actor=user, detail=currency)
+    # A past-dated payout confirmed during the awaits above can move the oldest
+    # date earlier, still inside the requested range. Widen the rows and the
+    # rates to it, so the file holds every payout saved when the stream starts.
+    while export_start > start:
+        moved = max(start, min(await database.oldest_income_date() or end, end))
+        if moved >= export_start:
+            break
+        fiat = await _income_fiat_rates(currency, moved, end)
+        export_start = moved
     return StreamingResponse(
         income_export.stream_csv(export_start, end, currency, fiat),
         media_type="text/csv; charset=utf-8",

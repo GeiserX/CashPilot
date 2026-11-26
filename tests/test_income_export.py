@@ -392,3 +392,57 @@ async def test_frankfurter_refuses_unusable_responses(monkeypatch, status, rates
             await exchange_rates.fetch_daily_fiat_rates("EUR", SATURDAY, MONDAY)
     else:
         assert await exchange_rates.fetch_daily_fiat_rates("EUR", SATURDAY, MONDAY) is None
+
+
+@pytest.mark.parametrize(
+    ("outcome", "reason"),
+    [
+        (httpx.ReadTimeout("secret body"), "ReadTimeout"),
+        (httpx.Response(503, text="secret body"), "HTTP 503"),
+        (httpx.Response(200, text="secret body"), "JSONDecodeError"),
+        (httpx.Response(200, json={"base": "EUR", "rates": {}, "note": "secret body"}), "base is not USD"),
+        (httpx.Response(200, json={"base": "USD", "rates": {EARLIER: {"EUR": -1}}, "note": "secret body"}), "bad rate"),
+        (httpx.Response(200, json={"base": "USD", "rates": {MONDAY: {"EUR": 0.91}}, "note": "secret body"}), "cover"),
+    ],
+)
+async def test_frankfurter_failure_logs_reason_without_body(monkeypatch, caplog, outcome, reason):
+    def reply(request):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    http_client = httpx.AsyncClient
+
+    def factory(**kwargs):
+        return http_client(transport=httpx.MockTransport(reply), **kwargs)
+
+    monkeypatch.setattr(exchange_rates.httpx, "AsyncClient", factory)
+    with caplog.at_level("WARNING", logger=exchange_rates.__name__):
+        assert await exchange_rates.fetch_daily_fiat_rates("EUR", SATURDAY, MONDAY) is None
+    (record,) = [r for r in caplog.records if r.name == exchange_rates.__name__]
+    assert record.levelname == "WARNING"
+    assert "EUR" in record.getMessage() and reason in record.getMessage()
+    assert "secret" not in caplog.text
+
+
+async def test_payout_confirmed_during_the_request_is_exported(client, db, monkeypatch):
+    # The oldest saved date is MONDAY when the request starts; a past-dated payout
+    # confirmed while the rates are fetched moves it to SATURDAY, inside the range.
+    await db.add_manual_payout("honeygain", 12.5, "USD", 1, "card", MONDAY)
+    calls = []
+
+    async def fetch(currency, start, end):
+        calls.append((currency, start, end))
+        if len(calls) == 1:
+            await db.add_manual_payout("mysterium", 8, "MYST", 0.25, "crypto", SATURDAY)
+        return {EARLIER: 0.9, MONDAY: 0.91}
+
+    monkeypatch.setattr(exchange_rates, "fetch_daily_fiat_rates", fetch)
+    response = await client.get(EXPORT, params={"start": EARLIER, "end": MONDAY, "currency": "EUR"})
+    rows = csv_rows(response)
+    assert [(r["date"], r["service"], r["local_rate"]) for r in rows] == [
+        (SATURDAY, "mysterium", "0.9"),
+        (MONDAY, "honeygain", "0.91"),
+    ]
+    assert calls == [("EUR", MONDAY, MONDAY), ("EUR", SATURDAY, MONDAY)]
+    assert response.headers["content-disposition"].endswith(f'{EARLIER}_{MONDAY}-EUR.csv"')
