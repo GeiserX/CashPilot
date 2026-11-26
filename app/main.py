@@ -2245,6 +2245,9 @@ async def _run_collection() -> None:
                     # providers is a live credential. The alert is now durable and readable
                     # by any authenticated role, so it must never hold a secret.
                     safe_error = notify.redact(result.error)
+                    # No good read, no current hashrate: an old one would pass
+                    # for today's on the Fleet estimate.
+                    _pool_hashrate.pop(result.platform, None)
                     error_kind = getattr(result, "error_kind", None)
                     says_disabled = credential_test.classify(safe_error) == credential_test.ACCOUNT_DISABLED
                     if says_disabled:
@@ -11011,7 +11014,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
             watts=watts,
             gross_basis=gross_basis,
             break_even_tariff=_break_even_local(device.get("break_even_price_per_kwh"), tariff_currency),
-            expected=await _expected_earnings(slug, service),
+            expected=await _expected_earnings(slug, service, credited=device["monthly_gross"] is not None),
         )
         _add_heat_fields(device, config, heat_prefix, tariff_currency)
         assessed.append(device)
@@ -11883,7 +11886,7 @@ def _device_watts(config: dict[str, Any], slug: str) -> float | None:
     return watts if math.isfinite(watts) and watts >= 1 else None
 
 
-async def _expected_earnings(slug: str, service: dict[str, Any]) -> dict[str, Any] | None:
+async def _expected_earnings(slug: str, service: dict[str, Any], *, credited: bool = False) -> dict[str, Any] | None:
     """What the pool's reported hashrate should earn in 30 days, on average.
 
     An ESTIMATE from the network's difficulty and recent block rewards, before
@@ -11891,6 +11894,11 @@ async def _expected_earnings(slug: str, service: dict[str, Any]) -> dict[str, An
     as money owed. Bitcoin pools only, and only when the pool's own answer
     carried a hashrate. None when there is nothing to estimate from; a network
     read that failed says so rather than estimating 0.
+
+    The credited figure sums only the readings inside the window, so a pool
+    tracked for 3 days has 3 days of credit. ``credited_days`` is that span, and
+    ``credited_days_coin`` / ``_usd`` the estimate for the same days, so the two
+    figures on the row always cover the same period.
     """
     reading = _pool_hashrate.get(slug)
     currency = str((service.get("payment") or {}).get("currency") or "").upper()
@@ -11901,14 +11909,25 @@ async def _expected_earnings(slug: str, service: dict[str, Any]) -> dict[str, An
     stats = await network_stats.bitcoin()
     if stats["state"] != network_stats.KNOWN:
         return out | {"state": stats["state"], "detail": stats.get("detail")}
-    coin = network_stats.expected_btc_per_day(hashrate, stats["difficulty"], stats["reward_btc_per_block"]) * 30
-    usd = exchange_rates.to_usd(coin, "BTC")
-    return out | {
+    per_day = network_stats.expected_btc_per_day(hashrate, stats["difficulty"], stats["reward_btc_per_block"])
+
+    def priced(coin: float) -> dict[str, Any]:
+        usd = exchange_rates.to_usd(coin, "BTC")
+        return {"coin": round(coin, 8), "usd": round(usd, 4) if usd is not None else None}
+
+    month = priced(per_day * 30)
+    out |= {
         "state": network_stats.KNOWN,
-        "monthly_coin": round(coin, 8),
-        "monthly_usd": round(usd, 4) if usd is not None else None,
+        "monthly_coin": month["coin"],
+        "monthly_usd": month["usd"],
         "source": stats["source"],
+        "credited_days": None,
     }
+    span = await database.get_reading_span_days(slug, days=30) if credited else None
+    if span is not None and span >= 1:
+        period = priced(per_day * span)
+        out |= {"credited_days": span, "credited_days_coin": period["coin"], "credited_days_usd": period["usd"]}
+    return out
 
 
 def _gross_basis(service: dict[str, Any]) -> str:

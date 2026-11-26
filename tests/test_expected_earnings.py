@@ -133,7 +133,16 @@ class TestNetworkRead:
 class TestEndpoint:
     """The device row on /api/fleet/economics."""
 
-    def _device(self, *, hashrate=(1.2e12, "2026-11-26T10:00:00+00:00"), stats=None, slug="ocean", btc_usd=90000.0):
+    def _device(
+        self,
+        *,
+        hashrate=(1.2e12, "2026-11-26T10:00:00+00:00"),
+        stats=None,
+        slug="ocean",
+        btc_usd=90000.0,
+        span=30,
+        measured=None,
+    ):
         from tests.test_machine_economics import TestEndpoint as Base
 
         known = {
@@ -146,17 +155,21 @@ class TestEndpoint:
         bitcoin = AsyncMock(return_value=stats or known)
         readings = {} if hashrate is None else {slug: hashrate}
         to_usd = (lambda amount, currency: amount * btc_usd if currency == "BTC" else None) if btc_usd else None
+        span_read = AsyncMock(return_value=span)
         with (
             patch("app.main._pool_hashrate", readings),
             patch("app.main.network_stats.bitcoin", bitcoin),
+            patch("app.main.database.get_reading_span_days", span_read),
             patch("app.main.exchange_rates.to_usd", to_usd or (lambda amount, currency: None)),
         ):
             out = Base()._call(
                 config={"power_currency": "USD", "power_price_per_kwh": "0.20", "power_device_ocean_watts": "18"},
                 earned={slug: 0.85},
+                measured=measured,
                 deployments=[{"slug": slug, "status": "external"}],
             )
         (device,) = out["machines"]
+        self.span_read = span_read
         return device, bitcoin
 
     def test_a_bitcoin_pool_with_a_hashrate_gets_an_estimate_next_to_its_credit(self):
@@ -172,6 +185,29 @@ class TestEndpoint:
         assert expected["source"] == "mempool.space"
         # What the pool credited is still the gross, untouched.
         assert device["monthly_gross"] == 0.85
+
+    def test_a_few_days_of_credit_get_the_estimate_for_the_same_days(self):
+        device, _ = self._device(span=3)
+        expected = device["expected"]
+        per_day = network_stats.expected_btc_per_day(1.2e12, DIFFICULTY, REWARD_BTC)
+        assert expected["credited_days"] == 3
+        assert expected["credited_days_coin"] == pytest.approx(per_day * 3, abs=1e-8)
+        assert expected["credited_days_usd"] == pytest.approx(per_day * 3 * 90000.0, abs=0.0001)
+        # The 30-day figure stays a 30-day figure.
+        assert expected["monthly_coin"] == pytest.approx(per_day * 30, abs=1e-8)
+        self.span_read.assert_awaited_once_with("ocean", days=30)
+
+    @pytest.mark.parametrize("span", [None, 0])
+    def test_no_span_of_readings_means_no_same_days_comparison(self, span):
+        expected = self._device(span=span)[0]["expected"]
+        assert expected["credited_days"] is None
+        assert "credited_days_coin" not in expected
+
+    def test_an_unread_credit_is_not_compared_and_the_span_is_not_read(self):
+        device, _ = self._device(measured=set())
+        assert device["monthly_gross"] is None
+        assert device["expected"]["credited_days"] is None
+        self.span_read.assert_not_awaited()
 
     def test_the_estimate_never_changes_gross_cost_or_net(self):
         with_estimate, _ = self._device()
@@ -265,6 +301,51 @@ class TestCollectionLoop:
         readings = self._run(EarningsResult(platform="ocean", balance=0.001, currency="BTC"), previous=old)
         assert "ocean" not in readings
 
+    def test_a_failed_read_drops_the_old_hashrate(self):
+        old = {"ocean": (1.2e12, "2026-11-01T00:00:00+00:00")}
+        failed = EarningsResult(platform="ocean", balance=0.0, currency="BTC", error="timeout")
+        assert self._run(failed, previous=old) == {}
+
     def test_a_failed_read_stores_no_hashrate(self):
         readings = self._run(EarningsResult(platform="ocean", balance=0.0, currency="BTC", error="timeout"))
         assert readings == {}
+
+
+class TestReadingSpan:
+    @pytest.fixture
+    def db(self, tmp_path):
+        from app import database
+
+        with (
+            patch.object(database, "DB_DIR", tmp_path),
+            patch.object(database, "DB_PATH", tmp_path / "cashpilot.db"),
+        ):
+            asyncio.run(database.init_db())
+            yield database
+
+    def _insert(self, database, platform, days_ago):
+        async def go():
+            conn = await database._get_db()
+            await conn.execute(
+                "INSERT INTO earnings (platform, balance, currency, date) VALUES (?, 0.001, 'BTC', date('now', ?))",
+                (platform, f"-{days_ago} days"),
+            )
+            await conn.commit()
+            await conn.close()
+
+        asyncio.run(go())
+
+    def test_the_span_is_the_days_between_the_first_and_last_reading(self, db):
+        for days_ago in (3, 1, 0):
+            self._insert(db, "ocean", days_ago)
+        self._insert(db, "other", 20)
+        assert asyncio.run(db.get_reading_span_days("ocean")) == 3
+
+    def test_readings_older_than_the_window_do_not_count(self, db):
+        self._insert(db, "ocean", 45)
+        self._insert(db, "ocean", 5)
+        self._insert(db, "ocean", 0)
+        assert asyncio.run(db.get_reading_span_days("ocean", days=30)) == 5
+
+    def test_no_reading_is_none(self, db):
+        assert asyncio.run(db.get_reading_span_days("ocean")) is None

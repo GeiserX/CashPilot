@@ -394,7 +394,8 @@ check('viewers get no heat form', !heatViewer.markup().includes('heat-form'), he
 const poolRow = {kind: 'device', slug: 'ocean', machine: 'OCEAN', gross_basis: 'accrued', heat: null, heat_credit: undefined,
   monthly_gross: 0.85, break_even_tariff: null, break_even_tariff_heating: null};
 const expected = heatFixture({row: {...poolRow, expected: {estimate: true, state: 'known', currency: 'BTC',
-  hashrate_hs: 1.2e12, monthly_coin: 0.0000169, monthly_usd: 0.99, source: 'mempool<b>.space'}}});
+  hashrate_hs: 1.2e12, monthly_coin: 0.0000169, monthly_usd: 0.99, source: 'mempool<b>.space',
+  credited_days: 30, credited_days_coin: 0.0000169, credited_days_usd: 0.99}}});
 await expected.refresh();
 check('the expected line shows the hashrate, the coin amount and its USD value',
   expected.markup().includes('Expected at the hashrate the pool last reported (1.20 TH/s): <strong>0.00001690 BTC</strong> (about $0.99) in 30 days'),
@@ -402,7 +403,21 @@ check('the expected line shows the hashrate, the coin amount and its USD value',
 check('the expected line says it is an estimate, not money owed',
   expected.markup().includes('This is an estimate, not money owed.'), expected.markup());
 check('the expected line sits next to what the pool credited',
-  expected.markup().includes('The pool credited $0.85 in the last 30 days.'), expected.markup());
+  expected.markup().includes('The pool credited $0.85 in the last 30 days, against about $0.99 expected.'), expected.markup());
+const short = heatFixture({row: {...poolRow, monthly_gross: 0.1, expected: {estimate: true, state: 'known', currency: 'BTC',
+  hashrate_hs: 1.2e12, monthly_coin: 0.0000169, monthly_usd: 0.99, source: 'mempool.space',
+  credited_days: 3, credited_days_coin: 0.0000017, credited_days_usd: 0.099}}});
+await short.refresh();
+check('a few days of credit are compared with the estimate for the same days',
+  short.markup().includes('CashPilot has readings for 3 days: the pool credited $0.1, against about $0.099 expected for those days.')
+  && !short.markup().includes('in the last 30 days'), short.markup());
+const unpricedShort = heatFixture({row: {...poolRow, monthly_gross: 0.1, expected: {estimate: true, state: 'known',
+  currency: 'BTC', hashrate_hs: 1.2e12, monthly_coin: 0.0000169, monthly_usd: null, source: 'mempool.space',
+  credited_days: 1, credited_days_coin: 0.00000056, credited_days_usd: null}}});
+await unpricedShort.refresh();
+check('without a BTC price the same-days estimate stays in BTC',
+  unpricedShort.markup().includes('readings for 1 day: the pool credited $0.1, against about 0.00000056 BTC expected'),
+  unpricedShort.markup());
 check('the estimate source is escaped', expected.markup().includes('mempool&lt;b&gt;.space')
   && !expected.markup().includes('mempool<b>'), expected.markup());
 const unread = heatFixture({row: {...poolRow, monthly_gross: null, expected: {estimate: true, state: 'known',

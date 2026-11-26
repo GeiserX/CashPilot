@@ -3737,6 +3737,29 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
         await db.close()
 
 
+async def get_reading_span_days(platform: str, days: int = 30) -> int | None:
+    """Days between the first and the last reading of ``platform`` inside the window.
+
+    The span ``get_earned_by_platform`` really covers for this platform: its sum
+    is not scaled to the window, so three days of readings give three days of
+    earnings. None when there is no reading in the window.
+    """
+    db = await _get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT MIN(date) AS first, MAX(date) AS last FROM earnings WHERE platform = ? AND date >= date('now', ?)",
+            (platform, f"-{max(1, int(days))} days"),
+        )
+        row = await cursor.fetchone()
+        if not row or not row["first"] or not row["last"]:
+            return None
+        first = datetime.fromisoformat(str(row["first"])[:10]).date()
+        last = datetime.fromisoformat(str(row["last"])[:10]).date()
+        return (last - first).days
+    finally:
+        await db.close()
+
+
 async def get_flatlined_services(
     quiet_days: Mapping[str, int] | None = None,
     first_deployed: Mapping[str, str] | None = None,

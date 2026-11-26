@@ -44,7 +44,11 @@ _ONCHAIN_ADDRESS_RE = re.compile(
 # 2Miners puts the ETC payout address in the account stats path.
 _TWO_MINERS_ADDRESS_RE = re.compile(r"\betc\.2miners\.com/api/accounts/(0x[0-9a-f]{40})\b", re.IGNORECASE)
 # OCEAN puts the Bitcoin payout address in its stats paths (statsnap, user_hashrate...).
-_OCEAN_ADDRESS_RE = re.compile(r"(\bapi\.ocean\.xyz/v1/[a-z_]+/)([A-Za-z0-9]+)", re.IGNORECASE)
+# Address-shaped only (bech32 or base58, as the collector checks), so other ids stay readable.
+_OCEAN_ADDRESS_RE = re.compile(
+    r"(\bapi\.ocean\.xyz/v1/[a-z_]+/)(bc1[02-9ac-hj-np-z]{11,71}|[13][1-9A-HJ-NP-Za-km-z]{25,34})(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
 # unMineable puts the payout address of any coin in the address stats path.
 _UNMINEABLE_ADDRESS_RE = re.compile(r"(\bapi\.unminable\.com/v4/address/)([A-Za-z0-9]+)")
 # Preserve the AxeOS status code. The address and reason phrase can both carry device data.

@@ -102,6 +102,13 @@ async def test_ocean_request_logs_omit_the_payout_address(redacting, caplog, add
     assert "https://api.ocean.xyz/v1/statsnap/<redacted>" in caplog.text
 
 
+def test_an_ocean_path_without_an_address_stays_readable(redacting, caplog):
+    line = 'HTTP Request: GET https://api.ocean.xyz/v1/blocks/1 "HTTP/1.1 200 OK" took 1.21s'
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("httpx").info(line)
+    assert line in caplog.text
+
+
 @pytest.mark.asyncio
 async def test_2miners_request_logs_omit_the_payout_address(redacting, caplog):
     address = "0x00109777bdc6d6a658097ed6b6167569ee1f4ec1"

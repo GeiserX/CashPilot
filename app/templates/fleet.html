@@ -387,9 +387,17 @@ CASHPILOT_WORKER_NAME=server-name</code>
         return `<div class="economics-summary econ-expected">No expected figure for ${hashrate(ex.hashrate_hs)}: ${esc(ex.detail || 'the network stats could not be read.')}</div>`;
       }
       const usd = ex.monthly_usd == null ? '' : ` (about ${money(ex.monthly_usd)})`;
-      const credited = m.monthly_gross == null
+      // The credit covers only the days with readings, so it is compared with
+      // the estimate for those same days, never with the 30-day figure.
+      const days = Number(ex.credited_days);
+      const sameDays = ex.credited_days_usd == null
+        ? `${Number(ex.credited_days_coin).toFixed(8)} ${esc(ex.currency)}`
+        : money(ex.credited_days_usd);
+      const credited = m.monthly_gross == null || !(days >= 1)
         ? 'CashPilot has not read what the pool credited yet.'
-        : `The pool credited ${money(m.monthly_gross)} in the last 30 days.`;
+        : days >= 30
+          ? `The pool credited ${money(m.monthly_gross)} in the last 30 days, against about ${sameDays} expected.`
+          : `CashPilot has readings for ${days} day${days === 1 ? '' : 's'}: the pool credited ${money(m.monthly_gross)}, against about ${sameDays} expected for those days.`;
       return `<div class="economics-summary econ-expected" title="Estimated from the network difficulty and the average reward of recent blocks (${esc(ex.source)}), before the pool's fee. A pool can credit more or less in any month.">Expected at the hashrate the pool last reported (${hashrate(ex.hashrate_hs)}): <strong>${Number(ex.monthly_coin).toFixed(8)} ${esc(ex.currency)}</strong>${usd} in 30 days, before the pool's fee. This is an estimate, not money owed. ${credited}</div>`;
     };
 
