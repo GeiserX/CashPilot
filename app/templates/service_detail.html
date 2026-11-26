@@ -136,7 +136,7 @@
         </a>
         {% if service.referral and service.referral.code and service.referral.signup_url %}
         {% if service.referral.code_entry %}
-        <p class="referral-code">When {{ service.name }} asks for a referral code, type <code>{{ service.referral.code_entry }}</code>. The link does not fill it in. <button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="{{ service.referral.code_entry }}">Copy</button></p>
+        <p class="referral-code">When {{ service.name }} asks for a referral code, type <code>{{ service.referral.code_entry }}</code>. The link does not fill it in. <button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="{{ service.referral.code_entry }}" aria-label="Copy {{ service.name }}'s referral code {{ service.referral.code_entry }}" title="Copy {{ service.name }}'s referral code {{ service.referral.code_entry }}">Copy</button></p>
         {% endif %}
         <p class="referral-note">{% if service.referral.bonus and service.referral.bonus.referee %}<strong>New-user bonus with this link:</strong> {{ service.referral.bonus.referee }}. {% endif %}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>
         {% endif %}
