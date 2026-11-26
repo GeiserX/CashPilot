@@ -174,6 +174,14 @@ def test_unmineable_has_no_fixed_minimum_or_chain(unmineable):
 
 
 XMRIG_BINARY = "/usr/local/bin/xmrig"
+SYSFS_CPU = "/sys/devices/system/cpu"
+# What sysfs shows for cpu0 of an i5-14500: (level, size) per cache index.
+CACHES_SHOWN = {
+    "cpu0/cache/index0": ("1", "48K"),
+    "cpu0/cache/index1": ("1", "32K"),
+    "cpu0/cache/index2": ("2", "1280K"),
+    "cpu0/cache/index3": ("3", "24576K"),
+}
 
 
 @pytest.fixture(params=["xmrig", "unmineable"])
@@ -184,13 +192,30 @@ def cpu_miner(request):
     return deepcopy(service)
 
 
-def _xmrig_args(entrypoint, tmp_path, cpu_percent, cpus, machine="aarch64", command=("--url=pool:1", "--no-color")):
+def _xmrig_args(
+    entrypoint,
+    tmp_path,
+    cpu_percent,
+    cpus,
+    machine="aarch64",
+    command=("--url=pool:1", "--no-color"),
+    caches=CACHES_SHOWN,
+):
     """The arguments XMRig gets when the catalog's entrypoint runs the command.
 
     The real wrapper runs with a stand-in ``nproc`` that reports ``cpus`` (None:
     nproc fails), a stand-in ``uname -m`` that reports ``machine`` (None: it
-    fails) and a stand-in for the image's XMRig that prints its arguments.
+    fails), a stand-in for the image's XMRig that prints its arguments, and a
+    stand-in for ``/sys/devices/system/cpu`` that holds ``caches``: per cache
+    index, its ``level`` and ``size`` file contents (None: no such file).
     """
+    sysfs = tmp_path / "sysfs-cpu"
+    sysfs.mkdir()
+    for index, files in caches.items():
+        (sysfs / index).mkdir(parents=True)
+        for name, value in zip(("level", "size"), files, strict=True):
+            if value is not None:
+                (sysfs / index / name).write_text(f"{value}\n")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stand_ins = {
@@ -209,7 +234,12 @@ def _xmrig_args(entrypoint, tmp_path, cpu_percent, cpus, machine="aarch64", comm
     if cpu_percent is not None:
         env["CPU_PERCENT"] = cpu_percent
     out = subprocess.run(
-        [*entrypoint[:2], script.replace(XMRIG_BINARY, str(fake)), *entrypoint[3:], *command],
+        [
+            *entrypoint[:2],
+            script.replace(XMRIG_BINARY, str(fake)).replace(SYSFS_CPU, str(sysfs)),
+            *entrypoint[3:],
+            *command,
+        ],
         env=env,
         capture_output=True,
         text=True,
@@ -281,6 +311,55 @@ def test_on_x86_above_100_threads_the_hint_is_too_coarse_so_threads_is_set(cpu_m
 
 
 @pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize(
+    "caches",
+    [
+        pytest.param({}, id="no-cache-folder"),
+        pytest.param({"cpu0/cache/index0": ("1", "48K"), "cpu0/cache/index1": ("1", "32K")}, id="l1-only"),
+        pytest.param({"cpu0/cache/index2": ("2", "0K")}, id="l2-size-zero"),
+        pytest.param({"cpu0/cache/index2": ("2", None)}, id="l2-no-size"),
+        pytest.param({"cpu0/cache/index3": (None, "24576K")}, id="no-level"),
+        # The top cache must hold one hash of every algorithm (cn-heavy: 4 MiB,
+        # counted from half), or the cache pass starts no thread and XMRig
+        # falls back the same way.
+        pytest.param({"cpu0/cache/index2": ("2", "4096K")}, id="l2-only"),
+        pytest.param({"cpu0/cache/index3": ("3", "0K")}, id="l3-size-zero"),
+        pytest.param({"cpu0/cache/index2": ("2", "4096K"), "cpu0/cache/index3": ("3", "1024K")}, id="small-l3"),
+        pytest.param({"cpu0/cache/index3": ("3", "2047K")}, id="l3-just-under-2048K"),
+        pytest.param({"cpu0/cache/index3": ("3", "2M")}, id="l3-size-not-in-K"),
+    ],
+)
+@pytest.mark.parametrize(("cpu_percent", "cpus", "threads"), [("17", 8, 1), ("50", 8, 4), ("75", 20, 15)])
+def test_on_x86_without_an_l3_of_2048k_in_sysfs_threads_is_set(cpu_miner, tmp_path, caches, cpu_percent, cpus, threads):
+    """Where XMRig v6.27.0 on x86 finds no cache room for a hash, it ignores the hint.
+
+    HwlocCpuInfo::threads falls back to BasicCpuInfo::threads when hwloc finds no
+    L2 or L3 size, or when processTopLevelCache adds no thread: a top cache
+    below half a scratchpad (rx/0: 2 MiB, cn-heavy: 4 MiB) holds no hash. The
+    fallback starts half the threads for RandomX: 4 of 8 at 17%. hwloc's Linux
+    backend reads the sizes from cpuN/cache/indexM/{level,size}, so without an
+    L3 of at least 2048K there the cap must come from --threads.
+    """
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus, "x86_64", caches=caches)
+    assert args == [*ARGS, f"--threads={threads}"]
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
+@pytest.mark.parametrize(
+    "caches",
+    [
+        pytest.param({"cpu0/cache/index3": ("3", "2048K")}, id="l3-of-2048K"),
+        pytest.param({"cpu0/cache/index0": ("1", "48K"), "cpu11/cache/index3": ("3", "24576K")}, id="l3-on-cpu11"),
+    ],
+)
+def test_on_x86_an_l3_of_2048k_on_any_cpu_keeps_the_hint(cpu_miner, tmp_path, caches):
+    args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, "17", 8, "x86_64", caches=caches)
+    assert args[:-1] == ARGS
+    assert args[-1].startswith("--cpu-max-threads-hint=")
+    assert _xmrig_x86_threads(8, int(args[-1].partition("=")[2])) == 1
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
 @pytest.mark.parametrize("machine", ["aarch64", "x86_64"])
 @pytest.mark.parametrize(
     ("cpu_percent", "cpus"),
@@ -304,6 +383,8 @@ def test_the_wrapper_execs_the_images_own_entrypoint(cpu_miner):
     assert entrypoint[2].rstrip().endswith(f'exec {XMRIG_BINARY} "$@"')
     dockerfile = (Path(__file__).parent.parent / "images" / "xmrig" / "Dockerfile").read_text()
     assert f'ENTRYPOINT ["{XMRIG_BINARY}"]' in dockerfile
+    # The cache check reads the files hwloc 2.x reads (topology-linux.c, look_sysfscpu).
+    assert entrypoint[2].count(f"{SYSFS_CPU}/cpu[0-9]*/cache/index[0-9]*/size") == 1
     # The hint stays on the command, so XMRig still gets a limit if the wrapper changes nothing.
     assert "--cpu-max-threads-hint=${CPU_PERCENT}" in cpu_miner["docker"]["command"]
 
