@@ -23,16 +23,18 @@
 //   node scripts/payout_registry_check.mjs
 // Exits non-zero on any mismatch.
 import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 
 const html = readFileSync('app/templates/payouts.html', 'utf8');
 
-function extract(name) {
-  const start = html.indexOf(`function ${name}(`);
-  if (start < 0) throw new Error(`payouts.html no longer defines ${name}() — this check is stale`);
-  let i = html.indexOf('{', start), depth = 0;
-  for (let j = i; j < html.length; j++) {
-    if (html[j] === '{') depth++;
-    else if (html[j] === '}' && --depth === 0) return html.slice(start, j + 1);
+function extract(name, source = html) {
+  const start = source.indexOf(`function ${name}(`);
+  if (start < 0) throw new Error(`The page no longer defines ${name}() — this check is stale`);
+  const i = source.indexOf('{', start);
+  let depth = 0;
+  for (let j = i; j < source.length; j++) {
+    if (source[j] === '{') depth++;
+    else if (source[j] === '}' && --depth === 0) return source.slice(start, j + 1);
   }
   throw new Error(`unbalanced braces reading ${name}()`);
 }
@@ -274,6 +276,56 @@ check('CONTROL: a running one is deployed', stateCell({deployed: true, recorded:
 const balanceOnly = runsOnCell({runs_on: [], recorded: true, tracked_only: true});
 check('a credentials-only row is not called broken', balanceOnly.includes('Not seen on any box') && !balanceOnly.includes('No box runs'), balanceOnly);
 check('a hostile box name is escaped', !runsOnCell({runs_on: [{name: '<img src=x>', status: 'running', online: true}]}).includes('<img src=x>'), 'escaping failed');
+
+// Run the page's DOMContentLoaded callback so this catches a missing initializer.
+const payoutScript = html.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
+const appJs = readFileSync('app/static/js/app.js', 'utf8');
+const partitionFiatCodes = new Function(`${extract('partitionFiatCodes', appJs)}; return partitionFiatCodes;`)();
+const currencyOptions = ['USD'];
+const fields = {
+  start: {},
+  end: {},
+  currency: {value: 'USD', add(option) { currencyOptions.push(option.value); }},
+};
+let onReady, onPreset;
+let now = '2026-12-31T23:59:00Z';
+const incomeForm = {
+  elements: {namedItem(name) { return fields[name]; }},
+  addEventListener(event, callback) { if (event === 'click') onPreset = callback; },
+};
+runInNewContext(payoutScript, {
+  document: {
+    body: {dataset: {page: 'payouts'}},
+    addEventListener(event, callback) { if (event === 'DOMContentLoaded') onReady = callback; },
+    getElementById() { return {addEventListener() {}}; },
+    querySelector(selector) { return selector === '.income-export-form' ? incomeForm : null; },
+  },
+  CP: {
+    partitionFiatCodes,
+    async api(path) {
+      if (path === '/api/exchange-rates') return {fiat: {USD: 1, EUR: 0.9}};
+      throw new Error('Payout registry is outside this check');
+    },
+  },
+  Date: class extends Date {
+    constructor() { super(now); }
+  },
+  Option: function Option(_label, value) { this.value = value; },
+  localStorage: {getItem(key) { return key === 'cp-display-currency' ? 'EUR' : null; }},
+});
+onReady?.();
+await new Promise(resolve => setImmediate(resolve));
+
+check('income export loads EUR and selects the saved currency', currencyOptions.join(',') === 'USD,EUR' && fields.currency.value === 'EUR');
+check('income export caps both dates at today in UTC on load', fields.start.max === '2026-12-31' && fields.end.max === '2026-12-31');
+now = '2027-01-01T00:01:00Z';
+onPreset?.({target: {closest: () => ({dataset: {incomeRange: 'this'}})}});
+check('this year fills the new year after UTC midnight', fields.start.value === '2027-01-01' && fields.end.value === '2027-01-01');
+check('this year refreshes both date limits', fields.start.max === '2027-01-01' && fields.end.max === '2027-01-01');
+now = '2027-01-02T00:01:00Z';
+onPreset?.({target: {closest: () => ({dataset: {incomeRange: 'last'}})}});
+check('last year fills the previous calendar year after UTC midnight', fields.start.value === '2026-01-01' && fields.end.value === '2026-12-31');
+check('last year refreshes both date limits', fields.start.max === '2027-01-02' && fields.end.max === '2027-01-02');
 
 if (failures) {
   console.error(`\n${failures} payout-registry render check(s) failed`);

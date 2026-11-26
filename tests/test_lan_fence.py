@@ -1825,7 +1825,7 @@ class TestTheFleetPage:
             "/api/deploy/storj?worker_id=3",
             "/api/workers/3/isolation",
         ]
-        assert all(c[2] == {} for c in out["calls"][1:4]), "an empty body redeploys from the recorded spec"
+        assert all(c[2] == {"replace_existing": True} for c in out["calls"][1:4])
         assert "Moved earnapp, honeygain, storj" in out["after"]["done"]
 
     def test_an_instance_left_outside_is_not_called_moved(self):

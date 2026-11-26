@@ -650,7 +650,7 @@ class TestWorkerApi:
         assert PASSWORD not in resp.text
         kwargs = deploy.call_args.kwargs
         assert kwargs.pop("deadline") > time.monotonic() + DEPLOY_DEADLINE_SECONDS - 60
-        assert kwargs == {"only_if_running": False}
+        assert kwargs == {"only_if_running": False, "expected_container": "none"}
 
     def test_deploy_passes_only_if_running_through(self):
         body = {"earner": {"image": "honeygain/honeygain:1"}, "proxy": _socks(), "only_if_running": True}
@@ -664,7 +664,7 @@ class TestWorkerApi:
         assert resp.status_code == 200, resp.text
         kwargs = deploy.call_args.kwargs
         assert kwargs.pop("deadline") > time.monotonic() + DEPLOY_DEADLINE_SECONDS - 60
-        assert kwargs == {"only_if_running": True}
+        assert kwargs == {"only_if_running": True, "expected_container": "none"}
 
     def test_proxy_test_refuses_a_private_exit(self):
         with (

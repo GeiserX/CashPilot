@@ -1829,6 +1829,9 @@ input[type="checkbox"] { accent-color: var(--text-primary); }
 
 .payout-all .block-head { align-items: center; }
 
+.income-export-note { color: var(--text-secondary); font-size: var(--fs-2); margin: 8px 0 12px; }
+.income-export-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
+
 /* ----- Settings ----- */
 .settings-layout { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 36px; align-items: start; }
 .settings-index { position: sticky; top: calc(var(--topbar-height) + 18px); display: flex; flex-direction: column; }

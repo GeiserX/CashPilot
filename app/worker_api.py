@@ -40,7 +40,7 @@ from docker.errors import APIError, DockerException
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, SecretStr, ValidationError
+from pydantic import BaseModel, SecretStr, StrictBool, ValidationError
 
 from app import (
     activity,
@@ -638,18 +638,6 @@ def _ui_host() -> str:
     return host or "<unparseable CASHPILOT_UI_URL>"
 
 
-_migrate_task: asyncio.Task | None = None
-
-
-def _migrate_proxied() -> None:
-    """Move proxied copies of an older worker into one tunnel per proxy (proxy_tunnel.migrate_legacy)."""
-    try:
-        if moved := proxy_tunnel.migrate_legacy():
-            logger.info("Moved %d proxied cop(ies) into a shared tunnel per proxy", len(moved))
-    except Exception as exc:  # noqa: BLE001 - the copies keep running as they are
-        logger.warning("Could not move proxied copies into shared tunnels: %s", proxy_tunnel.redact(str(exc)))
-
-
 def _reason(exc: BaseException) -> str:
     """What failed, for a log line. A timeout (TimeoutError, httpx.ReadTimeout) has an empty str()."""
     return str(exc) or type(exc).__name__
@@ -754,7 +742,7 @@ async def _send_heartbeat() -> None:
     )
     # Every deploy this worker runs ends by DEPLOY_DEADLINE_SECONDS, so the UI
     # may let go of the ids of one it got no answer for (main._settle_pending_identities).
-    features.append("deploy_deadline")
+    features.extend(("deploy_deadline", "expected_container"))
     # Keeps a catalog seed_file wallet in the node's own volume, never in its
     # env, and makes or takes one on deploy (app/wallet_seed.py). The UI sends
     # a new seed-file deploy to no other worker.
@@ -1170,7 +1158,6 @@ async def _wait_for_docker_loop() -> None:
 
 async def _resume_proxied_work(sweep_min_age: float = 0.0) -> None:
     """The start's proxied-copy steps, once Docker answers. Never raises."""
-    global _migrate_task
     # A proxied copy this worker was moving into another tunnel when it
     # stopped: finished or put back before anything else looks at it.
     try:
@@ -1183,9 +1170,6 @@ async def _resume_proxied_work(sweep_min_age: float = 0.0) -> None:
             logger.info("Removed %d leftover proxy test tunnel(s)", len(swept))
     except Exception as exc:  # noqa: BLE001 - never block the start on it
         logger.warning("Could not look for leftover proxy test tunnels: %s", exc)
-    # Copies an older worker ran with one tunnel each join one shared
-    # tunnel per proxy. In the background: it proves an exit per proxy.
-    _migrate_task = asyncio.create_task(asyncio.to_thread(_migrate_proxied))
 
 
 def _apply_activity_reply(resp: Any, delivered_seq: int | None) -> None:
@@ -1563,6 +1547,12 @@ class DeploySpec(BaseModel):
     # wallet this deploy wants. The phrase rides only here, never in env, and
     # this worker writes it into the node's own volume (app/wallet_seed.py).
     wallet_seed: WalletSeedSpec | None = None
+
+
+class CheckedDeploySpec(DeploySpec):
+    expected_container: str = "none"
+    # Older Desktop sends this alone. It changes the wording of a refusal, never the target.
+    replace_existing: StrictBool = False
 
 
 _BLOCKED_VOLUME_ROOTS = {
@@ -2088,6 +2078,7 @@ class ProxySpec(BaseModel):
 
 
 class ProxiedDeploySpec(BaseModel):
+    expected_container: str = "none"
     earner: DeploySpec
     proxy: ProxySpec
     # The service itself, routed at deploy, not a copy beside a direct one:
@@ -2162,7 +2153,16 @@ async def _own_egress_ip() -> str | None:
         return None
 
 
+def _deploy_target_error(exc: orchestrator.DeployTargetChanged) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={"error": "deploy_target_changed", "message": str(exc), "current_container": exc.actual},
+    )
+
+
 def _proxy_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, orchestrator.DeployTargetChanged):
+        return _deploy_target_error(exc)
     if isinstance(exc, proxy_tunnel.ProxyTunnelError):
         return HTTPException(status_code=exc.status_code, detail=str(exc))
     if isinstance(exc, orchestrator.ContainerNetworkError):
@@ -2191,6 +2191,7 @@ def _deploy_routed(
     own_ip: str | None,
     only_if_running: bool = False,
     deadline: float | None = None,
+    expected_container: str = "none",
 ) -> dict[str, Any]:
     """Deploy the routed copy of ``slug``, holding route_gate.deploying from its mark to its end.
 
@@ -2260,10 +2261,20 @@ def _deploy_routed(
         try:
             # In a tunnel of its own: the mark now names this proxy (proxy_tunnel.deploy).
             return proxy_tunnel.deploy(
-                slug, proxy_id, earner, proxy, own_ip, only_if_running=only_if_running, deadline=deadline
+                slug,
+                proxy_id,
+                earner,
+                proxy,
+                own_ip,
+                only_if_running=only_if_running,
+                deadline=deadline,
+                expected_container=expected_container,
             )
         except Exception as exc:  # noqa: BLE001 - mapped to a status below
             error = _proxy_http_error(exc)
+            if isinstance(exc, orchestrator.DeployTargetChanged):
+                route_gate.release(slug, before)
+                raise error from None
             # A deploy can fail after its earner exists (a start whose answer
             # was lost, a cleanup that failed too). Released then, the route
             # would let a direct deploy run the same account from this box's
@@ -2351,12 +2362,21 @@ async def _proxied_deploy(slug: str, proxy_id: int, spec: ProxiedDeploySpec, dea
                 own_ip,
                 only_if_running=spec.only_if_running,
                 deadline=deadline,
+                expected_container=spec.expected_container,
             )
         except Exception as exc:  # noqa: BLE001 - mapped to a status below
             raise _proxy_http_error(exc) from None
     else:
         result = await asyncio.to_thread(
-            _deploy_routed, slug, proxy_id, earner, spec.proxy.plain(), own_ip, spec.only_if_running, deadline
+            _deploy_routed,
+            slug,
+            proxy_id,
+            earner,
+            spec.proxy.plain(),
+            own_ip,
+            spec.only_if_running,
+            deadline,
+            spec.expected_container,
         )
     return {"status": "deployed", **result}
 
@@ -2533,14 +2553,32 @@ def _refuse_beside_routed_copy(slug: str) -> None:
         )
 
 
-def _deploy_direct(**kwargs: Any) -> str:
-    """orchestrator.deploy_raw, and with an approval to leave the route, forget the route in the same lock.
+def _deploy_target_id(name: str) -> str:
+    try:
+        target = orchestrator.deploy_target(orchestrator._get_client(), name)
+    except (DockerException, RuntimeError):
+        raise HTTPException(status_code=503, detail="Could not look up the deploy container in Docker.") from None
+    return "none" if target is None else target.id
 
-    Checked and forgotten under route_gate.deploying, the lock every route
-    change and every copy of the service holds: no routed deploy that started
-    after this one loses its route, and no copy is built by a route forgotten
-    right after it was read.
-    """
+
+@app.get("/api/containers/{slug}/deploy-checked")
+async def api_checked_deploy_state(request: Request, slug: str, instance: int = 1) -> dict[str, Any]:
+    """Read the deploy target from Docker without reading its logs."""
+    _verify_api_key(request)
+    _validate_instance(instance)
+    target = await asyncio.to_thread(_deploy_target_id, orchestrator._container_name(slug, instance))
+    return {"exists": target != "none", "expected_container": target}
+
+
+@app.get("/api/proxied/{slug}/{proxy_id}/deploy")
+async def api_proxied_deploy_state(request: Request, slug: str, proxy_id: int) -> dict[str, str]:
+    _verify_api_key(request)
+    target = await asyncio.to_thread(_deploy_target_id, proxy_tunnel.earner_name(slug, proxy_id))
+    return {"expected_container": target}
+
+
+def _deploy_direct(**kwargs: Any) -> str:
+    """Keep the route check, deploy and release under the same service lock."""
     slug = kwargs["slug"]
     with route_gate.deploying(slug):
         if not kwargs.get("leave_route"):
@@ -2553,8 +2591,18 @@ def _deploy_direct(**kwargs: Any) -> str:
 
 
 @app.post("/api/containers/{slug}/deploy")
-async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) -> dict[str, Any]:
-    """Deploy a container from spec sent by UI."""
+async def api_deploy_container(request: Request, slug: str, spec: CheckedDeploySpec) -> dict[str, Any]:
+    """Deploy through the legacy URL using the same check as the checked URL."""
+    return await _deploy_container(request, slug, spec)
+
+
+@app.post("/api/containers/{slug}/deploy-checked")
+async def api_deploy_container_checked(request: Request, slug: str, spec: CheckedDeploySpec) -> dict[str, Any]:
+    """Create a container, or replace one only with the controller's approval."""
+    return await _deploy_container(request, slug, spec)
+
+
+async def _deploy_container(request: Request, slug: str, spec: CheckedDeploySpec) -> dict[str, Any]:
     _verify_api_key(request)
     # Counted from now, not from when a thread is free: the UI's hold on the ids
     # of a deploy it got no answer for must outlast it (constants.DEPLOY_DEADLINE_SECONDS).
@@ -2594,6 +2642,7 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
             instance=spec.instance,
+            expected_container=spec.expected_container,
             leave_route=leave_route,
             replaced_identity=replaced,
             deadline=deadline,
@@ -2613,6 +2662,17 @@ async def api_deploy_container(request: Request, slug: str, spec: DeploySpec) ->
         if digest := replaced.get("identity_digest"):
             response["replaced_identity_digest"] = digest
         return response
+    except orchestrator.DeployTargetChanged as exc:
+        if spec.replace_existing and spec.expected_container == "none":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "replace_existing",
+                    "message": "Update CashPilot-Desktop to confirm the exact container before replacing it.",
+                    "current_container": exc.actual,
+                },
+            ) from None
+        raise _deploy_target_error(exc) from None
     except orchestrator.ContainerNetworkError as exc:
         # The operator's own setting, and the message says how to fix it; a bare
         # 500 would hide both. Raised before the old container was touched.
