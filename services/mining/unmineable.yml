@@ -67,13 +67,15 @@ docker:
   # the nearest count. So on arm64 the wrapper adds --threads. On x86 it adds
   # a second hint that XMRig rounds to the same count, because there the hint
   # also keeps XMRig's own limit of threads that fit the CPU cache, and
-  # --threads would drop it. But XMRig follows the hint only when hwloc finds
-  # an L2 or L3 cache size. With none, as on some virtual machines, it starts
-  # half the threads. So x86 keeps the hint only when sysfs, where hwloc reads
-  # them, shows an L2 or L3 size, and gets --threads otherwise. hwloc can also
-  # read sizes from CPUID, so the check errs toward --threads, which still
-  # caps. A hint has 1% steps, so above 100 threads x86 gets --threads too.
-  # At 100, or if nproc fails, the wrapper adds nothing.
+  # --threads would drop it. But XMRig follows the hint only when its cache
+  # pass finds room for at least one hash. With no cache size, as on some
+  # virtual machines, or with a top cache too small for one scratchpad (up to
+  # 4 MiB, cn-heavy), it ignores the hint and starts half the threads. So x86
+  # keeps the hint only when sysfs, where hwloc reads cache sizes, shows an L3
+  # of at least 2048K, and gets --threads otherwise. hwloc can also read sizes
+  # from CPUID, so the check errs toward --threads, which still caps. A hint
+  # has 1% steps, so above 100 threads x86 gets --threads too. At 100, or if
+  # nproc fails, the wrapper adds nothing.
   entrypoint:
     - /bin/sh
     - -c
@@ -85,7 +87,7 @@ docker:
       c=no;
       for f in /sys/devices/system/cpu/cpu[0-9]*/cache/index[0-9]*/size; do
       read s 2>/dev/null <"$f" && read l 2>/dev/null <"${f%size}level" &&
-      case "$l:$s" in [23]:[1-9]*) c=yes; break ;; esac;
+      case "$l:$s" in 3:[1-9]*K) [ "${s%K}" -ge 2048 ] 2>/dev/null && { c=yes; break; } ;; esac;
       done;
       case "$(uname -m 2>/dev/null):$c:$n" in
       x86_64:yes:[1-9]|x86_64:yes:[1-9][0-9]|x86_64:yes:100)

@@ -319,16 +319,26 @@ def test_on_x86_above_100_threads_the_hint_is_too_coarse_so_threads_is_set(cpu_m
         pytest.param({"cpu0/cache/index2": ("2", "0K")}, id="l2-size-zero"),
         pytest.param({"cpu0/cache/index2": ("2", None)}, id="l2-no-size"),
         pytest.param({"cpu0/cache/index3": (None, "24576K")}, id="no-level"),
+        # The top cache must hold one hash of every algorithm (cn-heavy: 4 MiB,
+        # counted from half), or the cache pass starts no thread and XMRig
+        # falls back the same way.
+        pytest.param({"cpu0/cache/index2": ("2", "4096K")}, id="l2-only"),
+        pytest.param({"cpu0/cache/index3": ("3", "0K")}, id="l3-size-zero"),
+        pytest.param({"cpu0/cache/index2": ("2", "4096K"), "cpu0/cache/index3": ("3", "1024K")}, id="small-l3"),
+        pytest.param({"cpu0/cache/index3": ("3", "2047K")}, id="l3-just-under-2048K"),
+        pytest.param({"cpu0/cache/index3": ("3", "2M")}, id="l3-size-not-in-K"),
     ],
 )
 @pytest.mark.parametrize(("cpu_percent", "cpus", "threads"), [("17", 8, 1), ("50", 8, 4), ("75", 20, 15)])
-def test_on_x86_with_no_l2_or_l3_size_in_sysfs_threads_is_set(cpu_miner, tmp_path, caches, cpu_percent, cpus, threads):
-    """Where hwloc finds no L2 or L3 size, XMRig v6.27.0 on x86 ignores the hint.
+def test_on_x86_without_an_l3_of_2048k_in_sysfs_threads_is_set(cpu_miner, tmp_path, caches, cpu_percent, cpus, threads):
+    """Where XMRig v6.27.0 on x86 finds no cache room for a hash, it ignores the hint.
 
-    HwlocCpuInfo::threads then falls back to BasicCpuInfo::threads, which starts
-    half the threads for RandomX: 4 of 8 at 17%. hwloc's Linux backend reads
-    the sizes from cpuN/cache/indexM/{level,size}, so without one there the cap
-    must come from --threads.
+    HwlocCpuInfo::threads falls back to BasicCpuInfo::threads when hwloc finds no
+    L2 or L3 size, or when processTopLevelCache adds no thread: a top cache
+    below half a scratchpad (rx/0: 2 MiB, cn-heavy: 4 MiB) holds no hash. The
+    fallback starts half the threads for RandomX: 4 of 8 at 17%. hwloc's Linux
+    backend reads the sizes from cpuN/cache/indexM/{level,size}, so without an
+    L3 of at least 2048K there the cap must come from --threads.
     """
     args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, cpu_percent, cpus, "x86_64", caches=caches)
     assert args == [*ARGS, f"--threads={threads}"]
@@ -338,11 +348,11 @@ def test_on_x86_with_no_l2_or_l3_size_in_sysfs_threads_is_set(cpu_miner, tmp_pat
 @pytest.mark.parametrize(
     "caches",
     [
-        pytest.param({"cpu0/cache/index2": ("2", "1280K")}, id="l2-only"),
+        pytest.param({"cpu0/cache/index3": ("3", "2048K")}, id="l3-of-2048K"),
         pytest.param({"cpu0/cache/index0": ("1", "48K"), "cpu11/cache/index3": ("3", "24576K")}, id="l3-on-cpu11"),
     ],
 )
-def test_on_x86_an_l2_or_l3_size_on_any_cpu_keeps_the_hint(cpu_miner, tmp_path, caches):
+def test_on_x86_an_l3_of_2048k_on_any_cpu_keeps_the_hint(cpu_miner, tmp_path, caches):
     args = _xmrig_args(cpu_miner["docker"]["entrypoint"], tmp_path, "17", 8, "x86_64", caches=caches)
     assert args[:-1] == ARGS
     assert args[-1].startswith("--cpu-max-threads-hint=")
