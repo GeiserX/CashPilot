@@ -83,7 +83,17 @@ class TestTheReadmeLists:
         assert all("ocean" not in lists[k] for k in (gen.DOCKER, gen.EXTENSION, gen.GPU))
         counts = gen.counts()
         assert counts["mining"] == len(lists[gen.MINING])
-        assert counts["tracked"] == counts["extension"] + counts["gpu"] + counts["mining"]
+        assert counts["tracked"] == counts["extension"] + counts["gpu"] + counts["mining_pools"]
+
+    def test_xmrig_counts_as_docker_while_pools_count_as_tracked(self):
+        gen = _script("generate_readme_tables")
+        miners = gen._selected(gen.MINING)
+        docker_miners = {s["slug"] for s in miners if gen._is_dockerable(s)}
+        assert "xmrig" in docker_miners
+        assert not docker_miners & {"ocean", "supportxmr"}
+        counts = gen.counts()
+        assert counts["docker"] == len(gen._selected(gen.DOCKER)) + len(docker_miners)
+        assert counts["mining_pools"] == len(miners) - len(docker_miners)
 
     def test_a_readme_without_the_mining_markers_fails(self):
         gen = _script("generate_readme_tables")

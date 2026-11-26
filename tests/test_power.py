@@ -223,17 +223,22 @@ class TestEarnedOverTheWindow:
 class TestNetEndpoint:
     """The endpoint wiring: config parsing, windowing, and the honesty rules end to end."""
 
-    def _call(self, cfg, earned, containers, days=30, workers=None):
+    def _call(self, cfg, earned, containers, days=30, workers=None, *, deployments=()):
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from app import main
 
+        async def fake_earned(days, measured):
+            measured.update(earned)
+            return earned
+
         async def run():
             with (
                 patch.object(main, "_require_auth_api", lambda r: None),
                 patch.object(main.database, "get_config", AsyncMock(return_value=cfg)),
-                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value=earned)),
+                patch.object(main.database, "get_earned_by_platform", fake_earned),
+                patch.object(main.database, "get_deployments", AsyncMock(return_value=deployments)),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=workers or [])),
             ):
@@ -261,6 +266,42 @@ class TestNetEndpoint:
         assert out["cost_known"] is False
         assert out["services"][0]["net"] is None
         assert out["total_net"] is None
+
+    @pytest.mark.parametrize("earned", [{}, {"supportxmr": 4.0}])
+    def test_a_running_miner_has_a_cost_without_its_own_earnings(self, earned):
+        out = self._call(
+            {"power_price_per_kwh": "0.20", "power_currency": "USD"},
+            earned,
+            [{"slug": "xmrig", "status": "running", "cpu_percent": 50.0}],
+        )
+        miner = next(row for row in out["services"] if row["platform"] == "xmrig")
+        assert miner["gross"] is None
+        assert miner["net"] is None
+        assert miner["cost"] == pytest.approx(6.552)
+        assert out["total_cost"] == pytest.approx(6.552)
+        assert out["total_gross"] == earned.get("supportxmr")
+        assert out["total_net"] is None
+
+    @pytest.mark.parametrize(("pool_watts", "pool_cost"), [("", None), ("10", 1.44)])
+    def test_a_running_miner_without_cpu_stats_has_unknown_cost(self, pool_watts, pool_cost):
+        out = self._call(
+            {
+                "power_price_per_kwh": "0.20",
+                "power_currency": "USD",
+                "power_device_supportxmr_watts": pool_watts,
+            },
+            {"supportxmr": 4.0},
+            [{"slug": "xmrig", "status": "running"}],
+            deployments=[{"slug": "supportxmr", "status": "external"}],
+        )
+        rows = {row["platform"]: row for row in out["services"]}
+        assert rows["xmrig"]["cost"] is None
+        assert rows["xmrig"]["net"] is None
+        assert rows["supportxmr"]["cost"] == pool_cost
+        assert out["cost_known"] is (pool_cost is not None)
+        assert out["total_cost"] == pool_cost
+        assert out["total_net"] == (4.0 - pool_cost if pool_cost is not None else None)
+        assert "no CPU reading" in out["cost_unavailable_reason"]
 
     def test_a_stopped_container_does_not_dilute_the_idle_floor(self):
         """A stopped container draws nothing and must not be counted."""
@@ -564,7 +605,7 @@ class TestNetEarningsActuallyChargeElectricity:
     tests pass. Which is what happened here, again.
     """
 
-    def _net(self, containers, price="0.20"):
+    def _net(self, containers, price="0.20", *, slug="honeygain"):
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -582,15 +623,16 @@ class TestNetEarningsActuallyChargeElectricity:
                 ),
                 patch.object(main, "_get_all_worker_containers", AsyncMock(return_value=containers)),
                 patch.object(main.database, "list_workers", AsyncMock(return_value=workers)),
-                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={"honeygain": 4.0})),
+                patch.object(main.database, "get_earned_by_platform", AsyncMock(return_value={slug: 4.0})),
             ):
                 return await main.api_earnings_net(MagicMock(), days=30)
 
         return asyncio.run(run())
 
-    def test_a_running_container_is_actually_charged_for_its_electricity(self):
+    @pytest.mark.parametrize("slug", ["honeygain", "xmrig"])
+    def test_a_running_container_is_actually_charged_for_its_electricity(self, slug):
         """The shape workers really send: keyed on `slug`."""
-        out = self._net([{"slug": "honeygain", "status": "running", "cpu_percent": 4.0, "_worker_id": 1}])
+        out = self._net([{"slug": slug, "status": "running", "cpu_percent": 4.0, "_worker_id": 1}], slug=slug)
         assert out["total_cost"] > 0, "no electricity was charged at all — the container matched nothing"
         assert out["total_net"] < out["total_gross"], "net must be below gross once power is paid for"
 
@@ -696,6 +738,36 @@ class TestTypedMachineWattsAndServiceBreakEven:
         (service,) = self._net(config, [*self.BUSY, metered_copy], workers)["services"]
         assert service["cost"] == 14.4
         assert service["cost_attributable"] is True
+
+    @pytest.mark.parametrize("cpu_percent", [None, 100.0])
+    def test_xmrig_on_a_fixed_price_worker_is_never_charged(self, cpu_percent):
+        # XMRig keeps a CPU cost before any pool pays, and a missing CPU reading
+        # makes that cost unknown. Neither applies on a fixed-price worker.
+        config = {
+            "power_price_per_kwh": "0.20",
+            "power_currency": "USD",
+            "worker_rig_watts": "100",
+            "worker_rig_unmetered": "true",
+        }
+        xmrig = [{"slug": "xmrig", "status": "running", "cpu_percent": cpu_percent, "_worker_id": 1}]
+        out = self._net(config, xmrig, self.WORKER, measured=(), earned={})
+        (miner,) = out["services"]
+        assert miner["platform"] == "xmrig"
+        assert miner["cost"] == 0.0
+        assert miner["unmetered"] is True
+        assert miner["gross"] is None
+        assert out["total_cost"] == 0.0
+        assert "no CPU reading" not in (out.get("cost_unavailable_reason") or "")
+
+        config["worker_rig_unmetered"] = "false"
+        out = self._net(config, xmrig, self.WORKER, measured=(), earned={})
+        (miner,) = out["services"]
+        assert miner["unmetered"] is False
+        if cpu_percent is None:
+            assert miner["cost"] is None
+            assert "no CPU reading" in out["cost_unavailable_reason"]
+        else:
+            assert miner["cost"] == 14.4
 
     @pytest.mark.parametrize("metered_copy", [False, True])
     def test_entered_gpu_draw_cannot_charge_an_unmetered_worker(self, monkeypatch, metered_copy):
@@ -880,6 +952,29 @@ class TestTypedMachineWattsAndServiceBreakEven:
         row = out["services"][0]
         assert row["cost_attributable"] is True
         assert row["break_even_price_per_kwh"] == pytest.approx(3.0 / 144.0, abs=0.0001)
+
+    def test_cost_only_miner_and_measured_service_share_a_power_bill(self):
+        out = self._net(
+            {"power_price_per_kwh": "0.20", "power_currency": "USD", "worker_rig_watts": "200"},
+            [
+                {"slug": "honeygain", "status": "running", "cpu_percent": 50.0, "_worker_id": 1},
+                {"slug": "xmrig", "status": "running", "cpu_percent": 50.0, "_worker_id": 1},
+            ],
+            self.WORKER,
+            measured=("honeygain",),
+            earned={"honeygain": 3.0},
+        )
+
+        rows = {row["platform"]: row for row in out["services"]}
+        # Each container draws 100 W for 720 hours.
+        assert rows["honeygain"]["break_even_price_per_kwh"] == round(3.0 / 72.0, 4)
+        miner = rows["xmrig"]
+        assert miner["cost_attributable"] is True
+        assert miner["cost"] == pytest.approx(14.4)
+        assert miner["gross"] is None
+        assert miner["net"] is None
+        assert "break_even_price_per_kwh" not in miner
+        assert out["total_cost"] == pytest.approx(28.8)
 
     def test_a_service_whose_gross_was_never_read_gets_no_break_even(self):
         out = self._net({"worker_rig_watts": "200"}, self.BUSY, self.WORKER, measured=())

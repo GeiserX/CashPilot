@@ -15,6 +15,39 @@ const grab = name => {
   return next >= 0 ? rest.slice(0, next) : rest;
 };
 
+const fillDeployRisk = new Function('api', 'escapeHtml', `${grab('fillDeployRisk')}\nreturn fillDeployRisk;`)(
+  async () => ({
+    mining: { dev_fee_percent: 0, dev_fee_source: 'https://example.com/?a=1&b=2', pool_fee_note: '<untrusted>' },
+  }),
+  value => escapeHtml(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
+);
+const riskBody = { innerHTML: '' };
+const riskCard = { dataset: { slug: 'xmrig' }, style: { display: 'none' }, querySelector: () => riskBody };
+await fillDeployRisk(riskCard);
+assert.equal(riskCard.style.display, '');
+assert.match(riskBody.innerHTML, /Miner fee: 0% of hashing time/);
+assert.match(riskBody.innerHTML, /&lt;untrusted&gt;/);
+assert.match(riskBody.innerHTML, /https:\/\/example.com\/\?a=1&amp;b=2/);
+assert.match(riskBody.innerHTML, /CashPilot lists tracked pool balances as accrued/);
+console.log('A miner shows its fee, source and pool note before deploy.');
+
+const warnings = [];
+const confirmPreflight = new Function(
+  'api', '_instancesFor', 'window', `${grab('_confirmPreflight')}\nreturn _confirmPreflight;`,
+)(
+  async () => ({ blocking: false, findings: [
+    { verdict: 'check_these', message: 'Routine advice' },
+    { verdict: 'check_these', kind: 'hosting_note', message: 'Check your hosting terms.' },
+  ] }),
+  () => undefined,
+  { confirm: text => { warnings.push(text); return true; } },
+);
+assert.equal(await confirmPreflight('xmrig', [1]), true);
+assert.equal(warnings.length, 1);
+assert.match(warnings[0], /Check your hosting terms/);
+assert.doesNotMatch(warnings[0], /Routine advice/);
+console.log('The deploy confirmation shows the hosting terms and lets the user proceed.');
+
 // A secret field with a pattern renders the pattern and asks the browser for
 // a new secret, never a saved one; a plain field renders neither.
 const render = new Function(
@@ -33,6 +66,13 @@ for (const withId of [true, false]) {
   assert.doesNotMatch(email, /autocomplete|pattern=/);
 }
 console.log('A patterned secret field carries its pattern and autocomplete="new-password" in both forms.');
+
+const minerInput = render({ slug: 'xmrig', mining: {} }, [
+  { key: 'POOL_URL', label: 'Pool', default: 'example.com:9000', required: true },
+]);
+assert.match(minerInput, /placeholder="example.com:9000"\s+value=""/);
+assert.doesNotMatch(minerInput, /\srequired(?:\s|>)/);
+console.log('A miner default is a blank suggestion until the user enters it.');
 
 // The deploy handler: an invalid typed value is reported and nothing is sent,
 // not even the preflight; a valid value is trimmed; a blank required field is
