@@ -98,7 +98,6 @@ def _run(*, docker_at_start: bool, docker_later: bool, proxied_only: bool = Fals
         patch.object(worker_api.lan_fence, "guard", side_effect=lambda: events.append("guard") or {}),
         patch.object(worker_api.proxy_tunnel, "recover_moves", side_effect=lambda: events.append("recover") or []),
         patch.object(worker_api.proxy_tunnel, "sweep_test_tunnels", side_effect=sweep),
-        patch.object(worker_api, "_migrate_proxied", side_effect=lambda: events.append("migrate")),
         patch.object(worker_api, "UI_URL", ""),
     ]
     if wait_loop is not None:
@@ -141,10 +140,10 @@ class TestDockerComesBackAfterStart:
         # Hold first, the public IP, the fence before the guard pass that may
         # start a fence-gated node, then the proxied-copy steps: the direct start's order.
         assert later[: len(ONE_TIME)] == ONE_TIME
-        for once in ("egress", "set-egress", "fence", "recover", "sweep", "migrate"):
+        for once in ("egress", "set-egress", "fence", "recover", "sweep"):
             assert later.count(once) == 1, (once, later)
         # Then the guard loop: more passes, each with the proxied-only hold.
-        rest = [e for e in later[len(ONE_TIME) :] if e != "migrate"]
+        rest = later[len(ONE_TIME) :]
         assert rest.count("guard") >= 2
         assert rest[:4] == ["guard", "hold", "guard", "hold"]
         assert sum(COME_BACK_LOG in r.getMessage() for r in caplog.records) == 1
@@ -173,7 +172,7 @@ class TestAProxiedOnlyWorkerStartedWithoutDocker:
         later = _after(events, "--docker-up--")
         assert later[: len(ONE_TIME)] == ONE_TIME
         # Every guard pass after that holds again (the stop can land between the two halves of the last one).
-        rest = [e for e in later[len(ONE_TIME) :] if e not in ("migrate", "--stopped--")]
+        rest = [e for e in later[len(ONE_TIME) :] if e != "--stopped--"]
         assert rest.count("guard") >= 2
         assert rest[: 2 * (rest.count("guard") - 1)] == ["guard", "hold"] * (rest.count("guard") - 1)
 
@@ -200,12 +199,12 @@ class TestDockerAtStart:
         before = events[: events.index("--docker-up--")]
         head = ONE_TIME[: ONE_TIME.index("recover")]
         assert before[: len(head)] == head
-        for once in ("egress", "set-egress", "fence", "recover", "sweep", "migrate"):
+        for once in ("egress", "set-egress", "fence", "recover", "sweep"):
             assert events.count(once) == 1, (once, events)
         # The guard loop starts before the proxied-copy steps, and GUARD_SECONDS is
         # 10 ms here, so a periodic pass may land before recover: only their order counts.
-        assert [e for e in events if e in ("recover", "sweep", "migrate")] == ["recover", "sweep", "migrate"]
-        after_sweep = [e for e in _after(events, "sweep") if e not in ("migrate", "--docker-up--", "--stopped--")]
+        assert [e for e in events if e in ("recover", "sweep")] == ["recover", "sweep"]
+        after_sweep = [e for e in _after(events, "sweep") if e not in ("--docker-up--", "--stopped--")]
         assert after_sweep[:2] == ["guard", "hold"]
         # Nothing can be in flight before the API serves: every leftover goes.
         assert SWEEP_MIN_AGES == [0.0]

@@ -338,7 +338,9 @@ class TestWorkerDeployEndpoint:
             captured.update(kwargs)
             return "container-id-123"
 
-        with patch("app.worker_api.orchestrator.deploy_raw", side_effect=_fake_deploy):
+        with (
+            patch("app.worker_api.orchestrator.deploy_raw", side_effect=_fake_deploy),
+        ):
             resp = self._client().post(
                 "/api/containers/storj/deploy",
                 # The catalog's image: storj keeps an identity, so any other needs a step-up.
@@ -358,7 +360,9 @@ class TestWorkerDeployEndpoint:
             captured.update(kwargs)
             return "container-id-123"
 
-        with patch("app.worker_api.orchestrator.deploy_raw", side_effect=_fake_deploy):
+        with (
+            patch("app.worker_api.orchestrator.deploy_raw", side_effect=_fake_deploy),
+        ):
             resp = self._client().post(
                 "/api/containers/honeygain/deploy",
                 json={"image": "img"},

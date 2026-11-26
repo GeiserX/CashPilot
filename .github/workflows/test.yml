@@ -139,6 +139,9 @@ jobs:
       - name: Device ids
         run: node scripts/identity_view_check.mjs
 
+      - name: Worker replacement approval
+        run: node scripts/worker_replacement_check.mjs
+
       # The restore preview is the last thing the owner reads before an
       # identity or a wallet goes onto a box: which boxes are disabled and why,
       # the typed name for a file this CashPilot did not make, and names from
