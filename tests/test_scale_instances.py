@@ -258,6 +258,28 @@ class TestTheDeploy:
         with pytest.raises(HTTPException):
             _deploy(0)
 
+    def test_a_plain_redeploy_finishes_a_failed_scale_down_of_a_one_copy_service(self):
+        """A scale-down saves the lower count before it removes the extra copies.
+
+        When the removal failed, the record already says one copy. A service
+        limited to one copy (here a GPU miner, whose second copy would share the
+        one GPU) still has its copies read, so the next plain redeploy removes it.
+        """
+        gpu_miner = {
+            **SCALABLE,
+            "requirements": {"devices_per_ip": 0, "gpu": True},
+            "docker": {**SCALABLE["docker"], "runtime": "runc", "gpu": {"vendor": "nvidia"}},
+        }
+        info = json.dumps(
+            {"features": ["instances"], "gpu_grants": {"demo": {"vendor": "nvidia", "count": 1, "rocm": False}}}
+        )
+        worker = {**_worker(copies=(1, 2)), "system_info": info}
+        recorded = {"image": "demo/demo", "env": {"TOKEN": "t"}}
+        deploys, deletes, record = _deploy(None, svc=gpu_miner, recorded=recorded, worker=worker)
+        assert [d.get("instance", 1) for d in deploys] == [1]
+        assert deletes == [("DELETE", "/api/containers/demo/instances/2")]
+        assert "instances" not in record
+
 
 def _container(name, slug="demo", instance=None):
     c = MagicMock()
@@ -413,6 +435,15 @@ class TestCopyCommands:
         for call in ("stop", "restart", "start", "remove", "logs"):
             getattr(first, call).assert_not_called()
 
+    def test_a_missing_copy_is_told_apart_from_other_refusals(self):
+        client, _, _ = self._client()
+        with patch.object(orchestrator, "_get_client", return_value=client):
+            with pytest.raises(orchestrator.ContainerNotFoundError, match="Instance 3 of demo not found"):
+                orchestrator.remove_instance("demo", 3)
+            with pytest.raises(ValueError) as first:
+                orchestrator.remove_instance("demo", 1)
+        assert not isinstance(first.value, orchestrator.ContainerNotFoundError)
+
     def test_a_copy_that_will_not_stop_is_still_removed(self):
         from docker.errors import APIError
 
@@ -460,6 +491,23 @@ class TestTheWorkerRoutes:
         client, auth = self._client()
         with patch("app.worker_api.orchestrator.remove_instance", side_effect=error):
             assert client.delete("/api/containers/demo/instances/2", headers=auth).status_code == status
+
+    def test_a_missing_copy_answers_the_copy_code(self):
+        """The UI retires a copy only on this code, so the route must send it for a copy it does not have."""
+        client, auth = self._client()
+        docker = MagicMock()
+        docker.containers.get.side_effect = NotFound("cashpilot-demo-2")
+        docker.containers.list.return_value = []
+        with patch.object(orchestrator, "_get_client", return_value=docker):
+            resp = client.delete("/api/containers/demo/instances/2", headers=auth)
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == {"error": "copy_not_found", "message": "Instance 2 of demo not found"}
+
+    def test_another_value_error_carries_no_copy_code(self):
+        client, auth = self._client()
+        with patch("app.worker_api.orchestrator.remove_instance", side_effect=ValueError("not on its own")):
+            resp = client.delete("/api/containers/demo/instances/2", headers=auth)
+        assert resp.status_code == 404 and resp.json()["detail"] == "not on its own"
 
     def test_an_out_of_range_copy_is_refused_before_docker(self):
         client, auth = self._client()

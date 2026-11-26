@@ -68,6 +68,7 @@ from app import (
     metrics,
     miner_read,
     net_activity,
+    network_stats,
     notify,
     obligations,
     onchain,
@@ -736,6 +737,10 @@ _disabled_by_logs: set[str] = set()
 # Platforms whose collector read a balance on its last run. A balance read means
 # the account works again, whatever an old container log still says.
 _collected_ok_last_run: set[str] = set()
+# The hashrate each pool reported on its last good read: slug -> (H/s, when).
+# Only for the expected-earnings estimate on the Fleet page; filled by the
+# first collection, which runs at startup.
+_pool_hashrate: dict[str, tuple[float, str]] = {}
 # When the collector last read a balance for a service that declares an
 # account_disabled signal, kept in the config table so it survives a restart.
 # A refusal from a run that ended before it is history: a stopped copy keeps
@@ -1509,12 +1514,13 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
     then never shown to anybody, which defeats the point of asking.
     """
     try:
-        previous = await database.get_latest_balance(result.platform)
+        # Another currency means the user switched coins: no drop to compare.
+        previous = await database.get_latest_balance(result.platform, result.currency)
         if previous is None:
             return None
         try:
             regained = payouts.balance_change(previous, result.balance)
-            withdrawn = await database.withdraw_recovered_payout(result.platform, regained)
+            withdrawn = await database.withdraw_recovered_payout(result.platform, regained, currency=result.currency)
         except Exception as exc:  # noqa: BLE001 - must never block detecting a new payout
             withdrawn = False
             logger.warning("Could not check %s for a recovered payout: %s", result.platform, exc)
@@ -1522,7 +1528,13 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
             # The drop was one bad reading, not a cashout: the question is taken back.
             logger.info("%s balance recovered; withdrew the probable payout question", result.platform)
             return None
-        probable = payouts.detect(previous, result.balance, catalog.get_service(result.platform), result.currency)
+        probable = payouts.detect(
+            previous,
+            result.balance,
+            catalog.get_service(result.platform),
+            result.currency,
+            threshold=getattr(result, "payout_threshold", None),
+        )
         if not probable:
             return None
         payout_id = await database.record_probable_payout(
@@ -2243,6 +2255,9 @@ async def _run_collection() -> None:
                     # providers is a live credential. The alert is now durable and readable
                     # by any authenticated role, so it must never hold a secret.
                     safe_error = notify.redact(result.error)
+                    # No good read, no current hashrate: an old one would pass
+                    # for today's on the Fleet estimate.
+                    _pool_hashrate.pop(result.platform, None)
                     error_kind = getattr(result, "error_kind", None)
                     says_disabled = credential_test.classify(safe_error) == credential_test.ACCOUNT_DISABLED
                     if says_disabled:
@@ -2360,6 +2375,10 @@ async def _run_collection() -> None:
                         earned=earned,
                     )
                     logger.info("Collected %s: %.4f %s", result.platform, result.balance, result.currency)
+                    if getattr(result, "hashrate", None) is not None:
+                        _pool_hashrate[result.platform] = (float(result.hashrate), datetime.now(UTC).isoformat())
+                    else:
+                        _pool_hashrate.pop(result.platform, None)
                     platforms_ok += 1
                     collected_ok.add(result.platform)
                     if getattr(result, "unlinked_devices", None):
@@ -4887,10 +4906,13 @@ async def _deploy(
             keys.extend(await _proxied_rebuild_targets(slug, worker_id, route))
         await _confirm_deploy_targets(worker_id, slug, keys)
     # Read only when copies are involved, so a plain deploy asks the worker
-    # record nothing it did not ask before.
+    # record nothing it did not ask before. A service limited to one copy is
+    # always read: a scale-down whose removal failed has already saved the lower
+    # count, and its leftover copies (a GPU miner's would share the one GPU) go
+    # on this deploy.
     # A joined Desktop takes one copy per service from here, and any copy it added
     # itself stays its own: the server neither sends copy 2+ nor removes them.
-    copies_involved = body.instances is not None or (recorded or {}).get("instances")
+    copies_involved = body.instances is not None or (recorded or {}).get("instances") or scaling_limit(svc)[0] == 1
     to_desktop = await _worker_is_desktop(worker_id) if copies_involved else False
     running_copies = await _worker_instances(worker_id, slug) if copies_involved and not to_desktop else set()
     if instances > 1:
@@ -5273,7 +5295,18 @@ async def _deploy(
             await _release_pending_identities(slug, worker_id, held)
     deleted: set[int] = set()
     for n in sorted(c for c in running_copies if c > instances):
-        removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        try:
+            removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        except HTTPException as exc:
+            # The worker looked and has no such copy: the heartbeat that listed
+            # it is older than its removal (a scale-down that went through, a
+            # copy removed by hand), so it is gone, as a removal would leave it.
+            # Only its own copy_not_found says so. Any other 404 (no worker
+            # record, an older worker without the route, a proxy) proves
+            # nothing, so the deploy fails and the copy stays recorded.
+            if not _worker_copy_not_found(exc):
+                raise
+            removed = None
         deleted.add(n)
         # Confirmed gone: keep the id it ran with, even if its row was never
         # written, when the worker's digest proves which one that was.
@@ -7523,6 +7556,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "routed_copy_may_exist",
         "proxy_recovery_conflict",
         "invalid_proxy_start_approval",
+        # The scale-down found no such copy on the box (app/worker_api.py).
+        "copy_not_found",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -7592,6 +7627,12 @@ def _worker_refusal_text(resp: Any, sent: dict[str, Any] | None) -> str | None:
     if len(text) > _WORKER_TEXT_MAX:
         text = text[: _WORKER_TEXT_MAX - 1].rstrip() + "\u2026"
     return text
+
+
+def _worker_copy_not_found(exc: HTTPException) -> bool:
+    """The worker's own answer that it has no such copy of the service."""
+    detail = exc.detail
+    return exc.status_code == 404 and isinstance(detail, dict) and detail.get("error") == "copy_not_found"
 
 
 def _worker_failure_text(status: int) -> str:
@@ -9417,14 +9458,15 @@ async def api_service_remove(
 
 
 @app.get("/api/compose/{slug}", response_class=PlainTextResponse)
-async def api_compose_single(request: Request, slug: str, arch: str | None = None):
+async def api_compose_single(request: Request, slug: str, arch: str | None = None, worker_id: int | None = None):
     """Export a docker-compose.yml for a single service."""
     _require_auth_api(request)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    gpu_host = await _compose_gpu_host(worker_id)
     try:
-        return compose_generator.generate_compose_single(slug, arch=_compose_arch(arch))
+        return compose_generator.generate_compose_single(slug, arch=_compose_arch(arch), gpu_host=gpu_host)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -9434,6 +9476,19 @@ class ComposeMultiRequest(BaseModel):
     # amd64, arm64 or arm (a raw machine name such as aarch64 is accepted too).
     # Absent means the catalog's default image, which is the amd64 build.
     arch: str | None = None
+    # The worker the file is for: an AMD or Intel GPU entry names its render node.
+    worker_id: int | None = None
+
+
+async def _compose_gpu_host(worker_id: int | None) -> dict[str, Any] | None:
+    """The GPU read of the worker an export is for, from its last heartbeat; None without one."""
+    if worker_id is None:
+        return None
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    info = _decoded_worker(worker).get("system_info")
+    return gpu.host_from_report(info.get("gpu") if isinstance(info, dict) else None)
 
 
 def _compose_arch(value: str | None) -> str | None:
@@ -9457,17 +9512,20 @@ async def api_compose_multi(
 ):
     """Export a docker-compose.yml for multiple services."""
     try:
-        return compose_generator.generate_compose_multi(body.slugs, arch=_compose_arch(body.arch))
+        return compose_generator.generate_compose_multi(
+            body.slugs, arch=_compose_arch(body.arch), gpu_host=await _compose_gpu_host(body.worker_id)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.get("/api/compose", response_class=PlainTextResponse)
-async def api_compose_all(request: Request, arch: str | None = None):
+async def api_compose_all(request: Request, arch: str | None = None, worker_id: int | None = None):
     """Export a docker-compose.yml for ALL services with Docker images."""
     _require_auth_api(request)
+    gpu_host = await _compose_gpu_host(worker_id)
     try:
-        return compose_generator.generate_compose_all(arch=_compose_arch(arch))
+        return compose_generator.generate_compose_all(arch=_compose_arch(arch), gpu_host=gpu_host)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -10230,6 +10288,9 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # Only metered copies land in unread_metered_services, so a miner on a
     # fixed-price worker is never here: it costs nothing, reading or not.
     miners_without_cpu = unread_metered_services & running_miners
+    # A GPU miner is charged its entered device watts, so only a miner priced
+    # from its CPU share makes the cost unknown here.
+    cpu_miner_cost_unknown = False
     rows = []
     break_even: dict[str, float] = {}
     for platform, service in services.items():
@@ -10259,11 +10320,13 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             # The hosting copy has no per-kWh bill. The metered copy's
             # missing CPU reading still leaves the combined cost unknown.
             watts = None
+            cpu_miner_cost_unknown = cpu_miner_cost_unknown or platform in running_miners
         elif platform in miners_without_cpu:
             # A running miner draws power whether or not a pool has paid yet.
             # Without its CPU reading on a metered machine the cost is unknown,
             # never the 0 W that a missing reading would otherwise produce.
             watts = None
+            cpu_miner_cost_unknown = True
         elif not watts_known:
             watts = None
         if watts is None:
@@ -10340,7 +10403,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
         )
         if row["platform"] in break_even:
             row["break_even_price_per_kwh"] = break_even[row["platform"]]
-    if miners_without_cpu:
+    if cpu_miner_cost_unknown:
         result["cost_unavailable_reason"] = "A running miner has no CPU reading, so its electricity cost is unknown."
     if not watts_known:
         result["watts_unavailable"] = True
@@ -10650,7 +10713,11 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         balance = None if result.error else result.balance
         return credential_test.result(outcome, name, balance=balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
-    payout_address = (service.get("payout") or {}).get("address_source") == "collector"
+    # A pool read by public payout address, whether or not CashPilot also
+    # deploys its miner: there is no cookie or password to expire.
+    from app.collectors import _COLLECTOR_ARGS
+
+    payout_address = "address" in _COLLECTOR_ARGS.get(slug, [])
     return credential_test.result(outcome, name, payout_address=payout_address)
 
 
@@ -10897,6 +10964,10 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     # leaves the declared minimum alone.
     balance_currency = (history[-1].get("currency") if history else None) or None
     confirmed = await database.get_payouts(platform=slug, confirmed_only=True)
+    if balance_currency:
+        # A multi-coin pool after a coin switch: payouts in the old coin are
+        # not this balance's unit, so they cannot be added to it.
+        confirmed = [p for p in confirmed if (p.get("currency") or "USD").upper() == balance_currency.upper()]
     # A provider read node by node reports its own lifetime, settlements
     # included (issue #488); balance plus confirmed payouts would miss every
     # settlement, since none is ever asked about.
@@ -11027,7 +11098,10 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # hosting only such services would get a 0.0 break-even tariff and "loses
     # money at any electricity price" on a gross nobody ever read.
     measured: set[str] = set()
-    earned = await database.get_earned_by_platform(days=30, measured=measured)
+    # The days each platform's credit really covers, for the expected-earnings
+    # comparison on device rows.
+    covered: dict[str, int] = {}
+    earned = await database.get_earned_by_platform(days=30, measured=measured, covered_days=covered)
     containers = await _get_all_worker_containers(raw_workers)
 
     # Attribute each service's gross to the worker running it. A service on two
@@ -11060,6 +11134,8 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
             if slug in measured:
                 read.add(worker_id)
 
+    # The heating share counts calendar months, so it uses the local date.
+    today = datetime.now(UTC).astimezone().date()
     assessed = []
     for worker in workers:
         worker_id = worker.get("id")
@@ -11072,6 +11148,8 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         # id is also read from the row-id fallback for volumes written before
         # this change.
         watts = _worker_watts(config, worker)
+        heat_prefix = f"worker_{_worker_config_key(worker)}"
+        heat = _heat_setting(config, heat_prefix, tariff_currency)
         assessed.append(
             machine_economics.assess_machine(
                 name=worker.get("name") or f"worker {worker.get('id')}",
@@ -11098,21 +11176,28 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                     if worker_id in hosting
                     else not placement.is_blind(worker) and not _heartbeat_partial(info)
                 ),
+                heat=heat,
+                heating_share=_heating_share(heat, today),
             )
         )
         assessed[-1]["kind"] = "machine"
         assessed[-1]["break_even_tariff"] = _break_even_local(
             assessed[-1].get("break_even_price_per_kwh"), tariff_currency
         )
+        _add_heat_fields(assessed[-1], config, heat_prefix, tariff_currency)
 
     for slug, service in devices.items():
         watts = _device_watts(config, slug)
+        heat_prefix = f"power_device_{slug}"
+        heat = _heat_setting(config, heat_prefix, tariff_currency)
         device = machine_economics.assess_machine(
             name=service["name"],
             monthly_gross=earned.get(slug, 0.0) if slug in measured else None,
             watts=watts,
             price_per_kwh=(price or None) if fx_ok else None,
             dedicated=True,
+            heat=heat,
+            heating_share=_heating_share(heat, today),
         )
         gross_basis = _gross_basis(service)
         if gross_basis == "accrued" and device["monthly_gross"] is not None:
@@ -11123,7 +11208,11 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
             watts=watts,
             gross_basis=gross_basis,
             break_even_tariff=_break_even_local(device.get("break_even_price_per_kwh"), tariff_currency),
+            expected=await _expected_earnings(
+                slug, service, credited_days=covered.get(slug) if device["monthly_gross"] is not None else None
+            ),
         )
+        _add_heat_fields(device, config, heat_prefix, tariff_currency)
         assessed.append(device)
 
     summary = machine_economics.fleet_summary(assessed)
@@ -11667,7 +11756,9 @@ async def api_payout_balances(request: Request) -> dict[str, Any]:
     wanted = [
         row
         for row in registry["entries"]
-        if row.get("model") == "external" and row.get("address") and row.get("chain") in onchain.CHAINS
+        if row.get("model") == "external"
+        and row.get("address")
+        and (row.get("chain") in onchain.CHAINS or row.get("chain") in onchain.PRIVATE_CHAINS)
     ]
     results = await onchain.balances([(row["chain"], row["address"]) for row in wanted])
 
@@ -11677,14 +11768,19 @@ async def api_payout_balances(request: Request) -> dict[str, Any]:
         # whole reason the reader uses Decimal in the first place -- a float here
         # would undo it at the last step.
         amount = result.get("amount")
-        balances[row["slug"]] = {**result, "amount": None if amount is None else str(amount)}
+        pending = result.get("pending")
+        balances[row["slug"]] = {
+            **result,
+            "amount": None if amount is None else str(amount),
+            "pending": None if pending is None else str(pending),
+        }
 
     return {
         "balances": balances,
         # Named so the UI can say "3 of 5 addresses could not be checked"
         # instead of quietly showing fewer rows than it did a moment ago.
-        "checked": len(wanted),
-        "unreadable": sum(1 for r in results if r.get("state") != onchain.KNOWN),
+        "checked": sum(row["chain"] in onchain.CHAINS for row in wanted),
+        "unreadable": sum(r.get("state") in (onchain.UNREACHABLE, onchain.INVALID) for r in results),
     }
 
 
@@ -11986,6 +12082,57 @@ def _device_watts(config: dict[str, Any], slug: str) -> float | None:
     return watts if math.isfinite(watts) and watts >= 1 else None
 
 
+async def _expected_earnings(
+    slug: str, service: dict[str, Any], *, credited_days: int | None = None
+) -> dict[str, Any] | None:
+    """What the pool's reported hashrate should earn in 30 days, on average.
+
+    An ESTIMATE from the network's difficulty and recent block rewards, before
+    the pool's fee and luck. It is shown next to what the pool credited, never
+    as money owed. Bitcoin pools only, and only when the pool's own answer
+    carried a hashrate. None when there is nothing to estimate from; a network
+    read that failed says so rather than estimating 0.
+
+    The credited figure sums only the priced deltas inside the window, so a pool
+    tracked for 3 days has 3 days of credit, and days around an unpriced reading
+    have none. ``credited_days`` is the number of days those deltas cover (from
+    ``get_earned_by_platform``), and ``credited_days_coin`` / ``_usd`` the
+    estimate for as many days, so the two figures on the row always cover the
+    same length of time.
+    """
+    reading = _pool_hashrate.get(slug)
+    currency = str((service.get("payment") or {}).get("currency") or "").upper()
+    if reading is None or currency != "BTC":
+        return None
+    hashrate, measured_at = reading
+    out: dict[str, Any] = {"estimate": True, "currency": "BTC", "hashrate_hs": hashrate, "measured_at": measured_at}
+    stats = await network_stats.bitcoin()
+    if stats["state"] != network_stats.KNOWN:
+        return out | {"state": stats["state"], "detail": stats.get("detail")}
+    per_day = network_stats.expected_btc_per_day(hashrate, stats["difficulty"], stats["reward_btc_per_block"])
+
+    def priced(coin: float) -> dict[str, Any]:
+        usd = exchange_rates.to_usd(coin, "BTC")
+        return {"coin": round(coin, 8), "usd": round(usd, 4) if usd is not None else None}
+
+    month = priced(per_day * 30)
+    out |= {
+        "state": network_stats.KNOWN,
+        "monthly_coin": month["coin"],
+        "monthly_usd": month["usd"],
+        "source": stats["source"],
+        "credited_days": None,
+    }
+    if credited_days is not None and credited_days >= 1:
+        period = priced(per_day * credited_days)
+        out |= {
+            "credited_days": credited_days,
+            "credited_days_coin": period["coin"],
+            "credited_days_usd": period["usd"],
+        }
+    return out
+
+
 def _gross_basis(service: dict[str, Any]) -> str:
     return "accrued" if (service.get("collector") or {}).get("accrual") == "pool" else "earned"
 
@@ -12003,6 +12150,66 @@ def _break_even_local(usd_per_kwh: float | None, tariff_currency: str) -> dict[s
     if local is None:
         return {"price_per_kwh": usd_per_kwh, "currency": "USD"}
     return {"price_per_kwh": round(local, 4), "currency": tariff_currency}
+
+
+_HEAT_SUFFIXES = ("heat", "heat_cop", "heat_price", "heat_months")
+
+
+def _heat_setting(config: dict[str, Any], prefix: str, tariff_currency: str) -> dict[str, Any] | None:
+    """The parsed heat setting under ``prefix``, with a fuel price in USD.
+
+    The fuel price is typed in the tariff's currency and every figure here is
+    USD. With no rate there is no credit: converting it by guess would be the
+    two-currency subtraction this endpoint already refuses for the tariff.
+    """
+    heat = machine_economics.parse_heat(config, prefix)
+    if heat is None or heat["source"] != "fuel" or tariff_currency == "USD":
+        return heat
+    usd = exchange_rates.to_usd(heat["price"], tariff_currency)
+    return None if usd is None else {**heat, "price": usd}
+
+
+def _heating_share(heat: dict[str, Any] | None, today: Any) -> float:
+    return machine_economics.heating_share(heat["months"], today) if heat else 0.0
+
+
+def _add_heat_fields(row: dict[str, Any], config: dict[str, Any], prefix: str, tariff_currency: str) -> None:
+    """The keys the Fleet heat form posts to, what is stored there, and the
+    heating-months break-even in the tariff's currency."""
+    row["heat_prefix"] = prefix
+    settings = {suffix: str(config.get(f"{prefix}_{suffix}") or "").strip() for suffix in _HEAT_SUFFIXES}
+    # Shown the way the credit reads them, so "Resistive" or "01,11" stored by
+    # an import or a raw API call does not show the form as something else.
+    settings["heat"] = settings["heat"].lower()
+    months = machine_economics.parse_heat_months(settings["heat_months"])
+    if months is not None:
+        settings["heat_months"] = ",".join(str(month) for month in sorted(months))
+    row["heat_settings"] = settings
+    row["break_even_tariff_heating"] = _break_even_local(row.get("break_even_price_per_kwh_heating"), tariff_currency)
+
+
+_HEAT_KEY = re.compile(r"^((?:worker_|power_device_).+)_heat(?:_months)?$")
+
+
+def _refuse_heat_without_months(sanitized: dict[str, str], before: dict[str, Any]) -> None:
+    """Saving a heat source with no months is refused, never filled in.
+
+    Users are worldwide, and the southern hemisphere heats in June, so no
+    month list is a safe default. A credit with none would be a guess. Judged
+    on the merged config, so clearing the months of a saved source is refused
+    too.
+    """
+    merged = {**before, **sanitized}
+    for key in sanitized:
+        match = _HEAT_KEY.match(key)
+        if not match:
+            continue
+        prefix = match.group(1)
+        source = str(merged.get(f"{prefix}_heat") or "").strip().lower()
+        if source in ("", "none"):
+            continue
+        if machine_economics.parse_heat_months(merged.get(f"{prefix}_heat_months")) is None:
+            raise HTTPException(status_code=400, detail="Pick the months you heat.")
 
 
 # ---------------------------------------------------------------------------
@@ -12287,6 +12494,7 @@ async def api_set_config(
 ) -> dict[str, str]:
     sanitized = {k: _sanitize_credential(v) for k, v in body.data.items()}
     before = await database.get_config() or {}
+    _refuse_heat_without_months(sanitized, before)
     await database.set_config_bulk(sanitized)
     # Settings posts every prefilled field on the page, so a removed service's
     # unchanged email would bring it back as "balance only". A value that

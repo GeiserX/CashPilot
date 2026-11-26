@@ -26,7 +26,7 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 import httpx  # noqa: E402
 import pytest  # noqa: E402
 
-from app import log_redaction, notify  # noqa: E402
+from app import log_redaction, network_stats, notify, onchain  # noqa: E402
 from app.collectors import base, twominers  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,6 +87,29 @@ async def test_herominers_request_logs_omit_the_payout_address(redacting, caplog
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "address", ["bc1q4efd2vns8qwawg3nt4xxzs9053shh0q3x0tuu9", "1BoatSLRHtKNngkdXEeobR76b53LETtpyT"]
+)
+async def test_ocean_request_logs_omit_the_payout_address(redacting, caplog, address):
+    """The OCEAN read is also where the expected-earnings hashrate comes from."""
+    reason = f"Unknown {address.upper()}".encode()
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json={}, extensions={"reason_phrase": reason}))
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with httpx.AsyncClient(transport=transport) as client:
+            await client.get(f"https://api.ocean.xyz/v1/statsnap/{address}")
+
+    assert address.lower() not in caplog.text.lower()
+    assert "https://api.ocean.xyz/v1/statsnap/<redacted>" in caplog.text
+
+
+def test_an_ocean_path_without_an_address_stays_readable(redacting, caplog):
+    line = 'HTTP Request: GET https://api.ocean.xyz/v1/blocks/1 "HTTP/1.1 200 OK" took 1.21s'
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("httpx").info(line)
+    assert line in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_2miners_request_logs_omit_the_payout_address(redacting, caplog):
     address = "0x00109777bdc6d6a658097ed6b6167569ee1f4ec1"
     endpoint = "https://etc.2miners.com/api/accounts"
@@ -116,6 +139,109 @@ async def test_2miners_refusal_keeps_the_payout_address_out_of_logs_and_alerts(r
     assert address not in result.error.lower()
     assert address not in caplog.text.lower()
     assert "https://etc.2miners.com/api/accounts/<redacted>" in caplog.text
+
+
+FAKE_NODE_TOKEN = "fake-node-access-token-not-real-0000"
+ONCHAIN_BTC = "bc1q0pp74ghs25vpn2ah6auz4vkehvzy8z8ddyzts7"
+ONCHAIN_KAS = "kaspa:qz0efmwpt789garsw290g47865tz73pwdm3fufqxymchvun9u8tjxlc3ue4s5"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("chain", "address"),
+    [("bitcoin", ONCHAIN_BTC), ("kaspa", ONCHAIN_KAS), ("ethereum", "0x" + "ab" * 20)],
+)
+@pytest.mark.parametrize(
+    "override",
+    [
+        f"https://node.example/v3/{FAKE_NODE_TOKEN}",
+        # endpoint() strips the trailing slash before the request is built.
+        f"https://node.example/v3/{FAKE_NODE_TOKEN}/",
+        # httpx lowercases the host, drops a default port and percent-encodes a space.
+        f"https://Node.Example:443/v3/{FAKE_NODE_TOKEN} x",
+    ],
+)
+async def test_a_token_in_an_onchain_endpoint_path_is_not_logged(
+    redacting, caplog, monkeypatch, chain, address, override
+):
+    """CASHPILOT_ONCHAIN_URL_<CHAIN> may be a private node URL with its access token in the path."""
+    sent = []
+
+    def answer(request):
+        sent.append(str(request.url))
+        return httpx.Response(503)
+
+    onchain.reset_state()
+    monkeypatch.setenv(onchain.CHAINS[chain].endpoint_variable, override)
+    with caplog.at_level(logging.INFO):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as client:
+            result = await onchain.balance(chain, address, client=client)
+    onchain.reset_state()
+
+    assert result["state"] == onchain.UNREACHABLE
+    # The endpoint still works: the request went to the configured path.
+    assert sent and FAKE_NODE_TOKEN in sent[0]
+    assert "HTTP Request:" in caplog.text
+    assert FAKE_NODE_TOKEN not in caplog.text
+    assert "https://node.example/<redacted>" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_token_in_the_bitcoin_endpoint_is_not_logged_by_the_network_stats_read(redacting, caplog, monkeypatch):
+    """The expected-earnings read uses the same Bitcoin endpoint, so the same redaction must cover it."""
+    sent = []
+
+    def answer(request):
+        sent.append(str(request.url))
+        return httpx.Response(503)
+
+    network_stats.reset_state()
+    monkeypatch.setenv("CASHPILOT_ONCHAIN_URL_BITCOIN", f"https://node.example/v3/{FAKE_NODE_TOKEN}")
+    with caplog.at_level(logging.INFO):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as client:
+            result = await network_stats.bitcoin(client=client)
+    network_stats.reset_state()
+
+    assert result["state"] == network_stats.UNREACHABLE
+    assert sent and FAKE_NODE_TOKEN in sent[0]
+    assert "HTTP Request:" in caplog.text
+    assert FAKE_NODE_TOKEN not in caplog.text
+    assert "https://node.example/<redacted>/v1/mining/hashrate/3d" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "address", "echoed"),
+    [
+        ("/api/address/{}", ONCHAIN_BTC, ONCHAIN_BTC.upper()),
+        ("/addresses/{}/balance", ONCHAIN_KAS, ONCHAIN_KAS),
+        ("/addresses/{}/balance", ONCHAIN_KAS.replace(":", "%3A"), ONCHAIN_KAS),
+        ("/addresses/{}/balance", ONCHAIN_KAS, ONCHAIN_KAS.replace(":", "%3a")),
+    ],
+)
+async def test_an_onchain_address_echoed_in_the_reason_phrase_is_not_logged(redacting, caplog, path, address, echoed):
+    reason = f"Refused address {echoed}".encode()
+    transport = httpx.MockTransport(lambda _: httpx.Response(403, extensions={"reason_phrase": reason}))
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with httpx.AsyncClient(transport=transport) as client:
+            await client.get(f"https://node.local{path.format(address)}")
+
+    payload = ONCHAIN_KAS[6:] if "kaspa" in address else address
+    assert payload.lower() not in caplog.text.lower()
+    assert f"https://node.local{path.format('<redacted>')}" in caplog.text
+    assert 'Refused address <redacted>"' in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("address", ["0x" + "cd" * 20, "4" + "B" * 94])
+async def test_unmineable_request_logs_omit_the_payout_address(redacting, caplog, address):
+    endpoint = "https://api.unminable.com/v4/address"
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with _MockedClient() as client:
+            await client.get(f"{endpoint}/{address}", params={"coin": "SHIB"})
+
+    assert address not in caplog.text
+    assert f"{endpoint}/<redacted>?coin=SHIB" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -254,6 +380,20 @@ class TestAnyClientRequest:
         )
         assert FAKE_BOT_TOKEN not in record.stack_info
         assert "bot<redacted>/sendMessage" in record.stack_info
+
+    @pytest.mark.parametrize(
+        ("path", "address"),
+        [
+            ("/api/address/{}", "bc1q0pp74ghs25vpn2ah6auz4vkehvzy8z8ddyzts7"),
+            ("/api/address/{}", "bc1sw50qgdz25j"),
+            ("/addresses/{}/balance", "kaspa:qz0efmwpt789garsw290g47865tz73pwdm3fufqxymchvun9u8tjxlc3ue4s5"),
+        ],
+    )
+    def test_onchain_addresses_are_redacted_on_public_or_local_explorers(self, redacting, caplog, path, address):
+        with caplog.at_level(logging.INFO):
+            logging.getLogger("httpx").info("HTTP Request: GET %s", f"http://node.local{path.format(address)}")
+        assert address not in caplog.text
+        assert f"http://node.local{path.format('<redacted>')}" in caplog.text
 
     def test_an_ordinary_line_is_left_alone(self, redacting, caplog):
         with caplog.at_level(logging.INFO):

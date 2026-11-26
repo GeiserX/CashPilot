@@ -641,6 +641,15 @@ def service_instances(slug: str, client: Any = None) -> list[Any]:
     return sorted((c for c in found if not is_proxied(c)), key=_instance_of)
 
 
+class ContainerNotFoundError(ValueError):
+    """No managed container is this copy of the service (from _find_container).
+
+    A ValueError, so every caller that catches one still does. The scale-down
+    route tells it apart, so the UI can retire a copy only when the worker
+    itself looked and found nothing.
+    """
+
+
 def _find_container(slug: str, instance: int = 1):
     """Find a MANAGED container by name, falling back to label-based lookup.
 
@@ -678,7 +687,9 @@ def _find_container(slug: str, instance: int = 1):
     for match in matches:
         if not is_proxied(match) and _instance_of(match) == instance:
             return match
-    raise ValueError(f"Container for {slug} not found" if instance <= 1 else f"Instance {instance} of {slug} not found")
+    raise ContainerNotFoundError(
+        f"Container for {slug} not found" if instance <= 1 else f"Instance {instance} of {slug} not found"
+    )
 
 
 def _normalize_resources(resources: Any) -> dict[str, Any]:

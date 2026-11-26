@@ -106,6 +106,7 @@ class OceanCollector(BaseCollector):
                 balance=float(unpaid),
                 currency="BTC",
                 warning=_warning(result),
+                hashrate=_hashrate(result),
             )
         except Exception as exc:
             base.log_failure(logger, "OCEAN", exc)
@@ -121,6 +122,12 @@ def _decimal(value: object) -> Decimal | None:
     except InvalidOperation:
         return None
     return number if number.is_finite() else None
+
+
+def _hashrate(result: dict) -> float | None:
+    """OCEAN's 5-minute hashrate for the address, in H/s, or None."""
+    value = _decimal(result.get("hashrate_300s"))
+    return float(value) if value is not None and value >= 0 else None
 
 
 def _warning(result: dict, now: float | None = None) -> str | None:

@@ -37,7 +37,7 @@ docker:
       identifier: true
       pattern: '[A-Za-z0-9_\-]{1,32}'
     - key: CPU_PERCENT
-      label: CPU thread target (%)
+      label: Max CPU threads (%)
       default: "50"
       pattern: '100|[1-9][0-9]?'
     - key: RANDOMX_MODE
@@ -49,6 +49,43 @@ docker:
     --donate-level=1 --cpu-max-threads-hint=${CPU_PERCENT} --cpu-priority=0
     --randomx-mode=${RANDOMX_MODE} --randomx-wrmsr=-1 --randomx-no-numa --http-host=127.0.0.1
     --http-port=18088 --keepalive --no-color --print-time=300
+  # CPU_PERCENT is a cap: that share of the container's CPU threads, rounded
+  # down, at least 1. XMRig's --cpu-max-threads-hint alone is not one. Its
+  # arm64 build ignores it and starts every thread, and on x86 it rounds to
+  # the nearest count. So on arm64 the wrapper adds --threads. On x86 it adds
+  # a second hint that XMRig rounds to the same count, because there the hint
+  # also keeps XMRig's own limit of threads that fit the CPU cache, and
+  # --threads would drop it. But XMRig follows the hint only when its cache
+  # pass finds room for at least one hash. With no cache size, as on some
+  # virtual machines, or with a top cache too small for one scratchpad (up to
+  # 4 MiB, cn-heavy), it ignores the hint and starts half the threads. So x86
+  # keeps the hint only when sysfs, where hwloc reads cache sizes, shows an L3
+  # of at least 2048K, and gets --threads otherwise. hwloc can also read sizes
+  # from CPUID, so the check errs toward --threads, which still caps. A hint
+  # has 1% steps, so above 100 threads x86 gets --threads too. At 100, or if
+  # nproc fails, the wrapper adds nothing.
+  entrypoint:
+    - /bin/sh
+    - -c
+    - >-
+      case "${CPU_PERCENT-}" in [1-9]|[1-9][0-9])
+      n=$(nproc 2>/dev/null);
+      case "$n" in ''|0*|*[!0-9]*) ;;
+      *) t=$((n * CPU_PERCENT / 100)); [ "$t" -ge 1 ] || t=1;
+      c=no;
+      for f in /sys/devices/system/cpu/cpu[0-9]*/cache/index[0-9]*/size; do
+      read s 2>/dev/null <"$f" && read l 2>/dev/null <"${f%size}level" &&
+      case "$l:$s" in 3:[1-9]*K) [ "${s%K}" -ge 2048 ] 2>/dev/null && { c=yes; break; } ;; esac;
+      done;
+      case "$(uname -m 2>/dev/null):$c:$n" in
+      x86_64:yes:[1-9]|x86_64:yes:[1-9][0-9]|x86_64:yes:100)
+      set -- "$@" "--cpu-max-threads-hint=$(((200 * t + n) / (2 * n)))" ;;
+      *) set -- "$@" "--threads=$t" ;;
+      esac ;;
+      esac ;;
+      esac;
+      exec /usr/local/bin/xmrig "$@"
+    - --
 
 mining:
   dev_fee_percent: 1

@@ -30,8 +30,13 @@ Monero address. Keep your wallet keys and recovery phrase in your wallet.
 4. Leave **Pool** set to MoneroOcean or enter another pool's host and port. For
    SupportXMR you can use `stratum+ssl://pool.supportxmr.com:9000`. Check its
    current fees and threshold in the [SupportXMR guide](supportxmr.md).
-5. Set a **CPU thread target (%)**. XMRig can ignore this hint when the host
-   reports incomplete CPU topology. Check the thread count in the logs.
+5. Set **Max CPU threads (%)**. CashPilot starts that share of the machine's
+   CPU threads, rounded down and at least one. For example, 17% of 6 threads
+   is 1 thread and 50% is 3. At 100, XMRig picks the count itself. The log
+   line `READY threads` shows how many threads mine. On x86, XMRig can start
+   fewer when fewer fit in the CPU cache. If the machine reports no L3 cache
+   of at least 2 MB, as some virtual machines and small CPUs do, CashPilot
+   sets the thread count directly, so the cap still holds.
 6. Deploy and check the logs for a pool connection and accepted shares. Pool
    credit and payout can take longer.
 

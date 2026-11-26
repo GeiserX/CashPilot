@@ -78,11 +78,14 @@ What a cited con or pro may rest on:
 | <a href="#storj">Storj</a> | D | 9 of 20 | 3 | <span class="ratings-con" title="CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.">CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.</span> | 2026-11-04 |
 | <a href="#xmrig">XMRig (Monero CPU mining)</a> | D | 9 of 20 | 4 | <span class="ratings-con" title="A payout requires enough XMR to meet your pool threshold.">A payout requires enough XMR to meet your pool threshold.</span> | 2026-11-25 |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | <span class="ratings-con" title="The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.">The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.</span> | 2026-11-04 |
+| <a href="#srbminer-multi">SRBMiner-Multi (GPU mining)</a> | D | 8 of 20 | 4 | <span class="ratings-con" title="The miner keeps 2% of hashing time on Pearl and 0.85% on Zano and Ravencoin.">The miner keeps 2% of hashing time on Pearl and 0.85% on Zano and Ravencoin.</span> | 2026-11-26 |
+| <a href="#unmineable">unMineable (CPU mining, paid in your coin)</a> | D | 8 of 20 | 4 | <span class="ratings-con" title="unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin&#x27;s threshold.">unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin's threshold.</span> | 2026-11-26 |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | <span class="ratings-con" title="EarnApp&#x27;s help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.">EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.</span> | 2026-11-04 |
 | <a href="#golem">Golem Network</a> | D | 7 of 20 | 6 | <span class="ratings-con" title="CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.">CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.</span> | 2026-11-04 |
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | <span class="ratings-con" title="Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days.">Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days.</span> | 2026-11-04 |
 | <a href="#anyone-protocol">Anyone Protocol</a> | F | 6 of 20 | 5 | <span class="ratings-con" title="A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet.">A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet.</span> | 2026-11-04 |
 | <a href="#bytelixir">Bytelixir</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin.">Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin.</span> | 2026-11-04 |
+| <a href="#kryptex-pearl">Kryptex Pool (Pearl)</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Kryptex can suspend inactive accounts at six months and delete them at one year.">Kryptex can suspend inactive accounts at six months and delete them at one year.</span> | 2026-11-25 |
 | <a href="#noderr">Noderr Micronodes</a> | F | 6 of 20 | 4 | <span class="ratings-con" title="Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target.">Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target.</span> | 2026-11-04 |
 | <a href="#proxybase-xyz">ProxyBase Markets</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Payouts are USDC on Tempo Chain, to any EVM address whose key you hold.">Payouts are USDC on Tempo Chain, to any EVM address whose key you hold.</span> | 2026-11-04 |
 | <a href="#repocket">Repocket</a> | F | 6 of 20 | 2 | <span class="ratings-con" title="Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to negative reviews.">Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to negative reviews.</span> | 2026-11-04 |
@@ -351,6 +354,68 @@ What a cited con or pro may rest on:
 - The terms name the operator, Honeygain UAB, registered in Vilnius, Lithuania. [Source](https://www.honeygain.com/terms-of-use/), checked 2026-11-04.
 - Honeygain's press page says it was founded in 2019. [Source](https://www.honeygain.com/press-area/), checked 2026-11-04.
 
+<a id="srbminer-multi"></a>
+
+### SRBMiner-Multi (GPU mining)
+
+**Grade D**, 8 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-26. Setup guide: [SRBMiner-Multi (GPU mining)](guides/srbminer-multi.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The pool pays the wallet. We have not run the miner on a GPU or seen a payout yet. |
+| Payout terms | Fair | The pool sets its payout threshold and fee. The miner keeps a share of hashing time. |
+| Account safety | Unknown | Pool restrictions vary. We did not review account enforcement across pools. |
+| Fit with how CashPilot runs it | Fair | CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS. |
+| Traffic transparency | Good | The miner submits work to the pool over an outbound connection. |
+| Privacy | Fair | The miner is closed source. The pool sees your payout address, worker name and IP address. |
+| Identity checks | Good | HeroMiners lets a miner connect with a public Pearl address. |
+| Support | Unknown | We did not test support for the miner or the pools. |
+| Earnings realism | Fair | Pearl is a new coin. Its price, difficulty and your power price decide the result. |
+| Longevity | Unknown | Pearl launched in 2026. We did not review its long-term prospects. |
+
+**Cons**
+
+- The miner keeps 2% of hashing time on Pearl and 0.85% on Zano and Ravencoin. [Source](https://github.com/doktor83/SRBMiner-Multi/blob/3.9.0/README.md), checked 2026-11-26.
+- Some hosting providers prohibit cryptocurrency mining. [Source](https://www.hetzner.com/legal/cloud-server/), checked 2026-11-26.
+- The miner is closed source, so nobody outside its developer can audit what it runs. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/srbminer-multi/README.md), checked 2026-11-26.
+- The GPU's electricity can cost more than the coins earned, and Pearl's price moves fast. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/srbminer-multi.md), checked 2026-11-26.
+
+**Pros**
+
+- The miner sends work to the pool and does not relay anyone else's traffic. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/srbminer-multi/README.md), checked 2026-11-26.
+- You can mine Pearl on HeroMiners with a public address and no account. [Source](https://pearl.herominers.com/how-to-mine-pearl-prl/), checked 2026-11-26.
+
+<a id="unmineable"></a>
+
+### unMineable (CPU mining, paid in your coin)
+
+**Grade D**, 8 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-26. Setup guide: [unMineable (CPU mining, paid in your coin)](guides/unmineable.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We tested pool shares and read the balance. We did not verify a payout. |
+| Payout terms | Fair | Paid in the coin you choose once its threshold is reached, after a 0.75% platform fee with the referral code. |
+| Account safety | Unknown | We did not review how unMineable handles disputes or withheld balances. |
+| Fit with how CashPilot runs it | Fair | CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS. |
+| Traffic transparency | Good | The miner submits shares to unMineable over one outbound connection. |
+| Privacy | Fair | The miner is open source. Address stats are public on unmineable.com by design. |
+| Identity checks | Good | unMineable lets a worker mine to a public address without an account. |
+| Support | Unknown | We did not test unMineable's support. |
+| Earnings realism | Fair | Hashrate, electricity prices and unMineable's conversion rate vary. |
+| Longevity | Unknown | We did not review unMineable's long-term operation. |
+
+**Cons**
+
+- unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin's threshold. [Source](https://unmineable.com/referrals), checked 2026-11-26.
+- Some hosting providers prohibit cryptocurrency mining. [Source](https://www.hetzner.com/legal/cloud-server/), checked 2026-11-26.
+- The extra electricity can cost more than the coins earned. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md), checked 2026-11-26.
+- Address stats, including the balance, are public to anyone who knows the address. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md), checked 2026-11-26.
+
+**Pros**
+
+- The miner sends hashes to the pool and does not relay anyone else's traffic. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md), checked 2026-11-26.
+- You can mine to a public address in the coin you choose without creating an account. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md), checked 2026-11-26.
+
 <a id="earnapp"></a>
 
 ### EarnApp
@@ -501,6 +566,35 @@ What a cited con or pro may rest on:
 
 - Trustpilot rates it 4.6 from 283 reviews, most of them praising crypto payouts; a few report payouts not arriving. [Source](https://www.trustpilot.com/review/bytelixir.com), checked 2026-11-04.
 - A payout needs only a crypto address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
+
+<a id="kryptex-pearl"></a>
+
+### Kryptex Pool (Pearl)
+
+**Grade F**, 6 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [Kryptex Pool (Pearl)](guides/kryptex-pearl.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Kryptex publishes a payout status guide. Actual payouts remain unverified. |
+| Payout terms | Fair | Kryptex holds a BTC balance and charges fees that vary by withdrawal method. |
+| Account safety | Fair | The terms give six months before Kryptex can suspend an inactive account. |
+| Fit with how CashPilot runs it | Good | The KRig release license permits downloads and use by mining software. |
+| Traffic transparency | Good | Kryptex documents the TLS endpoint where KRig submits Pearl shares. |
+| Privacy | Unknown | The pool guide documents the email and worker name. Data handling beyond that remains unverified. |
+| Identity checks | Unknown | Kryptex documents email verification for mining. Withdrawal identity checks remain unverified. |
+| Support | Unknown | Kryptex lists support channels. Response times remain unverified. |
+| Earnings realism | Unknown | Kryptex publishes a hashrate calculator. Its estimate remains untested on CashPilot hardware. |
+| Longevity | Unknown | Kryptex publishes release notes. Long-term payout continuity remains unverified. |
+
+**Cons**
+
+- Kryptex can suspend inactive accounts at six months and delete them at one year. [Source](https://www.kryptex.com/terms-and-conditions), checked 2026-11-25.
+- Withdrawal minimums and fees vary by method. [Source](https://www.kryptex.com/en/fees), checked 2026-11-25.
+
+**Pros**
+
+- KRig's license permits downloading the release and running it from mining software. [Source](https://github.com/kryptex/krig-miner/blob/v1.8.2/LICENSE), checked 2026-11-25.
+- KRig uses a published TLS endpoint to submit Pearl shares to Kryptex Pool. [Source](https://pool.kryptex.com/en/prl), checked 2026-11-25.
 
 <a id="noderr"></a>
 

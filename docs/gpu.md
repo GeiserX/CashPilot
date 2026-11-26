@@ -80,8 +80,19 @@ deploy and says what it found. The running container is not touched.
   and Intel are refused on WSL.
 - **Docker VMs without GPU passthrough.** When the worker's PCI read shows no
   GPU of the requested vendor, it refuses the deploy.
+- **Docker on another machine.** sysfs describes the machine the worker runs
+  on. When `DOCKER_HOST` names a network endpoint (`tcp://`, `ssh://`), Docker
+  may run elsewhere, so the worker says it cannot tell. It reads sysfs only for
+  a Unix socket, which is what the shipped compose files use.
+- **A read that fails part way.** An empty or unreadable sysfs file means the
+  worker cannot tell, never "no GPU". Only a complete read refuses a deploy for
+  a missing vendor.
 - **More than 8 render nodes.** Only `renderD128` to `renderD135` are passed in.
   SR-IOV virtual functions count as GPUs.
+
+When the worker cannot tell, it still passes an NVIDIA request, which Docker
+checks at start. It refuses AMD and Intel, because it cannot pick their render
+node.
 
 ## Your compose file
 
@@ -90,7 +101,18 @@ feature, the worker refuses a GPU service's deploy with the command that updates
 the policy ([upgrading](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md)).
 Nothing else is affected.
 
-A service exported as a Compose file carries the same request: a
-`deploy.resources.reservations.devices` entry for NVIDIA, or
-`/dev/dri/renderD128` (and `/dev/kfd` for ROCm) for AMD and Intel. Compose cannot
-read sysfs, so change the render node if yours has another number.
+A service exported as a Compose file carries the same request. For NVIDIA it
+is a `deploy.resources.reservations.devices` entry. For AMD and Intel it is the
+render node a deploy on that worker would pass in (and `/dev/kfd` for ROCm).
+That node differs between machines: on a box with an Intel iGPU and an AMD card,
+`renderD128` is often the iGPU. So name the worker the file is for:
+
+```
+GET  /api/compose/<slug>?worker_id=<id>
+POST /api/compose            {"slugs": ["<slug>"], "worker_id": <id>}
+```
+
+The export reads the node from that worker's last heartbeat. Without a worker,
+or when the worker cannot tell, the export of an AMD or Intel service is
+refused with the reason. The export of every service (`GET /api/compose`)
+leaves such a service out instead.

@@ -168,8 +168,8 @@ function deviceFixture() {
   let stored = '10', markup = '', editor, submit, pendingNet;
   const card = {style: {}};
   const body = {
-    querySelectorAll: () => editor ? [editor] : [],
-    addEventListener: (_, handler) => { submit = handler; },
+    querySelectorAll: selector => selector === '.power-device-watts' && editor ? [editor] : [],
+    addEventListener: (type, handler) => { if (type === 'submit') submit = handler; },
     set innerHTML(value) {
       markup = value;
       const raw = value.match(/data-slug="ocean" value="([^"]*)"/)?.[1];
@@ -256,6 +256,185 @@ check('a future miner timestamp is grey with a clock hint', ahead.includes('cell
 const missed = renderMiner({...miner, ok: false, error: 'timed out'});
 check('a failed reading has no figures', missed.includes('timed out') && !missed.includes('TH/s') && !missed.includes(' J/TH'), missed);
 check('a worker with no configuration has no miner panel', renderMiners(onlineBox, undefined) === '', 'unexpected miner panel');
+
+// Heat credit. The form must never prefill months, must refuse a source with
+// none, must post the four keys under the row's own prefix, and a touched form
+// must survive the Fleet refresh.
+function heatFixture({owner = true, row = {}, net = {services: []}} = {}) {
+  const posts = [], toasts = [], handlers = {};
+  let markup = '', renders = 0, form = null;
+  const card = {style: {}};
+  const build = value => {
+    const block = value.match(/<form class="heat-form"[\s\S]*?<\/form>/)?.[0];
+    if (!block) return null;
+    const attr = re => block.match(re)?.[1];
+    const months = [...block.matchAll(/class="heat-month" value="(\d+)"( checked)?/g)]
+      .map(([, value, checked]) => ({value, checked: Boolean(checked)}));
+    const fields = {
+      '.heat-source': {value: attr(/<option value="(\w+)" selected>/) ?? 'none', classList: {contains: c => c === 'heat-source'}},
+      '.heat-cop': {value: attr(/heat-cop" value="([^"]*)"/) ?? ''},
+      '.heat-price': {value: attr(/heat-price" value="([^"]*)"/) ?? ''},
+      '.heat-cop-field': {hidden: /class="heat-cop-field" hidden/.test(block)},
+      '.heat-price-field': {hidden: /class="heat-price-field" hidden/.test(block)},
+      button: {disabled: false},
+    };
+    const f = {
+      dataset: {prefix: attr(/data-prefix="([^"]*)"/)},
+      months,
+      fields,
+      querySelector: selector => fields[selector],
+      querySelectorAll: selector => selector === '.heat-month' ? months : [],
+      matches: () => false,
+      closest: selector => selector === '.heat-form' ? f : null,
+    };
+    for (const field of Object.values(fields)) field.closest = selector => selector === '.heat-form' ? f : null;
+    return f;
+  };
+  const body = {
+    querySelectorAll: selector => selector === '.heat-form' && form ? [form] : [],
+    addEventListener: (type, handler) => { handlers[type] = handler; },
+    set innerHTML(value) { markup = value; renders++; form = build(value); },
+  };
+  const document = {getElementById: id => ({'fleet-economics-card': card, 'fleet-economics-body': body}[id])};
+  const api = async (path, options) => {
+    if (path === '/api/config') { posts.push(options.body.data); return {}; }
+    if (path === '/api/fleet/economics') {
+      return {tariff_currency: 'EUR', tariff_price_per_kwh: 0.25, machines: [{
+        kind: 'machine', machine: 'Rig', summary: 'Rig earns.', monthly_gross: 1, monthly_cost: 2,
+        monthly_net: 0.5, heat_credit: 1.5, heat: {source: 'heat_pump', months: [11, 12], cop: 3},
+        heat_prefix: 'worker_rig', heat_settings: {heat: 'heat_pump', heat_cop: '3', heat_price: '', heat_months: '11,12'},
+        break_even_tariff: {price_per_kwh: 0.069, currency: 'EUR'},
+        break_even_tariff_heating: {price_per_kwh: 0.104, currency: 'EUR'},
+        heat_covers_all_in_season: false,
+        ...row,
+      }]};
+    }
+    return net;
+  };
+  const toast = (message, kind) => toasts.push([message, kind]);
+  const refresh = buildEconomics(document, {api, formatCurrency: v => `$${v}`, toast}, String, owner);
+  return {
+    refresh, posts, toasts, markup: () => markup, renders: () => renders, form: () => form,
+    submit: () => handlers.submit({target: form, preventDefault() {}}),
+    change: target => handlers.change({target}),
+  };
+}
+
+const heat = heatFixture();
+await heat.refresh();
+check('the heat credit is its own term in the figures',
+  /<span class="muted">\+<\/span>\s*<span class="econ-heat-credit"[^>]*>\$1\.5</.test(heat.markup()), heat.markup());
+check('the heat credit has its own line',
+  heat.markup().includes('Heat credit $1.5 a month: its heat replaces a heat pump in Nov, Dec'), heat.markup());
+check('the heating-months break-even is shown',
+  heat.markup().includes('in your heating months below <strong>0.104 EUR/kWh</strong>'), heat.markup());
+check('the saved months come back ticked',
+  heat.form().months.filter(m => m.checked).map(m => m.value).join(',') === '11,12', JSON.stringify(heat.form().months));
+check('only the COP field shows for a heat pump', !heat.form().fields['.heat-cop-field'].hidden
+  && heat.form().fields['.heat-price-field'].hidden, 'wrong field visibility');
+heat.form().fields['.heat-source'].value = 'fuel';
+heat.change(heat.form().fields['.heat-source']);
+check('switching to fuel shows the fuel price field', heat.form().fields['.heat-cop-field'].hidden
+  && !heat.form().fields['.heat-price-field'].hidden, 'wrong field visibility');
+const rendersBefore = heat.renders();
+await heat.refresh();
+check('a Fleet refresh keeps a touched heat form', heat.renders() === rendersBefore, 'the draft was re-rendered away');
+heat.form().fields['.heat-source'].value = 'heat_pump';
+await heat.refresh();
+check('an undone heat edit no longer holds the refresh', heat.renders() === rendersBefore + 1,
+  'a form back at its saved state still blocked the refresh');
+heat.form().fields['.heat-source'].value = 'fuel';
+await heat.refresh();
+heat.form().fields['.heat-source'].value = 'resistive';
+heat.form().months.forEach(m => { m.checked = false; });
+await heat.submit();
+check('a source with no months is refused', heat.posts.length === 0
+  && heat.toasts.some(([message]) => message === 'Pick the months you heat'), JSON.stringify([heat.posts, heat.toasts]));
+heat.form().months.find(m => m.value === '6').checked = true;
+heat.form().months.find(m => m.value === '7').checked = true;
+await heat.submit();
+check('Save posts the heat keys under the row prefix', JSON.stringify(heat.posts.at(-1)) === JSON.stringify({
+  worker_rig_heat: 'resistive', worker_rig_heat_cop: '3', worker_rig_heat_price: '', worker_rig_heat_months: '6,7',
+}), JSON.stringify(heat.posts));
+check('a saved heat form re-renders', heat.renders() > rendersBefore + 1, 'the refresh after Save was held');
+
+const fresh = heatFixture({row: {heat: null, heat_credit: undefined,
+  heat_settings: {heat: '', heat_cop: '', heat_price: '', heat_months: ''}, break_even_tariff_heating: null}});
+await fresh.refresh();
+check('months are never prefilled', fresh.form().months.length === 12 && fresh.form().months.every(m => !m.checked),
+  JSON.stringify(fresh.form().months));
+check('no heat setting, no heat term', !fresh.markup().includes('econ-heat-credit') && !fresh.markup().includes('Heat credit'),
+  fresh.markup());
+const resistive = heatFixture({row: {heat: {source: 'resistive', months: [1]}, heat_covers_all_in_season: true,
+  break_even_tariff_heating: null}});
+await resistive.refresh();
+check('resistive heat says it covers the electricity in season',
+  resistive.markup().includes('in your heating months its heat covers its whole electricity cost'), resistive.markup());
+const unknownCost = heatFixture({row: {monthly_cost: null, monthly_net: null, heat_credit: null}});
+await unknownCost.refresh();
+check('no cost, no heat credit shown', !unknownCost.markup().includes('econ-heat-credit')
+  && !unknownCost.markup().includes('Heat credit'), unknownCost.markup());
+const fixedPrice = heatFixture({row: {verdict: 'not_metered', monthly_cost: null, monthly_net: null, heat_credit: 0}});
+await fixedPrice.refresh();
+check('a fixed-price box offers no heat form', !fixedPrice.markup().includes('heat-form'), fixedPrice.markup());
+const withService = heatFixture({net: {services: [{platform: 'xmrig', cost_attributable: true, cost: 2, gross: 1, net: -1}]}});
+await withService.refresh();
+check('per-service figures say they leave out the heat credit',
+  withService.markup().includes('Per-service figures leave out the heat credit'), withService.markup());
+const noHeatService = heatFixture({row: {heat: null, heat_credit: undefined},
+  net: {services: [{platform: 'xmrig', cost_attributable: true, cost: 2, gross: 1, net: -1}]}});
+await noHeatService.refresh();
+check('no heat credit, no per-service heat note',
+  !noHeatService.markup().includes('leave out the heat credit'), noHeatService.markup());
+const heatViewer = heatFixture({owner: false});
+await heatViewer.refresh();
+check('viewers get no heat form', !heatViewer.markup().includes('heat-form'), heatViewer.markup());
+
+// Expected earnings: an estimate next to what the pool credited, never money owed.
+const poolRow = {kind: 'device', slug: 'ocean', machine: 'OCEAN', gross_basis: 'accrued', heat: null, heat_credit: undefined,
+  monthly_gross: 0.85, break_even_tariff: null, break_even_tariff_heating: null};
+const expected = heatFixture({row: {...poolRow, expected: {estimate: true, state: 'known', currency: 'BTC',
+  hashrate_hs: 1.2e12, monthly_coin: 0.0000169, monthly_usd: 0.99, source: 'mempool<b>.space',
+  credited_days: 30, credited_days_coin: 0.0000169, credited_days_usd: 0.99}}});
+await expected.refresh();
+check('the expected line shows the hashrate, the coin amount and its USD value',
+  expected.markup().includes('Expected at the hashrate the pool last reported (1.20 TH/s): <strong>0.00001690 BTC</strong> (about $0.99) in 30 days'),
+  expected.markup());
+check('the expected line says it is an estimate, not money owed',
+  expected.markup().includes('This is an estimate, not money owed.'), expected.markup());
+check('the expected line sits next to what the pool credited',
+  expected.markup().includes('The pool credited $0.85 in the last 30 days, against about $0.99 expected.'), expected.markup());
+const short = heatFixture({row: {...poolRow, monthly_gross: 0.1, expected: {estimate: true, state: 'known', currency: 'BTC',
+  hashrate_hs: 1.2e12, monthly_coin: 0.0000169, monthly_usd: 0.99, source: 'mempool.space',
+  credited_days: 3, credited_days_coin: 0.0000017, credited_days_usd: 0.099}}});
+await short.refresh();
+check('a few days of credit are compared with the estimate for the same days',
+  short.markup().includes('CashPilot has readings for 3 days: the pool credited $0.1, against about $0.099 expected for those days.')
+  && !short.markup().includes('in the last 30 days'), short.markup());
+const unpricedShort = heatFixture({row: {...poolRow, monthly_gross: 0.1, expected: {estimate: true, state: 'known',
+  currency: 'BTC', hashrate_hs: 1.2e12, monthly_coin: 0.0000169, monthly_usd: null, source: 'mempool.space',
+  credited_days: 1, credited_days_coin: 0.00000056, credited_days_usd: null}}});
+await unpricedShort.refresh();
+check('without a BTC price the same-days estimate stays in BTC',
+  unpricedShort.markup().includes('readings for 1 day: the pool credited $0.1, against about 0.00000056 BTC expected'),
+  unpricedShort.markup());
+check('the estimate source is escaped', expected.markup().includes('mempool&lt;b&gt;.space')
+  && !expected.markup().includes('mempool<b>'), expected.markup());
+const unread = heatFixture({row: {...poolRow, monthly_gross: null, expected: {estimate: true, state: 'known',
+  currency: 'BTC', hashrate_hs: 5e14, monthly_coin: 0.007, monthly_usd: null, source: 'mempool.space'}}});
+await unread.refresh();
+check('no credit read yet is said, never shown as zero',
+  unread.markup().includes('CashPilot has not read what the pool credited yet.') && unread.markup().includes('(500.00 TH/s)')
+  && !unread.markup().includes('(about'), unread.markup());
+const failed = heatFixture({row: {...poolRow, expected: {estimate: true, state: 'unreachable', currency: 'BTC',
+  hashrate_hs: 1.2e12, detail: 'ReadTimeout <x> while reading the network stats.'}}});
+await failed.refresh();
+check('a failed network read shows no expected amount',
+  failed.markup().includes('No expected figure for 1.20 TH/s: ReadTimeout &lt;x&gt;')
+  && !failed.markup().includes('Expected at the hashrate'), failed.markup());
+const none = heatFixture({row: {...poolRow, expected: null}});
+await none.refresh();
+check('no estimate, no expected line', !none.markup().includes('econ-expected'), none.markup());
 
 const fleetSource = html.slice(
   html.indexOf('  // Lazily fetch the plaintext key'),

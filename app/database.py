@@ -3778,7 +3778,9 @@ def quiet_verdict(
     return {"days_flat": days, "last_increase": ordered[-1], "since": ordered[-1], "usual_gap_days": usual_gap}
 
 
-async def get_earned_by_platform(days: int = 30, measured: set[str] | None = None) -> dict[str, float]:
+async def get_earned_by_platform(
+    days: int = 30, measured: set[str] | None = None, covered_days: dict[str, int] | None = None
+) -> dict[str, float]:
     """USD earned per platform over the trailing window.
 
     Deliberately NOT the latest balance. A balance is a running total; charging
@@ -3795,6 +3797,12 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
     MYST at $0.40 subtracts to a loss and clamps to zero, hiding 10 MYST that
     really was earned, while an unchanged balance at a risen rate invents
     earnings out of nothing.
+
+    ``covered_days`` receives, per platform, how many days the counted deltas
+    span: only the intervals between two priced readings of one series, merged
+    across series. An unpriced reading drops its baseline, so the days around it
+    earn nothing here and are not counted as covered either. Anything compared
+    with this sum must use these days, never the first-to-last reading span.
     """
     db = await _get_db()
     try:
@@ -3814,6 +3822,10 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
         # one provider account interleave into a single series whose deltas are
         # meaningless: each drop clamps to zero, so the total is understated.
         previous: dict[tuple[str, str], tuple[str, float, float | None]] = {}
+        # The day (ordinal) of each series' baseline, and the days each
+        # platform's counted deltas cover.
+        previous_day: dict[tuple[str, str], int] = {}
+        covered: dict[str, set[int]] = {}
         unpriced: set[str] = set()
         for row in rows:
             platform = row["platform"]
@@ -3826,6 +3838,7 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
             # USD is parity by definition. Trusting a stored rate on a USD row
             # would let a bad rate rewrite money the collector reported exactly.
             rate = _usd_rate(currency, row["fx_rate_usd"])
+            day = datetime.fromisoformat(str(row["date"])[:10]).toordinal()
             earned.setdefault(platform, 0.0)
 
             if rate is None:
@@ -3847,9 +3860,14 @@ async def get_earned_by_platform(days: int = 30, measured: set[str] | None = Non
                     # At least one priced delta: the 0.0 a platform starts at is
                     # a measurement now, not just the absence of one.
                     measured.add(platform)
+                if covered_days is not None:
+                    covered.setdefault(platform, set()).update(range(previous_day[series], day))
             previous[series] = (currency, balance, row["earned"])
+            previous_day[series] = day
 
         _report_unpriced(f"per-platform:{days}", unpriced, f"the {days}-day per-platform totals")
+        if covered_days is not None:
+            covered_days.update({platform: len(spanned) for platform, spanned in covered.items()})
         return earned
     finally:
         await db.close()
@@ -4720,7 +4738,9 @@ async def record_probable_payout(
         await db.close()
 
 
-async def withdraw_recovered_payout(platform: str, regained: float, within_hours: int = 24) -> bool:
+async def withdraw_recovered_payout(
+    platform: str, regained: float, within_hours: int = 24, currency: str | None = None
+) -> bool:
     """Delete a recent unconfirmed payout guess, and its alert, once the money came back.
 
     A provider that answers 0 (or a bad number) for one reading and then recovers
@@ -4736,16 +4756,22 @@ async def withdraw_recovered_payout(platform: str, regained: float, within_hours
     On the shared connection another task could commit between the two deletes
     (leaving an alert with no question behind it if the second one failed), and a
     rollback there would also throw away that task's unsaved work.
+
+    With ``currency``, only a question in that currency can be withdrawn: on a
+    multi-coin pool a rise of 500 SHIB says nothing about a 0.03 XMR payout.
     """
+    query = (
+        "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? AND detected_at >= datetime('now', ?)"
+    )
+    params: list[Any] = [platform, float(regained), f"-{int(within_hours)} hours"]
+    if currency is not None:
+        query += " AND UPPER(COALESCE(currency, 'USD')) = UPPER(?)"
+        params.append(currency or "USD")
     DB_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
         await db.execute("BEGIN IMMEDIATE")
         try:
-            cursor = await db.execute(
-                "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? "
-                "AND detected_at >= datetime('now', ?)",
-                (platform, float(regained), f"-{int(within_hours)} hours"),
-            )
+            cursor = await db.execute(query, params)
             withdrawn = cursor.rowcount > 0
             if withdrawn:
                 await db.execute("DELETE FROM alerts WHERE kind = 'payout' AND subject = ?", (platform,))
@@ -5127,22 +5153,29 @@ async def get_node_totals() -> dict[str, dict[str, Any]]:
         await db.close()
 
 
-async def get_latest_balance(platform: str) -> float | None:
+async def get_latest_balance(platform: str, currency: str | None = None) -> float | None:
     """The most recent recorded balance for a platform, or None if never seen.
 
     None matters: a first-ever reading has nothing to compare against, and
     treating an absent history as zero would make every initial collection look
     like a huge gain — or, for payout detection, make the first reading after a
     fresh install look like a drop.
+
+    With ``currency``, a latest reading in another currency is also None: a
+    multi-coin pool whose user switched coins has nothing comparable either.
     """
     db = await _get_db()
     try:
         cursor = await db.execute(
-            "SELECT balance FROM earnings WHERE platform = ? ORDER BY date DESC, id DESC LIMIT 1",
+            "SELECT balance, currency FROM earnings WHERE platform = ? ORDER BY date DESC, id DESC LIMIT 1",
             (platform,),
         )
         row = await cursor.fetchone()
-        return float(row["balance"]) if row else None
+        if row is None:
+            return None
+        if currency is not None and (row["currency"] or "USD").upper() != (currency or "USD").upper():
+            return None
+        return float(row["balance"])
     finally:
         await db.close()
 

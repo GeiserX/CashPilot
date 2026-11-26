@@ -170,6 +170,22 @@ check(
 check('unsupported is also an em dash, not an error', bUnsupported.includes('&mdash;'), bUnsupported);
 check('an invalid address says so', /not valid/i.test(bInvalid), bInvalid);
 
+const bPending = balanceCell({state: 'known', amount: '2', symbol: 'BTC', pending: '0.01', source: 'mempool.space'});
+const bSpending = balanceCell({state: 'known', amount: '2', symbol: 'BTC', pending: '-0.01'});
+const bNothingPending = balanceCell({state: 'known', amount: '0', symbol: 'BTC', pending: '0'});
+const bPrivate = balanceCell({state: 'unsupported', private: true, detail: 'Needs a private view key'});
+const bDisabled = balanceCell({state: 'unsupported', detail: 'Turned off in the UI environment'});
+const bSource = balanceCell({state: 'known', amount: '1', source: '"<host>'});
+
+check('the confirmed amount stays separate from incoming funds', bPending.includes('2 BTC</span>') && bPending.includes('(+0.01 pending)'), bPending);
+check('the confirmed amount names its source', bPending.includes('title="Read from mempool.space"'), bPending);
+check('a pending spend keeps its sign', bSpending.includes('(&minus;0.01 pending)'), bSpending);
+check('zero pending produces no pending label', !bNothingPending.includes('payout-pending'), bNothingPending);
+check('a private chain explains why it is unreadable', bPrivate.includes('private chain') && bPrivate.includes('Needs a private view key'), bPrivate);
+check('a disabled endpoint explains the dash', bDisabled.includes('&mdash;') && bDisabled.includes('Turned off'), bDisabled);
+check('the source is escaped in the tooltip', bSource.includes('&quot;&lt;host&gt;') && !bSource.includes('<host>'), bSource);
+
+
 check(
   'CONTROL: a hostile amount is escaped in the balance cell',
   !balanceCell({state: 'known', amount: '<script>x</script>', symbol: 'E'}).includes('<script>'),

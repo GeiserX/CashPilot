@@ -191,16 +191,25 @@ def format_amount(value: float, currency: str | None = None) -> str:
 
 
 def detect(
-    previous: float, current: float, service: dict[str, Any] | None, currency: str | None = None
+    previous: float,
+    current: float,
+    service: dict[str, Any] | None,
+    currency: str | None = None,
+    threshold: float | None = None,
 ) -> dict[str, Any] | None:
     """A PROBABLE payout, or None. Never a confirmed one.
 
     The amount recorded is the size of the drop, which is what a payout of this
     balance would have been. If the user rejects it, nothing is recorded at all.
     ``currency`` is the unit the balance is recorded in; it only decides how
-    the reason text writes the numbers.
+    the reason text writes the numbers. ``threshold`` is the provider's own
+    minimum for this reading, in ``currency``, when the collector reported one;
+    it replaces the catalog's.
     """
-    threshold = min_payout(service)
+    threshold_unit = currency
+    if threshold is None:
+        threshold = min_payout(service)
+        threshold_unit = min_payout_currency(service) or currency
     if not looks_like_payout(previous, current, threshold):
         return None
     amount = -balance_change(previous, current)
@@ -210,7 +219,7 @@ def detect(
         "confirmed": False,
         "reason": (
             f"The balance fell by {format_amount(amount, currency)}, which is at least this service's "
-            f"{format_amount(threshold, min_payout_currency(service) or currency)} minimum cashout. "
+            f"{format_amount(threshold, threshold_unit)} minimum cashout. "
             "That usually means you were paid — but a provider correction can look identical, so "
             "CashPilot will not record it as income until you say so."
         ),

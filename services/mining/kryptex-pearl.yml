@@ -1,0 +1,138 @@
+name: Kryptex Pool (Pearl)
+slug: kryptex-pearl
+category: mining
+status: beta
+website: https://pool.kryptex.com/en/prl
+description: >-
+  Mine Pearl with KRig on one NVIDIA GPU. Kryptex converts the rewards to Bitcoin
+  and keeps the balance in your account until you request a withdrawal.
+short_description: Mine Pearl on an NVIDIA GPU and get account credit in Bitcoin
+
+referral:
+  signup_url: "https://pool.kryptex.com/?ref=2444cca8"
+  code: "2444cca8"
+  program: true
+  bonus:
+    referrer: 20% of Kryptex's pool income from referred users
+
+docker:
+  image: drumsergio/cashpilot-krig:1.8.2-r1@sha256:1cae392ac24d8b4141fe21ed5ae182a87e061cfdb97f57f43547c6af15947cb0
+  platforms: [linux/amd64]
+  runtime: runc
+  gpu:
+    vendor: nvidia
+    count: 1
+  env:
+    - key: KRYPTEX_EMAIL
+      label: Kryptex account email
+      required: true
+      secret: false
+      description: The verified email on your Kryptex account.
+      pattern: '[A-Za-z0-9_+%.\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'
+    - key: WORKER_NAME
+      label: Worker name
+      required: true
+      identifier: true
+      description: Give each machine a distinct name in your Kryptex account.
+      pattern: '[A-Za-z0-9_\-]{1,32}'
+  volumes:
+    - "kryptex-pearl-cache:/var/lib/krig"
+  command: >-
+    --url stratum+ssl://prl.kryptex.network:8048
+    --user ${KRYPTEX_EMAIL}/${WORKER_NAME} --no-rocm
+
+mining:
+  dev_fee_percent: 0
+  dev_fee_source: https://pool.kryptex.com/en/prl
+  pool_fee_note: >-
+    KRig charges a 0% miner fee on Kryptex Pool. Kryptex lists a separate
+    3% Pearl PPS+ pool fee. Withdrawal fees vary by method.
+
+requirements:
+  gpu: true
+  note: >-
+    Linux amd64, an NVIDIA GPU from Volta (sm_70) or newer, and NVIDIA
+    Container Toolkit
+  hosting_note: >-
+    This machine reports a hosting connection. Check your provider's terms
+    before mining. Some providers, including Hetzner Cloud, prohibit it.
+    Check your actual power costs before relying on a profit estimate.
+
+payment:
+  methods: [crypto]
+  currency: PRL
+  crypto_token: BTC
+  minimum_payout: 0.00001 BTC via Lightning (other methods vary)
+  frequency: On request
+
+cashout:
+  method: redirect
+  dashboard_url: https://www.kryptex.com/login
+  min_amount: 0.00001
+  currency: BTC
+  notes: >-
+    Kryptex converts Pearl rewards to BTC and holds the balance in your
+    account. Request a withdrawal on Kryptex. Each method has its own minimum
+    and fee. The minimum for Bitcoin Lightning is 0.00001 BTC.
+
+payout:
+  model: internal
+  notes: Kryptex holds the converted Bitcoin in your account until you withdraw.
+
+collector:
+  type: manual
+  notes: Check your balance and withdrawals in the Kryptex dashboard.
+
+disclosure:
+  sells: compute
+  third_party_traffic: No. KRig submits mining work to Kryptex Pool.
+  data_collected: Kryptex sees your account email, worker name, hashrate and IP address.
+  isp_risk: Some networks and DNS resolvers block mining pool connections.
+  account_rules: Verify your Kryptex account email before mining to it.
+
+rating:
+  reviewed_on: "2026-11-25"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: fair
+    terms_fit: good
+    traffic_transparency: good
+    privacy: unknown
+    identity_checks: unknown
+    support: unknown
+    earnings_realism: unknown
+    longevity: unknown
+  notes:
+    payout_record: Kryptex publishes a payout status guide. Actual payouts remain unverified.
+    payout_terms: Kryptex holds a BTC balance and charges fees that vary by withdrawal method.
+    account_safety: The terms give six months before Kryptex can suspend an inactive account.
+    terms_fit: The KRig release license permits downloads and use by mining software.
+    traffic_transparency: Kryptex documents the TLS endpoint where KRig submits Pearl shares.
+    privacy: The pool guide documents the email and worker name. Data handling beyond that remains unverified.
+    identity_checks: Kryptex documents email verification for mining. Withdrawal identity checks remain unverified.
+    support: Kryptex lists support channels. Response times remain unverified.
+    earnings_realism: Kryptex publishes a hashrate calculator. Its estimate remains untested on CashPilot hardware.
+    longevity: Kryptex publishes release notes. Long-term payout continuity remains unverified.
+  cons:
+    - text: Kryptex can suspend inactive accounts at six months and delete them at one year.
+      criterion: account_safety
+      kind: terms
+      source: https://www.kryptex.com/terms-and-conditions
+      checked_on: "2026-11-25"
+    - text: Withdrawal minimums and fees vary by method.
+      criterion: payout_terms
+      kind: terms
+      source: https://www.kryptex.com/en/fees
+      checked_on: "2026-11-25"
+  pros:
+    - text: KRig's license permits downloading the release and running it from mining software.
+      criterion: terms_fit
+      kind: terms
+      source: https://github.com/kryptex/krig-miner/blob/v1.8.2/LICENSE
+      checked_on: "2026-11-25"
+    - text: KRig uses a published TLS endpoint to submit Pearl shares to Kryptex Pool.
+      criterion: traffic_transparency
+      kind: terms
+      source: https://pool.kryptex.com/en/prl
+      checked_on: "2026-11-25"

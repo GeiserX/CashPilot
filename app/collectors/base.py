@@ -50,6 +50,15 @@ class EarningsResult:
     # every node it knows. A balance that comes with these drops by itself when
     # a node settles, so it is never asked about as a payout.
     nodes: list[dict[str, Any]] | None = None
+    # The provider's own payout threshold for this reading, in ``currency``.
+    # Set by a collector whose threshold depends on what the user chose (a
+    # multi-coin pool), where the catalog's single ``cashout.min_amount``
+    # cannot be right for every coin. None means use the catalog's.
+    payout_threshold: float | None = None
+    # The hashrate the pool measured for this account, in hashes per second,
+    # when its answer carries one. Only feeds the expected-earnings estimate on
+    # the Fleet page; None means the pool did not say, never 0 H/s.
+    hashrate: float | None = None
 
     def __post_init__(self) -> None:
         # An empty error is falsy, so the collection loop would store the 0.0

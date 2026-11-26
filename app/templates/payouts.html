@@ -208,8 +208,14 @@
   function balanceCell(result) {
     if (!result) return '<span class="payout-na">&mdash;</span>';
     if (result.state === 'known') {
-      return '<span class="payout-balance">' + esc(result.amount)
+      var source = result.source ? ' title="Read from ' + esc(result.source) + '"' : '';
+      var confirmed = '<span class="payout-balance"' + source + '>' + esc(result.amount)
            + (result.symbol ? ' ' + esc(result.symbol) : '') + '</span>';
+      if (result.pending == null || result.pending === '0') return confirmed;
+      var pending = String(result.pending);
+      var delta = pending.startsWith('-') ? '&minus;' + esc(pending.slice(1)) : '+' + esc(pending);
+      return confirmed + ' <span class="payout-pending" title="Seen on the network and awaiting confirmation">('
+           + delta + ' pending)</span>';
     }
     if (result.state === 'unreachable') {
       return '<span class="payout-unchecked" title="' + esc(result.detail || '')
@@ -218,9 +224,8 @@
     if (result.state === 'invalid') {
       return '<span class="payout-missing">address not valid</span>';
     }
-    // unsupported: we have no keyless endpoint for that chain. Not the user's
-    // problem and not an error about their money.
-    return '<span class="payout-na">&mdash;</span>';
+    return '<span class="payout-na" title="' + esc(result.detail || '') + '">'
+         + (result.private ? 'private chain' : '&mdash;') + '</span>';
   }
 
   // What this service would lose, in the catalog's own words.

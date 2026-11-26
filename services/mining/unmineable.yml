@@ -1,0 +1,232 @@
+name: unMineable (CPU mining, paid in your coin)
+slug: unmineable
+category: mining
+status: beta
+website: https://unmineable.com
+description: >-
+  Mine with your CPU and get paid in the coin you choose, such as SHIB, DOGE or
+  XMR. CashPilot runs XMRig against unMineable's RandomX pool, and unMineable
+  converts the Monero your CPU mines into your coin. It pays your public
+  address once your balance reaches the coin's payment threshold. Every worker
+  CashPilot deploys carries CashPilot's unMineable referral code, which lowers
+  your platform fee from 1% to 0.75%. Electricity can cost more than you earn.
+short_description: Mine with your CPU and get paid in the coin you choose
+
+# Every worker logs in as COIN:ADDRESS.WORKER#awk6-j1z0. The code after the
+# "#" is the CashPilot referral: the user pays a 0.75% platform fee instead of
+# 1%, and unMineable pays the code owner 0.25% of the user's mining rewards.
+# The site stores ?ref= from the link and adds it to the setup it generates.
+referral:
+  signup_url: "https://unmineable.com/?ref=awk6-j1z0"
+  code: "awk6-j1z0"
+  program: true
+  account: false
+  referrer: "0.25% of each referred miner's mining rewards"
+  referee: "Platform fee lowered from 1% to 0.75%"
+
+docker:
+  image: drumsergio/cashpilot-xmrig:6.27.0-r1@sha256:34d09420653187fe3fb3c206a0bc67e98de6c2e85320c12b8c544b6c8100174d
+  platforms: [linux/amd64, linux/arm64]
+  resources:
+    mem_limit: 3g
+    cpu_shares: 128
+  env:
+    - key: PAYOUT_COIN
+      label: Payout coin
+      required: true
+      description: Ticker of a coin unMineable pays, such as SHIB, DOGE or XMR
+      pattern: '[A-Za-z0-9]{2,10}'
+    - key: WALLET
+      label: Payout address
+      required: true
+      secret: false
+      description: Your public address for that coin. Coins that need a memo or tag are not supported.
+      pattern: '[A-Za-z0-9]{20,128}'
+    - key: WORKER_NAME
+      label: Worker name
+      required: true
+      identifier: true
+      pattern: '[A-Za-z0-9_\-]{1,32}'
+    - key: CPU_PERCENT
+      label: Max CPU threads (%)
+      default: "50"
+      pattern: '100|[1-9][0-9]?'
+    - key: RANDOMX_MODE
+      label: RandomX mode
+      default: auto
+      pattern: 'auto|fast|light'
+  command: >-
+    --url=stratum+ssl://rx.unmineable.com:443 --algo=rx/0
+    --user=${PAYOUT_COIN}:${WALLET}.${WORKER_NAME}#awk6-j1z0 --pass=x --rig-id=${WORKER_NAME}
+    --donate-level=1 --cpu-max-threads-hint=${CPU_PERCENT} --cpu-priority=0
+    --randomx-mode=${RANDOMX_MODE} --randomx-wrmsr=-1 --randomx-no-numa --http-host=127.0.0.1
+    --http-port=18088 --keepalive --no-color --print-time=300
+  # CPU_PERCENT is a cap: that share of the container's CPU threads, rounded
+  # down, at least 1. XMRig's --cpu-max-threads-hint alone is not one. Its
+  # arm64 build ignores it and starts every thread, and on x86 it rounds to
+  # the nearest count. So on arm64 the wrapper adds --threads. On x86 it adds
+  # a second hint that XMRig rounds to the same count, because there the hint
+  # also keeps XMRig's own limit of threads that fit the CPU cache, and
+  # --threads would drop it. But XMRig follows the hint only when its cache
+  # pass finds room for at least one hash. With no cache size, as on some
+  # virtual machines, or with a top cache too small for one scratchpad (up to
+  # 4 MiB, cn-heavy), it ignores the hint and starts half the threads. So x86
+  # keeps the hint only when sysfs, where hwloc reads cache sizes, shows an L3
+  # of at least 2048K, and gets --threads otherwise. hwloc can also read sizes
+  # from CPUID, so the check errs toward --threads, which still caps. A hint
+  # has 1% steps, so above 100 threads x86 gets --threads too. At 100, or if
+  # nproc fails, the wrapper adds nothing.
+  entrypoint:
+    - /bin/sh
+    - -c
+    - >-
+      case "${CPU_PERCENT-}" in [1-9]|[1-9][0-9])
+      n=$(nproc 2>/dev/null);
+      case "$n" in ''|0*|*[!0-9]*) ;;
+      *) t=$((n * CPU_PERCENT / 100)); [ "$t" -ge 1 ] || t=1;
+      c=no;
+      for f in /sys/devices/system/cpu/cpu[0-9]*/cache/index[0-9]*/size; do
+      read s 2>/dev/null <"$f" && read l 2>/dev/null <"${f%size}level" &&
+      case "$l:$s" in 3:[1-9]*K) [ "${s%K}" -ge 2048 ] 2>/dev/null && { c=yes; break; } ;; esac;
+      done;
+      case "$(uname -m 2>/dev/null):$c:$n" in
+      x86_64:yes:[1-9]|x86_64:yes:[1-9][0-9]|x86_64:yes:100)
+      set -- "$@" "--cpu-max-threads-hint=$(((200 * t + n) / (2 * n)))" ;;
+      *) set -- "$@" "--threads=$t" ;;
+      esac ;;
+      esac ;;
+      esac;
+      exec /usr/local/bin/xmrig "$@"
+    - --
+
+mining:
+  dev_fee_percent: 1
+  dev_fee_source: https://github.com/xmrig/xmrig/blob/v6.27.0/src/donate.h
+  pool_fee_note: >-
+    unMineable charges a 1% platform fee. CashPilot adds its referral code
+    (#awk6-j1z0) after every worker name, which lowers your fee to 0.75%.
+    unMineable then pays CashPilot's maintainer 0.25% of your mining rewards;
+    you keep 99.25%. Each coin has its own payment threshold, for example
+    0.03 XMR.
+
+requirements:
+  residential_ip: false
+  vps_ip: true
+  hosting_note: >-
+    This machine reports a hosting connection. Check your provider's terms
+    before mining. Some providers, including Hetzner Cloud, prohibit it.
+    Check your actual power costs before relying on a profit estimate.
+
+payment:
+  methods: [crypto]
+  minimum_payout: Set per coin by unMineable (0.03 XMR on 2026-11-26)
+  frequency: When the coin's payment threshold is reached
+earnings:
+  monthly_low: 0
+  monthly_high: 8
+  currency: USD
+  per: device
+  notes: >-
+    Gross estimate before electricity, paid in your coin at unMineable's
+    conversion rate. On 2026-11-25, 1 kH/s of RandomX was worth about $1 a
+    month. A desktop CPU at half its threads can draw 30 to 50 W extra. Check
+    your actual usage and electricity price to see if it pays.
+cashout:
+  method: auto
+  dashboard_url: https://unmineable.com/addresses
+  notes: >-
+    unMineable pays your address once your balance reaches the coin's payment
+    threshold. Thresholds differ by coin and network; CashPilot reads the one
+    unMineable reports for your address.
+payout:
+  model: external
+  address_env: WALLET
+  address_source: env
+  notes: >-
+    The balance is earned but not received until unMineable pays it to this
+    address. The chain depends on the coin you choose.
+collector:
+  type: api
+  # A new worker's balance moves once unMineable credits its first shares.
+  quiet_days: 2
+  accrual: pool
+  notes: >-
+    GET https://api.unminable.com/v4/address/{address}?coin={COIN}, no auth.
+    data.balance and data.payment_threshold are decimal strings in coin units.
+    An address unMineable has never seen answers success true with
+    "fresh": true and a zero balance: that is an error, never a 0 balance. A
+    wrong address or coin answers HTTP 404 with success false.
+  credential_hint: >-
+    The same payout address and coin ticker you deployed the miner with, for
+    example <b>XMR</b>. Enter the address alone, without the coin, worker name
+    or referral code. It is public and unlocks no funds.
+
+disclosure:
+  sells: compute
+  third_party_traffic: No. The miner sends work to unMineable's pool.
+  data_collected: >-
+    Your payout address, coin, worker name, hashrate and IP address go to
+    unMineable.
+  isp_risk: Some networks and DNS resolvers block mining pool connections.
+  account_rules: >-
+    No account is needed. The address and coin are the identity, and anyone
+    can read their stats on unmineable.com.
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-26"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: good
+    privacy: fair
+    identity_checks: good
+    support: unknown
+    earnings_realism: fair
+    longevity: unknown
+  notes:
+    payout_record: We tested pool shares and read the balance. We did not verify a payout.
+    payout_terms: Paid in the coin you choose once its threshold is reached, after a 0.75% platform fee with the referral code.
+    account_safety: We did not review how unMineable handles disputes or withheld balances.
+    terms_fit: CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS.
+    traffic_transparency: The miner submits shares to unMineable over one outbound connection.
+    privacy: The miner is open source. Address stats are public on unmineable.com by design.
+    identity_checks: unMineable lets a worker mine to a public address without an account.
+    support: We did not test unMineable's support.
+    earnings_realism: Hashrate, electricity prices and unMineable's conversion rate vary.
+    longevity: We did not review unMineable's long-term operation.
+  cons:
+    - text: unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin's threshold.
+      criterion: payout_terms
+      kind: terms
+      source: https://unmineable.com/referrals
+      checked_on: "2026-11-26"
+    - text: Some hosting providers prohibit cryptocurrency mining.
+      criterion: terms_fit
+      kind: terms
+      source: https://www.hetzner.com/legal/cloud-server/
+      checked_on: "2026-11-26"
+    - text: The extra electricity can cost more than the coins earned.
+      criterion: earnings_realism
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md
+      checked_on: "2026-11-26"
+    - text: Address stats, including the balance, are public to anyone who knows the address.
+      criterion: privacy
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md
+      checked_on: "2026-11-26"
+  pros:
+    - text: The miner sends hashes to the pool and does not relay anyone else's traffic.
+      criterion: traffic_transparency
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md
+      checked_on: "2026-11-26"
+    - text: You can mine to a public address in the coin you choose without creating an account.
+      criterion: identity_checks
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/unmineable.md
+      checked_on: "2026-11-26"
