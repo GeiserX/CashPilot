@@ -769,6 +769,29 @@ class TestTypedMachineWattsAndServiceBreakEven:
         else:
             assert miner["cost"] == 14.4
 
+    @pytest.mark.parametrize("unmetered", ["false", "true"])
+    def test_a_heat_setting_leaves_per_service_figures_alone(self, unmetered):
+        # The heat credit belongs to the machine on the Fleet card. The
+        # per-service figures, including XMRig's CPU-based cost, never carry it,
+        # so no screen shows the same heat twice.
+        config = {
+            "power_price_per_kwh": "0.20",
+            "power_currency": "USD",
+            "worker_rig_watts": "100",
+            "worker_rig_unmetered": unmetered,
+        }
+        xmrig = [{"slug": "xmrig", "status": "running", "cpu_percent": 100.0, "_worker_id": 1}]
+        plain = self._net(config, xmrig, self.WORKER, measured=(), earned={})
+        heated = self._net(
+            {**config, "worker_rig_heat": "resistive", "worker_rig_heat_months": "1,2,3,4,5,6,7,8,9,10,11,12"},
+            xmrig,
+            self.WORKER,
+            measured=(),
+            earned={},
+        )
+        assert heated == plain
+        assert "heat" not in str(heated)
+
     @pytest.mark.parametrize("metered_copy", [False, True])
     def test_entered_gpu_draw_cannot_charge_an_unmetered_worker(self, monkeypatch, metered_copy):
         from app import catalog
