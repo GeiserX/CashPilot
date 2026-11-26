@@ -10,16 +10,6 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
-## [Unreleased]
-
-### Fixes
-
-- Check the Docker container ID before Proxied Start or recovery replaces a copy. Show why the worker skipped recovery.
-- Approve shared tunnel copies together in Fleet, even after approving a single copy. Restart routed copies in place on older workers and start stopped copies through checked Start.
-- Keep unconfirmed legacy recovery phrases when a Desktop container is removed with its data kept or Sia is deployed on another worker.
-- Block recovery phrases across quoted fields and encoded separators. Name the affected Desktop deploy field without showing its value.
-- Show the recovery conflict when a move is unfinished, and stop asking after the worker repeats an approved Start offer.
-
 ## [2.10.2] - 2026-11-25
 
 ### Fixes
