@@ -109,6 +109,12 @@ class TestBothGroups:
     def test_entries_without_a_priority_follow_by_name_whatever_the_case(self):
         assert _groups(self.ROWS)["Not running"] == ["mu", "zeta", "omega", "alpha", "beta"]
 
+    def test_names_that_differ_only_in_case_keep_the_catalog_order(self):
+        upper = {"slug": "upper", "name": "Alpha", "category": "bandwidth"}
+        lower = {"slug": "lower", "name": "alpha", "category": "bandwidth"}
+        assert _groups([upper, lower])["Not running"] == ["upper", "lower"]
+        assert _groups([lower, upper])["Not running"] == ["lower", "upper"]
+
     def test_the_all_tab_groups_entries_without_a_priority_by_category(self):
         rows = [
             {"slug": "aaa-miner", "name": "Aaa", "category": "mining"},

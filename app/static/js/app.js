@@ -4441,7 +4441,7 @@ const CP = (() => {
     const rank = x => (Number.isInteger(x.priority) ? x.priority : Infinity);
     const byPriority = (x, y) => (rank(x) - rank(y))
       || String(x.category).localeCompare(String(y.category))
-      || String(x.name).localeCompare(String(y.name));
+      || String(x.name).toLowerCase().localeCompare(String(y.name).toLowerCase());
     const running = filtered.filter(x => x.deployed).sort(byPriority);
     const rest = filtered.filter(x => !x.deployed).sort(byPriority);
     const group = (label, rows) => rows.length
