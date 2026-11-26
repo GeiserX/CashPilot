@@ -22,7 +22,7 @@ Left out: [earning-machine](https://github.com/jf-m/earning-machine) and [passiv
 ## Short version
 
 - **InternetIncome, money4band, IGM and, since v1.69.0, CashPilot can earn on many IPs through proxies.** The first three run each app once per proxy, and proxies are InternetIncome's main feature. CashPilot runs extra copies of a service already deployed on a worker, each through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy ([proxied copies](proxies.md)).
-- **InternetIncome (23) and IGM (20) start more apps than CashPilot's worker (<!-- n:docker -->20<!-- /n -->).** CashPilot tracks more services in total (<!-- n:live -->48<!-- /n -->) because it also follows browser extension, desktop and GPU services that it does not run. Since v1.64.0 it can also run any image you name as a [custom service](custom-services.md).
+- **InternetIncome (23) starts more apps than CashPilot's worker (<!-- n:docker -->20<!-- /n -->); IGM starts 20.** CashPilot tracks more services in total (<!-- n:live -->48<!-- /n -->) because it also follows browser extension, desktop and GPU services that it does not run. Since v1.64.0 it can also run any image you name as a [custom service](custom-services.md).
 - **money4band and IGM claim daily rewards for you, and keep app images updated with Watchtower.** CashPilot does neither. It pulls an image again only when you deploy or redeploy.
 - **CashPilot is the only one here that reads balances from your provider accounts and keeps a history.** money4band 5.0.0 shows estimates from its own catalog, not your accounts. The others link to each provider's dashboard.
 - **CashPilot is the only open-source one here with one UI for many servers.** IGM's README claims fleet management, but that code is in its closed binary.
@@ -71,7 +71,7 @@ We did not check whether each app on each list still pays out.
 ## Where CashPilot is behind
 
 - Services that need host networking, published ports, volumes, devices or extra network capabilities cannot run through a proxy, so 9 of the <!-- n:docker -->20<!-- /n --> (EarnApp, URnetwork, ProxyBase Markets, Bitping, Mysterium, Storj, Sia, Anyone Protocol and SRBMiner-Multi) earn only from the server's own IP ([proxied copies](proxies.md#what-cannot-run-through-a-proxy)).
-- Fewer apps that it starts itself than IGM or InternetIncome.
+- Fewer apps that it starts itself than InternetIncome.
 - No daily reward claiming and no automatic image updates.
 - 12 of the <!-- n:docker -->20<!-- /n --> earner images float on their publisher's latest tag.
 - The socket proxy is not yet a root boundary: a compromised worker can still create containers within its policy, and two-step escapes (joining another container's process namespace, a symlink in an allowed folder) are not refused ([details](security-defaults.md)).
