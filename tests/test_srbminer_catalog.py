@@ -40,7 +40,7 @@ def test_entry_is_a_beta_nvidia_miner_on_the_published_image(srb):
         srb["docker"]["image"],
     )
     assert image is not None
-    # The fee list we cite is the README of the release the image downloads.
+    # The fee list we cite is the README of the release in the image tag.
     assert srb["mining"]["dev_fee_source"].endswith(f"/blob/{image[1]}/README.md")
     assert srb["docker"]["platforms"] == ["linux/amd64"]
     assert gpu.spec_of(srb) == {"vendor": "nvidia", "count": 1, "rocm": False}
@@ -51,10 +51,11 @@ def test_the_fee_stated_is_the_highest_algorithm_fee(srb):
     # SRBMiner-Multi 3.9.0 README: pearlhash 2.00%, progpow_zano and kawpow 0.85%.
     algorithms = _pattern(srb, "ALGO").split("|")
     assert sorted(algorithms) == ["kawpow", "pearlhash", "progpow_zano"]
-    assert srb["mining"]["dev_fee_percent"] == 2
-    note = srb["mining"]["pool_fee_note"]
-    assert "2%" in note and "0.85%" in note
-    assert "1 PRL" in note
+    fee = srb["mining"]["dev_fee_percent"]
+    assert fee == 2
+    for text in (srb["mining"]["pool_fee_note"], srb["description"]):
+        assert f"{fee}%" in text and "0.85%" in text
+    assert "1 PRL" in srb["mining"]["pool_fee_note"]
 
 
 def test_the_cache_volume_is_where_the_image_installs_the_miner(srb):
@@ -118,6 +119,18 @@ def test_a_wallet_cannot_carry_flags_a_worker_or_a_bad_charset(srb, address):
 )
 def test_other_fields_refuse_values_that_change_the_command(srb, key, value):
     assert not re.fullmatch(_pattern(srb, key), value)
+
+
+def test_the_compose_export_starts_the_miner_behind_an_init(srb):
+    # As PID 1 the miner exits at once with an empty log.
+    from app import compose_generator
+
+    exported = compose_generator._service_to_compose(srb, {"WALLET": PEARL, "WORKER_NAME": "rig"}, None, "amd64")
+    assert exported["init"] is True
+    assert exported["deploy"]["resources"]["reservations"]["devices"][0]["driver"] == "nvidia"
+    own_init = deepcopy(srb)
+    own_init["docker"]["entrypoint"] = ["/usr/bin/tini", "--", "/usr/local/bin/srbminer-entrypoint"]
+    assert "init" not in compose_generator._service_to_compose(own_init, {}, None, "amd64")
 
 
 def test_a_second_copy_names_the_gpu_not_the_cpu(srb):

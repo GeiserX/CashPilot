@@ -11,7 +11,8 @@ payout address. Keep your wallet keys and recovery phrase in your wallet.
 !!! warning "Beta"
 
     This entry has not run on a real GPU yet. The image download, the
-    checksum checks and a pool login were tested without a GPU. The
+    checksum checks and a TLS connection to the pool were tested without a
+    GPU. Nobody has logged in to the pool with this entry yet. The
     [GPU grant](../gpu.md) is in beta too.
 
 ## Before you deploy
@@ -59,13 +60,17 @@ payout address. Keep your wallet keys and recovery phrase in your wallet.
 
 ## Check the power cost
 
-Measure how many extra watts the machine draws while mining. Enter that figure
-as the device's watts on the Fleet page, so CashPilot can count the cost.
-Multiply the extra watts by the hours it runs each month, divide by 1,000 and
-multiply by your price per kWh. For example, a GPU that draws 140 W for 30 days
+Measure how many extra watts the machine draws while mining. Multiply the
+extra watts by the hours it runs each month, divide by 1,000 and multiply by
+your price per kWh. For example, a GPU that draws 140 W for 30 days
 uses about 101 kWh. At $0.20/kWh that costs about $20 a month. Compare that
 cost with what the pool credits you. The Pearl price, the network difficulty
 and your hashrate all change.
+
+On the Fleet page, enter the machine's total draw while it mines. CashPilot
+uses it for the machine's cost. The SRBMiner-Multi row shows its own
+electricity cost as unknown, because CashPilot cannot split one machine's draw
+between its GPU and its other services.
 
 ## Troubleshooting
 
@@ -78,9 +83,9 @@ and your hashrate all change.
   it if the error stays.
 - **The container stops at once with an empty log outside CashPilot.** The
   miner quits without a message when it runs as the container's first
-  process. CashPilot's worker starts it behind Docker's init. In a Compose
-  file of your own, add `init: true` to the service. With `docker run`, add
-  `--init`.
+  process. CashPilot's worker and its Compose export start it behind Docker's
+  init. In a Compose file of your own, add `init: true` to the service. With
+  `docker run`, add `--init`.
 - **The pool never connects.** Check the host and port. Some DNS filters
   block pool domains. Check the resolver on the worker and whether your
   network permits the connection.

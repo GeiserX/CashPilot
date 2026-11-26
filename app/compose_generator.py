@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from app import arch as arch_mod
-from app import gpu
+from app import gpu, orchestrator
 from app.catalog import fence_gated, get_service, get_services
 from app.constants import (
     CONTAINER_PREFIX,
@@ -230,6 +230,16 @@ def _service_to_compose(
     entrypoint = docker_conf.get("entrypoint")
     if isinstance(entrypoint, list) and entrypoint:
         compose_svc["entrypoint"] = [_escape_value(str(part)) for part in entrypoint]
+
+    # Docker's init as PID 1, as the worker starts it (orchestrator.deploy_raw).
+    # Some programs misbehave as PID 1: SRBMiner-Multi exits at once with an
+    # empty log. The export cannot read the image's own ENTRYPOINT, so it skips
+    # only an init the catalog names itself. An image whose ENTRYPOINT is tini
+    # still runs behind Docker's init, which only adds a warning from tini.
+    if not orchestrator._brings_own_init(
+        {}, entrypoint if isinstance(entrypoint, list) else None, docker_conf.get("command")
+    ):
+        compose_svc["init"] = True
 
     # The stop grace the worker gives the same service: the catalog's, or 30
     # seconds when it declares none or something unusable (orchestrator's

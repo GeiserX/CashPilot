@@ -93,8 +93,9 @@ earnings:
   currency: USD
   per: device
   notes: >-
-    Gross estimate before electricity. On 2026-11-25 an RTX 4070 made about
-    $2.45 a day on Pearl and drew about 142 W. Pearl is a new coin, and its
+    Gross estimate before electricity. On 2026-11-25 hashrate.no estimated
+    about $2.45 a day on Pearl for an RTX 4070 drawing about 142 W. We have
+    not measured it. Pearl is a new coin, and its
     price and difficulty change fast. Check your GPU's power draw and your
     electricity price to see if it pays.
 cashout:
@@ -177,6 +178,6 @@ rating:
       checked_on: "2026-11-26"
     - text: You can mine Pearl on HeroMiners with a public address and no account.
       criterion: identity_checks
-      kind: our_experience
+      kind: terms
       source: https://pearl.herominers.com/how-to-mine-pearl-prl/
       checked_on: "2026-11-26"
