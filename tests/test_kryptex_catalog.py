@@ -96,8 +96,8 @@ def test_kryptex_deploy_card_says_the_balance_stays_on_the_account(service):
 def test_a_second_kryptex_copy_shares_the_gpu(service):
     result = preflight.assess(service, already_deployed_slugs={SLUG})
     messages = [f["message"] for f in result["findings"]]
-    assert any("shares its GPU" in message for message in messages)
-    assert not any("shares its CPU" in message for message in messages)
+    assert any("only one copy can run" in message for message in messages)
+    assert not any("shares its" in message for message in messages)
 
 
 @pytest.mark.parametrize("cpu", [{}, {"cpu_percent": 3.0}])
@@ -112,3 +112,21 @@ def test_a_gpu_miner_with_entered_watts_has_a_known_cost(cpu):
     assert row["cost"] == pytest.approx(28.8)
     assert out["cost_known"] is True
     assert "cost_unavailable_reason" not in out
+
+
+def test_a_cpu_miner_on_mixed_workers_keeps_its_cost_reason():
+    workers = [
+        {"id": 1, "client_id": "rig", "name": "rig", "status": "online", "system_info": "{}"},
+        {"id": 2, "client_id": "home", "name": "home", "status": "online", "system_info": "{}"},
+    ]
+    out = test_power.TestNetEndpoint()._call(
+        {"power_price_per_kwh": "0.20", "power_currency": "USD", "worker_rig_unmetered": "true"},
+        {},
+        [
+            {"slug": "xmrig", "status": "running", "cpu_percent": 100.0, "_worker_id": 1},
+            {"slug": "xmrig", "status": "running", "cpu_percent": None, "_worker_id": 2},
+        ],
+        workers=workers,
+    )
+    assert out["cost_known"] is False
+    assert "no CPU reading" in out["cost_unavailable_reason"]

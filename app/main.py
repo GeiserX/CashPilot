@@ -9696,6 +9696,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
             # The hosting copy has no per-kWh bill. The metered copy's
             # missing CPU reading still leaves the combined cost unknown.
             watts = None
+            cpu_miner_cost_unknown = cpu_miner_cost_unknown or platform in running_miners
         elif platform in miners_without_cpu:
             # A running miner draws power whether or not a pool has paid yet.
             # Without its CPU reading on a metered machine the cost is unknown,

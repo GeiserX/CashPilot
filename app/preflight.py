@@ -103,8 +103,11 @@ def assess(
                     "verdict": REDUCED,
                     "message": (
                         f"{service.get('name', slug)} is already running on this machine. "
-                        f"A second miner shares its {'GPU' if reqs.get('gpu') is True else 'CPU'}. "
-                        "Check that both copies have enough processing time."
+                        + (
+                            "It uses the machine's GPU, so only one copy can run there."
+                            if reqs.get("gpu") is True
+                            else "A second miner shares its CPU. Check that both copies have enough processing time."
+                        )
                     ),
                 }
             )

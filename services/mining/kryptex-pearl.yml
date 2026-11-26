@@ -13,7 +13,7 @@ referral:
   code: "2444cca8"
   program: true
   bonus:
-    referrer: Up to 20% of Kryptex's pool fee
+    referrer: 20% of Kryptex's pool income from referred users
 
 docker:
   image: drumsergio/cashpilot-krig:1.8.2-r1@sha256:1cae392ac24d8b4141fe21ed5ae182a87e061cfdb97f57f43547c6af15947cb0
