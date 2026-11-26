@@ -134,10 +134,11 @@ def test_the_compose_export_starts_the_miner_behind_an_init(srb):
 
 
 def test_a_second_copy_names_the_gpu_not_the_cpu(srb):
+    # The worker refuses a second copy of a GPU service, so the warning says one copy, not "shares".
     result = preflight.assess(srb, already_deployed_slugs={"srbminer-multi"})
     messages = [finding["message"] for finding in result["findings"]]
-    assert any("shares its GPU" in message for message in messages)
-    assert not any("shares its CPU" in message for message in messages)
+    assert any("machine's GPU, so only one copy can run" in message for message in messages)
+    assert not any("CPU" in message for message in messages)
 
 
 def test_hosting_note_shows_only_for_a_hosting_exit(srb):

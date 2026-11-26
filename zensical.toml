@@ -125,6 +125,7 @@ nav = [
       { Mining = [
           { "2Miners ETC" = "guides/2miners-etc.md" },
           { "HeroMiners Kaspa" = "guides/herominers-kas.md" },
+          { "Kryptex Pool (Pearl)" = "guides/kryptex-pearl.md" },
           { OCEAN = "guides/ocean.md" },
           { "SRBMiner-Multi (GPU mining)" = "guides/srbminer-multi.md" },
           { SupportXMR = "guides/supportxmr.md" },

@@ -85,6 +85,7 @@ What a cited con or pro may rest on:
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | <span class="ratings-con" title="Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days.">Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days.</span> | 2026-11-04 |
 | <a href="#anyone-protocol">Anyone Protocol</a> | F | 6 of 20 | 5 | <span class="ratings-con" title="A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet.">A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet.</span> | 2026-11-04 |
 | <a href="#bytelixir">Bytelixir</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin.">Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin.</span> | 2026-11-04 |
+| <a href="#kryptex-pearl">Kryptex Pool (Pearl)</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Kryptex can suspend inactive accounts at six months and delete them at one year.">Kryptex can suspend inactive accounts at six months and delete them at one year.</span> | 2026-11-25 |
 | <a href="#noderr">Noderr Micronodes</a> | F | 6 of 20 | 4 | <span class="ratings-con" title="Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target.">Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target.</span> | 2026-11-04 |
 | <a href="#proxybase-xyz">ProxyBase Markets</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Payouts are USDC on Tempo Chain, to any EVM address whose key you hold.">Payouts are USDC on Tempo Chain, to any EVM address whose key you hold.</span> | 2026-11-04 |
 | <a href="#repocket">Repocket</a> | F | 6 of 20 | 2 | <span class="ratings-con" title="Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to negative reviews.">Several Trustpilot reviewers report cancelled payouts and balances reset to zero; one says support cited irregular bandwidth earnings. The page rates Repocket 2.7 and notes it has not replied to negative reviews.</span> | 2026-11-04 |
@@ -565,6 +566,35 @@ What a cited con or pro may rest on:
 
 - Trustpilot rates it 4.6 from 283 reviews, most of them praising crypto payouts; a few report payouts not arriving. [Source](https://www.trustpilot.com/review/bytelixir.com), checked 2026-11-04.
 - A payout needs only a crypto address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
+
+<a id="kryptex-pearl"></a>
+
+### Kryptex Pool (Pearl)
+
+**Grade F**, 6 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [Kryptex Pool (Pearl)](guides/kryptex-pearl.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Kryptex publishes a payout status guide. Actual payouts remain unverified. |
+| Payout terms | Fair | Kryptex holds a BTC balance and charges fees that vary by withdrawal method. |
+| Account safety | Fair | The terms give six months before Kryptex can suspend an inactive account. |
+| Fit with how CashPilot runs it | Good | The KRig release license permits downloads and use by mining software. |
+| Traffic transparency | Good | Kryptex documents the TLS endpoint where KRig submits Pearl shares. |
+| Privacy | Unknown | The pool guide documents the email and worker name. Data handling beyond that remains unverified. |
+| Identity checks | Unknown | Kryptex documents email verification for mining. Withdrawal identity checks remain unverified. |
+| Support | Unknown | Kryptex lists support channels. Response times remain unverified. |
+| Earnings realism | Unknown | Kryptex publishes a hashrate calculator. Its estimate remains untested on CashPilot hardware. |
+| Longevity | Unknown | Kryptex publishes release notes. Long-term payout continuity remains unverified. |
+
+**Cons**
+
+- Kryptex can suspend inactive accounts at six months and delete them at one year. [Source](https://www.kryptex.com/terms-and-conditions), checked 2026-11-25.
+- Withdrawal minimums and fees vary by method. [Source](https://www.kryptex.com/en/fees), checked 2026-11-25.
+
+**Pros**
+
+- KRig's license permits downloading the release and running it from mining software. [Source](https://github.com/kryptex/krig-miner/blob/v1.8.2/LICENSE), checked 2026-11-25.
+- KRig uses a published TLS endpoint to submit Pearl shares to Kryptex Pool. [Source](https://pool.kryptex.com/en/prl), checked 2026-11-25.
 
 <a id="noderr"></a>
 
