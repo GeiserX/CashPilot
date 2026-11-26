@@ -14,12 +14,12 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention (an offline box, a stopped container, a balance it could not read, a payout to confirm), which service runs on which box, earnings per day, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
-## New in 2.0
+## New in 3.0
 
-- **The worker is boxed in.** It reaches Docker only through a pinned socket proxy, and only the containers, volumes and networks it created, so a compromised worker cannot read the dashboard's data or its encryption key ([security defaults](https://geiserx.github.io/CashPilot/security-defaults/#docker-socket-proxy)).
-- **Earners are fenced off your LAN**, host, tailnet and cloud metadata on new installs; Mysterium too, in its own network namespace ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
-- **One box, several IPs.** Proxied copies run an earner through SOCKS5, HTTP CONNECT or a Tailscale exit node, and stop instead of leaking when the proxy dies ([proxied copies](https://geiserx.github.io/CashPilot/proxies/)).
-- Coming from 1.x? Read [What's new in 2.0](https://geiserx.github.io/CashPilot/whats-new-2.0/#upgrading-from-1x) before you change the image tags.
+- **A redeploy replaces only the container you approved.** The UI shows the container IDs it will replace. The worker refuses if a container changed in the meantime, and proxied copies get the same check ([what's new in 3.0](https://geiserx.github.io/CashPilot/whats-new-3.0/)).
+- **Mining, in beta.** The catalog runs XMRig, unMineable, SRBMiner-Multi and KRig. CashPilot reads pool balances from your public payout address, and Fleet shows Bitaxe and cgminer devices on your LAN ([mining](https://geiserx.github.io/CashPilot/mining/)).
+- **GPU grants, in beta.** A catalog service that declares a GPU gets that one device, and every other container is kept off the GPU ([GPU services](https://geiserx.github.io/CashPilot/gpu/)).
+- Coming from 2.x? Upgrade the UI first, then every worker. Read [UPGRADING.md](UPGRADING.md) before you change the image tags.
 
 ## Features
 

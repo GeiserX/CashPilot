@@ -2,7 +2,7 @@ name: cashpilot
 
 services:
   cashpilot-ui:
-    image: drumsergio/cashpilot:2.0.0
+    image: drumsergio/cashpilot:3.0.0
     container_name: cashpilot-ui
     deploy:
       resources:
@@ -57,7 +57,7 @@ services:
   # labelled one, data checked, and keeps the original as <volume>-pre-isolation.
   # It holds the raw socket only while it runs.
   cashpilot-migrate:
-    image: drumsergio/cashpilot-worker:2.0.0
+    image: drumsergio/cashpilot-worker:3.0.0
     container_name: cashpilot-migrate
     user: "0:0"
     entrypoint: ["python", "-m", "app.owner_migrate"]
@@ -151,7 +151,7 @@ services:
             en_US: Host folders service containers may bind, comma-separated. Put the same list in the worker's CASHPILOT_PROXY_BIND_MOUNTS.
 
   cashpilot-worker:
-    image: drumsergio/cashpilot-worker:2.0.0
+    image: drumsergio/cashpilot-worker:3.0.0
     # The proxy's owner label, so the worker may read its own container.
     labels:
       cashpilot.deployed-by: worker
@@ -418,10 +418,13 @@ x-casaos:
   index: /
   port_map: "8080"
   scheme: http
-  version: "2.0.0"
-  update_at: "2026-11-07"
+  version: "3.0.0"
+  update_at: "2026-11-26"
   release_notes:
     en_US: |-
+      - CashPilot 3.0.0. A redeploy replaces only the container you approved, by its ID.
+      - Mining in beta: XMRig, unMineable, SRBMiner-Multi and KRig, and pool balances read from your public payout address.
+      - GPU grants in beta: a catalog service that declares a GPU gets that one device, and every other container is kept off the GPU.
       - First listing in the store, on CashPilot 2.0.0.
       - The worker reaches Docker through a socket proxy that refuses every call it does not make; only the proxy holds the Docker socket.
       - The proxy keeps the worker away from the dashboard's data and environment: it reaches only containers, volumes and networks labelled cashpilot.deployed-by=worker.

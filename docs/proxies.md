@@ -274,14 +274,10 @@ by a redeploy that did not finish (`cashpilot-tunnel-p<id>.old`) moves into
 the proxy's current tunnel.
 
 A copy still in a legacy one-tunnel-per-copy pair never starts in its old
-tunnel either. When the worker starts, it moves the running pairs of each
-proxy into the shared tunnel at once (see the upgrade note below), so a
-running copy can be recreated then. That does not happen for a proxy with no
-ready tunnel to copy the settings from, or with an older worker's shared
-tunnel whose copies are not settled, or when the move fails: those pairs stay
-as they are. After that, the heartbeat leaves a running pair where it is: an
-older worker wrote no stop down, so only Docker knows whether its owner
-stopped it. When the copy must start (after its own crash, or a start from a
+tunnel either. The worker does not move these pairs when it starts. The
+heartbeat leaves a running pair where it is: an older worker wrote no stop
+down, so only Docker knows whether its owner stopped it. When the copy must
+start (after its own crash, or a start from a
 UI that sends no settings), the pair moves into the shared tunnel first, and
 the earner starts there. A routed service's pair moves into that service's
 own tunnel through the proxy instead, never the shared one. Either move
@@ -396,14 +392,17 @@ hardening of both containers and everything you set up. What changes:
 - **The tunnel stops when the last copy that should run stops**, and is
   removed with its settings volume when the last copy is removed.
 
-Upgrading a worker from one tunnel per copy needs nothing from you. At start
-the worker moves each proxy's copies into one tunnel, reusing the settings of
-a running tunnel of that proxy, then removes the old tunnels. Each copy is
-down for a few seconds, once, and is recreated, so a provider that keeps its
-device id inside the container sees a new device once and the old one goes
-offline. Copies you had stopped stay stopped. A proxy
-with no running tunnel at that moment moves on the next start of one of its
-copies; until then its old tunnels keep working as before.
+A worker older than 2.2.0 ran one tunnel per copy. Since 3.0 the worker no
+longer moves those pairs into one tunnel when it starts. Each pair keeps
+working as before until the next start of its copy. That start moves the pair
+into the proxy's shared tunnel. The Fleet page first asks you to approve the
+containers, because an older worker saved no container ID for them. The move
+reuses the settings of a running tunnel of that proxy, then removes the old
+tunnel. The copy is down for a few seconds, once, and is recreated. So a
+provider that keeps its device id inside the container sees a new device once,
+and the old one goes offline. A worker on 2.2.0 to 2.10.2 still moves every
+pair when it starts, so upgrading through 2.10.2 first does the move without
+a start ([UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md)).
 
 `scripts/proxy_shared_tunnel_lab.sh` proves this against a local headscale
 tailnet. With two earners in one tunnel: both reach the internet and none of it

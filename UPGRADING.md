@@ -19,7 +19,105 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ---
 
-## After 2.10.2: a proxied copy may ask you to approve its containers once
+## 3.0: upgrade the UI first, then change the image tags
+
+**Affects everyone on 2.x.** The compose files pin a release series, so
+`docker compose pull` and the in-app **Update** button keep a 2.x install on
+2.x. The update card still tells you that 3.0.0 exists.
+
+**What breaks if you do nothing.** Nothing, while the UI and every worker stay
+on 2.x. The risk is a worker that reaches 3.0 before the UI. A 3.0 worker
+replaces a running container only when the UI confirms which container it
+replaces, and a 2.x UI cannot do that. So it refuses every redeploy, settings
+change, rename and proxied rebuild of a container that already runs. The 2.x
+UI shows the worker's answer: "This worker runs CashPilot v3.0.0 and replaces an
+existing container only when the UI confirms which container it replaces, and
+this UI is too old to do that. Update the UI, then redeploy. Nothing was
+changed." The Fleet page marks that worker in amber, because it is on another
+release series.
+
+The other order works. A 3.0 UI still deploys to a 2.10 worker: it reads the
+running containers itself and asks you to approve a replacement.
+
+**What to do.**
+
+1. Back up `/data` and your node identities (see the top of this file).
+2. On the UI host, take the 3.0 compose file, or change every
+   `drumsergio/cashpilot:2.10` and `drumsergio/cashpilot-worker:2.10` tag to
+   `3.0`. Then run `docker compose up -d --force-recreate`.
+3. Do the same on every worker host.
+
+On Unraid, both apps follow `:latest`, and each release moves `:latest` for
+both images. So the next update of either app takes it to 3.0. Update the UI
+app first, then the worker app. If Watchtower or a similar tool updates your
+containers, keep the same order.
+
+Then read the parts below that apply to you.
+[What's new in 3.0](docs/whats-new-3.0.md) says what changed and why.
+
+### Take the new proxy policy before you deploy a service that uses a GPU
+
+**Affects you if** your worker runs behind `cashpilot-socket-proxy` and you
+want to deploy a catalog service that uses a GPU ([GPU grant](docs/gpu.md)).
+Nothing else changes: every other service deploys as before.
+
+The proxy's policy now lets the worker pass in an NVIDIA GPU request and the
+render nodes `/dev/dri/renderD128` to `renderD135` and `/dev/kfd`. Until your
+compose file carries that policy, the worker refuses a GPU service's deploy
+and names the fix. Its status page and the dashboard's update card say the
+policy is out of date.
+
+**What to do.** Run the command the worker's status page shows. It rewrites
+only the policy block of your compose file. Check the diff, use the new file,
+then run `docker compose up -d --force-recreate cashpilot-socket-proxy
+cashpilot-worker`. Or take this release's compose file.
+
+### The GPU lines in the worker's compose file are gone
+
+**Affects you if** you uncommented the GPU lines of the worker in
+`docker-compose.yml` or `docker-compose.fleet.yml` (`devices: /dev/dri`,
+`gpus: all` or the `nvidia` reservation). The 3.0 files no longer have them. The worker now reads the GPUs
+from sysfs, and it gives a GPU only to a catalog service that declares one.
+
+**What to do.** Nothing is required. You can remove those lines.
+
+### A custom service that sets `NVIDIA_` variables
+
+**Affects you if** a service you deploy sets an environment variable that
+starts with `NVIDIA_`, or a custom service uses an NVIDIA GPU.
+
+- The worker refuses a deploy with any `NVIDIA_` variable (HTTP 403).
+- The worker sets `NVIDIA_VISIBLE_DEVICES=void` on every container it creates
+  without an NVIDIA grant. On a host whose default Docker runtime is `nvidia`,
+  such a container loses the GPU on its next deploy
+  ([who gets a GPU](docs/gpu.md#who-gets-a-gpu)).
+
+**What to do.** Remove the `NVIDIA_` variables from the service before you
+redeploy it. Run a GPU workload that the catalog does not grant outside
+CashPilot, or ask for a catalog entry.
+
+### API scripts and cashpilot-mcp: a replacement asks for confirmation
+
+**Affects you if** a script or an AI agent calls the CashPilot API, or you use
+[cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp).
+
+- `POST /api/deploy/{slug}` no longer replaces a running container in one
+  call. That covers a redeploy and a change in the number of copies, because a
+  change in copies redeploys copy 1 first. A call that does not confirm gets
+  HTTP 409 `deploy_target_changed`.
+- To confirm, send the call with `"replace_existing": true`. The answer is
+  HTTP 409 with `"error": "confirm_deploy_targets"`, a `message` to show the
+  owner, and `expected_containers`, the container ID of each copy. Send the
+  same call again with that `expected_containers` object. The worker replaces
+  only those containers.
+- `GET /api/workers` returns `watts` as a number or `null`. Before 3.0 it was a
+  string, empty when not set. Each worker also has a new `unmetered` field.
+- `GET /api/earnings/breakdown` keeps 12 decimals instead of 4.
+
+**What to do.** Use cashpilot-mcp 0.4.0 or later: older versions cannot
+redeploy a running service. Add the confirmation step to your scripts.
+
+### A proxied copy may ask you to approve its containers once
 
 **Affects you if** you run copies through a proxy (Proxies on the Fleet page).
 
@@ -36,6 +134,11 @@ ID. Copies made before this release have no saved ID yet.
   recovery" alert. Stop the copy, then Start it on the Fleet page.
 - A worker on 2.5 or older made tunnels that Docker restarts by itself.
   Upgrade that worker to 2.10.2 first, so it replaces them for you.
+- A worker older than 2.2.0 ran each copy with a tunnel of its own. A 3.0
+  worker no longer moves these pairs into the proxy's shared tunnel when it
+  starts. They keep running as they are. A pair moves on the next Start of
+  its copy, after you approve its containers. Or upgrade that worker to 2.10.2
+  first, which moves them when it starts.
 
 A worker before this release that stopped in the middle of a move can leave a
 container named `cashpilot-<service>-p<N>-moving` or `-next`. The worker no
@@ -53,22 +156,36 @@ by hand on that box:
 Leave out `-v`, so the copy's volumes stay. Then press Start for the copy on
 the Fleet page.
 
-## After 2.10.2: take the new proxy policy before you deploy a service that uses a GPU
+### Companion apps
 
-**Affects you if** your worker runs behind `cashpilot-socket-proxy` and you
-want to deploy a catalog service that uses a GPU ([GPU grant](docs/gpu.md)).
-Nothing else changes: every other service deploys as before.
+**Affects you if** you use CashPilot Desktop, cashpilot-mcp, the Android app or
+the Home Assistant integration with this server.
 
-The proxy's policy now lets the worker pass in an NVIDIA GPU request and the
-render nodes `/dev/dri/renderD128` to `renderD135` and `/dev/kfd`. Until your
-compose file carries that policy, the worker refuses a GPU service's deploy
-with the fix, and its status page and the dashboard's update card say the
-policy is out of date.
+- **CashPilot Desktop 2.0.0 or later** takes server commands (deploy, stop,
+  start) from a 3.0 server. It offers its command address only to a server that
+  says it can command a Desktop safely, and 3.0 is the first such release.
+  Under a 2.x server, Desktop 2.0 only reports what runs on it. Desktop 1.7.0
+  under a 3.0 server also only reports.
+- After an upgrade from Desktop 1.x, server commands start off. Turn them on
+  in the Desktop's dashboard if you want this server to command it.
+- Desktop does not update itself. Download it from its
+  [releases page](https://github.com/GeiserX/CashPilot-Desktop/releases).
+- **cashpilot-mcp 0.4.0 or later** is needed to redeploy a running service,
+  because it sends the confirmation that 3.0 asks for.
+- The Android app and the Home Assistant integration talk to 3.0 as they did
+  to 2.x. They need no update.
 
-**What to do.** Run the command the worker's status page shows (it rewrites
-only the policy block of your compose file), check the diff, use the new
-file, then run `docker compose up -d --force-recreate cashpilot-socket-proxy
-cashpilot-worker`. Or take this release's compose file.
+**What to do.** Upgrade this server to 3.0 before you upgrade a Desktop to
+2.0. Update cashpilot-mcp to 0.4.0.
+
+### Rolling back
+
+3.0 adds one table to the database and changes no other, so 2.10.2 opens the
+same database. To go back, put back the 2.10 compose file on the UI host and
+on every worker host, and run `docker compose up -d --force-recreate` on each.
+Move the UI and every worker back together.
+
+---
 
 ## After 2.3.0: the fleet key no longer reads the dashboard, and `/data` closes to other users
 
