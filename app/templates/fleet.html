@@ -264,17 +264,28 @@ CASHPILOT_WORKER_NAME=server-name</code>
   // exist because the answer is often "this machine is not worth leaving on",
   // and softening that would defeat the point of computing it.
   let fleetEconomicsRequest = 0;
+  // A heat form's current choices, compared with what it rendered with, so
+  // an edit that is undone no longer holds the refresh.
+  function heatState(form) {
+    const months = Array.from(form.querySelectorAll('.heat-month')).filter(box => box.checked).map(box => box.value);
+    return [form.querySelector('.heat-source').value, form.querySelector('.heat-cop').value.trim(),
+      form.querySelector('.heat-price').value.trim(), months.join(',')].join('|');
+  }
   async function loadFleetEconomics(savedDevice) {
     const card = document.getElementById('fleet-economics-card');
     const body = document.getElementById('fleet-economics-body');
     const quality = document.getElementById('fleet-economics-quality');
     if (!card || !body) return;
 
-    // The Fleet timer must leave an unfinished device edit in place.
+    // The Fleet timer must leave an unfinished device or heat edit in place.
     const editing = () => Array.from(body.querySelectorAll('.power-device-watts')).some(input =>
       input.dataset.slug !== savedDevice
         && (input.value !== input.defaultValue || input.form.matches(':focus-within')
             || input.form.querySelector('button').disabled)
+    ) || Array.from(body.querySelectorAll('.heat-form')).some(form =>
+      form.dataset.prefix !== savedDevice
+        && (heatState(form) !== form.dataset.initial || form.matches(':focus-within')
+            || form.querySelector('button').disabled)
     );
     if (editing()) return;
     const request = ++fleetEconomicsRequest;
@@ -312,7 +323,52 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const paid = economics.tariff_price_per_kwh;
       const yours = paid != null && economics.tariff_currency === be.currency
         ? ` (you pay ${Number(paid).toFixed(3)})` : '';
-      return `<div class="economics-summary econ-break-even">Earns more than its electricity below <strong>${Number(be.price_per_kwh).toFixed(3)} ${esc(be.currency)}/kWh</strong>${yours}</div>`;
+      const bh = m.break_even_tariff_heating;
+      const heating = m.heat_covers_all_in_season
+        ? '; in your heating months its heat covers its whole electricity cost'
+        : bh && bh.price_per_kwh != null
+          ? `; in your heating months below <strong>${Number(bh.price_per_kwh).toFixed(3)} ${esc(bh.currency)}/kWh</strong>`
+          : '';
+      return `<div class="economics-summary econ-break-even">Earns more than its electricity below <strong>${Number(be.price_per_kwh).toFixed(3)} ${esc(be.currency)}/kWh</strong>${yours}${heating}</div>`;
+    };
+
+    // Heat credit. Months are never prefilled: users are worldwide, and the
+    // southern hemisphere heats in June. A source with no months is refused.
+    const HEAT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const HEAT_SOURCES = {
+      none: 'Nothing (no heat credit)',
+      resistive: 'Electric resistive heating',
+      heat_pump: 'A heat pump',
+      fuel: 'Gas, oil or another fuel',
+    };
+    const heatLine = m => {
+      if (!m.heat || m.heat_credit == null || m.monthly_cost == null) return '';
+      const months = m.heat.months.map(n => HEAT_MONTHS[n - 1]).join(', ');
+      return `<div class="economics-summary econ-heat-line">Heat credit ${money(m.heat_credit)} a month: its heat replaces ${esc(HEAT_SOURCES[m.heat.source].toLowerCase())} in ${esc(months)}</div>`;
+    };
+    const heatForm = m => {
+      // A fixed-price box has no per-kWh cost, so its heat credit is always 0.
+      if (!_isOwner || !m.heat_prefix || m.verdict === 'not_metered') return '';
+      const hs = m.heat_settings || {};
+      const source = Object.hasOwn(HEAT_SOURCES, hs.heat) ? hs.heat : 'none';
+      const ticked = new Set(String(hs.heat_months || '').split(',').map(t => t.trim()));
+      return `<details class="econ-heat"><summary>Heat</summary>
+        <form class="heat-form" data-prefix="${esc(m.heat_prefix)}">
+          <label>Its heat replaces
+            <select class="form-input heat-source">${Object.entries(HEAT_SOURCES).map(([value, label]) =>
+              `<option value="${value}"${value === source ? ' selected' : ''}>${label}</option>`).join('')}</select>
+          </label>
+          <label class="heat-cop-field"${source === 'heat_pump' ? '' : ' hidden'}>Heat pump COP
+            <input type="number" min="1" max="10" step="any" class="form-input heat-cop" value="${esc(hs.heat_cop)}">
+          </label>
+          <label class="heat-price-field"${source === 'fuel' ? '' : ' hidden'}>Fuel cost per kWh of heat (${esc(economics.tariff_currency || '')})
+            <input type="number" min="0" step="any" class="form-input heat-price" value="${esc(hs.heat_price)}">
+          </label>
+          <fieldset class="heat-months"><legend>Months you heat</legend>${HEAT_MONTHS.map((label, i) =>
+            `<label><input type="checkbox" class="heat-month" value="${i + 1}"${ticked.has(String(i + 1)) ? ' checked' : ''}> ${label}</label>`).join('')}</fieldset>
+          <button class="btn btn-link" type="submit">Save</button>
+        </form>
+      </details>`;
     };
 
     const hasMinerWatts = (economics.lan_miners || []).some(miner => miner.watts >= 1);
@@ -324,13 +380,15 @@ CASHPILOT_WORKER_NAME=server-name</code>
         <div class="economics-row">
           <div>
             <div class="economics-machine">${brk(m.machine)}${device ? ' <small class="muted">Device</small>' : ''}</div>
-            <div class="economics-summary">${esc(m.summary)}</div>${breakEven(m)}
+            <div class="economics-summary">${esc(m.summary)}</div>${breakEven(m)}${heatLine(m)}${heatForm(m)}
           </div>
           <div>
             <div class="economics-figures">
               <span title="${grossLabel}">${money(m.monthly_gross)}</span>${m.monthly_cost == null ? '' : `
               <span class="muted">−</span>
-              <span title="estimated electricity per month">${money(m.monthly_cost)}</span>
+              <span title="estimated electricity per month">${money(m.monthly_cost)}</span>${m.heat_credit == null ? '' : `
+              <span class="muted">+</span>
+              <span class="econ-heat-credit" title="heat credit per month">${money(m.heat_credit)}</span>`}
               <span class="muted">=</span>
               <span class="${losing ? 'text-fail' : ''} econ-net"
                     title="net per month">${money(m.monthly_net)}</span>`}
@@ -373,6 +431,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
               </div>`).join('')}
           </div>`;
       }
+      if (attributable.length && machines.some(m => m.heat_credit > 0)) {
+        services += `<div class="economics-note">Per-service figures leave out the heat credit, which belongs to the whole machine.</div>`;
+      }
       if (withheld > 0) {
         services += `<div class="economics-note">${withheld} service(s) draw too little on a machine that is already on for their share of the bill to mean anything, so no per-service figure is shown for them. Their cost is still counted in the machine totals above.</div>`;
       }
@@ -389,6 +450,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
     card.style.display = '';
     body.innerHTML = rows + services;
+    body.querySelectorAll('.heat-form').forEach(form => { form.dataset.initial = heatState(form); });
   }
 
   // How many workers share each display name.
@@ -994,7 +1056,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
   document.getElementById('fleet-economics-body').addEventListener('submit', async function(e) {
     const form = e.target.closest('.device-power-form');
-    if (!form) return;
+    if (!form) return saveHeat(e);
     e.preventDefault();
     const input = form.querySelector('.power-device-watts');
     const save = form.querySelector('button');
@@ -1015,6 +1077,54 @@ CASHPILOT_WORKER_NAME=server-name</code>
       save.disabled = false;
       input.readOnly = false;
     }
+  });
+
+  async function saveHeat(e) {
+    const form = e.target.closest('.heat-form');
+    if (!form) return;
+    e.preventDefault();
+    const save = form.querySelector('button');
+    if (save.disabled) return;
+    const source = form.querySelector('.heat-source').value;
+    const cop = form.querySelector('.heat-cop').value.trim();
+    const price = form.querySelector('.heat-price').value.trim();
+    const months = Array.from(form.querySelectorAll('.heat-month')).filter(box => box.checked).map(box => box.value);
+    if (source !== 'none' && !months.length) {
+      CP.toast('Pick the months you heat', 'warning');
+      return;
+    }
+    if (source === 'heat_pump' && !(Number(cop) >= 1 && Number(cop) <= 10)) {
+      CP.toast('A heat pump COP is between 1 and 10', 'error');
+      return;
+    }
+    if (source === 'fuel' && !(Number(price) > 0)) {
+      CP.toast('Enter what a kWh of heat from that fuel costs you', 'error');
+      return;
+    }
+    const prefix = form.dataset.prefix;
+    save.disabled = true;
+    try {
+      await CP.api('/api/config', { method: 'POST', body: { data: {
+        [`${prefix}_heat`]: source,
+        [`${prefix}_heat_cop`]: cop,
+        [`${prefix}_heat_price`]: price,
+        [`${prefix}_heat_months`]: months.join(','),
+      } } });
+      CP.toast('Heat setting saved', 'success');
+      await loadFleetEconomics(prefix);
+    } catch (err) {
+      CP.toast('Could not save: ' + err.message, 'error');
+    } finally {
+      save.disabled = false;
+    }
+  }
+
+  // The COP or fuel price field shows only for the source that uses it.
+  document.getElementById('fleet-economics-body').addEventListener('change', function(e) {
+    if (!e.target.classList || !e.target.classList.contains('heat-source')) return;
+    const form = e.target.closest('.heat-form');
+    form.querySelector('.heat-cop-field').hidden = e.target.value !== 'heat_pump';
+    form.querySelector('.heat-price-field').hidden = e.target.value !== 'fuel';
   });
 
   document.getElementById('fleet-workers').addEventListener('click', async function(e) {

@@ -29,6 +29,9 @@ Three rules:
 
 from __future__ import annotations
 
+import math
+from collections.abc import Collection, Mapping
+from datetime import date, timedelta
 from typing import Any
 
 # DEFAULT_IDLE_WATTS used to live here: 65.0, described as what a small
@@ -51,6 +54,11 @@ MARGINAL = "marginal"
 PROFITABLE = "profitable"
 UNKNOWN = "unknown"
 NOT_METERED = "not_metered"
+
+# Heat sources a device's heat can replace, by the per-machine setting.
+HEAT_SOURCES = ("resistive", "heat_pump", "fuel")
+HEAT_COP_RANGE = (1.0, 10.0)
+HEAT_ASSUMPTION = "Assumes all its heat replaces heating you would otherwise pay for during those months."
 
 
 def monthly_cost(watts: float, price_per_kwh: float) -> float:
@@ -87,6 +95,8 @@ def assess_machine(
     metered: bool = True,
     dedicated: bool = False,
     gross_measured: bool = True,
+    heat: Mapping[str, Any] | None = None,
+    heating_share: float = 0.0,
 ) -> dict[str, Any]:
     """Should this machine stay powered on for what it earns?
 
@@ -99,6 +109,10 @@ def assess_machine(
     home server — only the marginal draw counts, and that is too small to
     measure, so the honest output is the cost of the box rather than a verdict
     pretending the services caused it.
+
+    ``heat`` is a parsed heat setting (``parse_heat``) and ``heating_share``
+    the fraction of the window that falls in its heating months. The credit
+    is its own figure next to the cost, never folded into it.
     """
     # None means CashPilot could not READ this machine's earnings — an offline
     # worker, not a machine that earned nothing. The two were indistinguishable,
@@ -127,7 +141,7 @@ def assess_machine(
     if not metered:
         # A VPS bill does not move with CPU, so estimated watts would invent a
         # cost the user is not paying.
-        return {
+        out = {
             "machine": name,
             "verdict": NOT_METERED,
             "monthly_gross": round(gross, 4),
@@ -138,6 +152,11 @@ def assess_machine(
                 "whether it is worth running."
             ),
         }
+        if heat is not None:
+            # The credit is capped at the electricity cost, and a fixed-price
+            # bill has no per-kWh cost for the heat to offset.
+            out.update(heat=dict(heat), heat_credit=0.0)
+        return out
 
     if price_per_kwh is None or price_per_kwh <= 0 or watts is None or watts <= 0:
         missing = "your electricity price" if not price_per_kwh else "this machine's power draw"
@@ -164,13 +183,20 @@ def assess_machine(
                 out["summary"] = (
                     f"{name} earned nothing measurable in the last 30 days, so it loses money at any electricity price."
                 )
+            if heat is not None:
+                out.update(_heat_break_even(gross, watts, heat))
+        if heat is not None:
+            # No cost is known here, so there is nothing for the heat to offset.
+            out["heat"] = dict(heat)
+            out["heat_credit"] = None
         return out
 
     cost = monthly_cost(watts, price_per_kwh)
-    net = gross - cost
+    credit = heat_credit(watts, price_per_kwh, heat, heating_share)
+    net = gross - cost + credit
     verdict = LOSING_MONEY if net < 0 else (MARGINAL if cost > 0 and net < cost * 0.25 else PROFITABLE)
 
-    return {
+    result = {
         "machine": name,
         "verdict": verdict,
         "monthly_gross": round(gross, 4),
@@ -183,14 +209,35 @@ def assess_machine(
         "quality": "estimated",
         "break_even_watts": round(break_even_watts(gross, price_per_kwh) or 0.0, 1),
         "break_even_price_per_kwh": (round(break_even_price(gross, watts) or 0.0, 4) if gross_measured else None),
-        "summary": _summary(name, gross, cost, net, verdict, dedicated),
+        "summary": _summary(name, gross, cost, net, verdict, dedicated, credit),
+    }
+    if heat is not None:
+        result["heat"] = dict(heat)
+        result["heat_credit"] = round(credit, 4)
+        if gross_measured:
+            result.update(_heat_break_even(gross, watts, heat))
+        result["summary"] += " " + HEAT_ASSUMPTION
+    return result
+
+
+def _heat_break_even(gross: float, watts: float, heat: Mapping[str, Any]) -> dict[str, Any]:
+    """The heating-months break-even fields for an assessed row."""
+    price = break_even_price_with_heat(gross, watts, heat)
+    return {
+        "break_even_price_per_kwh_heating": None if price is None else round(price, 4),
+        "heat_covers_all_in_season": price is None and _heat_covers_all(heat),
     }
 
 
-def _summary(name: str, gross: float, cost: float, net: float, verdict: str, dedicated: bool) -> str:
+def _summary(
+    name: str, gross: float, cost: float, net: float, verdict: str, dedicated: bool, credit: float = 0.0
+) -> str:
+    # With a heat credit, gross minus cost is no longer the net, so the
+    # sentence names the credit rather than leave its figures not adding up.
+    heat = f", its heat is worth about {credit:.2f}," if credit > 0 else ""
     if verdict == LOSING_MONEY:
         base = (
-            f"{name} earns about {gross:.2f} a month and costs about {cost:.2f} in electricity, "
+            f"{name} earns about {gross:.2f} a month{heat} and costs about {cost:.2f} in electricity, "
             f"roughly {abs(net):.2f} a month out of pocket."
         )
         return base + (
@@ -200,10 +247,10 @@ def _summary(name: str, gross: float, cost: float, net: float, verdict: str, ded
         )
     if verdict == MARGINAL:
         return (
-            f"{name} earns about {gross:.2f} a month against roughly {cost:.2f} of electricity. "
+            f"{name} earns about {gross:.2f} a month{heat} against roughly {cost:.2f} of electricity. "
             "That is close enough to break-even that the estimate cannot really tell them apart."
         )
-    return f"{name} earns about {gross:.2f} a month against roughly {cost:.2f} of electricity."
+    return f"{name} earns about {gross:.2f} a month{heat} against roughly {cost:.2f} of electricity."
 
 
 def per_service_is_meaningful(marginal_watts: float | None) -> bool:
@@ -243,9 +290,14 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
     # promises this total "never quietly understates what the fleet costs".
     known_gross = sum(float(m.get("monthly_gross") or 0.0) for m in known)
     cost = sum(float(m.get("monthly_cost") or 0.0) for m in known)
+    # A heat credit exists only where a cost does, so it is summed over the
+    # same machines and added to the same like-with-like net.
+    credit = sum(float(m.get("heat_credit") or 0.0) for m in known)
 
     if not (unknown or gross_unknown or unmetered):
         summary = f"Across {len(machines)} machine(s): about {gross:.2f} earned against {cost:.2f} of electricity."
+        if credit > 0:
+            summary = summary[:-1] + f", with {credit:.2f} of heat credited."
     else:
         notes = []
         if known or unknown:
@@ -260,7 +312,8 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
         "machines": machines,
         "monthly_gross": round(gross, 4),
         "monthly_cost": round(cost, 4) if known else None,
-        "monthly_net": round(known_gross - cost, 4) if known else None,
+        "monthly_heat_credit": round(credit, 4) if known else None,
+        "monthly_net": round(known_gross - cost + credit, 4) if known else None,
         "cost_known_for": len(known),
         "cost_unknown_for": len(unknown),
         "gross_unknown_for": len(gross_unknown),
@@ -268,3 +321,122 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
         "quality": "estimated",
         "summary": summary,
     }
+
+
+# ---------------------------------------------------------------------------
+# Heat credit
+#
+# A miner turns every watt it draws into heat. In a month you heat the room
+# anyway, that heat replaces some of what you would have paid for. The one rule:
+# you can always heat with a resistive heater at your own tariff, so a kWh of
+# the device's heat is worth at most the tariff. The credit therefore can never
+# exceed the electricity cost, and it is shown beside the cost, never inside it.
+# ---------------------------------------------------------------------------
+
+
+def _finite(raw: Any) -> float | None:
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def parse_heat_months(raw: Any) -> frozenset[int] | None:
+    """``"11,12,1"`` as a set of calendar months, or None if empty or invalid."""
+    tokens = [t.strip() for t in str(raw or "").split(",")]
+    if not any(tokens):
+        return None
+    months: set[int] = set()
+    for token in tokens:
+        if not (token.isascii() and token.isdigit()) or not 1 <= int(token) <= 12:
+            return None
+        months.add(int(token))
+    return frozenset(months)
+
+
+def parse_heat(config: Mapping[str, Any], prefix: str) -> dict[str, Any] | None:
+    """The heat setting stored under ``prefix``, or None for no credit.
+
+    Every part must be present and valid. A missing month list, a COP outside
+    1-10 or a fuel price that is not positive gives None, never a guess.
+    Months are never filled in for the user: half the world heats in June.
+    """
+    source = str(config.get(f"{prefix}_heat") or "").strip().lower()
+    if source not in HEAT_SOURCES:
+        return None
+    months = parse_heat_months(config.get(f"{prefix}_heat_months"))
+    if months is None:
+        return None
+    heat: dict[str, Any] = {"source": source, "months": sorted(months)}
+    if source == "heat_pump":
+        cop = _finite(config.get(f"{prefix}_heat_cop"))
+        if cop is None or not HEAT_COP_RANGE[0] <= cop <= HEAT_COP_RANGE[1]:
+            return None
+        heat["cop"] = cop
+    elif source == "fuel":
+        price = _finite(config.get(f"{prefix}_heat_price"))
+        if price is None or price <= 0:
+            return None
+        heat["price"] = price
+    return heat
+
+
+def heating_share(months: Collection[int], today: date, days: int = 30) -> float:
+    """The fraction of the trailing ``days`` (today included) in ``months``."""
+    if days <= 0:
+        return 0.0
+    wanted = set(months)
+    hits = sum(1 for back in range(days) if (today - timedelta(days=back)).month in wanted)
+    return hits / days
+
+
+def heat_value_per_kwh(heat: Mapping[str, Any], price_per_kwh: float) -> float:
+    """What one kWh of the device's heat is worth: never more than the tariff."""
+    if price_per_kwh <= 0:
+        return 0.0
+    source = heat.get("source")
+    if source == "resistive":
+        value = price_per_kwh
+    elif source == "heat_pump":
+        value = price_per_kwh / float(heat["cop"])
+    elif source == "fuel":
+        value = float(heat["price"])
+    else:
+        return 0.0
+    return max(0.0, min(price_per_kwh, value))
+
+
+def heat_credit(watts: float, price_per_kwh: float, heat: Mapping[str, Any] | None, share: float) -> float:
+    """The monthly heat credit, never more than the monthly electricity cost."""
+    if heat is None or watts <= 0 or price_per_kwh <= 0:
+        return 0.0
+    share = max(0.0, min(1.0, share))
+    kwh = (watts / 1000.0) * HOURS_PER_MONTH
+    return min(kwh * share * heat_value_per_kwh(heat, price_per_kwh), monthly_cost(watts, price_per_kwh))
+
+
+def _heat_covers_all(heat: Mapping[str, Any]) -> bool:
+    return heat.get("source") == "resistive" or (heat.get("source") == "heat_pump" and float(heat["cop"]) <= 1.0)
+
+
+def break_even_price_with_heat(monthly_gross: float, watts: float, heat: Mapping[str, Any]) -> float | None:
+    """The tariff below which it pays for itself in a heating month (share 1).
+
+    With ``g`` the gross per kWh drawn:
+
+    * resistive (or a heat pump with COP 1): the heat is worth the whole
+      electricity cost, so it never loses money in season. None.
+    * heat pump: the net ``g - p(1 - 1/COP)`` is zero at ``g / (1 - 1/COP)``.
+    * fuel at ``f`` per kWh of heat: below ``f`` the heat is worth the tariff
+      and it cannot lose money; above it, the net ``g - p + f`` is zero at
+      ``g + f``.
+    """
+    if watts <= 0 or _heat_covers_all(heat):
+        return None
+    g = monthly_gross / ((watts / 1000.0) * HOURS_PER_MONTH)
+    if heat.get("source") == "heat_pump":
+        return g / (1.0 - 1.0 / float(heat["cop"]))
+    if heat.get("source") == "fuel":
+        return g + float(heat["price"])
+    return None
