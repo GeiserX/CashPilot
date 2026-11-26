@@ -333,6 +333,23 @@ class TestDesktopWalletDeploys:
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
         self._assert_wallet_refusal(response, post, self._LEGACY_SIA)
 
+    @pytest.mark.parametrize("phrase", [_PHRASE_12, _LEGACY_SIA])
+    def test_desktop_refuses_an_unsaved_phrase_wrapped_in_quotes(self, client, worker_target, phrase):
+        _, post = worker_target
+        spec = {
+            "image": catalog.get_service("honeygain")["docker"]["image"],
+            "env": {**self._HONEYGAIN_ENV, "NOTE": f'"{phrase}"'},
+        }
+        response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
+        self._assert_wallet_refusal(response, post, phrase)
+
+    def test_invalid_env_value_does_not_echo_a_recovery_phrase_in_its_key(self, client, worker_target):
+        _, post = worker_target
+        response = client.post("/api/deploy/honeygain?worker_id=2", json={"env": {self._PHRASE_12: {"wrong": "type"}}})
+        assert response.status_code == 422
+        assert self._PHRASE_12 not in response.text
+        post.assert_not_awaited()
+
     def test_desktop_refuses_an_unsaved_legacy_sia_phrase(self, client, worker_target):
         _, post = worker_target
         spec = {
@@ -403,8 +420,9 @@ class TestDesktopWalletDeploys:
             ",".join(f"{name}01" for name in _HOST_NAMES),
             ",".join(f"{name}.example.test" for name in _HOST_NAMES),
             _LOCATION_TAGS,
+            _LOCATION_TAGS.replace(",", ", "),
         ],
-        ids=["numbered-hostnames", "fqdn-list", "location-tags"],
+        ids=["numbered-hostnames", "fqdn-list", "location-tags", "spaced-location-tags"],
     )
     def test_desktop_accepts_hostname_and_location_tag_lists(self, client, worker_target, value):
         _, post = worker_target
@@ -1033,6 +1051,8 @@ class TestApiDeploy:
             assert refused.status_code == 409
             detail = refused.json()["detail"]
             assert "Update this worker" in detail["message"]
+            assert "container IDs this worker last reported" in detail["message"]
+            assert "could replace a different container" in detail["message"]
             assert detail["expected_containers"] == {"1": first[:12]}
             assert current == first and len(sent) == 1
 

@@ -1053,8 +1053,9 @@ class TestStartAppliesTheStoredProxy:
         earner, tunnel = self._pair()
         with (
             patch.object(orchestrator, "_get_client", return_value=_client_with(earner, tunnel)),
+            patch.object(proxy_tunnel, "_recorded_containers", return_value={earner.name: earner.id}),
             patch.object(proxy_tunnel, "resolve_proxy_ip", side_effect=proxy_tunnel.ProxyTunnelError("no such host")),
-            pytest.raises(proxy_tunnel.ProxyTunnelError),
+            pytest.raises(proxy_tunnel.ProxyTunnelError, match="no such host"),
         ):
             proxy_tunnel.start("x", 1, _socks(host="gw.example.net"), None)
         tunnel.start.assert_not_called()

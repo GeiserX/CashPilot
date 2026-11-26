@@ -397,7 +397,7 @@ class TestCap:
         ):
             started = asyncio.run(main._reset_proxy(proxy))
         assert started == ["a on worker 7"]
-        assert [c.args[2] for c in call.call_args_list] == ["/api/proxied/a/1/start"]
+        assert [c.args[2] for c in call.call_args_list] == ["/api/proxied/a/1/start-checked"]
         new_state = upd.call_args.args[1]
         assert new_state["used_bytes"] == 0 and "capped_at" not in new_state
 
@@ -491,7 +491,7 @@ class TestCap:
             patch.object(main, "_proxy_worker_call", call),
         ):
             asyncio.run(main._stop_capped_proxy(proxy, {(7, "a")}))
-        assert [c.args[2] for c in call.call_args_list] == ["/api/proxied/a/1/stop", "/api/proxied/a/1/start"]
+        assert [c.args[2] for c in call.call_args_list] == ["/api/proxied/a/1/stop", "/api/proxied/a/1/start-checked"]
         mark.assert_not_called()
         main._drop_proxy_cap_bell(1)
 
@@ -618,8 +618,8 @@ class TestCapEnforcement:
         asyncio.run(go())
         # Only the copy the cap stopped is started; the owner's stopped copy b is left alone.
         assert [(c.args[0], c.args[2]) for c in call.call_args_list] == [
-            (7, "/api/proxied/a/1/start"),
-            (7, "/api/proxied/a/1/start"),
+            (7, "/api/proxied/a/1/start-checked"),
+            (7, "/api/proxied/a/1/start-checked"),
         ]
         assert [c.args for c in rig.mark.call_args_list] == [(1, 7, "a", False)]
 
@@ -1672,7 +1672,7 @@ class TestStorageAndRoutes:
 
         pid, view, copies = _run(go)
         assert view["cap"]["capped_at"] is None and view["cap"]["enabled"] is False
-        assert call.call_args.args[:3] == (7, "POST", f"/api/proxied/honeygain/{pid}/start")
+        assert call.call_args.args[:3] == (7, "POST", f"/api/proxied/honeygain/{pid}/start-checked")
         assert copies[0]["stopped_by_cap"] == 0
 
     def test_turning_the_cap_on_does_not_count_old_traffic(self, db):
@@ -1869,7 +1869,7 @@ class TestReleasedCopiesThatDidNotStart:
 
         pid, after_release, after_heartbeat = _run(go)
         assert after_release == 1, "the failed start keeps the copy marked"
-        assert online.call_args.args[:3] == (7, "POST", f"/api/proxied/honeygain/{pid}/start")
+        assert online.call_args.args[:3] == (7, "POST", f"/api/proxied/honeygain/{pid}/start-checked")
         assert after_heartbeat == 0
         assert not main._proxy_cap_starting
 
@@ -1933,14 +1933,14 @@ class TestReleasedCopiesThatDidNotStart:
             return pid
 
         pid = _run(go)
-        starts = [c for c in call.call_args_list if c.args[2] == f"/api/proxied/honeygain/{pid}/start"]
+        starts = [c for c in call.call_args_list if c.args[2] == f"/api/proxied/honeygain/{pid}/start-checked"]
         assert starts == []
 
     def test_a_restart_that_fails_after_a_cap_lifted_mid_stop_is_marked(self, db):
         """The stop landed, the cap was lifted meanwhile, and the start back up failed."""
 
         async def worker_call(worker_id, method, path, definition, **kw):
-            if path.endswith("/start"):
+            if path.endswith("/start-checked"):
                 raise HTTPException(status_code=503, detail="Worker offline")
             return {"was_running": True}
 
@@ -2062,6 +2062,42 @@ class TestReviewFollowUps:
         assert err.status_code == 400 and "type the user and password again" in err.detail
         assert renamed["name"] == "Renamed" and renamed["secrets"]["password"] is True
         assert (stored["host"], stored["password"]) == ("pr.example.net", PASSWORD)
+
+    def test_start_sends_the_recorded_container_and_preserves_the_workers_409(self, db):
+        expected, current = "a" * 64, "b" * 64
+        conflict = {"error": "deploy_target_changed", "current_container": current}
+        call = AsyncMock(side_effect=HTTPException(409, conflict))
+
+        async def go():
+            proxy = await main.api_create_proxy(_Req(_socks()), {})
+            pid = proxy["id"]
+            worker = {
+                "id": 7,
+                "status": "online",
+                "system_info": {
+                    "features": ["proxy_tunnel"],
+                    "docker_available": True,
+                    "proxied": [
+                        {
+                            "slug": "honeygain",
+                            "proxy_id": pid,
+                            "container_id": current[:12],
+                            "recorded_container": expected,
+                        }
+                    ],
+                },
+            }
+            with (
+                patch.object(database, "get_worker", AsyncMock(return_value=worker)),
+                patch.object(main, "_proxy_to_worker", call),
+                pytest.raises(HTTPException) as err,
+            ):
+                await main.api_proxied_copy_command(pid, 7, "honeygain", "start", {})
+            assert err.value.status_code == 409 and err.value.detail == conflict
+
+        _run(go)
+        assert call.await_args.kwargs["json"]["expected_container"] == expected
+        call.assert_awaited_once()
 
     def test_a_start_by_hand_sends_the_proxy_as_stored_now(self, db):
         call = AsyncMock(return_value={"status": "started"})

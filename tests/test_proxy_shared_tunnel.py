@@ -313,9 +313,11 @@ def docker(tmp_path):
         patch.object(proxy_tunnel, "FAILED_MARKER", str(tmp_path / ".proxied_failed")),
         patch.object(proxy_tunnel, "KEPT_MARKER", str(tmp_path / ".proxied_kept")),
         patch.object(proxy_tunnel, "NEW_MARKER", str(tmp_path / ".proxied_new")),
+        patch.object(proxy_tunnel, "CONTAINER_MARKER", str(tmp_path / ".proxied_containers")),
         patch.dict(os.environ, {"CASHPILOT_TUNNEL_IMAGE": IMAGE}),
         patch.object(proxy_tunnel.time, "sleep", lambda _s: None),
         patch.dict(proxy_tunnel._replace_failed, clear=True),
+        patch.object(proxy_tunnel, "_recovery_skipped", set()),
     ):
         yield d
 
@@ -1042,7 +1044,7 @@ def _legacy_pair(docker, slug, proxy_id=3, *, proxy=None, running=True):
         proxy_tunnel._secret_tar(proxy_tunnel.secret_files(proxy, "192.0.2.1", f"{slug}-p{proxy_id}")),
     )
     tunnel.start()
-    _fake_deploy_raw(docker)(
+    container_id = _fake_deploy_raw(docker)(
         slug=slug,
         image=f"{slug}/{slug}:1",
         env={"K": slug},
@@ -1050,6 +1052,7 @@ def _legacy_pair(docker, slug, proxy_id=3, *, proxy=None, running=True):
         labels={LABEL_PROXY: str(proxy_id)},
         name=proxy_tunnel.earner_name(slug, proxy_id),
     )
+    proxy_tunnel._record_container(proxy_tunnel.earner_name(slug, proxy_id), container_id)
     if not running:
         tunnel.stop()
         docker.named(proxy_tunnel.earner_name(slug, proxy_id)).stop()
@@ -4122,6 +4125,48 @@ def _older_tunnel_retired_beside_a_current_one(docker):
 
 
 class TestAnOlderWorkersTunnelReplacementFollowups:
+    def test_recovery_skips_a_copy_with_a_changed_container_id(self, docker, caplog):
+        _deploy("honeygain")
+        old = docker.named("cashpilot-tunnel-p3")
+        _made_by_an_older_worker(old)
+        original = docker.named(NAME)
+        original.remove(force=True)
+        _fake_deploy_raw(docker)(
+            slug="honeygain",
+            image="honeygain/honeygain:1",
+            env={},
+            network_mode=f"container:{old.id}",
+            labels={LABEL_PROXY: "3"},
+            name=NAME,
+        )
+        replacement = docker.named(NAME)
+        (entry,) = _heartbeat()
+
+        assert docker.named(NAME) is replacement and replacement.status == "running"
+        assert docker.tunnels() == [old]
+        assert "Recovery skipped" in caplog.text
+        assert "container ID" in entry["recovery_skipped"]
+
+    def test_worker_start_checks_the_exact_id_before_moving_a_legacy_copy(self, docker):
+        _legacy_pair(docker, "honeygain", proxy=_socks())
+        earner = docker.named(NAME)
+        path = "/api/proxied/honeygain/3/start"
+        body = {"proxy": _socks(), "expected_container": "b" * 64}
+        with (
+            patch.object(worker_api, "_verify_api_key"),
+            patch.object(worker_api, "_validate_proxy"),
+            patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+        ):
+            client = TestClient(worker_api.app)
+            reply = client.post(path, json=body)
+            assert reply.status_code == 409, reply.text
+            assert reply.json()["detail"]["error"] == "deploy_target_changed"
+            assert reply.json()["detail"]["current_container"] == earner.id
+            assert docker.named(NAME) is earner
+            reply = client.post(path, json={**body, "expected_container": earner.id})
+            assert reply.status_code == 200, reply.text
+            assert docker.named(NAME).id != earner.id
+
     def test_copies_moved_before_a_failure_stay_running_in_the_new_tunnel_never_recreated_twice(self, docker):
         """Moved back into the older tunnel, where no earner starts, each copy was recreated a second time and left
         stopped, and the heartbeat did it again every five minutes while the other copy's fault lasted."""

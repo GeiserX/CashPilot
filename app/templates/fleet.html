@@ -1170,7 +1170,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const e = entries.find((x) => x.slug === slug && x.proxy_id === proxyId);
     if (!e) return {status: 'unknown', via: ''};
     const via = e.exit_ip ? `${e.exit_ip}${e.exit_country ? ' · ' + e.exit_country : ''}` : 'exit not seen yet';
-    return {status: e.status, via};
+    return {status: e.status, via, recoverySkipped: e.recovery_skipped};
   }
 
   function render() {
@@ -1192,7 +1192,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
           const capped = c.stopped_by_cap ? ' <span class="muted">(stopped by the cap)</span>' : '';
           return `<div>${esc(c.slug)} on ${esc(workerName(c.worker_id))}: ${esc(st.status)} via ${esc(st.via)}${capped}
             <button class="btn btn-ghost btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="${st.status === 'running' ? 'stop' : 'start'}">${st.status === 'running' ? 'Stop' : 'Start'}</button>
-            <button class="btn btn-danger btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="remove">Remove</button></div>`;
+            <button class="btn btn-danger btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="remove">Remove</button>
+            ${st.recoverySkipped ? `<div class="text-warn">${esc(st.recoverySkipped)}</div>` : ''}</div>`;
         }).join('') || '<span class="muted">none</span>';
         return `<tr><td><strong>${esc(p.name)}</strong><br><span class="muted">${target}</span></td><td>${exit}</td>
           <td>${esc(capLine(p))}${p.cap.enabled || p.cap.capped_at ? ` <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="reset">Reset</button>` : ''}</td>
@@ -1325,7 +1326,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
           // 202: the worker is slow, not failing. The row shows "removing…" until it confirms.
           if (out && out.status === 'removing') CP.toast(`Removing ${slug}… the worker has not confirmed yet; the copy disappears once it does.`, 'info');
         } else {
-          const out = await CP.api(`${base}/${btn.dataset.cmd}`, {method: 'POST'});
+          const path = `${base}/${btn.dataset.cmd}`;
+          let out;
+          try {
+            out = await CP.api(path, {method: 'POST'});
+          } catch (err) {
+            const current = err.refusal && err.refusal.current_container;
+            if (btn.dataset.cmd !== 'start' || err.code !== 'deploy_target_changed' || !/^[a-f0-9]{64}$/.test(current)) throw err;
+            if (!confirm(`Start may need to replace container ${current.slice(0, 12)} for ${slug} on ${workerName(Number(wid))}. Allow CashPilot to replace it?`)) return;
+            out = await CP.api(path, {method: 'POST', body: {expected_container: current}});
+          }
           // Started or stopped, but the worker could not make that last through a power cut.
           if (out && out.warning) CP.toast(out.warning, 'warning');
         }

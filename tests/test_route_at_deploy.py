@@ -825,7 +825,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         monkeypatch.setattr(
             proxy_tunnel,
             "_start",
-            lambda slug, pid, proxy, own_ip: make(slug, pid, proxy_tunnel._routed_here(slug, pid)),
+            lambda slug, pid, proxy, own_ip, expected_container: make(slug, pid, proxy_tunnel._routed_here(slug, pid)),
         )
         monkeypatch.setattr(
             proxy_tunnel,
@@ -2061,9 +2061,9 @@ class TestTheUiManagesARoutedService:
         # Each asks for the container first; its 404 is what sends it to the copy.
         assert [c for c in ui.paths() if c[1].startswith("/api/proxied/")] == [
             ("POST", f"{base}/stop"),
-            ("POST", f"{base}/start"),
+            ("POST", f"{base}/start-checked"),
             ("POST", f"{base}/stop"),
-            ("POST", f"{base}/start"),
+            ("POST", f"{base}/start-checked"),
             ("GET", f"{base}/logs"),
             ("DELETE", base),
         ]

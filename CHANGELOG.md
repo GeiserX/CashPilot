@@ -10,6 +10,13 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [Unreleased]
+
+### Fixes
+
+- Check the Docker container ID before Proxied Start or recovery replaces a copy. Show why the worker skipped recovery.
+- Keep unconfirmed legacy recovery phrases when a Desktop container is removed with its data kept or Sia is deployed on another worker. Keep phrases out of deploy errors and accept comma-spaced location tags.
+
 ## [2.10.2] - 2026-11-25
 
 ### Fixes

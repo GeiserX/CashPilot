@@ -2122,6 +2122,7 @@ class ProxiedStartSpec(BaseModel):
     """The proxy as the UI stores it now, so a start applies an edit."""
 
     proxy: ProxySpec
+    expected_container: str | None = None
 
 
 _EXIT_NODE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,253}$")
@@ -2415,6 +2416,7 @@ async def api_proxied_stop(request: Request, slug: str, proxy_id: int) -> dict[s
     return {"status": "stopped", **result}
 
 
+@app.post("/api/proxied/{slug}/{proxy_id}/start-checked")
 @app.post("/api/proxied/{slug}/{proxy_id}/start")
 async def api_proxied_start(
     request: Request, slug: str, proxy_id: int, spec: ProxiedStartSpec | None = None
@@ -2429,7 +2431,8 @@ async def api_proxied_start(
         proxy = spec.proxy.plain()
         own_ip = await _own_egress_ip()
     try:
-        result = await asyncio.to_thread(proxy_tunnel.start, slug, proxy_id, proxy, own_ip)
+        expectation = {"expected_container": spec.expected_container} if spec and spec.expected_container else {}
+        result = await asyncio.to_thread(proxy_tunnel.start, slug, proxy_id, proxy, own_ip, **expectation)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
     return {"status": "started", **result}

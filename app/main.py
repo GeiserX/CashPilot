@@ -1071,6 +1071,9 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
             if entry is None or entry.get("status") == "missing":
                 faults[_proxied_subject(earner, wid)] = {**base, "what": "copy_missing"}
                 continue
+            if entry.get("recovery_skipped"):
+                faults[_proxied_subject(earner, wid)] = {**base, "what": "recovery_skipped"}
+                continue
             # A copy the owner or the cap stopped: its tunnel may be down with it.
             # An older worker does not say; then only what is gone counts.
             held = entry.get("held")
@@ -1150,6 +1153,13 @@ async def _proxied_copy_check(workers: list[dict[str, Any]] | None = None) -> No
 def _proxied_alert_text(fault: dict[str, Any], since: datetime) -> tuple[str, str]:
     """The push title and the message of one proxied-copy fault."""
     svc, box, proxy = fault["svc"], fault["box"], fault["proxy"]
+    if fault["what"] == "recovery_skipped":
+        return (
+            f"CashPilot: skipped recovery for {svc} on {box}",
+            f"CashPilot skipped recovery for {svc} through {proxy} on {box}. "
+            "A container ID in the tunnel does not match the worker's saved ID. "
+            "Review the copies under Proxies on the Fleet page.",
+        )
     if fault["what"] == "tunnel_stuck":
         tunnel, copies = fault["tunnel"], ", ".join(sorted(fault["copies"]))
         try:
@@ -3635,6 +3645,12 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
         # a wallet seed phrase, a reveal the password, and the default 422
         # echoes the rejected input.
         errors = [{k: v for k, v in err.items() if k not in ("input", "ctx")} for err in errors]
+        if request.url.path.startswith("/api/deploy/"):
+            for error in errors:
+                loc = error.get("loc", ())
+                if len(loc) > 2 and loc[:2] == ("body", "env"):
+                    error["loc"] = (*loc[:2], "<environment key>")
+
     return JSONResponse(status_code=422, content={"detail": _json_safe(jsonable_encoder(errors))})
 
 
@@ -7020,6 +7036,14 @@ def _merge_recorded_spec(
 # /api/{action}/{slug} and the service-scoped /api/services/{slug}/... — with identical
 # behavior. Both sets of routes delegate to these helpers so the writer-guard, worker
 # resolution, proxy, and bookkeeping live in exactly one place per action.
+async def _forget_removed_deployment(slug: str, worker_id: int, *, delete_volumes: bool) -> None:
+    seed_key = wallet_seed.seed_key(catalog.get_service(slug))
+    if seed_key and not delete_volumes and await _worker_is_desktop(worker_id):
+        await database.remove_deployment(slug, worker_id=worker_id, keep_wallet_seed=seed_key)
+    else:
+        await database.remove_deployment(slug, worker_id=worker_id)
+
+
 async def _route_on(worker_id: int, slug: str) -> int | None:
     """The proxy ``slug`` is routed through on this worker by its record, or None."""
     try:
@@ -7250,7 +7274,7 @@ async def _svc_remove(
             worker_id=worker_id,
         )
     await _record_removed_copies(slug, worker_id, result)
-    await database.remove_deployment(slug, worker_id=worker_id)
+    await _forget_removed_deployment(slug, worker_id, delete_volumes=delete_volumes)
     # The worker removed the service's proxied copies with it (worker_api
     # remove_all), so their records go too. The removal itself already
     # happened; a failure here must not report it as failed.
@@ -7950,7 +7974,10 @@ async def _ask_deploy_confirmation(worker_id: int, slug: str, targets: dict[str,
     message = f"Replace these containers for {slug} on {name}?\n\n" + "\n".join(copies)
     if old:
         product = "CashPilot-Desktop" if placement.is_desktop(placement.system_info(worker)) else "this worker"
-        message += f"\n\nUpdate {product} so it can verify the container ID itself."
+        message += (
+            "\n\nThese are the container IDs this worker last reported. It could replace a different container."
+            f"\n\nUpdate {product} so it can verify the container ID itself."
+        )
     raise HTTPException(
         status_code=409,
         detail={"error": "confirm_deploy_targets", "message": message, "expected_containers": targets},
@@ -8678,16 +8705,29 @@ async def api_add_proxied_copy(
     return response
 
 
+class ProxiedCopyCommand(BaseModel):
+    expected_container: str | None = None
+
+
 @app.post("/api/proxies/{proxy_id}/copies/{worker_id}/{slug}/{command}")
 async def api_proxied_copy_command(
-    proxy_id: int, worker_id: int, slug: str, command: str, _auth: dict[str, Any] = Depends(_require_owner)
+    proxy_id: int,
+    worker_id: int,
+    slug: str,
+    command: str,
+    _auth: dict[str, Any] = Depends(_require_owner),
+    body: ProxiedCopyCommand | None = None,
 ) -> dict[str, Any]:
     if command not in ("start", "stop"):
         raise HTTPException(status_code=400, detail="The command is start or stop")
-    return await _proxied_command(proxy_id, worker_id, slug, command)
+    return await _proxied_command(
+        proxy_id, worker_id, slug, command, expected=body.expected_container if body else None
+    )
 
 
-async def _proxied_command(proxy_id: int, worker_id: int, slug: str, command: str) -> dict[str, Any]:
+async def _proxied_command(
+    proxy_id: int, worker_id: int, slug: str, command: str, *, expected: str | None = None
+) -> dict[str, Any]:
     """Start or stop one proxied copy, with the proxy's current settings and its cap."""
     proxy = await _proxy_or_404(proxy_id)
     if command == "start" and proxy["state"].get("capped_at"):
@@ -8700,15 +8740,13 @@ async def _proxied_command(proxy_id: int, worker_id: int, slug: str, command: st
                 raise HTTPException(
                     status_code=409, detail=proxy["state"].get("cap_reason") or "This proxy reached its cap"
                 )
-        result = await _proxy_worker_call(
-            worker_id,
-            "POST",
-            f"/api/proxied/{slug}/{proxy_id}/{command}",
-            proxy["definition"],
-            # The proxy as stored now, so an edit since the deploy reaches the copy.
-            json={"proxy": proxies.worker_proxy_spec(proxy["definition"])} if command == "start" else None,
-            timeout=90,
-        )
+            if expected is None:
+                expected = await _proxied_start_target(worker_id, proxy_id, slug)
+            result = await _start_proxied_copy(proxy, worker_id, slug, expected=expected)
+        else:
+            result = await _proxy_worker_call(
+                worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/stop", proxy["definition"], timeout=90
+            )
         # A start or stop by hand is the owner's decision; a later reset must not undo it.
         await database.set_proxied_copy_capped(proxy_id, worker_id, slug, False)
     return result
@@ -8959,19 +8997,43 @@ async def _release_capped_copies(proxy: dict[str, Any]) -> list[str]:
     return started
 
 
-async def _start_proxied_copy(proxy: dict[str, Any], worker_id: int, slug: str) -> dict[str, Any]:
-    """Start one copy with the proxy's current settings."""
-    result = await _proxy_worker_call(
-        worker_id,
-        "POST",
-        f"/api/proxied/{slug}/{proxy['id']}/start",
-        proxy["definition"],
-        json={"proxy": proxies.worker_proxy_spec(proxy["definition"])},
-        timeout=90,
+async def _proxied_start_target(worker_id: int, pid: int, slug: str) -> str:
+    entries = _proxied_reportable(await database.get_worker(worker_id)) or []
+    return next(
+        (
+            saved
+            for entry in entries
+            if entry.get("proxy_id") == pid
+            and egress.container_slug(entry) == slug
+            and isinstance(saved := entry.get("recorded_container"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", saved)
+        ),
+        "none",
     )
-    # Started, but the worker could not make its record durable: still a start.
+
+
+async def _start_proxied_copy(
+    proxy: dict[str, Any], worker_id: int, slug: str, *, expected: str | None = None
+) -> dict[str, Any]:
+    """Start one copy with the current settings and its saved or approved container ID."""
+    pid = proxy["id"]
+    if expected is not None and expected != "none" and not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise HTTPException(status_code=422, detail="Expected a full Docker container ID or 'none'.")
+    try:
+        result = await _proxy_worker_call(
+            worker_id,
+            "POST",
+            f"/api/proxied/{slug}/{pid}/start-checked",
+            proxy["definition"],
+            json={"proxy": proxies.worker_proxy_spec(proxy["definition"]), "expected_container": expected},
+            timeout=90,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 405 or (exc.status_code == 404 and exc.detail == _worker_failure_text(404)):
+            raise HTTPException(status_code=409, detail="Update this worker before starting a proxied copy.") from None
+        raise
     if isinstance(result, dict) and result.get("durable") is False:
-        logger.warning("Started %s through proxy %s: %s", slug, proxy["id"], result.get("warning"))
+        logger.warning("Started %s through proxy %s: %s", slug, pid, result.get("warning"))
     return result
 
 
@@ -13293,7 +13355,7 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
             # As in _svc_remove: a routed removal the worker has not confirmed
             # keeps the record until _finish_copy_removal drops it.
             await _record_removed_copies(slug, worker_id, result)
-            await database.remove_deployment(slug, worker_id=worker_id)
+            await _forget_removed_deployment(slug, worker_id, delete_volumes=bool(body.spec.get("delete_volumes")))
         # As in _svc_remove: the worker removed the proxied copies with the service.
         # The removal already happened; a failure here must not report it as failed.
         try:

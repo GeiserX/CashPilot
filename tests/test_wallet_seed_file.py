@@ -30,7 +30,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app import auth, catalog, database, main, orchestrator, step_up, worker_api
+from app import auth, catalog, database, main, orchestrator, step_up, wallet_seed, worker_api
 
 OWNER = {"uid": 1, "u": "owner", "r": "owner"}
 SLUG = "sia-hostd"
@@ -128,6 +128,45 @@ def _record_legacy_deployment():
     asyncio.run(database.save_deployment(slug=SLUG, container_id="c0", spec=spec, worker_id=1))
     # A second save, so the prior spec (the one a redeploy replaced) holds it too.
     asyncio.run(database.save_deployment(slug=SLUG, container_id="c0", spec=spec, worker_id=1))
+
+
+def test_desktop_remove_with_data_kept_retains_an_unconfirmed_recovery_phrase(db):
+    async def prepare():
+        worker = await database.upsert_worker(CLIENT_ID, system_info='{"device_type": "desktop"}')
+        await database.save_deployment(SLUG, "a" * 64, worker_id=worker, spec={"env": {**ENV, KEY: PHRASE}})
+        await database.save_deployment(SLUG, "b" * 64, worker_id=worker, spec={"env": ENV})
+        return worker
+
+    worker = asyncio.run(prepare())
+    with (
+        patch.object(auth, "get_current_user", return_value=OWNER),
+        patch.object(main, "_proxy_to_worker", AsyncMock(return_value={"status": "removed"})),
+    ):
+        response = TestClient(main.app).delete(f"/api/services/{SLUG}?worker_id={worker}")
+    assert response.status_code == 200, response.text
+    assert asyncio.run(database.get_deployment(SLUG)) is None
+    assert PHRASE in asyncio.run(database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)}))
+    removed, retained = asyncio.run(database.forget_env_value(SLUG, worker, KEY, confirmed_wallet_seed=PHRASE))
+    assert removed and not retained
+    assert PHRASE not in asyncio.run(database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)}))
+
+
+def test_deploy_on_another_worker_preserves_the_desktops_fleet_only_recovery_phrase(db):
+    async def go():
+        container_id = "a" * 64
+        desktop = await database.upsert_worker(
+            "desktop",
+            containers=json.dumps([{"slug": SLUG, "container_id": container_id[:12]}]),
+            system_info='{"device_type": "desktop"}',
+        )
+        await database.save_deployment(SLUG, container_id, spec={"env": {**ENV, KEY: PHRASE}})
+        await database.save_deployment(SLUG, "b" * 64, spec={"env": ENV}, worker_id=1)
+        return desktop
+
+    desktop = asyncio.run(go())
+    spec = asyncio.run(database.get_deployment_spec(SLUG, desktop))
+    assert spec and spec["env"][KEY] == PHRASE
+    assert KEY not in asyncio.run(database.get_deployment_spec(SLUG, 1))["env"]
 
 
 class TestThePhraseIsNeverStoredOrSentAsAVariable:
