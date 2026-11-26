@@ -490,8 +490,9 @@ class TestLogsEndpoint:
 
 
 _OLD_UI_REFUSAL = (
-    "This worker runs CashPilot 3.0.0 and replaces a running container only for a UI of the same release. "
-    "Update the UI, then redeploy. Nothing was changed."
+    "This worker runs CashPilot v3.0.0 and replaces an existing container only when the UI confirms "
+    "which container it replaces, and this UI is too old to do that. Update the UI, then redeploy. "
+    "Nothing was changed."
 )
 
 
@@ -562,6 +563,15 @@ def test_deploy_requires_the_current_id_for_a_replacement(route):
         assert replay.status_code == 409
         assert replay.json()["detail"]["current_container"] == successor
         assert current == successor
+
+
+@pytest.mark.parametrize("build", ["dev", "latest"])
+def test_old_ui_refusal_names_no_version_for_a_non_release_build(build):
+    exc = worker_api.orchestrator.DeployTargetChanged("abc")
+    refusal = worker_api._deploy_target_error(exc)
+    with patch.dict(os.environ, {"CASHPILOT_VERSION": build}):
+        old_ui = worker_api._old_ui_target_error(refusal, worker_api.CheckedDeploySpec(image="img"))
+    assert old_ui.detail.startswith("This worker runs a newer CashPilot and replaces an existing container")
 
 
 def test_checked_deploy_inventory_fails_closed_if_docker_cannot_be_read():

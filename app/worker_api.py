@@ -2200,13 +2200,15 @@ def _old_ui_target_error(exc: HTTPException, spec: BaseModel) -> HTTPException |
         or not isinstance(detail, dict)
         or detail.get("error") != "deploy_target_changed"
         or "expected_container" in spec.model_fields_set
-        or getattr(spec, "replace_existing", False)
     ):
         return None
+    # A build from a branch or a checkout reports "latest" or "dev": no number to name.
+    worker = f"CashPilot {version.display()}" if version.series(version.current()) else "a newer CashPilot"
     return HTTPException(
         status_code=409,
-        detail=f"This worker runs CashPilot {version.current()} and replaces a running container only for "
-        "a UI of the same release. Update the UI, then redeploy. Nothing was changed.",
+        detail=f"This worker runs {worker} and replaces an existing container only when the UI confirms "
+        "which container it replaces, and this UI is too old to do that. Update the UI, then redeploy. "
+        "Nothing was changed.",
     )
 
 
