@@ -2188,6 +2188,30 @@ def _deploy_target_error(exc: orchestrator.DeployTargetChanged) -> HTTPException
     )
 
 
+def _old_ui_target_error(exc: HTTPException, spec: BaseModel) -> HTTPException | None:
+    """The refusal a UI older than the checked deploy can show, or None.
+
+    Such a UI sends no ``expected_container`` and forwards only a plain-string
+    409 detail, so the structured refusal reached its owner as "HTTP 409".
+    """
+    detail = exc.detail
+    if (
+        exc.status_code != 409
+        or not isinstance(detail, dict)
+        or detail.get("error") != "deploy_target_changed"
+        or "expected_container" in spec.model_fields_set
+    ):
+        return None
+    # A build from a branch or a checkout reports "latest" or "dev": no number to name.
+    worker = f"CashPilot {version.display()}" if version.series(version.current()) else "a newer CashPilot"
+    return HTTPException(
+        status_code=409,
+        detail=f"This worker runs {worker} and replaces an existing container only when the UI confirms "
+        "which container it replaces, and this UI is too old to do that. Update the UI, then redeploy. "
+        "Nothing was changed.",
+    )
+
+
 def _proxy_http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, orchestrator.DeployTargetChanged):
         return _deploy_target_error(exc)
@@ -2361,6 +2385,10 @@ async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: P
     _copy_starts[key] = _copy_starts.get(key, 0) + 1
     try:
         return await _proxied_deploy(slug, proxy_id, spec, deadline)
+    except HTTPException as exc:
+        if (old_ui := _old_ui_target_error(exc, spec)) is not None:
+            raise old_ui from None
+        raise
     finally:
         _copy_deploys[key] -= 1
         if not _copy_deploys[key]:
@@ -2621,7 +2649,12 @@ def _deploy_direct(**kwargs: Any) -> str:
 @app.post("/api/containers/{slug}/deploy")
 async def api_deploy_container(request: Request, slug: str, spec: CheckedDeploySpec) -> dict[str, Any]:
     """Deploy through the legacy URL using the same check as the checked URL."""
-    return await _deploy_container(request, slug, spec)
+    try:
+        return await _deploy_container(request, slug, spec)
+    except HTTPException as exc:
+        if (old_ui := _old_ui_target_error(exc, spec)) is not None:
+            raise old_ui from None
+        raise
 
 
 @app.post("/api/containers/{slug}/deploy-checked")

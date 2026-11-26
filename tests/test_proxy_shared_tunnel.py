@@ -342,9 +342,22 @@ def test_worker_proxy_deploy_requires_the_approved_id_once(docker, tmp_path, rou
         original = first.json()["container_id"]
         assert client.get(path).json()["expected_container"] == original
 
-        refused = client.post(path, json=body)
+        with patch.dict(os.environ, {"CASHPILOT_VERSION": "3.0.0"}):
+            refused = client.post(path, json=body)
         assert refused.status_code == 409
-        assert refused.json()["detail"]["current_container"] == original
+        # A UI older than the checked deploy sends no expected_container and
+        # shows only a plain-string 409 detail: it reads why, not "HTTP 409".
+        assert refused.json()["detail"] == (
+            "This worker runs CashPilot v3.0.0 and replaces an existing container only when the UI confirms "
+            "which container it replaces, and this UI is too old to do that. Update the UI, then redeploy. "
+            "Nothing was changed."
+        )
+        assert docker.named("cashpilot-honeygain-p3").id == original
+        # The current UI always sends the field, and gets the structured refusal.
+        new_ui = client.post(path, json={**body, "expected_container": "none"})
+        assert new_ui.status_code == 409
+        assert new_ui.json()["detail"]["error"] == "deploy_target_changed"
+        assert new_ui.json()["detail"]["current_container"] == original
         assert docker.named("cashpilot-honeygain-p3").id == original
 
         body["expected_container"] = original
