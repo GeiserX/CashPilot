@@ -4419,8 +4419,8 @@ const CP = (() => {
     // What you run, then what you could add. Within each, the catalog's
     // priority first (1 first, the services that pay the project best), then
     // the rest by category and name. Priority first matches the API, the
-    // wizard, the README and Desktop; the category-then-name tail matches
-    // Desktop exactly.
+    // wizard, the README and Desktop. The tail sorts by category like Desktop,
+    // but compares names without case, so "io.net" sorts among the i's.
     const rank = x => (Number.isInteger(x.priority) ? x.priority : Infinity);
     const byPriority = (x, y) => (rank(x) - rank(y))
       || String(x.category).localeCompare(String(y.category))
