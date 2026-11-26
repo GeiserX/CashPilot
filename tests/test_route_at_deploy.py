@@ -1366,6 +1366,25 @@ class TestTheUiDeploysARoute:
         assert error.status_code == 409 and "too old" in str(error.detail)
         assert ui.calls == []
 
+    def test_a_joined_desktop_is_not_called_too_old_for_a_route(self, db):
+        """A Desktop serves no /api/proxied routes: it adds routed copies in its own window."""
+        row = _worker_row(features=())
+        row["system_info"] = json.dumps({"device_type": "desktop", "egress_ip": "93.184.216.34"})
+        row["url"] = "http://192.168.1.30:8086"
+        ui = _Ui(row)
+
+        async def go():
+            pid = await ui.proxy()
+            with pytest.raises(HTTPException) as exc:
+                await ui.deploy(main.DeployRequest(env=ENV, route=pid))
+            return exc.value
+
+        error = _run(go)
+        assert error.status_code == 409
+        assert "too old" not in str(error.detail)
+        assert "CashPilot Desktop" in str(error.detail) and "on that computer" in str(error.detail)
+        assert ui.calls == []
+
 
 class TestARemovalDuringARoutedDeploy:
     """_deploy_routed holds the copy's lock through the worker call, as api_add_proxied_copy does."""
