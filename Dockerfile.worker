@@ -77,6 +77,7 @@ COPY app/route_gate.py ./app/
 # against worker_api's actual imports.
 COPY app/version.py ./app/
 COPY app/worker_api.py ./app/
+COPY app/miner_read.py ./app/
 COPY app/orchestrator.py ./app/
 COPY app/isolation_check.py ./app/
 COPY app/socket_policy.py ./app/

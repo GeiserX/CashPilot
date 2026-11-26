@@ -51,6 +51,7 @@ from app import (
     isolation_check,
     lan_fence,
     log_redaction,
+    miner_read,
     node_read,
     orchestrator,
     payout_read,
@@ -89,8 +90,10 @@ WORKER_NAME = os.getenv("CASHPILOT_WORKER_NAME", socket.gethostname())
 WORKER_PORT = int(os.getenv("CASHPILOT_PORT", "8081"))
 WORKER_URL = os.getenv("CASHPILOT_WORKER_URL", "")
 HEARTBEAT_INTERVAL = 60  # seconds
+MINER_TARGETS, MINER_ERRORS = miner_read.parse_targets(os.getenv("CASHPILOT_MINERS", ""))
 
 _heartbeat_task: asyncio.Task | None = None
+_miner_snapshot: dict[str, Any] | None = None
 _activity_task: asyncio.Task | None = None
 # Activity sampling (app/activity.py): off until the UI's heartbeat response
 # says the owner switched it on for this worker. An older UI never says so.
@@ -804,6 +807,13 @@ async def _send_heartbeat() -> None:
             "proxied_only": route_gate.proxied_only(),
         },
     }
+    if MINER_TARGETS or MINER_ERRORS:
+        features.append("miner_read")
+        payload["system_info"]["miners"] = _miner_snapshot or {
+            "read_at": None,
+            "devices": [],
+            "errors": MINER_ERRORS,
+        }
     # "proxy" or "socket": what to restart when Docker stops answering, so the
     # UI's alert can name it (main._worker_docker_check).
     payload["system_info"]["docker_access"] = orchestrator.docker_access()
@@ -1003,6 +1013,14 @@ def _mark_routed(entries: list[dict[str, Any]]) -> bool:
         if lock.get(str(entry.get("slug"))) == entry.get("proxy_id"):
             entry["routed"] = True
     return True
+
+
+async def _miner_loop() -> None:
+    global _miner_snapshot
+    while True:
+        snapshot = await miner_read.read_all(MINER_TARGETS)
+        _miner_snapshot = {**snapshot, "errors": MINER_ERRORS}
+        await asyncio.sleep(miner_read.READ_INTERVAL)
 
 
 async def _heartbeat_loop() -> None:
@@ -1335,6 +1353,12 @@ async def lifespan(app: FastAPI):
     if docker_mode == "direct":
         await _resume_proxied_work()
 
+    miner_task = None
+    if MINER_TARGETS or MINER_ERRORS:
+        for error in MINER_ERRORS:
+            logger.warning("CASHPILOT_MINERS rejected an entry (%s)", error)
+        miner_task = asyncio.create_task(_miner_loop())
+
     if UI_URL:
         _heartbeat_task = asyncio.create_task(_heartbeat_loop())
         _activity_task = asyncio.create_task(_activity_loop())
@@ -1346,7 +1370,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    for task in (_heartbeat_task, _fence_task, _activity_task, _guard_task):
+    for task in (_heartbeat_task, _fence_task, _activity_task, _guard_task, miner_task):
         if task and not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

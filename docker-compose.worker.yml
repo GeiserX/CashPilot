@@ -138,6 +138,7 @@ services:
       - CASHPILOT_UI_URL=${CASHPILOT_UI_URL:-http://server-a:8080}
       - CASHPILOT_API_KEY=${CASHPILOT_API_KEY}
       - CASHPILOT_WORKER_NAME=${CASHPILOT_WORKER_NAME:-server-b}
+      - CASHPILOT_MINERS=${CASHPILOT_MINERS:-}
       - DOCKER_HOST=unix:///run/cashpilot-docker/docker.sock
       # The proxy policy's fingerprint (scripts/socket_proxy_policy.py), so the
       # worker can say when its image needs a newer policy than this file has.

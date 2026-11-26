@@ -133,6 +133,7 @@ nav = [
   { Configuration = [
       { "Configuration reference" = "configuration.md" },
       { "Multi-node fleet management" = "fleet.md" },
+      { "LAN miner readings" = "mining-devices.md" },
       { "Running on ARM" = "arm.md" },
       { "Custom services" = "custom-services.md" },
       { "Proxied copies" = "proxies.md" },
