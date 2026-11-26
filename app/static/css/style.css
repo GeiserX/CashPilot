@@ -1146,6 +1146,14 @@ img { max-width: 100%; }
 }
 .device-power-form { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
 .power-device-watts { width: 6em; }
+.econ-heat { margin-top: 4px; font-size: var(--fs-2); }
+.econ-heat > summary { cursor: pointer; color: var(--text-muted); }
+.heat-form { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; margin-top: 6px; }
+.heat-form [hidden] { display: none; }
+.heat-form .heat-source { width: auto; }
+.heat-form .heat-cop, .heat-form .heat-price { width: 6em; }
+.heat-months { display: flex; flex-wrap: wrap; gap: 4px 10px; border: 0; padding: 0; margin: 0; }
+.heat-months > legend { padding: 0; margin-bottom: 2px; }
 .economics-services {
   padding-top: 12px;
   border-top: 1px solid var(--border-color);

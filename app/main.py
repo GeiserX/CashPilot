@@ -10401,6 +10401,8 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
             if slug in measured:
                 read.add(worker_id)
 
+    # The heating share counts calendar months, so it uses the local date.
+    today = datetime.now(UTC).astimezone().date()
     assessed = []
     for worker in workers:
         worker_id = worker.get("id")
@@ -10413,6 +10415,8 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         # id is also read from the row-id fallback for volumes written before
         # this change.
         watts = _worker_watts(config, worker)
+        heat_prefix = f"worker_{_worker_config_key(worker)}"
+        heat = _heat_setting(config, heat_prefix, tariff_currency)
         assessed.append(
             machine_economics.assess_machine(
                 name=worker.get("name") or f"worker {worker.get('id')}",
@@ -10439,21 +10443,28 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                     if worker_id in hosting
                     else not placement.is_blind(worker) and not _heartbeat_partial(info)
                 ),
+                heat=heat,
+                heating_share=_heating_share(heat, today),
             )
         )
         assessed[-1]["kind"] = "machine"
         assessed[-1]["break_even_tariff"] = _break_even_local(
             assessed[-1].get("break_even_price_per_kwh"), tariff_currency
         )
+        _add_heat_fields(assessed[-1], config, heat_prefix, tariff_currency)
 
     for slug, service in devices.items():
         watts = _device_watts(config, slug)
+        heat_prefix = f"power_device_{slug}"
+        heat = _heat_setting(config, heat_prefix, tariff_currency)
         device = machine_economics.assess_machine(
             name=service["name"],
             monthly_gross=earned.get(slug, 0.0) if slug in measured else None,
             watts=watts,
             price_per_kwh=(price or None) if fx_ok else None,
             dedicated=True,
+            heat=heat,
+            heating_share=_heating_share(heat, today),
         )
         gross_basis = _gross_basis(service)
         if gross_basis == "accrued" and device["monthly_gross"] is not None:
@@ -10465,6 +10476,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
             gross_basis=gross_basis,
             break_even_tariff=_break_even_local(device.get("break_even_price_per_kwh"), tariff_currency),
         )
+        _add_heat_fields(device, config, heat_prefix, tariff_currency)
         assessed.append(device)
 
     summary = machine_economics.fleet_summary(assessed)
@@ -11342,6 +11354,59 @@ def _break_even_local(usd_per_kwh: float | None, tariff_currency: str) -> dict[s
     return {"price_per_kwh": round(local, 4), "currency": tariff_currency}
 
 
+_HEAT_SUFFIXES = ("heat", "heat_cop", "heat_price", "heat_months")
+
+
+def _heat_setting(config: dict[str, Any], prefix: str, tariff_currency: str) -> dict[str, Any] | None:
+    """The parsed heat setting under ``prefix``, with a fuel price in USD.
+
+    The fuel price is typed in the tariff's currency and every figure here is
+    USD. With no rate there is no credit: converting it by guess would be the
+    two-currency subtraction this endpoint already refuses for the tariff.
+    """
+    heat = machine_economics.parse_heat(config, prefix)
+    if heat is None or heat["source"] != "fuel" or tariff_currency == "USD":
+        return heat
+    usd = exchange_rates.to_usd(heat["price"], tariff_currency)
+    return None if usd is None else {**heat, "price": usd}
+
+
+def _heating_share(heat: dict[str, Any] | None, today: Any) -> float:
+    return machine_economics.heating_share(heat["months"], today) if heat else 0.0
+
+
+def _add_heat_fields(row: dict[str, Any], config: dict[str, Any], prefix: str, tariff_currency: str) -> None:
+    """The keys the Fleet heat form posts to, what is stored there, and the
+    heating-months break-even in the tariff's currency."""
+    row["heat_prefix"] = prefix
+    row["heat_settings"] = {suffix: str(config.get(f"{prefix}_{suffix}") or "") for suffix in _HEAT_SUFFIXES}
+    row["break_even_tariff_heating"] = _break_even_local(row.get("break_even_price_per_kwh_heating"), tariff_currency)
+
+
+_HEAT_KEY = re.compile(r"^((?:worker_|power_device_).+)_heat(?:_months)?$")
+
+
+def _refuse_heat_without_months(sanitized: dict[str, str], before: dict[str, Any]) -> None:
+    """Saving a heat source with no months is refused, never filled in.
+
+    Users are worldwide, and the southern hemisphere heats in June, so no
+    month list is a safe default. A credit with none would be a guess. Judged
+    on the merged config, so clearing the months of a saved source is refused
+    too.
+    """
+    merged = {**before, **sanitized}
+    for key in sanitized:
+        match = _HEAT_KEY.match(key)
+        if not match:
+            continue
+        prefix = match.group(1)
+        source = str(merged.get(f"{prefix}_heat") or "").strip().lower()
+        if source in ("", "none"):
+            continue
+        if machine_economics.parse_heat_months(merged.get(f"{prefix}_heat_months")) is None:
+            raise HTTPException(status_code=400, detail="Pick the months you heat.")
+
+
 # ---------------------------------------------------------------------------
 # API: User Preferences (onboarding state)
 # ---------------------------------------------------------------------------
@@ -11607,6 +11672,7 @@ async def api_set_config(
 ) -> dict[str, str]:
     sanitized = {k: _sanitize_credential(v) for k, v in body.data.items()}
     before = await database.get_config() or {}
+    _refuse_heat_without_months(sanitized, before)
     await database.set_config_bulk(sanitized)
     # Settings posts every prefilled field on the page, so a removed service's
     # unchanged email would bring it back as "balance only". A value that

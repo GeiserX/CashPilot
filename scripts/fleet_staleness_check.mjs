@@ -168,8 +168,8 @@ function deviceFixture() {
   let stored = '10', markup = '', editor, submit, pendingNet;
   const card = {style: {}};
   const body = {
-    querySelectorAll: () => editor ? [editor] : [],
-    addEventListener: (_, handler) => { submit = handler; },
+    querySelectorAll: selector => selector === '.power-device-watts' && editor ? [editor] : [],
+    addEventListener: (type, handler) => { if (type === 'submit') submit = handler; },
     set innerHTML(value) {
       markup = value;
       const raw = value.match(/data-slug="ocean" value="([^"]*)"/)?.[1];
@@ -231,6 +231,133 @@ await older;
 check('an older response cannot restore stale watts', racing.editor().value === '25', racing.markup());
 check('the gross tooltip describes period accruals', racing.markup().includes('Accrued at the pool during this period'),
   'the tooltip asserts that past accruals still await payout');
+
+// Heat credit. The form must never prefill months, must refuse a source with
+// none, must post the four keys under the row's own prefix, and a touched form
+// must survive the Fleet refresh.
+function heatFixture({owner = true, row = {}, net = {services: []}} = {}) {
+  const posts = [], toasts = [], handlers = {};
+  let markup = '', renders = 0, form = null;
+  const card = {style: {}};
+  const build = value => {
+    const block = value.match(/<form class="heat-form"[\s\S]*?<\/form>/)?.[0];
+    if (!block) return null;
+    const attr = re => block.match(re)?.[1];
+    const months = [...block.matchAll(/class="heat-month" value="(\d+)"( checked)?/g)]
+      .map(([, value, checked]) => ({value, checked: Boolean(checked)}));
+    const fields = {
+      '.heat-source': {value: attr(/<option value="(\w+)" selected>/) ?? 'none', classList: {contains: c => c === 'heat-source'}},
+      '.heat-cop': {value: attr(/heat-cop" value="([^"]*)"/) ?? ''},
+      '.heat-price': {value: attr(/heat-price" value="([^"]*)"/) ?? ''},
+      '.heat-cop-field': {hidden: /class="heat-cop-field" hidden/.test(block)},
+      '.heat-price-field': {hidden: /class="heat-price-field" hidden/.test(block)},
+      button: {disabled: false},
+    };
+    const f = {
+      dataset: {prefix: attr(/data-prefix="([^"]*)"/)},
+      months,
+      fields,
+      querySelector: selector => fields[selector],
+      querySelectorAll: selector => selector === '.heat-month' ? months : [],
+      matches: () => false,
+      closest: selector => selector === '.heat-form' ? f : null,
+    };
+    for (const field of Object.values(fields)) field.closest = selector => selector === '.heat-form' ? f : null;
+    return f;
+  };
+  const body = {
+    querySelectorAll: selector => selector === '.heat-form' && form ? [form] : [],
+    addEventListener: (type, handler) => { handlers[type] = handler; },
+    set innerHTML(value) { markup = value; renders++; form = build(value); },
+  };
+  const document = {getElementById: id => ({'fleet-economics-card': card, 'fleet-economics-body': body}[id])};
+  const api = async (path, options) => {
+    if (path === '/api/config') { posts.push(options.body.data); return {}; }
+    if (path === '/api/fleet/economics') {
+      return {tariff_currency: 'EUR', tariff_price_per_kwh: 0.25, machines: [{
+        kind: 'machine', machine: 'Rig', summary: 'Rig earns.', monthly_gross: 1, monthly_cost: 2,
+        monthly_net: 0.5, heat_credit: 1.5, heat: {source: 'heat_pump', months: [11, 12], cop: 3},
+        heat_prefix: 'worker_rig', heat_settings: {heat: 'heat_pump', heat_cop: '3', heat_price: '', heat_months: '11,12'},
+        break_even_tariff: {price_per_kwh: 0.069, currency: 'EUR'},
+        break_even_tariff_heating: {price_per_kwh: 0.104, currency: 'EUR'},
+        heat_covers_all_in_season: false,
+        ...row,
+      }]};
+    }
+    return net;
+  };
+  const toast = (message, kind) => toasts.push([message, kind]);
+  const refresh = buildEconomics(document, {api, formatCurrency: v => `$${v}`, toast}, String, owner);
+  return {
+    refresh, posts, toasts, markup: () => markup, renders: () => renders, form: () => form,
+    submit: () => handlers.submit({target: form, preventDefault() {}}),
+    change: target => handlers.change({target}),
+  };
+}
+
+const heat = heatFixture();
+await heat.refresh();
+check('the heat credit is its own term in the figures',
+  /<span class="muted">\+<\/span>\s*<span class="econ-heat-credit"[^>]*>\$1\.5</.test(heat.markup()), heat.markup());
+check('the heat credit has its own line',
+  heat.markup().includes('Heat credit $1.5 a month: its heat replaces a heat pump in Nov, Dec'), heat.markup());
+check('the heating-months break-even is shown',
+  heat.markup().includes('in your heating months below <strong>0.104 EUR/kWh</strong>'), heat.markup());
+check('the saved months come back ticked',
+  heat.form().months.filter(m => m.checked).map(m => m.value).join(',') === '11,12', JSON.stringify(heat.form().months));
+check('only the COP field shows for a heat pump', !heat.form().fields['.heat-cop-field'].hidden
+  && heat.form().fields['.heat-price-field'].hidden, 'wrong field visibility');
+heat.form().fields['.heat-source'].value = 'fuel';
+heat.change(heat.form().fields['.heat-source']);
+check('switching to fuel shows the fuel price field', heat.form().fields['.heat-cop-field'].hidden
+  && !heat.form().fields['.heat-price-field'].hidden, 'wrong field visibility');
+const rendersBefore = heat.renders();
+await heat.refresh();
+check('a Fleet refresh keeps a touched heat form', heat.renders() === rendersBefore, 'the draft was re-rendered away');
+heat.form().fields['.heat-source'].value = 'resistive';
+heat.form().months.forEach(m => { m.checked = false; });
+await heat.submit();
+check('a source with no months is refused', heat.posts.length === 0
+  && heat.toasts.some(([message]) => message === 'Pick the months you heat'), JSON.stringify([heat.posts, heat.toasts]));
+heat.form().months.find(m => m.value === '6').checked = true;
+heat.form().months.find(m => m.value === '7').checked = true;
+await heat.submit();
+check('Save posts the heat keys under the row prefix', JSON.stringify(heat.posts.at(-1)) === JSON.stringify({
+  worker_rig_heat: 'resistive', worker_rig_heat_cop: '3', worker_rig_heat_price: '', worker_rig_heat_months: '6,7',
+}), JSON.stringify(heat.posts));
+check('a saved heat form re-renders', heat.renders() > rendersBefore, 'the refresh after Save was held');
+
+const fresh = heatFixture({row: {heat: null, heat_credit: undefined,
+  heat_settings: {heat: '', heat_cop: '', heat_price: '', heat_months: ''}, break_even_tariff_heating: null}});
+await fresh.refresh();
+check('months are never prefilled', fresh.form().months.length === 12 && fresh.form().months.every(m => !m.checked),
+  JSON.stringify(fresh.form().months));
+check('no heat setting, no heat term', !fresh.markup().includes('econ-heat-credit') && !fresh.markup().includes('Heat credit'),
+  fresh.markup());
+const resistive = heatFixture({row: {heat: {source: 'resistive', months: [1]}, heat_covers_all_in_season: true,
+  break_even_tariff_heating: null}});
+await resistive.refresh();
+check('resistive heat says it covers the electricity in season',
+  resistive.markup().includes('in your heating months its heat covers its whole electricity cost'), resistive.markup());
+const unknownCost = heatFixture({row: {monthly_cost: null, monthly_net: null, heat_credit: null}});
+await unknownCost.refresh();
+check('no cost, no heat credit shown', !unknownCost.markup().includes('econ-heat-credit')
+  && !unknownCost.markup().includes('Heat credit'), unknownCost.markup());
+const fixedPrice = heatFixture({row: {verdict: 'not_metered', monthly_cost: null, monthly_net: null, heat_credit: 0}});
+await fixedPrice.refresh();
+check('a fixed-price box offers no heat form', !fixedPrice.markup().includes('heat-form'), fixedPrice.markup());
+const withService = heatFixture({net: {services: [{platform: 'xmrig', cost_attributable: true, cost: 2, gross: 1, net: -1}]}});
+await withService.refresh();
+check('per-service figures say they leave out the heat credit',
+  withService.markup().includes('Per-service figures leave out the heat credit'), withService.markup());
+const noHeatService = heatFixture({row: {heat: null, heat_credit: undefined},
+  net: {services: [{platform: 'xmrig', cost_attributable: true, cost: 2, gross: 1, net: -1}]}});
+await noHeatService.refresh();
+check('no heat credit, no per-service heat note',
+  !noHeatService.markup().includes('leave out the heat credit'), noHeatService.markup());
+const heatViewer = heatFixture({owner: false});
+await heatViewer.refresh();
+check('viewers get no heat form', !heatViewer.markup().includes('heat-form'), heatViewer.markup());
 
 const fleetSource = html.slice(
   html.indexOf('  // Lazily fetch the plaintext key'),

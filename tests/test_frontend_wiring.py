@@ -483,6 +483,13 @@ class TestRunningCostsAreShownWithoutBeingInvented:
         block = block[block.index("const breakEven = m =>") :][:900]
         assert "economics.tariff_currency === be.currency" in block
 
+    def test_the_heat_setting_posts_its_months_under_the_row_prefix(self):
+        page = self._fleet()
+        assert "[`${prefix}_heat_months`]: months.join(',')" in page
+        assert "Pick the months you heat" in page
+        assert "m.heat_prefix" in page
+        assert "m.break_even_tariff_heating" in page
+
     def test_device_draw_is_saved_under_its_own_config_prefix(self):
         page = self._fleet()
         assert "m.kind === 'device'" in page
