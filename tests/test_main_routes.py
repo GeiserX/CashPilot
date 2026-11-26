@@ -241,7 +241,7 @@ function extract(name) {
 }
 const rows = {querySelectorAll: () => []};
 const renderWorkers = new Function('document', 'CP', 'brk', '_isOwner', '_isolation',
-    ['countWorkerNames', 'esc', 'renderWorkers'].map(extract).join('\n') + '\nreturn renderWorkers;'
+    ['countWorkerNames', 'esc', 'renderMiners', 'renderWorkers'].map(extract).join('\n') + '\nreturn renderWorkers;'
 )({getElementById: () => rows}, {fmtTimestamp: () => ({title: '', text: ''})}, String, false, {});
 renderWorkers([{id: 1, name: 'Desk', status: 'offline', system_info: {device_type: 'desktop'}}]);
 process.stdout.write(rows.innerHTML);
