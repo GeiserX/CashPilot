@@ -1486,7 +1486,7 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
             return None
         try:
             regained = payouts.balance_change(previous, result.balance)
-            withdrawn = await database.withdraw_recovered_payout(result.platform, regained)
+            withdrawn = await database.withdraw_recovered_payout(result.platform, regained, currency=result.currency)
         except Exception as exc:  # noqa: BLE001 - must never block detecting a new payout
             withdrawn = False
             logger.warning("Could not check %s for a recovered payout: %s", result.platform, exc)
@@ -10565,6 +10565,10 @@ async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     # leaves the declared minimum alone.
     balance_currency = (history[-1].get("currency") if history else None) or None
     confirmed = await database.get_payouts(platform=slug, confirmed_only=True)
+    if balance_currency:
+        # A multi-coin pool after a coin switch: payouts in the old coin are
+        # not this balance's unit, so they cannot be added to it.
+        confirmed = [p for p in confirmed if (p.get("currency") or "USD").upper() == balance_currency.upper()]
     # A provider read node by node reports its own lifetime, settlements
     # included (issue #488); balance plus confirmed payouts would miss every
     # settlement, since none is ever asked about.

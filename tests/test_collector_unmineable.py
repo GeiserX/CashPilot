@@ -292,3 +292,83 @@ def test_the_guide_lists_exactly_the_priced_coins():
     line = next(line for line in guide.splitlines() if line.startswith("CashPilot prices "))
     listed = set(re.findall(r"\b[A-Z]{3,4}\b", line))
     assert listed == set(exchange_rates.CRYPTO_IDS) - {"MYST", "ANYONE", "UPT"}
+
+
+class TestACoinSwitchKeepsTheOldCoinsPayouts:
+    """Review finding: readings in a new coin must not touch payouts in the old one."""
+
+    @pytest.fixture
+    def db(self, tmp_path, monkeypatch):
+        import asyncio
+
+        from app import database, main
+
+        monkeypatch.setattr(database, "DB_DIR", tmp_path)
+        monkeypatch.setattr(database, "DB_PATH", tmp_path / "cashpilot.db")
+        monkeypatch.setattr(main, "_push_alert", AsyncMock())
+        asyncio.run(database.init_db())
+        return database
+
+    @pytest.mark.asyncio
+    async def test_a_rise_in_the_new_coin_does_not_withdraw_the_old_coins_payout(self, db):
+        from app import main
+        from app.collectors.base import EarningsResult
+
+        await db.upsert_earnings(SLUG, 0.0305, "XMR")
+        await main._detect_payout(EarningsResult(platform=SLUG, balance=0.0004, currency="XMR", payout_threshold=0.03))
+        assert [p["currency"] for p in await db.get_payouts(SLUG)] == ["XMR"]
+
+        # The user switches to SHIB: 1000, then 1500 SHIB. A 500 rise is no XMR coming back.
+        await db.upsert_earnings(SLUG, 1000.0, "SHIB", date="2999-01-01")
+        await main._detect_payout(EarningsResult(platform=SLUG, balance=1500.0, currency="SHIB", payout_threshold=1e5))
+
+        [payout] = await db.get_payouts(SLUG)
+        assert payout["currency"] == "XMR" and payout["amount"] == pytest.approx(0.0301)
+        assert await db.get_alert_subjects("payout") == {SLUG}
+
+    @pytest.mark.asyncio
+    async def test_a_rise_in_the_same_coin_still_withdraws_a_bad_reading(self, db):
+        await db.record_probable_payout(platform=SLUG, amount=0.0301, currency="XMR", fx_rate_usd=None)
+        assert not await db.withdraw_recovered_payout(SLUG, 500.0, currency="shib")
+        assert await db.withdraw_recovered_payout(SLUG, 0.0301, currency="xmr")
+        assert await db.get_payouts(SLUG) == []
+
+
+def test_lifetime_adds_only_payouts_in_the_balances_coin(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    monkeypatch.setattr(main.auth, "get_current_user", lambda request: {"uid": 1, "u": "admin", "r": "owner"})
+    monkeypatch.setattr(main.database, "get_latest_balance", AsyncMock(return_value=1000.0))
+    monkeypatch.setattr(
+        main.database,
+        "get_balance_history",
+        AsyncMock(return_value=[{"date": "2026-11-26", "balance": 1000.0, "currency": "SHIB"}]),
+    )
+    monkeypatch.setattr(
+        main.database,
+        "get_payouts",
+        AsyncMock(
+            return_value=[
+                {"amount": 0.03, "currency": "XMR", "confirmed": True, "detected_at": "2026-11-20"},
+                {"amount": 200.0, "currency": "SHIB", "confirmed": True, "detected_at": "2026-11-25"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(main, "_node_totals", AsyncMock(return_value={}))
+    body = TestClient(main.app).get(f"/api/services/{SLUG}/payout-progress").json()
+
+    assert body["lifetime_earned"] == pytest.approx(1200.0)
+    assert body["confirmed_payout_count"] == 1
+
+
+def test_the_payout_reason_writes_a_small_coin_threshold_in_full():
+    service = catalog.get_service(SLUG)
+    out = payouts.detect(0.0005, 0.0003, service, "XMR", threshold=0.00012345)
+    assert out is not None and "0.00012345 minimum" in out["reason"]
+
+
+def test_bad_coin_advice_names_the_coin():
+    text = credential_test.message(credential_test.BAD_CREDENTIALS, "unMineable", payout_address=True)
+    assert "payout address" in text and "the coin" in text and "shares" in text

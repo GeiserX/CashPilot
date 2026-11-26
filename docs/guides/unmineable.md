@@ -57,8 +57,10 @@ If you do not want to use the code, run XMRig yourself instead of this entry.
 1. Open **Settings** and find **unMineable** under the collectors.
 2. Enter the same payout address and coin ticker you deployed with. Enter the
    address alone, without the coin, worker name or referral code.
-3. Select **Test**. A new address reports "no record of this address yet" until
-   unMineable credits its first shares.
+3. Select **Test**. Until unMineable credits the first shares of a new
+   address, the test says it could not verify the payout address. The
+   dashboard then shows the exact reason, such as "no record of this address
+   yet" or "does not list the coin".
 
 The balance CashPilot shows is accrued, not received. When unMineable pays you,
 the balance drops and the dashboard asks you to confirm the payout. Only a
@@ -77,9 +79,9 @@ unMineable's conversion rate and your hashrate all change.
 
 ## Troubleshooting
 
-- **"Invalid address" in Settings or the miner log.** The address is not
-  valid for that coin on a network unMineable pays. Check the coin ticker and
-  the address.
+- **"does not accept this address" on the dashboard, or "Invalid address" in
+  the miner log.** The address is not valid for that coin on a network
+  unMineable pays. Check the coin ticker and the address.
 - **The pool never connects.** Some DNS filters block pool domains. Check the
   resolver on the worker and whether your network permits the connection.
   The connection uses TLS on port 443 and accepts the pool's self-signed

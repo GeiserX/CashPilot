@@ -4554,7 +4554,9 @@ async def record_probable_payout(
         await db.close()
 
 
-async def withdraw_recovered_payout(platform: str, regained: float, within_hours: int = 24) -> bool:
+async def withdraw_recovered_payout(
+    platform: str, regained: float, within_hours: int = 24, currency: str | None = None
+) -> bool:
     """Delete a recent unconfirmed payout guess, and its alert, once the money came back.
 
     A provider that answers 0 (or a bad number) for one reading and then recovers
@@ -4570,16 +4572,22 @@ async def withdraw_recovered_payout(platform: str, regained: float, within_hours
     On the shared connection another task could commit between the two deletes
     (leaving an alert with no question behind it if the second one failed), and a
     rollback there would also throw away that task's unsaved work.
+
+    With ``currency``, only a question in that currency can be withdrawn: on a
+    multi-coin pool a rise of 500 SHIB says nothing about a 0.03 XMR payout.
     """
+    query = (
+        "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? AND detected_at >= datetime('now', ?)"
+    )
+    params: list[Any] = [platform, float(regained), f"-{int(within_hours)} hours"]
+    if currency is not None:
+        query += " AND UPPER(COALESCE(currency, 'USD')) = UPPER(?)"
+        params.append(currency or "USD")
     DB_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(str(DB_PATH), timeout=30) as db:
         await db.execute("BEGIN IMMEDIATE")
         try:
-            cursor = await db.execute(
-                "DELETE FROM payouts WHERE platform = ? AND confirmed = 0 AND amount <= ? "
-                "AND detected_at >= datetime('now', ?)",
-                (platform, float(regained), f"-{int(within_hours)} hours"),
-            )
+            cursor = await db.execute(query, params)
             withdrawn = cursor.rowcount > 0
             if withdrawn:
                 await db.execute("DELETE FROM alerts WHERE kind = 'payout' AND subject = ?", (platform,))
