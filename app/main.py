@@ -12997,6 +12997,11 @@ async def api_worker_heartbeat(request: Request, body: WorkerHeartbeat) -> dict[
         # None (could not read the fleet) goes out as null: the worker keeps its
         # list. A missing key means a UI from before this list.
         resp["fleet_exits"] = await _fleet_exits()
+        # A joined Desktop reports its command URL only to a server that lists
+        # desktop_commands. web 2.10.x lists nothing, yet took that URL as a command
+        # target and deployed there without the owner's approval of a replacement
+        # or the recovery phrase guard (CashPilot-Desktop upstream.TakesCommands).
+        resp["features"] = ["desktop_commands"]
     return resp
 
 

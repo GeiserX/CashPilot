@@ -123,6 +123,28 @@ class TestHeartbeatClientId:
         assert call_kwargs["client_id"] == "android-abc123"
         assert call_kwargs["name"] == "My Phone"
 
+    def test_reply_lists_desktop_commands_for_boxes_not_phones(self):
+        """A joined Desktop reports its command URL only to a server that lists
+        desktop_commands; a phone's reply stays as it was."""
+        replies = {}
+        for kind, info in (("desktop", {"device_type": "desktop"}), ("phone", {"device_type": "android"})):
+            with (
+                patch("app.main._authenticate_worker_heartbeat", new_callable=AsyncMock, return_value="ok"),
+                patch("app.main.database.upsert_worker", AsyncMock(return_value=5)),
+                patch("app.main.database.confirm_worker_key", AsyncMock()),
+                patch("app.main._fleet_exits", AsyncMock(return_value=[])),
+            ):
+                replies[kind] = _run(
+                    api_worker_heartbeat(
+                        _request(),
+                        SimpleNamespace(
+                            name=kind, url="", client_id=kind, containers=[], apps=[], system_info=info
+                        ),
+                    )
+                )
+        assert "desktop_commands" in replies["desktop"]["features"]
+        assert "features" not in replies["phone"]
+
     def test_fallback_to_name_when_no_client_id(self):
         """Old workers that don't send client_id get name used as identity."""
         mock_upsert = AsyncMock(return_value=7)
