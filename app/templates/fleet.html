@@ -371,6 +371,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       </details>`;
     };
 
+    const hasMinerWatts = (economics.lan_miners || []).some(miner => miner.watts >= 1);
     const rows = machines.map(m => {
       const losing = m.verdict === 'losing_money';
       const device = m.kind === 'device';
@@ -398,7 +399,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
                        data-slug="${esc(m.slug)}" value="${esc(m.watts)}">
               </label>
               <button class="btn btn-link" type="submit">Save</button>
-            </form>` : ''}
+            </form>${hasMinerWatts && m.gross_basis === 'accrued' ? `
+              <div class="economics-note">Use the miner readings above as a starting point. Enter the total wall draw for the miners that use this pool account.</div>` : ''}` : ''}
           </div>
         </div>`;
     }).join('');
@@ -577,7 +579,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
           </td>
         </tr>
         ${_isolation[w.id] && _isolation[w.id] !== 'running' ? `<tr class="worker-detail"><td colspan="7">${renderIsolation(_isolation[w.id])}</td></tr>` : ''}
-        ${isOnline && !isAndroid ? renderFence(w, sysInfo) : ''}`;
+        ${isOnline && !isAndroid ? renderFence(w, sysInfo) : ''}
+        ${renderMiners(w, sysInfo.miners)}`;
     }
     container.innerHTML = `
       <table class="fleet-table">
@@ -590,6 +593,70 @@ CASHPILOT_WORKER_NAME=server-name</code>
     for (const input of container.querySelectorAll('.power-unmetered')) {
       if (billingEdits.has(input.dataset.clientId)) input.checked = billingEdits.get(input.dataset.clientId);
     }
+  }
+
+  function renderMiners(worker, snapshot) {
+    if (!snapshot) return '';
+    const warnings = snapshot.errors.map(error => `<span class="flag flag-warn">${brk(error)}</span>`).join(' ');
+    const number = value => value.toLocaleString(undefined, {maximumSignificantDigits: 5});
+    const difficulty = value => {
+      const units = ['', 'k', 'M', 'G', 'T', 'P', 'E'];
+      const scale = value > 0 ? Math.min(units.length - 1, Math.max(0, Math.floor(Math.log10(value) / 3))) : 0;
+      return number(value / 1000 ** scale) + units[scale];
+    };
+    const devices = snapshot.devices.map(device => {
+      const elapsed = (Date.now() - Date.parse(device.read_at)) / 1000;
+      const ahead = elapsed < 0;
+      const stale = worker.status !== 'online' || ahead || elapsed > 180;
+      const state = stale ? 'unknown' : device.ok ? 'ok' : 'fail';
+      const status = stale ? 'Stale' : device.ok ? 'Reading' : 'Read failed';
+      const clock = ahead ? 'Reading time is ahead of this browser'
+        : `${stale ? 'Last read' : 'Read'} ${Math.floor(elapsed)} s ago`;
+      const when = `<span title="${esc(device.read_at)}">${esc(clock)}</span>`;
+      const label = [device.target, device.model, device.firmware].filter(Boolean).map(brk).join(' · ');
+      const values = [];
+      if (device.ok) {
+        const ths = device.hashrate_ghs == null ? null : device.hashrate_ghs / 1000;
+        if (ths != null) values.push(`${esc(number(ths))} TH/s`);
+        if (device.hashrate_avg_ghs != null) {
+          values.push(`${esc(number(device.hashrate_avg_ghs / 1000))} TH/s avg`);
+        }
+        if (device.watts != null) {
+          const powerNote = device.protocol === 'axeos'
+            ? 'Reported by the device: DC at the board, before power-supply loss.'
+            : 'Power reported by the device.';
+          values.push(`<span title="${powerNote}">${esc(number(device.watts))} W</span>`);
+          const efficiency = device.watts / ths;
+          if (ths > 0 && Number.isFinite(efficiency)) values.push(`${esc(number(efficiency))} J/TH`);
+        }
+        if (device.temp_c != null) values.push(`${esc(number(device.temp_c))} °C`);
+        if (device.vr_temp_c != null) values.push(`${esc(number(device.vr_temp_c))} °C regulator`);
+        if (device.best_diff != null) {
+          values.push(`Best ${esc(difficulty(device.best_diff))}`);
+        }
+        const pool = device.pool_url && device.pool_url.split('://')[1];
+        if (pool) values.push(`Pool ${brk(pool)}`);
+        if (device.pool_user) values.push(`User ${brk(device.pool_user)}`);
+        if (device.uptime_s != null) {
+          const hours = Math.floor(device.uptime_s / 3600);
+          const minutes = Math.floor(device.uptime_s % 3600 / 60);
+          const seconds = device.uptime_s % 60;
+          const uptime = hours ? `${hours} h ${minutes} m` : minutes ? `${minutes} m ${seconds} s` : `${seconds} s`;
+          values.push(`Up ${esc(uptime)}`);
+        }
+      } else {
+        values.push(esc(device.error));
+      }
+      values.push(when);
+      return `<li${stale ? ' class="muted"' : ''}>
+        <span class="cell cell-${state}" role="img" aria-label="${status}"></span> ${label}
+        <div class="cell-sub">${values.join(' · ')}</div>
+      </li>`;
+    }).join('');
+    return `<tr class="worker-detail"><td colspan="7">
+      <div class="detail-label">Miners this worker reads</div>
+      ${warnings}${devices ? `<ul class="worker-miner-list">${devices}</ul>` : snapshot.read_at ? '' : 'Waiting for the first reading'}
+    </td></tr>`;
   }
 
   // Turning isolation on, per worker id: {busy}, {done}, or {error}.

@@ -34,6 +34,8 @@ Workers use **REST HTTP** to communicate with the UI:
 
 Workers must be reachable from the UI for commands. The UI must be reachable from workers for heartbeats.
 
+A worker can add [LAN miner readings](mining-devices.md) to its heartbeat. Fleet shows the last reading from each miner you list on that worker.
+
 ### Importing earnings a client collected on its own
 
 `POST /api/workers/earnings-import` lets a client that has been reading a

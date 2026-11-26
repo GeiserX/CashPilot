@@ -157,6 +157,7 @@ Two separate Docker images:
 | `CASHPILOT_WORKER_NAME` | No | hostname | Human-readable name for this worker |
 | `CASHPILOT_WORKER_NETWORK` | No | detected | `residential`/`hosting`; overrides the DMI-vendor guess |
 | `CASHPILOT_EGRESS_DETECT` | No | on | `off` disables the hourly public-IP lookup |
+| `CASHPILOT_MINERS` | No | empty | Comma-separated AxeOS and cgminer addresses for [LAN miner readings](docs/mining-devices.md) |
 | `CASHPILOT_EGRESS_IP` | No | -- | State the public IP directly (validated; a LAN/tailnet address is rejected) |
 | `CASHPILOT_EGRESS_IP_URL` | No | -- | Custom IP-echo endpoint returning a bare IP |
 | `CASHPILOT_ISOLATION` | No | `auto` | `auto`/`on`/`off`. Fences bridge earners off the LAN, host, tailnet and metadata on new installs (app/lan_fence.py); upgraded installs stay on the default bridge until switched from the Fleet page |

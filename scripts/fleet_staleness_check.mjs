@@ -191,7 +191,10 @@ function deviceFixture() {
       return {};
     }
     if (path === '/api/fleet/economics') {
-      return {machines: [{kind: 'device', slug: 'ocean', machine: 'OCEAN', watts: stored, gross_basis: 'accrued'}]};
+      return {
+        machines: [{kind: 'device', slug: 'ocean', machine: 'OCEAN', watts: stored, gross_basis: 'accrued'}],
+        lan_miners: [{watts: 2.65}],
+      };
     }
     const pending = pendingNet;
     pendingNet = null;
@@ -231,6 +234,28 @@ await older;
 check('an older response cannot restore stale watts', racing.editor().value === '25', racing.markup());
 check('the gross tooltip describes period accruals', racing.markup().includes('Accrued at the pool during this period'),
   'the tooltip asserts that past accruals still await payout');
+check('miner watts suggest a starting point without filling the wall draw',
+  racing.markup().includes('Use the miner readings above as a starting point') && racing.editor().value === '25',
+  racing.markup());
+
+const renderMiners = new Function('esc', 'brk', extract('renderMiners') + '; return renderMiners;')(esc, esc);
+const miner = {
+  target: 'axeos://10.0.0.4', protocol: 'axeos', ok: true, read_at: new Date().toISOString(),
+  hashrate_ghs: 1000, watts: 10, best_diff: 483000, model: '<img src=x>', pool_user: '<payout>',
+};
+const onlineBox = {status: 'online'};
+const renderMiner = (device, worker = onlineBox) => renderMiners(worker, {devices: [device], errors: []});
+const readings = renderMiner(miner);
+check('current miner shows rates, power and difficulty', ['cell-ok', '1 TH/s', '10 J/TH', '483k'].every(text => readings.includes(text)), readings);
+check('miner model and user are escaped', readings.includes('&lt;img src=x&gt;') && readings.includes('&lt;payout&gt;'), readings);
+const old = renderMiner({...miner, read_at: new Date(Date.now() - 240000).toISOString()});
+const offlineMiner = renderMiner(miner, {status: 'offline'});
+check('stale and offline miners show the last read in grey', [old, offlineMiner].every(row => row.includes('cell-unknown') && row.includes('Last read')), old + offlineMiner);
+const ahead = renderMiner({...miner, read_at: new Date(Date.now() + 1800000).toISOString()});
+check('a future miner timestamp is grey with a clock hint', ahead.includes('cell-unknown') && ahead.includes('Reading time is ahead'), ahead);
+const missed = renderMiner({...miner, ok: false, error: 'timed out'});
+check('a failed reading has no figures', missed.includes('timed out') && !missed.includes('TH/s') && !missed.includes(' J/TH'), missed);
+check('a worker with no configuration has no miner panel', renderMiners(onlineBox, undefined) === '', 'unexpected miner panel');
 
 // Heat credit. The form must never prefill months, must refuse a source with
 // none, must post the four keys under the row's own prefix, and a touched form
@@ -375,17 +400,24 @@ const workerSaveSource = html.slice(
 );
 const buildWorkerPower = new Function(
   'document', 'CP', 'esc', 'brk', 'CSS', '_isOwner', '_isolation', 'loadFleetEconomics', 'loadPowerSettings',
-  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), workerSaveSource, 'return loadFleet;'].join('\n'),
+  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), extract('renderMiners'), workerSaveSource, 'return loadFleet;'].join('\n'),
 );
 
 function workerPowerFixture(owner = true) {
-  const stored = {id: 1, client_id: 'rig', name: 'Rig', watts: 100, unmetered: false};
+  const stored = {
+    id: 1, client_id: 'rig', name: 'Rig', watts: 100, unmetered: false,
+    system_info: {miners: {devices: [miner], errors: [], read_at: miner.read_at}},
+  };
   const posts = [];
-  let fields, button, click, holdWorkers;
+  let fields, button, click, holdWorkers, rendered = '';
   const workers = {
     addEventListener: (_, handler) => { click = handler; },
     querySelectorAll: () => fields ? [fields.unmetered] : [],
     set innerHTML(markup) {
+      // loadFleet catches a render that throws and shows this state instead.
+      // Fail here, or a missing helper surfaces later as a save that never posted.
+      if (markup.includes('Failed to load fleet data')) throw new Error('worker power fixture: ' + markup.trim());
+      rendered = markup;
       const billing = markup.match(/class="power-unmetered"[^>]*>/)?.[0] ?? '';
       const checked = /\bchecked\b/.test(billing);
       fields = {
@@ -419,7 +451,7 @@ function workerPowerFixture(owner = true) {
   };
   const refresh = buildWorkerPower(document, {...CP, api, toast() {}}, esc, esc, {escape: String}, owner, {}, () => {}, () => {});
   return {
-    refresh, posts, stored, fields: () => fields, button: () => button,
+    refresh, posts, stored, fields: () => fields, button: () => button, markup: () => rendered,
     save: () => click({target: {closest: selector => selector === '.power-save-worker' ? button : null}}),
     holdNextRefresh() {
       let release;
@@ -431,6 +463,9 @@ function workerPowerFixture(owner = true) {
 
 const workerPower = workerPowerFixture();
 await workerPower.refresh();
+check('a box row shows its miners next to its billing setting',
+  workerPower.markup().includes('Miners this worker reads') && workerPower.markup().includes('power-unmetered'),
+  workerPower.markup());
 workerPower.fields().unmetered.checked = true;
 await workerPower.refresh();
 check('refresh preserves an unsaved billing edit', workerPower.fields().unmetered.checked, 'the checked draft was lost');

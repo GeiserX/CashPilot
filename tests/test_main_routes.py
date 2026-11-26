@@ -1684,6 +1684,118 @@ class TestApiFleet:
             body = resp.json()
             assert "watts" in body[0] and "dedicated" in body[0]
 
+    def test_heartbeat_miner_fields_are_sanitized(self, client):
+        read_at = "2026-11-25T12:00:00Z"
+        sample = {
+            "target": "axeos://192.168.1.50",
+            "protocol": "axeos",
+            "ok": True,
+            "read_at": read_at,
+            "watts": 10,
+            "ssid": "home",
+            "hashrate_ghs": "1e999",
+            "pool_user": "fixture-payout",
+        }
+        with (
+            patch("app.main.FLEET_API_KEY", "test-fleet-key"),
+            patch("app.main.database.get_worker_key_state", new_callable=AsyncMock, return_value=(None, False)),
+            patch("app.main.database.set_worker_key", new_callable=AsyncMock),
+            patch("app.main.database.upsert_worker", new_callable=AsyncMock, return_value=1) as upsert,
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+        ):
+            beat = client.post(
+                "/api/workers/heartbeat",
+                json={"name": "box", "system_info": {"miners": {"read_at": read_at, "devices": [sample]}}},
+                headers={"Authorization": "Bearer test-fleet-key"},
+            )
+            assert beat.status_code == 200, beat.text
+            stored = upsert.call_args.kwargs["system_info"]
+            stored_device = json.loads(stored)["miners"]["devices"][0]
+            assert "ssid" not in stored_device
+            assert stored_device["hashrate_ghs"] is None
+            row = {"id": 1, "name": "box", "system_info": stored}
+            with (
+                patch("app.main.database.list_workers", AsyncMock(side_effect=lambda: [row.copy()])),
+                patch("app.main.database.get_worker", AsyncMock(side_effect=lambda _: row.copy())),
+            ):
+                with _auth_owner():
+                    response = client.get("/api/workers")
+                    device = response.json()[0]["system_info"]["miners"]["devices"][0]
+                    assert "ssid" not in device
+                    assert device["hashrate_ghs"] is None
+                    assert device["pool_user"] == "fixture-payout"
+                with _auth_writer():
+                    for path in ("/api/workers", "/api/workers/1"):
+                        response = client.get(path)
+                        assert response.status_code == 200
+                        worker = response.json()[0] if path == "/api/workers" else response.json()
+                        device = worker["system_info"]["miners"]["devices"][0]
+                        assert device["pool_user"] is None
+
+    @pytest.mark.parametrize(
+        "currency, price, expected", [("USD", "0.20", 1.46), ("USD", "", None), ("EUR", "0.20", None)]
+    )
+    def test_lan_miner_estimates_are_separate_from_typed_costs(self, client, currency, price, expected):
+        from datetime import UTC, datetime, timedelta
+
+        now = datetime.now(UTC)
+        fresh = {
+            "target": "axeos://10.0.0.20",
+            "protocol": "axeos",
+            "watts": 10,
+            "ok": True,
+            "read_at": now.isoformat(),
+        }
+        stale = {**fresh, "target": "axeos://10.0.0.21", "read_at": (now - timedelta(minutes=4)).isoformat()}
+        unknown = {**fresh, "target": "axeos://10.0.0.22", "watts": None, "hashrate_ghs": 2000}
+        failed = {**fresh, "target": "axeos://10.0.0.23", "ok": False}
+        ahead = {**fresh, "target": "axeos://10.0.0.24", "read_at": (now + timedelta(minutes=30)).isoformat()}
+        reports = {"read_at": fresh["read_at"], "devices": [fresh, fresh, stale, unknown, failed, ahead]}
+        config = {
+            "power_price_per_kwh": price,
+            "power_currency": currency,
+            "worker_box_watts": "40",
+            "power_device_ocean_watts": "25",
+        }
+        rows = [
+            {"id": 1, "client_id": "box", "name": "box", "status": "online"},
+            {"id": 2, "client_id": "old", "name": "old", "status": "offline"},
+        ]
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", AsyncMock(return_value=rows)),
+            patch("app.main.database.get_config", AsyncMock(return_value=config)),
+            patch("app.main.database.get_earned_by_platform", AsyncMock(return_value={})),
+            patch("app.main._get_all_worker_containers", AsyncMock(return_value=[])),
+            patch(
+                "app.main.database.get_deployments", AsyncMock(return_value=[{"slug": "ocean", "status": "external"}])
+            ),
+            patch("app.main.catalog.get_service", return_value={"name": "OCEAN", "category": "mining"}),
+            patch("app.main.exchange_rates.to_usd", return_value=None),
+        ):
+            without_telemetry = client.get("/api/fleet/economics").json()
+            for row in rows:
+                row["system_info"] = json.dumps({"miners": reports})
+            response = client.get("/api/fleet/economics")
+
+        assert response.status_code == 200, response.text
+        with_telemetry = response.json()
+        assert with_telemetry["lan_miners"] == [
+            {
+                "worker": "box",
+                "target": fresh["target"],
+                "watts": 10,
+                "monthly_cost": expected,
+                "quality": "device-reported",
+            }
+        ]
+        assert with_telemetry["lan_miners_monthly_cost"] == expected
+        for key in ("machines", "monthly_cost", "monthly_net"):
+            assert with_telemetry[key] == without_telemetry[key]
+        assert without_telemetry["lan_miners"] == []
+        if expected is not None:
+            assert with_telemetry["monthly_cost"] > expected
+
     def test_fleet_version_skew_uses_the_devices_release_line(self, client):
         devices = {
             "desktop": {"device_type": "desktop", "version": "1.4.0"},
