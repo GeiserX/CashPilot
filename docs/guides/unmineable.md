@@ -47,8 +47,13 @@ If you do not want to use the code, run XMRig yourself instead of this entry.
 3. Enter the **Payout coin** ticker, such as `SHIB`, and your public **Payout
    address** for that coin. Choose a **Worker name** with letters, digits, `-`
    or `_`.
-4. Set a **CPU thread target (%)**. XMRig can ignore this hint when the host
-   reports incomplete CPU topology. Check the thread count in the logs.
+4. Set **Max CPU threads (%)**. CashPilot starts that share of the machine's
+   CPU threads, rounded down and at least one. For example, 17% of 6 threads
+   is 1 thread and 50% is 3. At 100, XMRig picks the count itself. The log
+   line `READY threads` shows how many threads mine. On x86, XMRig can start
+   fewer when fewer fit in the CPU cache. If the host reports no CPU cache
+   sizes, as some virtual machines do, XMRig on x86 ignores the setting and
+   picks its own count.
 5. Deploy and check the logs for `accepted` shares. unMineable credits the
    balance after it confirms the work, which can take a few hours.
 
