@@ -998,8 +998,19 @@ class StartTargetsChanged(ProxyTunnelError):
         self.targets = targets
 
 
+def _require_settled_move(client: Any, name: str) -> None:
+    """A staged or aside container is never a target the owner can approve."""
+    canonical = name.removesuffix(STAGED_SUFFIX).removesuffix(MOVING_SUFFIX)
+    if canonical != name:
+        raise RecoveryConflict(f"Recovery skipped for {canonical}. A container still holds {name}.")
+    for suffix in (STAGED_SUFFIX, MOVING_SUFFIX):
+        if _get(client, name + suffix) is not None:
+            raise RecoveryConflict(f"Recovery skipped for {name}. A container still holds {name + suffix}.")
+
+
 def _move_expected(client: Any, member: Any, target: _StartApproval | None) -> str:
     name = str(member.name)
+    _require_settled_move(client, name)
     saved = _recorded_containers().get(name, "none") if target is None or not target.grouped else "none"
     expected = target.expected.get(name, saved) if target is not None else saved
     current = orchestrator.deploy_target(client, name)
@@ -1028,6 +1039,7 @@ def _check_move_targets(client: Any, members: list[Any], target: _StartApproval 
             raise
         approvals = {}
         for name, member in sorted(affected.items()):
+            _require_settled_move(client, name)
             current = orchestrator.deploy_target(client, name)
             orchestrator.require_deploy_target(member.id, current)
             _require_resolved_deploy(member, _get(client, name + orchestrator.REPLACED_SUFFIX))
@@ -1078,9 +1090,6 @@ def _clone_into(
     _refuse_unmovable(member)
     staged = name + STAGED_SUFFIX
     aside = name + MOVING_SUFFIX
-    for leftover_name in (staged, aside):
-        if _get(client, leftover_name) is not None:
-            raise RecoveryConflict(f"Recovery skipped for {name}. A container still holds {leftover_name}.")
     optional = {
         "entrypoint": cfg.get("Entrypoint"),
         "command": cfg.get("Cmd"),
@@ -1731,9 +1740,9 @@ def _finish_staged(
     Refused while a copy of the proxy is still half moved: recover_moves must
     settle it first, or its container aside would be taken for a copy."""
     if half := _moving(client, _labels(staged).get(LABEL_PROXY, "")):
-        raise ProxyTunnelError(
-            f"{', '.join(sorted(half))} {'is' if len(half) == 1 else 'are'} still being moved into a new tunnel; "
-            "the worker settles that within a few minutes. Try again then."
+        raise RecoveryConflict(
+            f"Recovery skipped. {', '.join(sorted(half))} {'is' if len(half) == 1 else 'are'} still being moved "
+            "into a new tunnel."
         )
     members = _members(client, current) if current is not None else []
     _check_move_targets(client, members, target)
@@ -2493,6 +2502,7 @@ def _start(
     # The old earner a failed redeploy left aside is the copy, never the
     # failed container under its name.
     earner = orchestrator.deploy_target(client, name)
+    _require_settled_move(client, name)
     if expected_container not in (None, "none"):
         orchestrator.require_deploy_target(expected_container, earner)
     if earner is not None:

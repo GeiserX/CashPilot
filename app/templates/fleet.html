@@ -1329,6 +1329,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
           const path = `${base}/${btn.dataset.cmd}`;
           let out;
           let body;
+          const approved = new Set();
           while (true) {
             try {
               out = await CP.api(path, {method: 'POST', body});
@@ -1337,13 +1338,17 @@ CASHPILOT_WORKER_NAME=server-name</code>
               if (btn.dataset.cmd !== 'start') throw err;
               if (err.code === 'confirm_proxy_start_targets') {
                 const {expected_containers, group_approval} = err.refusal;
+                const offer = JSON.stringify(Object.entries(expected_containers).sort());
+                if (approved.has(offer)) throw err;
                 const copies = Object.entries(expected_containers).map(([service, id]) => `${service} (${id})`);
                 if (!confirm(`Start needs to replace these containers on ${workerName(Number(wid))}:\n\n${copies.join('\n')}\n\nReplace them and start ${slug}?`)) return;
+                approved.add(offer);
                 body = {expected_containers, group_approval};
               } else {
                 const current = err.refusal && err.refusal.current_container;
-                if (err.code !== 'deploy_target_changed' || !/^[a-f0-9]{64}$/.test(current)) throw err;
+                if (err.code !== 'deploy_target_changed' || !/^[a-f0-9]{64}$/.test(current) || approved.has(current)) throw err;
                 if (!confirm(`Start may need to replace container ${current.slice(0, 12)} for ${slug} on ${workerName(Number(wid))}. Allow CashPilot to replace it?`)) return;
+                approved.add(current);
                 body = {expected_container: current};
               }
             }

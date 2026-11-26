@@ -7646,7 +7646,7 @@ def _worker_left_restore(resp: Any) -> bool:
 
 # Stop accidental recovery phrase leaks to CashPilot Desktop. Decode and match
 # saved words across values in request order. Check pasted phrases by checksum
-# within whitespace-separated words in each field.
+# across common separators and encodings within each field.
 async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | None) -> None:
     """Check the final request and fields that may be stripped before the send."""
     svc = None
@@ -7666,26 +7666,45 @@ async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | 
 
     keys = {slug} if slug else set()
 
-    def string_values(payload: dict[str, Any]) -> Iterable[str]:
-        pending: list[tuple[str | None, Any]] = [(None, payload)]
+    def string_values(payload: dict[str, Any]) -> Iterable[tuple[tuple[str | int, ...], str]]:
+        pending: list[tuple[tuple[str | int, ...], Any]] = [((), payload)]
         while pending:
-            key, value = pending.pop()
+            field_path, value = pending.pop()
+            key = field_path[-1] if field_path else None
             if isinstance(key, str):
                 field = wallet_seed.field_name(key)
                 if field in wallet_fields:
                     raise _desktop_wallet_refusal(wallet_fields[field])
                 keys.add(key)
             if isinstance(value, dict):
-                pending.extend(reversed(value.items()))
+                pending.extend(((*field_path, name), child) for name, child in reversed(value.items()))
             elif isinstance(value, (list, tuple)):
-                pending.extend((None, child) for child in reversed(value))
+                pending.extend(((*field_path, i), value[i]) for i in reversed(range(len(value))))
             elif isinstance(value, str):
-                yield value
+                yield field_path, value
 
     value_groups = [tuple(string_values(payload)) for payload in payloads if payload is not None]
-    texts = keys | {value for values in value_groups for value in values}
-    if any(wallet_seed.contains_pasted_phrase(text) for text in texts):
+    if any(wallet_seed.contains_pasted_phrase(key) for key in keys):
         raise _desktop_wallet_refusal(None)
+    for values in value_groups:
+        for field_path, value in values:
+            if wallet_seed.contains_pasted_phrase(value):
+                # Field names have also been checked. Only display ordinary env names or known schema keys.
+                root = field_path[0]
+                if (
+                    root == "env"
+                    and len(field_path) > 1
+                    and isinstance(key := field_path[1], str)
+                    and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", key)
+                ):
+                    location = f"environment variable {key}"
+                elif root in ("image", "command", "entrypoint", "slug", "name"):
+                    location = f"the {root} field"
+                else:
+                    location = "a deploy field"
+                raise _desktop_wallet_refusal(
+                    None, recovery=f" Words in {location} match a recovery phrase. Change that field and try again."
+                )
 
     known = {
         f" {' '.join(words)} "
@@ -7702,7 +7721,7 @@ async def _refuse_desktop_wallet_payload(path: str, *payloads: dict[str, Any] | 
     if any(matches_saved(wallet_seed.decode_phrase_text(key)) for key in keys):
         raise _desktop_wallet_refusal(None)
     for values in value_groups:
-        decoded = [wallet_seed.decode_phrase_text(value) for value in values]
+        decoded = [wallet_seed.decode_phrase_text(value) for _, value in values]
         # A value boundary can separate two words or fall inside a word.
         if matches_saved(" ".join(decoded)) or matches_saved("".join(decoded)):
             raise _desktop_wallet_refusal(None)

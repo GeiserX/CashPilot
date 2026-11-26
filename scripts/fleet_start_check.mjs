@@ -76,3 +76,30 @@ assert.equal(cancelled.prompts.length, 2);
 assert.ok(cancelled.toasts.every(([, level]) => level !== 'error'));
 
 console.log('Fleet handles individual and shared confirmations in either order and stops on cancel.');
+
+const reordered = {earnfm: firstTargets.earnfm, honeygain: firstTargets.honeygain};
+const repeatedGroup = await start(
+  [group(firstTargets, firstProof), group(reordered, firstProof), group(reordered, firstProof)],
+  [true, true, false],
+);
+assert.equal(repeatedGroup.posts.length, 2, 'Fleet must stop when the confirmed group is offered again');
+assert.equal(repeatedGroup.prompts.length, 1);
+assert.deepEqual(repeatedGroup.toasts, [['The shared tunnel needs approval', 'error']]);
+
+const repeatedSingle = await start(
+  [single(firstId), single(firstId), single(firstId)],
+  [true, true, false],
+);
+assert.equal(repeatedSingle.posts.length, 2);
+assert.equal(repeatedSingle.prompts.length, 1);
+assert.deepEqual(repeatedSingle.toasts, [['The container changed', 'error']]);
+
+const conflict = Object.assign(new Error('The previous move has not been settled.'), {
+  code: 'proxy_recovery_conflict',
+});
+const pendingMove = await start([conflict]);
+assert.equal(pendingMove.posts.length, 1);
+assert.equal(pendingMove.prompts.length, 0);
+assert.deepEqual(pendingMove.toasts, [['The previous move has not been settled.', 'error']]);
+
+console.log('Fleet stops on repeated approvals and shows recovery conflicts without a prompt.');

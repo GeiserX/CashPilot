@@ -4263,6 +4263,36 @@ def test_group_start_approval_cannot_start_the_other_copy(docker):
         assert docker.named("cashpilot-earnfm-p3").status not in ("running", "restarting")
 
 
+@pytest.mark.parametrize("saved_selected", [True, False], ids=["known-selected", "unrecorded-selected"])
+def test_checked_start_reports_the_unsettled_neighbor_instead_of_offering_it(docker, saved_selected):
+    for slug in ("honeygain", "earnfm"):
+        _deploy(slug)
+        proxy_tunnel.stop(slug, 3)
+    tunnel = docker.named("cashpilot-tunnel-p3")
+    _made_by_an_older_worker(tunnel)
+    selected = docker.named(NAME)
+    neighbor = docker.named("cashpilot-earnfm-p3")
+    neighbor.rename(neighbor.name + proxy_tunnel.MOVING_SUFFIX)
+    before = set(docker.by_id)
+    with (
+        patch.object(worker_api, "_verify_api_key"),
+        patch.object(worker_api, "_validate_proxy"),
+        patch.object(worker_api, "_own_egress_ip", AsyncMock(return_value=None)),
+    ):
+        reply = TestClient(worker_api.app).post(
+            "/api/proxied/honeygain/3/start-checked",
+            json={"proxy": _socks(), "expected_container": selected.id if saved_selected else "none"},
+        )
+    assert reply.status_code == 409
+    detail = reply.json()["detail"]
+    assert detail["error"] == "proxy_recovery_conflict", detail
+    assert neighbor.name in detail["message"]
+    assert "group_approval" not in detail
+    assert set(docker.by_id) == before and docker.named(tunnel.name) is tunnel
+    assert docker.named(NAME) is selected and selected.status == "exited"
+    assert docker.named(neighbor.name) is neighbor and neighbor.status == "exited"
+
+
 class TestAnOlderWorkersTunnelReplacementFollowups:
     def test_recovery_skips_a_copy_with_a_changed_container_id(self, docker, caplog):
         _deploy("honeygain")
