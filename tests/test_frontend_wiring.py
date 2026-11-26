@@ -73,6 +73,7 @@ def frontend_text() -> str:
 
 #: (route segment that must appear in a fetch, why it matters to a user)
 WIRED = [
+    ("/api/earnings/income.csv", "the tax export download"),
     ("/api/earnings/payouts", "the queue where a detected payout is confirmed or rejected"),
     ("payouts/${", "the confirm/reject call, built as a template literal"),
 ]
