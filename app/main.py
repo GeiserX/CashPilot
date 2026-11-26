@@ -3022,7 +3022,7 @@ def _proxied_copies(workers: list[dict[str, Any]]) -> list[tuple[dict[str, Any],
     return out
 
 
-async def _restart_proxied(proxy_id: int, worker_id: int, slug: str) -> None:
+async def _restart_proxied(proxy_id: int, worker_id: int, slug: str) -> dict[str, Any]:
     """Restart a proxied copy where it is (worker: proxy_tunnel.restart), under the lock its Stop and Start take.
 
     Never a stop and a start: a start that failed after the stop would leave
@@ -3031,7 +3031,7 @@ async def _restart_proxied(proxy_id: int, worker_id: int, slug: str) -> None:
     """
     proxy = await _proxy_or_404(proxy_id)
     async with _proxy_copy_lock(proxy_id, worker_id, slug):
-        await _proxy_worker_call(
+        return await _proxy_worker_call(
             worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/restart", proxy["definition"], timeout=90
         )
 
@@ -7081,8 +7081,7 @@ async def _or_routed(
 async def _routed_command(worker_id: int, slug: str, command: str, proxy_id: int) -> dict[str, Any]:
     """Stop, start or restart a routed service through its proxied copy."""
     if command == "restart":
-        await _proxied_command(proxy_id, worker_id, slug, "stop")
-        command = "start"
+        return await _restart_proxied(proxy_id, worker_id, slug)
     return await _proxied_command(proxy_id, worker_id, slug, command)
 
 
@@ -7450,6 +7449,24 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     # error comes from a remote worker body; a list/dict would make the `not in`
     # test raise TypeError and turn a 409 into a 500. Require a string.
     if not isinstance(error, str):
+        return None
+    if error == "confirm_proxy_start_targets":
+        targets = detail.get("expected_containers")
+        if (
+            isinstance(targets, dict)
+            and targets
+            and all(
+                re.fullmatch(r"[a-z0-9][a-z0-9_-]*", slug)
+                and isinstance(cid, str)
+                and re.fullmatch(r"[0-9a-f]{64}", cid)
+                for slug, cid in targets.items()
+            )
+        ):
+            return {
+                "error": error,
+                "message": "Starting this copy requires replacing containers in its shared tunnel.",
+                "expected_containers": targets,
+            }
         return None
     if error == "deploy_target_changed":
         actual = detail.get("current_container")
@@ -8200,8 +8217,8 @@ async def _proxy_worker_call(
     try:
         return await _proxy_to_worker(worker_id, method, path, json=json, timeout=timeout)
     except HTTPException as exc:
-        if _worker_error(exc) == "deploy_target_changed":
-            raise  # _safe_worker_detail already verified the container ID and supplies a fixed message.
+        if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets"):
+            raise  # _safe_worker_detail already verified the IDs and supplies a fixed message.
         raise HTTPException(status_code=exc.status_code, detail=_mask(exc.detail, proxies.secret_values(definition)))
 
 
@@ -8707,6 +8724,7 @@ async def api_add_proxied_copy(
 
 class ProxiedCopyCommand(BaseModel):
     expected_container: str | None = None
+    expected_containers: dict[str, str] | None = None
 
 
 @app.post("/api/proxies/{proxy_id}/copies/{worker_id}/{slug}/{command}")
@@ -8721,12 +8739,23 @@ async def api_proxied_copy_command(
     if command not in ("start", "stop"):
         raise HTTPException(status_code=400, detail="The command is start or stop")
     return await _proxied_command(
-        proxy_id, worker_id, slug, command, expected=body.expected_container if body else None
+        proxy_id,
+        worker_id,
+        slug,
+        command,
+        expected=body.expected_container if body else None,
+        expected_containers=body.expected_containers if body else None,
     )
 
 
 async def _proxied_command(
-    proxy_id: int, worker_id: int, slug: str, command: str, *, expected: str | None = None
+    proxy_id: int,
+    worker_id: int,
+    slug: str,
+    command: str,
+    *,
+    expected: str | None = None,
+    expected_containers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Start or stop one proxied copy, with the proxy's current settings and its cap."""
     proxy = await _proxy_or_404(proxy_id)
@@ -8742,7 +8771,8 @@ async def _proxied_command(
                 )
             if expected is None:
                 expected = await _proxied_start_target(worker_id, proxy_id, slug)
-            result = await _start_proxied_copy(proxy, worker_id, slug, expected=expected)
+            approval = {"expected_containers": expected_containers} if expected_containers is not None else {}
+            result = await _start_proxied_copy(proxy, worker_id, slug, expected=expected, **approval)
         else:
             result = await _proxy_worker_call(
                 worker_id, "POST", f"/api/proxied/{slug}/{proxy_id}/stop", proxy["definition"], timeout=90
@@ -9013,19 +9043,27 @@ async def _proxied_start_target(worker_id: int, pid: int, slug: str) -> str:
 
 
 async def _start_proxied_copy(
-    proxy: dict[str, Any], worker_id: int, slug: str, *, expected: str | None = None
+    proxy: dict[str, Any],
+    worker_id: int,
+    slug: str,
+    *,
+    expected: str | None = None,
+    expected_containers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Start one copy with the current settings and its saved or approved container ID."""
     pid = proxy["id"]
     if expected is not None and expected != "none" and not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise HTTPException(status_code=422, detail="Expected a full Docker container ID or 'none'.")
+    body: dict[str, Any] = {"proxy": proxies.worker_proxy_spec(proxy["definition"]), "expected_container": expected}
+    if expected_containers is not None:
+        body["expected_containers"] = expected_containers
     try:
         result = await _proxy_worker_call(
             worker_id,
             "POST",
             f"/api/proxied/{slug}/{pid}/start-checked",
             proxy["definition"],
-            json={"proxy": proxies.worker_proxy_spec(proxy["definition"]), "expected_container": expected},
+            json=body,
             timeout=90,
         )
     except HTTPException as exc:

@@ -2144,20 +2144,37 @@ async def save_deployment(
 
 
 async def _keep_legacy_fleet_wallet(db: Any, slug: str, key: str, worker_id: int) -> None:
-    """Move a fleet-only legacy phrase to its worker before a different worker takes the fleet row."""
+    """Keep a fleet-only phrase when another deployment takes its place."""
     cursor = await db.execute("SELECT * FROM deployments WHERE slug = ?", (slug,))
     fleet = await cursor.fetchone()
-    if not fleet or not _legacy_wallet_phrase(fleet["spec_encrypted"], slug, key):
+    if not fleet or not (phrase := _legacy_wallet_phrase(fleet["spec_encrypted"], slug, key)):
         return
-    cursor = await db.execute("SELECT id, containers FROM workers")
-    owners = [
-        row["id"] for row in await cursor.fetchall() if _runs_container(row["containers"], slug, fleet["container_id"])
-    ]
-    if len(owners) == 1 and owners[0] != worker_id:
-        await db.execute(
-            "INSERT OR IGNORE INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at) VALUES (?, ?, ?, ?)",
-            (slug, owners[0], fleet["spec_encrypted"], fleet["deployed_at"]),
+    owners = await _fleet_container_owners(db, slug, fleet["container_id"])
+    if len(owners) == 1:
+        owner = next(iter(owners))
+        if owner == worker_id:
+            return
+        cursor = await db.execute(
+            "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
+            (slug, owner),
         )
+        spec = await cursor.fetchone()
+        if spec is None:
+            await db.execute(
+                "INSERT INTO deployment_specs (slug, worker_id, spec_encrypted, deployed_at) VALUES (?, ?, ?, ?)",
+                (slug, owner, fleet["spec_encrypted"], fleet["deployed_at"]),
+            )
+            return
+        if any(_legacy_wallet_phrase(blob, slug, key) == phrase for blob in spec):
+            return
+    else:
+        cursor = await db.execute(
+            "SELECT spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?", (slug, worker_id)
+        )
+        if not owners and _fleet_spec_matches(await cursor.fetchone(), fleet):
+            return
+        owner = _UNKNOWN_WALLET_WORKER
+    await _retain_phrases(db, slug, owner, {phrase})
 
 
 def _legacy_wallet_phrase(blob: str | None, slug: str, key: str) -> str:
@@ -2434,6 +2451,17 @@ async def _write_retained_phrases(db: Any, slug: str, worker_id: int, phrases: s
         await db.execute("DELETE FROM retained_wallet_phrases WHERE slug = ? AND worker_id = ?", (slug, worker_id))
 
 
+# A retained phrase with no confirmed owner is never installed on a worker.
+_UNKNOWN_WALLET_WORKER = 0
+
+
+async def _retain_phrases(db: Any, slug: str, worker_id: int, phrases: set[str]) -> None:
+    if phrases:
+        saved = await _read_retained_phrases(db, slug, worker_id)
+        if not phrases <= saved:
+            await _write_retained_phrases(db, slug, worker_id, saved | phrases)
+
+
 async def _keep_removed_wallet(db: Any, slug: str, worker_id: int, key: str) -> None:
     cursor = await db.execute(
         "SELECT spec_encrypted, prior_spec_encrypted FROM deployment_specs WHERE slug = ? AND worker_id = ?",
@@ -2443,11 +2471,16 @@ async def _keep_removed_wallet(db: Any, slug: str, worker_id: int, key: str) -> 
     blobs = list(worker) if worker else []
     cursor = await db.execute("SELECT container_id, spec_encrypted FROM deployments WHERE slug = ?", (slug,))
     fleet = await cursor.fetchone()
-    if fleet and await _fleet_spec_belongs_to_worker(db, slug, worker_id, fleet, worker):
-        blobs.append(fleet["spec_encrypted"])
-    if phrases := {phrase for blob in blobs if (phrase := _legacy_wallet_phrase(blob, slug, key))}:
-        phrases.update(await _read_retained_phrases(db, slug, worker_id))
-        await _write_retained_phrases(db, slug, worker_id, phrases)
+    if fleet and (phrase := _legacy_wallet_phrase(fleet["spec_encrypted"], slug, key)):
+        owners = await _fleet_container_owners(db, slug, fleet["container_id"])
+        if owners == {worker_id} or (not owners and _fleet_spec_matches(worker, fleet)):
+            blobs.append(fleet["spec_encrypted"])
+        else:
+            owner = next(iter(owners)) if len(owners) == 1 else _UNKNOWN_WALLET_WORKER
+            await _retain_phrases(db, slug, owner, {phrase})
+    await _retain_phrases(
+        db, slug, worker_id, {phrase for blob in blobs if (phrase := _legacy_wallet_phrase(blob, slug, key))}
+    )
 
 
 async def _forget_deployment(db: Any, slug: str, worker_id: int | None) -> None:
@@ -5423,11 +5456,18 @@ async def _fleet_spec_belongs_to_worker(
     db: Any, slug: str, worker_id: int, fleet: aiosqlite.Row, spec: aiosqlite.Row | None
 ) -> bool:
     """Match the fleet container to a heartbeat, or its encrypted spec to the same save."""
-    if recorded_id := fleet["container_id"]:
-        cursor = await db.execute("SELECT id, containers FROM workers")
-        owners = {row["id"] for row in await cursor.fetchall() if _runs_container(row["containers"], slug, recorded_id)}
-        if owners:
-            return owners == {worker_id}
+    owners = await _fleet_container_owners(db, slug, fleet["container_id"])
+    return owners == {worker_id} if owners else _fleet_spec_matches(spec, fleet)
+
+
+async def _fleet_container_owners(db: Any, slug: str, recorded_id: str) -> set[int]:
+    if not recorded_id:
+        return set()
+    cursor = await db.execute("SELECT id, containers FROM workers")
+    return {row["id"] for row in await cursor.fetchall() if _runs_container(row["containers"], slug, recorded_id)}
+
+
+def _fleet_spec_matches(spec: aiosqlite.Row | None, fleet: aiosqlite.Row) -> bool:
     # save_deployment writes the same Fernet token to both rows. Two saves of
     # the same settings still have different tokens.
     blob = fleet["spec_encrypted"] or ""

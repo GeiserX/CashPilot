@@ -75,7 +75,7 @@ _LEGACY_SIA_BASE = 1626
 _LEGACY_SIA_LENGTHS = (28, 29)
 _LEGACY_SIA_WORD = re.compile(r"[a-z]{3,12}")
 _JSON_STRING_ESCAPES = re.compile(r'(?:\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))+')
-_SPACED_COMMA = re.compile(r"\s,|,\s")
+_SPACED_COMMA = re.compile(r"\s*,\s+|\s+,\s*")
 _PHRASE_TOKEN_EDGES = string.punctuation.replace(",", "") + "‘’“”"
 
 
@@ -180,11 +180,15 @@ def contains_pasted_phrase(text: str) -> bool:
     words = [word.strip(_PHRASE_TOKEN_EDGES) for word in text.split()]
     if contains_bip39_phrase(words) or _contains_legacy_sia_phrase(words):
         return True
-    if not _SPACED_COMMA.search(text):
+    groups = _SPACED_COMMA.split(text)
+    if len(groups) == 1:
         return False
-    # A comma-separated phrase must fill the field. A long list of location
-    # tags can contain a short run with a valid checksum by chance.
-    words = [word.strip().strip(_PHRASE_TOKEN_EDGES) for word in text.split(",")]
+    words_by_group = [[word.strip(_PHRASE_TOKEN_EDGES) for word in group.split()] for group in groups]
+    words = [word for group in words_by_group for word in group]
+    if any(len(group) > 1 for group in words_by_group):
+        return contains_bip39_phrase(words) or _contains_legacy_sia_phrase(words)
+    # A list with one word per comma-separated item must itself be a phrase.
+    # A long list of location tags can contain a valid checksum by chance.
     return (
         len(words) in _BIP39_LENGTHS
         and contains_bip39_phrase(words, whole=True)

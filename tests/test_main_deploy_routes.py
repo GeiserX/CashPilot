@@ -350,6 +350,21 @@ class TestDesktopWalletDeploys:
         assert self._PHRASE_12 not in response.text
         post.assert_not_awaited()
 
+    @pytest.mark.parametrize("phrase", [_PHRASE_12, _LEGACY_SIA], ids=["bip39", "sia"])
+    @pytest.mark.parametrize("raw", [False, True], ids=["catalog", "raw"])
+    def test_desktop_refuses_mixed_recovery_phrase_separators(self, client, worker_target, phrase, raw):
+        _, post = worker_target
+        pasted = phrase.replace(" ", ", ", 1)
+        env = {**self._HONEYGAIN_ENV, "NOTE": pasted}
+        if raw:
+            spec = {"image": catalog.get_service("honeygain")["docker"]["image"], "env": env}
+            response = client.post(
+                "/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec}
+            )
+        else:
+            response = client.post("/api/deploy/honeygain?worker_id=2", json={"env": env})
+        self._assert_wallet_refusal(response, post, pasted)
+
     def test_desktop_refuses_an_unsaved_legacy_sia_phrase(self, client, worker_target):
         _, post = worker_target
         spec = {

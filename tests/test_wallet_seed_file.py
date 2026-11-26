@@ -169,6 +169,40 @@ def test_deploy_on_another_worker_preserves_the_desktops_fleet_only_recovery_phr
     assert KEY not in asyncio.run(database.get_deployment_spec(SLUG, 1))["env"]
 
 
+@pytest.mark.parametrize("inventory", ["empty", "ambiguous", "seedless-spec"])
+def test_cross_worker_save_keeps_a_fleet_only_phrase_when_the_owner_spec_cannot_hold_it(db, inventory):
+    async def go():
+        seen = json.dumps([{"slug": SLUG, "container_id": "a" * 12}])
+        desktop = await database.upsert_worker("desktop", containers="[]" if inventory == "empty" else seen)
+        if inventory == "ambiguous":
+            await database.upsert_worker("another-desktop", containers=seen)
+        if inventory == "seedless-spec":
+            await database.save_deployment(SLUG, "c" * 64, worker_id=desktop, spec={"env": ENV})
+        await database.save_deployment(SLUG, "a" * 64, spec={"env": {**ENV, KEY: PHRASE}})
+        await database.save_deployment(SLUG, "b" * 64, worker_id=1, spec={"env": ENV})
+        assert PHRASE in await database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)})
+        assert KEY not in (await database.get_deployment_spec(SLUG, 1))["env"]
+
+    asyncio.run(go())
+
+
+def test_desktop_keep_data_keeps_the_fleet_only_phrase_with_empty_inventory(db):
+    async def prepare():
+        desktop = await database.upsert_worker("desktop", containers="[]", system_info='{"device_type": "desktop"}')
+        await database.save_deployment(SLUG, "a" * 64, spec={"env": {**ENV, KEY: PHRASE}})
+        return desktop
+
+    desktop = asyncio.run(prepare())
+    with (
+        patch.object(auth, "get_current_user", return_value=OWNER),
+        patch.object(main, "_proxy_to_worker", AsyncMock(return_value={"status": "removed"})),
+    ):
+        reply = TestClient(main.app).delete(f"/api/services/{SLUG}?worker_id={desktop}")
+    assert reply.status_code == 200, reply.text
+    assert asyncio.run(database.get_deployment(SLUG)) is None
+    assert PHRASE in asyncio.run(database.get_saved_wallet_phrases({wallet_seed.field_name(KEY)}))
+
+
 class TestThePhraseIsNeverStoredOrSentAsAVariable:
     """Watched failing on the code before the fix: each assertion on the phrase was red."""
 

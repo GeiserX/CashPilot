@@ -20,6 +20,7 @@ import secrets
 import shlex
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from typing import Any
@@ -1202,6 +1203,7 @@ def deploy_raw(
     pulled: bool = False,
     wallet_seed: dict[str, Any] | None = None,
     wallet: dict[str, Any] | None = None,
+    on_created: Callable[[str], None] | None = None,
 ) -> str:
     """Deploy a container from a raw spec (no catalog lookup).
 
@@ -1562,10 +1564,12 @@ def deploy_raw(
         try:
             container = (
                 client.containers.create(**run_kwargs)
-                if gated or not start
+                if gated or not start or on_created is not None
                 else client.containers.run(detach=True, **run_kwargs)
             )
             created = container
+            if on_created is not None:
+                on_created(container.id)
             if not start:
                 # Restore: the caller writes the data, checks it, then starts it.
                 logger.info("Container %s created, not started: %s", name, container.short_id)
@@ -1575,6 +1579,7 @@ def deploy_raw(
                 # Left created, not started, when the fence is not confirmed: the guard
                 # starts it as soon as it is, and nothing runs before that.
                 _require_fence(slug)
+            if gated or on_created is not None:
                 container.start()
         except ContainerNetworkError:
             raise
@@ -1582,7 +1587,7 @@ def deploy_raw(
             # No answer is not a refusal: Docker may still be starting it. A
             # create-only (restore) or gated create that got none was never
             # started, so there is nothing to wait for.
-            if not _outcome_unknown(exc) or not start or (gated and created is None):
+            if not _outcome_unknown(exc) or not start or (created is None and (gated or on_created is not None)):
                 raise
             container = created = _await_start(client, name, created, began, exc)
         if gated:
@@ -1611,7 +1616,7 @@ def deploy_raw(
             stopped_before,
             held_before=held_before,
             created=created,
-            create_only=not start or conflict,
+            create_only=not start or conflict or on_created is not None,
             gated=gated,
             joined=joined,
         )

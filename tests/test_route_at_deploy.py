@@ -2038,6 +2038,36 @@ class TestTheUiManagesARoutedService:
 
         return ui, setup
 
+    def test_routed_restart_does_not_stop_an_older_workers_copy(self, db):
+        ui, setup = self._routed(db)
+        running = True
+
+        def old_worker(method, path, body):
+            nonlocal running
+            if path.startswith("/api/containers/"):
+                return HTTPException(404, "Container not found")
+            if path.endswith("/stop"):
+                running = False
+                return {"status": "stopped", "was_running": True}
+            if path.endswith("/start-checked"):
+                return HTTPException(404, main._worker_failure_text(404))
+            assert path.endswith("/restart")
+            assert running
+            return {"status": "restarted"}
+
+        async def go():
+            await setup()
+            ui.worker_reply = old_worker
+            with ui.active(patch.object(main, "_require_writer", lambda r: None)):
+                try:
+                    await main._svc_restart(_request(), "honeygain", 1)
+                except HTTPException as exc:
+                    assert exc.status_code in (404, 409)
+
+        _run(go)
+        assert running
+        assert not any(path.endswith("/stop") for _, path in ui.paths())
+
     def test_stop_start_restart_logs_and_remove_reach_the_copy(self, db):
         ui, setup = self._routed(db)
 
@@ -2062,8 +2092,7 @@ class TestTheUiManagesARoutedService:
         assert [c for c in ui.paths() if c[1].startswith("/api/proxied/")] == [
             ("POST", f"{base}/stop"),
             ("POST", f"{base}/start-checked"),
-            ("POST", f"{base}/stop"),
-            ("POST", f"{base}/start-checked"),
+            ("POST", f"{base}/restart"),
             ("GET", f"{base}/logs"),
             ("DELETE", base),
         ]

@@ -2123,6 +2123,7 @@ class ProxiedStartSpec(BaseModel):
 
     proxy: ProxySpec
     expected_container: str | None = None
+    expected_containers: dict[str, str] | None = None
 
 
 _EXIT_NODE_RE = re.compile(r"^[A-Za-z0-9._:-]{1,253}$")
@@ -2188,6 +2189,15 @@ def _deploy_target_error(exc: orchestrator.DeployTargetChanged) -> HTTPException
 def _proxy_http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, orchestrator.DeployTargetChanged):
         return _deploy_target_error(exc)
+    if isinstance(exc, proxy_tunnel.StartTargetsChanged):
+        return HTTPException(
+            status_code=409,
+            detail={
+                "error": "confirm_proxy_start_targets",
+                "message": str(exc),
+                "expected_containers": exc.targets,
+            },
+        )
     if isinstance(exc, proxy_tunnel.ProxyTunnelError):
         return HTTPException(status_code=exc.status_code, detail=str(exc))
     if isinstance(exc, orchestrator.ContainerNetworkError):
@@ -2432,6 +2442,8 @@ async def api_proxied_start(
         own_ip = await _own_egress_ip()
     try:
         expectation = {"expected_container": spec.expected_container} if spec and spec.expected_container else {}
+        if spec and spec.expected_containers is not None:
+            expectation["expected_containers"] = spec.expected_containers
         result = await asyncio.to_thread(proxy_tunnel.start, slug, proxy_id, proxy, own_ip, **expectation)
     except Exception as exc:  # noqa: BLE001
         raise _proxy_http_error(exc) from None
