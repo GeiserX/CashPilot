@@ -96,9 +96,9 @@ class UnMineableCollector(BaseCollector):
             return self._fail(base.describe_exception(exc), base.classify_exception(exc))
 
         status = response.status_code
-        if status in (401, 403):
-            # The endpoint is public. A refused request says nothing about the
-            # address, whatever its body says, so it is checked before the pool's message.
+        if status in (401, 403, 429) or status >= 500:
+            # The endpoint is public. A refused or failed request says nothing about
+            # the address, whatever its body says, so it is checked before the pool's message.
             error = f"unMineable returned HTTP {status}."
             logger.warning("%s", error)
             return self._fail(error, base.KIND_TRANSIENT)
@@ -124,8 +124,7 @@ class UnMineableCollector(BaseCollector):
             # The request URL contains the payout address, so it is not logged here.
             error = f"unMineable returned HTTP {status}."
             logger.warning("%s", error)
-            kind = base.KIND_TRANSIENT if status == 429 or status >= 500 else None
-            return self._fail(error, kind)
+            return self._fail(error)
 
         data = payload.get("data") if isinstance(payload, dict) and payload.get("success") is True else None
         if not isinstance(data, dict):
