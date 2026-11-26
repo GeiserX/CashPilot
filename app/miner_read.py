@@ -16,6 +16,8 @@ import httpx
 
 MAX_DEVICES = 64
 READ_TIMEOUT = 3.0
+# One device read, every address its name resolves to included.
+READ_BUDGET = 10.0
 MAX_BYTES = 262_144
 READ_INTERVAL = 60
 STALE_AFTER = 180
@@ -125,7 +127,7 @@ def parse_targets(raw: str) -> tuple[list[Target], list[str]]:
     return targets, errors
 
 
-async def _resolve(target: Target) -> str:
+async def _resolve(target: Target) -> list[str]:
     async with asyncio.timeout(READ_TIMEOUT):
         infos = await asyncio.get_running_loop().getaddrinfo(target.host, target.port, type=socket.SOCK_STREAM)
     addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
@@ -133,7 +135,7 @@ async def _resolve(target: Target) -> str:
         raise _ReadError("unreachable")
     if not all(_allowed(addr) for addr in addresses):
         raise _ReadError("address not allowed")
-    return str(_normalized(addresses[0]))
+    return list(dict.fromkeys(str(_normalized(addr)) for addr in addresses))
 
 
 def _object(body: bytes | bytearray) -> dict:
@@ -260,9 +262,14 @@ def parse_cgminer(summary: dict, pools: dict | None) -> dict:
     stats = _first_record(summary.get("SUMMARY"))
     status = _first_record(summary.get("STATUS"))
     entries = (pools or {}).get("POOLS")
-    active = {}
-    if isinstance(entries, list):
-        active = next((p for p in entries if isinstance(p, dict) and p.get("Stratum Active") is True), {})
+    connected = (
+        [p for p in entries if isinstance(p, dict) and p.get("Stratum Active") is True]
+        if isinstance(entries, list)
+        else []
+    )
+    # Load-balance mode keeps several pools connected at once. Naming one of
+    # them as the pool would be a guess, so show a pool only when it is alone.
+    active = connected[0] if len(connected) == 1 else {}
     return {
         "hashrate_ghs": _hashrate(stats, "MHS 1m", "MHS 5s", "GHS 5s"),
         "hashrate_avg_ghs": _hashrate(stats, "MHS av", "GHS av"),
@@ -339,19 +346,34 @@ def sanitize_snapshot(obj) -> dict | None:
     }
 
 
+async def _read_address(target: Target, ip: str) -> dict:
+    if target.protocol == "axeos":
+        return parse_axeos(await _axeos_get(ip, target.port))
+    summary = await _cgminer_exchange(ip, target.port, "summary")
+    pools = None
+    with suppress(OSError, _ReadError):
+        pools = await _cgminer_exchange(ip, target.port, "pools")
+    return parse_cgminer(summary, pools)
+
+
 async def _read_target(target: Target) -> tuple[str | None, dict]:
     row = {"target": target.url, "protocol": target.protocol}
     ip = None
     try:
-        ip = await _resolve(target)
-        if target.protocol == "axeos":
-            row.update(parse_axeos(await _axeos_get(ip, target.port)))
-        else:
-            summary = await _cgminer_exchange(ip, target.port, "summary")
-            pools = None
-            with suppress(OSError, _ReadError):
-                pools = await _cgminer_exchange(ip, target.port, "pools")
-            row.update(parse_cgminer(summary, pools))
+        async with asyncio.timeout(READ_BUDGET):
+            addresses = await _resolve(target)
+            # A name can resolve to an address that does not answer (an IPv6
+            # address the miner never took, say). Move on to the next one.
+            for index, address in enumerate(addresses, 1):
+                try:
+                    figures = await _read_address(target, address)
+                except (TimeoutError, OSError, httpx.TransportError):
+                    if index == len(addresses):
+                        raise
+                    continue
+                ip = address
+                row.update(figures)
+                break
         row["ok"] = True
     except _ReadError as exc:
         row.update(ok=False, error=str(exc))

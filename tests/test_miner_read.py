@@ -1,10 +1,12 @@
 import asyncio
 import socket
 from ipaddress import ip_address
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+import yaml
 
 from app import miner_read as miners
 
@@ -75,6 +77,18 @@ def test_stock_antminer_leaves_watts_unknown_and_uses_active_pool():
     assert result["pool_url"] == "stratum+tcp://pool.example:700"
     assert result["pool_user"] == "fixture"
     assert miners.parse_cgminer(data, {"POOLS": pools["POOLS"][:1]})["pool_url"] is None
+
+
+def test_load_balanced_cgminer_names_no_single_pool():
+    pools = {
+        "POOLS": [
+            {"URL": "stratum+tcp://first.example:700", "Stratum Active": True, "User": "first"},
+            {"URL": "stratum+tcp://second.example:700", "Stratum Active": True, "User": "second"},
+        ]
+    }
+    result = miners.parse_cgminer({"SUMMARY": [{"GHS 5s": 100.0}]}, pools)
+    assert (result["pool_url"], result["pool_user"]) == (None, None)
+    assert result["hashrate_ghs"] == 100
 
 
 def test_avalon_average_and_whatsminer_v2_summary():
@@ -170,11 +184,58 @@ async def test_dns_checks_every_address_and_passes_only_the_pinned_ip(monkeypatc
 @pytest.mark.asyncio
 async def test_one_reading_for_aliases_of_the_same_endpoint(monkeypatch):
     targets, _ = miners.parse_targets("axeos://unit.local,axeos://192.168.1.16,axeos://unit.local:8080")
-    monkeypatch.setattr(miners, "_resolve", AsyncMock(return_value="192.168.1.16"))
+    monkeypatch.setattr(miners, "_resolve", AsyncMock(return_value=["192.168.1.16"]))
     monkeypatch.setattr(miners, "_axeos_get", AsyncMock(return_value={"power": 10}))
 
     devices = (await miners.read_all(targets))["devices"]
     assert [row["target"] for row in devices] == ["axeos://unit.local", "axeos://unit.local:8080"]
+
+
+@pytest.mark.asyncio
+async def test_a_name_falls_back_to_its_next_private_address(monkeypatch):
+    targets, _ = miners.parse_targets("axeos://unit.local,axeos://192.168.1.16")
+
+    async def resolve(name, port, **_):
+        addrs = ["fd25::16", "192.168.1.16"] if name == "unit.local" else [name]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (addr, port)) for addr in addrs]
+
+    async def read(ip, port):
+        if ip == "fd25::16":
+            raise httpx.ConnectError("no route to host")
+        return {"hashRate": 1000}
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", resolve)
+    monkeypatch.setattr(miners, "_axeos_get", read)
+    devices = (await miners.read_all(targets))["devices"]
+    # The name answered on its IPv4 address, so the literal is the same miner.
+    assert [(row["target"], row["ok"], row["hashrate_ghs"]) for row in devices] == [("axeos://unit.local", True, 1000)]
+
+
+@pytest.mark.asyncio
+async def test_trying_addresses_stops_at_the_read_budget(monkeypatch):
+    target = miners.parse_targets("cgminer://unit.local")[0][0]
+    tried = []
+
+    async def exchange(ip, port, command):
+        tried.append(ip)
+        if ip == "10.0.0.1":
+            raise ConnectionRefusedError()
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(miners, "READ_BUDGET", 0.05)
+    monkeypatch.setattr(miners, "_resolve", AsyncMock(return_value=["10.0.0.1", "10.0.0.2", "10.0.0.3"]))
+    monkeypatch.setattr(miners, "_cgminer_exchange", exchange)
+    device = (await miners.read_all([target]))["devices"][0]
+    assert (device["ok"], device["error"]) == (False, "timed out")
+    assert tried == ["10.0.0.1", "10.0.0.2"]
+
+
+@pytest.mark.parametrize(
+    "compose", sorted(p.name for p in Path(__file__).resolve().parent.parent.glob("docker-compose*.yml"))
+)
+def test_every_worker_manifest_forwards_the_miner_list(compose):
+    services = yaml.safe_load((Path(__file__).resolve().parent.parent / compose).read_text())["services"]
+    assert "CASHPILOT_MINERS=${CASHPILOT_MINERS:-}" in services["cashpilot-worker"]["environment"]
 
 
 def sample(**fields):
@@ -304,7 +365,7 @@ async def test_cgminer_only_sends_the_requested_command_and_handles_nul(monkeypa
 async def test_optional_pools_timeout_keeps_cgminer_summary(monkeypatch):
     target = miners.parse_targets("cgminer://10.0.0.8")[0][0]
     exchange = AsyncMock(side_effect=[{"SUMMARY": [{"GHS 5s": 110566.89}]}, TimeoutError()])
-    monkeypatch.setattr(miners, "_resolve", AsyncMock(return_value="10.0.0.8"))
+    monkeypatch.setattr(miners, "_resolve", AsyncMock(return_value=["10.0.0.8"]))
     monkeypatch.setattr(miners, "_cgminer_exchange", exchange)
     device = (await miners.read_all([target]))["devices"][0]
     assert device["hashrate_ghs"] == 110566.89
