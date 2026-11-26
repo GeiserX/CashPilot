@@ -93,6 +93,36 @@
     <div id="payout-rest-container"></div>
   </details>
 </section>
+
+<section class="income-export" aria-labelledby="income-export-title">
+  <div class="block-head">
+    <h2 class="block-title" id="income-export-title">Income for taxes</h2>
+  </div>
+  <p class="income-export-note">
+    Earned and accrued rows show credit at a service. Payout rows show money you received.
+    <a href="https://geiserx.github.io/CashPilot/income-export/#choose-an-accounting-basis" target="_blank" rel="noopener">Count one or the other</a>.
+  </p>
+  <p class="income-export-note">Older earnings readings may have been deleted. A past year can be incomplete.</p>
+  <form class="income-export-form" method="get" action="/api/earnings/income.csv">
+    <label>
+      <span class="form-label">Start date</span>
+      <input class="form-input" type="date" name="start">
+    </label>
+    <label>
+      <span class="form-label">End date</span>
+      <input class="form-input" type="date" name="end">
+    </label>
+    <label>
+      <span class="form-label">Currency</span>
+      <select class="form-input" name="currency" id="income-currency">
+        <option value="USD">USD</option>
+      </select>
+    </label>
+    <button type="button" class="btn btn-ghost" data-income-range="this">This year</button>
+    <button type="button" class="btn btn-ghost" data-income-range="last">Last year</button>
+    <button type="submit" class="btn btn-primary">Download CSV</button>
+  </form>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -500,6 +530,41 @@
     });
   }
 
+  async function loadIncomeCurrencies(select) {
+    try {
+      var data = await CP.api('/api/exchange-rates');
+      var codes = CP.partitionFiatCodes(data.fiat || {}).flat();
+      codes.forEach(function (code) {
+        if (code !== 'USD') select.add(new Option(code, code));
+      });
+      var preferred = localStorage.getItem('cp-display-currency');
+      if (codes.includes(preferred)) select.value = preferred;
+    } catch (err) {
+      // USD stays available if exchange rates or local storage cannot be read.
+    }
+  }
+
+  function initIncomeExport() {
+    var form = document.querySelector('.income-export-form');
+    var start = form.elements.namedItem('start');
+    var end = form.elements.namedItem('end');
+    var today = new Date().toISOString().slice(0, 10);
+    start.max = today;
+    end.max = today;
+    form.addEventListener('click', function (ev) {
+      var button = ev.target.closest('[data-income-range]');
+      if (!button) return;
+      var today = new Date().toISOString().slice(0, 10);
+      start.max = today;
+      end.max = today;
+      var thisYear = button.dataset.incomeRange === 'this';
+      var year = Number(today.slice(0, 4)) - (thisYear ? 0 : 1);
+      start.value = year + '-01-01';
+      end.value = thisYear ? today : year + '-12-31';
+    });
+    loadIncomeCurrencies(form.elements.namedItem('currency'));
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     if (document.body.dataset.page !== 'payouts') return;
     document.getElementById('payout-filter').addEventListener('input', applyFilter);
@@ -514,6 +579,7 @@
       var passphrase = ev.target.value === 'passphrase';
       repeat.hidden = !passphrase; repeat.required = passphrase; repeat.value = '';
     });
+    initIncomeExport();
     loadPayouts();
   });
 })();
