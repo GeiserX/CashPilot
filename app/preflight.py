@@ -316,15 +316,9 @@ def _gpu_findings(service: dict[str, Any], info: dict[str, Any], deployed: set[s
     name = service.get("name") or service.get("slug") or "This service"
     vendor = grant["vendor"]
     report = info.get("gpu") if isinstance(info.get("gpu"), dict) else {}
-    vendors = report.get("vendors")
-    if not isinstance(vendors, dict) or not all(isinstance(facts, dict) for facts in vendors.values()):
-        vendors = None
+    host = gpu.host_from_report(report)
+    vendors = host["vendors"]
     findings: list[dict[str, str]] = []
-    host = {
-        "conclusive": vendors is not None and isinstance(report.get("available"), bool),
-        "vendors": vendors,
-        "kfd": (vendors or {}).get("amd", {}).get("kfd"),
-    }
     if problem := gpu.missing(grant, host):
         findings.append({"verdict": EARNS_NOTHING, "message": f"{problem} The worker refuses the deploy."})
     elif vendors is None or vendor not in vendors:

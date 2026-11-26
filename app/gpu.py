@@ -30,6 +30,7 @@ image (no Docker SDK) and app/socket_policy.py can import it.
 
 from __future__ import annotations
 
+import os
 import platform
 import re
 from pathlib import Path
@@ -150,7 +151,39 @@ def grant(slug: str | None) -> dict[str, Any] | None:
 
 
 def _read(path: Path) -> str:
-    return path.read_text(encoding="ascii", errors="replace").strip().lower()
+    """One sysfs attribute. An empty one is a failed read: every attribute read here holds a value."""
+    value = path.read_text(encoding="ascii", errors="replace").strip().lower()
+    if not value:
+        raise OSError(f"{path} is empty")
+    return value
+
+
+def _present(path: Path) -> bool:
+    """Whether ``path`` exists. Only "not there" is False: any other failure raises.
+
+    ``Path.exists`` answers False for some failed reads too (a denied or broken
+    path), which a conclusive read would then report as "no GPU".
+    """
+    try:
+        path.stat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def local_endpoint(docker_host: str) -> bool:
+    """Whether a Docker endpoint is this machine's own: a unix socket or a local named pipe.
+
+    Unset is docker-py's default, the local unix socket. A tcp or ssh endpoint,
+    or a pipe on another machine, may reach a daemon elsewhere, whose GPUs this
+    machine's sysfs does not describe.
+    """
+    host = docker_host.strip().lower()
+    if not host or host.startswith("unix://"):
+        return True
+    if host.startswith("npipe:"):
+        return host.removeprefix("npipe:").lstrip("/").startswith("./pipe/")
+    return False
 
 
 def _render_number(path: str) -> int:
@@ -160,16 +193,19 @@ def _render_number(path: str) -> int:
         return 1 << 30
 
 
-def host_gpus(sysfs: Path = Path("/sys")) -> dict[str, Any]:
-    """The GPUs this machine has, read from sysfs.
+def host_gpus(sysfs: Path = Path("/sys"), docker_host: str | None = None) -> dict[str, Any]:
+    """The GPUs of the machine Docker runs on, read from sysfs.
 
     sysfs shows the host's PCI bus from inside a container too, with nothing
     passed in, so this works for the worker behind the socket proxy.
 
-    ``conclusive`` is False when the read says nothing about the host: not
-    Linux, WSL2 (which passes GPUs through /dev/dxg, not PCI), or sysfs that
-    cannot be read. Then ``vendors`` is empty and must not be read as "none".
-    A display chip of another vendor (a server BMC's ASPEED) is ignored.
+    ``conclusive`` is False when the read says nothing about that machine: not
+    Linux, WSL2 (which passes GPUs through /dev/dxg, not PCI), a Docker endpoint
+    that is not this machine's own (``docker_host``, default ``DOCKER_HOST``),
+    or a sysfs read that failed anywhere. Then ``vendors`` is empty and must not
+    be read as "none". Only a read where every step succeeded can say "no GPU".
+    A display chip of another vendor (a server BMC's ASPEED) is ignored, and so
+    is a render node with no vendor id (an ARM board's own GPU, not on PCI).
     """
     result: dict[str, Any] = {"conclusive": False, "vendors": {}, "kfd": False, "nvidia_module": False}
     system = platform.system()
@@ -178,6 +214,12 @@ def host_gpus(sysfs: Path = Path("/sys")) -> dict[str, Any]:
         return result
     if "microsoft" in platform.release().lower():
         result["reason"] = "this is WSL, where a GPU is not on the PCI bus CashPilot reads"
+        return result
+    if not local_endpoint(os.environ.get("DOCKER_HOST", "") if docker_host is None else docker_host):
+        result["reason"] = (
+            "the worker reaches Docker through a network endpoint, so Docker may run on another machine, "
+            "whose GPUs CashPilot cannot read"
+        )
         return result
     by_id = {pci: vendor for vendor, pci in VENDOR_IDS.items()}
     vendors: dict[str, dict[str, Any]] = {}
@@ -188,27 +230,58 @@ def host_gpus(sysfs: Path = Path("/sys")) -> dict[str, Any]:
             vendor = by_id.get(_read(dev / "vendor"))
             if vendor:
                 vendors.setdefault(vendor, {"pci": 0, "render_nodes": []})["pci"] += 1
-        drm = sysfs / "class" / "drm"
-        if drm.exists():
-            for node in drm.iterdir():
-                if not node.name.startswith("renderD"):
-                    continue
+        try:
+            # No drm class at all is a machine with no GPU driver loaded: a sure "none".
+            nodes = list((sysfs / "class" / "drm").iterdir())
+        except FileNotFoundError:
+            nodes = []
+        for node in nodes:
+            if not node.name.startswith("renderD"):
+                continue
+            try:
                 vendor = by_id.get(_read(node / "device" / "vendor"))
-                if vendor:
-                    entry = vendors.setdefault(vendor, {"pci": 0, "render_nodes": []})
-                    entry["render_nodes"].append(f"/dev/dri/{node.name}")
+            except FileNotFoundError:
+                continue
+            if vendor:
+                entry = vendors.setdefault(vendor, {"pci": 0, "render_nodes": []})
+                entry["render_nodes"].append(f"/dev/dri/{node.name}")
+        kfd = _present(sysfs / "class" / "kfd" / "kfd")
+        nvidia_module = _present(sysfs / "module" / "nvidia")
     except OSError as exc:
         result["reason"] = f"this machine's GPU devices could not be read ({exc.strerror or exc})"
         return result
     for entry in vendors.values():
         entry["render_nodes"].sort(key=_render_number)
-    result["kfd"] = (sysfs / "class" / "kfd" / "kfd").exists()
-    result["nvidia_module"] = (sysfs / "module" / "nvidia").exists()
+    result["kfd"] = kfd
+    result["nvidia_module"] = nvidia_module
     if "amd" in vendors:
-        vendors["amd"]["kfd"] = result["kfd"]
+        vendors["amd"]["kfd"] = kfd
     result["vendors"] = vendors
     result["conclusive"] = True
     return result
+
+
+def host_from_report(report: Any) -> dict[str, Any]:
+    """A ``host_gpus`` result rebuilt from a worker heartbeat's ``gpu`` report.
+
+    Conclusive only when the worker's own sysfs read was: it then sends
+    ``vendors`` and a bool ``available``. An older worker, or one that could
+    not tell, sends neither, and this says nothing.
+    """
+    report = report if isinstance(report, dict) else {}
+    vendors = report.get("vendors")
+    if not isinstance(vendors, dict) or not all(
+        isinstance(facts, dict) and isinstance(facts.get("render_nodes", []), list) for facts in vendors.values()
+    ):
+        vendors = None
+    host: dict[str, Any] = {
+        "conclusive": vendors is not None and isinstance(report.get("available"), bool),
+        "vendors": vendors,
+        "kfd": (vendors or {}).get("amd", {}).get("kfd"),
+    }
+    if not host["conclusive"]:
+        host["reason"] = str(report.get("reason") or "the worker's heartbeat does not list its GPUs")
+    return host
 
 
 def describe(host: dict[str, Any]) -> str:
@@ -236,6 +309,27 @@ def missing(grant_: dict[str, Any], host: dict[str, Any]) -> str | None:
     return None
 
 
+def render_devices(grant_: dict[str, Any], host: dict[str, Any]) -> list[str]:
+    """The device paths an AMD or Intel grant gets on ``host``: its vendor's render nodes, and /dev/kfd for ROCm.
+
+    The deploy and the Compose export both take them from here, so a file names
+    the node the deploy would pass in: renderD128 can be another vendor's GPU.
+    Raises GpuRefused when the machine cannot honour the grant, or when the
+    read is not conclusive and the node cannot be known.
+    """
+    if problem := missing(grant_, host):
+        raise GpuRefused(problem)
+    vendor = grant_["vendor"]
+    if not host.get("conclusive"):
+        raise GpuRefused(
+            f"CashPilot could not read this machine's GPUs ({host.get('reason') or 'no reason given'}), "
+            f"so it cannot pick the {VENDOR_NAMES[vendor]} render node to pass in."
+        )
+    nodes = [n for n in host["vendors"][vendor]["render_nodes"] if n in RENDER_NODE_CEILING]
+    picked = nodes if grant_["count"] == "all" else nodes[:1]
+    return [*picked, *([KFD] if grant_.get("rocm") else [])]
+
+
 def docker_kwargs(grant_: dict[str, Any] | None, host: dict[str, Any] | None = None) -> dict[str, list[Any]]:
     """``device_requests`` and ``devices`` for docker-py's containers.run.
 
@@ -246,25 +340,14 @@ def docker_kwargs(grant_: dict[str, Any] | None, host: dict[str, Any] | None = N
     if not grant_:
         return {"device_requests": [], "devices": []}
     host = host if host is not None else host_gpus()
-    if problem := missing(grant_, host):
-        raise GpuRefused(problem)
-    vendor = grant_["vendor"]
-    if vendor == "nvidia":
+    if grant_["vendor"] == "nvidia":
+        if problem := missing(grant_, host):
+            raise GpuRefused(problem)
         from docker.types import DeviceRequest
 
         count = -1 if grant_["count"] == "all" else 1
         return {"device_requests": [DeviceRequest(driver="nvidia", count=count, capabilities=[["gpu"]])], "devices": []}
-    if not host.get("conclusive"):
-        raise GpuRefused(
-            f"CashPilot could not read this machine's GPUs ({host.get('reason') or 'no reason given'}), "
-            f"so it cannot pick the {VENDOR_NAMES[vendor]} render node to pass in."
-        )
-    nodes = [n for n in host["vendors"][vendor]["render_nodes"] if n in RENDER_NODE_CEILING]
-    picked = nodes if grant_["count"] == "all" else nodes[:1]
-    devices = [f"{n}:{n}:rwm" for n in picked]
-    if grant_.get("rocm"):
-        devices.append(f"{KFD}:{KFD}:rwm")
-    return {"device_requests": [], "devices": devices}
+    return {"device_requests": [], "devices": [f"{n}:{n}:rwm" for n in render_devices(grant_, host)]}
 
 
 def env_for(grant_: dict[str, Any] | None) -> dict[str, str]:
@@ -272,11 +355,6 @@ def env_for(grant_: dict[str, Any] | None) -> dict[str, str]:
     if grant_ and grant_.get("vendor") == "nvidia":
         return {}
     return dict(VOID_ENV)
-
-
-def in_ceiling(path: str) -> bool:
-    """Whether a device path is one a GPU grant may pass in."""
-    return path in RENDER_NODE_CEILING or path == KFD
 
 
 def failure_hint(reason: str) -> str:

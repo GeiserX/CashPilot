@@ -369,6 +369,7 @@ def _deploy(
     allow=False,
     fail=None,
     fail_status=500,
+    fail_detail="worker failed",
     fail_exc=None,
     running=frozenset(),
     ran=None,
@@ -388,7 +389,7 @@ def _deploy(
 
     async def hop(wid, method, path, *, json=None, **kwargs):
         if fail and fail(method, path, json):
-            raise fail_exc or HTTPException(status_code=fail_status, detail="worker failed")
+            raise fail_exc or HTTPException(status_code=fail_status, detail=fail_detail)
         sent.append({"worker": wid, "path": path, "json": json})
         if method == "DELETE":
             n = int(path.rsplit("/", 1)[1])
@@ -860,6 +861,184 @@ class TestADeployThatFailsHalfway:
         assert error is None
         assert _active() == {("honeygain", 1, "1", "HONEYGAIN_DEVICE_NAME"): "box"}
         assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+    def test_a_copy_already_gone_at_scale_down_is_retired(self, db):
+        """The worker answers copy_not_found for copy 2: it is gone, so the scale-down succeeds and retires it."""
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", {**self.HG, "HONEYGAIN_DEVICE_NAME": "box"}, 1, instances=2)[0] is None
+
+            def delete(method, path, json):
+                return method == "DELETE"
+
+            error, _ = _deploy(
+                "honeygain",
+                {**self.HG, "HONEYGAIN_DEVICE_NAME": "box"},
+                1,
+                instances=1,
+                fail=delete,
+                fail_status=404,
+                fail_detail=COPY_NOT_FOUND,
+                running={1, 2},
+            )
+        assert error is None
+        assert _active() == {("honeygain", 1, "1", "HONEYGAIN_DEVICE_NAME"): "box"}
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+
+#: What the worker answers (through _proxy_to_worker) when it has no such copy.
+COPY_NOT_FOUND = {"error": "copy_not_found", "message": "Instance 2 of honeygain not found"}
+
+
+class TestAStaleHeartbeatOnAOneCopyRedeploy:
+    """A one-copy service always reads its copies, so a stale heartbeat sends a DELETE for a copy that is gone.
+
+    Copy 2 is left active by a scale-down whose removal failed (the record says
+    one copy already). It is gone by the next plain redeploy, but the last
+    heartbeat still lists it.
+    """
+
+    HG = {"HONEYGAIN_EMAIL": "me@example.com", "HONEYGAIN_PASSWORD": "pw", "HONEYGAIN_DEVICE_NAME": "box"}
+
+    @staticmethod
+    def _delete(method, path, json):
+        return method == "DELETE"
+
+    def _leave_copy_two(self):
+        with patch.object(main, "scaling_limit", lambda svc: (3, "")):
+            assert _deploy("honeygain", self.HG, 1, instances=2)[0] is None
+            error, _ = _deploy("honeygain", self.HG, 1, instances=1, fail=self._delete, running={1, 2})
+        assert error is not None
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+
+    def test_a_404_for_the_listed_copy_is_a_removal(self, db):
+        self._leave_copy_two()
+        with patch.object(main, "scaling_limit", lambda svc: (1, "one copy")):
+            error, sent = _deploy(
+                "honeygain", self.HG, 1, fail=self._delete, fail_status=404, fail_detail=COPY_NOT_FOUND, running={1, 2}
+            )
+        assert error is None
+        assert any(s["path"].endswith("/deploy") for s in sent)
+        assert _active() == {("honeygain", 1, "1", "HONEYGAIN_DEVICE_NAME"): "box"}
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME", "box-2") in _retired()
+
+    @pytest.mark.parametrize("status", [500, 503, 403])
+    def test_any_other_failure_still_fails_and_keeps_the_copy(self, db, status):
+        self._leave_copy_two()
+        with patch.object(main, "scaling_limit", lambda svc: (1, "one copy")):
+            error, _ = _deploy("honeygain", self.HG, 1, fail=self._delete, fail_status=status, running={1, 2})
+        assert error is not None and error.status_code == status
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+
+    @pytest.mark.parametrize(
+        "detail",
+        [
+            "worker failed",
+            # FastAPI's answer for a route it does not have: an older worker.
+            "Not Found",
+            main._worker_failure_text(404),
+            # A code the worker uses, but not this one.
+            {"error": "restore_cleared", "message": "Instance 2 of honeygain not found"},
+            # A worker from before the code: its plain text for a missing copy.
+            "Instance 2 of honeygain not found",
+        ],
+    )
+    def test_a_404_without_the_workers_copy_code_fails_and_keeps_the_copy(self, db, detail):
+        """Only the worker's own copy_not_found proves the copy is gone; any other 404 proves nothing."""
+        self._leave_copy_two()
+        with patch.object(main, "scaling_limit", lambda svc: (1, "one copy")):
+            error, _ = _deploy(
+                "honeygain", self.HG, 1, fail=self._delete, fail_status=404, fail_detail=detail, running={1, 2}
+            )
+        assert error is not None and error.status_code == 404
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME", "box-2") not in _retired()
+
+    def test_the_marker_on_another_status_fails_and_keeps_the_copy(self, db):
+        self._leave_copy_two()
+        with patch.object(main, "scaling_limit", lambda svc: (1, "one copy")):
+            error, _ = _deploy(
+                "honeygain", self.HG, 1, fail=self._delete, fail_status=409, fail_detail=COPY_NOT_FOUND, running={1, 2}
+            )
+        assert error is not None and error.status_code == 409
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+
+    def test_a_missing_worker_record_fails_and_keeps_the_copy(self, db):
+        """_proxy_to_worker's own 404 for a worker it has no record of says nothing about the copy."""
+        self._leave_copy_two()
+        real = main._proxy_to_worker
+
+        async def no_worker():
+            with patch.object(main.database, "get_worker", AsyncMock(return_value=None)):
+                try:
+                    await real(1, "DELETE", "/api/containers/honeygain/instances/2")
+                except HTTPException as exc:
+                    return exc
+            raise AssertionError("a missing worker record must raise")
+
+        missing = asyncio.run(no_worker())
+        assert missing.status_code == 404
+        with patch.object(main, "scaling_limit", lambda svc: (1, "one copy")):
+            error, _ = _deploy("honeygain", self.HG, 1, fail=self._delete, fail_exc=missing, running={1, 2})
+        assert error is missing
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME") in _active()
+        assert ("honeygain", 1, "2", "HONEYGAIN_DEVICE_NAME", "box-2") not in _retired()
+
+
+class TestTheCopyCodeCrossesTheProxy:
+    """The worker's copy_not_found reaches _deploy through _proxy_to_worker; a bare 404 does not read as it."""
+
+    @staticmethod
+    def _answer(status, body):
+        import httpx
+
+        resp = MagicMock()
+        resp.status_code = status
+        resp.text = str(body)
+        resp.json.return_value = body
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def delete(self, *a, **k):
+                return resp
+
+        async def run():
+            with (
+                patch.object(main, "_get_verified_worker_url", AsyncMock(return_value=("http://w", {}))),
+                patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 1, "url": "http://w"})),
+                patch.object(httpx, "AsyncClient", lambda **kw: _Client()),
+            ):
+                try:
+                    await main._proxy_to_worker(1, "DELETE", "/api/containers/honeygain/instances/2")
+                except HTTPException as exc:
+                    return exc
+            raise AssertionError("an error answer must raise")
+
+        return asyncio.run(run())
+
+    def test_the_workers_copy_code_survives_the_proxy(self):
+        exc = self._answer(404, {"detail": COPY_NOT_FOUND})
+        assert exc.status_code == 404 and exc.detail == COPY_NOT_FOUND
+        assert main._worker_copy_not_found(exc)
+
+    @pytest.mark.parametrize(
+        ("status", "body"),
+        [
+            (404, {"detail": "Not Found"}),
+            (404, {"detail": "Instance 2 of honeygain not found"}),
+            (404, "<html>404 from a proxy</html>"),
+            (404, {"detail": {"error": "something_else", "message": "x"}}),
+            (502, {"detail": COPY_NOT_FOUND}),
+        ],
+    )
+    def test_any_other_answer_is_not_the_copy_code(self, status, body):
+        exc = self._answer(status, body)
+        assert exc.status_code == status
+        assert not main._worker_copy_not_found(exc)
 
 
 # ---------------------------------------------------------------------------

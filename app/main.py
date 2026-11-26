@@ -4884,10 +4884,13 @@ async def _deploy(
             keys.extend(await _proxied_rebuild_targets(slug, worker_id, route))
         await _confirm_deploy_targets(worker_id, slug, keys)
     # Read only when copies are involved, so a plain deploy asks the worker
-    # record nothing it did not ask before.
+    # record nothing it did not ask before. A service limited to one copy is
+    # always read: a scale-down whose removal failed has already saved the lower
+    # count, and its leftover copies (a GPU miner's would share the one GPU) go
+    # on this deploy.
     # A joined Desktop takes one copy per service from here, and any copy it added
     # itself stays its own: the server neither sends copy 2+ nor removes them.
-    copies_involved = body.instances is not None or (recorded or {}).get("instances")
+    copies_involved = body.instances is not None or (recorded or {}).get("instances") or scaling_limit(svc)[0] == 1
     to_desktop = await _worker_is_desktop(worker_id) if copies_involved else False
     running_copies = await _worker_instances(worker_id, slug) if copies_involved and not to_desktop else set()
     if instances > 1:
@@ -5270,7 +5273,18 @@ async def _deploy(
             await _release_pending_identities(slug, worker_id, held)
     deleted: set[int] = set()
     for n in sorted(c for c in running_copies if c > instances):
-        removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        try:
+            removed = await _proxy_to_worker(worker_id, "DELETE", f"/api/containers/{slug}/instances/{n}")
+        except HTTPException as exc:
+            # The worker looked and has no such copy: the heartbeat that listed
+            # it is older than its removal (a scale-down that went through, a
+            # copy removed by hand), so it is gone, as a removal would leave it.
+            # Only its own copy_not_found says so. Any other 404 (no worker
+            # record, an older worker without the route, a proxy) proves
+            # nothing, so the deploy fails and the copy stays recorded.
+            if not _worker_copy_not_found(exc):
+                raise
+            removed = None
         deleted.add(n)
         # Confirmed gone: keep the id it ran with, even if its row was never
         # written, when the worker's digest proves which one that was.
@@ -7482,6 +7496,8 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
         "route_unknown",
         # A failed routed deploy whose earner may still run (app/worker_api.py).
         "routed_copy_may_exist",
+        # The scale-down found no such copy on the box (app/worker_api.py).
+        "copy_not_found",
     ):
         return {"error": error, "message": str(detail.get("message") or "")}
     if error not in _FORWARDABLE_WORKER_ERRORS:
@@ -7551,6 +7567,12 @@ def _worker_refusal_text(resp: Any, sent: dict[str, Any] | None) -> str | None:
     if len(text) > _WORKER_TEXT_MAX:
         text = text[: _WORKER_TEXT_MAX - 1].rstrip() + "\u2026"
     return text
+
+
+def _worker_copy_not_found(exc: HTTPException) -> bool:
+    """The worker's own answer that it has no such copy of the service."""
+    detail = exc.detail
+    return exc.status_code == 404 and isinstance(detail, dict) and detail.get("error") == "copy_not_found"
 
 
 def _worker_failure_text(status: int) -> str:
@@ -9289,14 +9311,15 @@ async def api_service_remove(
 
 
 @app.get("/api/compose/{slug}", response_class=PlainTextResponse)
-async def api_compose_single(request: Request, slug: str, arch: str | None = None):
+async def api_compose_single(request: Request, slug: str, arch: str | None = None, worker_id: int | None = None):
     """Export a docker-compose.yml for a single service."""
     _require_auth_api(request)
     svc = catalog.get_service(slug)
     if not svc:
         raise HTTPException(status_code=404, detail=f"Service '{slug}' not found")
+    gpu_host = await _compose_gpu_host(worker_id)
     try:
-        return compose_generator.generate_compose_single(slug, arch=_compose_arch(arch))
+        return compose_generator.generate_compose_single(slug, arch=_compose_arch(arch), gpu_host=gpu_host)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -9306,6 +9329,19 @@ class ComposeMultiRequest(BaseModel):
     # amd64, arm64 or arm (a raw machine name such as aarch64 is accepted too).
     # Absent means the catalog's default image, which is the amd64 build.
     arch: str | None = None
+    # The worker the file is for: an AMD or Intel GPU entry names its render node.
+    worker_id: int | None = None
+
+
+async def _compose_gpu_host(worker_id: int | None) -> dict[str, Any] | None:
+    """The GPU read of the worker an export is for, from its last heartbeat; None without one."""
+    if worker_id is None:
+        return None
+    worker = await database.get_worker(worker_id)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    info = _decoded_worker(worker).get("system_info")
+    return gpu.host_from_report(info.get("gpu") if isinstance(info, dict) else None)
 
 
 def _compose_arch(value: str | None) -> str | None:
@@ -9329,17 +9365,20 @@ async def api_compose_multi(
 ):
     """Export a docker-compose.yml for multiple services."""
     try:
-        return compose_generator.generate_compose_multi(body.slugs, arch=_compose_arch(body.arch))
+        return compose_generator.generate_compose_multi(
+            body.slugs, arch=_compose_arch(body.arch), gpu_host=await _compose_gpu_host(body.worker_id)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.get("/api/compose", response_class=PlainTextResponse)
-async def api_compose_all(request: Request, arch: str | None = None):
+async def api_compose_all(request: Request, arch: str | None = None, worker_id: int | None = None):
     """Export a docker-compose.yml for ALL services with Docker images."""
     _require_auth_api(request)
+    gpu_host = await _compose_gpu_host(worker_id)
     try:
-        return compose_generator.generate_compose_all(arch=_compose_arch(arch))
+        return compose_generator.generate_compose_all(arch=_compose_arch(arch), gpu_host=gpu_host)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
