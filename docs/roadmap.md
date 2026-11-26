@@ -299,6 +299,10 @@ compute service rather than an earnings range alone.**
 (`/api/earnings/net`), and since 1.10.0 the fleet page says whether each machine
 earns more than its electricity costs (`/api/fleet/economics`).
 
+Mining entries state the miner and pool fees and explain how to check the
+electricity cost. The pool pays a public address. Wallet keys and recovery
+phrases stay in the user's wallet.
+
 ### G. What we will not build
 
 **A hosted version that holds users' keys.** This is the clearest line in the

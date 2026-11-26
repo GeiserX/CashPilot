@@ -251,6 +251,13 @@
 #   provider does not say" is a legitimate and useful entry. Do NOT guess: an absent
 #   block is reported as undocumented, which is safer than a confident wrong answer.
 
+# mining: (required for deployable Mining entries) the fee charged by the miner
+#   dev_fee_percent: 1  (numeric, between 0 and 10)
+#   dev_fee_source: "https://..."  (source for the fee)
+#   pool_fee_note: ""  (optional, explain pool fees and thresholds)
+#   Pin the Docker image and each platform override with @sha256: digests.
+#   Deployable Mining entries also need requirements.hosting_note.
+
 # rating: (every active and beta service) the evidence behind the provider's
 #   grade. The method, the criteria and what each verdict means are published in
 #   services/_ratings.yml and on docs/ratings.md. app/ratings.py computes the
@@ -329,6 +336,7 @@
 #     that it is allowed.
 #   note: ""  (footnote text for special cases in README table)
 #   note_column: ""  (which column footnote applies to: vps_ip, devices_per_ip)
+#   hosting_note: ""  (advice shown when the selected worker reports a hosting exit)
 #   min_bandwidth: ""
 #   gpu: false
 #   min_storage: ""
