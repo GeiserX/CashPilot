@@ -445,6 +445,8 @@ class TestRedeployUsesTheRecordedSpec:
                 patch.object(main, "_require_owner", lambda r: None),
                 patch.object(main.catalog, "get_service", return_value=self.SERVICE),
                 patch.object(main, "_resolve_worker_id", AsyncMock(return_value=1)),
+                patch.object(main.database, "get_worker", AsyncMock(return_value={"id": 1, "name": "box"})),
+                patch.object(main, "_reserve_pending_identities", AsyncMock(return_value=None)),
                 patch.object(main, "_proxy_worker_deploy", _capture),
                 patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=recorded)),
                 patch.object(main.database, "save_deployment", AsyncMock()),
@@ -452,7 +454,7 @@ class TestRedeployUsesTheRecordedSpec:
                 patch.object(main, "_spawn", lambda coro: coro.close()),
                 patch.object(main.metrics, "record_container_lifecycle", lambda *a: None),
             ):
-                result = await main.api_deploy(MagicMock(), "demo", body)
+                result = await main.api_deploy(MagicMock(), self.SERVICE["slug"], body)
             return result, captured.get("spec")
 
         return asyncio.run(run())
@@ -468,6 +470,20 @@ class TestRedeployUsesTheRecordedSpec:
         result, spec = self._deploy(self.RECORDED)
         assert result["status"] == "deployed"
         assert spec["env"]["DATA_DIR"] == "/mnt/user/data"
+
+    def test_a_miner_can_explicitly_restore_its_catalog_default(self):
+        from app import catalog
+
+        self.SERVICE = catalog.get_service("xmrig")
+        recorded = {
+            "image": self.SERVICE["docker"]["image"],
+            "env": {"WALLET": "4" + "A" * 94, "WORKER_NAME": "box", "RANDOMX_MODE": "light"},
+        }
+        _, unchanged = self._deploy(recorded)
+        _, restored = self._deploy(recorded, {"RANDOMX_MODE": "auto"})
+        assert "--randomx-mode=light" in unchanged["command"]
+        assert "--randomx-mode=auto" in restored["command"]
+        assert restored["env"]["RANDOMX_MODE"] == "auto"
 
     def test_a_redeploy_reproduces_the_recorded_mounts(self):
         _, spec = self._deploy(self.RECORDED)
