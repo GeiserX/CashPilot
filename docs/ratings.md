@@ -76,6 +76,7 @@ What a cited con or pro may rest on:
 | <a href="#packetstream">PacketStream</a> | D | 10 of 20 | 2 | <span class="ratings-con" title="Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid.">Trustpilot reviewers in 2025 and 2026 report payouts arriving late or not at all, and one long-time user says payouts slowed and then stopped; others in 2026 report being paid.</span> | 2026-11-04 |
 | <a href="#proxybase">ProxyBase</a> | D | 9 of 20 | 4 | <span class="ratings-con" title="ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings.">ProxyBase itself wrote in August 2025 that it is new and not yet the place to maximise earnings.</span> | 2026-11-04 |
 | <a href="#storj">Storj</a> | D | 9 of 20 | 3 | <span class="ratings-con" title="CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.">CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.</span> | 2026-11-04 |
+| <a href="#xmrig">XMRig (Monero CPU mining)</a> | D | 9 of 20 | 4 | <span class="ratings-con" title="A payout requires enough XMR to meet your pool threshold.">A payout requires enough XMR to meet your pool threshold.</span> | 2026-11-25 |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | <span class="ratings-con" title="The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.">The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.</span> | 2026-11-04 |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | <span class="ratings-con" title="EarnApp&#x27;s help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.">EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.</span> | 2026-11-04 |
 | <a href="#golem">Golem Network</a> | D | 7 of 20 | 6 | <span class="ratings-con" title="CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.">CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.</span> | 2026-11-04 |
@@ -104,9 +105,12 @@ What a cited con or pro may rest on:
 | <a href="#proxyrack">ProxyRack</a> | F | 3 of 20 | 8 | <span class="ratings-con" title="ProxyRack&#x27;s help centre says removing a device takes that device&#x27;s earnings off your account, and they come back only if the same device is added again.">ProxyRack's help centre says removing a device takes that device's earnings off your account, and they come back only if the same device is added again.</span> | 2026-11-04 |
 | <a href="#salad">Salad</a> | F | 3 of 20 | 8 | <span class="ratings-con" title="CashPilot does not run Salad: you use the provider&#x27;s own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
 | <a href="#nodepay">Nodepay</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.">In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.</span> | 2026-11-04 |
+| <a href="#supportxmr">SupportXMR</a> | F | 2 of 20 | 8 | <span class="ratings-con" title="Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.">Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.</span> | 2026-11-25 |
 | <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="UpRock&#x27;s help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.">UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.</span> | 2026-11-04 |
+| <a href="#2miners-etc">2Miners ETC</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="The pool charges a 1% fee and holds payouts until your threshold is reached.">The pool charges a 1% fee and holds payouts until your threshold is reached.</span> | 2026-11-25 |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="The extension earns points; no token distribution to node operators had been confirmed by October 2026.">The extension earns points; no token distribution to node operators had been confirmed by October 2026.</span> | 2026-11-04 |
 | <a href="#deeper-network">Deeper Network</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR.">Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR.</span> | 2026-11-04 |
+| <a href="#herominers-kas">HeroMiners Kaspa</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="The pool charges a 0.9% fee and holds payouts until your threshold is reached.">The pool charges a 0.9% fee and holds payouts until your threshold is reached.</span> | 2026-11-25 |
 | <a href="#nodle">Nodle</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply.">One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply.</span> | 2026-11-04 |
 | <a href="#spide">Spide</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="CashPilot does not run Spide: you use the provider&#x27;s own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Spide: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
 | <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token.">Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token.</span> | 2026-11-04 |
@@ -281,6 +285,37 @@ What a cited con or pro may rest on:
 - Storj publishes its own Docker image, storjlabs/storagenode. [Source](https://hub.docker.com/r/storjlabs/storagenode), checked 2026-11-04.
 - No account: a wallet address and an email for operator notices. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/storage/storj.yml), checked 2026-11-04.
 - Active nodes kept being paid after the filing. [Source](https://startupfortune.com/storj-labs-filed-for-chapter-11-bankruptcy-and-token-holders-are-last-in-line/), checked 2026-11-04.
+
+<a id="xmrig"></a>
+
+### XMRig (Monero CPU mining)
+
+**Grade D**, 9 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [XMRig (Monero CPU mining)](guides/xmrig.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The pool pays the wallet. We tested pool shares and did not verify a payout. |
+| Payout terms | Fair | The pool sets its payout threshold and any payout fee. |
+| Account safety | Unknown | Pool restrictions vary. We did not review account enforcement across pools. |
+| Fit with how CashPilot runs it | Fair | CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS. |
+| Traffic transparency | Good | The miner submits shares to pools over outbound connections. |
+| Privacy | Good | The source is public. The pool sees your payout address, worker name and IP address. |
+| Identity checks | Good | MoneroOcean and SupportXMR let workers connect with a public Monero address. |
+| Support | Unknown | We did not test support for XMRig or the pools. |
+| Earnings realism | Fair | Hashrate and electricity prices vary by hardware and location. |
+| Longevity | Unknown | We did not review the long-term operation of the pools. |
+
+**Cons**
+
+- A payout requires enough XMR to meet your pool threshold. [Source](https://api.moneroocean.stream/config), checked 2026-11-25.
+- Some hosting providers prohibit cryptocurrency mining. [Source](https://www.hetzner.com/legal/cloud-server/), checked 2026-11-25.
+- The extra electricity can cost more than the XMR earned. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/xmrig.md), checked 2026-11-25.
+
+**Pros**
+
+- The miner sends hashes to pools and does not relay anyone else's traffic. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md), checked 2026-11-25.
+- The miner is open source and the image pins a signed upstream release. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/xmrig/README.md), checked 2026-11-25.
+- You can mine with a public Monero address without identifying yourself by name. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/xmrig.md), checked 2026-11-25.
 
 <a id="honeygain"></a>
 
@@ -1114,6 +1149,34 @@ What a cited con or pro may rest on:
 
 - None found.
 
+<a id="supportxmr"></a>
+
+### SupportXMR
+
+**Grade F**, 2 of 20 points, 8 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [SupportXMR](guides/supportxmr.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | Not reviewed. The pool's API lists payments for an address, but we did not check a payout ourselves. |
+| Payout terms | Fair | Monero only, a 0.6% pool fee, and 0.1 XMR before an automatic payout (0.01 XMR on request, for a 0.001 XMR fee). |
+| Account safety | Unknown | There is no account to ban; we found no reports of withheld balances either way. |
+| Fit with how CashPilot runs it | Fair | CashPilot runs nothing for SupportXMR; it reads the balance of a miner you run yourself. |
+| Traffic transparency | Unknown | A pool sells no traffic; it turns your hashrate into Monero blocks. Not reviewed beyond that. |
+| Privacy | Unknown | Not reviewed. Address stats are public on supportxmr.com by design. |
+| Identity checks | Unknown | The site asks only for a Monero address to show stats. We did not find a written policy that says so. |
+| Support | Unknown | Not reviewed. |
+| Earnings realism | Unknown | Earnings follow your own hashrate and the pool's luck. We did not compare estimates with real payouts. |
+| Longevity | Unknown | Not checked on a primary source. |
+
+**Cons**
+
+- Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout. [Source](https://www.supportxmr.com/script_min.js), checked 2026-11-25.
+- CashPilot does not run a miner for SupportXMR: you point your own miner at the pool, and CashPilot only reads the balance. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/mining/supportxmr.yml), checked 2026-11-25.
+
+**Pros**
+
+- None found.
+
 <a id="uprock"></a>
 
 ### Uprock
@@ -1138,6 +1201,33 @@ What a cited con or pro may rest on:
 - UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum. [Source](https://help.uprock.com/en/articles/2057635-security-and-user-asset-protection-2fa-and-withdrawals), checked 2026-11-06.
 - Rewards are UPT tokens; reviewers and a third-party review say their value is very low. [Source](https://paidfromsurveys.com/uprock-ai-earnings-review), checked 2026-11-04.
 - CashPilot does not run UpRock: you use the provider's own app or extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/uprock.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="2miners-etc"></a>
+
+### 2Miners ETC
+
+**Grade F**, 1 of 20 points, 9 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [2Miners ETC](guides/2miners-etc.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The pool API lists payments. No wallet receipt was checked. |
+| Payout terms | Fair | 2Miners lists a 1% pool fee and a minimum threshold of 0.1 ETC. |
+| Account safety | Unknown | The pool shows stats by payout address. The review did not check reports of withheld balances. |
+| Fit with how CashPilot runs it | Unknown | The pool setup guide lists supported miners. Its terms were not reviewed. |
+| Traffic transparency | Unknown | The pool setup guide lists mining servers. The connection was not inspected. |
+| Privacy | Unknown | The pool publishes account stats. Its data retention practices were not checked. |
+| Identity checks | Unknown | The pool setup guide asks for a payout address. Identity rules for payouts were not checked. |
+| Support | Unknown | The pool FAQ lists support options. No support request was tested. |
+| Earnings realism | Unknown | The pool displays estimates. No estimate was compared with a payout. |
+| Longevity | Unknown | The pool API answered during the check. Its operating history was not verified. |
+
+**Cons**
+
+- The pool charges a 1% fee and holds payouts until your threshold is reached. [Source](https://etc.2miners.com/), checked 2026-11-25.
 
 **Pros**
 
@@ -1195,6 +1285,33 @@ What a cited con or pro may rest on:
 
 - Mining rewards are in DPR and depend on a credit score that grows slowly or by staking DPR. [Source](https://deeper-network-inc.gitbook.io/deeper-connect-knowledge-base/faq/mining), checked 2026-11-04.
 - CashPilot does not run Deeper Network: you use the provider's own router hardware, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/deeper-network.yml), checked 2026-11-04.
+
+**Pros**
+
+- None found.
+
+<a id="herominers-kas"></a>
+
+### HeroMiners Kaspa
+
+**Grade F**, 1 of 20 points, 9 of 10 criteria unchecked, reviewed 2026-11-25. Setup guide: [HeroMiners Kaspa](guides/herominers-kas.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The pool API lists payments. No wallet receipt was checked. |
+| Payout terms | Fair | HeroMiners lists a 0.9% pool fee, an hourly payment interval, and a minimum threshold of 1 KAS. |
+| Account safety | Unknown | The pool uses payout addresses for its stats. The review did not check reports of withheld balances. |
+| Fit with how CashPilot runs it | Unknown | The pool's Start page lists supported miners. Its terms were not reviewed. |
+| Traffic transparency | Unknown | The pool's Start page lists mining servers. The connection was not inspected. |
+| Privacy | Unknown | The pool's stats are public. Its data retention practices were not checked. |
+| Identity checks | Unknown | The pool asks for a payout address to show stats. Identity rules for payouts were not checked. |
+| Support | Unknown | The pool links to support channels. No support request was tested. |
+| Earnings realism | Unknown | The pool displays estimates. No estimate was compared with a payout. |
+| Longevity | Unknown | The pool API answered during the check. Its operating history was not verified. |
+
+**Cons**
+
+- The pool charges a 0.9% fee and holds payouts until your threshold is reached. [Source](https://kaspa.herominers.com/api/stats), checked 2026-11-25.
 
 **Pros**
 

@@ -12,7 +12,7 @@
 // functions are extracted and run for real, on both an online and an offline
 // worker, and the OUTPUT is inspected.
 //
-// No browser needed: these renderers build strings and touch no DOM.
+// No browser needed: the running-costs check supplies the small DOM it uses.
 //   node scripts/fleet_staleness_check.mjs
 // Exits non-zero on any mismatch.
 import {readFileSync} from 'node:fs';
@@ -150,6 +150,181 @@ check('a single hostile name is not flagged', countWorkerNames(named(['__proto__
   'a lone worker was reported as a duplicate');
 check('no workers is not a crash', Object.keys(countWorkerNames([])).length === 0, 'empty input misbehaved');
 check('undefined is not a crash', Object.keys(countWorkerNames(undefined)).length === 0, 'undefined misbehaved');
+
+const economicsSource = html.slice(
+  html.indexOf('  // Running costs: per machine,'),
+  html.indexOf('  // How many workers share each display name.'),
+);
+const saveSource = html.slice(
+  html.indexOf("  document.getElementById('fleet-economics-body').addEventListener('submit'"),
+  html.indexOf("  document.getElementById('fleet-workers').addEventListener('click'"),
+);
+const buildEconomics = new Function(
+  'document', 'CP', 'brk', '_isOwner',
+  economicsSource + saveSource + '\nreturn loadFleetEconomics;',
+);
+
+function deviceFixture() {
+  let stored = '10', markup = '', editor, submit, pendingNet;
+  const card = {style: {}};
+  const body = {
+    querySelectorAll: () => editor ? [editor] : [],
+    addEventListener: (_, handler) => { submit = handler; },
+    set innerHTML(value) {
+      markup = value;
+      const raw = value.match(/data-slug="ocean" value="([^"]*)"/)?.[1];
+      const button = {disabled: false};
+      const form = {
+        querySelector: selector => selector === 'button' ? button : editor,
+        matches: () => false,
+        closest: () => form,
+      };
+      editor = {value: raw, defaultValue: raw, dataset: {slug: 'ocean'}, form};
+    },
+  };
+  const document = {getElementById(id) {
+    return {'fleet-economics-card': card, 'fleet-economics-body': body}[id];
+  }};
+  const api = async (path, options) => {
+    if (path === '/api/config') {
+      stored = options.body.data.power_device_ocean_watts;
+      return {};
+    }
+    if (path === '/api/fleet/economics') {
+      return {machines: [{kind: 'device', slug: 'ocean', machine: 'OCEAN', watts: stored, gross_basis: 'accrued'}]};
+    }
+    const pending = pendingNet;
+    pendingNet = null;
+    return pending ?? {services: []};
+  };
+  const refresh = buildEconomics(document, {api, formatCurrency: String, toast() {}}, String, true);
+  return {
+    refresh, editor: () => editor, markup: () => markup, setStored: value => { stored = value; },
+    stored: () => stored,
+    submit: () => submit({target: editor.form, preventDefault() {}}),
+    holdNextNet(promise) { pendingNet = promise; },
+  };
+}
+
+for (const draft of ['25', '']) {
+  const fixture = deviceFixture();
+  await fixture.refresh();
+  check('Fleet renders stored watts', fixture.editor().value === '10', fixture.markup());
+  fixture.editor().value = draft;
+  await fixture.refresh();
+  check('a Fleet refresh preserves the device draft ' + JSON.stringify(draft),
+    fixture.editor().value === draft, 'fresh markup replaced the draft');
+  await fixture.submit();
+  check('Save posts the device draft ' + JSON.stringify(draft),
+    fixture.stored() === draft, 'Save posted ' + fixture.stored());
+}
+
+const racing = deviceFixture();
+let finishOlder;
+racing.holdNextNet(new Promise(resolve => { finishOlder = resolve; }));
+const older = racing.refresh();
+racing.setStored('25');
+await racing.refresh();
+check('a newer refresh shows the saved watts', racing.editor().value === '25', racing.markup());
+finishOlder({services: []});
+await older;
+check('an older response cannot restore stale watts', racing.editor().value === '25', racing.markup());
+check('the gross tooltip describes period accruals', racing.markup().includes('Accrued at the pool during this period'),
+  'the tooltip asserts that past accruals still await payout');
+
+const fleetSource = html.slice(
+  html.indexOf('  // Lazily fetch the plaintext key'),
+  html.indexOf('  // Running costs: per machine,'),
+);
+const workerSaveSource = html.slice(
+  html.indexOf("  document.getElementById('fleet-workers').addEventListener('click'"),
+  html.indexOf('  window.copyWorkerEnv = '),
+);
+const buildWorkerPower = new Function(
+  'document', 'CP', 'esc', 'brk', 'CSS', '_isOwner', '_isolation', 'loadFleetEconomics', 'loadPowerSettings',
+  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), workerSaveSource, 'return loadFleet;'].join('\n'),
+);
+
+function workerPowerFixture(owner = true) {
+  const stored = {id: 1, client_id: 'rig', name: 'Rig', watts: 100, unmetered: false};
+  const posts = [];
+  let fields, button, click, holdWorkers;
+  const workers = {
+    addEventListener: (_, handler) => { click = handler; },
+    querySelectorAll: () => fields ? [fields.unmetered] : [],
+    set innerHTML(markup) {
+      const billing = markup.match(/class="power-unmetered"[^>]*>/)?.[0] ?? '';
+      const checked = /\bchecked\b/.test(billing);
+      fields = {
+        watts: {value: String(stored.watts)},
+        dedicated: {checked: false},
+        unmetered: {checked, defaultChecked: checked, dataset: {clientId: stored.client_id}},
+      };
+      const save = markup.match(/<button[^>]*power-save-worker[^>]*>/)?.[0];
+      button = save ? {disabled: /\bdisabled\b/.test(save), dataset: {clientId: stored.client_id}} : null;
+    },
+  };
+  const document = {
+    getElementById: id => id === 'fleet-workers' ? workers : {style: {}},
+    querySelector: selector => fields[selector.match(/^\.power-(\w+)/)[1]],
+  };
+  const api = async (path, options) => {
+    if (path === '/api/fleet/summary') return {};
+    if (path === '/api/workers') {
+      const response = [{...stored}];
+      const gate = holdWorkers;
+      holdWorkers = null;
+      if (gate) await gate;
+      return response;
+    }
+    if (path !== '/api/config') throw new Error('unexpected API call ' + path);
+    const data = options.body.data;
+    posts.push(data);
+    if ('worker_rig_unmetered' in data) stored.unmetered = data.worker_rig_unmetered === 'true';
+    stored.watts = Number(data.worker_rig_watts);
+    return {};
+  };
+  const refresh = buildWorkerPower(document, {...CP, api, toast() {}}, esc, esc, {escape: String}, owner, {}, () => {}, () => {});
+  return {
+    refresh, posts, stored, fields: () => fields, button: () => button,
+    save: () => click({target: {closest: selector => selector === '.power-save-worker' ? button : null}}),
+    holdNextRefresh() {
+      let release;
+      holdWorkers = new Promise(resolve => { release = resolve; });
+      return release;
+    },
+  };
+}
+
+const workerPower = workerPowerFixture();
+await workerPower.refresh();
+workerPower.fields().unmetered.checked = true;
+await workerPower.refresh();
+check('refresh preserves an unsaved billing edit', workerPower.fields().unmetered.checked, 'the checked draft was lost');
+workerPower.fields().unmetered.checked = true;
+const finishStaleWorkers = workerPower.holdNextRefresh();
+const staleWorkers = workerPower.refresh();
+await workerPower.save();
+check('Save posts a checked billing setting', workerPower.stored.unmetered, JSON.stringify(workerPower.posts));
+finishStaleWorkers();
+await staleWorkers;
+check('a refresh started before Save cannot revert the checkbox', workerPower.fields().unmetered.checked,
+  'the old unchecked response replaced the saved setting');
+workerPower.fields().watts.value = '125';
+await workerPower.save();
+check('a wattage-only save leaves billing alone', workerPower.stored.unmetered && workerPower.stored.watts === 125
+  && !('worker_rig_unmetered' in workerPower.posts.at(-1)), JSON.stringify(workerPower.posts));
+await workerPower.refresh();
+workerPower.fields().unmetered.checked = false;
+await workerPower.save();
+check('clearing and saving the checkbox posts false', !workerPower.stored.unmetered
+  && workerPower.posts.at(-1).worker_rig_unmetered === 'false', JSON.stringify(workerPower.posts));
+
+const viewerPower = workerPowerFixture(false);
+await viewerPower.refresh();
+check('viewers cannot save power settings', !viewerPower.button() || viewerPower.button().disabled, 'Save is enabled');
+await viewerPower.save();
+check('viewer clicks cannot post settings', viewerPower.posts.length === 0, JSON.stringify(viewerPower.posts));
 
 if (failures.length) {
   console.error('fleet staleness check FAILED:');

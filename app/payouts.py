@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import math
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 # Minimum history before a trailing rate means anything. Below this a single
@@ -141,6 +142,15 @@ def min_payout_in(service: dict[str, Any] | None, currency: str | None) -> float
     return in_usd / unit_in_usd
 
 
+def balance_change(previous: float, current: float) -> float:
+    """Return the signed balance change at piconero precision."""
+    if math.isfinite(previous) and math.isfinite(current):
+        # Stored balances are floats. Decimal subtraction keeps exact threshold
+        # comparisons consistent for drops and recoveries.
+        return round(float(Decimal(str(current)) - Decimal(str(previous))), 12)
+    return current - previous
+
+
 def looks_like_payout(previous: float, current: float, threshold: float | None) -> bool:
     """Did this balance fall far enough to look like a cashout?
 
@@ -153,7 +163,7 @@ def looks_like_payout(previous: float, current: float, threshold: float | None) 
     # user to dismiss it.
     if not threshold:
         return False
-    return (previous - current) >= threshold
+    return -balance_change(previous, current) >= threshold
 
 
 def format_amount(value: float, currency: str | None = None) -> str:
@@ -193,9 +203,7 @@ def detect(
     threshold = min_payout(service)
     if not looks_like_payout(previous, current, threshold):
         return None
-    # Twelve decimals, not six: six stored a 0.01599128 BTC payout as 0.015991,
-    # 128 satoshi short, and Monero counts to twelve (one piconero).
-    amount = round(previous - current, 12)
+    amount = -balance_change(previous, current)
     return {
         "platform": service.get("slug") if service else None,
         "amount": amount,

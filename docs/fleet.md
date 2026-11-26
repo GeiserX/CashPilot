@@ -189,7 +189,7 @@ The fleet key is **never sent to the browser on page load**. The fleet dashboard
 The **Fleet** page lists every box:
 
 - each worker with its system, worker version and last report, shown in red once it stops reporting;
-- its wall power draw in watts, which the **Running costs** block below weighs against what the machine earned last month once you enter your electricity price;
+- its wall power draw in watts, which the [Running costs](#running-costs) block weighs against what the machine earned in the last 30 days;
 - the containers it reported or, for a phone running the [Android app](https://github.com/GeiserX/CashPilot-android), its earning apps. A box that stopped reporting keeps its last known list, greyed out;
 - **Check isolation** on Docker workers that support it ([what it tests](isolation-check.md)) and **Remove**;
 - **Add a box** at the bottom, with the environment variables for the next worker.
@@ -199,6 +199,17 @@ The **Fleet** page lists every box:
 ![The Boxes table on the Fleet page: three Linux boxes reporting, one offline box with its last known containers greyed out, and an Android phone listing its earning apps](images/screenshots/fleet-phone.png)
 
 Starting, stopping, restarting and viewing logs happen on the **Dashboard**. There, a service running on several workers shows an expandable row with one sub-row per instance; the main row shows the average CPU and memory (prefixed with `~`), and each sub-row its own figures and buttons.
+
+### Running costs
+
+The **Running costs** block shows earnings for the last 30 days and estimates electricity costs for fleet machines and tracked devices. Enter your electricity price and currency at the top of the block. Set each machine's wall draw in the Boxes table.
+
+- **Tracked devices.** If you track a mining pool or GPU service, enter the total wall draw of all equipment on that account in its **Device** row. Leave the field empty if you do not know the draw. The electricity cost and net stay unknown. Pool figures show what accrued during the period.
+
+- **Break-even tariff.** If you pay per kWh and CashPilot knows the machine's draw and earnings, its row says "Earns more than its electricity below 0.069 EUR/kWh". That is the electricity price at which the machine's earnings exactly cover its power. If you pay less, it makes money. If you pay more, it costs you money. The line shows before you enter a price, in the currency of your tariff setting (in USD when no exchange rate is available). With a price entered it adds "(you pay 0.250)" so you can compare. A machine that earned nothing in the window loses money at any price, so its break-even is 0. A machine whose services have no earnings reading at all (no collector, no credentials or no exchange rate) shows no break-even, because CashPilot does not know what it earned.
+- **Every figure rests on the watts you typed.** CashPilot measures no power. Read the draw from a plug meter or the machine's spec, and expect the figures to be only as good as that number.
+- **Per-service figures start from the same watts.** CPU-based services, including CPU miners, split the machine's draw by CPU use. Their shares never add up to more than the typed draw. Without that value, the split falls back to a 65 W estimate or a configured host TDP. `/api/earnings/net` shows a service's break-even when its CPU share is at least 5 W or you enter its whole-device draw.
+- **Fixed-price hosting.** Select **Not billed per kWh** in the machine's Boxes row and save. Fleet leaves out its electricity cost, net and break-even tariff. Clear the checkbox to restore these figures from the saved draw. Include the hosting fee when you decide whether to keep the machine running.
 
 ## Budgeting a small box
 

@@ -86,8 +86,13 @@ def assess_machine(
     price_per_kwh: float | None,
     metered: bool = True,
     dedicated: bool = False,
+    gross_measured: bool = True,
 ) -> dict[str, Any]:
     """Should this machine stay powered on for what it earns?
+
+    ``gross_measured`` is False when none of the machine's services had an
+    earnings reading in the window, so its 0.0 gross is an absence of data,
+    not a measured zero. No break-even tariff is built on that.
 
     ``dedicated`` means the machine exists only to run these services, so its
     WHOLE draw is attributable. On a machine that would be on anyway — a NAS, a
@@ -136,7 +141,7 @@ def assess_machine(
 
     if price_per_kwh is None or price_per_kwh <= 0 or watts is None or watts <= 0:
         missing = "your electricity price" if not price_per_kwh else "this machine's power draw"
-        return {
+        out: dict[str, Any] = {
             "machine": name,
             "verdict": UNKNOWN,
             "monthly_gross": round(gross, 4),
@@ -148,6 +153,18 @@ def assess_machine(
                 "whether that covers the electricity, and guessing would be worse than not saying."
             ),
         }
+        # The break-even TARIFF needs only the gross and the draw, not a price:
+        # it is the price this machine could stand. Withholding it until a
+        # tariff is typed hid the one number a user can check against a bill
+        # without telling CashPilot what that bill is.
+        if gross_measured and watts is not None and watts > 0:
+            out["break_even_price_per_kwh"] = round(break_even_price(gross, watts) or 0.0, 4)
+            out["quality"] = "estimated"
+            if gross <= 0:
+                out["summary"] = (
+                    f"{name} earned nothing measurable in the last 30 days, so it loses money at any electricity price."
+                )
+        return out
 
     cost = monthly_cost(watts, price_per_kwh)
     net = gross - cost
@@ -165,7 +182,7 @@ def assess_machine(
         # Everything here rests on an entered wattage and tariff.
         "quality": "estimated",
         "break_even_watts": round(break_even_watts(gross, price_per_kwh) or 0.0, 1),
-        "break_even_price_per_kwh": round(break_even_price(gross, watts) or 0.0, 4),
+        "break_even_price_per_kwh": (round(break_even_price(gross, watts) or 0.0, 4) if gross_measured else None),
         "summary": _summary(name, gross, cost, net, verdict, dedicated),
     }
 
@@ -210,7 +227,8 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
     as zero, so the total never quietly understates what the fleet costs.
     """
     known = [m for m in machines if m.get("monthly_cost") is not None]
-    unknown = [m for m in machines if m.get("monthly_cost") is None]
+    unmetered = [m for m in machines if m.get("verdict") == NOT_METERED]
+    unknown = [m for m in machines if m.get("monthly_cost") is None and m.get("verdict") != NOT_METERED]
     # A machine that is not reporting has monthly_gross None, and summing that
     # as 0.0 makes the fleet total silently exclude whatever it earns. That is
     # the same "absent read as measured" mistake this function already guards
@@ -226,6 +244,18 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
     known_gross = sum(float(m.get("monthly_gross") or 0.0) for m in known)
     cost = sum(float(m.get("monthly_cost") or 0.0) for m in known)
 
+    if not (unknown or gross_unknown or unmetered):
+        summary = f"Across {len(machines)} machine(s): about {gross:.2f} earned against {cost:.2f} of electricity."
+    else:
+        notes = []
+        if known or unknown:
+            notes.append(f"Costs are known for {len(known)} of {len(known) + len(unknown)} machine(s).")
+        if unmetered:
+            notes.append(f"No per-kWh bill for {len(unmetered)} machine(s).")
+        if gross_unknown:
+            notes.append(f"{len(gross_unknown)} machine(s) are not reporting, so what they earn is not in this total.")
+        summary = " ".join(notes)
+
     return {
         "machines": machines,
         "monthly_gross": round(gross, 4),
@@ -236,16 +266,5 @@ def fleet_summary(machines: list[dict[str, Any]]) -> dict[str, Any]:
         "gross_unknown_for": len(gross_unknown),
         "losing_money": [m["machine"] for m in machines if m.get("verdict") == LOSING_MONEY],
         "quality": "estimated",
-        "summary": (
-            (
-                f"Costs are known for {len(known)} of {len(machines)} machine(s)."
-                + (
-                    f" {len(gross_unknown)} machine(s) are not reporting, so what they earn is not in this total."
-                    if gross_unknown
-                    else ""
-                )
-            )
-            if (unknown or gross_unknown)
-            else f"Across {len(machines)} machine(s): about {gross:.2f} earned against {cost:.2f} of electricity."
-        ),
+        "summary": summary,
     }

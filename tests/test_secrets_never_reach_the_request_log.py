@@ -27,6 +27,7 @@ import httpx  # noqa: E402
 import pytest  # noqa: E402
 
 from app import log_redaction, notify  # noqa: E402
+from app.collectors import base, twominers  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,6 +72,50 @@ def _send_alert(caplog, **env) -> str:
         delivered = asyncio.run(notify.send("Collector failed", "honeygain: timeout"))
     assert delivered == 1
     return caplog.text
+
+
+@pytest.mark.asyncio
+async def test_herominers_request_logs_omit_the_payout_address(redacting, caplog):
+    address = "kaspa:qp5y3dq23g8nts03peqhvlq9xx4asd2mr84r22zqxqglkle7jf5qvrjsw5lkd"
+    endpoint = "https://kaspa.herominers.com/api/stats_address"
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with _MockedClient() as client:
+            await client.get(endpoint, params={"address": address, "longpoll": "false"})
+
+    assert address[6:] not in caplog.text
+    assert f"{endpoint}?address=<redacted>&longpoll=false" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_2miners_request_logs_omit_the_payout_address(redacting, caplog):
+    address = "0x00109777bdc6d6a658097ed6b6167569ee1f4ec1"
+    endpoint = "https://etc.2miners.com/api/accounts"
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        async with _MockedClient() as client:
+            await client.get(f"{endpoint}/{address}")
+
+    assert address not in caplog.text
+    assert f"{endpoint}/<redacted>" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_2miners_refusal_keeps_the_payout_address_out_of_logs_and_alerts(redacting, caplog, monkeypatch):
+    address = "0x" + "ab" * 20
+    echoed_address = "0x" + address[2:].upper()
+    reason = f"Refused account {echoed_address}".encode()
+    transport = httpx.MockTransport(lambda _: httpx.Response(403, extensions={"reason_phrase": reason}))
+    collector = twominers.TwoMinersETCCollector(address)
+
+    with caplog.at_level(logging.INFO):
+        async with httpx.AsyncClient(transport=transport) as client:
+            monkeypatch.setattr(collector, "_get_client", lambda **kwargs: client)
+            result = await collector.collect()
+
+    assert result.error_kind == base.KIND_TRANSIENT
+    assert result.error and "HTTP 403" in result.error
+    assert address not in result.error.lower()
+    assert address not in caplog.text.lower()
+    assert "https://etc.2miners.com/api/accounts/<redacted>" in caplog.text
 
 
 class TestNotifierRequests:

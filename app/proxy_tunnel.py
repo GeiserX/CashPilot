@@ -1151,6 +1151,7 @@ def _ensure_tunnel(
     slug: str | None = None,
     deadline: float | None = None,
     keep: str | None = None,
+    expected_container: str | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """The proxy's shared tunnel, running on the given settings and ready; with
     ``slug``, the routed service's own tunnel through the proxy instead.
@@ -1199,6 +1200,8 @@ def _ensure_tunnel(
         and _age_seconds(leftover) >= STAGED_STALE_SECONDS
         and _members(client, leftover)
     ):
+        if expected_container is not None:
+            raise ProxyTunnelError("Wait for the worker to recover the previous tunnel change before deploying.")
         # A change that died after it began moving copies: finish it first.
         with _swap_lock:
             current = _finish_staged(client, leftover, current, final)
@@ -1253,12 +1256,20 @@ def _ensure_tunnel(
     retired = False
     try:
         with _swap_lock:
-            if current is not None and _keep_aside(client, current, final, keep, proxy_id, slug):
-                current.rename(final + RETIRED_SUFFIX)
-                retired = True
-            elif current is not None:
-                _move_members(client, current, new)
-                _remove_quietly(current, SIDECAR_STOP_SECONDS)
+            if current is not None:
+                members = _members(client, current)
+                if expected_container is not None and any(m.id != expected_container for m in members):
+                    raise ProxyTunnelError("This deploy cannot replace other containers in the same tunnel.")
+                if _keep_aside(client, current, final, keep, proxy_id, slug):
+                    current.rename(final + RETIRED_SUFFIX)
+                    retired = True
+                else:
+                    if expected_container is not None and members:
+                        raise ProxyTunnelError(
+                            "Could not keep the approved container in its tunnel during replacement."
+                        )
+                    _move_members(client, current, new)
+                    _remove_quietly(current, SIDECAR_STOP_SECONDS)
             new.rename(final)
     except Exception:
         if not _members(client, new):
@@ -1674,6 +1685,7 @@ def deploy(
     own_ip: str | None,
     *,
     only_if_running: bool = False,
+    expected_container: str | None = None,
     deadline: float | None = None,
 ) -> dict:
     """Deploy (or replace) the proxied copy of ``slug`` through proxy ``proxy_id``.
@@ -1714,7 +1726,14 @@ def deploy(
         if only_if_running:
             _require_running(slug, proxy_id)
         return _deploy(
-            slug, proxy_id, earner, proxy, own_ip, own_tunnel=_routed_here(slug, proxy_id), deadline=deadline
+            slug,
+            proxy_id,
+            earner,
+            proxy,
+            own_ip,
+            own_tunnel=_routed_here(slug, proxy_id),
+            deadline=deadline,
+            expected_container=expected_container,
         )
 
 
@@ -1737,6 +1756,7 @@ def _deploy(
     own_ip: str | None,
     *,
     own_tunnel: bool = False,
+    expected_container: str | None = None,
     deadline: float,
 ) -> dict:
     client = orchestrator._get_client()
@@ -1746,6 +1766,8 @@ def _deploy(
     secret_files(proxy, own_ip, shared_label(proxy_id, key))
     tunnel_image()
     name = earner_name(slug, proxy_id)
+    if expected_container is not None:
+        orchestrator.require_deploy_target(expected_container, orchestrator.deploy_target(client, name))
     _settle_before_deploy(client, name, slug, proxy_id)
     # A new tunnel image is taken only when no other copy would be recreated
     # for it (see _ensure_tunnel): this copy's own earner is replaced anyway.
@@ -1778,8 +1800,18 @@ def _deploy(
             raise orchestrator.ContainerRuntimeError(
                 f"{image} is not available on this worker: {refused}. The running copy was not touched."
             ) from None
+    if expected_container is not None:
+        orchestrator.require_deploy_target(expected_container, orchestrator.deploy_target(client, name))
     tunnel, exit_info = _ensure_tunnel(
-        client, proxy_id, proxy, own_ip, upgrade=not others, slug=key, deadline=deadline, keep=name
+        client,
+        proxy_id,
+        proxy,
+        own_ip,
+        upgrade=not others,
+        slug=key,
+        deadline=deadline,
+        keep=name,
+        expected_container=expected_container,
     )
     # The old tunnel a new tunnel image left running with the old earner inside
     # (keep): removed below once the new earner runs, renamed back on a failure.
@@ -1801,6 +1833,7 @@ def _deploy(
         # aside until the new one runs and putting it back if the deadline passes
         # while it stops or the new one fails. Its legacy tunnel goes only after.
         previous = _get(client, name)
+        orchestrator.require_deploy_target(expected_container, previous)
         if was_held:
             # The stop is cleared once the new earner runs; a marker the disk
             # will not take refuses the deploy now, before anything changes.
@@ -1848,11 +1881,12 @@ def _deploy(
             name=name,
             deadline=deadline,
             pulled=True,
+            expected_container=expected_container,
         )
         # Recorded as done before it is reported, or undone below: a record
         # left saying otherwise would have the heartbeat undo it.
         _commit(client, name, None if first else previous, clear_new=first)
-    except Exception:
+    except Exception as exc:
         # docker-py's run leaves the container created when only its start
         # fails; the heartbeat would start it later, outside the owner's view.
         # Never the old earner deploy_raw put back. A removal Docker refuses
@@ -1872,7 +1906,8 @@ def _deploy(
         try:
             left = _get(client, name)
             if (
-                left is not None
+                not isinstance(exc, orchestrator.DeployTargetChanged)
+                and left is not None
                 and _is_ours(left, slug, proxy_id)
                 and (previous is None or left.id != previous.id)
                 and (first or not _going(_get(client, str(previous.id))))
@@ -1882,7 +1917,7 @@ def _deploy(
                     _remove_quietly(left, 2)
                     _set_failed(str(left.id), False)
                     left = None
-            if first and left is None:
+            if first and (left is None or isinstance(exc, orchestrator.DeployTargetChanged)):
                 _set_new(name, False)
         except Exception as exc:  # noqa: BLE001 - the deploy's own error is the one reported
             logger.warning("Could not check what the failed deploy of %s left: %s", name, redact(str(exc)))

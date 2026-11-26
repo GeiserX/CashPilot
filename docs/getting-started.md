@@ -291,15 +291,15 @@ Check free space on the filesystem that holds the directory that applies.
 
 ## Supported Services
 
-CashPilot supports **<!-- n:live -->42<!-- /n --> services** that are active or in beta, across five categories:
+CashPilot supports **<!-- n:live -->46<!-- /n --> services** that are active or in beta, across five categories:
 
 - **Bandwidth Sharing** (<!-- n:bandwidth -->18<!-- /n -->): share your internet bandwidth for passive income
 - **DePIN** (<!-- n:depin -->15<!-- /n -->): decentralized physical infrastructure networks
 - **GPU Compute** (<!-- n:compute -->6<!-- /n -->): rent out your GPU for AI and compute workloads
 - **Storage** (<!-- n:storage -->2<!-- /n -->): share disk space on decentralized storage networks
-- **Mining** (<!-- n:mining -->1<!-- /n -->): track the balance a mining pool holds for your payout address ([Mining](mining.md))
+- **Mining** (<!-- n:mining -->5<!-- /n -->): deploy a miner or track a pool by payout address ([Mining](mining.md))
 
-Of these, **<!-- n:docker -->17<!-- /n -->** can be deployed and managed automatically via Docker. The other <!-- n:tracked -->25<!-- /n --> (<!-- n:extension -->18<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes, <!-- n:mining -->1<!-- /n --> mining pool) are listed in the catalog with signup links, and their balances are read where a collector exists.
+Of these, **<!-- n:docker -->18<!-- /n -->** can be deployed and managed automatically via Docker. The catalog tracks the other <!-- n:tracked -->28<!-- /n --> (<!-- n:extension -->18<!-- /n --> browser or desktop apps, <!-- n:gpu -->6<!-- /n --> GPU nodes, <!-- n:mining_pools -->4<!-- /n --> mining pools). CashPilot reads their balances where a collector exists.
 
 Browse the full catalog in the [Service Guides](guides/index.md) section.
 

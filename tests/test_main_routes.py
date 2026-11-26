@@ -239,7 +239,7 @@ function extract(name) {
     if (start < 0 || end < 0) throw new Error('Cannot find Fleet function ' + name);
     return source.slice(start, end + 4);
 }
-const rows = {};
+const rows = {querySelectorAll: () => []};
 const renderWorkers = new Function('document', 'CP', 'brk', '_isOwner', '_isolation',
     ['countWorkerNames', 'esc', 'renderWorkers'].map(extract).join('\n') + '\nreturn renderWorkers;'
 )({getElementById: () => rows}, {fmtTimestamp: () => ({title: '', text: ''})}, String, false, {});

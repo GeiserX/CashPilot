@@ -263,12 +263,12 @@ for (const [routeValue, want] of [['0', []], ['', [{ path: '/api/deploy/honeygai
   const api = async (path, opts) => { calls.push({ path, route: opts.body.route }); return {}; };
   const live = new Function(
     'escapeHtml', 'document', 'api', 'toast', '_confirmPreflight', '_imageChoice', '_instancesFor', '_showDeviceLink',
-    'wizardState', '_confirmDeviceRenames',
+    'wizardState', '_confirmDeviceRenames', 'window',
     ['_routeSwitchBoxes', '_routeSelect', '_routeChoice', '_selectedWorkerIds', '_rescaledWorkerIds', '_deployToWorkers',
       'deployServiceToWorkers'].map(grab).join('\n') + '\nconst _walletRequest = () => undefined;'
       + '\nreturn { _routeSwitchBoxes, deployServiceToWorkers };',
   )(escapeHtml, dom, api, () => {}, async () => true, () => undefined, () => undefined, () => {}, { deployed: [] },
-    async () => false);
+    async () => false, { confirm: () => true });
   live._routeSwitchBoxes(dom.select);
   await live.deployServiceToWorkers('honeygain');
   assert.deepEqual(

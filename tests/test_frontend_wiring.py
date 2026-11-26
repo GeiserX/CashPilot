@@ -73,6 +73,7 @@ def frontend_text() -> str:
 
 #: (route segment that must appear in a fetch, why it matters to a user)
 WIRED = [
+    ("/api/earnings/income.csv", "the tax export download"),
     ("/api/earnings/payouts", "the queue where a detected payout is confirmed or rejected"),
     ("payouts/${", "the confirm/reject call, built as a template literal"),
 ]
@@ -461,8 +462,34 @@ class TestRunningCostsAreShownWithoutBeingInvented:
 
     def test_a_failed_fetch_leaves_the_card_hidden(self):
         page = self._fleet()
-        block = page[page.index("async function loadFleetEconomics()") :][:1400]
+        block = page[page.index("async function loadFleetEconomics(") :][:1600]
         assert "Leave hidden" in block or "return;   // Leave hidden" in block
+
+    def test_the_break_even_tariff_is_shown_in_the_tariff_unit(self):
+        """A price per kWh, not money: toFixed(3) and the returned code.
+
+        CP.formatCurrency would display-convert it, so a EUR tariff read by a
+        USD viewer would print a dollar price next to a euro bill.
+        """
+        page = self._fleet()
+        block = page[page.index("const breakEven = m =>") :][:900]
+        assert "m.break_even_tariff" in block
+        assert "toFixed(3)" in block
+        assert "be.currency" in block
+        assert "formatCurrency" not in block
+        assert "${breakEven(m)}" in page
+
+    def test_you_pay_is_only_compared_in_one_currency(self):
+        block = self._fleet()
+        block = block[block.index("const breakEven = m =>") :][:900]
+        assert "economics.tariff_currency === be.currency" in block
+
+    def test_device_draw_is_saved_under_its_own_config_prefix(self):
+        page = self._fleet()
+        assert "m.kind === 'device'" in page
+        assert 'class="power-device-watts"' in page
+        assert "`power_device_${input.dataset.slug}_watts`" in page
+        assert "!deviceSlugs.has(s.platform)" in page
 
 
 class TestTheDeployStepWarnsBeforeItActs:

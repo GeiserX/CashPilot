@@ -434,6 +434,62 @@ class TestDesktopWalletDeploys:
         post.assert_awaited_once()
         assert post.await_args.kwargs["json"] == spec
 
+    @pytest.mark.real_worker_deploy_inventory
+    @pytest.mark.parametrize("raw", [False, True], ids=["canonical", "raw-command"])
+    def test_desktop_deploy_uses_legacy_route_and_requires_replacement_approval(self, client, worker_target, raw):
+        worker, post = worker_target
+        slug = "honeygain"
+        env = {**self._HONEYGAIN_ENV, "HONEYGAIN_DEVICE_NAME": "test-desktop"}
+        image = catalog.get_service(slug)["docker"]["image"]
+        spec = {"image": image, "env": env}
+        if raw:
+            path = "/api/workers/2/command"
+            body = {"command": "deploy", "slug": slug, "spec": {**spec, "instance": 1}}
+            spec = body["spec"]
+        else:
+            path = f"/api/deploy/{slug}?worker_id=2"
+            body = {"env": env}
+        first = "a" * 12
+        second = "b" * 12
+        other_copy = {"slug": slug, "instance": 2, "container_id": "c" * 12}
+
+        async def inventory(url, **kwargs):
+            assert url == f"{worker['url']}/api/containers"
+            rows = [other_copy]
+            if post.await_count:
+                rows.append({"slug": slug, "instance": 1, "container_id": first if post.await_count == 1 else second})
+            return _mock_httpx_resp(200, rows)
+
+        with patch("httpx.AsyncClient.get", side_effect=inventory) as get:
+            response = client.post(path, json=body)
+            assert response.status_code == 200, response.text
+            assert post.await_count == 1
+
+            response = client.post(path, json=body)
+            assert response.status_code == 409, response.text
+            detail = response.json()["detail"]
+            assert detail["error"] == "confirm_deploy_targets"
+            assert "Update CashPilot-Desktop" in detail["message"]
+            assert detail["expected_containers"] == {"1": first}
+            assert post.await_count == 1
+
+            if raw:
+                approved = {**body, "spec": {**spec, "expected_container": first}}
+            else:
+                approved = {**body, "expected_containers": detail["expected_containers"]}
+            response = client.post(path, json=approved)
+            assert response.status_code == 200, response.text
+
+            response = client.post(path, json=approved)
+            assert response.status_code == 409, response.text
+            assert response.json()["detail"]["current_container"] == second
+
+        assert get.await_count == 4
+        assert post.await_count == 2
+        for call in post.await_args_list:
+            assert call.args == (f"{worker['url']}/api/containers/{slug}/deploy",)
+            assert call.kwargs["json"] == spec
+
     def test_fleet_copy_gets_the_wallet_refusal(self, client, worker_target):
         _, post = worker_target
         with patch("app.main.database.get_proxy", new_callable=AsyncMock, return_value={"definition": {}, "state": {}}):
@@ -904,6 +960,86 @@ class TestApiDeploy:
         with patch("app.main.catalog.get_service", return_value=svc), patch("app.main._proxy_to_worker", proxy):
             asyncio.run(main._proxy_worker_deploy(1, "storj", {}))
         assert proxy.call_args.kwargs["timeout"] == expected
+
+    @pytest.mark.real_worker_deploy_inventory
+    @pytest.mark.parametrize("approve", [False, True], ids=["first-deploy", "approved-redeploy"])
+    def test_dashboard_forwards_the_expected_container_only_for_this_request(self, client, approve):
+        worker = _online_worker()
+        slug = "demo"
+        svc = {"slug": slug, "docker": {"image": "img"}}
+        save = AsyncMock()
+        expected = "a" * 64 if approve else "none"
+        send = AsyncMock(side_effect=[{"expected_container": expected}, {"container_id": "new"}])
+        body = {"expected_containers": {"1": expected}} if approve else {}
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", AsyncMock(return_value=[worker])),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main._proxy_to_worker", send),
+            patch("app.main.database.prior_deployment_spec", AsyncMock(return_value=None)),
+            patch("app.main.database.save_deployment", save),
+            patch("app.main.database.record_health_event", AsyncMock()),
+            patch("app.main._run_collection", AsyncMock()),
+        ):
+            resp = client.post(f"/api/deploy/{slug}", json=body)
+        assert resp.status_code == 200, resp.text
+        assert [call.args for call in send.await_args_list] == [
+            (1, "GET", "/api/containers/demo/deploy-checked"),
+            (1, "POST", "/api/containers/demo/deploy-checked"),
+        ]
+        assert send.call_args.kwargs["json"]["expected_container"] == expected
+        assert "expected_container" not in save.call_args.kwargs["spec"]
+
+    @pytest.mark.real_worker_deploy_inventory
+    @pytest.mark.parametrize("imported", [False, True], ids=["dashboard", "import"])
+    def test_old_worker_always_checks_live_inventory_before_a_replacement(self, client, imported):
+        from fastapi import HTTPException
+
+        slug = "demo"
+        worker = _online_worker()
+        svc = {"slug": slug, "docker": {"image": "img"}}
+        current = None
+        sent = []
+        first, second = "a" * 64, "b" * 64
+
+        async def worker_call(worker_id, method, path, *, json=None, **kwargs):
+            nonlocal current
+            if method == "POST":
+                sent.append(json)
+                current = first if current is None else second
+                return {"container_id": current}
+            if path.endswith("deploy-checked"):
+                raise HTTPException(404)
+            if path.endswith("/logs"):
+                if current is None:
+                    raise HTTPException(404, f"Container for {slug} not found")
+                return {"logs": ""}
+            assert path == "/api/containers"
+            return [{"slug": slug, "container_id": current[:12]}]
+
+        path = f"/api/import/drafts/{slug}/deploy" if imported else f"/api/deploy/{slug}"
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", AsyncMock(return_value=[worker])),
+            patch("app.main.catalog.get_service", return_value=svc),
+            patch("app.main.importers_router.draft_env", AsyncMock(return_value={})),
+            patch("app.main._proxy_to_worker", side_effect=worker_call),
+            patch("app.main.database.save_deployment", AsyncMock()),
+            patch("app.main.database.record_health_event", AsyncMock()),
+            patch("app.main._run_collection", AsyncMock()),
+        ):
+            assert client.post(path, json={}).status_code == 200
+            refused = client.post(path, json={})
+            assert refused.status_code == 409
+            detail = refused.json()["detail"]
+            assert "Update this worker" in detail["message"]
+            assert detail["expected_containers"] == {"1": first[:12]}
+            assert current == first and len(sent) == 1
+
+            approved = {"expected_containers": detail["expected_containers"]}
+            assert client.post(path, json=approved).status_code == 200
+            assert client.post(path, json=approved).status_code == 409
+            assert current == second and len(sent) == 2
 
     def test_deploy_service_not_found(self, client):
         with (
@@ -1566,6 +1702,30 @@ class TestWorkerCommand:
             # (so it starts earning) and a "start" health event — not silently skip both.
             save_dep.assert_awaited_once()
             health_evt.assert_awaited()
+
+    def test_raw_deploy_forwards_approval_without_saving_it(self, client):
+        worker, mock_client = self._setup()
+        with (
+            _auth_owner(),
+            patch("app.main.database.get_worker", AsyncMock(return_value=worker)),
+            patch("app.main.database.save_deployment", AsyncMock()) as save,
+            patch("app.main.database.record_health_event", AsyncMock()),
+            patch("app.main._run_collection", AsyncMock()),
+            patch("app.main._worker_deploy_target", AsyncMock(return_value=("none", True))),
+            patch("app.main.httpx.AsyncClient", return_value=mock_client),
+            patch("app.main.FLEET_API_KEY", "test-key"),
+        ):
+            response = client.post(
+                "/api/workers/1/command",
+                json={
+                    "command": "deploy",
+                    "slug": "honeygain",
+                    "spec": {"image": "test", "expected_container": "a" * 64},
+                },
+            )
+        assert response.status_code == 200, response.text
+        assert mock_client.post.call_args.kwargs["json"]["expected_container"] == "a" * 64
+        assert "expected_container" not in save.call_args.kwargs["spec"]
 
     def test_command_deploy_writer_denied(self, client):
         """A writer must NOT be able to deploy via /api/workers/{id}/command — deploy is

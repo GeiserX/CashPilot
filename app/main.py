@@ -25,7 +25,7 @@ import urllib.parse
 import weakref
 from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -34,9 +34,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -59,6 +59,7 @@ from app import (
     fleet_key,
     gpu,
     health_probe,
+    income_export,
     ipgeo,
     lan_isolation,
     log_redaction,
@@ -1501,7 +1502,8 @@ async def _detect_payout(result: Any) -> dict[str, str] | None:
         if previous is None:
             return None
         try:
-            withdrawn = await database.withdraw_recovered_payout(result.platform, result.balance - previous)
+            regained = payouts.balance_change(previous, result.balance)
+            withdrawn = await database.withdraw_recovered_payout(result.platform, regained)
         except Exception as exc:  # noqa: BLE001 - must never block detecting a new payout
             withdrawn = False
             logger.warning("Could not check %s for a recovered payout: %s", result.platform, exc)
@@ -4460,6 +4462,9 @@ class WalletSeedChoice(BaseModel):
 
 class DeployRequest(BaseModel):
     env: dict[str, str] = {}
+    # Ask the dashboard to show the current targets. Only their IDs authorize a replacement.
+    replace_existing: StrictBool = False
+    expected_containers: dict[str, str] | None = None
     hostname: str | None = None
     # How many copies of the service this worker runs. None (left out) keeps
     # the number this worker's deployment already has, 1 for a new one.
@@ -4730,6 +4735,7 @@ async def _deploy(
     worker_id: int | None,
     request: Request | None = None,
     restore: dict[str, Any] | None = None,
+    confirm_proxied: bool = False,
 ) -> dict[str, Any]:
     # dict[str, Any], not dict[str, str]: kept_from_previous_deployment is a
     # list, and FastAPI validates the response against this annotation AFTER
@@ -4814,11 +4820,23 @@ async def _deploy(
     # operator relocating a mount, which is how a redeploy moves a node off the
     # directory that holds its identity.
     catalog_defaults = {var["key"]: str(var.get("default", "")) for var in docker_conf.get("env", [])}
+    # Mining forms show public defaults as placeholders. A posted value for
+    # one of these controls was entered, even when it resets to the default.
+    miner_defaults = {
+        var["key"]
+        for var in docker_conf.get("env", [])
+        if catalog.mining_facts(svc)
+        and var.get("default")
+        and "{hostname}" not in str(var["default"])
+        and not (var.get("secret") or var.get("identifier") or var.get("per_device"))
+    }
     # Stripped once and used stripped: "/mnt/s " is not a different path from
     # "/mnt/s", and sent as typed it becomes a host directory with a space in it.
     posted_env = {key: str(value).strip() for key, value in (body.env or {}).items()}
     typed_env = {
-        key: value for key, value in posted_env.items() if value and value != catalog_defaults.get(key, "").strip()
+        key: value
+        for key, value in posted_env.items()
+        if value and (key in miner_defaults or value != catalog_defaults.get(key, "").strip())
     }
 
     # A wallet seed kept in a file in the node's own volume (app/wallet_seed.py):
@@ -4839,6 +4857,12 @@ async def _deploy(
     _instance_param(instances)
     if route is not None:
         await _check_route(slug, svc, worker_id, route, recorded_route, instances)
+    expected = body.expected_containers or {}
+    if body.replace_existing and body.expected_containers is None and restore is None:
+        keys = [f"p{route}"] if route is not None else [str(n) for n in range(1, instances + 1)]
+        if confirm_proxied or (device_renames and body.rename_devices):
+            keys.extend(await _proxied_rebuild_targets(slug, worker_id, route))
+        await _confirm_deploy_targets(worker_id, slug, keys)
     # Read only when copies are involved, so a plain deploy asks the worker
     # record nothing it did not ask before.
     # A joined Desktop takes one copy per service from here, and any copy it added
@@ -5048,7 +5072,7 @@ async def _deploy(
             for env in copy_envs:
                 await _refuse_shared_device_ids(slug, svc, env, worker_id)
 
-        signed: dict[str, Any] = {}
+        options: dict[str, Any] = {}
         password = getattr(body, "step_up_password", None)
         if restore is not None:
             # A restore (api_restore) builds the spec exactly as a deploy does, and
@@ -5070,7 +5094,7 @@ async def _deploy(
             carries_id = new_image and any(str(merged_env.get(k) or "").strip() for k in _per_device_keys(svc))
             approve = await _step_up_critical(request, slug, svc, custom_image, password, device_id=carries_id)
             # Passed only when set, so the plain call keeps its three-argument shape.
-            signed = {"approve": True} if approve else {}
+            options = {"approve": True} if approve else {}
             if route is not None:
                 return await _deploy_routed(
                     slug,
@@ -5081,6 +5105,7 @@ async def _deploy(
                     merged_env,
                     divergence,
                     rename_copies=bool(device_renames and body.rename_devices),
+                    expected=expected,
                     request=request,
                 )
             # A service routed through a proxy on this worker leaves the route only with
@@ -5090,7 +5115,7 @@ async def _deploy(
                 await _refuse_direct_on_proxied_only(svc, slug, worker_id)
                 await _confirm_leave_route(request, svc, slug, worker_id, password)
                 await _remove_routed_copies(worker_id, slug, [recorded_route])
-                signed["leave_route"] = True
+                options["leave_route"] = True
         held = await _reserve_pending_identities(slug, worker_id, 1, spec.get("env"))
         try:
             result: dict[str, Any] | None = None
@@ -5102,7 +5127,8 @@ async def _deploy(
                         worker_id,
                         slug,
                         {**spec, "moved_mounts": moved_mounts, **_wallet_field(wallet_wanted)},
-                        **signed,
+                        **({"expected_container": expected["1"]} if "1" in expected else {}),
+                        **options,
                     )
             except HTTPException as exc:
                 # A restore is never retried off a route: its worker refuses it
@@ -5111,7 +5137,7 @@ async def _deploy(
                 # refuses a deploy. Same confirmation as above.
                 if restore is not None:
                     raise
-                if _worker_error(exc) != "route_locked" or signed.get("leave_route"):
+                if _worker_error(exc) != "route_locked" or options.get("leave_route"):
                     await _audit_worker_refusal(request, exc, slug, worker_id)
                     raise
             if result is None:
@@ -5120,13 +5146,14 @@ async def _deploy(
                 # A routed copy the box still reports goes first, as above.
                 if leaving := await _routes_on(worker_id, slug):
                     await _remove_routed_copies(worker_id, slug, leaving)
-                signed["leave_route"] = True
+                options["leave_route"] = True
                 try:
                     result = await _proxy_worker_deploy(
                         worker_id,
                         slug,
                         {**spec, "moved_mounts": moved_mounts, **_wallet_field(wallet_wanted)},
-                        **signed,
+                        **({"expected_container": expected["1"]} if "1" in expected else {}),
+                        **options,
                     )
                 except HTTPException as exc:
                     await _audit_worker_refusal(request, exc, slug, worker_id)
@@ -5203,7 +5230,13 @@ async def _deploy(
                     slug, "start", f"deployed to worker {worker_id}", worker_id=worker_id, instance=n
                 )
                 sent = True
-                answer = await _proxy_worker_deploy(worker_id, slug, _instance_spec(spec, n, docker_conf), **signed)
+                answer = await _proxy_worker_deploy(
+                    worker_id,
+                    slug,
+                    _instance_spec(spec, n, docker_conf),
+                    **({"expected_container": expected[str(n)]} if str(n) in expected else {}),
+                    **options,
+                )
             except HTTPException as exc:
                 if not _outcome_unknown(exc):
                     await _release_pending_identities(slug, worker_id, held)
@@ -5239,7 +5272,7 @@ async def _deploy(
     # No sweep of the other copies' rows here: running_copies comes from the last
     # heartbeat, which may predate a copy, so only a confirmed removal retires one.
     if device_renames and body.rename_devices:
-        divergence.extend(await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, spec))
+        divergence.extend(await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, spec, expected=expected))
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     response: dict[str, Any] = {"status": "deployed", "container_id": container_id}
@@ -5419,7 +5452,10 @@ async def _copies_to_rename(slug: str, worker_id: int) -> list[str]:
 
 @app.post("/api/deploy/{slug}/device-names/copies")
 async def api_rename_proxied_copies(
-    slug: str, worker_id: int | None = None, _auth: dict[str, Any] = Depends(_require_owner)
+    slug: str,
+    body: DeployRequest | None = None,
+    worker_id: int | None = None,
+    _auth: dict[str, Any] = Depends(_require_owner),
 ) -> dict[str, Any]:
     """Rebuild only the proxied copies a confirmed rename left on the old device name.
 
@@ -5435,7 +5471,18 @@ async def api_rename_proxied_copies(
     recorded = await database.get_deployment_spec(slug, worker_id=worker_id)
     if not recorded:
         raise HTTPException(status_code=409, detail=f"{svc.get('name') or slug} is not deployed on this worker")
-    notes = await _refresh_proxied_copies(slug, worker_id, svc, svc.get("docker") or {}, recorded, pending_only=True)
+    if body and body.replace_existing and body.expected_containers is None:
+        keys = await _proxied_rebuild_targets(slug, worker_id, proxies.route_of(recorded), pending_only=True)
+        await _confirm_deploy_targets(worker_id, slug, keys)
+    notes = await _refresh_proxied_copies(
+        slug,
+        worker_id,
+        svc,
+        svc.get("docker") or {},
+        recorded,
+        pending_only=True,
+        expected=body.expected_containers if body else None,
+    )
     return {"status": "renamed", "kept_from_previous_deployment": notes}
 
 
@@ -5519,6 +5566,7 @@ async def _deploy_routed(
     divergence: list[str],
     *,
     rename_copies: bool = False,
+    expected: dict[str, str] | None = None,
     request: Request | None = None,
 ) -> dict[str, Any]:
     """Deploy ``slug`` on a worker through one of the owner's proxies, never from the worker's own IP.
@@ -5570,12 +5618,13 @@ async def _deploy_routed(
         record = {**spec, "route": {"proxy_id": proxy_id}}
         record.pop("instances", None)
         try:
-            result = await _proxy_worker_call(
+            result = await _send_worker_deploy(
                 worker_id,
-                "POST",
-                f"/api/proxied/{slug}/{proxy_id}/deploy",
-                definition,
-                json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition), "routed": True},
+                slug,
+                {"earner": earner, "proxy": proxies.worker_proxy_spec(definition), "routed": True},
+                expected=(expected or {}).get(f"p{proxy_id}", "none"),
+                proxy_id=proxy_id,
+                definition=definition,
                 timeout=180,
             )
         except HTTPException as exc:
@@ -5622,7 +5671,7 @@ async def _deploy_routed(
         # A confirmed rename reaches its plain copies through other proxies too,
         # as on the direct path: rebuilt, or marked for the retry. The routed
         # copy itself was just built from the new names.
-        divergence.extend(await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, record))
+        divergence.extend(await _refresh_proxied_copies(slug, worker_id, svc, docker_conf, record, expected=expected))
     metrics.record_container_lifecycle("deploy", slug)
     _spawn(_run_collection())
     exit_info = result.get("exit") if isinstance(result.get("exit"), dict) else {}
@@ -7377,6 +7426,15 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
     # test raise TypeError and turn a 409 into a 500. Require a string.
     if not isinstance(error, str):
         return None
+    if error == "deploy_target_changed":
+        actual = detail.get("current_container")
+        if isinstance(actual, str) and _DEPLOY_TARGET_ID.fullmatch(actual):
+            return {
+                "error": error,
+                "message": "The container changed or needs approval. Review it and use Redeploy.",
+                "current_container": actual,
+            }
+        return None
     # The self-update refusal is the second forwardable shape: a fixed,
     # worker-authored instruction string ("not compose-managed, run these
     # commands instead"). Without this, the sanitizer replaced it with the
@@ -7807,8 +7865,173 @@ def _deploy_timeout(slug: str) -> int:
     return 60 + _catalog_stop_timeout(slug) + constants.START_SETTLE_SECONDS
 
 
+_DEPLOY_TARGET_ID = re.compile(r"none|[0-9a-f]{12,64}")
+_worker_deploy_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[tuple[int, str], asyncio.Lock]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+async def _worker_deploy_target(
+    worker_id: int, slug: str, instance: int = 1, proxy_id: int | None = None
+) -> tuple[str, bool]:
+    """Read the live deploy target, with a compatibility check for old workers."""
+    desktop = proxy_id is None and await _worker_is_desktop(worker_id)
+    base = f"/api/containers/{slug}" if proxy_id is None else f"/api/proxied/{slug}/{proxy_id}"
+    params = {"instance": str(instance)} if proxy_id is None else None
+    endpoint = "deploy-checked" if proxy_id is None else "deploy"
+    state = {}
+    # Desktop has no checked route. Its container list queries Docker directly.
+    if not desktop:
+        try:
+            state = await _proxy_to_worker(worker_id, "GET", f"{base}/{endpoint}", params=params)
+        except HTTPException as exc:
+            if exc.status_code not in (404, 405):
+                raise
+    if isinstance(state, dict):
+        target = state.get("expected_container")
+        if isinstance(target, str) and _DEPLOY_TARGET_ID.fullmatch(target):
+            return target, True
+
+    # Old inventory can be cached. A live existence probe prevents a stale
+    # empty inventory (or heartbeat) from being mistaken for a first deploy.
+    missing = (
+        f"No proxied copy of {slug} through proxy {proxy_id} on this worker"
+        if proxy_id is not None
+        else f"Instance {instance} of {slug} not found"
+        if instance > 1
+        else f"Container for {slug} not found"
+    )
+    if not desktop and not (isinstance(state, dict) and state.get("exists") is True):
+        if isinstance(state, dict) and state.get("exists") is False:
+            return "none", False
+        try:
+            await _proxy_to_worker(worker_id, "GET", f"{base}/logs", params={**(params or {}), "lines": "1"})
+        except HTTPException as exc:
+            if exc.status_code == 404 and exc.detail == missing:
+                return "none", False
+            raise HTTPException(
+                status_code=409,
+                detail="This worker could not check the deploy target. Update the worker and try again.",
+            ) from None
+
+    if proxy_id is None:
+        rows = await _proxy_to_worker(worker_id, "GET", "/api/containers")
+    else:
+        rows = _proxied_reportable(await database.get_worker(worker_id))
+    found = False
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or egress.container_slug(row) != slug:
+            continue
+        if (_copy_number(row) if proxy_id is None else row.get("proxy_id")) != (
+            instance if proxy_id is None else proxy_id
+        ):
+            continue
+        found = True
+        target = row.get("container_id")
+        if isinstance(target, str) and target != "none" and _DEPLOY_TARGET_ID.fullmatch(target):
+            return target, False
+    if desktop and isinstance(rows, list) and not found:
+        return "none", False
+    raise HTTPException(
+        status_code=409,
+        detail="A container already exists. Update the worker so CashPilot can identify it before replacing it.",
+    )
+
+
+async def _ask_deploy_confirmation(worker_id: int, slug: str, targets: dict[str, str], *, old: bool) -> None:
+    worker = await database.get_worker(worker_id) or {}
+    name = worker.get("name") or f"worker {worker_id}"
+    copies = [
+        f"{'Proxied copy ' + key if key.startswith('p') else 'Instance ' + key} ({target[:12]})"
+        for key, target in targets.items()
+        if target != "none"
+    ]
+    message = f"Replace these containers for {slug} on {name}?\n\n" + "\n".join(copies)
+    if old:
+        product = "CashPilot-Desktop" if placement.is_desktop(placement.system_info(worker)) else "this worker"
+        message += f"\n\nUpdate {product} so it can verify the container ID itself."
+    raise HTTPException(
+        status_code=409,
+        detail={"error": "confirm_deploy_targets", "message": message, "expected_containers": targets},
+    )
+
+
+async def _confirm_deploy_targets(worker_id: int, slug: str, keys: list[str]) -> None:
+    targets = {}
+    old = False
+    for key in dict.fromkeys(keys):
+        target, checked = await _worker_deploy_target(
+            worker_id, slug, 1 if key.startswith("p") else int(key), int(key[1:]) if key.startswith("p") else None
+        )
+        targets[key] = target
+        old |= not checked
+    if any(target != "none" for target in targets.values()):
+        await _ask_deploy_confirmation(worker_id, slug, targets, old=old)
+
+
+async def _send_worker_deploy(
+    worker_id: int,
+    slug: str,
+    spec: dict[str, Any],
+    *,
+    expected: str = "none",
+    proxy_id: int | None = None,
+    definition: dict[str, Any] | None = None,
+    timeout: float = 30,
+    desktop_json: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Send the exact expectation on every deploy. Serialize the legacy fallback on this dashboard."""
+    if not isinstance(expected, str) or not _DEPLOY_TARGET_ID.fullmatch(expected):
+        raise HTTPException(status_code=422, detail="Expected a container ID or 'none'.")
+    instance = _copy_number(spec) or 1
+    body = {**spec, "expected_container": expected}
+    body.pop("replace_existing", None)
+
+    async def send(*, checked: bool) -> dict[str, Any]:
+        if proxy_id is not None:
+            return await _proxy_worker_call(
+                worker_id,
+                "POST",
+                f"/api/proxied/{slug}/{proxy_id}/deploy",
+                definition or {},
+                json=body,
+                timeout=timeout,
+            )
+        route = "deploy-checked" if checked else "deploy"
+        return await _proxy_to_worker(
+            worker_id, "POST", f"/api/containers/{slug}/{route}", json=body, timeout=timeout, desktop_json=desktop_json
+        )
+
+    locks = _worker_deploy_locks.setdefault(asyncio.get_running_loop(), {})
+    async with locks.setdefault((worker_id, slug), asyncio.Lock()):
+        current, checked = await _worker_deploy_target(worker_id, slug, instance, proxy_id)
+        if not checked and current != expected:
+            key = str(instance) if proxy_id is None else f"p{proxy_id}"
+            if current != "none" and expected == "none":
+                await _ask_deploy_confirmation(worker_id, slug, {key: current}, old=True)
+            product = "CashPilot-Desktop" if await _worker_is_desktop(worker_id) else "the worker"
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "deploy_target_changed",
+                    "message": f"The deploy target changed. Review it again and update {product}.",
+                    "current_container": current,
+                },
+            )
+        if not checked and current != "none" and proxy_id is None:
+            # The intermediate worker protocol also requires this flag.
+            body["replace_existing"] = True
+        return await send(checked=checked)
+
+
 async def _proxy_worker_deploy(
-    worker_id: int, slug: str, spec: dict[str, Any], *, approve: bool = False, leave_route: bool = False
+    worker_id: int,
+    slug: str,
+    spec: dict[str, Any],
+    *,
+    approve: bool = False,
+    leave_route: bool = False,
+    expected_container: str = "none",
 ) -> dict[str, Any]:
     """Forward a deploy command with full spec to a worker.
 
@@ -7824,11 +8047,11 @@ async def _proxy_worker_deploy(
     if leave_route:
         # Only after _confirm_leave_route checked the owner's password.
         spec = {**spec, "route_approval": await _sign_for_worker(worker_id, step_up.ACTION_LEAVE_ROUTE, slug)}
-    return await _proxy_to_worker(
+    return await _send_worker_deploy(
         worker_id,
-        "POST",
-        f"/api/containers/{slug}/deploy",
-        json=spec,
+        slug,
+        spec,
+        expected=expected_container,
         timeout=_deploy_timeout(slug),
         # Desktop gets its runtime settings from its own catalog.
         desktop_json={key: spec[key] for key in _DesktopDeploySpec.model_fields if key in spec},
@@ -7918,6 +8141,7 @@ async def _proxy_worker_logs(worker_id: int, slug: str, lines: int = 50, instanc
 class ProxyCopyRequest(BaseModel):
     worker_id: int
     slug: str
+    expected_containers: dict[str, str] | None = None
 
 
 async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
@@ -7948,6 +8172,8 @@ async def _proxy_worker_call(
     try:
         return await _proxy_to_worker(worker_id, method, path, json=json, timeout=timeout)
     except HTTPException as exc:
+        if _worker_error(exc) == "deploy_target_changed":
+            raise  # _safe_worker_detail already verified the container ID and supplies a fixed message.
         raise HTTPException(status_code=exc.status_code, detail=_mask(exc.detail, proxies.secret_values(definition)))
 
 
@@ -8154,6 +8380,20 @@ async def _proxied_earner(
     return earner
 
 
+async def _proxied_rebuild_targets(
+    slug: str, worker_id: int, route: int | None, *, pending_only: bool = False
+) -> list[str]:
+    return [
+        f"p{copy['proxy_id']}"
+        for copy in await database.list_proxied_copies()
+        if copy["worker_id"] == worker_id
+        and copy["slug"] == slug
+        and copy["proxy_id"] != route
+        and not (copy.get("removing_since") or copy.get("stopped_by_cap"))
+        and (not pending_only or copy.get("rename_pending"))
+    ]
+
+
 async def _refresh_proxied_copies(
     slug: str,
     worker_id: int,
@@ -8162,6 +8402,7 @@ async def _refresh_proxied_copies(
     recorded: dict[str, Any],
     *,
     pending_only: bool = False,
+    expected: dict[str, str] | None = None,
 ) -> list[str]:
     """Redeploy this worker's proxied copies of ``slug`` after a confirmed device rename.
 
@@ -8259,16 +8500,20 @@ async def _refresh_proxied_copies(
                         slug, key, str(earner["env"].get(key) or ""), except_worker=worker_id
                     ):
                         raise ValueError(f"its new device id already runs on {', '.join(await _worker_names(others))}")
-                await _proxy_worker_call(
+                approved = (expected or {}).get(f"p{pid}", "none")
+                if approved == "none":
+                    raise ValueError("its current container needs replacement approval")
+                await _send_worker_deploy(
                     worker_id,
-                    "POST",
-                    f"/api/proxied/{slug}/{pid}/deploy",
-                    proxy["definition"],
-                    json={
+                    slug,
+                    {
                         "earner": earner,
                         "proxy": proxies.worker_proxy_spec(proxy["definition"]),
                         "only_if_running": True,
                     },
+                    expected=approved,
+                    proxy_id=pid,
+                    definition=proxy["definition"],
                     timeout=180,
                 )
                 # Still under the lock, so no other deploy of this copy lands
@@ -8382,12 +8627,13 @@ async def api_add_proxied_copy(
         # An edit made while this waited (a rotated password) is what the copy gets.
         definition = fresh["definition"]
         try:
-            result = await _proxy_worker_call(
+            result = await _send_worker_deploy(
                 worker_id,
-                "POST",
-                f"/api/proxied/{slug}/{proxy_id}/deploy",
-                definition,
-                json={"earner": earner, "proxy": proxies.worker_proxy_spec(definition)},
+                slug,
+                {"earner": earner, "proxy": proxies.worker_proxy_spec(definition)},
+                expected=(body.expected_containers or {}).get(f"p{proxy_id}", "none"),
+                proxy_id=proxy_id,
+                definition=definition,
                 timeout=180,
             )
         except HTTPException as exc:
@@ -8395,6 +8641,10 @@ async def api_add_proxied_copy(
             # the copy is listed and can be removed. Any other answer is final.
             if exc.status_code != 504 and not had_record:
                 await database.delete_proxied_copy(proxy_id, worker_id, slug)
+            if body.expected_containers is None and _worker_error(exc) == "deploy_target_changed":
+                actual = exc.detail.get("current_container")
+                if actual and actual != "none":
+                    await _ask_deploy_confirmation(worker_id, slug, {f"p{proxy_id}": actual}, old=False)
             raise
         await database.settle_proxied_copy_rename_pending(proxy_id, worker_id, slug, recorded)
         # Under the lock, so a rename rebuild of this copy cannot write between
@@ -9724,11 +9974,13 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     watts_known = True
     try:
         statuses = await _get_all_worker_containers()
+        worker_meta = {w.get("id"): w for w in await database.list_workers()}
     except Exception as exc:
         # A worker status problem must not take out the earnings figures, which
         # come from the database and are still perfectly reportable.
         logger.warning("Worker status unavailable for the power estimate: %s", exc)
         statuses = []
+        worker_meta = {}
         watts_known = False
     # Only RUNNING containers. A stopped one draws nothing, and counting it
     # inflates a worker's container count, which shrinks every running service's
@@ -9747,6 +9999,8 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # says code reading "service" matched nothing in production while its tests
     # passed, which is precisely what happened here again.
     running = [c for c in statuses if egress.container_slug(c) and str(c.get("status", "")).lower() == "running"]
+    running_slugs = {egress.container_slug(container) for container in running}
+    running_miners = {slug for slug in running_slugs if slug and catalog.mining_facts(catalog.get_service(slug) or {})}
 
     # Group by WORKER and keep it that way through the watt calculation. Each
     # host pays its own idle draw, so collapsing a multi-host fleet into one
@@ -9757,24 +10011,46 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     for c in running:
         by_worker.setdefault(c.get("_worker_id"), []).append(c)
 
-    worker_meta = {w.get("id"): w for w in await database.list_workers()}
-
     hours = max(1, int(days)) * 24.0
     # Earned OVER THE WINDOW, not the latest balance: subtracting a window's
     # electricity from a running total would be meaningless arithmetic.
-    earned = await database.get_earned_by_platform(max(1, int(days)))
+    measured: set[str] = set()
+    earned = await database.get_earned_by_platform(max(1, int(days)), measured=measured)
+    # Include running miners even when a separate pool reports their earnings.
+    platforms = [*earned, *sorted(running_miners - earned.keys())]
+    services = {platform: catalog.get_service(platform) or {} for platform in platforms}
+    deployed_in_containers = {egress.container_slug(c) for c in statuses}
+    external: set[str] = set()
+    if any(
+        platform not in deployed_in_containers and catalog.draws_device_power(service)
+        for platform, service in services.items()
+    ):
+        external = {
+            d["slug"]
+            for d in await database.get_deployments()
+            if d["status"] == "external" and d["slug"] not in deployed_in_containers
+        }
 
     watts_by_service: dict[str, float] = {}
+    metered_services: set[str] = set()
     unmetered_services: set[str] = set()
+    unread_metered_services: set[str] = set()
     for wid, containers in by_worker.items():
         meta = worker_meta.get(wid) or {}
         info = _safe_json(meta.get("system_info", "{}"), {})
-        metered = power.is_metered(info)
+        metered = _worker_is_metered(cfg, meta, info)
+        # The draw the user typed for this machine on the Fleet page comes
+        # first. It is the only figure here anyone checked against the box;
+        # the fleet card already charged it while this endpoint split a 65 W
+        # guess. Both now start from the typed draw, though the CPU-share split
+        # below and the request window keep the two from matching exactly.
+        typed = _worker_watts(cfg, meta) if meta else None
         try:
-            tdp = float(info.get("host_tdp_watts") or host_tdp)
+            tdp = typed if typed and typed > 0 else float(info.get("host_tdp_watts") or host_tdp)
         except (TypeError, ValueError):
             tdp = host_tdp
         count = max(1, len(containers))
+        host_watts: dict[str, float] = {}
         for c in containers:
             svc = egress.container_slug(c)
             if not metered:
@@ -9782,25 +10058,84 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
                 # nothing rather than computing watts and multiplying by zero.
                 unmetered_services.add(svc)
                 continue
+            metered_services.add(svc)
             # A container whose CPU could not be read contributes no estimate
             # rather than an estimate built from a fabricated 0%. `or 0.0` below
             # would silently turn "unmeasurable" into "idle", which is how a
             # busy service ends up costing nothing on the running-costs card.
             if c.get("cpu_percent") is None:
+                unread_metered_services.add(svc)
                 continue
-            watts_by_service[svc] = watts_by_service.get(svc, 0.0) + power.estimate_watts(
+            host_watts[svc] = host_watts.get(svc, 0.0) + power.estimate_watts(
                 float(c.get("cpu_percent") or 0.0), host_tdp_watts=tdp, container_count=count
             )
+        # Docker reports cpu_percent per core (800% for eight saturated cores),
+        # so the shares can add up to several times the host's draw. When the
+        # user typed that draw, it is a measured ceiling: scale this machine's
+        # shares down so together they never charge more than it.
+        total = sum(host_watts.values())
+        if typed and typed > 0 and total > typed:
+            host_watts = {svc: w * typed / total for svc, w in host_watts.items()}
+        for svc, w in host_watts.items():
+            watts_by_service[svc] = watts_by_service.get(svc, 0.0) + w
 
+    # Only metered copies land in unread_metered_services, so a miner on a
+    # fixed-price worker is never here: it costs nothing, reading or not.
+    miners_without_cpu = unread_metered_services & running_miners
     rows = []
-    for platform, gross in earned.items():
-        watts = watts_by_service.get(platform, 0.0)
+    break_even: dict[str, float] = {}
+    for platform, service in services.items():
+        gross = earned.get(platform)
+        gross_basis = _gross_basis(service)
+        uses_device_power = catalog.draws_device_power(service) and (
+            platform in external or (service.get("requirements") or {}).get("gpu") is True
+        )
+        unmetered_only = platform in unmetered_services and platform not in metered_services
+        watts: float | None = watts_by_service.get(platform, 0.0)
+        watts_source = "cpu_share" if platform in watts_by_service else None
+        if gross_basis == "accrued" and platform not in external and platform not in deployed_in_containers:
+            # Earnings history survives untracking. A leftover setting cannot
+            # tell us how long the equipment ran in the historical window.
+            watts = None
+        elif unmetered_only:
+            watts = 0.0
+        elif uses_device_power:
+            if platform in unmetered_services:
+                # One entered draw can cover several GPU copies. There is no
+                # measured split to charge only the metered copies.
+                watts = None
+            else:
+                watts = _device_watts(cfg, platform)
+                watts_source = "entered" if watts is not None else None
+        elif platform in unmetered_services and platform in unread_metered_services:
+            # The hosting copy has no per-kWh bill. The metered copy's
+            # missing CPU reading still leaves the combined cost unknown.
+            watts = None
+        elif platform in miners_without_cpu:
+            # A running miner draws power whether or not a pool has paid yet.
+            # Without its CPU reading on a metered machine the cost is unknown,
+            # never the 0 W that a missing reading would otherwise produce.
+            watts = None
+        elif not watts_known:
+            watts = None
+        if watts is None:
+            watts_source = None
+        cost_attributable = watts_source == "entered" or machine_economics.per_service_is_meaningful(watts)
+        # Whole-device watts can be charged directly. A CPU share below smart
+        # plug resolution gives no per-service break-even. USD per kWh.
+        if gross is not None and cost_attributable and watts and platform in measured:
+            break_even[platform] = round(float(gross) / (watts / 1000.0 * hours), 4)
         rows.append(
             {
                 "platform": platform,
-                "gross": float(gross),
+                "gross": None
+                if (uses_device_power or gross_basis == "accrued") and platform not in measured
+                else gross,
                 "watts": watts,
+                "watts_source": watts_source,
+                "unmetered": unmetered_only,
                 "hours": hours,
+                "gross_basis": gross_basis,
                 "cost_quality": power.ESTIMATED,
                 # Whether a PER-SERVICE cost means anything, as opposed to
                 # whether the machine costs anything. A bandwidth container adds
@@ -9814,7 +10149,7 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
                 # unreliable is which service to blame, so that is what gets
                 # flagged. machine_economics has held this rule since it was
                 # written and nothing had ever asked it.
-                "cost_attributable": machine_economics.per_service_is_meaningful(watts),
+                "cost_attributable": cost_attributable,
             }
         )
 
@@ -9844,22 +10179,25 @@ async def api_earnings_net(request: Request, days: int = 30) -> dict[str, Any]:
     # module already does when no tariff is set at all: "a zero cost would
     # render gross as net and quietly overstate earnings."
     #
-    # Unknown WATTS suppress the net for the same reason unknown FX does, and
-    # through the same mechanism: a zero price makes summarise report cost and
-    # net as None instead of as numbers. Without this, a failed worker lookup
-    # charged every service 0 W, cost summed to 0.00, and the endpoint returned
-    # total_net == total_gross with cost_known TRUE -- gross presented as profit,
-    # which is the one thing this endpoint's docstring promises it never does.
-    # cost_known came from `price_per_kwh > 0` alone and never asked whether any
-    # watts had actually been measured (CashPilot-c6u).
-    result = power.summarise(rows, price_per_kwh=(price_usd if (fx_ok and watts_known) else 0.0), currency="USD")
+    # An inventory failure affects worker estimates. Entered device draw is
+    # independent of those estimates and still usable (CashPilot-c6u).
+    can_price = fx_ok and (watts_known or any(row["watts"] is not None for row in rows))
+    result = power.summarise(rows, price_per_kwh=price_usd if can_price else 0.0, currency="USD")
+    for row, source in zip(result["services"], rows, strict=True):
+        row.update(
+            watts=source["watts"],
+            watts_source=source["watts_source"],
+            unmetered=source["unmetered"],
+            gross_basis=source["gross_basis"],
+        )
+        if row["platform"] in break_even:
+            row["break_even_price_per_kwh"] = break_even[row["platform"]]
+    if miners_without_cpu:
+        result["cost_unavailable_reason"] = "A running miner has no CPU reading, so its electricity cost is unknown."
     if not watts_known:
-        result["cost_known"] = False
         result["watts_unavailable"] = True
         result["cost_unavailable_reason"] = (
-            "CashPilot could not reach its workers, so it does not know what any service "
-            "is drawing right now. Earnings below are real; the running cost and the net "
-            "figure are unknown for this window, not zero."
+            "CashPilot could not reach its workers. Costs that need worker readings are unknown, not zero."
         )
     if not fx_ok:
         result["cost_known"] = False
@@ -10164,7 +10502,8 @@ async def api_test_credentials(request: Request, slug: str) -> dict[str, Any]:
         balance = None if result.error else result.balance
         return credential_test.result(outcome, name, balance=balance, currency=result.currency)
     logger.debug("Credential test for %s failed: %s", slug, result.error)
-    return credential_test.result(outcome, name)
+    payout_address = (service.get("payout") or {}).get("address_source") == "collector"
+    return credential_test.result(outcome, name, payout_address=payout_address)
 
 
 @app.get("/api/earnings/payouts")
@@ -10319,6 +10658,75 @@ async def api_reject_payout(request: Request, payout_id: int) -> dict[str, Any]:
     return {"ok": True, "id": payout_id, "removed": True}
 
 
+async def _income_fiat_rates(currency: str, start: str, end: str) -> dict[str, float]:
+    """Daily USD-to-fiat rates for the income download, or the HTTP error to answer."""
+    try:
+        fiat = await exchange_rates.fetch_daily_fiat_rates(currency, start, end)
+    except exchange_rates.UnknownFiat:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No daily ECB rate for {currency} in this date range. Export in USD or choose a supported currency.",
+        )
+    if fiat is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not get the daily exchange rates. Try again or export in USD.",
+        )
+    return fiat
+
+
+@app.get("/api/earnings/income.csv")
+async def api_income_csv(
+    request: Request, start: str | None = None, end: str | None = None, currency: str = "USD"
+) -> StreamingResponse:
+    """Download earnings and confirmed payouts with their historical rates."""
+    user = _require_owner(request)
+    # Date inputs in the Payouts form send empty strings when left blank.
+    for name, value in (("start", start), ("end", end)):
+        if value:
+            if not _ISO_DATE.fullmatch(value):
+                raise HTTPException(status_code=400, detail=f"{name} must use YYYY-MM-DD.")
+            try:
+                date.fromisoformat(value)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"{name} must be a real calendar date.")
+
+    today = datetime.now(UTC).date().isoformat()
+    end = end or today
+    if end > today:
+        raise HTTPException(status_code=400, detail="The end date cannot be in the future (UTC).")
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise HTTPException(status_code=400, detail="Currency must have three uppercase letters, such as USD.")
+    if start and start > end:
+        raise HTTPException(status_code=400, detail="The start date must be on or before the end date.")
+
+    first_day = None
+
+    async def rates_from(day: str) -> dict[str, float]:
+        nonlocal first_day
+        first_day = day
+        return await _income_fiat_rates(currency, day, end)
+
+    # Blank start means all history. The first chunk fetches the rates, so a
+    # rate failure still answers with an error status rather than a cut file.
+    chunks = income_export.stream_csv(start or "", end, currency, rates_from)
+    try:
+        first = await anext(chunks)
+        start = start or first_day or end
+        await database.add_audit_event("income_export", f"{start}..{end}", "exported", actor=user, detail=currency)
+    except BaseException:
+        await chunks.aclose()
+        raise
+    return StreamingResponse(
+        income_export.resume(first, chunks),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="cashpilot-income-{start}_{end}-{currency}.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @app.get("/api/services/{slug}/payout-progress")
 async def api_payout_progress(request: Request, slug: str) -> dict[str, Any]:
     """Current balance, lifetime earned, and how far off the payout is.
@@ -10427,6 +10835,8 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # all. Convert the TARIFF, so the endpoint stays canonical USD like the rest
     # of the API and the frontend's display-currency layer can render it.
     tariff_currency = str(config.get("power_currency") or "EUR")
+    # The tariff as typed, kept for the break-even line, which reads against it.
+    tariff_local = price
     fx_ok = True
     if price and tariff_currency != "USD":
         converted = exchange_rates.to_usd(price, tariff_currency)
@@ -10440,7 +10850,12 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # to build the same list in a single request.
     raw_workers = await database.list_workers()
     workers = [_decoded_worker(w) for w in raw_workers]
-    earned = await database.get_earned_by_platform(days=30)
+    # Which platforms had a priced reading at all. Without it a service with no
+    # collector, no credentials or no FX price contributes 0.0, and a machine
+    # hosting only such services would get a 0.0 break-even tariff and "loses
+    # money at any electricity price" on a gross nobody ever read.
+    measured: set[str] = set()
+    earned = await database.get_earned_by_platform(days=30, measured=measured)
     containers = await _get_all_worker_containers(raw_workers)
 
     # Attribute each service's gross to the worker running it. A service on two
@@ -10448,17 +10863,34 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
     # answer, and pretending otherwise would be invented precision again.
     per_worker_gross: dict[Any, float] = {}
     hosts: dict[str, list[Any]] = {}
+    # Workers hosting at least one service, and those with at least one whose
+    # earnings were actually read. A worker in the first set and not the second
+    # has a gross of 0.0 that is missing data, not a measured zero.
+    hosting: set[Any] = set()
+    read: set[Any] = set()
     for container in containers:
         slug = egress.container_slug(container)
         if slug:
             hosts.setdefault(slug, []).append(container.get("_worker_id"))
+    devices = {}
+    for deployment in await database.get_deployments():
+        slug = deployment["slug"]
+        if deployment["status"] != "external" or slug in hosts:
+            continue
+        service = catalog.get_service(slug)
+        if service and catalog.draws_device_power(service):
+            devices[slug] = service
     for slug, worker_ids in hosts.items():
         share = float(earned.get(slug) or 0.0) / max(1, len(worker_ids))
         for worker_id in worker_ids:
             per_worker_gross[worker_id] = per_worker_gross.get(worker_id, 0.0) + share
+            hosting.add(worker_id)
+            if slug in measured:
+                read.add(worker_id)
 
     assessed = []
     for worker in workers:
+        worker_id = worker.get("id")
         info = worker.get("system_info") or {}
         # Keyed on client_id, not the autoincrement row id.
         #
@@ -10467,13 +10899,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
         # dedicated settings silently, while the old keys linger forever. The
         # id is also read from the row-id fallback for volumes written before
         # this change.
-        raw_watts = config.get(f"worker_{_worker_config_key(worker)}_watts") or config.get(
-            f"worker_{worker.get('id')}_watts"
-        )
-        try:
-            watts = float(raw_watts) if raw_watts else None
-        except (TypeError, ValueError):
-            watts = None
+        watts = _worker_watts(config, worker)
         assessed.append(
             machine_economics.assess_machine(
                 name=worker.get("name") or f"worker {worker.get('id')}",
@@ -10483,7 +10909,7 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 # offline machine to zero earnings is what produced the
                 # "turn it off" advice about a host we cannot see.
                 monthly_gross=(
-                    per_worker_gross.get(worker.get("id"), 0.0) if str(worker.get("status") or "") == "online" else None
+                    per_worker_gross.get(worker_id, 0.0) if str(worker.get("status") or "") == "online" else None
                 ),
                 watts=watts,
                 # No rate means the tariff cannot be expressed in the same unit
@@ -10491,19 +10917,54 @@ async def api_fleet_economics(request: Request) -> dict[str, Any]:
                 # this module's "unknown", and it reports that rather than
                 # inventing a net.
                 price_per_kwh=(price or None) if fx_ok else None,
-                metered=power.is_metered(info),
+                metered=_worker_is_metered(config, worker, info),
                 dedicated=_worker_flag(config, worker, "dedicated"),
+                # An empty list counts as zero only when the worker could
+                # reach Docker and read its whole inventory.
+                gross_measured=(
+                    worker_id in read
+                    if worker_id in hosting
+                    else not placement.is_blind(worker) and not _heartbeat_partial(info)
+                ),
             )
         )
+        assessed[-1]["kind"] = "machine"
+        assessed[-1]["break_even_tariff"] = _break_even_local(
+            assessed[-1].get("break_even_price_per_kwh"), tariff_currency
+        )
+
+    for slug, service in devices.items():
+        watts = _device_watts(config, slug)
+        device = machine_economics.assess_machine(
+            name=service["name"],
+            monthly_gross=earned.get(slug, 0.0) if slug in measured else None,
+            watts=watts,
+            price_per_kwh=(price or None) if fx_ok else None,
+            dedicated=True,
+        )
+        gross_basis = _gross_basis(service)
+        if gross_basis == "accrued" and device["monthly_gross"] is not None:
+            device["summary"] += " Earnings accrued at the pool during this period."
+        device.update(
+            kind="device",
+            slug=slug,
+            watts=watts,
+            gross_basis=gross_basis,
+            break_even_tariff=_break_even_local(device.get("break_even_price_per_kwh"), tariff_currency),
+        )
+        assessed.append(device)
 
     summary = machine_economics.fleet_summary(assessed)
     # Every figure in this payload is USD. It previously carried no currency at
     # all, so fleet.html printed bare numbers the user could not attribute to a
     # unit — and the numbers themselves mixed two.
     summary["currency"] = "USD"
+    # Always, not only on an FX failure: each machine's break_even_tariff is in
+    # this currency, and the page compares the two before printing "you pay".
+    summary["tariff_currency"] = tariff_currency
+    summary["tariff_price_per_kwh"] = tariff_local if tariff_local > 0 else None
     if not fx_ok:
         summary["fx_unavailable"] = True
-        summary["tariff_currency"] = tariff_currency
         summary["cost_unavailable_reason"] = (
             f"Your electricity tariff is in {tariff_currency} and earnings are recorded in "
             f"USD. No {tariff_currency}-to-USD rate is available right now, so a running "
@@ -10694,6 +11155,7 @@ async def api_deploy_risk(request: Request, slug: str) -> dict[str, Any]:
         "slug": slug,
         "attribution": lan_isolation.attribution_notice(service),
         "isolation": lan_isolation.assess(service),
+        "mining": catalog.mining_facts(service),
     }
 
 
@@ -11299,6 +11761,15 @@ def _worker_flag(config: dict[str, Any], worker: dict[str, Any], suffix: str) ->
     return False
 
 
+def _worker_is_metered(config: dict[str, Any], worker: dict[str, Any], info: dict[str, Any]) -> bool:
+    key = f"worker_{_worker_config_key(worker)}_unmetered"
+    # This setting has no legacy row-id key. A numeric client ID can match
+    # another worker's row ID, so only look up the key the Fleet page saves.
+    if str(config.get(key) or "").strip():
+        return not _config_flag(config, key)
+    return power.is_metered(info)
+
+
 def _worker_config_key(worker: dict[str, Any]) -> str:
     """The stable identifier for per-worker config keys.
 
@@ -11309,6 +11780,53 @@ def _worker_config_key(worker: dict[str, Any]) -> str:
     which is what these settings should have been keyed on.
     """
     return str(worker.get("client_id") or worker.get("id") or "")
+
+
+def _worker_watts(config: dict[str, Any], worker: dict[str, Any]) -> float | None:
+    """The wall draw the user typed for this machine, or None.
+
+    Read client_id first, then the row id for values written before that
+    changed. One reader for every consumer: the fleet economics card, the
+    per-service net figures and the fleet list's input box all used to build
+    this lookup inline, and three copies of a lookup drift apart.
+    """
+    raw = config.get(f"worker_{_worker_config_key(worker)}_watts") or config.get(f"worker_{worker.get('id')}_watts")
+    try:
+        value = float(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+    # 'nan' and 'inf' parse as floats, but JSONResponse refuses to render them,
+    # so one bad stored value would take down GET /api/workers and with it the
+    # input box the user needs to correct it.
+    return value if value is not None and math.isfinite(value) else None
+
+
+def _device_watts(config: dict[str, Any], slug: str) -> float | None:
+    try:
+        watts = float(config.get(f"power_device_{slug}_watts", ""))
+    except (TypeError, ValueError):
+        return None
+    # Match the Fleet field's 1 W minimum, including values saved through the API.
+    return watts if math.isfinite(watts) and watts >= 1 else None
+
+
+def _gross_basis(service: dict[str, Any]) -> str:
+    return "accrued" if (service.get("collector") or {}).get("accrual") == "pool" else "earned"
+
+
+def _break_even_local(usd_per_kwh: float | None, tariff_currency: str) -> dict[str, Any] | None:
+    """A USD break-even tariff, expressed in the currency the user's tariff is in.
+
+    It is a price per kWh to read against an electricity bill, so it belongs in
+    the bill's currency. With no rate it stays in USD and says so: a USD value
+    labelled USD is still true, a USD value labelled EUR would not be.
+    """
+    if usd_per_kwh is None:
+        return None
+    local = exchange_rates.from_usd(usd_per_kwh, tariff_currency)
+    if local is None:
+        return {"price_per_kwh": usd_per_kwh, "currency": "USD"}
+    return {"price_per_kwh": round(local, 4), "currency": tariff_currency}
 
 
 # ---------------------------------------------------------------------------
@@ -12453,9 +12971,9 @@ async def api_list_workers(request: Request) -> list[dict[str, Any]]:
         # the fallback for values written before that changed. Returning them
         # here is what lets the fleet page show the current value in its input
         # rather than an empty box that silently overwrites what is stored.
-        raw_watts = config.get(f"worker_{_worker_config_key(w)}_watts") or config.get(f"worker_{w.get('id')}_watts")
-        w["watts"] = raw_watts or ""
+        w["watts"] = _worker_watts(config, w)
         w["dedicated"] = _worker_flag(config, w, "dedicated")
+        w["unmetered"] = not _worker_is_metered(config, w, si)
         # Whether this worker ever finished the per-worker-key cutover. Without
         # it the only trace was a UI log line once a minute, which nobody reads,
         # so a worker still authenticating with the SHARED key looked identical
@@ -12543,14 +13061,14 @@ async def api_delete_worker(request: Request, worker_id: int) -> dict[str, str]:
 
 
 async def _recordable_raw_spec(slug: str, worker_id: int, spec: dict[str, Any]) -> dict[str, Any]:
-    """A raw deploy's spec as it may be recorded: never a wallet choice, never a seed the worker keeps in its file.
+    """A raw deploy's spec without the wallet choice or the approval to replace this container.
 
     A worker that keeps a catalog seed_file wallet takes the phrase out of the
     env before the container sees it (app/wallet_seed.py), so the record drops
     it too. On an older worker the container still runs with it, and the record
     keeps it, as before, for the next redeploy there.
     """
-    recorded = {k: v for k, v in spec.items() if k != "wallet_seed"}
+    recorded = {k: v for k, v in spec.items() if k not in {"wallet_seed", "replace_existing", "expected_container"}}
     key = wallet_seed.seed_key(catalog.get_service(slug))
     env = recorded.get("env")
     if key and isinstance(env, dict) and key in env and wallet_seed.FEATURE in await _worker_features(worker_id):
@@ -12601,7 +13119,9 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         # An approval comes only from the password step-up of /api/deploy; one
         # pasted into a raw spec is dropped, so this route can never run another
         # image than the catalog's on a service with critical volumes.
-        original_spec = body.spec.copy()
+        # The dashboard consumes the container approval before sending the Desktop spec.
+        expected = body.spec.get("expected_container", "none")
+        original_spec = {key: value for key, value in body.spec.items() if key != "expected_container"}
         body.spec.pop("approval", None)
         # The same for leaving a route, and a route this spec claims is not
         # one it deploys: this route runs on the worker's own IP only.
@@ -12627,8 +13147,8 @@ async def _worker_command(request: Request, worker_id: int, body: WorkerCommand)
         held = await _reserve_pending_identities(body.slug, worker_id, copy if copy and copy > 0 else 1, raw_env)
         try:
             # The Desktop schema must also reject fields the Docker route strips.
-            result = await _proxy_to_worker(
-                worker_id, "POST", f"/api/containers/{body.slug}/deploy", json=body.spec, desktop_json=original_spec
+            result = await _send_worker_deploy(
+                worker_id, body.slug, body.spec, expected=expected, desktop_json=original_spec
             )
         except HTTPException as exc:
             await _audit_worker_refusal(request, exc, body.slug, worker_id)
@@ -13167,9 +13687,10 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
     of that one service on that one box with ``{key: value}`` typed, through
     the deploy path: the record, the route, the image, the fence, the ledger
     and the shared-id check all apply as on any redeploy, and nothing else on
-    the box moves. The body carries ``value`` and, once the owner saw that
-    another box runs it, ``allow_shared_identity``. The proxied copies of the
-    service on that box take ids made from the new one: running ones are
+    the box moves. The body carries ``value`` and the owner's ``replace_existing``
+    confirmation and the targets they approved. If another box runs that id, the owner must also give
+    ``allow_shared_identity``. The proxied copies on that box take ids from
+    the new one: running copies are
     rebuilt now and the rest are marked, as after a device rename
     (_refresh_proxied_copies), so none changes id later unseen. Answers what
     the deploy answers, its notes included.
@@ -13218,21 +13739,34 @@ async def api_identity_change(request: Request, identity_id: int) -> dict[str, A
                 "device, which it may merge or ban.",
             },
         )
+    expected = body.get("expected_containers")
+    if expected is not None and (
+        not isinstance(expected, dict) or any(not isinstance(target, str) for target in expected.values())
+    ):
+        raise HTTPException(status_code=422, detail="Expected container IDs indexed by instance.")
     # The password too: _deploy asks for it before the service leaves a route
     # the worker remembers (route_locked), and api() sends it with the change again.
     password = body.get("step_up_password")
     deploy = DeployRequest(
         env={key: value},
+        replace_existing=body.get("replace_existing") is True,
+        expected_containers=expected,
         allow_shared_identity=allow,
         step_up_password=password if isinstance(password, str) else None,
     )
-    response = await _deploy(slug, deploy, worker_id, request=request)
+    response = await _deploy(slug, deploy, worker_id, request=request, confirm_proxied=True)
     await _audit("identity_change", f"{slug}|{key}|copy 1", "changed", actor=user, worker_id=worker_id)
     # The proxied copies' ids are made from this one: rebuilt from the new record
     # now. The new id already runs, so a failure here is a note, never an error.
     try:
         fresh = await database.get_deployment_spec(slug, worker_id=worker_id)
-        notes = await _refresh_proxied_copies(slug, worker_id, svc, svc.get("docker") or {}, fresh) if fresh else []
+        notes = (
+            await _refresh_proxied_copies(
+                slug, worker_id, svc, svc.get("docker") or {}, fresh, expected=deploy.expected_containers
+            )
+            if fresh
+            else []
+        )
     except Exception:  # noqa: BLE001 - the change already deployed
         logger.exception("Could not rebuild the proxied copies of %s on worker %s after a change", slug, worker_id)
         notes = ["proxied copies on this box: could not be rebuilt, so some may keep their old device name or id"]
@@ -13843,6 +14377,8 @@ async def api_import_apply(request: Request, user: dict[str, Any] = Depends(_req
 
 class ImportDeployRequest(BaseModel):
     """What the import page may add to a draft's deploy: the owner's answers to its questions."""
+
+    expected_containers: dict[str, str] | None = None
 
     # As DeployRequest's: the owner saw the id already runs on another box.
     allow_shared_identity: bool = False

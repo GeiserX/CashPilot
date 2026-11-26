@@ -1,10 +1,13 @@
 # Mining
 
-The **Mining** section of the catalog is for crypto you mine with your own hardware. Today it tracks a pool you already mine on: you point your miner at the pool, give CashPilot the payout address, and CashPilot reads what the pool holds for you. CashPilot runs no miner for these entries.
+Use the catalog's **Mining** section to deploy [XMRig](guides/xmrig.md) on your own CPU or track a pool you already use. To track a pool, give CashPilot your public payout address. CashPilot reads the unpaid balance the pool holds for you.
 
 | Pool | Coin | Guide |
 |---|---|---|
 | OCEAN | Bitcoin | [OCEAN](guides/ocean.md) |
+| SupportXMR | Monero | [SupportXMR](guides/supportxmr.md) |
+| HeroMiners Kaspa | Kaspa | [HeroMiners Kaspa](guides/herominers-kas.md) |
+| 2Miners ETC | Ethereum Classic | [2Miners ETC](guides/2miners-etc.md) |
 
 ## Accrued is not received
 
@@ -14,7 +17,7 @@ CashPilot keeps the two apart:
 
 - The **balance** of a pool is its unpaid balance: the same "waiting" figure every provider's balance is. The catalog marks each pool entry with `collector.accrual: pool`, which says its balance is accrued, not received.
 - When the pool pays you, the unpaid balance drops. The dashboard asks you to confirm that drop as a **payout**. Only a confirmed payout counts as received, in the lifetime total and on the Payouts page.
-- The cash-out reminder skips pools. They pay by themselves, so there is nothing for you to request.
+- The cash-out reminder skips pools that pay automatically. Some pools also let you request an early payout. See the pool's guide for the terms.
 
 ## No keys, ever
 

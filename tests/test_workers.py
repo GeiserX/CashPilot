@@ -268,6 +268,22 @@ class TestFleetSummary:
 
 
 class TestWorkerList:
+    def test_unmetered_setting_uses_only_the_client_id(self):
+        workers = [
+            _worker_row(id=1, client_id="rig"),
+            _worker_row(id=2, client_id="1"),
+        ]
+        config = {"worker_rig_watts": "100", "worker_1_unmetered": "true"}
+        with (
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value=config),
+            patch("app.main.auth.get_current_user", return_value={"uid": 1, "u": "t", "r": "owner"}),
+        ):
+            rig, hosted = _run(api_list_workers(_request()))
+        assert rig["watts"] == 100
+        assert rig["unmetered"] is False
+        assert hosted["unmetered"] is True
+
     def test_android_worker_returns_apps(self):
         """Android workers should have apps parsed and counted."""
         workers = [
