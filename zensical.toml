@@ -126,6 +126,7 @@ nav = [
           { "HeroMiners Kaspa" = "guides/herominers-kas.md" },
           { "Kryptex Pool (Pearl)" = "guides/kryptex-pearl.md" },
           { OCEAN = "guides/ocean.md" },
+          { "SRBMiner-Multi (GPU mining)" = "guides/srbminer-multi.md" },
           { SupportXMR = "guides/supportxmr.md" },
           { "unMineable (CPU mining, paid in your coin)" = "guides/unmineable.md" },
           { "XMRig (Monero CPU mining)" = "guides/xmrig.md" },

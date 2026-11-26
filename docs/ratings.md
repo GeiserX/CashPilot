@@ -78,6 +78,7 @@ What a cited con or pro may rest on:
 | <a href="#storj">Storj</a> | D | 9 of 20 | 3 | <span class="ratings-con" title="CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.">CoinDesk reported on 27 July 2026 that Storj Labs had filed for Chapter 11 bankruptcy protection.</span> | 2026-11-04 |
 | <a href="#xmrig">XMRig (Monero CPU mining)</a> | D | 9 of 20 | 4 | <span class="ratings-con" title="A payout requires enough XMR to meet your pool threshold.">A payout requires enough XMR to meet your pool threshold.</span> | 2026-11-25 |
 | <a href="#honeygain">Honeygain</a> | D | 8 of 20 | 3 | <span class="ratings-con" title="The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.">The terms let Honeygain write off earnings that reached the $20 threshold and were not paid out within 24 months, and treat earnings as expired after six months without use.</span> | 2026-11-04 |
+| <a href="#srbminer-multi">SRBMiner-Multi (GPU mining)</a> | D | 8 of 20 | 4 | <span class="ratings-con" title="The miner keeps 2% of hashing time on Pearl and 0.85% on Zano and Ravencoin.">The miner keeps 2% of hashing time on Pearl and 0.85% on Zano and Ravencoin.</span> | 2026-11-26 |
 | <a href="#unmineable">unMineable (CPU mining, paid in your coin)</a> | D | 8 of 20 | 4 | <span class="ratings-con" title="unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin&#x27;s threshold.">unMineable keeps a 0.75% platform fee with the referral code and pays only from each coin's threshold.</span> | 2026-11-26 |
 | <a href="#earnapp">EarnApp</a> | D | 7 of 20 | 5 | <span class="ratings-con" title="EarnApp&#x27;s help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.">EarnApp's help centre says installing it in Docker containers, virtual machines, hosting services or home servers is strictly prohibited, which is how CashPilot runs it.</span> | 2026-11-04 |
 | <a href="#golem">Golem Network</a> | D | 7 of 20 | 6 | <span class="ratings-con" title="CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.">CashPilot does not run Golem: you install the provider agent yourself, so CashPilot cannot deploy or update it for you. Golem documents running the provider in its own Docker image.</span> | 2026-11-04 |
@@ -352,6 +353,37 @@ What a cited con or pro may rest on:
 - Honeygain publishes its own Docker image, honeygain/honeygain. [Source](https://hub.docker.com/r/honeygain/honeygain), checked 2026-11-04.
 - The terms name the operator, Honeygain UAB, registered in Vilnius, Lithuania. [Source](https://www.honeygain.com/terms-of-use/), checked 2026-11-04.
 - Honeygain's press page says it was founded in 2019. [Source](https://www.honeygain.com/press-area/), checked 2026-11-04.
+
+<a id="srbminer-multi"></a>
+
+### SRBMiner-Multi (GPU mining)
+
+**Grade D**, 8 of 20 points, 4 of 10 criteria unchecked, reviewed 2026-11-26. Setup guide: [SRBMiner-Multi (GPU mining)](guides/srbminer-multi.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | The pool pays the wallet. We have not run the miner on a GPU or seen a payout yet. |
+| Payout terms | Fair | The pool sets its payout threshold and fee. The miner keeps a share of hashing time. |
+| Account safety | Unknown | Pool restrictions vary. We did not review account enforcement across pools. |
+| Fit with how CashPilot runs it | Fair | CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS. |
+| Traffic transparency | Good | The miner submits work to the pool over an outbound connection. |
+| Privacy | Fair | The miner is closed source. The pool sees your payout address, worker name and IP address. |
+| Identity checks | Good | HeroMiners lets a miner connect with a public Pearl address. |
+| Support | Unknown | We did not test support for the miner or the pools. |
+| Earnings realism | Fair | Pearl is a new coin. Its price, difficulty and your power price decide the result. |
+| Longevity | Unknown | Pearl launched in 2026. We did not review its long-term prospects. |
+
+**Cons**
+
+- The miner keeps 2% of hashing time on Pearl and 0.85% on Zano and Ravencoin. [Source](https://github.com/doktor83/SRBMiner-Multi/blob/3.9.0/README.md), checked 2026-11-26.
+- Some hosting providers prohibit cryptocurrency mining. [Source](https://www.hetzner.com/legal/cloud-server/), checked 2026-11-26.
+- The miner is closed source, so nobody outside its developer can audit what it runs. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/srbminer-multi/README.md), checked 2026-11-26.
+- The GPU's electricity can cost more than the coins earned, and Pearl's price moves fast. [Source](https://github.com/GeiserX/CashPilot/blob/main/docs/guides/srbminer-multi.md), checked 2026-11-26.
+
+**Pros**
+
+- The miner sends work to the pool and does not relay anyone else's traffic. [Source](https://github.com/GeiserX/CashPilot/blob/main/images/srbminer-multi/README.md), checked 2026-11-26.
+- You can mine Pearl on HeroMiners with a public address and no account. [Source](https://pearl.herominers.com/how-to-mine-pearl-prl/), checked 2026-11-26.
 
 <a id="unmineable"></a>
 

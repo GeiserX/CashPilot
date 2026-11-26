@@ -1,0 +1,183 @@
+name: SRBMiner-Multi (GPU mining)
+slug: srbminer-multi
+category: mining
+status: beta
+website: https://github.com/doktor83/SRBMiner-Multi
+description: >-
+  Mine Pearl, Zano or Ravencoin with one NVIDIA GPU. CashPilot downloads the
+  official SRBMiner-Multi release at first start and checks its SHA-256. Your
+  chosen pool pays your public payout address. SRBMiner-Multi keeps 2% of
+  hashing time on Pearl and 0.85% on the other two. Electricity can cost more
+  than the coins you earn.
+short_description: Mine Pearl and other GPU coins on an NVIDIA GPU
+
+# The miner has no referral programme. The pool is the user's choice.
+referral:
+  signup_url: https://github.com/doktor83/SRBMiner-Multi/releases
+  program: false
+  account: false
+
+docker:
+  image: drumsergio/cashpilot-srbminer-multi:3.9.0-r1@sha256:a1aee5f41abc7d748827cd6e27540564c6930a74c44f954844840ece4a91c059
+  platforms: [linux/amd64]
+  runtime: runc
+  gpu:
+    vendor: nvidia
+    count: 1
+  resources:
+    cpu_shares: 128
+  env:
+    - key: WALLET
+      label: Payout address
+      required: true
+      secret: false
+      description: >-
+        Your public Pearl address (prl1...). For Zano or Ravencoin, enter
+        that coin's address and a pool for it.
+      pattern: 'prl1[02-9ac-hj-np-z]{8,87}|[1-9A-HJ-NP-Za-km-z]{26,128}'
+    - key: WORKER_NAME
+      label: Worker name
+      required: true
+      identifier: true
+      pattern: '[A-Za-z0-9_\-]{1,32}'
+    - key: ALGO
+      label: Algorithm
+      default: pearlhash
+      description: pearlhash for Pearl, progpow_zano for Zano, kawpow for Ravencoin.
+      pattern: 'pearlhash|progpow_zano|kawpow'
+    - key: POOL_URL
+      label: Pool (host:port)
+      required: true
+      default: pearl.herominers.com:1200
+      pattern: '[A-Za-z0-9][A-Za-z0-9.\-]*:[0-9]{2,5}'
+    - key: POOL_TLS
+      label: Encrypt the pool connection (TLS)
+      default: "true"
+      pattern: 'true|false'
+  volumes:
+    - "srbminer-multi-cache:/var/lib/srbminer"
+  # The miner prints only to a terminal. --log-file sends its log to the
+  # container output, so the logs page shows it.
+  command: >-
+    --disable-cpu --algorithm ${ALGO} --pool ${POOL_URL}
+    --wallet ${WALLET}.${WORKER_NAME} --tls ${POOL_TLS} --log-file /dev/stdout
+
+mining:
+  dev_fee_percent: 2
+  dev_fee_source: https://github.com/doktor83/SRBMiner-Multi/blob/3.9.0/README.md
+  pool_fee_note: >-
+    The 2% miner fee is for pearlhash. SRBMiner-Multi keeps 0.85% on
+    progpow_zano and kawpow. HeroMiners, the default Pearl pool, charges a 1%
+    pool fee. It checks payouts every hour and pays from 1 PRL. Other pools
+    set their own rates and thresholds.
+
+requirements:
+  residential_ip: false
+  vps_ip: true
+  gpu: true
+  note: Linux amd64, an NVIDIA GPU and the NVIDIA Container Toolkit
+  hosting_note: >-
+    This machine reports a hosting connection. Check your provider's terms
+    before mining. Some providers, including Hetzner Cloud, prohibit it.
+    Check your actual power costs before relying on a profit estimate.
+
+payment:
+  methods: [crypto]
+  crypto_token: PRL
+  currency: PRL
+  minimum_payout: 1 PRL (HeroMiners)
+  frequency: When the pool threshold is reached
+earnings:
+  monthly_low: 0
+  monthly_high: 75
+  currency: USD
+  per: device
+  notes: >-
+    Gross estimate before electricity. On 2026-11-25 hashrate.no estimated
+    about $2.45 a day on Pearl for an RTX 4070 drawing about 142 W. We have
+    not measured it. Pearl is a new coin, and its
+    price and difficulty change fast. Check your GPU's power draw and your
+    electricity price to see if it pays.
+cashout:
+  method: auto
+  dashboard_url: https://pearl.herominers.com/
+  min_amount: 1
+  currency: PRL
+  notes: >-
+    The pool pays your address when your balance reaches your threshold.
+    The pool holds the balance until it pays you.
+payout:
+  model: external
+  address_env: WALLET
+  address_source: env
+collector:
+  type: manual
+  notes: >-
+    Check your balance on your pool's website. CashPilot does not read Pearl
+    pool balances yet.
+
+disclosure:
+  sells: compute
+  third_party_traffic: No. The miner sends work to the pool you choose.
+  data_collected: >-
+    Your payout address, worker name and IP address go to the pool. The first
+    start downloads the miner from GitHub.
+  isp_risk: Some networks and DNS resolvers block mining pool connections.
+  account_rules: Most pools identify you by your public payout address.
+
+rating:
+  reviewed_on: "2026-11-26"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: unknown
+    terms_fit: fair
+    traffic_transparency: good
+    privacy: fair
+    identity_checks: good
+    support: unknown
+    earnings_realism: fair
+    longevity: unknown
+  notes:
+    payout_record: The pool pays the wallet. We have not run the miner on a GPU or seen a payout yet.
+    payout_terms: The pool sets its payout threshold and fee. The miner keeps a share of hashing time.
+    account_safety: Pool restrictions vary. We did not review account enforcement across pools.
+    terms_fit: CashPilot can run the miner on an owned machine. Check hosting terms before using a VPS.
+    traffic_transparency: The miner submits work to the pool over an outbound connection.
+    privacy: The miner is closed source. The pool sees your payout address, worker name and IP address.
+    identity_checks: HeroMiners lets a miner connect with a public Pearl address.
+    support: We did not test support for the miner or the pools.
+    earnings_realism: Pearl is a new coin. Its price, difficulty and your power price decide the result.
+    longevity: Pearl launched in 2026. We did not review its long-term prospects.
+  cons:
+    - text: The miner keeps 2% of hashing time on Pearl and 0.85% on Zano and Ravencoin.
+      criterion: payout_terms
+      kind: terms
+      source: https://github.com/doktor83/SRBMiner-Multi/blob/3.9.0/README.md
+      checked_on: "2026-11-26"
+    - text: Some hosting providers prohibit cryptocurrency mining.
+      criterion: terms_fit
+      kind: terms
+      source: https://www.hetzner.com/legal/cloud-server/
+      checked_on: "2026-11-26"
+    - text: The miner is closed source, so nobody outside its developer can audit what it runs.
+      criterion: privacy
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/images/srbminer-multi/README.md
+      checked_on: "2026-11-26"
+    - text: The GPU's electricity can cost more than the coins earned, and Pearl's price moves fast.
+      criterion: earnings_realism
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/docs/guides/srbminer-multi.md
+      checked_on: "2026-11-26"
+  pros:
+    - text: The miner sends work to the pool and does not relay anyone else's traffic.
+      criterion: traffic_transparency
+      kind: our_experience
+      source: https://github.com/GeiserX/CashPilot/blob/main/images/srbminer-multi/README.md
+      checked_on: "2026-11-26"
+    - text: You can mine Pearl on HeroMiners with a public address and no account.
+      criterion: identity_checks
+      kind: terms
+      source: https://pearl.herominers.com/how-to-mine-pearl-prl/
+      checked_on: "2026-11-26"
