@@ -1742,10 +1742,52 @@ class TestStorageAndRoutes:
 
     def test_a_worker_error_never_shows_the_proxy_password(self):
         definition = {"password": PASSWORD}
-        failing = AsyncMock(side_effect=HTTPException(status_code=409, detail=f"refused socks5://u:{PASSWORD}@h"))
-        with patch.object(main, "_proxy_to_worker", failing), pytest.raises(HTTPException) as err:
-            asyncio.run(main._proxy_worker_call(7, "POST", "/x", definition))
-        assert PASSWORD not in str(err.value.detail)
+        answer = _worker_answer(409, {"detail": f"refused socks5://u:{PASSWORD}@h"})
+        assert _proxy_call_error(definition, answer).detail == "refused socks5://u:***@h"
+
+    @pytest.mark.parametrize(
+        ("status", "body", "ours"),
+        [
+            (401, {"detail": "Invalid API key"}, main._WORKER_REFUSED_OUR_KEY),
+            (500, None, main._worker_failure_text(500)),
+            (404, None, main._worker_failure_text(404)),
+        ],
+        ids=["key-refused", "no-reason", "unknown-route"],
+    )
+    def test_our_own_text_is_never_masked(self, status, body, ours):
+        # A login that is a word of our text ("worker") would turn the key
+        # refusal into something _copy_removal_pending no longer recognises.
+        definition = {"username": "worker", "password": "the", "auth_key": "key"}
+        exc = _proxy_call_error(definition, _worker_answer(status, body))
+        assert exc.detail == ours
+
+
+def _worker_answer(status, body=None):
+    resp = MagicMock(status_code=status)
+    if body is None:
+        resp.json.side_effect = ValueError("not JSON")
+        resp.text = ""
+    else:
+        resp.json.return_value = body
+        resp.text = json.dumps(body)
+    return resp
+
+
+def _proxy_call_error(definition, resp):
+    """What _proxy_worker_call raises when the real _proxy_to_worker gets ``resp`` from the worker."""
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post.return_value = resp
+    worker = {"id": 7, "name": "box", "status": "online", "url": "http://192.168.1.10:8081"}
+    with (
+        patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value=worker),
+        patch.object(main.httpx, "AsyncClient", return_value=client),
+        patch.object(main, "FLEET_API_KEY", "test-key"),
+        pytest.raises(HTTPException) as err,
+    ):
+        asyncio.run(main._proxy_worker_call(7, "POST", "/x", definition))
+    return err.value
 
 
 def _slow_first_read():

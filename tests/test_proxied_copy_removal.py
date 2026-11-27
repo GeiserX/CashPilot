@@ -67,8 +67,9 @@ def _run(fn):
     return asyncio.run(go())
 
 
-async def _proxy_with_copy(worker_id=7, slug="proxyrack"):
-    created = await main.api_create_proxy(_Req({"name": "P", "kind": "socks5", "host": "h.example", "port": 1}), {})
+async def _proxy_with_copy(worker_id=7, slug="proxyrack", **login):
+    proxy = {"name": "P", "kind": "socks5", "host": "h.example", "port": 1, **login}
+    created = await main.api_create_proxy(_Req(proxy), {})
     assert created["id"] == 1, "COPY_UUID is derived for proxy 1"
     await database.save_proxied_copy(created["id"], worker_id, slug)
     return created["id"]
@@ -119,6 +120,39 @@ class TestTheWorkerConfirms:
         status, copies = _run(go)
         # The worker said no: the copy still exists, so it is not shown as removing.
         assert status == refusal.status_code and copies == [(7, "proxyrack", False)]
+
+
+class TestAKeyRefusalWithALoginThatIsAWordOfIt:
+    """The proxy's secrets are masked out of the worker's words only, never out of our refusal text."""
+
+    LOGIN = {"username": "worker", "password": "key"}
+
+    def test_the_removal_fails_and_is_not_left_pending(self, db):
+        async def go():
+            pid = await _proxy_with_copy(**self.LOGIN)
+            a, b, c, d = _worker(AsyncMock(side_effect=KEY_REFUSED))
+            with a, b, c, d, pytest.raises(HTTPException) as err:
+                await main.api_remove_proxied_copy(pid, 7, "proxyrack", {})
+            return err.value.detail, await _copies()
+
+        detail, copies = _run(go)
+        assert detail == main._WORKER_REFUSED_OUR_KEY and copies == [(7, "proxyrack", False)]
+
+    def test_a_retry_the_worker_refuses_lists_the_copy_again(self, db):
+        spawned: list = []
+
+        async def go():
+            pid = await _proxy_with_copy(**self.LOGIN)
+            a, b, c, d = _worker(AsyncMock(side_effect=TIMEOUT), spawned)
+            with a, b, c, d:
+                await main.api_remove_proxied_copy(pid, 7, "proxyrack", {})
+            a, b, c, d = _worker(AsyncMock(side_effect=KEY_REFUSED), spawned)
+            with a, b, c, d:
+                await main._queue_copy_removals(7)
+                await spawned.pop()
+            return await _copies()
+
+        assert _run(go) == [(7, "proxyrack", False)]
 
 
 class TestASlowWorker:

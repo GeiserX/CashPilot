@@ -7925,10 +7925,14 @@ async def _proxy_to_worker(
                     raise HTTPException(status_code=503, detail=_WORKER_REFUSED_OUR_KEY)
                 gateway = resp.status_code in _GATEWAY_NO_ANSWER or resp.status_code == 503
                 unknown = marked and ((gateway and not _worker_restored_nothing(resp)) or _worker_left_restore(resp))
-                raise (_WorkerNoAnswer if unknown else HTTPException)(
+                err = (_WorkerNoAnswer if unknown else HTTPException)(
                     status_code=resp.status_code,
                     detail=safe or _worker_failure_text(resp.status_code),
                 )
+                # Only these words are the worker's own, so only they can echo
+                # something it was sent: _proxy_worker_call masks them, never ours.
+                err.worker_text = bool(safe)
+                raise err
             return resp.json()
     except (
         httpx.ConnectError,
@@ -8351,6 +8355,11 @@ async def _proxy_worker_call(
     try:
         return await _proxy_to_worker(worker_id, method, path, json=json, timeout=timeout)
     except HTTPException as exc:
+        # Only the worker's own words can echo a proxy secret. Our fixed texts
+        # carry none, and a short login masked inside one changes it: the key
+        # refusal would stop reading as one (_copy_removal_pending).
+        if not getattr(exc, "worker_text", False):
+            raise
         if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
             raise  # _safe_worker_detail checked the fields and supplies the message.
         raise HTTPException(status_code=exc.status_code, detail=_mask(exc.detail, proxies.secret_values(definition)))
