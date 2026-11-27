@@ -705,14 +705,17 @@ def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
 def placeholders(text: str) -> frozenset:
     """The placeholder signature of one string."""
     out: set = set()
-    attrs: list[str] = []
-    for m in _TAG.finditer(text):
+
+    def tag(m: re.Match) -> str:
         href = _HREF.search(m.group(3))
         out.add(("tag", m.group(1) + m.group(2).lower(), (href.group(1) or href.group(2)) if href else ""))
-        # A placeholder in another attribute (title="{name}") still counts:
-        # keep the attribute values, without their quotes, for the scan below.
-        attrs += [a or b for a, b in _ATTR_VALUE.findall(_HREF.sub("", m.group(3)))]
-    text = " ".join([_TAG.sub("", text), *attrs])
+        # A placeholder in another attribute (title="{name}") still counts: the
+        # tag becomes its attribute values, unquoted and in place, so implicit
+        # printf positions keep their order.
+        values = [a or b for a, b in _ATTR_VALUE.findall(_HREF.sub("", m.group(3)))]
+        return " " + " ".join(values) + " " if values else ""
+
+    text = _TAG.sub(tag, text)
     for m in _SHELL.finditer(text):
         out.add(("shell", m.group(1)))
     body = _SHELL.sub("", text)
