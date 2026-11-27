@@ -107,8 +107,8 @@ def _validate_worker_url(raw_url: str) -> tuple[str, str | None]:
     should connect to directly instead of re-resolving the hostname — this closes
     the DNS-rebinding TOCTOU where a name that resolved to a safe address here flips
     to a metadata/loopback address when httpx re-resolves at request time. It is
-    ``None`` when the host is already a literal IP (nothing to re-resolve) or, in
-    permissive mode, when the host could not be resolved (best-effort).
+    ``None`` only when the host is already a literal IP (nothing to re-resolve). A
+    hostname that does not resolve is refused, never passed on unpinned.
 
     Resolves hostnames and validates the resolved IP(s) so a DNS name that points at
     a metadata/loopback address is rejected (DNS-rebinding guard). Synchronous — its
@@ -147,13 +147,16 @@ def _validate_worker_url(raw_url: str) -> tuple[str, str | None]:
         infos = socket.getaddrinfo(host, parsed.port, proto=socket.IPPROTO_TCP)
         resolved = {ipaddress.ip_address(info[4][0]) for info in infos}
     except (socket.gaierror, ValueError):
-        # Unresolvable: fatal in strict (can't prove it's allowed), non-fatal in
-        # permissive (the request itself will fail if the host is truly dead; we
-        # don't want a transiently-unresolvable worker to hard-400).
-        if _WORKER_URL_POLICY == "strict" and not hostname_allowed:
-            raise HTTPException(status_code=400, detail="Worker URL host does not resolve") from None
-        # Permissive + unresolvable: best-effort, nothing to pin.
-        return raw_url.rstrip("/"), None
+        # Fail closed, in every policy. With no checked IP there is nothing to pin,
+        # and httpx would resolve the name again for the request: a name that
+        # failed here (EAI_AGAIN) can answer loopback or metadata there. A name on
+        # the strict allowlist skips the CIDR check, never this one. 503 because a
+        # resolver that recovers makes the next attempt work; a name strict mode
+        # could never accept keeps its 400.
+        status = 400 if _WORKER_URL_POLICY == "strict" and not hostname_allowed else 503
+        raise HTTPException(
+            status_code=status, detail="Worker URL host does not resolve, so nothing was sent"
+        ) from None
 
     for addr in resolved:
         _assert_ip_not_blocked(addr)
