@@ -118,10 +118,13 @@ def _catalog_runtime(slug: str) -> str | None:
 
 def _pin(slug: str, report: dict[str, Any] | None, network_mode: str | None) -> str | None:
     pins = (report or {}).get("pins") if isinstance((report or {}).get("pins"), dict) else {}
+    # The worker applies both variables to bridge networking only (orchestrator.container_runtime).
+    if (network_mode or "bridge") not in ("bridge", "default"):
+        return None
     overrides = pins.get("overrides") if isinstance(pins.get("overrides"), dict) else {}
     if slug in overrides:
         return i18n.t("layers.why.pin_override", slug=slug, runtime=str(overrides[slug]))
-    if pins.get("default") and (network_mode or "bridge") in ("bridge", "default"):
+    if pins.get("default"):
         return i18n.t("layers.why.pin_default", runtime=str(pins["default"]))
     return None
 
