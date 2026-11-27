@@ -64,6 +64,21 @@ docker:
     - pattern: "user is disabled"
       means: "IPRoyal Pawns has disabled this account."
       state: account_disabled
+    # Seen live (Nov 2026) on two boxes for hours, container Up: pawns-cli
+    # retries every 1 to 10 minutes and logs
+    #   {"name":"not_running","parameters":{"error":"ip_used","message":"getting free port failed (ip has alive peer)"}}
+    # A copy that shares logs {"name":"running"} once, after it starts.
+    - pattern: "ip_used|ip has alive peer"
+      unless: '"name":\s*"running"'
+      window_hours: 6
+      min_matches: 5
+      means: >-
+        Pawns sees another live device on this IP address and pays only one
+        per IP, so this copy runs but shares nothing and earns nothing. Stop
+        any other Pawns app on this IP, on another box, a PC or a phone. If
+        there is none, wait for Pawns to drop the old device, or ask Pawns
+        support to release it.
+      state: failing
 
 requirements:
   residential_ip: true
