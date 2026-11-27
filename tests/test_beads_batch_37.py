@@ -51,7 +51,8 @@ class TestTheWizardSaysIt:
         assert 'svc["has_collector"]' in source[i:j]
 
     def test_the_notice_names_where_to_go(self):
-        assert "Settings → Collectors" in js()
+        assert "Settings → Earnings collection" in js()
+        assert "Settings → Collectors" not in js(), "Settings has no section by that name"
 
     def test_it_says_the_service_still_earns(self):
         """Without this it reads as "your deployment is broken", which it is not."""

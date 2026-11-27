@@ -3009,7 +3009,7 @@ const CP = (() => {
     // cause, because "no data" without a reason reads as a broken page.
     const reason = service.has_collector
       ? 'No earnings have been read for this service yet. Add its credentials in '
-        + 'Settings \u2192 Collectors, or wait for the next hourly collection if you already have.'
+        + 'Settings \u2192 Earnings collection, or wait for the next hourly collection if you already have.'
       : 'CashPilot has no earnings collector for this service yet, so it cannot read a balance. '
         + 'It may still be running and earning \u2014 check the provider\'s own dashboard.';
     body.innerHTML = `<p>${escapeHtml(reason)}</p>`;
@@ -3772,7 +3772,7 @@ const CP = (() => {
         <div class="inline-note">
           The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
           add earnings-tracking credentials under
-          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}">Settings → Collectors</a>
+          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}">Settings → Earnings collection</a>
           after deploying. This is optional — the service earns either way.
         </div>`;
   }
@@ -4354,7 +4354,7 @@ const CP = (() => {
         ${todo.map(l => item(l, true)).join('')}` : ''}
         ${done.length ? `
         <div class="device-link-title">Added to your account</div>
-        <p class="device-link-text">CashPilot added this device with the credentials saved under Settings → Collectors.</p>
+        <p class="device-link-text">CashPilot added this device with the credentials saved under Settings → Earnings collection.</p>
         ${done.map(l => item(l, false)).join('')}` : ''}
       </div>`);
   }
@@ -4906,7 +4906,7 @@ const CP = (() => {
       // A custom service's image is edited in its definition, not per deploy.
       if (!svc.custom) html += imageChoiceSection(svc, workers);
 
-      // Earnings tracking uses SEPARATE credentials (Settings → Collectors).
+      // Earnings tracking uses SEPARATE credentials (Settings → Earnings collection).
       // The fields above only configure the container that earns; they don't
       // let CashPilot read your balance. Make that explicit at deploy time.
       if (svc.has_collector) {
