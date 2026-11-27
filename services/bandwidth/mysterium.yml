@@ -28,6 +28,7 @@ docker:
   # gVisor cannot run this node (no iptables-nft, no kernel WireGuard), so an
   # operator default of CASHPILOT_CONTAINER_RUNTIME=runsc must not reach it.
   runtime: runc
+  runtime_reason: "gVisor gives it no iptables-nft and no kernel WireGuard, which it needs to carry traffic."
   platforms: [linux/amd64, linux/arm64, linux/arm/v7]
   resources:
     mem_limit: "768m"

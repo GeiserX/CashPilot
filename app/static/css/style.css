@@ -1634,6 +1634,8 @@ a.svc-name:hover { text-decoration: underline; }
 .badge-unknown, .badge-available, .badge-category, .badge-residential, .badge-docker { color: var(--text-muted); background: none; }
 .badge-external { color: var(--text-secondary); background: none; }
 .badge-instances { font-family: var(--font-mono); font-size: var(--fs-1); color: var(--text-muted); background: none; margin-left: 4px; }
+.badge-layers { font-size: var(--fs-1); color: var(--text-muted); background: none; margin-left: 4px; }
+.badge-layers-warn { color: var(--warning); }
 .badge[title^="Health"] { font-family: var(--font-mono); font-size: var(--fs-2); color: var(--text-secondary); font-weight: 400; }
 .badge-error[title^="Health"] { color: var(--warning); }
 .badge-stopped[title^="Health"] { color: var(--error); font-weight: 600; }
@@ -2066,6 +2068,12 @@ body.gate { display: flex; flex-direction: column; }
 .iso-report { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: var(--fs-2); overflow-wrap: anywhere; }
 .iso-head { font-weight: 600; margin-bottom: 6px; }
 .iso-line { margin: 4px 0; max-width: 80ch; }
+/* Fleet: the security layers of one worker (fleet.html renderLayers). */
+.layer-earners, .layer-check { list-style: none; margin: 6px 0; padding: 0; }
+.layer-earners li, .layer-check li { margin: 3px 0; }
+.layer-default { width: auto; min-width: 16ch; display: inline-block; }
+.layer-cmd-row { margin: 8px 0; max-width: 110ch; }
+.layer-cmd { font-family: var(--font-mono); font-size: var(--fs-1); width: 100%; resize: vertical; }
 .iso-group { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 8px; margin: 6px 0; align-items: baseline; }
 .iso-label { color: var(--text-muted); }
 .iso-targets { display: flex; flex-wrap: wrap; gap: 4px 14px; }
