@@ -489,7 +489,7 @@ Tested on 2026-11-27 with Docker on an arm64 Mac mini. linux/arm64 ran natively 
 - The install command is `pip install --no-cache-dir --only-binary=:all: iroh==1.2.0`. pip printed `Downloading iroh-1.2.0-py3-none-manylinux_2_28_aarch64.whl (7.0 MB)` on arm64 and the `x86_64` wheel (7.2 MB) on amd64, then `Successfully installed iroh-1.2.0`.
 - On `python:3.15-alpine`, pip printed `ERROR: Could not find a version that satisfies the requirement iroh==1.2.0 (from versions: none)`. It fails the same way without `--only-binary`, because there is no sdist.
 - The echo test:
-  - Two containers on one Docker network ran a server process and a client process. The client sent `hello` over ALPN `cashpilot/fleet/1` and read it back.
+  - A server container and a client container on one Docker network ran the test. The client sent `hello` over ALPN `cashpilot/fleet/1` and read it back.
   - Three dial forms passed on both architectures: a full ticket, relay URL only, and id only through n0 discovery.
   - A second arm64 run passed 15 times out of 15.
   - A custom relay map (`preset_minimal()` with `RelayMode.custom_from_urls`) also passed.
