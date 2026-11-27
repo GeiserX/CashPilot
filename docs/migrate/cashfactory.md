@@ -12,8 +12,8 @@ CashPilot. Two copies behind one connection earn as one, and the same EarnApp
 device id must not run twice. Run `docker compose down` in the CashFactory
 folder. Its
 [compose file](https://github.com/OlivierGaland/CashFactory/blob/0ff4bd0c3b020d82c91e095db43ba5c9e356ac94/docker-compose.yml)
-also starts Portainer and two Watchtower containers that mount the Docker
-socket (lines 31, 141 and 264). Make sure they are gone too: `docker ps` should
+also starts three containers that mount the Docker socket: Portainer (line 31)
+and two Watchtower containers (lines 141 and 264). Make sure they are gone too: `docker ps` should
 list none of them.
 
 ## Which file to use

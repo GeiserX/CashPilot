@@ -4,10 +4,10 @@ CashPilot uses a split **UI + Worker** architecture. The UI never touches Docker
 
 ## Components
 
-| Component | Image | Port | Docker Socket | Purpose |
+| Component | Image | Port | Docker access | Purpose |
 |-----------|-------|:----:|:-------------:|---------|
 | **CashPilot UI** | `drumsergio/cashpilot` | 8080 | No | Web dashboard, earnings collection, service catalog, credential storage, scheduling |
-| **CashPilot Worker** | `drumsergio/cashpilot-worker` | 8081 | **Yes** | Docker container lifecycle, health reporting, heartbeats to UI |
+| **CashPilot Worker** | `drumsergio/cashpilot-worker` | 8081 | Through `cashpilot-socket-proxy` | Docker container lifecycle, health reporting, heartbeats to UI |
 
 There is **no standalone mode**. Every server that runs Docker containers needs a worker. The UI is a pure dashboard/scheduler -- it can run on any machine, including one without Docker.
 
@@ -49,6 +49,7 @@ cashpilot/
     depin/                  # DePIN services
     storage/                # Storage sharing services
     compute/                # GPU compute services
+    mining/                 # Mining services
   docs/                     # Documentation and guides
     guides/                 # Per-service setup guides
   Dockerfile                # UI image: multi-stage python:3.15-alpine, su-exec, non-root
