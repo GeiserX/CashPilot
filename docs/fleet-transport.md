@@ -508,8 +508,9 @@ The core of the two processes:
 
 ```python
 # server
-ep = await iroh.Endpoint.bind(iroh.EndpointOptions(
-    preset=iroh.preset_n0(), secret_key=seed32, alpns=[b"cashpilot/fleet/1"]))
+ep = await iroh.Endpoint.bind(
+    iroh.EndpointOptions(preset=iroh.preset_n0(), secret_key=seed32, alpns=[b"cashpilot/fleet/1"])
+)
 await ep.online()
 while (inc := await ep.accept_next()) is not None:
     conn = await (await inc.accept()).connect()
