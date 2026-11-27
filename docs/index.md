@@ -20,8 +20,8 @@ hide:
 
 **CashPilot** runs passive income services on your own servers and shows what they earn in one dashboard. It is a UI that holds the catalog, the credentials and the earnings history, and on each server a worker that starts and watches the service containers through a Docker socket proxy. Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
 
-!!! tip "New in 2.0"
-    The worker reaches Docker only through a socket proxy and only the containers, volumes and networks it created; earners are fenced off your LAN by default; and proxied copies let one box earn on several IPs. Upgrading from 1.x means changing the image tags: [What's new in 2.0](whats-new-2.0.md) lists what changed and how to upgrade.
+!!! tip "New in 3.0"
+    A redeploy now replaces only the container you approved. Mining and GPU grants arrive in beta. Upgrading from 2.x means upgrading the UI first, then every worker, and changing the image tags: [What's new in 3.0](whats-new-3.0.md) lists what changed and how to upgrade.
 
 <div class="grid cards" markdown>
 

@@ -4,8 +4,8 @@ Every release, grouped by what changed. Generated from commit history.
 
 > **Upgrading?** Read [UPGRADING.md](UPGRADING.md) first. This file lists what
 > changed; that one lists what you have to *do*. They are not the same, and this
-> file cannot be trusted to flag breaking changes — only one commit in the
-> project's history carries a breaking-change marker.
+> file cannot be trusted to flag breaking changes — only the commits that cut a
+> major release carry a breaking-change marker.
 
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
