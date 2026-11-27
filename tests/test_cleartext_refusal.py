@@ -271,7 +271,8 @@ def test_ui_reaches_a_private_name_worker():
 
 def test_plain_http_refusal_names_no_userinfo():
     text = worker_proxy.plain_http_refusal("http://user:hunter2@worker.example.com:8081")
-    assert text and "hunter2" not in text and "worker.example.com" in text
+    assert text and "hunter2" not in text
+    assert "plain http:// to worker.example.com, which is not a private address" in text
     assert worker_proxy.plain_http_refusal("https://worker.example.com") is None
     assert worker_proxy.plain_http_refusal("http://10.1.1.1:8081") is None
 
