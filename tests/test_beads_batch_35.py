@@ -109,11 +109,11 @@ class TestDuplicateNamesAreFlagged:
 class TestTheRemovalPromptNamesWhichOne:
     def test_it_takes_the_client_id(self):
         source = without_comments(fleet_html())
-        assert "function removeWorker(workerId, name, clientId)" in source
+        assert "function removeWorker(workerId, name, clientId, desktop)" in source
 
     def test_the_handler_passes_it(self):
         source = without_comments(fleet_html())
-        assert "removeWorker(id, name, btn.dataset.workerClient)" in source
+        assert "removeWorker(id, name, btn.dataset.workerClient, btn.dataset.workerDesktop === '1')" in source
 
     def test_the_button_carries_it(self):
         source = without_comments(fleet_html())

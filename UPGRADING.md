@@ -279,7 +279,8 @@ from sysfs, and it gives a GPU only to a catalog service that declares one.
 **Affects you if** a service you deploy sets an environment variable that
 starts with `NVIDIA_`, or a custom service uses an NVIDIA GPU.
 
-- The worker refuses a deploy with any `NVIDIA_` variable (HTTP 403).
+- The worker refuses a deploy with any `NVIDIA_` variable (HTTP 403). Saving a
+  custom service with one is refused too (HTTP 400).
 - The worker sets `NVIDIA_VISIBLE_DEVICES=void` on every container it creates
   without an NVIDIA grant. On a host whose default Docker runtime is `nvidia`,
   such a container loses the GPU on its next deploy
@@ -1379,7 +1380,8 @@ enrolled.
    returns it to the worker **once**.
 3. The worker persists the key under its own private `/data/.worker_key` and
    uses it from then on. The UI addresses that worker with the same key.
-4. Once enrolled, the shared key **no longer works** for that worker.
+4. Once a heartbeat signed with its own key reaches the UI, the shared key
+   **no longer works** for that worker. The worker sends that heartbeat at once.
 
 You don't handle keys by hand: this all happens on the next heartbeat.
 

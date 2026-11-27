@@ -34,6 +34,21 @@ def schema_path():
 
 
 @pytest.fixture(autouse=True)
+def _no_pending_worker_key():
+    """A test that enrols the worker leaves its key handover open; close it after each test.
+
+    While it is open the worker accepts the shared key too, which would make
+    later tests of the cutover pass or fail by test order.
+    """
+    yield
+    import sys
+
+    worker_api = sys.modules.get("app.worker_api")
+    if worker_api is not None:
+        worker_api._key_pending = False
+
+
+@pytest.fixture(autouse=True)
 def _worker_deploy_inventory(request, monkeypatch):
     """Most controller tests mock the deploy transport and have no live worker inventory."""
     if request.node.get_closest_marker("real_worker_deploy_inventory"):

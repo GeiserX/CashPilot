@@ -24,6 +24,8 @@ import posixpath
 import re
 from typing import Any
 
+from app import gpu
+
 #: Every custom slug starts with this, and no catalog slug may (catalog._validate).
 SLUG_PREFIX = "custom-"
 
@@ -142,6 +144,10 @@ def _validate_env(raw: Any, previous: dict[str, Any] | None) -> list[dict[str, A
             )
         if key in seen:
             raise ValueError(f"{key} is set twice")
+        if key.upper().startswith(gpu.ENV_PREFIX):
+            # The worker refuses these at deploy (it sets them itself), so a
+            # definition that holds one could be saved but never deployed.
+            raise ValueError(f"CashPilot sets the {gpu.ENV_PREFIX} variables itself, so the worker refuses {key}")
         seen.add(key)
         secret = bool(item.get("secret"))
         value = item.get("value")
