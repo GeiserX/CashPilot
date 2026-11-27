@@ -83,7 +83,7 @@ def test_unresolvable_worker_name_is_refused_in_permissive_mode():
         patch("app.worker_proxy.socket.getaddrinfo", side_effect=_AGAIN),
         pytest.raises(HTTPException) as exc,
     ):
-        _validate_worker_url("http://flip.example:8081")
+        _validate_worker_url("http://flip.lan:8081")
     assert exc.value.status_code == 503
 
 
@@ -106,7 +106,7 @@ def test_failed_lookup_sends_nothing_even_if_the_next_lookup_answers_loopback():
     answer 127.0.0.1. No request may leave."""
     import app.main as main
 
-    worker = {"id": 9, "status": "online", "url": "http://flip.example:8081", "client_id": ""}
+    worker = {"id": 9, "status": "online", "url": "http://flip.lan:8081", "client_id": ""}
     answers = iter([_AGAIN])
 
     def lookup(*args, **kwargs):
@@ -285,13 +285,13 @@ def test_https_worker_with_a_certificate_for_another_name_is_refused(tmp_path):
 
 
 def _beat(worker_api, reply):
-    request = httpx.Request("POST", "http://ui.test:8080/api/workers/heartbeat")
+    request = httpx.Request("POST", "http://ui.lan:8080/api/workers/heartbeat")
     client = MagicMock()
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
     client.post = AsyncMock(return_value=httpx.Response(200, request=request, json=reply))
     with (
-        patch.object(worker_api, "UI_URL", "http://ui.test:8080"),
+        patch.object(worker_api, "UI_URL", "http://ui.lan:8080"),
         patch("app.worker_api.orchestrator.get_status", return_value=[]),
         patch("app.worker_api.orchestrator.docker_available", return_value=False),
         patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
