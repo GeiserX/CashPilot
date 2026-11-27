@@ -831,7 +831,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (!view) return '';
     const iso = sysInfo.isolation || {};
     const proxy = sysInfo.docker_access === 'proxy' ? true : sysInfo.docker_access === 'socket' ? false : null;
-    const fenceOn = iso.mode === 'on' && (iso.fence || {}).state !== 'failed' ? true
+    // On only once the worker applied the filter; before its first apply it cannot say.
+    const fenceState = (iso.fence || {}).state;
+    const fenceOn = iso.mode === 'on'
+      ? (fenceState === 'applied' ? true : !fenceState || fenceState === 'n/a' ? null : false)
       : iso.mode ? false : null;
     const g = view.gvisor || {};
     const gState = g.state === 'installed' ? true : g.state === 'missing' ? false : null;
@@ -851,6 +854,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       layerChip(vmState, `${t('layers.vm')}: ${vmText}`, vmTip),
     ].join(' ');
     const busy = _layerBusy[w.id];
+    // Controls are off only while a save runs; a finished one leaves its message, not a lock.
+    const working = !!(busy && busy.busy);
     const owner = _isOwner && isOnline;
     // Each earner: the layers it really got, and the switch to the other runtime.
     const earners = (view.earners || []).map(e => {
@@ -859,7 +864,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const button = owner
         ? (e.locked
           ? `<button class="btn btn-ghost btn-sm" disabled title="${esc(e.locked)}">${esc(t('layers.earner.locked'))}</button>`
-          : `<button class="btn btn-ghost btn-sm btn-layer-runtime" data-worker-id="${w.id}" data-slug="${esc(e.slug)}" data-service="${esc(e.service)}" data-choice="${other}" data-running="${e.status === 'running' || e.status === 'restarting' ? 1 : 0}"${busy ? ' disabled' : ''}>${esc(other === 'gvisor' ? t('layers.earner.to_gvisor') : t('layers.earner.to_runc'))}</button>`)
+          : `<button class="btn btn-ghost btn-sm btn-layer-runtime" data-worker-id="${w.id}" data-slug="${esc(e.slug)}" data-service="${esc(e.service)}" data-choice="${other}" data-running="${e.status === 'running' || e.status === 'restarting' ? 1 : 0}"${working ? ' disabled' : ''}>${esc(other === 'gvisor' ? t('layers.earner.to_gvisor') : t('layers.earner.to_runc'))}</button>`)
         : '';
       const pending = e.choice && e.runtime && e.choice !== e.runtime
         ? ` <span class="text-warn">${esc(t('layers.earner.pending', { runtime: runtimeLabel(e.choice) }))}</span>` : '';
@@ -870,7 +875,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (earners) body += `<ul class="layer-earners">${earners}</ul>`;
     if (owner && g.state !== 'unsupported' && g.state !== 'unknown') {
       const select = `<label class="detail-label" for="layer-default-${w.id}">${esc(t('layers.default.label'))}</label>
-        <select id="layer-default-${w.id}" class="form-input form-input-sm layer-default" data-worker-id="${w.id}"${busy ? ' disabled' : ''}>
+        <select id="layer-default-${w.id}" class="form-input form-input-sm layer-default" data-worker-id="${w.id}"${working ? ' disabled' : ''}>
           <option value=""${!view.default ? ' selected' : ''}>${esc(t('layers.default.docker'))}</option>
           <option value="runc"${view.default === 'runc' ? ' selected' : ''}>${esc(t('layers.runtime.runc'))}</option>
           <option value="gvisor"${view.default === 'gvisor' ? ' selected' : ''}${view.default_locked ? ` disabled title="${esc(view.default_locked)}"` : ''}>${esc(t('layers.runtime.gvisor'))}</option>

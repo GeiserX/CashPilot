@@ -19,8 +19,10 @@ worker's client_id as the other per-worker settings are.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
+import weakref
 from typing import Any
 
 from app import catalog, database, i18n, layer_scripts, placement
@@ -130,8 +132,12 @@ def _pin(slug: str, report: dict[str, Any] | None, network_mode: str | None) -> 
     return None
 
 
-def locked(slug: str, info: dict[str, Any], choice: str) -> str | None:
-    """Why ``choice`` cannot be made for ``slug`` on this worker, or None when it can."""
+def overruled(slug: str, info: dict[str, Any], choice: str) -> str | None:
+    """Why the catalog or an env pin decides ``slug``'s runtime instead of ``choice``, or None.
+
+    These win on the worker whatever the owner chose, so a stored choice they
+    overrule is not sent: the worker applies them, as the Fleet page says.
+    """
     report = info.get("layers") if isinstance(info.get("layers"), dict) else None
     name = (catalog.get_service(slug) or {}).get("name") or slug
     required = _catalog_runtime(slug)
@@ -141,8 +147,13 @@ def locked(slug: str, info: dict[str, Any], choice: str) -> str | None:
             return i18n.t("layers.why.catalog_reason", service=name, runtime=required, reason=reason.strip())
         return i18n.t("layers.why.catalog", service=name, runtime=required)
     network_mode = ((catalog.get_service(slug) or {}).get("docker") or {}).get("network_mode")
-    if pin := _pin(slug, report, network_mode):
-        return pin
+    return _pin(slug, report, network_mode)
+
+
+def locked(slug: str, info: dict[str, Any], choice: str) -> str | None:
+    """Why ``choice`` cannot be made for ``slug`` on this worker, or None when it can."""
+    if why := overruled(slug, info, choice):
+        return why
     state = gvisor_state(info)
     if state["state"] in ("unknown", "unsupported"):
         return state["why"]
@@ -159,7 +170,13 @@ def fence(container: dict[str, Any], info: dict[str, Any]) -> bool | None:
     iso = info.get("isolation") if isinstance(info.get("isolation"), dict) else {}
     if network == FENCE_NETWORK:
         # With isolation off the network keeps its masquerade but loses its filter.
-        return iso.get("mode") == "on" and (iso.get("fence") or {}).get("state") != "failed"
+        if iso.get("mode") != "on":
+            return False
+        # Fenced only once the worker applied the filter. "reduced" keeps just the
+        # masquerade and "failed" has no filter; before the first apply ("n/a")
+        # the worker cannot say yet.
+        state = (iso.get("fence") or {}).get("state")
+        return True if state == "applied" else None if state in (None, "n/a") else False
     # The operator's own bridge (CASHPILOT_CONTAINER_NETWORK), with their own firewall.
     return bool(iso.get("mode") == "operator" and network == iso.get("network"))
 
@@ -241,10 +258,20 @@ def worker_view(worker: dict[str, Any], stored: dict[str, Any]) -> dict[str, Any
 
 def commands() -> dict[str, Any]:
     """The install, status and undo commands, or the reason none can be shown."""
-    try:
-        return {action: layer_scripts.command("cashpilot-gvisor", action) for action in ("install", "status", "undo")}
-    except layer_scripts.Unavailable as exc:
-        return {"error": str(exc)}
+    if (why := layer_scripts.problem("cashpilot-gvisor")) is not None:
+        return {"error": why}
+    return {action: layer_scripts.command("cashpilot-gvisor", action) for action in ("install", "status", "undo")}
+
+
+# One lock per event loop: each change reads the worker's whole record and writes it back.
+_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = weakref.WeakKeyDictionary()
+
+
+def _lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    if loop not in _locks:
+        _locks[loop] = asyncio.Lock()
+    return _locks[loop]
 
 
 async def set_default(worker: dict[str, Any], choice: str | None) -> dict[str, Any]:
@@ -254,40 +281,49 @@ async def set_default(worker: dict[str, Any], choice: str | None) -> dict[str, A
     its own choice gets the one it runs under now, so a later redeploy of it
     does not move it either.
     """
-    stored = await choices(worker)
-    info = placement.system_info(worker)
-    report = info.get("layers") if isinstance(info.get("layers"), dict) else None
-    for c in _containers(worker):
-        slug = str(c.get("slug") or "")
-        if slug and slug not in stored["earners"] and (now := kind(c.get("runtime"), report)):
-            stored["earners"][slug] = now
-    stored["default"] = choice
-    await save(worker, stored)
-    return stored
+    async with _lock():
+        stored = await choices(worker)
+        info = placement.system_info(worker)
+        report = info.get("layers") if isinstance(info.get("layers"), dict) else None
+        for c in _containers(worker):
+            slug = str(c.get("slug") or "")
+            if slug and slug not in stored["earners"] and (now := kind(c.get("runtime"), report)):
+                stored["earners"][slug] = now
+        stored["default"] = choice
+        await save(worker, stored)
+        return stored
 
 
 async def set_earner(worker: dict[str, Any], slug: str, choice: str | None) -> dict[str, Any]:
-    stored = await choices(worker)
-    if choice is None:
-        stored["earners"].pop(slug, None)
-    else:
-        stored["earners"][slug] = choice
-    await save(worker, stored)
-    return stored
+    async with _lock():
+        stored = await choices(worker)
+        if choice is None:
+            stored["earners"].pop(slug, None)
+        else:
+            stored["earners"][slug] = choice
+        await save(worker, stored)
+        return stored
 
 
 async def for_new_deploy(worker: dict[str, Any], slug: str) -> str | None:
-    """The choice a deploy sends: the earner's own, else the worker's default, recorded as the earner's."""
-    stored = await choices(worker)
-    if slug in stored["earners"]:
-        return stored["earners"][slug]
-    default = stored["default"]
-    if default is None:
-        return None
+    """The choice a deploy sends: the earner's own, else the worker's default, recorded as the earner's.
+
+    A stored choice that the catalog or an env pin now overrules is not sent:
+    the worker applies the pin, and refusing every redeploy would keep the
+    earner down for a choice the owner cannot make here any more.
+    """
     info = placement.system_info(worker)
-    if locked(slug, info, default):
-        # The default does not fit this earner (Mysterium, a pin): Docker's default, as before.
-        return None
-    stored["earners"][slug] = default
-    await save(worker, stored)
-    return default
+    async with _lock():
+        stored = await choices(worker)
+        if slug in stored["earners"]:
+            choice = stored["earners"][slug]
+            return None if overruled(slug, info, choice) else choice
+        default = stored["default"]
+        if default is None:
+            return None
+        if locked(slug, info, default):
+            # The default does not fit this earner (Mysterium, a pin): Docker's default, as before.
+            return None
+        stored["earners"][slug] = default
+        await save(worker, stored)
+        return default
