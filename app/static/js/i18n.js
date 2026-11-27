@@ -34,8 +34,6 @@
 
   let plurals = null;
   try { plurals = new Intl.PluralRules(lang); } catch (e) { plurals = new Intl.PluralRules('en'); }
-  let numbers = null;
-  try { numbers = new Intl.NumberFormat(locale); } catch (e) { numbers = new Intl.NumberFormat('en'); }
 
   // ---- The ICU subset parser: the same grammar as app/i18n/_Parser ----
   function parse(text) {
@@ -92,7 +90,8 @@
       if (kind !== 'plural' && kind !== 'select') throw new Error(`unsupported argument type ${kind} in ${text}`);
       if (text[pos] !== ',') throw new Error(`expected , after ${kind} in ${text}`);
       pos += 1;
-      const options = {};
+      // No prototype: a select value such as "constructor" must find no option and fall to other.
+      const options = Object.create(null);
       for (;;) {
         while (pos < text.length && /\s/.test(text[pos])) pos += 1;
         if (text[pos] === '}') { pos += 1; break; }
@@ -114,7 +113,8 @@
     let out = '';
     for (const part of parts) {
       if (typeof part === 'string') { out += part; continue; }
-      if (part[0] === '#') { out += typeof number === 'number' ? numbers.format(number) : String(number); continue; }
+      // The count as Python's str() writes it, so a message reads the same on both sides.
+      if (part[0] === '#') { out += String(number); continue; }
       if (part[0] === 'arg') {
         out += Object.prototype.hasOwnProperty.call(params, part[1]) ? String(params[part[1]]) : `{${part[1]}}`;
         continue;
@@ -165,21 +165,35 @@
       : `${COOKIE}=${encodeURIComponent(code)}${base}; max-age=${365 * 24 * 3600}`;
   }
 
+  async function save(code) {
+    try {
+      const res = await fetch('/api/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language: code }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return true;
+    } catch (err) {
+      window.alert(t('lang.not_saved', { error: err.message }));
+      return false;
+    }
+  }
+
+  // Saves go one after another, so the account keeps the last choice even when
+  // two changes overlap, and only the last one reloads the page.
+  let saving = Promise.resolve(true);
+  let latest = 0;
   async function choose(code) {
     remember(code);
+    const turn = ++latest;
     // Signed in: the choice goes to the account, so every browser gets it.
     if (window._userRole) {
-      try {
-        const res = await fetch('/api/preferences', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ language: code }),
-        });
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-      } catch (err) {
-        window.alert(t('lang.not_saved', { error: err.message }));
-        return;
-      }
+      saving = saving.then(() => save(code));
+      const saved = await saving;
+      if (!saved || turn !== latest) return;
+    } else if (turn !== latest) {
+      return;
     }
     window.location.reload();
   }

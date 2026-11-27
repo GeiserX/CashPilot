@@ -44,5 +44,37 @@ if (w.t('missing.key') !== 'missing.key') { bad++; console.log('  FAIL missing k
 const broken = load('en', {k: '{n, plural, one {x}}'});
 if (broken.t('k', {n: 1}) !== '{n, plural, one {x}}') { bad++; console.log('  FAIL broken message'); }
 
-console.log(bad ? `\n${bad} failure(s)` : `\nall ${cases.length + 2} cases pass`);
+// Two language changes in a row, the first save slow: the saves run one after
+// another, the account ends on the second choice, and only that one reloads.
+{
+  const posts = [];
+  const answers = [];
+  let reloads = 0;
+  let onChange = null;
+  const select = {value: '', addEventListener: (event, fn) => { onChange = fn; }};
+  const window = {CP_I18N: {lang: 'en', dir: 'ltr', messages: {}}, _userRole: 'owner',
+    location: {reload: () => { reloads++; }}, alert: () => {}};
+  vm.runInNewContext(src, {
+    window,
+    navigator: {language: 'en-US', languages: ['en-US']},
+    document: {readyState: 'complete', cookie: '', querySelectorAll: sel => (sel === 'select[data-lang-choice]' ? [select] : [])},
+    fetch: (url, opts) => new Promise(resolve => {
+      posts.push(JSON.parse(opts.body).language);
+      answers.push(() => resolve({ok: true}));
+    }),
+    Intl, Map, Number, Object, String, Error, Promise, JSON,
+  });
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  select.value = 'es'; onChange();
+  select.value = 'de'; onChange();
+  await tick();
+  const inOrder = posts.length === 1;  // the second save waits for the first
+  answers[0](); await tick(); await tick();
+  answers[1] && answers[1](); await tick(); await tick();
+  const race = inOrder && posts.join() === 'es,de' && reloads === 1;
+  if (!race) { bad++; console.log(`  FAIL overlapping saves: posts ${posts.join()}, reloads ${reloads}, in order ${inOrder}`); }
+  else console.log('  ok   overlapping language saves keep the last choice');
+}
+
+console.log(bad ? `\n${bad} failure(s)` : `\nall ${cases.length + 3} cases pass`);
 process.exit(bad ? 1 : 0);
