@@ -626,7 +626,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             ${_isOwner && !isAndroid && (sysInfo.features || []).includes('activity')
               ? `<a class="btn btn-ghost btn-sm" href="/activity" title="What each earner on this box does on the network: connections, ports, networks, LAN attempts. Off until you switch it on there.">Activity</a>`
               : ''}
-            ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
+            ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}"${sysInfo.device_type === 'desktop' ? ' data-worker-desktop="1"' : ''} title="Remove worker">Remove</button>` : ''}
           </td>
         </tr>
         ${_isolation[w.id] && _isolation[w.id] !== 'running' ? `<tr class="worker-detail"><td colspan="7">${renderIsolation(_isolation[w.id])}</td></tr>` : ''}
@@ -1037,12 +1037,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
   };
 
-  async function removeWorker(workerId, name, clientId) {
+  async function removeWorker(workerId, name, clientId, desktop) {
     // The id is in the prompt because two rows can share a display name — a
     // host redeployed with a new /data leaves its old row behind — and picking
     // the wrong one takes the LIVE host out of the fleet (CashPilot-3fr).
     const which = clientId ? `\n\nId: ${clientId}` : '';
-    if (!confirm(`Remove worker "${name}"?${which}\n\nIt is removed from the fleet here, but the worker itself keeps running. It will re-enrol on its own after a few minutes of rejected heartbeats. To bring it back immediately, delete /data/.worker_key on that host and restart the container.`)) return;
+    // A Desktop never re-enrols by itself and has no /data/.worker_key.
+    const after = desktop
+      ? 'It is removed from the fleet here and stops reporting. It does not join again by itself: on that computer, open Settings, pick Run everything here, then Join my CashPilot.'
+      : 'It is removed from the fleet here, but the worker itself keeps running. It will re-enrol on its own after a few minutes of rejected heartbeats. To bring it back immediately, delete /data/.worker_key on that host and restart the container.';
+    if (!confirm(`Remove worker "${name}"?${which}\n\n${after}`)) return;
     try {
       await CP.api(`/api/workers/${workerId}`, { method: 'DELETE' });
       CP.toast(`Worker "${name}" removed`, 'success');
@@ -1247,7 +1251,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const id = parseInt(btn.dataset.workerId, 10);
     if (isNaN(id)) return;
     const name = btn.dataset.workerName;
-    removeWorker(id, name, btn.dataset.workerClient);
+    removeWorker(id, name, btn.dataset.workerClient, btn.dataset.workerDesktop === '1');
   });
 
   window.copyWorkerEnv = async function() {

@@ -666,6 +666,33 @@ class TestTheRecoveryIsDocumentedWhereItIsNeeded:
         assert "so the shared key is accepted again" not in text
         assert "/data/.worker_key" in text, "the manual recovery must be written down somewhere"
 
+    def test_the_confirm_dialog_tells_a_desktop_how_it_joins_again(self):
+        """A Desktop never re-enrols by itself and has no /data/.worker_key."""
+        import json
+        import shutil
+        import subprocess
+        from pathlib import Path
+
+        node = shutil.which("node")
+        if not node:
+            pytest.skip("node is not installed")
+        html = Path(__file__).resolve().parents[1].joinpath("app/templates/fleet.html").read_text(encoding="utf-8")
+        start = html.index("  async function removeWorker(")
+        body = html[start : html.index("\n  }\n", start) + 4]
+        harness = (
+            "const asked = []; const confirm = m => { asked.push(m); return false; };"
+            f"const fn = new Function('confirm', {json.dumps(body)} + '; return removeWorker;')(confirm);"
+            "(async () => { await fn(1, 'mac', 'c1', true); await fn(2, 'srv', 'c2', false);"
+            "console.log(JSON.stringify(asked)); })();"
+        )
+        desktop, server = json.loads(
+            subprocess.run([node, "-e", harness], capture_output=True, text=True, check=True).stdout
+        )
+        assert "Join my CashPilot" in desktop
+        assert "/data/.worker_key" not in desktop and "re-enrol on its own" not in desktop
+        assert "re-enrol on its own" in server and "/data/.worker_key" in server
+        assert 'data-worker-desktop="1"' in html and "btn.dataset.workerDesktop === '1'" in html
+
     def test_the_confirm_dialog_says_the_worker_keeps_running(self):
         from pathlib import Path
 
