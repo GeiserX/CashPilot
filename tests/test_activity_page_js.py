@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import NODE_T
+
 ROOT = Path(__file__).resolve().parent.parent
 
 _HARNESS = r"""
@@ -32,7 +34,7 @@ def _run(*cases):
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(ROOT / "app/templates/activity.html"), json.dumps(cases)],
+        [node, *NODE_T, "-e", _HARNESS, str(ROOT / "app/templates/activity.html"), json.dumps(cases)],
         capture_output=True,
         text=True,
         check=True,
