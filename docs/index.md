@@ -136,7 +136,7 @@ graph LR
 - It does not run the browser and desktop apps. It lists them, links their signup, and reads their balances where a collector exists.
 - It does not collect in real time. Collectors run every 60 minutes by default (`CASHPILOT_COLLECT_INTERVAL`).
 - It does not count a balance drop as a payout on its own. The dashboard asks you to confirm each one, because a drop can also be a provider correction.
-- It does not fence every earner off your LAN. New installs fence them by default, but an upgraded install whose earners sit on Docker's default bridge stays unfenced until you press **Turn on isolation**, a network you name in `CASHPILOT_CONTAINER_NETWORK` gets your own rules only, and host-networked Mysterium is never fenced ([Network isolation](isolation.md#modes)).
+- It does not fence every earner off your LAN. New installs fence them by default. An upgraded install whose earners sit on Docker's default bridge stays unfenced until you press **Turn on isolation**. A network you name in `CASHPILOT_CONTAINER_NETWORK` gets your own rules only ([Network isolation](isolation.md#modes)). Since 2.0.7 Mysterium runs behind the fence too, but a node deployed through 2.0.6 stays on the host's network, unfenced, until you redeploy it ([Mysterium behind the fence](mysterium-fence.md)).
 - It cannot promise earnings. What a setup makes depends on your country, your connection, your hardware and the services you run, and it can be zero; see the [FAQ](faq.md).
 
 ## Security
