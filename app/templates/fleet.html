@@ -172,6 +172,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
   let fleetTimer = null;
   let _apiKeyRevealed = false;
   let _apiKey = '';
+  // What the page shows in place of a key it could not get. Never copied as one:
+  // in another language it need not look like "(error)".
+  let _apiKeyNote = '';
   let _apiKeySet = false;
   const _isOwner = {{ 'true' if user.r == 'owner' else 'false' }};
 
@@ -210,12 +213,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
   // Lazily fetch the plaintext key (owner-only POST). Returns the key string.
   async function fetchApiKey() {
-    if (_apiKey) return _apiKey;
+    if (_apiKey || _apiKeyNote) return _apiKey;
     try {
       const data = await CP.api('/api/fleet/api-key/reveal', { method: 'POST' });
-      _apiKey = data.api_key || t('fleet.key.not_configured');
+      _apiKey = data.api_key || '';
+      if (!_apiKey) _apiKeyNote = t('fleet.key.not_configured');
     } catch (err) {
-      _apiKey = t('fleet.key.error');
+      _apiKeyNote = t('fleet.key.error');
       CP.toast(t('fleet.key.reveal_failed', { error: err.message || t('fleet.error_word') }), 'error');
     }
     return _apiKey;
@@ -1022,7 +1026,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       btn.textContent = t('fleet.add.revealing');
       await fetchApiKey();
       btn.disabled = false;
-      el.textContent = _apiKey;
+      el.textContent = _apiKey || _apiKeyNote;
       btn.textContent = t('fleet.add.hide');
       _apiKeyRevealed = true;
     }
@@ -1249,13 +1253,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // Lazily fetch the plaintext key (owner-only reveal endpoint) before copying.
     await fetchApiKey();
     const uiUrl = document.getElementById('env-ui-url').textContent;
-    // The key is only worth copying if we actually got one. On a failed reveal
-    // _apiKey is the literal string "(error)" or "(not configured)", and the
-    // old code toasted success regardless -- so the user pasted
+    // The key is only worth copying if we actually got one. A failed reveal
+    // leaves _apiKey empty and says why in _apiKeyNote. The old code copied the
+    // literal "(error)" and toasted success, so the user pasted
     // CASHPILOT_API_KEY=(error) into their compose file and then debugged a
     // worker that could never enrol (CashPilot-0p4).
     if (!_apiKey || _apiKey.startsWith('(')) {
-      CP.toast(t('fleet.add.nothing_to_copy', { value: _apiKey || t('fleet.key.as_unset') }), 'error');
+      CP.toast(t('fleet.add.nothing_to_copy', { value: _apiKeyNote || t('fleet.key.as_unset') }), 'error');
       return;
     }
     const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=server-name`;

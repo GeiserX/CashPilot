@@ -88,6 +88,31 @@ def test_nothing_in_the_browser_code_hides_the_global_t():
     assert not found, "a local named t hides the global t():\n" + "\n".join(found)
 
 
+# An attribute that code reads, holding a message: data-action="wizard{{ t('setup.next') }}"
+# reads wizardNext in English and names no handler in French.
+CODE_ATTR = re.compile(r"""\b(?:data-action|data-a\d|id|class|name|value|href|for|type)="[^"]*(?:\{\{\s*t\(|\$\{t\()""")
+
+
+def test_no_message_sits_inside_an_attribute_that_code_reads():
+    found = []
+    for path in sorted((ROOT / "app/templates").rglob("*.html")) + sorted((ROOT / "app/static/js").glob("*.js")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if CODE_ATTR.search(line):
+                found.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()[:120]}")
+    assert not found, "a translated word inside an attribute that code reads:\n" + "\n".join(found)
+    assert CODE_ATTR.search("""<button data-action="wizard{{ t('setup.next') }}">""")
+    assert CODE_ATTR.search("""`<a class="x ${t('a.b')}">`""")
+    assert not CODE_ATTR.search("""<button title="{{ t('a.b') }}" data-action="go">""")
+
+
+def test_the_fleet_key_never_holds_a_translated_word():
+    """A failed reveal's "(error)" in another language need not start with "(", so it must never be the key."""
+    fleet = (ROOT / "app/templates/fleet.html").read_text(encoding="utf-8")
+    assigned = re.findall(r"\b_apiKey = ([^;]*);", fleet)
+    assert assigned, "the key is no longer assigned where this test looks"
+    assert not [a for a in assigned if re.search(r"(?<![\w$])t\(", a)], assigned
+
+
 def test_en_json_is_sorted_so_parallel_edits_merge():
     """Fix with: python3 -c "import json,sys;p='app/i18n/en.json';d=json.load(open(p));json.dump(dict(sorted(d.items())),open(p,'w'),ensure_ascii=False,indent=2);open(p,'a').write('\\n')" """
     keys = list(EN)

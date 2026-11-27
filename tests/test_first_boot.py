@@ -130,7 +130,7 @@ class TestTheTokenIsDiscoverable:
 
     def test_the_page_and_the_log_use_the_same_words(self):
         """The user greps the logs for what the page told them to look for."""
-        page = ONBOARDING.read_text(encoding="utf-8").lower()
+        page = english_source(ONBOARDING).lower()
         source = (ROOT / "app" / "setup_token.py").read_text(encoding="utf-8").lower()
         assert "owner account" in source
         assert "owner account" in page, "the page quotes a log line that does not exist"
