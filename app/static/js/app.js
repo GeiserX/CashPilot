@@ -3391,10 +3391,12 @@ const CP = (() => {
   function renderLogs(viewer, text) {
     if (!viewer) return;
     const value = String(text ?? '');
-    if (shownLogs.get(viewer) === value) return;
+    // The day is part of the key: past midnight, today's times need their date.
+    const shown = `${new Date().toDateString()}\n${value}`;
+    if (shownLogs.get(viewer) === shown) return;
     const first = !shownLogs.has(viewer);
     const atEnd = viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight < 24;
-    shownLogs.set(viewer, value);
+    shownLogs.set(viewer, shown);
     const { entries, width } = logEntries(value);
     const list = document.createElement('div');
     list.className = 'log-lines';
@@ -3424,9 +3426,15 @@ const CP = (() => {
   }
 
   const LOG_WRAP_KEY = 'cashpilot-log-wrap';
+  // The choice is only remembered: a browser that refuses storage still shows logs.
+  let logWrapFallback = false;
+
+  function logWrapOn() {
+    try { return localStorage.getItem(LOG_WRAP_KEY) === '1'; } catch { return logWrapFallback; }
+  }
 
   function applyLogWrap() {
-    const wrap = localStorage.getItem(LOG_WRAP_KEY) === '1';
+    const wrap = logWrapOn();
     const viewer = document.getElementById('log-content');
     const button = document.getElementById('log-wrap-toggle');
     if (viewer) viewer.classList.toggle('log-wrap', wrap);
@@ -3436,7 +3444,8 @@ const CP = (() => {
   function toggleLogWrap() {
     const viewer = document.getElementById('log-content');
     const atEnd = viewer && viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight < 24;
-    localStorage.setItem(LOG_WRAP_KEY, localStorage.getItem(LOG_WRAP_KEY) === '1' ? '0' : '1');
+    logWrapFallback = !logWrapOn();
+    try { localStorage.setItem(LOG_WRAP_KEY, logWrapFallback ? '1' : '0'); } catch { /* kept in memory */ }
     applyLogWrap();
     // Wrapping changes every line's height: a reader at the end stays there.
     if (atEnd) viewer.scrollTop = viewer.scrollHeight;
