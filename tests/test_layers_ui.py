@@ -121,6 +121,14 @@ class TestLocks:
         why = layers_ui.worker_view(w, NONE)["earners"][0]["locked"]
         assert "CASHPILOT_CONTAINER_RUNTIME_OVERRIDES" in why and "honeygain=runsc-hostnet" in why
 
+    def test_an_env_override_does_not_lock_a_host_networked_earner(self):
+        # The worker applies the variables to bridge networking only.
+        pins = {"default": "runsc-hostnet", "overrides": {"hostie": "runc"}}
+        w = _worker(_layers(pins=pins), [{"slug": "hostie", "runtime": "runc", "network": "host"}])
+        svc = {"name": "Hostie", "docker": {"network_mode": "host"}}
+        with patch.object(layers_ui.catalog, "get_service", return_value=svc):
+            assert layers_ui.worker_view(w, NONE)["earners"][0]["locked"] is None
+
     def test_the_env_default_locks_the_worker_default(self):
         pins = {"default": "runsc-hostnet", "overrides": {}}
         view = layers_ui.worker_view(_worker(_layers(pins=pins)), NONE)
