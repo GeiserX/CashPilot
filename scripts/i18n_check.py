@@ -457,10 +457,12 @@ def _no_duplicates(pairs: list) -> dict:
     return out
 
 
-def _parse_json(path: pathlib.Path) -> tuple[dict, dict, dict]:
-    """Read path once: (the whole tree, its flat texts, its inline hashes)."""
+def _parse_json(path: pathlib.Path, raw: str | None = None) -> tuple[dict, dict, dict]:
+    """Parse path, or raw text already read from it: (tree, flat texts, inline hashes)."""
     try:
-        tree = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_no_duplicates)
+        if raw is None:
+            raw = path.read_text(encoding="utf-8")
+        tree = json.loads(raw, object_pairs_hook=_no_duplicates)
     except (json.JSONDecodeError, ParseError) as e:
         raise ParseError(f"{path}: {e}") from e
     if not isinstance(tree, dict):
@@ -974,12 +976,15 @@ def write_json_inline(path: pathlib.Path, hashes: dict, checked: tuple[dict, dic
     """Rewrite a JSON locale file with every hashed leaf as {"text", "source"}.
 
     `checked` is (texts, inline hashes) as the check read them; a file that
-    changed since, in either, is refused. The file is read once, and the tree
-    that passed this comparison is the tree that gets stamped.
+    changed since, in either, is refused. The tree that passed this comparison
+    is the tree that gets stamped, and a file that changed after that read is
+    refused too, so another editor's change is never lost or stamped.
     """
-    tree, texts, inline = _parse_json(path)
+    changed = ParseError(f"{path}: the file changed while it was being checked; run again")
+    raw = path.read_text(encoding="utf-8")
+    tree, texts, inline = _parse_json(path, raw)
     if (texts, inline) != checked:
-        raise ParseError(f"{path}: the file changed while it was being checked; run again")
+        raise changed
     root = _drop_locale_root(tree, locale_of(path, "json"))
 
     def walk(node: dict, prefix: str) -> None:
@@ -993,6 +998,8 @@ def write_json_inline(path: pathlib.Path, hashes: dict, checked: tuple[dict, dic
                 walk(v, key)
 
     walk(root, "")
+    if path.read_text(encoding="utf-8") != raw:
+        raise changed
     _write_atomic(path, json.dumps(tree, ensure_ascii=False, indent=2) + "\n")
 
 

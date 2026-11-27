@@ -606,7 +606,11 @@ def test_root_level_inline_entry_is_refused(tmp_path):
 
 def test_a_file_changed_between_check_and_stamp_is_not_written(tmp_path):
     es = write(tmp_path / "es.json", json.dumps({"a": "Hola"}))
-    checked = ic.load_json(es)[0]
+    checked = ic.load_json(es)
+    # The control: an unchanged file is stamped.
+    ic.write_json_inline(es, {"a": ic.source_hash("Hello")}, checked)
+    assert json.loads(es.read_text())["a"] == {"text": "Hola", "source": ic.source_hash("Hello")}
+    checked = ic.load_json(es)
     write(es, json.dumps({"a": "Adiós"}))
     with pytest.raises(ic.ParseError):
         ic.write_json_inline(es, {"a": ic.source_hash("Hello")}, checked)
@@ -823,9 +827,9 @@ def test_text_edited_during_the_stamp_is_never_stamped_current(tmp_path, monkeyp
     es = write(tmp_path / "es.json", json.dumps({"a": "Hola"}))
     # The second read is the stamp's own check; the edit lands just after it.
     _edit_after_read(monkeypatch, es, 2, json.dumps({"a": "Hola {name}"}))
-    ic.main([str(en), str(es), "--stamp"])
-    entry = json.loads(es.read_text(encoding="utf-8"))["a"]
-    assert not (isinstance(entry, dict) and entry["text"] == "Hola {name}" and entry["source"] == ic.source_hash("Hi"))
+    assert ic.main([str(en), str(es), "--stamp"]) != 0
+    # The edit stays, unstamped.
+    assert json.loads(es.read_text(encoding="utf-8")) == {"a": "Hola {name}"}
 
 
 def test_a_stamp_keeps_the_file_mode(tmp_path):
