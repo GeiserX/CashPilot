@@ -418,6 +418,30 @@ class TestTheRoutes:
         assert done == {"status": "deleted"}
         assert left == [{"slug": "honeygain", "status": "running"}], "the other service must stay listed"
 
+    def test_a_heartbeat_after_the_removal_keeps_its_list(self, db):
+        """A deploy of the same slug can start and report while the removal is still bookkeeping."""
+
+        async def go():
+            slug = (await _create())["slug"]
+            wid = await database.upsert_worker(
+                "cid-a", "box-a", "http://box-a:8081", containers=json.dumps([{"slug": slug, "status": "running"}])
+            )
+            newer = json.dumps([{"slug": slug, "status": "running", "id": "new"}])
+
+            async def heartbeat(*args, **kwargs):
+                await database.upsert_worker("cid-a", "box-a", "http://box-a:8081", containers=newer)
+
+            with (
+                patch.object(main, "_require_writer", lambda r: None),
+                patch.object(main, "_proxy_worker_command", AsyncMock(return_value={"status": "removed"})),
+                patch.object(main, "_forget_removed_deployment", heartbeat),
+            ):
+                await main._svc_remove(MagicMock(), slug, wid, False)
+            return (await database.get_worker(wid))["containers"], newer
+
+        stored, newer = _run(go)
+        assert stored == newer, "the newer report must win over the removal"
+
     def test_delete_is_refused_while_a_box_has_a_record_of_it(self, db):
         async def go():
             slug = (await _create())["slug"]

@@ -7331,6 +7331,13 @@ async def _svc_remove(
         await database.record_health_event(slug, "remove", worker_id=worker_id)
         metrics.record_container_lifecycle("remove", slug)
         return result
+    # The list the worker reported when it confirmed. A heartbeat after this
+    # one is newer than the removal, so forget_reported_service leaves it alone.
+    try:
+        reported = (await database.get_worker(worker_id) or {}).get("containers")
+    except Exception as exc:  # noqa: BLE001 - the removal itself happened
+        logger.warning("Removed %s, but could not read worker %s's container list: %s", slug, worker_id, exc)
+        reported = None
     if delete_volumes and allow_delete_critical:
         answer = result if isinstance(result, dict) else {}
         # "deleted" only when a volume went and none stayed: a removal that
@@ -7353,7 +7360,7 @@ async def _svc_remove(
     try:
         # The worker said it removed every copy, so it no longer counts as running
         # them; its next heartbeat would say the same a minute from now.
-        await database.forget_reported_service(worker_id, slug)
+        await database.forget_reported_service(worker_id, slug, reported)
     except Exception as exc:  # noqa: BLE001 - the removal itself happened
         logger.warning("Removed %s, but could not update worker %s's container list: %s", slug, worker_id, exc)
     # The worker removed the service's proxied copies with it (worker_api
