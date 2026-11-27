@@ -119,6 +119,7 @@ import argparse
 import fnmatch
 import hashlib
 import json
+import os
 import pathlib
 import re
 import sys
@@ -296,7 +297,8 @@ def parse_yaml(text: str) -> dict:
             while j < len(lines):
                 ln = lines[j]
                 if ln.strip() == "":
-                    body.append("")
+                    # Spaces past the block's indentation are content.
+                    body.append(ln[block_indent:] if block_indent is not None and len(ln) > block_indent else "")
                     j += 1
                     continue
                 ind = len(ln) - len(ln.lstrip(" "))
@@ -438,15 +440,25 @@ def locale_of(path: pathlib.Path, fmt: str) -> str:
 def _drop_locale_root(tree: dict, locale: str) -> dict:
     if len(tree) == 1:
         (only,) = tree
-        if only.lower().replace("_", "-") == locale.lower().replace("_", "-") and isinstance(tree[only], dict):
+        same = only.lower().replace("_", "-") == locale.lower().replace("_", "-")
+        if same and isinstance(tree[only], dict) and not _is_inline(tree[only]):
             return tree[only]
     return tree
 
 
+def _no_duplicates(pairs: list) -> dict:
+    out: dict = {}
+    for k, v in pairs:
+        if k in out:
+            raise ParseError(f"duplicate key {k!r}")
+        out[k] = v
+    return out
+
+
 def load_json(path: pathlib.Path) -> tuple[dict, dict]:
     try:
-        tree = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
+        tree = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_no_duplicates)
+    except (json.JSONDecodeError, ParseError) as e:
         raise ParseError(f"{path}: {e}") from e
     if not isinstance(tree, dict):
         raise ParseError(f"{path}: the top level must be an object")
@@ -487,6 +499,16 @@ def load_catalog(path: pathlib.Path) -> tuple[dict, dict]:
     return entries, hashes
 
 
+def _write_atomic(path: pathlib.Path, text: str) -> None:
+    """Replace path with text in one step, so a failed write leaves the old file."""
+    tmp = path.with_name(f".{path.name}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str = "") -> None:
     lines = [header.rstrip("\n")] if header else []
     for key, text in entries.items():
@@ -506,7 +528,7 @@ def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str =
         lines.append(f"  text: {dump_yaml_string(text)}")
         if hashes.get(key):
             lines.append(f"  source: {dump_yaml_string(hashes[key])}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_atomic(path, "\n".join(lines) + "\n")
 
 
 def _inner_xml(elem: ET.Element) -> str:
@@ -594,14 +616,21 @@ def load(path: pathlib.Path, fmt: str, i18next: bool) -> tuple[dict, dict | None
     if i18next:
         entries = group_i18next_plurals(entries)
         if hashes:
-            for key in list(hashes):
-                base, _, suffix = key.rpartition("_")
-                if suffix in PLURAL_CATEGORIES and isinstance(entries.get(base), dict):
-                    # Forms stamped against different English make the family
-                    # stale, whichever form comes first.
-                    if hashes.setdefault(base, hashes[key]) != hashes[key]:
-                        hashes[base] = "mixed"
-                    del hashes[key]
+            # A family is current only when every form carries the same hash;
+            # a form without one, or forms stamped against different English,
+            # make the family stale.
+            families: dict = {}
+            for base, forms in entries.items():
+                if not isinstance(forms, dict):
+                    continue
+                found = {hashes.get(f"{base}_{q}") for q in forms}
+                if found != {None}:
+                    families[base] = found.pop() if len(found) == 1 else "mixed"
+            for base, forms in entries.items():
+                if isinstance(forms, dict):
+                    for q in forms:
+                        hashes.pop(f"{base}_{q}", None)
+            hashes.update(families)
     return entries, hashes
 
 
@@ -719,9 +748,15 @@ def placeholders(text: str) -> frozenset:
     """The placeholder signature of one string."""
     out: set = set()
 
+    links: dict = {}
+
     def tag(m: re.Match) -> str:
         href = _HREF.search(m.group(3))
-        out.add(("tag", m.group(1) + m.group(2).lower(), (href.group(1) or href.group(2)) if href else ""))
+        dest = (href.group(1) or href.group(2)) if href else ""
+        out.add(("tag", m.group(1) + m.group(2).lower(), dest))
+        if href:  # links to A, A, B differ from links to A, B, B
+            links[dest] = links.get(dest, 0) + 1
+            out.add(("link", dest, links[dest]))
         # A placeholder in another attribute (title="{name}") still counts: the
         # tag becomes its attribute values, unquoted and in place, so implicit
         # printf positions keep their order.
@@ -909,7 +944,7 @@ def write_json_inline(path: pathlib.Path, hashes: dict, checked: dict) -> None:
                 walk(v, key)
 
     walk(root, "")
-    path.write_text(json.dumps(tree, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _write_atomic(path, json.dumps(tree, ensure_ascii=False, indent=2) + "\n")
 
 
 def _drop_ignored(entries: dict, globs: list[str]) -> dict:
@@ -967,7 +1002,8 @@ def main(argv: list[str] | None = None) -> int:
             inline_json = fmt == "json" and sidecar is None
             if args.i18next_plurals and (inline_json or fmt == "catalog"):
                 # A family's hash cannot be written back onto its _one/_other leaves.
-                print(f"error: {path}: stamping i18next plural families needs --hashes-dir", file=sys.stderr)
+                fix = "is not supported" if fmt == "catalog" else "needs --hashes-dir"
+                print(f"error: {path}: stamping i18next plural families in the {fmt} format {fix}", file=sys.stderr)
                 return 2
             if hashes is None and inline_json:
                 hashes = {}  # stamp inline: values become {"text", "source"}
@@ -981,9 +1017,7 @@ def main(argv: list[str] | None = None) -> int:
                         write_catalog(path, whole, hashes, _leading_comments(path))
                     elif sidecar is not None:
                         sidecar.parent.mkdir(parents=True, exist_ok=True)
-                        sidecar.write_text(
-                            json.dumps(hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-                        )
+                        _write_atomic(sidecar, json.dumps(hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
                     else:
                         write_json_inline(path, hashes, whole)
                 except (OSError, ParseError) as e:
