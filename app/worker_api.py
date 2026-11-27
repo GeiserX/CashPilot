@@ -51,6 +51,7 @@ from app import (
     health_probe,
     isolation_check,
     lan_fence,
+    layers,
     log_redaction,
     miner_read,
     node_read,
@@ -58,6 +59,7 @@ from app import (
     payout_read,
     proxy_tunnel,
     route_gate,
+    socket_policy,
     state_backup,
     step_up,
     version,
@@ -464,6 +466,11 @@ def _gpu_info() -> dict[str, Any]:
     return info
 
 
+def _layers_report() -> dict[str, Any]:
+    proxy = socket_policy.ALLOWED_RUNTIMES if orchestrator.proxied() else None
+    return layers.report(orchestrator.runtime_pins(), proxy)
+
+
 def _gpu_presence() -> dict[str, Any]:
     host = gpu.host_gpus()
     if host["conclusive"]:
@@ -851,6 +858,10 @@ async def _send_heartbeat() -> None:
             # Which isolation mode this worker is in and whether its fence holds.
             # Cached by the fence check, so no helper container runs per heartbeat.
             "isolation": lan_fence.status(),
+            # Which other layers this host can give an earner: the runtimes
+            # Docker registered (gVisor among them), KVM, and what an
+            # environment variable pins (app/layers.py). Null fields are unknown.
+            "layers": await asyncio.to_thread(_layers_report),
             # Copies of services that leave through a proxy (app/proxy_tunnel.py).
             # Kept out of "containers": they are on another exit IP and are not
             # copies of the service, so nothing that counts copies may see them.
@@ -895,6 +906,8 @@ async def _send_heartbeat() -> None:
         payload["system_info"]["features"].append("state_restore")
         # Gives a catalog service the GPU its own catalog entry declares (docker.gpu, app/gpu.py).
         payload["system_info"]["features"].append("gpu_grant")
+        # Takes runtime_choice on a deploy and reports system_info.layers (app/layers.py).
+        payload["system_info"]["features"].append(layers.FEATURE)
         payload["system_info"]["gpu_grants"] = {
             service["slug"]: grant
             for service in (_catalog_get_services() if _catalog_get_services else [])
@@ -1623,6 +1636,10 @@ class DeploySpec(BaseModel):
     # Advanced and unsupported. Absent means Docker's default runtime, which is
     # what everything uses and what everything is tested against.
     runtime: str | None = None
+    # The owner's runtime choice from the UI, "runc" or "gvisor" (app/layers.py).
+    # The worker turns it into a runtime Docker registered, and refuses one its
+    # catalog or its environment overrules. Absent means Docker's default.
+    runtime_choice: str | None = None
     # Which copy of the service this is; see constants.LABEL_INSTANCE.
     instance: int = 1
     # The UI's signed note that the owner re-entered their password for this
@@ -1868,6 +1885,13 @@ def _catalog_host_network_slugs() -> set[str]:
 _ALLOWED_NETWORK_MODES = {None, "", "bridge", "none", "host"}
 
 
+def _validate_runtime_choice(choice: str | None) -> None:
+    if choice is not None and choice not in layers.CHOICES:
+        raise HTTPException(
+            status_code=400, detail=f"runtime_choice is {choice!r}; it takes one of {', '.join(layers.CHOICES)}."
+        )
+
+
 def _validate_runtime(runtime: str | None) -> None:
     """Allow only a runtime this daemon actually reports.
 
@@ -2020,6 +2044,7 @@ def _validate_gpu(slug: str | None, spec: DeploySpec) -> None:
 
 def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
     _validate_runtime(spec.runtime)
+    _validate_runtime_choice(spec.runtime_choice)
     if blocked_env := sorted(k for k in spec.env if str(k).upper().startswith(gpu.ENV_PREFIX)):
         # The void stamp and the GPU grant are this worker's (app/gpu.py): a
         # request that set NVIDIA_VISIBLE_DEVICES could undo the stamp.
@@ -2819,6 +2844,7 @@ async def _deploy_container(request: Request, slug: str, spec: CheckedDeploySpec
             labels=spec.labels,
             resources=spec.resources,
             runtime=spec.runtime,
+            runtime_choice=spec.runtime_choice,
             moved_mounts=spec.moved_mounts,
             kept_mounts=kept_mounts,
             keep_targets=_catalog_volume_targets(slug),
@@ -3419,6 +3445,7 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
         "labels": spec.labels,
         "resources": spec.resources,
         "runtime": spec.runtime,
+        "runtime_choice": spec.runtime_choice,
         "keep_targets": _catalog_volume_targets(slug),
     }
     try:
