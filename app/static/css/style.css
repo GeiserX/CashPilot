@@ -831,8 +831,29 @@ img { max-width: 100%; }
   color: var(--text-log);
 }
 
+/* One entry per line: long lines scroll sideways instead of wrapping, and every
+   other entry gets a faint band so the eye can follow a line across. */
+.log-lines { width: max-content; min-width: 100%; }
+.log-line { white-space: pre; padding: 0 6px; }
+.log-line:nth-child(even) { background: color-mix(in srgb, var(--text-log) 6%, transparent); }
+.log-ts { display: inline-block; min-width: var(--log-ts); margin-right: 1.5ch; color: var(--text-muted); }
+/* Wrapped: a long entry continues under its message, not under its time. */
+.log-wrap .log-lines { width: auto; }
+.log-wrap .log-line {
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  padding-left: calc(var(--log-ts) + 1.5ch + 6px);
+  text-indent: calc(-1 * (var(--log-ts) + 1.5ch));
+}
+.log-wrap .log-ts { text-indent: 0; }
+.log-viewer-modal { max-height: calc(85vh - 90px); padding: 8px 4px; }
+.modal-header-actions { display: flex; align-items: center; gap: 8px; }
+#log-wrap-toggle[aria-pressed="true"] { background: var(--bg-hover); border-color: var(--border-strong); }
+
 .log-viewer::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 .log-viewer::-webkit-scrollbar-track {
   background: transparent;
@@ -1971,6 +1992,7 @@ body.gate { display: flex; flex-direction: column; }
 .modal-sm { max-width: 440px; }
 .modal-md { max-width: 700px; }
 .modal-lg { max-width: 860px; }
+.modal-xl { width: 96%; max-width: 1600px; }
 .modal-hint { color: var(--text-secondary); margin: 0 0 14px; line-height: 1.5; max-width: 62ch; }
 .modal-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color); }
 .modal-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
