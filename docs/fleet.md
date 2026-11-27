@@ -184,7 +184,7 @@ CashPilot uses **per-worker fleet keys** (since v1.0.0). The shared `CASHPILOT_A
 The fleet key is **never sent to the browser on page load**. The fleet dashboard reveals it only on an explicit, owner-only action (the **Reveal API Key** button), and copy-to-clipboard fetches it the same way.
 
 !!! warning "Security"
-    Keys grant container-management access: treat them as sensitive credentials, and never expose worker APIs (port 8081) to the public internet. See the [v1.0.0 upgrade guide](upgrade-v1.md) if you are moving an existing fleet.
+    Keys grant container-management access: treat them as sensitive credentials, and never expose worker APIs (port 8081) to the public internet. See the [v1.0.0 upgrade steps](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#v100-per-worker-fleet-keys) if you are moving an existing fleet.
 
 ## Fleet Dashboard
 

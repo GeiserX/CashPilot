@@ -120,7 +120,6 @@ class TestNoPageIsLostInTheMove:
             "fleet.md",
             "backup.md",
             "guides/prometheus-metrics.md",
-            "upgrade-v1.md",
         ):
             assert page in refs, f"{page} fell out of the nav"
 
@@ -132,8 +131,10 @@ class TestNoPageIsLostInTheMove:
         assert "research/per-ip-device-limits.md" in refs
 
     def test_every_page_in_the_nav_exists_on_disk(self):
-        """site-check fails the build on this; catching it here is cheaper."""
-        missing = [ref for ref in nav_refs() if not (DOCS / ref).is_file()]
+        """site-check fails the build on this; catching it here is cheaper.
+
+        A full URL is a link out of the site (UPGRADING.md on GitHub), not a page."""
+        missing = [ref for ref in nav_refs() if "://" not in ref and not (DOCS / ref).is_file()]
         assert not missing, f"nav points at files that do not exist: {missing}"
 
 

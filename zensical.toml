@@ -46,8 +46,6 @@ nav = [
   { Home = "index.md" },
   { "Get started" = [
       { "Getting started" = "getting-started.md" },
-      { "What's new in 3.0" = "whats-new-3.0.md" },
-      { "What's new in 2.0" = "whats-new-2.0.md" },
       { "App stores" = "app-stores.md" },
       { "How it works" = "how-it-works.md" },
       { "Money waiting: reminders" = "reminders.md" },
@@ -157,7 +155,7 @@ nav = [
       { "Backing up and restoring" = "backup-restore.md" },
       { "Backing up node identities" = "backup.md" },
       { "Prometheus metrics" = "guides/prometheus-metrics.md" },
-      { "Upgrade to v1.0.0" = "upgrade-v1.md" },
+      { Upgrading = "https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md" },
       { "Removing CashPilot completely" = "uninstall.md" },
     ] },
   { Reference = [
@@ -237,6 +235,10 @@ link = "https://hub.docker.com/r/drumsergio/cashpilot"
 "architecture.md" = "how-it-works.md"
 "contributing.md" = "development.md"
 "ecosystem.md" = "related.md"
+# The per-major pages moved into UPGRADING.md, one section per major.
+"whats-new-3.0.md" = "https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#30-upgrade-the-ui-first-then-change-the-image-tags"
+"whats-new-2.0.md" = "https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#20-change-the-image-tags"
+"upgrade-v1.md" = "https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#v100-per-worker-fleet-keys"
 
 # The plugin writes site/llms.txt itself and overwrites a docs/llms.txt, so the
 # agent-facing pointer lives here: the first section is the page that tells an AI

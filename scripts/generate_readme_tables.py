@@ -49,7 +49,6 @@ COUNTED_FILES = [
     "docs/index.md",
     "docs/getting-started.md",
     "docs/comparison.md",
-    "docs/whats-new-2.0.md",
 ]
 _COUNT = re.compile(r"<!-- n:(\w+) -->\d*<!-- /n -->")
 
