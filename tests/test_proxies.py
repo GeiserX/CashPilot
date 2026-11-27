@@ -1760,6 +1760,37 @@ class TestStorageAndRoutes:
         exc = _proxy_call_error(definition, _worker_answer(status, body))
         assert exc.detail == ours
 
+    def test_a_url_encoded_secret_is_masked_too(self):
+        # A password put into a proxy URL comes back quoted; the worker's own redact masks that form as well.
+        definition = {"password": "p@ss!word99"}
+        answer = _worker_answer(409, {"detail": "refused socks5://u:p%40ss%21word99@h"})
+        assert _proxy_call_error(definition, answer).detail == "refused socks5://u:***@h"
+
+    def test_a_secret_in_a_list_of_the_refusal_is_masked(self):
+        body = {"detail": {"error": "critical_volume", "message": "m", "blocked": [{"volume": f"v-{PASSWORD}"}]}}
+        detail = _proxy_call_error({"password": PASSWORD}, _worker_answer(409, body)).detail
+        assert detail["blocked"][0]["volume"] == "v-***"
+
+    def test_a_copy_already_gone_stops_at_the_cap_with_a_login_that_is_a_word_of_it(self):
+        # Masked, the login "copy" would hide the worker's "No proxied copy",
+        # and the alert would say the cap could not stop a copy that is gone.
+        proxy = {
+            "id": 1,
+            "definition": {**CAPPED, "username": "copy", "password": PASSWORD},
+            "state": {"capped_at": "x", "cap_reason": "P reached 90%"},
+        }
+        gone = _worker_answer(404, {"detail": "No proxied copy of a through proxy 1 on this worker"})
+        with (
+            _worker_replies(gone),
+            patch.object(main.database, "get_proxy", new_callable=AsyncMock, return_value=proxy),
+            patch.object(main.database, "set_proxied_copy_capped", new_callable=AsyncMock),
+            patch.object(main.database, "record_alert", new_callable=AsyncMock, return_value=None) as alert,
+        ):
+            asyncio.run(main._stop_capped_proxy(proxy, {(7, "a")}))
+        main._drop_proxy_cap_bell(1)
+        main._proxy_cap_unstopped.pop(1, None)
+        assert alert.call_args.args[2] == "Stopped: P reached 90%."
+
 
 def _worker_answer(status, body=None):
     resp = MagicMock(status_code=status)

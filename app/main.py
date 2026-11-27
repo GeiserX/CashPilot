@@ -8334,16 +8334,22 @@ async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
     return proxy
 
 
+_NO_PROXIED_COPY = re.compile(r"No proxied copy of [a-z0-9][a-z0-9_-]* through proxy \d+ on this worker")
+
+
 def _mask(text: Any, secrets_: list[str]) -> Any:
     if isinstance(text, dict):
         # A refusal's "error" is the worker's own fixed code, never a secret: a
         # short login inside it would turn it into a code the UI does not know.
         return {key: value if key == "error" else _mask(value, secrets_) for key, value in text.items()}
+    if isinstance(text, list):
+        return [_mask(value, secrets_) for value in text]
     if not isinstance(text, str):
         return text
     for value in sorted(secrets_, key=len, reverse=True):
         if value:
-            text = text.replace(value, "***")
+            # A secret put into a proxy URL comes back quoted, as proxy_tunnel.redact knows.
+            text = text.replace(value, "***").replace(urllib.parse.quote(value, safe=""), "***")
     return text
 
 
@@ -8359,6 +8365,10 @@ async def _proxy_worker_call(
         # carry none, and a short login masked inside one changes it: the key
         # refusal would stop reading as one (_copy_removal_pending).
         if not getattr(exc, "worker_text", False):
+            raise
+        # The worker's answer for a copy that is gone names only our slug and
+        # proxy id. Masked, a short login such as "copy" would hide that it is gone.
+        if isinstance(exc.detail, str) and _NO_PROXIED_COPY.fullmatch(exc.detail):
             raise
         if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
             raise  # _safe_worker_detail checked the fields and supplies the message.
