@@ -13,7 +13,8 @@
 #
 # Images are PINNED to a major.minor tag, which is what the lines below say.
 # `docker compose pull && up -d` therefore gets the newest patch of that series,
-# not the newest release overall — to move to a newer series, edit the tags.
+# not the newest release overall. To move to a newer series, read UPGRADING.md
+# first, then edit the tags on the UI host first and on every worker after it.
 #
 # This header used to claim the file tracked `latest` while pinning 1.4, and the
 # string `:latest` it told you to replace did not appear anywhere. Following the

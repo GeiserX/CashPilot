@@ -70,3 +70,17 @@ def test_the_prerequisites_say_how_to_install_the_compose_plugin():
     assert "brew install docker-compose" in prereqs
     assert "~/.docker/cli-plugins/docker-compose" in prereqs
 
+
+def test_every_place_that_says_edit_the_tags_gives_the_order():
+    """The update card is where a user learns that a newer series exists."""
+    places = {
+        "docker-compose.yml": "edit the tags",
+        "app/static/js/app.js": "editing the image tags in your compose file",
+        "app/templates/settings.html": "editing the",
+    }
+    for name, phrase in places.items():
+        text = (ROOT / name).read_text(encoding="utf-8")
+        at = text.index(phrase)
+        nearby = " ".join(text[at - 300 : at + 300].split())
+        assert "UPGRADING.md" in nearby, name
+        assert "UI host first" in nearby, name
