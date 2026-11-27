@@ -753,14 +753,16 @@ def placeholders(text: str) -> frozenset:
 
     links: dict = {}
     # In an ICU plural or select each branch may repeat a link, and other
-    # languages have more branches, so links are counted in plain strings only.
-    count_links = not _ICU_COMPLEX.search(text)
+    # languages have more branches, so a link inside braces is not counted.
+    icu = bool(_ICU_COMPLEX.search(text))
 
     def tag(m: re.Match) -> str:
         href = _HREF.search(m.group(3))
         dest = (href.group(1) or href.group(2)) if href else ""
         out.add(("tag", m.group(1) + m.group(2).lower(), dest))
-        if href and count_links:  # links to A, A, B differ from links to A, B, B
+        before = text[: m.start()]
+        if href and not (icu and before.count("{") > before.count("}")):
+            # links to A, A, B differ from links to A, B, B
             links[dest] = links.get(dest, 0) + 1
             out.add(("link", dest, links[dest]))
         # A placeholder in another attribute (title="{name}") still counts: the

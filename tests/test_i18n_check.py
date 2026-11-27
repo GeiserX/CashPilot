@@ -749,3 +749,10 @@ def test_the_temporary_file_never_overwrites_another_file(tmp_path):
     ic.write_catalog(out, {"a": "Adiós"}, {})
     assert other.read_text() == "keep me\n"
     assert sorted(p.name for p in tmp_path.iterdir()) == [".es.yml.tmp", "es.yml"]
+
+
+def test_links_outside_a_plural_are_still_counted(tmp_path):
+    link = "<a href='/help'>help</a>"
+    en = write(tmp_path / "en.json", json.dumps({"x": f"{link} {link} {{n, plural, other {{#}}}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"x": f"{link} {{n, plural, other {{#}}}}"}))
+    assert run(en, es)[0] == 1
