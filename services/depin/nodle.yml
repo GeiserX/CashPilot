@@ -11,7 +11,10 @@ description: >
 short_description: Bluetooth IoT relay - mobile app, NODL token rewards
 
 referral:
-  signup_url: "https://nodle.com"
+  signup_url: "https://join.nodle.com/p/YDFoLA4iO08LI7igSskPjw"
+  code: "YDFoLA4iO08LI7igSskPjw"
+  bonus:
+    referrer: "A NODL reward for each new active user who joins through the invite (Nodle does not publish the amount)"
 
 docker:
   image: ""

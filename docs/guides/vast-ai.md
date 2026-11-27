@@ -15,7 +15,7 @@ Vast.ai is a GPU cloud marketplace where you rent out your NVIDIA GPU to AI/ML r
 | Metric | Value |
 |--------|-------|
 | Monthly range | $0 - $300 (estimate) |
-| Per | GPU-hour |
+| Per | GPU |
 | Minimum payout | $20 |
 | Payout frequency | Weekly (Fridays) |
 | Payment methods | Wise, PayPal, Stripe |

@@ -13,7 +13,7 @@ Nosana is a decentralized GPU compute marketplace built on Solana. It connects G
 | Metric | Value |
 |--------|-------|
 | Monthly range | $0 - $100 (estimate) |
-| Per | GPU-hour |
+| Per | GPU |
 | Minimum payout |  |
 | Payout frequency | Per job completion |
 | Payment methods | Crypto |
