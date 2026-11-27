@@ -180,3 +180,16 @@ class TestTheHarvestedNotesSurvived:
         text = UPGRADING.read_text(encoding="utf-8")
         assert ".fernet_key" in text
         assert "back up" in text.lower()
+
+
+def test_the_exact_container_promise_is_limited_to_3_0_workers():
+    """A v2.10.2 worker never reads expected_container, so it cannot refuse a changed container.
+
+    The guide once said "The worker replaces only those containers." for every
+    worker. Only a 3.0 worker checks; for a 2.x worker the UI checks just before
+    the send, and a container that changes after that read can still be replaced.
+    """
+    text = re.sub(r"\s+", " ", UPGRADING.read_text(encoding="utf-8"))
+    assert "The worker replaces only those containers." not in text
+    assert "A 3.0 worker replaces only those containers." in text
+    assert "A 2.x worker does not check the IDs itself." in text

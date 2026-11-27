@@ -319,8 +319,11 @@ CashPilot, or ask for a catalog entry.
   copy's container ID, or `none` when the worker found no container. A 3.0
   worker gives full IDs, and a 2.x worker short ones. Send the same call again
   with `"replace_existing": true` and `"expected_containers"` set to
-  `detail.expected_containers`, unchanged. The worker replaces only those
-  containers. The import-draft route takes no
+  `detail.expected_containers`, unchanged. A 3.0 worker replaces only those
+  containers. A 2.x worker does not check the IDs itself. The UI reads its
+  containers again just before it sends the deploy, and refuses when an ID
+  changed. A container that changes after that read can still be replaced.
+  Update 2.x workers to 3.0 to close that gap. The import-draft route takes no
   `replace_existing`. It replaces a running container only when the call
   sends `expected_containers`.
 - Adding a proxied copy that already runs takes no `replace_existing`
