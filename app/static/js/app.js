@@ -3426,11 +3426,15 @@ const CP = (() => {
   }
 
   const LOG_WRAP_KEY = 'cashpilot-log-wrap';
-  // The choice is only remembered: a browser that refuses storage still shows logs.
-  let logWrapFallback = false;
+  // Read once from storage, then kept here: a browser that refuses to read or
+  // write storage still shows logs and still honours the toggle.
+  let logWrap = null;
 
   function logWrapOn() {
-    try { return localStorage.getItem(LOG_WRAP_KEY) === '1'; } catch { return logWrapFallback; }
+    if (logWrap === null) {
+      try { logWrap = localStorage.getItem(LOG_WRAP_KEY) === '1'; } catch { logWrap = false; }
+    }
+    return logWrap;
   }
 
   function applyLogWrap() {
@@ -3444,8 +3448,8 @@ const CP = (() => {
   function toggleLogWrap() {
     const viewer = document.getElementById('log-content');
     const atEnd = viewer && viewer.scrollHeight - viewer.scrollTop - viewer.clientHeight < 24;
-    logWrapFallback = !logWrapOn();
-    try { localStorage.setItem(LOG_WRAP_KEY, logWrapFallback ? '1' : '0'); } catch { /* kept in memory */ }
+    logWrap = !logWrapOn();
+    try { localStorage.setItem(LOG_WRAP_KEY, logWrap ? '1' : '0'); } catch { /* kept in memory */ }
     applyLogWrap();
     // Wrapping changes every line's height: a reader at the end stays there.
     if (atEnd) viewer.scrollTop = viewer.scrollHeight;
