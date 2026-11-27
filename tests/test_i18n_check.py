@@ -756,3 +756,12 @@ def test_links_outside_a_plural_are_still_counted(tmp_path):
     en = write(tmp_path / "en.json", json.dumps({"x": f"{link} {link} {{n, plural, other {{#}}}}"}))
     es = write(tmp_path / "es.json", json.dumps({"x": f"{link} {{n, plural, other {{#}}}}"}))
     assert run(en, es)[0] == 1
+
+
+def test_an_empty_plural_form_fails(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"f_one": "{{count}} file", "f_other": "{{count}} files"}))
+    es = write(tmp_path / "es.json", json.dumps({"f_one": "", "f_other": "{{count}} archivos"}))
+    code, out = run(en, es, "--i18next-plurals")
+    assert code == 1 and "empty plural form one" in out
+    write(es, json.dumps({"f_other": "{{count}} archivos"}))
+    assert run(en, es, "--i18next-plurals")[0] == 0
