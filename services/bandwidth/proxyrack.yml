@@ -45,28 +45,102 @@ docker:
   volumes: []
   command: ""
   network_mode: ""
+  # The image's own start (/app/run.sh) deletes the client (/app/script.js)
+  # and downloads it again from app-updates.sock.sh, once, with no retry. When
+  # that host is down, every start gives a copy that stays up and earns nothing,
+  # and a restart deletes the client a working copy already had (both seen on
+  # 2026-11-27, when the host refused connections). The client also needs that
+  # host at every start: it asks it for the version of its Go program
+  # (/app/PoP_go), and with no answer it truncates that file to 0 bytes, logs
+  # "could not get app path. exiting" and exits. Once the host is back it sees
+  # the same version number, runs the empty file and exits again ("child
+  # exited"), for good. Both were seen the same day on a copy restarted during
+  # the outage.
+  #
+  # So this start runs the client only when the host answers version.txt, and
+  # otherwise waits and asks again every 5 minutes, so a copy heals by itself
+  # once the host is back. It replaces script.js only with a download that
+  # passes `node --check`, deletes an empty PoP_go (and its version file) so
+  # the client downloads it again, and starts the client again 5 minutes after
+  # it exits. It keeps run.sh's node arguments and its API_KEY registration
+  # that writes /app/api.cfg. It cannot exec run.sh, as the schema prefers,
+  # because run.sh is where the client gets deleted.
+  entrypoint:
+    - /bin/bash
+    - -c
+    - |
+      cd /app || exit 1
+      if [ -z "$UUID" ]; then echo "Please set the UUID environment variable."; exit 1; fi
+      url=https://app-updates.sock.sh/peerclient/script
+      if [ -n "$API_KEY" ] && [ ! -f /app/api.cfg ]; then
+        (
+          device_name=${DEVICE_NAME:-"Device-$UUID"}
+          echo "Adding device to dashboard..."
+          while true; do
+            response=$(curl -s -X POST https://peer.proxyrack.com/api/device/add -H "Api-Key: $API_KEY" -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{"device_id":"'"$UUID"'","device_name":"'"$device_name"'"}')
+            if echo "$response" | grep -q '"status": "error"'; then
+              echo "Device not found yet, retrying in 1 minute..."
+              sleep 60
+            else
+              echo "Device added successfully!"
+              touch /app/api.cfg
+              break
+            fi
+          done
+        ) &
+      fi
+      while true; do
+        echo "Updating Proxyrack..."
+        if wget -nv -T 30 -t 1 -O script.new.js "$url/script.js" && node --check script.new.js; then
+          mv -f script.new.js script.js
+          echo "Update done!"
+        else
+          rm -f script.new.js
+        fi
+        version=$(curl -fsS -m 30 "$url/version.txt")
+        case "$version" in ''|*[!0-9]*) version= ;; esac
+        if [ -s script.js ] && [ -n "$version" ]; then
+          if [ -f PoP_go ] && [ ! -s PoP_go ]; then rm -f PoP_go go_version.txt; fi
+          node script.js --homeIp point-of-presence.sock.sh --homePort 443 --id "$UUID" --version "$version" --clientKey proxyrack-pop-client --clientType PoP
+          echo "[CashPilot] ProxyRack's client stopped. Starting it again in 5 minutes."
+        else
+          echo "[CashPilot] ProxyRack's update server cannot be reached, and ProxyRack's client cannot start without it. Trying again in 5 minutes."
+        fi
+        sleep 300
+      done
+    - proxyrack-start
   health_signals:
-    # Seen live (Nov 2026) on three copies on two boxes for days. The image's
-    # start script deletes the client (/app/script.js), downloads it again
-    # with no retry, then sleeps forever. When that download failed (the
-    # vendor's update host served an expired certificate), node logged
-    # "Cannot find module '/app/script.js'" and the container stayed up and
-    # earned nothing. A restart downloads the client again: on 2026-11-24 a
-    # restart of each stuck copy logged "app started" and "connected to
-    # server" within 4 seconds, so CashPilot restarts the copy (restart). A
-    # working client logs "connected to server" when it starts and after a
-    # reconnect, which a longer window could keep in view past a failed
-    # start. The window must outlast the 6-hour restart cooldown, so that a
-    # restart that failed the same way is tried again.
+    # Copies started by CashPilot (the entrypoint above) log one of these lines
+    # while they wait for the update host, and never the missing-module error
+    # below. A client that connects again logs "connected to server".
+    - pattern: "\\[CashPilot\\] ProxyRack's (update server cannot be reached|client stopped)"
+      unless: "connected to server"
+      window_hours: 1
+      means: >-
+        ProxyRack's client cannot run on this copy, so it earns nothing. The
+        usual cause is that ProxyRack's update server is not answering, and
+        the client cannot start without it. The copy tries again every 5
+        minutes and starts by itself once the server answers. There is
+        nothing to fix on your side.
+    # Copies made before CashPilot had its own start run the image's run.sh.
+    # When its one download fails, node logs "Cannot find module
+    # '/app/script.js'" and the container stays up and earns nothing (seen
+    # live in Nov 2026 on several copies). The line only shows on a copy that
+    # has no client, so a restart deletes nothing that works. It does not help
+    # while the update host is down (2026-11-27: two restarts, both dead), but
+    # it clears the copy once the host is back (2026-11-24: "connected to
+    # server" within 4 seconds). The window outlasts the 6-hour restart
+    # cooldown, so a failed restart is tried again.
     - pattern: "Cannot find module .?/app/script\\.js"
       unless: "connected to server"
       window_hours: 12
       restart: true
       means: >-
-        Proxyrack's client did not download when the container started, so
-        the container runs but earns nothing. A restart downloads it again;
-        if this stays after a restart, check that this box can reach the
-        internet.
+        ProxyRack's client did not download when this copy started, because
+        ProxyRack's update server could not be reached, so the copy runs but
+        earns nothing. CashPilot restarts it every 6 hours to try again.
+        Redeploy it to give it CashPilot's own start, which keeps the client
+        and tries again every 5 minutes by itself.
   privileged: false
 
 device_link:
