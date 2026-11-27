@@ -36,6 +36,19 @@ def _referral_urls(text: str) -> set[str]:
     return {u for u in URL.findall(text) if REFERRAL_HINT.search(u)}
 
 
+# A referral URL that left the README on purpose, mapped to the URL that took its
+# place. Add an entry only when the provider moved us to a new referral link that
+# is still ours. The guard below forgives the old URL only while its replacement
+# is in the README, so an entry here can never hide a plain loss.
+REPLACED_REFERRAL_URLS = {
+    # ProxyBase Markets: the proxybase.xyz buyer console code replaced the
+    # proxybase.org code, which earns nothing on proxybase.xyz.
+    "https://proxybase.xyz?referral=nXzS3c6iTO": "https://proxybase.xyz/console?ref=cashpilot",
+    # Teneo: the Expedition Hub referral replaced the old dashboard signup.
+    "https://dashboard.teneo.pro/auth/signup?referralCode=CAqef": "https://hub.teneo.pro/signup?ref=PSA3BHPJ",
+}
+
+
 class TestTheReadmeCannotDriftFromTheCatalog:
     def test_the_checked_in_readme_is_up_to_date(self):
         """The whole point: this fails if someone edits the lists by hand."""
@@ -77,8 +90,16 @@ class TestGenerationNeverDestroysRevenue:
         committed = subprocess.run(["git", "show", "HEAD:README.md"], capture_output=True, text=True, cwd=ROOT).stdout
         if not committed:
             pytest.skip("README not committed yet")
-        lost = _referral_urls(committed) - _referral_urls(README.read_text(encoding="utf-8"))
+        current = README.read_text(encoding="utf-8")
+        lost = _referral_urls(committed) - _referral_urls(current)
+        lost -= {old for old, new in REPLACED_REFERRAL_URLS.items() if new in current}
         assert not lost, f"generation dropped referral URLs: {lost}"
+
+    def test_every_replaced_referral_url_has_its_replacement_in_the_readme(self):
+        """A replacement entry forgives one URL, and only for its successor."""
+        current = README.read_text(encoding="utf-8")
+        missing = {old: new for old, new in REPLACED_REFERRAL_URLS.items() if new not in current}
+        assert not missing, f"replacement referral URLs missing from the README: {missing}"
 
     def test_the_generator_prefers_the_referral_url_over_the_bare_website(self):
         """A bare website link in the lists is lost revenue on every signup."""

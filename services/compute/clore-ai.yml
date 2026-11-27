@@ -1,0 +1,165 @@
+name: Clore.ai
+slug: clore-ai
+category: compute
+status: active
+website: https://clore.ai
+description: >
+  Clore.ai is a peer-to-peer GPU marketplace. You list a Linux machine with
+  NVIDIA GPUs, set your own spot and on-demand prices, and renters run their
+  own Docker containers on it. You are paid only for the minutes it is rented,
+  in CLORE, BTC, USDT or USDC. Hosting needs an x86_64 machine on Ubuntu 22.04
+  or newer (or HiveOS), a working NVIDIA driver and at least 100 Mbps up and
+  down. AMD GPUs are not supported.
+short_description: GPU marketplace - rent out NVIDIA GPUs, paid in CLORE, BTC or USD stablecoins
+
+referral:
+  signup_url: "https://clore.ai/register?ref_id=hq5z8kvc"
+  code: "hq5z8kvc"
+  # Checked 2026-11-27 on
+  # https://docs.clore.ai/getting-started/deposit-withdrawal/referral-program:
+  # the referrer earns a share of the platform fees paid by referred hosts and
+  # referred renters (15% standard tier, 20% or 30% when an admin assigns it),
+  # and the code never expires. A time-limited 50% promotion was running then.
+  program: true
+  bonus:
+    referrer: "15% (standard tier) of the platform fees paid by the hosts and renters you refer, on every rental; the code never expires; paid in the rental's currency (CLORE, BTC or USD)"
+
+docker:
+  image: ""
+  platforms: [linux/amd64]
+  env: []
+  ports: []
+  volumes: []
+  command: ""
+  network_mode: ""
+
+requirements:
+  residential_ip: false
+  min_bandwidth: "100 Mbps up and down"
+  gpu: true
+  min_storage: "32GB"
+
+payment:
+  methods: [crypto]
+  minimum_payout: "200 CLORE"
+  currency: CLORE
+  frequency: "On request"
+
+earnings:
+  monthly_low: 0
+  monthly_high: 490
+  currency: USD
+  per: "GPU-hour"
+  notes: "Paid only for rented minutes, at the price you set. 490 is Clore's own ceiling for one RTX 4090 listed by the minute ('up to ~$490/month'); smaller cards earn less and an idle card earns nothing. Clore keeps 5% (on-demand) or 1.25% (spot) of each rental, plus 15% when the renter pays in BTC, USDT or USDC instead of CLORE."
+
+cashout:
+  method: redirect
+  dashboard_url: "https://clore.ai/my-servers"
+  min_amount: 200
+  currency: CLORE
+  notes: "Withdraw from Account > Billing to your own wallet: CLORE (ERC-20, minimum 200, fee about $0.50), BTC (minimum 0.0001, fee 0.00005 BTC) or USDT/USDC on Ethereum or BNB Chain (minimum $10, fee $1)."
+
+platforms: [linux]
+
+collector:
+  type: manual
+  notes: "No collector yet. REST API at https://api.clore.ai/v1/ with the token in an `auth` header (not Bearer); GET /v1/wallets returns balances and /v1/my_servers the hosted servers. Rate limit 1 request per second."
+
+payout:
+  model: internal
+  notes: "Clore keeps the balance (CLORE, BTC and one USD balance for USDT/USDC) until you withdraw. The chain is chosen per withdrawal: Ethereum for CLORE, Bitcoin for BTC, Ethereum or BNB Chain for USDT/USDC."
+
+disclosure:
+  sells: GPU compute time on your machine.
+  third_party_traffic: >-
+    Yes. Renters run their own Docker containers on your machine, and their
+    traffic leaves from your connection; SSH and application ports are
+    forwarded to the internet.
+  data_collected: >-
+    Clore's privacy policy covers account data and your IP address with an
+    approximate location; identity documents only if Clore asks for KYC.
+  isp_risk: >-
+    Inbound ports must be reachable from the internet (22, 8080 and
+    3000-4000 by default) and strangers' workloads run on your line. Clore's
+    own network guide says some ISPs block hosting.
+  account_rules: >-
+    18 or older, not in a sanctioned country. Clore may suspend or close an
+    account at its sole discretion, and a prohibited use can cost the funds.
+
+# Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
+# published at docs/ratings.md). The grade itself is computed, never written here.
+rating:
+  reviewed_on: "2026-11-27"
+  verdicts:
+    payout_record: unknown
+    payout_terms: fair
+    account_safety: fair
+    terms_fit: fair
+    traffic_transparency: fair
+    privacy: unknown
+    identity_checks: fair
+    support: unknown
+    earnings_realism: fair
+    longevity: poor
+  notes:
+    payout_record: We found no host payout reports either way and have not cashed out ourselves.
+    payout_terms: Crypto only, low minimums, an extra 15% fee on non-CLORE rentals
+    account_safety: Sole-discretion termination; forfeiture on prohibited use; no pattern of reports found
+    terms_fit: Own hosting agent on your GPU machine, not run by CashPilot
+    traffic_transparency: Forbidden uses listed; how renters are checked is not described
+    privacy: The installer is public on GitLab; we did not check whether the hosting agent itself is open
+      source or what it reports.
+    identity_checks: No KYC for basic use; identity checks possible for large withdrawals
+    support: No ticket experience of our own and no pattern of reports found.
+    earnings_realism: Earns only while rented; Clore publishes ceilings, not averages
+    longevity: No named legal entity in the terms or privacy policy
+  cons:
+  - text: Neither the terms nor the privacy policy name a legal entity, and the terms leave the governing
+      jurisdiction to a later version.
+    criterion: longevity
+    kind: terms
+    source: https://docs.clore.ai/legal/terms-of-service
+    checked_on: "2026-11-27"
+  - text: Clore may suspend or close an account at its sole discretion, and a prohibited use can lead to
+      forfeiture of funds.
+    criterion: account_safety
+    kind: terms
+    source: https://docs.clore.ai/legal/terms-of-service
+    checked_on: "2026-11-27"
+  - text: Payouts are crypto only (CLORE, BTC, USDT or USDC), and Clore takes an extra 15% of a rental the
+      renter pays in BTC, USDT or USDC, unless the host locks CLORE to cut it.
+    criterion: payout_terms
+    kind: terms
+    source: https://docs.clore.ai/for-hosts/host-fees
+    checked_on: "2026-11-27"
+  - text: A host is paid only for rented minutes, and Clore's figure for an RTX 4090 is a ceiling ("up
+      to ~$490/month") for a single card.
+    criterion: earnings_realism
+    kind: terms
+    source: https://clore.ai/host-4090.html
+    checked_on: "2026-11-27"
+  - text: Basic use needs no KYC, but Clore may ask for identity verification for large withdrawals or
+      compliance cases.
+    criterion: identity_checks
+    kind: terms
+    source: https://docs.clore.ai/help/faq
+    checked_on: "2026-11-27"
+  - text: Renters run any public Docker image on your machine. The terms list forbidden uses (malware,
+      DDoS, CSAM and more), but we found no description of how renters are checked.
+    criterion: traffic_transparency
+    kind: terms
+    source: https://docs.clore.ai/legal/terms-of-service
+    checked_on: "2026-11-27"
+  - text: 'CashPilot does not run Clore.ai: you install Clore''s hosting agent on your own GPU machine (Ubuntu
+      22.04 or newer, or HiveOS), so CashPilot cannot deploy or update it for you.'
+    criterion: terms_fit
+    kind: our_experience
+    source: https://github.com/GeiserX/CashPilot/blob/main/services/compute/clore-ai.yml
+    checked_on: "2026-11-27"
+  pros:
+  - text: Clore keeps 5% of an on-demand rental (1.25% on spot) when the renter pays in CLORE, with no
+      extra fee.
+    criterion: payout_terms
+    kind: terms
+    source: https://docs.clore.ai/for-hosts/host-fees
+    checked_on: "2026-11-27"

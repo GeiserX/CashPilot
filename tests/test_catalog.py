@@ -193,16 +193,17 @@ def test_proxybase_markets_referral_and_image_contract():
     This service was contributed by the vendor, so the two things a vendor has
     an incentive to change are pinned here:
 
-    - The signup URL must keep OUR referral code. It is the same code as the
-      sibling ProxyBase entry; a contributor swapping in their own code would
-      silently redirect every CashPilot signup's commission.
+    - The signup URL must keep OUR referral code. It is the proxybase.xyz
+      console code, not the sibling proxybase.org one (a code from the other
+      site earns nothing here); a contributor swapping in their own code would
+      silently redirect every CashPilot referral's commission.
     - The image must stay digest-pinned. A floating tag on a third-party image
       that proxies traffic would let the published content change under us.
     """
     with open(SERVICES_DIR / "bandwidth" / "proxybase-xyz.yml") as f:
         data = yaml.safe_load(f)
 
-    assert data["referral"]["signup_url"] == "https://proxybase.xyz?referral=nXzS3c6iTO", (
+    assert data["referral"]["signup_url"] == "https://proxybase.xyz/console?ref=cashpilot", (
         f"ProxyBase Markets signup_url must keep our referral code, got {data['referral']['signup_url']}"
     )
 

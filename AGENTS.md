@@ -226,6 +226,10 @@ curl -s -D - -o /dev/null 'https://provider.example/?ref=CODE' | head -5    # wi
 A `302` + `Set-Cookie` on the referral URL where the bare page returns `200` means
 the code **is** captured — the link works.
 
+### Catalog signup links keep the project's referral codes
+
+A catalog `referral.signup_url` must keep the project's referral code (`referral.code`): never replace it with a bare URL or another code, and run `python scripts/referral_check.py` after you change one.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker
 

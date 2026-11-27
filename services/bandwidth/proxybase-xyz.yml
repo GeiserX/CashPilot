@@ -10,12 +10,20 @@ description: >
   both direct (own bandwidth) and upstream (resell external proxies) modes with
   auto-reconnect. Buyers purchase proxy sessions by country, ISP, and bandwidth.
   Payments flow through the Machine Payments Protocol (MPP) on Tempo Chain.
+  The referral link is for buyers: a buyer who opens the console through it gets
+  10% extra on their first deposit.
 short_description: proxybase.xyz - SOCKS5 marketplace for AI agents, USDC payout. Generates a wallet whose volume holds the only copy of the key
 
 referral:
-  signup_url: "https://proxybase.xyz?referral=nXzS3c6iTO"
-  code: "nXzS3c6iTO"
-  # The client mints its own wallet on first run; there is no account to sign up for.
+  # The buyer console referral (proxybase.xyz/referrals): the code is saved when the
+  # link opens and binds to the wallet a buyer connects. Not the proxybase.org code.
+  signup_url: "https://proxybase.xyz/console?ref=cashpilot"
+  code: "cashpilot"
+  bonus:
+    referrer: "15% of every deposit a referred buyer makes, as credit for your own proxy sessions"
+    referee: "+10% on a buyer's first deposit"
+  # The seller client mints its own wallet on first run; there is no account to sign
+  # up for. The referral above pays on buyers' deposits, not on what a seller sells.
   account: false
 
 docker:

@@ -4,22 +4,27 @@ category: depin
 status: active
 website: https://teneo.pro
 description: >
-  Teneo Protocol is a DePIN network that rewards users for sharing bandwidth
-  via a browser extension. It operates a community node system where users earn
-  Teneo Points by keeping the extension active. A new account opened with a
-  referral link starts with 1,000 bonus points.
-  The protocol focuses on building decentralized data infrastructure.
-short_description: DePIN browser extension - 1,000 bonus points with a referral link
+  Teneo Protocol gives AI agents access to the live web through a network of
+  Beacons. The Teneo Beacon is Teneo's own app for Android, iOS, macOS, Windows
+  and Linux, with a command-line version for servers and a Raspberry Pi. It shares
+  your unused bandwidth after you accept its consent screen, and earns Teneo
+  Protocol Points and Fragments while it is online. Fragments count toward
+  seasonal draws paid in USDC (the Beacon Drop). Teneo says the Beacon earns
+  twice the points of its older browser extension. One Beacon earns per internet
+  connection. Other devices on the same connection stand by. Sign up in the
+  Expedition Hub with the referral link or code PSA3BHPJ, then sign in to the Beacon.
+short_description: DePIN bandwidth app (Beacon) - Fragments toward seasonal USDC draws, +100 Fragments with a referral link
 
 referral:
-  signup_url: "https://dashboard.teneo.pro/auth/signup?referralCode=CAqef"
-  code: "CAqef"
+  signup_url: "https://hub.teneo.pro/signup?ref=PSA3BHPJ"
+  code: "PSA3BHPJ"
   bonus:
-    referee: "1,000 Teneo Points at signup"
+    referrer: "8% of each referred friend's Fragments and 2% of their referrals' Fragments"
+    referee: "+100 Fragments at signup, and +150 more once you reach 480 Fragments"
 
 docker:
   image: ""
-  platforms: [browser-extension]
+  platforms: []
   env: []
   ports: []
   volumes: []
@@ -28,70 +33,82 @@ docker:
 
 requirements:
   residential_ip: true
+  vps_ip: false
+  devices_per_ip: 1
+  note: "One Beacon earns per internet connection. Datacentre machines earn only on hosting providers Teneo has enabled, at half the Fragments and with no points or referral bonus. VPN connections never earn."
+  note_column: vps_ip
   min_bandwidth: ""
   gpu: false
   min_storage: ""
 
 payment:
   methods: [crypto]
+  crypto_token: "USDC"
   minimum_payout: ""
-  currency: TENEO
-  frequency: "Token airdrop (TBA)"
+  currency: USDC
+  frequency: "Seasonal draw (Beacon Drop)"
 
 earnings:
   monthly_low: 0
   monthly_high: 5
   currency: USD
   per: "device"
-  notes: "Earns Teneo Points pre-token launch. Browser extension must remain active. Actual USD value depends on future token conversion."
+  notes: "Earns Teneo Points and Fragments. Fragments count toward seasonal USDC draws, so a season pays a prize, not a rate. Teneo says the Beacon earns twice the points of the browser extension. Claim the boost every 8 hours for up to 3x Fragments; a missed window lowers the multiplier."
 
 cashout:
   method: redirect
-  dashboard_url: "https://dashboard.teneo.pro"
+  dashboard_url: "https://hub.teneo.pro"
   # Undocumented: the provider does not publish a minimum. NOT 0 —
   # 0 means 'no minimum, cash out anything', which would tell the
   # user they can withdraw now and disables payout detection.
   min_amount: null
-  currency: TENEO
-  notes: "Points convert to tokens. Claim from dashboard."
+  currency: USDC
+  notes: "Beacon Drop prizes are paid in USDC to a wallet you bind in the Expedition Hub. The Hub shows how many days you have to bind one; a prize with no wallet bound in time is forfeited."
 
-platforms: [browser-extension]
+platforms: [windows, macos, linux, android, ios]
 
 collector:
   type: scrape
-  notes: "Points visible in dashboard.teneo.pro. Websocket-based connection tracking."
+  notes: "Points and Fragments are visible in the Expedition Hub (hub.teneo.pro). No collector yet."
 
 payout:
-  model: unknown
-  notes: "Not yet determined. Flagged rather than shown blank -- see CashPilot-luj."
+  model: external
+  address_source: app
+  notes: "Bind a wallet in the Expedition Hub before a season's prizes are paid; the Hub forfeits a prize whose wallet is not bound in time."
 
 # Provider rating: the verdicts behind the grade (method: services/_ratings.yml,
 # published at docs/ratings.md). The grade itself is computed, never written here.
 rating:
-  reviewed_on: "2026-11-04"
+  reviewed_on: "2026-11-27"
   verdicts:
     payout_record: unknown
     payout_terms: poor
     account_safety: unknown
     terms_fit: fair
-    traffic_transparency: unknown
+    traffic_transparency: fair
     privacy: unknown
     identity_checks: unknown
     support: unknown
     earnings_realism: poor
     longevity: unknown
   notes:
-    payout_record: No transferable token has been paid out yet.
-    payout_terms: Points become non-transferable $AGENTIC, not $TENEO
+    payout_record: We found no independent reports of Beacon Drop payouts and have none of our own.
+    payout_terms: USDC only as seasonal draw prizes; points become non-transferable $AGENTIC
     account_safety: No reports found.
-    terms_fit: Browser extension, CashPilot cannot deploy or update it
-    traffic_transparency: Not documented on pages we read.
+    terms_fit: Native app, CashPilot cannot deploy or update it
+    traffic_transparency: Vetted business customers, vetting not described
     privacy: Not reviewed.
     identity_checks: Not documented.
     support: No pattern found.
     earnings_realism: No $TENEO launch date confirmed, Q2 2026 target passed
     longevity: We did not confirm the company behind Teneo.
   cons:
+  - text: The Beacon's Fragments pay USDC only as prizes in seasonal draws, so running it does not
+      earn a set amount.
+    criterion: payout_terms
+    kind: terms
+    source: https://teneo-protocol.ai/beacon
+    checked_on: "2026-11-27"
   - text: Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the
       $TENEO token.
     criterion: payout_terms
@@ -104,9 +121,15 @@ rating:
     kind: press
     source: https://blog.mexc.com/crypto-knowledge/teneo-airdrop-guide/
     checked_on: "2026-11-04"
-  - text: 'CashPilot does not run Teneo: you use the provider''s own browser extension, so CashPilot cannot
+  - text: 'CashPilot does not run Teneo: you install the provider''s own Beacon app, so CashPilot cannot
       deploy or update it for you. Its terms were not checked for containers.'
     criterion: terms_fit
     kind: our_experience
     source: https://github.com/GeiserX/CashPilot/blob/main/services/depin/teneo.yml
-    checked_on: "2026-11-04"
+    checked_on: "2026-11-27"
+  - text: Teneo says the traffic comes from vetted business customers and blocks private addresses and
+      abuse-prone ports, but does not say how it vets those customers.
+    criterion: traffic_transparency
+    kind: terms
+    source: https://teneo-protocol.ai/beacon
+    checked_on: "2026-11-27"
