@@ -49,7 +49,9 @@ running containers itself and asks you to approve a replacement.
 2. On the UI host, take the 3.0 compose file, or change every
    `drumsergio/cashpilot:2.10` and `drumsergio/cashpilot-worker:2.10` tag to
    `3.0`. Then run `docker compose up -d --force-recreate`.
-3. Do the same on every worker host.
+3. Do the same on every worker host. On a worker-only server, run
+   `docker compose -f docker-compose.worker.yml up -d --force-recreate`, unless
+   you saved that file as `docker-compose.yml`.
 
 On Unraid, both apps follow `:latest`, and each release moves `:latest` for
 both images. So the next update of either app takes it to 3.0. Update the UI

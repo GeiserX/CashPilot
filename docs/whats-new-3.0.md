@@ -114,7 +114,9 @@ On the UI host, take the 3.0 compose file, or change every
 docker compose up -d --force-recreate
 ```
 
-Then do the same on every worker host. A 3.0 UI still deploys to a 2.10
+Then do the same on every worker host. On a worker-only server, run
+`docker compose -f docker-compose.worker.yml up -d --force-recreate`, unless
+you saved that file as `docker-compose.yml`. A 3.0 UI still deploys to a 2.10
 worker. A 3.0 worker under a 2.x UI refuses to replace a running container and
 tells you to update the UI.
 

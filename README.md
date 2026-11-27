@@ -18,7 +18,7 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 
 - **A redeploy replaces only the container you approved.** The UI shows the container IDs it will replace. The worker refuses if a container changed in the meantime, and proxied copies get the same check ([what's new in 3.0](https://geiserx.github.io/CashPilot/whats-new-3.0/)).
 - **Mining, in beta.** The catalog runs XMRig, unMineable, SRBMiner-Multi and KRig. CashPilot reads pool balances from your public payout address, and Fleet shows Bitaxe and cgminer devices on your LAN ([mining](https://geiserx.github.io/CashPilot/mining/)).
-- **GPU grants, in beta.** A catalog service that declares a GPU gets that one device, and every other container is kept off the GPU ([GPU services](https://geiserx.github.io/CashPilot/gpu/)).
+- **GPU grants, in beta.** A catalog service that declares a GPU gets that one device, and every other container that CashPilot runs is kept off the GPU ([GPU services](https://geiserx.github.io/CashPilot/gpu/)).
 - Coming from 2.x? Upgrade the UI first, then every worker. Read [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) before you change the image tags.
 
 ## Features
