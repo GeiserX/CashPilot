@@ -141,7 +141,6 @@ def counts() -> dict[str, int]:
 
     run = _selected(DOCKER) + [s for s in mining if _is_dockerable(s)]
     out["pinned"] = sum(_is_pinned(s["docker"]["image"]) for s in run)
-    out["floating"] = len(run) - out["pinned"]
     out["noproxy"] = sum(proxies.refusal(s) is not None for s in run)
     for category in ("bandwidth", "depin", "compute", "storage", "mining"):
         out[category] = sum(s.get("category") == category for s in live)
