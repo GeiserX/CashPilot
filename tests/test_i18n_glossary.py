@@ -70,3 +70,14 @@ def test_core_terms_of_the_plan_are_there():
 def test_every_locale_has_a_register():
     assert set(GLOSSARY["register"]) == set(LOCALES)
     assert all(isinstance(v, str) and v.strip() for v in GLOSSARY["register"].values())
+
+
+def test_no_two_terms_share_a_word_in_one_locale():
+    # Brands keep their English word, so only translated terms are compared.
+    terms = {k: v for k, v in GLOSSARY["terms"].items() if v["kind"] == "term"}
+    for loc in LOCALES:
+        seen: dict = {}
+        for tid, t in terms.items():
+            word = t[loc].lower()
+            assert word not in seen, f"{loc}: {tid} and {seen.get(word)} are both {t[loc]!r}"
+            seen[word] = tid
