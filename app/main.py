@@ -4621,13 +4621,13 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
     docker_conf = svc.get("docker") or {}
     name = svc.get("name") or svc.get("slug") or "This service"
     if egress.devices_per_ip_limit(svc) == 1:
-        return 1, f"{name} allows one device per IP address, so a second copy on one machine earns nothing."
+        return 1, t("api.allows_one_device_per_ip", name=name)
     if gpu.spec_of(svc):
-        return 1, f"{name} uses this machine's GPU, which two copies would share."
+        return 1, t("api.uses_machine_s_gpu_which", name=name)
     if docker_conf.get("volumes"):
-        return 1, f"{name} keeps data in a volume or host directory, which two copies would share."
+        return 1, t("api.keeps_data_volume_host_directory", name=name)
     if docker_conf.get("ports"):
-        return 1, f"{name} publishes a port on the host, which two copies cannot share."
+        return 1, t("api.publishes_port_host_which_two", name=name)
     link = svc.get("device_link")
     if isinstance(link, dict) and link.get("id_env"):
         # Copies get the same env, so they would all report one device id.
@@ -4635,7 +4635,7 @@ def scaling_limit(svc: dict[str, Any]) -> tuple[int, str]:
             (v.get("label") or link["id_env"] for v in docker_conf.get("env", []) if v.get("key") == link["id_env"]),
             link["id_env"],
         )
-        return 1, f"{name} knows each device by its {label}, which two copies would share."
+        return 1, t("api.knows_each_device_which_two", name=name, label=label)
     return MAX_INSTANCES, ""
 
 
@@ -7700,10 +7700,12 @@ def _worker_failure_text(status: int) -> str:
     return f"Worker request failed (HTTP {status}); the worker's log has the reason"
 
 
-_WORKER_REFUSED_OUR_KEY = (
-    "The worker refused the key this server uses for it. Nothing was done there. "
-    "If it joined in the last minute, try again shortly; otherwise its log says why."
-)
+def _worker_refused_our_key() -> str:
+    """The 503 detail when the worker refused our key, in the request's language.
+
+    A caller compares a detail with this, so both sides use the same language.
+    """
+    return t("api.worker_refused_our_key")
 
 
 async def _confirmed_worker_key(cid: str) -> str | None:
@@ -7939,7 +7941,7 @@ async def _proxy_to_worker(
                 if resp.status_code == 401:
                     # The worker refused the key this server signs with for it. Passed on
                     # as a 401, an API client reads it as its own key being wrong.
-                    raise HTTPException(status_code=503, detail=_WORKER_REFUSED_OUR_KEY)
+                    raise HTTPException(status_code=503, detail=_worker_refused_our_key())
                 gateway = resp.status_code in _GATEWAY_NO_ANSWER or resp.status_code == 503
                 unknown = marked and ((gateway and not _worker_restored_nothing(resp)) or _worker_left_restore(resp))
                 err = (_WorkerNoAnswer if unknown else HTTPException)(
@@ -8094,12 +8096,13 @@ async def _worker_deploy_target(
 
     # Old inventory can be cached. A live existence probe prevents a stale
     # empty inventory (or heartbeat) from being mistaken for a first deploy.
+    # The worker's own words for "not there", in the language it answers in (this page's).
     missing = (
-        f"No proxied copy of {slug} through proxy {proxy_id} on this worker"
+        t("err.proxy_tunnel.no_proxied_copy_through_proxy", slug=slug, proxy_id=proxy_id)
         if proxy_id is not None
-        else f"Instance {instance} of {slug} not found"
+        else t("err.orchestrator.instance_not_found", instance=instance, slug=slug)
         if instance > 1
-        else f"Container for {slug} not found"
+        else t("err.orchestrator.container_not_found", slug=slug)
     )
     if not (isinstance(state, dict) and state.get("exists") is True):
         if isinstance(state, dict) and state.get("exists") is False:
@@ -8149,19 +8152,22 @@ async def _desktop_needs_checked_route(worker_id: int) -> str:
 
 async def _ask_deploy_confirmation(worker_id: int, slug: str, targets: dict[str, str], *, old: bool) -> None:
     worker = await database.get_worker(worker_id) or {}
-    name = worker.get("name") or f"worker {worker_id}"
+    name = worker.get("name") or t("api.confirm_targets.worker", id=worker_id)
     copies = [
-        f"{'Proxied copy ' + key if key.startswith('p') else 'Instance ' + key} ({target[:12]})"
+        t("api.confirm_targets.proxied", key=key, id=target[:12])
+        if key.startswith("p")
+        else t("api.confirm_targets.instance", key=key, id=target[:12])
         for key, target in targets.items()
         if target != "none"
     ]
-    message = f"Replace these containers for {slug} on {name}?\n\n" + "\n".join(copies)
+    message = t("api.confirm_targets.question", slug=slug, name=name) + "\n\n" + "\n".join(copies)
     if old:
-        product = "CashPilot-Desktop" if placement.is_desktop(placement.system_info(worker)) else "this worker"
-        message += (
-            "\n\nThese are the container IDs this worker last reported. It could replace a different container."
-            f"\n\nUpdate {product} so it can verify the container ID itself."
-        )
+        desktop = placement.is_desktop(placement.system_info(worker))
+        message += "\n\n" + t("api.confirm_targets.old")
+        if desktop:
+            message += "\n\n" + t("api.confirm_targets.update_desktop")
+        else:
+            message += "\n\n" + t("api.confirm_targets.update_worker")
     raise HTTPException(
         status_code=409,
         detail={"error": "confirm_deploy_targets", "message": message, "expected_containers": targets},
@@ -8399,7 +8405,9 @@ async def _proxy_worker_call(
         # id this call asked about, our own words. Masked, a short login such as
         # "copy" would hide that it is gone. Any other text is masked.
         asked = _PROXIED_COPY_PATH.match(path)
-        if asked and exc.detail == "No proxied copy of {} through proxy {} on this worker".format(*asked.groups()):
+        if asked and exc.detail == t(
+            "err.proxy_tunnel.no_proxied_copy_through_proxy", slug=asked.group(1), proxy_id=asked.group(2)
+        ):
             raise
         if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
             raise  # _safe_worker_detail checked the fields and supplies the message.
@@ -8695,7 +8703,7 @@ async def _refresh_proxied_copies(
             if why := proxies.refusal(svc):
                 raise ValueError(why)
             if "proxied_if_running" not in await _worker_features(worker_id):
-                raise ValueError("its worker is too old to rebuild it without starting a stopped copy; update it")
+                raise ValueError(t("api.worker_too_old_rebuild_without"))
             earner = await _proxied_earner(recorded, docker_conf, worker_id, pid)
             # Its new ids are held from the shared-id check until the ledger row is
             # written, and taken before the copy lock, as a deploy takes them.
@@ -8713,24 +8721,26 @@ async def _refresh_proxied_copies(
                     None,
                 )
                 if current is None or current.get("removing_since"):
-                    raise ValueError("it was removed meanwhile")
+                    raise ValueError(t("api.removed_meanwhile"))
                 # A routed deploy through this proxy that finished while this
                 # waited made this copy the service's own earner, named from its
                 # own ids: rebuilt as a copy, it would run the copy's ids instead.
                 if proxies.route_of(await database.get_deployment_spec(slug, worker_id=worker_id)) == pid:
                     continue
                 if proxy["state"].get("capped_at") or current.get("stopped_by_cap"):
-                    raise ValueError("its proxy reached its traffic cap")
+                    raise ValueError(t("api.proxy_reached_traffic_cap_2"))
                 # Its id is made from the original's new one, so it can match an
                 # id another box runs: refused, as a deploy refuses a shared one.
                 for key in _per_device_keys(svc):
                     if others := await database.identity_in_use(
                         slug, key, str(earner["env"].get(key) or ""), except_worker=worker_id
                     ):
-                        raise ValueError(f"its new device id already runs on {', '.join(await _worker_names(others))}")
+                        raise ValueError(
+                            t("api.new_device_id_already_runs", value=", ".join(await _worker_names(others)))
+                        )
                 approved = (expected or {}).get(f"p{pid}", "none")
                 if approved == "none":
-                    raise ValueError("its current container needs replacement approval")
+                    raise ValueError(t("api.current_container_needs_replacement_approval"))
                 await _send_worker_deploy(
                     worker_id,
                     slug,
@@ -8987,7 +8997,7 @@ def _copy_removal_pending(exc: HTTPException) -> bool:
     A refused key comes back as a 503 (_proxy_to_worker), but the worker
     refused before it acted, so that removal is not pending: it failed.
     """
-    return exc.status_code in _COPY_REMOVE_PENDING and exc.detail != _WORKER_REFUSED_OUR_KEY
+    return exc.status_code in _COPY_REMOVE_PENDING and exc.detail != _worker_refused_our_key()
 
 
 #: Copies whose pending removal a heartbeat is finishing right now, so the
@@ -9435,9 +9445,11 @@ async def _stop_capped_proxy(proxy: dict[str, Any], targets: set[tuple[int, str]
                             await database.set_proxied_copy_capped(pid, worker_id, slug, True)
                             logger.warning("Could not start %s again through proxy %s: %s", slug, pid, exc.detail)
                 except HTTPException as exc:
-                    if exc.status_code == 404 and any(
-                        text in str(exc.detail) for text in ("No proxied copy", t("api.worker_not_found"))
-                    ):
+                    gone = (
+                        t("err.proxy_tunnel.no_proxied_copy_through_proxy", slug=slug, proxy_id=pid),
+                        t("api.worker_not_found"),
+                    )
+                    if exc.status_code == 404 and any(text in str(exc.detail) for text in gone):
                         # Already gone from that box, or the box itself is gone: nothing left to stop.
                         unstopped.pop((worker_id, slug), None)
                         continue
@@ -10910,13 +10922,13 @@ class ManualPayout(BaseModel):
             return None
         value = value.strip()
         if not _ISO_DATE.match(value):
-            raise ValueError("date must be YYYY-MM-DD")
+            raise ValueError(t("api.date_must_yyyy_mm_dd"))
         try:
             day = datetime.strptime(value, "%Y-%m-%d").date()  # noqa: DTZ007 -- a calendar date
         except ValueError as exc:
-            raise ValueError("date must be a real calendar date") from exc
+            raise ValueError(t("api.date_must_real_calendar_date")) from exc
         if day > datetime.now(UTC).date():
-            raise ValueError("date cannot be in the future")
+            raise ValueError(t("api.date_cannot_future"))
         return value
 
 
@@ -11685,7 +11697,7 @@ async def api_backup_export(slug: str, request: Request) -> dict[str, Any]:
     box = await _backup_box(slug, body.get("worker_id"))
     worker_id = box["worker_id"]
 
-    update = "This worker is too old to export backups. Update the worker first."
+    update = t("api.backup_worker_too_old")
     if "state_backup" not in await _worker_features(worker_id):
         raise HTTPException(status_code=409, detail=update)
     try:
@@ -13027,12 +13039,12 @@ class EarningsReading(BaseModel):
     def _iso_date(cls, value: str) -> str:
         value = (value or "").strip()
         if not _ISO_DATE.match(value):
-            raise ValueError("date must be YYYY-MM-DD")
+            raise ValueError(t("api.date_must_yyyy_mm_dd"))
         # Reject 2026-02-30 and friends: the pattern above only proves shape.
         try:
             datetime.strptime(value, "%Y-%m-%d")  # noqa: DTZ007 -- a calendar date, not an instant
         except ValueError as exc:
-            raise ValueError("date must be a real calendar date") from exc
+            raise ValueError(t("api.date_must_real_calendar_date")) from exc
         return value
 
 
@@ -14459,7 +14471,7 @@ def _read_bundle_header(path: str) -> dict[str, Any]:
         start = fh.read(4)
         length = int.from_bytes(start, "big") if len(start) == 4 else 0
         if not 0 < length <= _RESTORE_HEADER_MAX:
-            raise state_backup.BackupError("Not a CashPilot backup bundle.")
+            raise state_backup.BackupError(t("api.not_cashpilot_backup_bundle"))
         return state_backup.read_header(start + fh.read(length))
 
 
@@ -14716,7 +14728,7 @@ async def api_restore(request: Request) -> dict[str, Any]:
             worker_id=worker_id if isinstance(worker_id, int) and not isinstance(worker_id, bool) else None,
             detail=detail,
         )
-        raise HTTPException(status_code=409, detail=detail)
+        raise HTTPException(status_code=409, detail=t("api.restore_in_flight"))
     _restore_inflight.add(sha)
     try:
         return await _restore_upload(request, user, body, entry)

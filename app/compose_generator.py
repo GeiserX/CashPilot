@@ -29,6 +29,7 @@ from app.constants import (
     LABEL_VERSION,
     UNDEPLOYABLE_STATUSES,
 )
+from app.i18n import t
 
 #: What the worker gives a service that declares no stop_timeout (see
 #: orchestrator._parse_stop_timeout); the export must not give it less.
@@ -109,17 +110,12 @@ def _gpu_paths(svc: dict[str, Any], grant: dict[str, Any], gpu_host: dict[str, A
     name = svc.get("name") or svc.get("slug") or "This service"
     vendor = gpu.VENDOR_NAMES[grant["vendor"]]
     if gpu_host is None:
-        raise GpuExportRefused(
-            f"{name} needs an {vendor} GPU, which a compose file passes in by the render node of the machine it "
-            "runs on, and those differ from machine to machine. Export it for the worker that will run it "
-            "(worker_id), so the file names that worker's node, or deploy it from the dashboard."
-        )
+        raise GpuExportRefused(t("err.compose_generator.needs_gpu_which_compose_file", name=name, vendor=vendor))
     try:
         return gpu.render_devices(grant, gpu_host)
     except gpu.GpuRefused as exc:
         raise GpuExportRefused(
-            f"{name} needs an {vendor} GPU, and CashPilot cannot tell which render node this worker would pass "
-            f"in: {exc} So it has no compose export for this worker. Deploy it from the dashboard."
+            t("err.compose_generator.needs_gpu_cashpilot_cannot_tell", name=name, vendor=vendor, exc=exc)
         ) from None
 
 
@@ -312,23 +308,20 @@ def generate_compose_single(
     """
     svc = get_service(slug)
     if not svc:
-        raise ValueError(f"Unknown service: {slug}")
+        raise ValueError(t("err.compose_generator.unknown_service", slug=slug))
     if svc.get("status") in UNDEPLOYABLE_STATUSES:
         # A compose file for a dead service is a runnable artifact pointing at
         # something that cannot earn — the export must refuse like the deploy
         # route does, not hand the user a working-looking YAML.
-        raise ValueError(f"Service {slug} is no longer available ({svc.get('status')})")
+        raise ValueError(t("err.compose_generator.service_no_longer_available", slug=slug, status=svc.get("status")))
     if fence_gated(svc):
         # Compose would start it on Docker's say-so, before any LAN fence is in
         # place, on a network the other services share.
-        raise ValueError(
-            f"{svc.get('name') or slug} runs only behind a CashPilot worker's LAN fence, so it has no Compose "
-            "export. Deploy it from the dashboard."
-        )
+        raise ValueError(t("err.compose_generator.runs_only_behind_cashpilot_worker", name=svc.get("name") or slug))
 
     compose_svc = _service_to_compose(svc, env_vars, hostname, arch, gpu_host)
     if not compose_svc:
-        raise ValueError(f"Service {slug} has no Docker image")
+        raise ValueError(t("err.compose_generator.service_has_no_docker_image", slug=slug))
 
     compose = {
         "services": {
@@ -373,7 +366,7 @@ def generate_compose_multi(
             services[f"{CONTAINER_PREFIX}{slug}"] = compose_svc
 
     if not services:
-        raise ValueError("No deployable services found")
+        raise ValueError(t("err.compose_generator.no_deployable_services_found"))
 
     compose = {"services": services}
     return _dump_compose(compose, "cashpilot-services")

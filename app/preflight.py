@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from app import arch, catalog, egress, gpu
+from app.i18n import t
 
 # Verdicts, worst first. The caller shows the worst one that applies.
 EARNS_NOTHING = "will_earn_nothing"
@@ -89,11 +90,7 @@ def assess(
             findings.append(
                 {
                     "verdict": EARNS_NOTHING,
-                    "message": (
-                        f"{service.get('name', slug)} is already running on this machine, and it "
-                        "allows only one device per IP. A second instance normally earns nothing, "
-                        "and some providers forfeit the balance of accounts that do this."
-                    ),
+                    "message": (t("preflight.already_running_machine_allows_only", name=service.get("name", slug))),
                 }
             )
             verdicts.append(EARNS_NOTHING)
@@ -102,12 +99,9 @@ def assess(
                 {
                     "verdict": REDUCED,
                     "message": (
-                        f"{service.get('name', slug)} is already running on this machine. "
-                        + (
-                            "It uses the machine's GPU, so only one copy can run there."
-                            if reqs.get("gpu") is True
-                            else "A second miner shares its CPU. Check that both copies have enough processing time."
-                        )
+                        t("preflight.already_running_gpu", name=service.get("name", slug))
+                        if reqs.get("gpu") is True
+                        else t("preflight.already_running_cpu", name=service.get("name", slug))
                     ),
                 }
             )
@@ -116,11 +110,7 @@ def assess(
             findings.append(
                 {
                     "verdict": REDUCED,
-                    "message": (
-                        f"{service.get('name', slug)} is already running on this machine. "
-                        "A second instance shares the same connection, so expect the pair to earn "
-                        "roughly what one already does."
-                    ),
+                    "message": (t("preflight.already_running_machine_second_instance", name=service.get("name", slug))),
                 }
             )
             verdicts.append(REDUCED)
@@ -134,13 +124,7 @@ def assess(
         findings.append(
             {
                 "verdict": EARNS_NOTHING,
-                "message": (
-                    "This provider forbids running its software in Docker containers, on virtual "
-                    "machines, on home servers, or for monetisation — which is exactly what "
-                    "CashPilot does. Their stated penalty is termination without notice and "
-                    "cancellation of any pending payment. Deploying this here means accepting "
-                    "that risk knowingly."
-                ),
+                "message": (t("preflight.provider_forbids_running_software_docker")),
             }
         )
         verdicts.append(EARNS_NOTHING)
@@ -156,12 +140,7 @@ def assess(
         findings.append(
             {
                 "verdict": CHECK_YOURSELF,
-                "message": (
-                    f"Needs at least {min_storage} of disk you can commit for months. Storage "
-                    "payouts accrue slowly and part of the balance is held back and forfeited if "
-                    "the node is abandoned early — running one for a month is worse than not "
-                    "running it at all."
-                ),
+                "message": (t("preflight.needs_least_disk_you_can", min_storage=min_storage)),
             }
         )
         verdicts.append(CHECK_YOURSELF)
@@ -175,11 +154,7 @@ def assess(
             findings.append(
                 {
                     "verdict": EARNS_NOTHING,
-                    "message": (
-                        "This machine identifies itself as a hosted/VPS server, and this service "
-                        "requires a residential IP. Datacentre addresses are usually detected and "
-                        "rejected — expect little or nothing, and possibly a banned account."
-                    ),
+                    "message": (t("preflight.machine_identifies_itself_hosted_vps")),
                 }
             )
             verdicts.append(EARNS_NOTHING)
@@ -187,11 +162,7 @@ def assess(
             findings.append(
                 {
                     "verdict": CHECK_YOURSELF,
-                    "message": (
-                        "This needs a residential IP. On a VPS or datacentre connection it typically "
-                        "earns far less, or the account is banned outright. CashPilot cannot check "
-                        "your connection type, so this one is on you."
-                    ),
+                    "message": (t("preflight.needs_residential_ip_vps_datacentre")),
                 }
             )
             verdicts.append(CHECK_YOURSELF)
@@ -206,10 +177,7 @@ def assess(
         findings.append(
             {
                 "verdict": CHECK_YOURSELF,
-                "message": (
-                    f"Wants at least {min_bandwidth}. Below that it still runs, it just earns "
-                    "proportionally less. CashPilot does not measure your connection."
-                ),
+                "message": (t("preflight.wants_least_below_still_runs", min_bandwidth=min_bandwidth)),
             }
         )
         verdicts.append(CHECK_YOURSELF)
@@ -240,12 +208,13 @@ def assess(
             {
                 "verdict": EARNS_NOTHING,
                 "message": (
-                    f"This machine is {arch.label(fam)} ({machine}) and "
-                    f"{service.get('name', slug)} publishes no build for it, only {have}. "
-                    "The container will not start: Docker pulls the wrong build and it dies "
-                    "with 'exec format error'. The one exception is a Docker that runs foreign "
-                    "images under emulation (Docker Desktop with Rosetta, or binfmt/qemu), "
-                    "which CashPilot cannot check."
+                    t(
+                        "preflight.machine_publishes_no_build_only",
+                        fam=arch.label(fam),
+                        machine=machine,
+                        name=service.get("name", slug),
+                        have=have,
+                    )
                 ),
             }
         )
@@ -293,10 +262,12 @@ def assess(
     }
 
 
-_GPU_CHECK_YOURSELF = (
-    "This needs a supported GPU passed through to the container. Without one it "
-    "will start and then sit idle, earning nothing."
-)
+#: The key of the finding for a GPU that CashPilot cannot see.
+_GPU_CHECK_YOURSELF = "preflight.gpu_check_yourself"
+
+
+def _gpu_check_yourself() -> str:
+    return t(_GPU_CHECK_YOURSELF)  # i18n-keys: preflight.gpu_check_yourself
 
 
 def _gpu_findings(service: dict[str, Any], info: dict[str, Any], deployed: set[str]) -> list[dict[str, str]]:
@@ -311,7 +282,7 @@ def _gpu_findings(service: dict[str, Any], info: dict[str, Any], deployed: set[s
     grant = gpu.spec_of(service)
     if not grant:
         if reqs.get("gpu"):
-            return [{"verdict": CHECK_YOURSELF, "message": _GPU_CHECK_YOURSELF}]
+            return [{"verdict": CHECK_YOURSELF, "message": _gpu_check_yourself()}]
         return []
     name = service.get("name") or service.get("slug") or "This service"
     vendor = grant["vendor"]
@@ -320,17 +291,14 @@ def _gpu_findings(service: dict[str, Any], info: dict[str, Any], deployed: set[s
     vendors = host["vendors"]
     findings: list[dict[str, str]] = []
     if problem := gpu.missing(grant, host):
-        findings.append({"verdict": EARNS_NOTHING, "message": f"{problem} The worker refuses the deploy."})
+        findings.append({"verdict": EARNS_NOTHING, "message": t("preflight.worker_refuses_deploy", problem=problem)})
     elif vendors is None or vendor not in vendors:
-        findings.append({"verdict": CHECK_YOURSELF, "message": _GPU_CHECK_YOURSELF})
+        findings.append({"verdict": CHECK_YOURSELF, "message": _gpu_check_yourself()})
     elif vendor == "nvidia" and report.get("nvidia_toolkit") is not True:
         findings.append(
             {
                 "verdict": CHECK_YOURSELF,
-                "message": f"This machine has an NVIDIA GPU. {name} reaches it only through the NVIDIA "
-                f"Container Toolkit, which CashPilot cannot see from here. If it is not installed, install it "
-                f"({gpu.TOOLKIT_URL}) and run `sudo nvidia-ctk runtime configure --runtime=docker && sudo "
-                "systemctl restart docker` before you deploy.",
+                "message": t("preflight.machine_has_nvidia_gpu_reaches", name=name, toolkit_url=gpu.TOOLKIT_URL),
             }
         )
     sharing = sorted(
@@ -342,8 +310,7 @@ def _gpu_findings(service: dict[str, Any], info: dict[str, Any], deployed: set[s
         findings.append(
             {
                 "verdict": REDUCED,
-                "message": f"{name} shares the GPU with {', '.join(sharing)}, already running on this machine. "
-                "Expect each to earn less than it would alone.",
+                "message": t("preflight.shares_gpu_already_running_machine", name=name, sharing=", ".join(sharing)),
             }
         )
     return findings
@@ -355,17 +322,14 @@ def _summary(verdict: str, service: dict[str, Any]) -> str:
         # "will earn nothing" is the right severity but the wrong words: the
         # outcome here is a closed account and a cancelled balance, not a
         # disappointing month.
-        return (
-            f"{name} forbids being run this way. The risk is not low earnings — it is a "
-            "terminated account with any pending payment cancelled. You can still deploy it."
-        )
+        return t("preflight.forbids_being_run_way_risk", name=name)
     if verdict == EARNS_NOTHING:
-        return f"{name} will most likely earn nothing here. You can deploy it anyway."
+        return t("preflight.will_most_likely_earn_nothing", name=name)
     if verdict == REDUCED:
-        return f"{name} will probably earn less here than the catalog range suggests."
+        return t("preflight.will_probably_earn_less_here", name=name)
     if verdict == CHECK_YOURSELF:
-        return f"{name} should work, provided the points below are true of your setup."
-    return f"Nothing stands out — {name} should work normally here."
+        return t("preflight.should_work_provided_points_below", name=name)
+    return t("preflight.nothing_stands_out_should_work", name=name)
 
 
 def _fleet_findings(
@@ -428,11 +392,7 @@ def _fleet_findings(
             {
                 "verdict": EARNS_NOTHING,
                 "message": (
-                    f"{name} is already running on {where}, which leaves the internet through the "
-                    f"same public address ({shared_ip}) as this machine. It allows one device per "
-                    "IP, so the provider sees one connection either way: the second instance "
-                    "normally earns nothing, and some providers forfeit the balance of accounts "
-                    "that do this."
+                    t("preflight.already_running_which_leaves_internet", name=name, where=where, shared_ip=shared_ip)
                 ),
             }
         )
@@ -441,10 +401,7 @@ def _fleet_findings(
             {
                 "verdict": CHECK_YOURSELF,
                 "message": (
-                    f"{name} is already running on {where}, behind the same public address "
-                    f"({shared_ip}) as this machine. Nobody has documented how many devices this "
-                    "service allows per IP, so CashPilot cannot tell you whether that is fine or "
-                    "wasted — check the provider's terms before relying on the second one."
+                    t("preflight.already_running_behind_same_public", name=name, where=where, shared_ip=shared_ip)
                 ),
             }
         )
@@ -453,10 +410,7 @@ def _fleet_findings(
             {
                 "verdict": REDUCED,
                 "message": (
-                    f"{name} is already running on {where}, behind the same public address "
-                    f"({shared_ip}). This service documents no per-IP device limit, but both "
-                    "instances still share one connection, so expect the pair to earn roughly "
-                    "what one already does rather than double."
+                    t("preflight.already_running_behind_same_public_2", name=name, where=where, shared_ip=shared_ip)
                 ),
             }
         )
@@ -471,9 +425,14 @@ def _fleet_findings(
             {
                 "verdict": verdict,
                 "message": (
-                    f"{name} is already running on {where}, behind the same public address "
-                    f"({shared_ip}). It allows {limit} devices per IP and this would be number "
-                    f"{instances}."
+                    t(
+                        "preflight.already_running_behind_same_public_3",
+                        name=name,
+                        where=where,
+                        shared_ip=shared_ip,
+                        limit=limit,
+                        instances=instances,
+                    )
                 ),
             }
         )

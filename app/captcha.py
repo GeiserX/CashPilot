@@ -24,6 +24,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from app.i18n import t
+
 logger = logging.getLogger(__name__)
 
 #: How long one siteverify call may take. The user is waiting on the sign-in page.
@@ -113,8 +115,11 @@ def load_config() -> Config | None:
     provider = PROVIDERS.get(name)
     if provider is None:
         raise CaptchaConfigError(
-            f"CASHPILOT_CAPTCHA_PROVIDER={name!r} is not a provider CashPilot knows. "
-            f"Set it to one of {', '.join(sorted(PROVIDERS))}, or remove it to turn the sign-in CAPTCHA off."
+            t(
+                "err.captcha.cashpilot_captcha_provider_not_provider",
+                name=repr(name),
+                providers=", ".join(sorted(PROVIDERS)),
+            )
         )
     site_key = os.environ.get("CASHPILOT_CAPTCHA_SITE_KEY", "").strip()
     secret_key = os.environ.get("CASHPILOT_CAPTCHA_SECRET_KEY", "").strip()
@@ -125,9 +130,13 @@ def load_config() -> Config | None:
     ]
     if missing:
         raise CaptchaConfigError(
-            f"CASHPILOT_CAPTCHA_PROVIDER is {name}, but {' and '.join(missing)} "
-            f"{'is' if len(missing) == 1 else 'are'} not set. Set {'it' if len(missing) == 1 else 'them'}, "
-            "or remove CASHPILOT_CAPTCHA_PROVIDER to turn the sign-in CAPTCHA off."
+            t(
+                "err.captcha.cashpilot_captcha_provider_but_not",
+                name=name,
+                missing=" and ".join(missing),
+                value="is" if len(missing) == 1 else "are",
+                value2="it" if len(missing) == 1 else "them",
+            )
         )
     return Config(provider=provider, site_key=site_key, secret_key=secret_key)
 

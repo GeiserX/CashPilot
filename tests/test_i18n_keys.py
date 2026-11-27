@@ -169,3 +169,39 @@ def test_the_scan_sees_a_call_a_built_key_and_a_shadow():
         assert SHADOW.search(bad), bad
     for good in ["const tab = 1", "x.t => 1", "function f(text) {", "t('a')", "const total = t('a')"]:
         assert not SHADOW.search(good), good
+
+
+#: Files whose source runs where no app package exists: the activity probe runs
+#: procnet.py with ``python -c`` inside an earner's namespace, and an operator
+#: runs state_backup.py with ``python -I`` to read a backup.
+STANDALONE = ["app/procnet.py", "app/state_backup.py"]
+
+
+def _app_imports(source: str) -> list[str]:
+    """The app modules that a source imports, at any depth."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names = [node.module]
+        elif isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        else:
+            continue
+        found += [n for n in names if n == "app" or n.startswith("app.")]
+    return found
+
+
+def test_code_that_runs_outside_the_app_imports_nothing_from_it():
+    """A t() in these files would fail where they run, so their words stay English."""
+    sources = {rel: (ROOT / rel).read_text(encoding="utf-8") for rel in STANDALONE}
+    found = {rel: _app_imports(src) for rel, src in sources.items() if _app_imports(src)}
+    assert not found, f"standalone code imports the app: {found}"
+    assert _app_imports("from app.i18n import t") == ["app.i18n"]
+    assert _app_imports("def f():\n    import app.x") == ["app.x"] and _app_imports("from . import x") == []
+
+
+def test_a_server_message_is_a_sentence_and_never_a_code():
+    """A one-word value is a code that some caller compares (a reason, a route state), not words to translate."""
+    server = ("api.", "worker.", "err.", "preflight.")
+    codes = {k: v for k, v in EN.items() if k.startswith(server) and not re.search(r"\s", v)}
+    assert not codes, f"these server messages look like codes: {codes}"

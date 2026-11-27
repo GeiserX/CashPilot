@@ -1748,7 +1748,7 @@ class TestStorageAndRoutes:
     @pytest.mark.parametrize(
         ("status", "body", "ours"),
         [
-            (401, {"detail": "Invalid API key"}, main._WORKER_REFUSED_OUR_KEY),
+            (401, {"detail": "Invalid API key"}, main._worker_refused_our_key()),
             (500, None, main._worker_failure_text(500)),
             (404, None, main._worker_failure_text(404)),
         ],

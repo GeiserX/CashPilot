@@ -2144,11 +2144,10 @@ def _validate_deploy_spec(spec: DeploySpec, slug: str | None = None) -> None:
             continue  # explicitly opted in by the operator (see _parse_allowed_volume_roots)
         for blocked in _BLOCKED_VOLUME_ROOTS:
             if real == blocked or real.startswith(blocked + "/"):
-                detail = f"Volume mount '{source}' is blocked"
-                if not _allowlist_refusal(source):
-                    detail += (
-                        ". To allow it, add the path to CASHPILOT_ALLOWED_VOLUME_ROOTS on this worker and restart it"
-                    )
+                if _allowlist_refusal(source):
+                    detail = t("worker.volume_mount_blocked", source=source)
+                else:
+                    detail = t("worker.volume_mount_blocked_allow", source=source)
                 raise HTTPException(status_code=403, detail=detail)
     _validate_resources(spec.resources)
 
@@ -2970,7 +2969,7 @@ async def api_wallet_seed(request: Request, slug: str) -> JSONResponse:
     def _read() -> str:
         container = orchestrator._find_container(slug)
         if container is None:
-            raise wallet_seed.WalletSeedError(f"{slug} is not deployed on this worker.", "wallet_missing", 404)
+            raise wallet_seed.WalletSeedError(t("worker.not_deployed_worker", slug=slug), "wallet_missing", 404)
         return wallet_seed.reveal(container, svc)
 
     try:
@@ -3432,16 +3431,13 @@ async def api_restore(slug: str, request: Request) -> dict[str, Any]:
     try:
         header = state_backup.read_header(bundle)
         if header.get("mode") != state_backup.MODE_PASSPHRASE:
-            raise state_backup.BackupError(
-                "This file is sealed to a key, not a passphrase. Its private key never goes through the dashboard: "
-                "restore it with the command line steps in the backup guide."
-            )
+            raise state_backup.BackupError(t("worker.file_sealed_key_not_passphrase"))
         payload = await asyncio.to_thread(state_backup.open_bundle, bundle, passphrase=passphrase)
         del passphrase
         meta = header.get("metadata") or {}
         if meta.get("slug") != slug:
             # The header is authenticated, so this is what the file really holds.
-            raise state_backup.BackupError(f"This is a backup of {meta.get('slug')!r}, not of {slug}.")
+            raise state_backup.BackupError(t("worker.backup_not", slug=repr(meta.get("slug")), slug2=slug))
         archives = await asyncio.to_thread(state_backup.split_archives, payload)
         del payload
     except state_backup.BackupError as exc:
