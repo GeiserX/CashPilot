@@ -201,8 +201,9 @@ def _save_worker_key(key: str) -> bool:
     except OSError as exc:
         logger.error("Could not persist per-worker key — NOT adopting it: %s", exc)
         return False
-    global _worker_key
+    global _worker_key, _key_pending
     _worker_key = key
+    _key_pending = True
     return True
 
 
@@ -221,7 +222,7 @@ def _discard_worker_key(reason: str) -> None:
     transient blip and widen the window in which the shared key is accepted; it
     takes sustained rejection, which is what a deleted row actually looks like.
     """
-    global _worker_key, _consecutive_auth_failures
+    global _worker_key, _consecutive_auth_failures, _key_pending
     try:
         _WORKER_KEY_FILE.unlink(missing_ok=True)
     except OSError as exc:
@@ -233,6 +234,7 @@ def _discard_worker_key(reason: str) -> None:
         )
         return
     _worker_key = None
+    _key_pending = False
     _consecutive_auth_failures = 0
     logger.warning(
         "Discarded this worker's per-worker key (%s). Re-enrolling with the shared key on the next heartbeat.",
@@ -241,6 +243,14 @@ def _discard_worker_key(reason: str) -> None:
 
 
 _worker_key: str | None = _load_worker_key()
+# True from the moment we adopt a newly issued key until a heartbeat signed with
+# it lands. The UI confirms the key only on that heartbeat and signs its calls
+# to us with the shared key until then, so for that one step we accept both.
+# Refusing the shared key at once failed every command for up to a minute
+# after enrolment while the dashboard already showed the worker online.
+# A key loaded from disk is not pending: the first heartbeat after a start
+# goes out at once and confirms it, and the shared key stays refused.
+_key_pending = False
 
 
 # Stable per-worker identity. The UI keys a worker's DB row (and its per-worker key) on
@@ -343,14 +353,18 @@ def _verify_api_key(request: Request) -> None:
 
     Once enrolled we require OUR OWN per-worker key; the shared bootstrap key is
     rejected (the cutover). Before enrollment we accept the shared key so the UI
-    can reach us to enroll in the first place.
+    can reach us to enroll in the first place, and we keep accepting it until
+    the UI has confirmed our own key (_key_pending).
     """
     expected = _active_key()
     if not expected:
         raise HTTPException(status_code=503, detail="Fleet key not configured")
-    auth = request.headers.get("Authorization", "")
-    if not hmac.compare_digest(auth.encode(), f"Bearer {expected}".encode()):
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    auth = request.headers.get("Authorization", "").encode()
+    if hmac.compare_digest(auth, f"Bearer {expected}".encode()):
+        return
+    if _key_pending and API_KEY and hmac.compare_digest(auth, f"Bearer {API_KEY}".encode()):
+        return
+    raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 # ---------------------------------------------------------------------------
@@ -721,7 +735,7 @@ def _log_link_failure_hint(exc: BaseException) -> None:
 async def _send_heartbeat() -> None:
     """Send a single heartbeat to the UI."""
     global _ui_connected, _last_heartbeat, _last_error, _consecutive_auth_failures
-    global _consecutive_heartbeat_failures, _link_hint_logged, _last_heartbeat_ok
+    global _consecutive_heartbeat_failures, _link_hint_logged, _last_heartbeat_ok, _key_pending
 
     containers = []
     listed = False
@@ -861,13 +875,17 @@ async def _send_heartbeat() -> None:
 
     fleet_exits_changed = False
     try:
+        sent_key = _active_key()
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 f"{UI_URL.rstrip('/')}/api/workers/heartbeat",
                 json=payload,
-                headers={"Authorization": f"Bearer {_active_key()}"},
+                headers={"Authorization": f"Bearer {sent_key}"},
             )
             resp.raise_for_status()
+            if _worker_key and sent_key == _worker_key:
+                # The UI took our own key, so it has confirmed it and signs with it now.
+                _key_pending = False
             # The heartbeat LANDED — record the success before any enrollment
             # bookkeeping. This state measures "did the UI hear from us", and a
             # bug in the bookkeeping below (a UI version skew handing back a
@@ -1042,7 +1060,12 @@ async def _heartbeat_loop() -> None:
     global _ui_connected, _last_error, _consecutive_heartbeat_failures
     while True:
         try:
+            pending_before = _key_pending
             await _send_heartbeat()
+            if _key_pending and not pending_before:
+                # Just enrolled: confirm the new key now rather than a minute later,
+                # so the UI switches to it (and can sign approvals with it) at once.
+                await _send_heartbeat()
         except asyncio.CancelledError:
             raise
         except Exception:
