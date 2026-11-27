@@ -837,13 +837,18 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const gState = g.state === 'installed' ? true : g.state === 'missing' ? false : null;
     const gText = g.state === 'installed' ? t('layers.gvisor.installed') : g.state === 'missing' ? t('layers.gvisor.missing')
       : g.state === 'unsupported' ? t('layers.gvisor.unsupported') : t('layers.unknown');
-    const vmText = view.kvm === true ? t('layers.vm.kvm') : view.kvm === false ? t('layers.vm.no_kvm') : t('layers.unknown');
+    // A worker inside a Secure VM shows the VM's fence; any other shows whether its host has KVM.
+    const vm = view.secure_vm;
+    const vmState = vm ? (vm.state === 'ok' ? true : vm.state === 'failed' ? false : null) : null;
+    const vmText = vm ? t(`layers.vm.fence_${vm.state}`)
+      : view.kvm === true ? t('layers.vm.kvm') : view.kvm === false ? t('layers.vm.no_kvm') : t('layers.unknown');
+    const vmTip = vm ? [t('layers.vm.inside', { host: vm.host }), vm.reason].filter(Boolean).join(' ') : t('layers.vm.tip');
     const summary = [
       layerChip(proxy, `${t('layers.proxy')}: ${proxy === true ? t('layers.on') : proxy === false ? t('layers.off') : t('layers.unknown')}`,
         proxy === false ? t('layers.proxy.off_tip') : ''),
       layerChip(fenceOn, `${t('layers.fence')}: ${fenceOn === true ? t('layers.on') : fenceOn === false ? t('layers.off') : t('layers.unknown')}`),
       layerChip(gState, `gVisor: ${gText}`, g.why || ''),
-      layerChip(null, `${t('layers.vm')}: ${vmText}`, t('layers.vm.tip')),
+      layerChip(vmState, `${t('layers.vm')}: ${vmText}`, vmTip),
     ].join(' ');
     const busy = _layerBusy[w.id];
     const owner = _isOwner && isOnline;
@@ -858,7 +863,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
         : '';
       const pending = e.choice && e.runtime && e.choice !== e.runtime
         ? ` <span class="text-warn">${esc(t('layers.earner.pending', { runtime: runtimeLabel(e.choice) }))}</span>` : '';
-      return `<li><strong>${esc(e.service)}</strong>: ${esc(fence)} · ${esc(runtimeLabel(e.runtime))}${pending} ${button}${e.locked ? ` <span class="muted">${esc(e.locked)}</span>` : ''}</li>`;
+      const inVm = vm ? ` · ${esc(e.vm === true ? t('layers.earner.vm_ok') : e.vm === false ? t('layers.earner.vm_failed') : t('layers.earner.vm_unknown'))}` : '';
+      return `<li><strong>${esc(e.service)}</strong>: ${esc(fence)} · ${esc(runtimeLabel(e.runtime))}${inVm}${pending} ${button}${e.locked ? ` <span class="muted">${esc(e.locked)}</span>` : ''}</li>`;
     }).join('');
     let body = '';
     if (earners) body += `<ul class="layer-earners">${earners}</ul>`;
