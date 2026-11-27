@@ -4,7 +4,8 @@
 # service catalog) uses these words, so the same thing has the same name
 # everywhere. Translators read it before they translate.
 #
-# Shape: terms.<id>.{en, kind, note, <19 locales>}. Every value is a
+# Shape: register.<locale> (how each locale addresses the user), and
+# terms.<id>.{en, kind, note, <19 locales>}. Every value is a
 # double-quoted string, so scripts/i18n_check.py's YAML parser and PyYAML
 # both read it. kind is "term" (translate it with the word below) or
 # "brand" (a name: keep the English word in every locale).
@@ -18,6 +19,28 @@
 #
 # To change a word: change it here first, then in every locale file that
 # uses it, in the same PR.
+
+# How each locale addresses the user. Every surface uses the same register.
+register:
+  es: "tú"
+  pt-BR: "você"
+  fr: "vous"
+  de: "du (informal, as Home Assistant and Nextcloud do)"
+  it: "tu"
+  nl: "je/jij"
+  pl: "ty (2nd person singular)"
+  ru: "вы"
+  uk: "ви"
+  tr: "siz"
+  ar: "Modern Standard Arabic, neutral formal; أنت only when needed"
+  hi: "आप"
+  id: "Anda"
+  vi: "bạn"
+  th: "polite neutral, no pronoun where possible"
+  fil: "ikaw/mo, \"po\" sparingly; Taglish where Filipino tech UIs keep English"
+  zh-Hans: "你"
+  ja: "です/ます"
+  ko: "합니다체"
 
 terms:
   cashpilot:
