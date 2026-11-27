@@ -22,7 +22,8 @@ const slice = (from, to) => {
   }
   return src.slice(a, b);
 };
-const code = slice('  function confirmCriticalVolumes(', '  // -----------------------------------------------------------\n  // Log viewer')
+const code = slice('  function isDesktopWorker(', '  function workerCheckboxList(')
+  + slice('  function confirmCriticalVolumes(', '  // -----------------------------------------------------------\n  // Log viewer')
   + slice('  async function removeCustomFromBox(', '  async function deployServiceToWorkers(');
 
 const REVIEWED = 'mysterium-data@2026-11-01T10:00:00Z';
@@ -30,7 +31,8 @@ const BLOCKED = [{volume: 'mysterium-data', target: '/var/lib/mysterium-node', h
 const refusal = (error, extra = {}) => Object.assign(new Error(error), {code: error, refusal: {error, ...extra}});
 
 // One run: ``answer(path)`` is what the box says to each request; confirm() says yes.
-async function run(fn, args, answer, {yes = () => true} = {}) {
+// ``workers`` is the service detail's box list (a server box unless told).
+async function run(fn, args, answer, {yes = () => true, workers = []} = {}) {
   const events = [];
   const api = async (path, opts) => {
     events.push({kind: 'api', path, body: opts?.body});
@@ -40,8 +42,8 @@ async function run(fn, args, answer, {yes = () => true} = {}) {
   const toast = (text, type) => events.push({kind: 'toast', text, type});
   const window = {confirm};
   const make = new Function('api', 'confirm', 'toast', 'window', '_isOwner', 'loadServicesTable', 'openServiceDetail',
-    `${code}; return {removeService, removeCustomFromBox};`);
-  const fns = make(api, confirm, toast, window, true, () => {}, () => {});
+    '_detailWorkers', `${code}; return {removeService, removeCustomFromBox};`);
+  const fns = make(api, confirm, toast, window, true, () => {}, () => {}, workers);
   await fns[fn](...args);
   return events;
 }
@@ -85,6 +87,23 @@ reviewedBeforeTheOverride('partial restore retry',
 
 // --- a custom service's Remove with its data ---------------------------------
 reviewedBeforeTheOverride('custom service', await run('removeCustomFromBox', ['my-app', 7, 'box-a'], box(null)));
+
+// --- a Desktop box: it deletes critical data only on that computer ----------
+// So the first refusal is the answer: no review, no override, one error toast.
+const DESKTOP = [{id: 7, name: 'box-a', system_info: {device_type: 'desktop'}}];
+for (const fn of ['removeService', 'removeCustomFromBox']) {
+  const slug = fn === 'removeService' ? 'mysterium' : 'my-app';
+  const events = await run(fn, [slug, 7, 'box-a'], box(null), {workers: DESKTOP});
+  const deletes = events.filter((e) => e.kind === 'api');
+  const toasts = events.filter((e) => e.kind === 'toast');
+  check(`${fn} on a Desktop: one DELETE, never the override`,
+    deletes.length === 1 && !overridden(deletes[0]), JSON.stringify(deletes));
+  check(`${fn} on a Desktop: no volume review`,
+    !events.some((e) => e.kind === 'confirm' && e.text.startsWith('These volumes')), JSON.stringify(events));
+  check(`${fn} on a Desktop: one error toast that says where the data is deleted`,
+    toasts.length === 1 && toasts[0].type === 'error' && toasts[0].text.includes('only on that computer'),
+    JSON.stringify(toasts));
+}
 
 // --- the owner cancels the review: no override goes --------------------------
 const cancel = (text) => !text.startsWith('These volumes');

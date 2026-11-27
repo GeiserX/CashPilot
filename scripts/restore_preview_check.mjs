@@ -107,7 +107,11 @@ check('no tag from the data reaches the page',
 // box names the critical volumes, the owner confirms exactly those, and only
 // then is the remove sent again as the audited critical delete with that set.
 const apiSrc = slice('async function api(', '// One prompt at a time');
-const confirmSrc = slice('function confirmCriticalVolumes(', 'async function removeService(');
+// These boxes are servers: a Desktop answers a critical delete differently,
+// which scripts/critical_delete_review_check.mjs runs.
+const confirmSrc = 'const _detailWorkers = [];\n'
+  + slice('function isDesktopWorker(', 'function workerCheckboxList(')
+  + slice('function confirmCriticalVolumes(', 'async function removeService(');
 const removeSrc = confirmSrc + slice('async function removeService(', '// Log viewer');
 // With stepUp the stub server is the real one's rule: a delete of critical
 // data without the owner's password is answered step_up_required, and api()
