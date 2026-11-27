@@ -105,6 +105,7 @@ timeout = 300
 timeout_method = "thread"
 markers = [
     "real_custom_images: use the real database.get_custom_images instead of the empty default",
+    "real_runtime_choice: use the real main._runtime_choice_for instead of no choice",
     "real_state_backups: use the real database.get_state_backups instead of the empty default",
     "real_gated_mode: keep the rule that a fence-gated service runs only in on or operator isolation mode",
     "live: hits a real provider API; needs credentials; excluded from normal runs",
