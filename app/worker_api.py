@@ -48,6 +48,7 @@ from app import (
     egress,
     fleet_key,
     gpu,
+    gvisor_check,
     health_probe,
     isolation_check,
     lan_fence,
@@ -908,6 +909,8 @@ async def _send_heartbeat() -> None:
         payload["system_info"]["features"].append("gpu_grant")
         # Takes runtime_choice on a deploy and reports system_info.layers (app/layers.py).
         payload["system_info"]["features"].append(layers.FEATURE)
+        # Runs the gVisor self-test (POST /api/layers/gvisor-check).
+        payload["system_info"]["features"].append("gvisor_check")
         payload["system_info"]["gpu_grants"] = {
             service["slug"]: grant
             for service in (_catalog_get_services() if _catalog_get_services else [])
@@ -3515,6 +3518,30 @@ async def api_isolation_check(request: Request) -> dict[str, Any]:
             detail={
                 "error": "isolation_check_unavailable",
                 "message": "The worker's Docker daemon did not answer, so it cannot run the check.",
+            },
+        )
+
+
+@app.post("/api/layers/gvisor-check")
+async def api_gvisor_check(request: Request) -> dict[str, Any]:
+    """Does gVisor really protect the earners on this host? (app/gvisor_check.py)
+
+    Starts one short probe container per gVisor runtime an earner would get,
+    on the earners' network, and removes it on every path. The answer is
+    "green", "red" or "not_installed", with the reason per runtime. The
+    heartbeat carries the last answer (system_info.layers.gvisor_check).
+    """
+    _verify_api_key(request)
+    try:
+        return await asyncio.to_thread(gvisor_check.run)
+    except gvisor_check.CheckBusy as exc:
+        raise HTTPException(status_code=409, detail={"error": "gvisor_check_busy", "message": str(exc)})
+    except (RuntimeError, DockerException, requests.exceptions.RequestException):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "gvisor_check_unavailable",
+                "message": "The worker's Docker daemon did not answer, so it cannot run the gVisor check.",
             },
         )
 
