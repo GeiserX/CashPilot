@@ -87,12 +87,18 @@ def _split_top(text: str) -> list[str]:
     return [part.strip() for part in parts if part.strip()]
 
 
-def _params(args: str) -> dict[str, str]:
-    """The ``{ name: expr, short }`` object of a JS t() call, as name -> expression."""
+def _params(args: str, lang: str = "js") -> dict[str, str]:
+    """A t() call's arguments as name -> expression: a JS ``{ name: expr, short }``, or Python ``name=expr``."""
     args = args.strip()
+    params: dict[str, str] = {}
+    if lang == "py":
+        for part in _split_top(args):
+            name, eq, expr = part.partition("=")
+            if eq and name.strip().isidentifier():
+                params[name.strip()] = english(expr.strip(), lang)
+        return params
     if not (args.startswith("{") and args.endswith("}")):
         return {}
-    params: dict[str, str] = {}
     for part in _split_top(args[1:-1]):
         name, colon, expr = part.partition(":")
         name = name.strip().strip("'\"")
@@ -100,8 +106,8 @@ def _params(args: str) -> dict[str, str]:
     return params
 
 
-def _fill(message: str, params: dict[str, str]) -> str:
-    """``message`` with each ``{name}`` that ``params`` fills put back as ``${expr}``.
+def _fill(message: str, params: dict[str, str], slot: str = "${") -> str:
+    """``message`` with each ``{name}`` that ``params`` fills put back as ``${expr}`` (``{expr}`` in Python).
 
     Inside ``{name, plural, ...}`` the ``#`` that stands for the count gets the same treatment.
     """
@@ -109,13 +115,19 @@ def _fill(message: str, params: dict[str, str]) -> str:
         if m.group(1) not in params:
             continue
         end = _call_end(message, m.start())
-        body = message[m.start() : end].replace("#", f"${{{params[m.group(1)]}}}")
-        return _fill(message[: m.start()], params) + body + _fill(message[end:], params)
-    return re.sub(r"\{(\w+)\}", lambda m: f"${{{params[m.group(1)]}}}" if m.group(1) in params else m.group(0), message)
+        body = message[m.start() : end].replace("#", f"{slot}{params[m.group(1)]}}}")
+        return _fill(message[: m.start()], params, slot) + body + _fill(message[end:], params, slot)
+    return re.sub(
+        r"\{(\w+)\}", lambda m: f"{slot}{params[m.group(1)]}}}" if m.group(1) in params else m.group(0), message
+    )
 
 
-def english(text: str) -> str:
-    """``text`` with every t() call replaced by its English message."""
+def english(text: str, lang: str = "js") -> str:
+    """``text`` with every t() call replaced by its English message.
+
+    ``lang`` is "py" for Python source: a call reads back as ``"text"``, or as ``f"text {expr}"``
+    when it fills placeholders.
+    """
     en = _english()
     out: list[str] = []
     pos = 0
@@ -138,7 +150,11 @@ def english(text: str) -> str:
             pos = end
             continue
         args = text[text.index(found.group(1), paren + 1) + len(key) + 2 : end - 1].strip().lstrip(",").strip()
-        params = _params(args)
+        params = _params(args, lang)
+        if lang == "py":
+            out.append(f'f"{_fill(message, params, "{")}"' if params else f'"{message}"')
+            pos = end
+            continue
         message = _fill(message, params)
         if out[-1].endswith("${") and text[end : end + 1] == "}":
             # `${t('key')}` inside a template literal: the English stands in for the whole slot.
@@ -159,7 +175,7 @@ def english_source(path: str | Path) -> str:
     p = Path(path)
     if not p.is_absolute():
         p = ROOT / p
-    return english(p.read_text(encoding="utf-8"))
+    return english(p.read_text(encoding="utf-8"), "py" if p.suffix == ".py" else "js")
 
 
 # Node flags that give a check run with ``node -e`` the page's global t(), in English.
