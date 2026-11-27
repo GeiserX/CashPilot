@@ -7,7 +7,7 @@ site, the docs) can copy this file unchanged.
 Usage:
     i18n_check.py SOURCE TARGET [TARGET ...] [options]
 
-    python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/[!e]*.yml
+    python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/*.yml
     python scripts/i18n_check.py frontend/locales/en.json frontend/locales/*.json \
         --hashes-dir frontend/locales/.source-hashes
     python scripts/i18n_check.py app/src/main/res/values/strings.xml \
@@ -64,6 +64,7 @@ Placeholders compared:
     {n, plural|select ...}  ICU plural, selectordinal and select (select keys must match)
     %s %d %1$s %.2f %@      printf / Java / Android, compared by position and type
     %(name)s                Python named
+    <tag href="...">        HTML and Android markup: tag names, and each link's href
 The ICU parser follows ICU's apostrophe rule: a quote starts literal text only
 before { } (or # inside a plural), so "l'utilisateur" stays plain text.
 
@@ -84,7 +85,12 @@ Source hashes (the freshness check):
       <--hashes-dir>/<locale>.json.
     A file with neither (no inline entry, no --hashes-dir) is not checked for
     freshness. Once a file has inline entries, a plain-string value in it is
-    reported as unstamped.
+    reported as unstamped. --hashes-dir wins over inline hashes. An inline
+    entry is an object with exactly "text" and "source", where source is 12
+    lowercase hex characters or empty; any other object is ordinary nesting.
+    There is one sidecar per locale, so a locale split over several files
+    (locales/fr/common.json, locales/fr/menu.json) needs a --hashes-dir per
+    file set, or keys that are unique across the files.
 
     The locale of a file is its file name without the extension (fr.json,
     pt-BR.yml) when that looks like a BCP 47 tag, else its parent directory's
@@ -173,6 +179,8 @@ def _parse_double(s: str, lineno: int) -> tuple[str, str]:
                 code = s[i + 1 : i + 1 + n]
                 if len(code) != n or not all(ch in "0123456789abcdefABCDEF" for ch in code):
                     raise ParseError(f"line {lineno}: bad \\{e} escape")
+                if int(code, 16) > 0x10FFFF:
+                    raise ParseError(f"line {lineno}: \\{e}{code} is not a Unicode code point")
                 out.append(chr(int(code, 16)))
                 i += n
             else:
@@ -222,6 +230,8 @@ def _split_key(line: str, lineno: int) -> tuple[str, str]:
         if not rest.startswith(":"):
             raise ParseError(f"line {lineno}: expected ':' after the quoted key")
         return key, rest[1:]
+    if line[:1] in ("[", "{", "&", "*", "!", "?", "|", ">", "@", "`", "%"):
+        raise ParseError(f"line {lineno}: unsupported YAML construct {line[:1]!r} in a key")
     m = re.match(r"^([^:#]+?|[^:#]*?:[^\s][^#]*?)\s*:(\s|$)", line)
     if not m:
         raise ParseError(f"line {lineno}: expected 'key: value'")
@@ -230,7 +240,11 @@ def _split_key(line: str, lineno: int) -> tuple[str, str]:
 
 def parse_yaml(text: str) -> dict:
     """Parse the locale-file YAML subset into nested dicts of strings."""
-    lines = text.splitlines()
+    # Split on \n only: str.splitlines() also breaks at characters that can
+    # sit inside a quoted value.
+    lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
+    if text.endswith("\n"):
+        lines.pop()  # the empty string after the final newline is not a line
     root: dict = {}
     stack: list[tuple[int, dict]] = [(-1, root)]
     pending: tuple[int, dict, str] | None = None  # a key waiting for its nested mapping
@@ -312,24 +326,26 @@ def _finish_block(body: list[str], style: str, chomp: str) -> str:
     while content and content[-1] == "":
         content.pop()
         trailing += 1
+    if not content:
+        return "\n" * trailing if chomp == "+" else ""
     if style == "|":
         text = "\n".join(content)
     else:
-        parts: list[str] = []
-        for idx, ln in enumerate(content):
-            if idx == 0:
-                parts.append(ln)
-            elif ln == "":
-                parts.append("\n")
-            elif ln.startswith((" ", "\t")) or content[idx - 1].startswith((" ", "\t")):
-                parts.append("\n" + ln)
-            elif parts and parts[-1].endswith("\n"):
-                parts.append(ln)
+        # Folding: a line break between two ordinary lines becomes a space, and
+        # each empty line between them a newline. Breaks next to a
+        # more-indented line are kept as they are.
+        text, prev, blanks = "", None, 0
+        for ln in content:
+            if ln == "":
+                blanks += 1
+                continue
+            if prev is None:
+                text = "\n" * blanks + ln
+            elif ln[0] in " \t" or prev[0] in " \t":
+                text += "\n" * (blanks + 1) + ln
             else:
-                parts.append(" " + ln)
-        text = "".join(parts)
-    if not content:
-        return ""
+                text += (" " if blanks == 0 else "\n" * blanks) + ln
+            prev, blanks = ln, 0
     if chomp == "-":
         return text
     if chomp == "+":
@@ -338,8 +354,13 @@ def _finish_block(body: list[str], style: str, chomp: str) -> str:
 
 
 def dump_yaml_string(value: str) -> str:
-    """A double-quoted YAML scalar. JSON string syntax is valid YAML."""
-    return json.dumps(value, ensure_ascii=False)
+    """A double-quoted YAML scalar. JSON string syntax is valid YAML.
+
+    YAML also breaks lines at U+0085, U+2028 and U+2029, which JSON leaves
+    raw, so those are escaped too.
+    """
+    out = json.dumps(value, ensure_ascii=False)
+    return out.replace("\x85", "\\x85").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
 
 # ---------------------------------------------------------------------------
@@ -347,15 +368,30 @@ def dump_yaml_string(value: str) -> str:
 # a dict of plural forms {quantity: text}.
 
 
+_HASH = re.compile(r"^([0-9a-f]{12})?$")
+
+
 def _is_inline(node) -> bool:
-    return isinstance(node, dict) and set(node) == {"text", "source"} and isinstance(node["text"], str)
+    """A {"text", "source"} translation entry: exactly those keys, source a hash or empty.
+
+    An object of prose that happens to use those two key names has a source
+    that is not a 12-hex hash, so it stays an ordinary nested object.
+    """
+    return (
+        isinstance(node, dict)
+        and set(node) == {"text", "source"}
+        and isinstance(node["text"], str)
+        and isinstance(node["source"], str)
+        and bool(_HASH.match(node["source"]))
+    )
 
 
 def _flatten(node, prefix: str, out: dict, path: pathlib.Path, hashes: dict | None = None) -> None:
+    if prefix in out:
+        raise ParseError(f"{path}: {prefix}: the same key is written twice (a dotted key and a nested one)")
     if _is_inline(node) and hashes is not None:
         out[prefix] = node["text"]
-        if node["source"]:
-            hashes[prefix] = str(node["source"])
+        hashes[prefix] = node["source"]
     elif isinstance(node, dict):
         for k, v in node.items():
             _flatten(v, f"{prefix}.{k}" if prefix else str(k), out, path, hashes)
@@ -439,8 +475,7 @@ def load_catalog(path: pathlib.Path) -> tuple[dict, dict]:
             if not isinstance(value["text"], str):
                 raise ParseError(f"{path}: {key}.text must be a string")
             entries[key] = value["text"]
-            if value.get("source"):
-                hashes[key] = value["source"]
+            hashes[key] = str(value.get("source") or "")
         else:
             raise ParseError(f"{path}: {key}: expected a string or a mapping with 'text' and optional 'source'")
     return entries, hashes
@@ -449,9 +484,19 @@ def load_catalog(path: pathlib.Path) -> tuple[dict, dict]:
 def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str = "") -> None:
     lines = [header.rstrip("\n")] if header else []
     for key, text in entries.items():
-        lines.append(f"{key}:")
+        plain = re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.\-]*", key) and key not in (
+            "null",
+            "true",
+            "false",
+            "yes",
+            "no",
+            "on",
+            "off",
+            "~",
+        )
+        lines.append(f"{key if plain else dump_yaml_string(key)}:")
         lines.append(f"  text: {dump_yaml_string(text)}")
-        if key in hashes:
+        if hashes.get(key):
             lines.append(f"  source: {dump_yaml_string(hashes[key])}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -554,8 +599,11 @@ def load(path: pathlib.Path, fmt: str, i18next: bool) -> tuple[dict, dict | None
 
 _SHELL = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _MUSTACHE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
+_TAG = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b([^<>]*?)/?>")
+_HREF = re.compile(r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')""")
 _PRINTF = re.compile(r"%(?:(\d+)\$)?([-#+0,(]*)(\d+|\*)?(?:\.(\d+|\*))?([sdfiuxXeEgGoc@])")
-_PY_NAMED = re.compile(r"%\(([A-Za-z_][A-Za-z0-9_]*)\)[-#+0 ]*\d*(?:\.\d+)?[sdfiuxXeEgGoc]")
+_PY_NAMED = re.compile(r"%\(([A-Za-z_][A-Za-z0-9_]*)\)[-#+0 ]*\d*(?:\.\d+)?([sdfiuxXeEgGoc])")
+_ICU_COMPLEX = re.compile(r"\{\s*[\w.\-]+\s*,\s*(plural|selectordinal|select)\s*,")
 
 
 class IcuError(Exception):
@@ -656,18 +704,37 @@ def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
 def placeholders(text: str) -> frozenset:
     """The placeholder signature of one string."""
     out: set = set()
+    for m in _TAG.finditer(text):
+        href = _HREF.search(m.group(3))
+        out.add(("tag", m.group(1) + m.group(2).lower(), (href.group(1) or href.group(2)) if href else ""))
+    text = _TAG.sub("", text)
     for m in _SHELL.finditer(text):
         out.add(("shell", m.group(1)))
     body = _SHELL.sub("", text)
-    for m in _MUSTACHE.finditer(body):
-        out.add(("mustache", m.group(1)))
-    body = _MUSTACHE.sub("", body)
+    # In an ICU plural or select, "{{" is a branch opening on an argument
+    # ("other {{who} has #}"), not a mustache placeholder.
+    if not _ICU_COMPLEX.search(body):
+        for m in _MUSTACHE.finditer(body):
+            out.add(("mustache", m.group(1)))
+        body = _MUSTACHE.sub("", body)
     for m in _PY_NAMED.finditer(body):
-        out.add(("py", m.group(1)))
+        conv = m.group(2)
+        out.add(("py", m.group(1), "s" if conv == "s" else ("d" if conv in "diu" else conv)))
     body = _PY_NAMED.sub("", body).replace("%%", "")
-    for position, m in enumerate(_PRINTF.finditer(body), start=1):
-        pos = int(m.group(1)) if m.group(1) else position
+    # Unindexed conversions take the next argument in turn, and a "*" width or
+    # precision takes one too (an integer); %2$s does not move that counter.
+    implicit = 0
+    for m in _PRINTF.finditer(body):
+        for star in (m.group(3), m.group(4)):
+            if star == "*":
+                implicit += 1
+                out.add(("printf", implicit, "d"))
         conv = m.group(5)
+        if m.group(1):
+            pos = int(m.group(1))
+        else:
+            implicit += 1
+            pos = implicit
         out.add(("printf", pos, "s" if conv in "s@" else ("d" if conv in "diu" else conv)))
     body = _PRINTF.sub("", body)
     if "{" in body or "}" in body:
@@ -696,7 +763,7 @@ def _describe(sig: frozenset) -> str:
         if kind == "mustache":
             return "{{" + t[1] + "}}"
         if kind == "py":
-            return f"%({t[1]})s"
+            return f"%({t[1]}){t[2]}"
         if kind == "printf":
             return f"%{t[1]}${t[2]}"
         if kind == "arg":
@@ -707,6 +774,8 @@ def _describe(sig: frozenset) -> str:
             return "{" + t[1] + ", select: " + "|".join(t[2]) + "}"
         if kind == "no-other":
             return f"(no 'other' branch in {t[1]})"
+        if kind == "tag":
+            return f"<{t[1]}" + (f" href={t[2]}" if t[2] else "") + ">"
         if kind == "broken-braces":
             return "(unbalanced braces)"
         return str(t)
@@ -737,10 +806,14 @@ def check_target(source: dict, target: dict, hashes: dict | None) -> dict:
         if isinstance(src, dict) != isinstance(tgt, dict):
             found["placeholder"].append((key, "the source is " + ("a plural" if isinstance(src, dict) else "a string")))
             continue
-        if isinstance(tgt, dict) and "other" not in tgt:
+        if isinstance(tgt, dict) and not (tgt.get("other") or "").strip():
             found["placeholder"].append((key, "the plural has no 'other' form"))
         s_sig, t_sig = signature(src), signature(tgt)
-        if s_sig != t_sig:
+        no_other = sorted(t[1] for t in t_sig if t[0] == "no-other")
+        if no_other:
+            # Reported even when the English lacks it too: ICU needs "other".
+            found["placeholder"].append((key, f"no 'other' branch in {', '.join(no_other)}"))
+        elif s_sig != t_sig:
             found["placeholder"].append((key, f"source {_describe(s_sig)}; target {_describe(t_sig)}"))
         if hashes is not None:
             stored = hashes.get(key)
@@ -801,8 +874,8 @@ def write_json_inline(path: pathlib.Path, hashes: dict) -> None:
     def walk(node: dict, prefix: str) -> None:
         for k, v in node.items():
             key = f"{prefix}.{k}" if prefix else k
-            if isinstance(v, str) and key in hashes:
-                node[k] = {"text": v, "source": hashes[key]}
+            if isinstance(v, (str, int, float)) and not isinstance(v, bool) and key in hashes:
+                node[k] = {"text": str(v), "source": hashes[key]}
             elif _is_inline(v) and key in hashes:
                 v["source"] = hashes[key]
             elif isinstance(v, dict) and not _is_inline(v):
@@ -810,6 +883,10 @@ def write_json_inline(path: pathlib.Path, hashes: dict) -> None:
 
     walk(root, "")
     path.write_text(json.dumps(tree, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _drop_ignored(entries: dict, globs: list[str]) -> dict:
+    return {k: v for k, v in entries.items() if not any(fnmatch.fnmatchcase(k, g) for g in globs)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -830,8 +907,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         source, _ = load(args.source, args.format, args.i18next_plurals)
-        source = {k: v for k, v in source.items() if not any(fnmatch.fnmatchcase(k, g) for g in args.ignore)}
-    except (ParseError, OSError) as e:
+        source = _drop_ignored(source, args.ignore)
+    except (ParseError, OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
@@ -843,34 +920,41 @@ def main(argv: list[str] | None = None) -> int:
         try:
             fmt = fmt or detect_format(path)
             target, inline = load(path, fmt, args.i18next_plurals)
-            sidecar = (
-                None if inline is not None or fmt == "catalog" else _sidecar(args.hashes_dir, locale_of(path, fmt))
-            )
-            hashes = inline if inline is not None else _load_sidecar(sidecar)
-        except (ParseError, OSError, json.JSONDecodeError) as e:
+            target = _drop_ignored(target, args.ignore)
+            # An explicit --hashes-dir wins over inline hashes; the catalog
+            # format always keeps them inline.
+            sidecar = _sidecar(args.hashes_dir, locale_of(path, fmt)) if fmt != "catalog" else None
+            hashes = _load_sidecar(sidecar) if sidecar is not None else inline
+        except (ParseError, OSError, ValueError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
 
         if args.stamp or args.restamp:
-            if hashes is None and fmt == "json" and sidecar is None and not args.i18next_plurals:
+            inline_json = fmt == "json" and sidecar is None
+            if inline_json and args.i18next_plurals:
+                # A family's hash cannot be written back onto its _one/_other leaves.
+                print(f"error: {path}: stamping i18next plural families needs --hashes-dir", file=sys.stderr)
+                return 2
+            if hashes is None and inline_json:
                 hashes = {}  # stamp inline: values become {"text", "source"}
-            if hashes is None:
+            if hashes is None or (sidecar is None and fmt not in ("catalog", "json")):
                 print(f"error: {path}: stamping the {fmt} format needs --hashes-dir", file=sys.stderr)
                 return 2
             n = stamp(source, target, hashes, args.restamp, args.stamp)
             if n:
-                if fmt == "catalog":
-                    write_catalog(path, target, hashes, _leading_comments(path))
-                elif sidecar is not None:
-                    sidecar.parent.mkdir(parents=True, exist_ok=True)
-                    sidecar.write_text(
-                        json.dumps(hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-                    )
-                elif fmt == "json":
-                    write_json_inline(path, hashes)
-                else:
+                try:
+                    if fmt == "catalog":
+                        write_catalog(path, target, hashes, _leading_comments(path))
+                    elif sidecar is not None:
+                        sidecar.parent.mkdir(parents=True, exist_ok=True)
+                        sidecar.write_text(
+                            json.dumps(hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+                        )
+                    else:
+                        write_json_inline(path, hashes)
+                except OSError as e:
                     print(
-                        f"error: {path}: stamping inline {fmt} files is not supported; use --hashes-dir",
+                        f"error: writing the hashes for {path} failed: {e}. Earlier targets stay stamped.",
                         file=sys.stderr,
                     )
                     return 2

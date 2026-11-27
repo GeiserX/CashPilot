@@ -110,6 +110,8 @@ def test_parse_error_exits_2(tmp_path):
         ("{amount, number, ::currency/USD}", "{amount, number, ::currency/USD}"),
         ("50% done", "50 % hecho"),
         ("100%% sure", "100%% seguro"),
+        ("Use <a href='https://x.io'>your login</a>", 'Usa <a href="https://x.io">tu cuenta</a>'),
+        ("<b>Bold</b> and 1 < 2", "<b>Negrita</b> y 1 < 2"),
     ],
 )
 def test_placeholders_that_match(src, tgt):
@@ -129,6 +131,8 @@ def test_placeholders_that_match(src, tgt):
         ("{kind, select, worker {a worker} other {a box}}", "{kind, select, obrero {un worker} other {una caja}}"),
         ("{n, number}", "{n}"),
         ("{n, plural, other {{who} has # boxes}}", "{n, plural, other {# cajas}}"),  # nested arg lost
+        ("Use <a href='https://x.io'>your login</a>", "Usa <a href='https://y.io'>tu cuenta</a>"),
+        ("Use <a href='https://x.io'>your login</a>", "Usa tu cuenta en https://x.io"),
     ],
 )
 def test_placeholders_that_differ(src, tgt):
@@ -356,3 +360,130 @@ def test_fastlane_text_directories_with_ignore(tmp_path):
     hashes = tmp_path / "hashes"
     run(meta / "en-US", meta / "es-ES", "--ignore", "changelogs/*", "--stamp", "--hashes-dir", hashes)
     assert set(json.loads((hashes / "es-ES.json").read_text())) == {"title.txt", "short_description.txt"}
+
+
+def test_yaml_line_separators_stay_inside_a_value():
+    value = "a b c\x85d"
+    doc = f"k: {ic.dump_yaml_string(value)}\nnext: x\n"
+    assert ic.parse_yaml(doc) == {"k": value, "next": "x"} == yaml.safe_load(doc)
+
+
+# --- Review findings (CodeRabbit on #876) ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        "a: >\n  one\n    more indented\n\n  back\n",
+        "a: |+\n\n",
+        "a: >\n\n  leading blank\n",
+    ],
+)
+def test_yaml_folding_and_keep_chomping_match_pyyaml(doc):
+    assert ic.parse_yaml(doc) == yaml.safe_load(doc)
+
+
+@pytest.mark.parametrize("doc", ['a: "\\U00110000"\n', "[a, b]: Hello\n", "{a: b}: c\n"])
+def test_yaml_rejects_bad_escapes_and_flow_keys(doc):
+    with pytest.raises(ic.ParseError):
+        ic.parse_yaml(doc)
+
+
+def test_quoted_flow_key_is_a_plain_string():
+    assert ic.parse_yaml("'[a, b]': Hello\n") == {"[a, b]": "Hello"}
+
+
+@pytest.mark.parametrize(
+    ("src", "tgt"),
+    [
+        ("%(name)s", "%(name)d"),
+        ("%*s", "%s"),
+        ("%2$s %s", "%2$s %2$s"),
+    ],
+)
+def test_printf_types_and_positions(src, tgt):
+    assert ic.placeholders(src) != ic.placeholders(tgt)
+
+
+def test_printf_explicit_reorder_and_mustache_inside_icu():
+    assert ic.placeholders("%2$d %1$s") == ic.placeholders("%1$s %2$d")
+    assert ic.placeholders("{n, plural, other {Hello {who}}}") == ic.placeholders("{n, plural, other {{who}}}")
+    assert ic.placeholders("{{who}}") == {("mustache", "who")}
+
+
+def test_icu_plural_without_other_fails_even_when_english_lacks_it(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "{n, plural, one {# box}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "{n, plural, one {# caja}}"}))
+    code, out = run(en, es)
+    assert code == 1 and "no 'other' branch in n" in out
+
+
+def test_blank_other_form_in_android_plural_fails(tmp_path):
+    en = write(
+        tmp_path / "res" / "values" / "strings.xml",
+        '<resources><plurals name="p"><item quantity="one">a box</item><item quantity="other">boxes</item></plurals></resources>',
+    )
+    de = write(
+        tmp_path / "res" / "values-de" / "strings.xml",
+        '<resources><plurals name="p"><item quantity="one">eine Kiste</item><item quantity="other"> </item></plurals></resources>',
+    )
+    code, out = run(en, de)
+    assert code == 1 and "no 'other' form" in out
+
+
+def test_prose_object_named_text_and_source_is_not_a_hash(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"page": {"text": "Welcome", "source": "From {name}"}}))
+    es = write(tmp_path / "es.json", json.dumps({"page": {"text": "Bienvenido", "source": "De"}}))
+    code, out = run(en, es)
+    assert code == 1 and "placeholder page.source" in out
+
+
+def test_dotted_and_nested_key_collision_is_an_error(tmp_path):
+    en = write(tmp_path / "en.json", '{"menu.title": "Hi {name}", "menu": {"title": "Title"}}')
+    es = write(tmp_path / "es.json", json.dumps({"menu": {"title": "Título"}}))
+    assert run(en, es)[0] == 2
+
+
+def test_empty_inline_hash_counts_as_unstamped(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hello", "b": "Bye"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": {"text": "Hola", "source": ""}, "b": "Adiós"}))
+    code, out = run(en, es, "--strict")
+    assert code == 1 and "2 unstamped" in out
+
+
+def test_catalog_keys_that_need_quotes_round_trip(tmp_path):
+    d = tmp_path / "_i18n"
+    en = write(d / "en.yml", '"menu: title": "Hello"\nplain.key: "Bye"\n')
+    es = write(d / "es.yml", '"menu: title":\n  text: "Hola"\nplain.key:\n  text: "Adiós"\n')
+    run(en, es, "--stamp")
+    code, out = run(en, es, "--strict")
+    assert code == 0, out
+
+
+def test_numeric_json_leaf_is_stamped_inline(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"year": "2026"}))
+    es = write(tmp_path / "es.json", json.dumps({"year": 2026}))
+    run(en, es, "--stamp")
+    assert json.loads(es.read_text()) == {"year": {"text": "2026", "source": ic.source_hash("2026")}}
+
+
+def test_ignore_applies_to_target_keys_too(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hello", "changelog": "Fixes"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "Hola", "changelog": "Arreglos"}))
+    code, out = run(en, es, "--ignore", "changelog", "--strict")
+    assert code == 0 and "extra" not in out
+
+
+def test_invalid_utf8_exits_2(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hello"}))
+    es = tmp_path / "es.json"
+    es.write_bytes(b'{"a": "\xff"}')
+    assert run(en, es)[0] == 2
+
+
+def test_inline_i18next_stamping_is_refused(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"f_one": "{{count}} file", "f_other": "{{count}} files"}))
+    es = write(tmp_path / "es.json", json.dumps({"f_one": "{{count}} archivo", "f_other": "{{count}} archivos"}))
+    code, out = run(en, es, "--i18next-plurals", "--stamp")
+    assert code == 2 and "--hashes-dir" in out
+    assert run(en, es, "--i18next-plurals", "--stamp", "--hashes-dir", tmp_path / "h")[0] == 0
