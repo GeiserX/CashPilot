@@ -8,34 +8,26 @@
   <a href="https://github.com/GeiserX/CashPilot/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/GeiserX/CashPilot?style=flat-square"></a>
   <a href="https://hub.docker.com/r/drumsergio/cashpilot"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/drumsergio/cashpilot?style=flat-square&logo=docker"></a>
   <a href="https://github.com/GeiserX/CashPilot/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/GeiserX/CashPilot?style=flat-square&logo=github"></a>
-  <a href="https://cashpilot.club"><img alt="Website" src="https://img.shields.io/badge/website-cashpilot.club-blue?style=flat-square"></a>
-  <a href="https://x.com/CashPilotClub"><img alt="X" src="https://img.shields.io/badge/X-%40CashPilotClub-000000?style=flat-square&logo=x"></a>
 </p>
 
-CashPilot is a self-hosted platform that runs passive income services on your own servers and shows what they earn in one web dashboard. A dashboard and a worker on each server start the <!-- n:docker -->21<!-- /n --> services that run in Docker, keep track of the <!-- n:tracked -->29<!-- /n --> that run as a browser extension, a desktop app, a GPU node or a mining pool, and read the balances of <!-- n:collectors -->20<!-- /n --> providers into one earnings history. Without it, each provider is a container you write by hand and a dashboard you log into separately.
+<p align="center"><strong>Every earner, every box, one view.</strong><br><a href="https://cashpilot.club">cashpilot.club</a> · <a href="https://x.com/CashPilotClub">@CashPilotClub on X</a></p>
+
+CashPilot is a self-hosted dashboard for the software that earns from your spare bandwidth, compute and disk: bandwidth sharing, DePIN nodes, crypto mining, GPU compute and storage. A worker on each server starts the <!-- n:docker -->21<!-- /n --> earners that run in Docker and, on a new install, fences them off your LAN and the host. The dashboard also tracks the <!-- n:tracked -->29<!-- /n --> that run as a browser extension, a desktop app, a GPU node or a mining pool. It shows every box (servers, desktops and Android phones) and the balances of <!-- n:collectors -->20<!-- /n --> providers in one earnings history.
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention (an offline box, a stopped container, a balance it could not read, a payout to confirm), which service runs on which box, earnings per day, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
 ## Features
 
-- Starts a Docker service with one click from the catalog; no compose file to write, no YAML to edit.
-- Runs your own image too: add a service the catalog lacks by image name and tag, with the same container restrictions as the catalog ([custom services](https://geiserx.github.io/CashPilot/custom-services/)).
-- Keeps every balance as history: <!-- n:collectors -->20<!-- /n --> providers are read by built-in collectors every hour, so "running but not earning" shows as a flat line.
-- Treats a balance drop as a probable payout and asks you to confirm it; nothing is counted as income by guess.
-- Runs a fleet: one worker per server, one dashboard for all of them, every figure per server and per service.
-- Replaces only the container you approved. Before a redeploy, the UI shows the container IDs it will replace, and the worker refuses if a container changed in the meantime. Proxied copies get the same check.
-- Runs extra copies of a deployed service through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy, so one box earns on several IPs; a dead proxy stops the copy instead of leaking ([proxied copies](https://geiserx.github.io/CashPilot/proxies/)).
-- Fences earners off your LAN, the host, your tailnet and cloud metadata by default on new installs; an upgraded install whose earners sit on Docker's default bridge turns it on with one button, and a network you name in `CASHPILOT_CONTAINER_NETWORK` keeps your own rules ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
-- Grades every provider from A to F on the same ten questions, each answer backed by a source you can open ([provider ratings](https://geiserx.github.io/CashPilot/ratings/)).
-- Imports your service logins from money4band, CashFactory or InternetIncome, and shows them for review before saving ([moving from money4band](https://geiserx.github.io/CashPilot/migrate/money4band/)).
-- Checks before you deploy whether the machine fits (residential IP, GPU, disk), and warns when a stored credential is about to expire.
-- Mines, in beta. The catalog runs XMRig, unMineable, SRBMiner-Multi and KRig. CashPilot reads pool balances from your public payout address, and Fleet shows Bitaxe and cgminer devices on your LAN ([mining](https://geiserx.github.io/CashPilot/mining/)).
-- Gives a GPU, in beta, only to a catalog service that declares one. Every other container that CashPilot runs is kept off the GPU ([GPU services](https://geiserx.github.io/CashPilot/gpu/)).
-- Shows, when you switch it on, what each earner does on the network: connections, ports, networks and countries, and alerts for mail ports and attempts on your LAN. It reads socket tables only, never traffic, and keeps addresses for 24 hours.
-- Encrypts stored credentials at rest; the worker reaches Docker only through a pinned socket proxy that refuses privileged containers and binds of `/` or of the socket (it narrows what a compromised worker can do; it is not yet a full root boundary), and the dashboard listens on loopback until you say otherwise.
-- Runs on x86-64 and ARM: Raspberry Pi, Apple Silicon and ARM cloud boxes.
-- Works from a phone: the dashboard, catalog and wizard are responsive, in Classic night by default, with Dark, Light, Sunrise and Warm themes.
-- Exports Prometheus metrics, and a compose file per service if you would rather run it yourself.
+- Starts an earner with one click from the catalog, on x86-64 or ARM: bandwidth sharing, DePIN and storage nodes, and CPU and GPU miners (mining is in beta).
+- Fences earners off your LAN, the host, your tailnet and cloud metadata with its own nftables table, by default on new installs ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
+- Locks down every container: capabilities dropped, `no-new-privileges`, a PID limit, and Docker only through a socket proxy that refuses privileged containers ([security defaults](https://geiserx.github.io/CashPilot/security-defaults/)).
+- Shows every box in one fleet view: Docker workers, [CashPilot Desktop](https://github.com/GeiserX/CashPilot-Desktop) and [Android phones](https://github.com/GeiserX/CashPilot-android), every figure per box and per service ([fleet](https://geiserx.github.io/CashPilot/fleet/)).
+- Keeps every balance as history in the currency you pick, and counts a balance drop as a payout only after you confirm it.
+- Reminds you before money waiting at a provider expires or a claim window closes, with a push before each deadline ([reminders](https://geiserx.github.io/CashPilot/reminders/)).
+- Exports your income for taxes as a CSV, on a cash or an accrual basis ([income export](https://geiserx.github.io/CashPilot/income-export/)).
+- Runs extra copies of an earner through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy, so one box earns on several IPs ([proxied copies](https://geiserx.github.io/CashPilot/proxies/)).
+- Grades every provider from A to F on the same ten questions, each answer backed by a source ([provider ratings](https://geiserx.github.io/CashPilot/ratings/)).
+- Talks to your AI agent through the [MCP server](https://github.com/GeiserX/cashpilot-mcp), and exports Prometheus metrics ([metrics](https://geiserx.github.io/CashPilot/guides/prometheus-metrics/)).
 
 ## Quick Start
 
@@ -77,7 +69,7 @@ You need Docker with the Compose v2 plugin, version 2.23.1 or newer (`docker com
 
 ## FAQ
 
-**How much can I earn?** It depends on your country, your ISP, and how many devices and services you run. One home server running 10 to 15 services makes about $30 to $100 a month; more servers, or GPU compute, add to that. The dashboard shows what you really made.
+**How much can I earn?** Nobody can promise a figure. It depends on your country, your ISP, your hardware and how many devices and services you run, and some setups earn very little. The dashboard shows what you really made, so you can drop what does not pay.
 
 **Is bandwidth sharing safe?** These services route other people's traffic (market research, ad verification, price checks) through your connection, so strangers use your IP. Read each provider's terms, and read [Protecting your home network](https://geiserx.github.io/CashPilot/home-network-security/) before running them on a LAN you care about. This is not legal advice.
 
@@ -95,7 +87,7 @@ Full documentation: [geiserx.github.io/CashPilot](https://geiserx.github.io/Cash
 - [Service guides](https://geiserx.github.io/CashPilot/guides/): one page per service, plus [discontinued services](https://geiserx.github.io/CashPilot/discontinued-services/)
 - Operations: [backup and restore](https://geiserx.github.io/CashPilot/backup-restore/), [backing up node identities](https://geiserx.github.io/CashPilot/backup/), [Prometheus metrics](https://geiserx.github.io/CashPilot/guides/prometheus-metrics/), [removing CashPilot completely](https://geiserx.github.io/CashPilot/uninstall/)
 - [How it works](https://geiserx.github.io/CashPilot/how-it-works/): the UI and worker split
-- [FAQ](https://geiserx.github.io/CashPilot/faq/) and [how CashPilot compares](https://geiserx.github.io/CashPilot/comparison/)
+- [FAQ](https://geiserx.github.io/CashPilot/faq/), [how CashPilot compares](https://geiserx.github.io/CashPilot/comparison/) and [moving from money4band](https://geiserx.github.io/CashPilot/migrate/money4band/)
 - [Development](https://geiserx.github.io/CashPilot/development/): adding a service, running the tests; [related projects](https://geiserx.github.io/CashPilot/related/)
 
 Upgrading an existing install? Read [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) first; it lists only the releases that need you to do something. Release notes are on [GitHub Releases](https://github.com/GeiserX/CashPilot/releases).
