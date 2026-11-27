@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 
 # เริ่มต้นใช้งาน { #getting-started }
@@ -10,7 +10,7 @@ source_hash: 8b365b89d2b0
   ด้วย `docker compose version` เวอร์ชันที่เก่ากว่านี้อ่านการกำหนดค่าแบบ inline
   ในไฟล์ compose ไม่ได้ Docker Desktop มีปลั๊กอินนี้มาให้แล้ว หากใช้ Docker
   Engine เปล่า ๆ บน Linux ให้ติดตั้งจากที่เก็บแพ็กเกจของ Docker
-  (https://docs.docker.com/compose/install/linux/ ) บน macOS ที่ใช้ Colima
+  (<https://docs.docker.com/compose/install/linux/>) บน macOS ที่ใช้ Colima
   ให้ติดตั้งด้วย Homebrew แล้วลิงก์เป็นปลั๊กอินของ Docker:
 
     ```sh

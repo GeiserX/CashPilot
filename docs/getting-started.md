@@ -6,7 +6,7 @@
   with `docker compose version`. Older versions cannot read the inline config
   in the compose file. Docker Desktop includes the plugin. On a bare Docker
   Engine on Linux, install it from Docker's package repository
-  (https://docs.docker.com/compose/install/linux/). On macOS with Colima,
+  (<https://docs.docker.com/compose/install/linux/>). On macOS with Colima,
   install it with Homebrew and link it as a Docker plugin:
 
     ```sh

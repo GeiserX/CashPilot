@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # शुरुआत करें { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   `docker compose version` से जाँचें। पुराने संस्करण compose फ़ाइल में दी गई इनलाइन
   config नहीं पढ़ पाते। Docker Desktop में यह plugin शामिल है। Linux पर केवल Docker
   Engine हो, तो इसे Docker के पैकेज रिपॉज़िटरी से इंस्टॉल करें
-  (https://docs.docker.com/compose/install/linux/)। Colima वाले macOS पर
+  (<https://docs.docker.com/compose/install/linux/>)। Colima वाले macOS पर
   इसे Homebrew से इंस्टॉल करें और Docker plugin के रूप में लिंक करें:
 
     ```sh
