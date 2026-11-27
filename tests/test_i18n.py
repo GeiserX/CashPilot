@@ -417,3 +417,34 @@ def test_an_old_database_gains_the_language_column(tmp_path):
     cols, row = asyncio.run(columns())
     assert "language" in cols
     assert row == ("warm", None)
+
+
+def test_a_message_shown_in_english_counts_in_english(tmp_path, monkeypatch):
+    """French puts 0 in "one"; an untranslated plural on a French page must still say "0 boxes"."""
+    directory = tmp_path / "i18n"
+    directory.mkdir()
+    plural = "{n, plural, one {# box} other {# boxes}}"
+    (directory / "en.json").write_text(json.dumps({"p": plural, "q": plural}), encoding="utf-8")
+    fr = {"q": {"text": "{n, plural, one {# boîte} other {# boîtes}}", "source": i18n.source_hash(plural)}}
+    (directory / "fr.json").write_text(json.dumps(fr), encoding="utf-8")
+    monkeypatch.setattr(i18n, "DIR", directory)
+    i18n.reload()
+    try:
+        i18n.use("fr")
+        assert i18n.t("p", n=0) == "0 boxes"
+        assert i18n.t("q", n=0) == "0 boîte"
+        payload = json.loads(i18n.bundle_js("fr").removeprefix("window.CP_I18N=").rstrip(";\n"))
+        assert payload["fallback"] == ["p"]
+        assert json.loads(i18n.bundle_js("en").removeprefix("window.CP_I18N=").rstrip(";\n"))["fallback"] == []
+    finally:
+        i18n.use("en")
+        i18n.reload()
+
+
+def test_a_preference_read_that_fails_still_renders_the_page_and_says_so(real_db, caplog):
+    patched, c = _signed_in(real_db)
+    broken = patch("app.routers.pages.database.get_user_preferences", side_effect=RuntimeError("db gone"))
+    with patched, broken, c, caplog.at_level("WARNING", logger="app.routers.pages"):
+        page = c.get("/")
+    assert page.status_code == 200
+    assert "Could not read the saved preferences" in caplog.text and "db gone" not in caplog.text

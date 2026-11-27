@@ -9,13 +9,15 @@ Handlers reach shared state through ``app.deps``, ``app.auth`` and
 
 from __future__ import annotations
 
-import contextlib
+import logging
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import auth as auth_module
 from app import database, deps, i18n, themes
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -34,8 +36,10 @@ async def _page(request: Request, template: str, user: dict) -> HTMLResponse:
     or the browser decides.
     """
     prefs = None
-    with contextlib.suppress(Exception):  # a preference read must never break a page
+    try:
         prefs = await database.get_user_preferences(user["uid"])
+    except Exception as exc:  # a preference read must never break a page
+        logger.warning("Could not read the saved preferences, showing the defaults: %s", type(exc).__name__)
     theme = themes.resolve(prefs and prefs.get("theme"))
     saved_language = prefs.get("language") if prefs else None
     locale = i18n.from_request(request, saved_language)

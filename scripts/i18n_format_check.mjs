@@ -12,13 +12,13 @@ import vm from 'node:vm';
 const cases = JSON.parse(readFileSync('tests/fixtures/i18n_format_cases.json', 'utf8'));
 const src = readFileSync('app/static/js/i18n.js', 'utf8');
 
-function load(lang, messages = {}) {
-  const window = {CP_I18N: {lang, dir: lang === 'ar' ? 'rtl' : 'ltr', messages}};
+function load(lang, messages = {}, fallback = []) {
+  const window = {CP_I18N: {lang, dir: lang === 'ar' ? 'rtl' : 'ltr', messages, fallback}};
   const context = {
     window,
     navigator: {language: 'en-US', languages: ['en-US']},
     document: {readyState: 'complete', querySelectorAll: () => [], cookie: ''},
-    Intl, Map, Number, Object, String, Error,
+    Intl, Map, Set, Number, Object, String, Error,
   };
   vm.runInNewContext(src, context);
   return window;
@@ -44,6 +44,15 @@ if (w.t('missing.key') !== 'missing.key') { bad++; console.log('  FAIL missing k
 const broken = load('en', {k: '{n, plural, one {x}}'});
 if (broken.t('k', {n: 1}) !== '{n, plural, one {x}}') { bad++; console.log('  FAIL broken message'); }
 
+// French puts 0 in "one": a message the page shows in English still says "0 boxes".
+{
+  const plural = '{n, plural, one {# box} other {# boxes}}';
+  const fr = load('fr', {p: plural, q: '{n, plural, one {# boîte} other {# boîtes}}'}, ['p']);
+  const got = [fr.t('p', {n: 0}), fr.t('q', {n: 0})].join(' | ');
+  if (got !== '0 boxes | 0 boîte') { bad++; console.log(`  FAIL English fallback plural: ${got}`); }
+  else console.log('  ok   a message shown in English counts in English');
+}
+
 // Two language changes in a row, the first save slow: the saves run one after
 // another, the account ends on the second choice, and only that one reloads.
 {
@@ -62,7 +71,7 @@ if (broken.t('k', {n: 1}) !== '{n, plural, one {x}}') { bad++; console.log('  FA
       posts.push(JSON.parse(opts.body).language);
       answers.push(() => resolve({ok: true}));
     }),
-    Intl, Map, Number, Object, String, Error, Promise, JSON,
+    Intl, Map, Set, Number, Object, String, Error, Promise, JSON,
   });
   const tick = () => new Promise(r => setTimeout(r, 0));
   select.value = 'es'; onChange();
@@ -76,5 +85,5 @@ if (broken.t('k', {n: 1}) !== '{n, plural, one {x}}') { bad++; console.log('  FA
   else console.log('  ok   overlapping language saves keep the last choice');
 }
 
-console.log(bad ? `\n${bad} failure(s)` : `\nall ${cases.length + 3} cases pass`);
+console.log(bad ? `\n${bad} failure(s)` : `\nall ${cases.length + 4} cases pass`);
 process.exit(bad ? 1 : 0);
