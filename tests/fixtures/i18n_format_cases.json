@@ -268,5 +268,37 @@
    "kind": "constructor"
   },
   "expected": "Something else"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, one {# box} other {# boxes}}",
+  "params": {
+   "n": 1.0
+  },
+  "expected": "1 box"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, one {# box} other {# boxes}}",
+  "params": {
+   "n": 1.0001
+  },
+  "expected": "1.0001 boxes"
+ },
+ {
+  "locale": "ru",
+  "message": "{n, plural, one {# one} few {# few} many {# many} other {# other}}",
+  "params": {
+   "n": 2.0
+  },
+  "expected": "2 few"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, one {# box} other {# boxes}}",
+  "params": {
+   "n": "many"
+  },
+  "expected": "0 boxes"
  }
 ]
