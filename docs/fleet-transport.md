@@ -429,9 +429,9 @@ An endpoint that is up but stalled is the failure we hit ourselves: hours with t
   - A failed request on an open connection. Opening the stream, writing the request or reading the response raises. Or the response does not end within the timeout that the TLS path uses for that request, which is 15 seconds for a heartbeat.
   - After a failed request, the dialer closes that connection, so the next request dials again.
 - A failed request is never replayed. Its caller sees a failure, as it does today when an HTTP request times out. A command whose result is unknown stays unknown, and the existing deploy deadline settles it.
-- A box or a Desktop counts failures in a row. A completed request resets the count, and so does any accepted connection from the pinned UI.
+- A box or a Desktop counts failures in a row. Only a completed request resets the count. An inbound connection from the UI does not, because it does not show that the box can reach the UI.
 - The UI counts failures in a row for each box. A completed request to that box, or a heartbeat from it, resets that box's count. Traffic with other boxes does not.
-- At 5 failures in a row, the supervisor closes the endpoint (`ep.close()`, at most 10 seconds) and binds a new one with the same key. On the UI, one box's count reaching 5 recycles the endpoint at most once every 30 minutes. So a dead box costs the others one short reconnect each half hour, and a stalled path to a live box is retried with a fresh endpoint.
+- At 5 failures in a row, the supervisor closes the endpoint (`ep.close()`, at most 10 seconds) and binds a new one with the same key. On the UI, a box whose count reaches 5 recycles the endpoint, but the same box can cause at most one recycle every 30 minutes. So a dead box costs the others one short reconnect each half hour. Another box that stalls has its own allowance, and it gets a fresh endpoint within its own 5 failures.
 - If that close does not return, the process exits with status 75. Docker's restart policy restarts the container, and on Desktop the app restarts its sidecar.
 - The same recycle happens when `ep.addr().relay_url()` stays `None` for 5 minutes. An unreachable relay raises no error, so this field is the only sign.
 
@@ -588,7 +588,7 @@ Each case must fail when its check is removed. Prove that once by breaking the c
 - Enrolment:
   - Refuse a second enrolment of a pinned `client_id` outside the window, and accept it inside the window.
   - Inside the window, refuse every endpoint id but the approved one.
-  - Complete a retry with the same unconfirmed identity and its client certificate. Refuse it without the certificate, and once the pin is confirmed.
+  - Complete a retry with the same unconfirmed identity and its proof: the client certificate over TLS, or the matching remote id over iroh. Refuse it without the proof, and once the pin is confirmed.
   - Close the re-pair window when its pin is confirmed.
   - On the box, drop a cached `/data/.ui_identity.pem` whose key is not `CASHPILOT_UI_KEY`.
   - Refuse an `identity_cert` whose CN is not its key.
