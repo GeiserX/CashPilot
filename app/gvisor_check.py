@@ -34,11 +34,11 @@ from typing import Any
 import docker
 from docker.errors import DockerException, NotFound
 
-from app import lan_fence, layers, orchestrator, socket_policy
+from app import activity, lan_fence, layers, orchestrator, socket_policy
 
 logger = logging.getLogger(__name__)
 
-PROBE_NAME = "cashpilot-gvisor-probe"
+PROBE_PREFIX = "cashpilot-gvisor-probe-"
 PROBE_LABEL = lan_fence.PROBE_LABEL
 PROBE_TIMEOUT = 60
 DOCKER_TIMEOUT = 30
@@ -100,26 +100,36 @@ def _client() -> Any:
     return client
 
 
+def probe_name() -> str:
+    """This worker's probe name. Two workers on one Docker daemon each remove only their own."""
+    return f"{PROBE_PREFIX}{activity._worker_tag()}"
+
+
 def _remove(client: Any, leftovers: list[str]) -> None:
+    name = probe_name()
     try:
-        client.containers.get(PROBE_NAME).remove(force=True, v=True)
+        client.containers.get(name).remove(force=True, v=True)
     except NotFound:
         pass
     except Exception as exc:  # noqa: BLE001 - reported, never raised
         logger.warning("Could not remove the gVisor probe: %s", exc)
-        leftovers.append(PROBE_NAME)
+        leftovers.append(name)
 
 
-def _probe(client: Any, image: str, runtime: str, network: str, leftovers: list[str]) -> dict[str, Any]:
+def _probe(
+    client: Any, image: str, runtime: str, network: str, leftovers: list[str], dns: list[str] | None = None
+) -> dict[str, Any]:
     _remove(client, [])
     try:
         container = client.containers.run(
             image=image,
-            name=PROBE_NAME,
+            name=probe_name(),
             entrypoint=["python", "-c", PROBE_SCRIPT],
             command=[DNS_NAME],
             runtime=runtime,
             network=network or None,
+            # The resolvers an earner on this network gets (orchestrator.container_dns).
+            dns=dns,
             user="65534:65534",
             read_only=True,
             cap_drop=["ALL"],
@@ -128,7 +138,7 @@ def _probe(client: Any, image: str, runtime: str, network: str, leftovers: list[
             pids_limit=64,
             mem_limit="128m",
             healthcheck={"test": ["NONE"]},
-            labels={PROBE_LABEL: "gvisor-check"},
+            labels={PROBE_LABEL: "gvisor-check", activity.WORKER_LABEL: activity.WORKER_ID},
             detach=True,
         )
         status = container.wait(timeout=PROBE_TIMEOUT)
@@ -162,7 +172,10 @@ def run() -> dict[str, Any]:
 
 
 def _run(client: Any) -> dict[str, Any]:
-    facts = layers.daemon_runtimes(fresh=True) or []
+    facts = layers.daemon_runtimes(fresh=True)
+    if facts is None:
+        # Not "not installed": Docker did not say which runtimes it has.
+        raise RuntimeError("Docker did not report its runtimes.")
     allowed = socket_policy.ALLOWED_RUNTIMES if orchestrator.proxied() else None
     gvisor = [f for f in facts if f["gvisor"]]
     # The runtimes an earner would get (layers.pick): the passthrough ones the proxy accepts.
@@ -181,9 +194,18 @@ def _run(client: Any) -> dict[str, Any]:
     image = ((image.attrs or {}).get("Image") or None) if image is not None else None
     if not image:
         return {**base, "state": "red", "message": "The worker could not find its own image to run the probe from."}
+    try:
+        dns = orchestrator.container_dns(network or None)
+    except orchestrator.ContainerNetworkError:
+        # The deploys refuse the same setting, so no earner runs with it either.
+        return {
+            **base,
+            "state": "red",
+            "message": "CASHPILOT_CONTAINER_DNS is not a list of IP addresses, so no earner can start on this network.",
+        }
     leftovers: list[str] = []
     for name in targets:
-        probe = _probe(client, image, name, network, leftovers)
+        probe = _probe(client, image, name, network, leftovers, dns)
         if "error" in probe:
             base["runtimes"].append({"name": name, "kernel": False, "dns": False, "error": probe["error"]})
             continue
