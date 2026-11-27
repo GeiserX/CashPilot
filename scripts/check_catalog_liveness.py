@@ -330,7 +330,8 @@ def load_services(services_dir: Path) -> tuple[list[dict], list[Finding]]:
     services = []
     errors: list[Finding] = []
     for path in sorted(services_dir.rglob("*.y*ml")):
-        if path.name.startswith("_"):
+        # _schema.yml, _ratings.yml and the translations in _i18n/ are not entries.
+        if any(part.startswith("_") for part in path.relative_to(services_dir).parts):
             continue
         try:
             data = yaml.safe_load(path.read_text())

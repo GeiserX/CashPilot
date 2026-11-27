@@ -44,7 +44,7 @@ NON_SERVICE = {"index", "prometheus-metrics"}
 def catalog_slugs() -> set[str]:
     slugs = set()
     for path in (ROOT / "services").glob("*/*.yml"):
-        if path.name.startswith("_"):
+        if path.name.startswith("_") or path.parent.name.startswith("_"):  # _i18n/ holds translations
             continue
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         slugs.add(data.get("slug") or path.stem)
