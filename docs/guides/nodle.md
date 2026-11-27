@@ -2,7 +2,9 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [https://nodle.com](https://nodle.com)
+> **Website:** [nodle.com](https://join.nodle.com/p/YDFoLA4iO08LI7igSskPjw)
+>
+> <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
@@ -35,6 +37,8 @@ Nodle uses smartphone Bluetooth to create IoT infrastructure. The app passively 
 ### 1. Install the app
 
 Download the Nodle app from [Google Play](https://play.google.com/store/apps/details?id=io.nodle.cash) or [App Store](https://apps.apple.com/app/nodle-cash/id1480763553). There is no Docker image — Nodle is mobile-only and uses your phone's Bluetooth to detect nearby IoT devices.
+
+To join through the CashPilot invite, open [the invite link](https://join.nodle.com/p/YDFoLA4iO08LI7igSskPjw) on your phone, install Nodle from there, then open the link again so the app reads the invite.
 
 ### 2. Create a wallet
 

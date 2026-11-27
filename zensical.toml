@@ -110,6 +110,7 @@ nav = [
           { Wipter = "guides/wipter.md" },
         ] },
       { "GPU Compute" = [
+          { "Clore.ai" = "guides/clore-ai.md" },
           { Flux = "guides/flux.md" },
           { "Golem Network" = "guides/golem.md" },
           { "io.net" = "guides/ionet.md" },
@@ -161,6 +162,7 @@ nav = [
       { "Provider ratings" = "ratings.md" },
       { "Discontinued services" = "discontinued-services.md" },
       { "Related projects" = "related.md" },
+      { "For AI agents" = "for-ai-agents.md" },
       { Research = [
           { "What \"idle\" looks like on the wire" = "research/idle-network-traffic.md" },
           { "Per-IP device limits" = "research/per-ip-device-limits.md" },
@@ -238,7 +240,13 @@ link = "https://hub.docker.com/r/drumsergio/cashpilot"
 "whats-new-2.0.md" = "https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#20-change-the-image-tags"
 "upgrade-v1.md" = "https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#v100-per-worker-fleet-keys"
 
+# The plugin writes site/llms.txt itself and overwrites a docs/llms.txt, so the
+# agent-facing pointer lives here: the first section is the page that tells an AI
+# agent how to handle the referral links.
 [project.plugins.llmstxt.sections]
+"For AI agents" = [
+  { "for-ai-agents.md" = "Ask the person before you use a referral link, and how to read the catalog's referral fields" },
+]
 Documentation = ["*.md", "*/*.md"]
 
 # A preview image per page for links shared on chat apps and social sites

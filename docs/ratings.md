@@ -85,6 +85,7 @@ What a cited con or pro may rest on:
 | <a href="#urnetwork">URnetwork</a> | D | 7 of 20 | 4 | <span class="ratings-con" title="Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days.">Unclaimed epochs expire, and the old USDC payouts were cancelled for networks with no wallet linked within 30 days.</span> | 2026-11-04 |
 | <a href="#anyone-protocol">Anyone Protocol</a> | F | 6 of 20 | 5 | <span class="ratings-con" title="A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet.">A relay earns nothing unless 100 ANYONE is locked for it for at least 180 days, and each reward claim is signed in your wallet.</span> | 2026-11-04 |
 | <a href="#bytelixir">Bytelixir</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin.">Crypto only, and the minimum depends on the coin, from $5 for USDT to $250 for Bitcoin.</span> | 2026-11-04 |
+| <a href="#clore-ai">Clore.ai</a> | F | 6 of 20 | 3 | <span class="ratings-con" title="Neither the terms nor the privacy policy name a legal entity, and the terms leave the governing jurisdiction to a later version.">Neither the terms nor the privacy policy name a legal entity, and the terms leave the governing jurisdiction to a later version.</span> | 2026-11-27 |
 | <a href="#kryptex-pearl">Kryptex Pool (Pearl)</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Kryptex can suspend inactive accounts at six months and delete them at one year.">Kryptex can suspend inactive accounts at six months and delete them at one year.</span> | 2026-11-25 |
 | <a href="#noderr">Noderr Micronodes</a> | F | 6 of 20 | 4 | <span class="ratings-con" title="Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target.">Node rewards are unfunded testnet tokens with no market value, and none have been paid; the 5 to 10% APY on its site is a design target.</span> | 2026-11-04 |
 | <a href="#proxybase-xyz">ProxyBase Markets</a> | F | 6 of 20 | 6 | <span class="ratings-con" title="Payouts are USDC on Tempo Chain, to any EVM address whose key you hold.">Payouts are USDC on Tempo Chain, to any EVM address whose key you hold.</span> | 2026-11-04 |
@@ -109,6 +110,7 @@ What a cited con or pro may rest on:
 | <a href="#salad">Salad</a> | F | 3 of 20 | 8 | <span class="ratings-con" title="CashPilot does not run Salad: you use the provider&#x27;s own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Salad: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
 | <a href="#nodepay">Nodepay</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.">In its first season review Nodepay removed more than 300,000 accounts it judged to be bots and cancelled 17 billion points.</span> | 2026-11-04 |
 | <a href="#supportxmr">SupportXMR</a> | F | 2 of 20 | 8 | <span class="ratings-con" title="Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.">Paid in Monero only, with a 0.6% pool fee and a 0.1 XMR default threshold before an automatic payout.</span> | 2026-11-25 |
+| <a href="#teneo">Teneo Protocol</a> | F | 2 of 20 | 6 | <span class="ratings-con" title="The Beacon&#x27;s Fragments pay USDC only as prizes in seasonal draws, so running it does not earn a set amount.">The Beacon's Fragments pay USDC only as prizes in seasonal draws, so running it does not earn a set amount.</span> | 2026-11-27 |
 | <a href="#uprock">Uprock</a> | F | 2 of 20 | 7 | <span class="ratings-con" title="UpRock&#x27;s help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.">UpRock's help centre says withdrawals are UPT tokens to a Solana wallet, with a 250 UPT minimum.</span> | 2026-11-04 |
 | <a href="#2miners-etc">2Miners ETC</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="The pool charges a 1% fee and holds payouts until your threshold is reached.">The pool charges a 1% fee and holds payouts until your threshold is reached.</span> | 2026-11-25 |
 | <a href="#dawn">Dawn Internet</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="The extension earns points; no token distribution to node operators had been confirmed by October 2026.">The extension earns points; no token distribution to node operators had been confirmed by October 2026.</span> | 2026-11-04 |
@@ -116,7 +118,6 @@ What a cited con or pro may rest on:
 | <a href="#herominers-kas">HeroMiners Kaspa</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="The pool charges a 0.9% fee and holds payouts until your threshold is reached.">The pool charges a 0.9% fee and holds payouts until your threshold is reached.</span> | 2026-11-25 |
 | <a href="#nodle">Nodle</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply.">One reviewer reports about $3 earned over three to four years; others report daily earnings falling sharply.</span> | 2026-11-04 |
 | <a href="#spide">Spide</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="CashPilot does not run Spide: you use the provider&#x27;s own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Spide: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
-| <a href="#teneo">Teneo Protocol</a> | F | 1 of 20 | 7 | <span class="ratings-con" title="Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token.">Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token.</span> | 2026-11-04 |
 | <a href="#theta-edge">Theta Edge Node</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="CashPilot does not run Theta Edge: you use the provider&#x27;s own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Theta Edge: you use the provider's own desktop app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-04 |
 | <a href="#titan">Titan Network</a> | F | 1 of 20 | 8 | <span class="ratings-con" title="Titan&#x27;s own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token.">Titan's own help says a running node does not guarantee earnings: with no task assigned it earns nothing, and rewards are in the TNT token.</span> | 2026-11-04 |
 | <a href="#wipter">Wipter</a> | F | 1 of 20 | 9 | <span class="ratings-con" title="CashPilot does not run Wipter: you use the provider&#x27;s own desktop or phone app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.">CashPilot does not run Wipter: you use the provider's own desktop or phone app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers.</span> | 2026-11-13 |
@@ -566,6 +567,39 @@ What a cited con or pro may rest on:
 
 - Trustpilot rates it 4.6 from 283 reviews, most of them praising crypto payouts; a few report payouts not arriving. [Source](https://www.trustpilot.com/review/bytelixir.com), checked 2026-11-04.
 - A payout needs only a crypto address typed into the request. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/bytelixir.yml), checked 2026-11-04.
+
+<a id="clore-ai"></a>
+
+### Clore.ai
+
+**Grade F**, 6 of 20 points, 3 of 10 criteria unchecked, reviewed 2026-11-27. Setup guide: [Clore.ai](guides/clore-ai.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We found no host payout reports either way and have not cashed out ourselves. |
+| Payout terms | Fair | Crypto only, low minimums, an extra 15% fee on non-CLORE rentals |
+| Account safety | Fair | Sole-discretion termination; forfeiture on prohibited use; no pattern of reports found |
+| Fit with how CashPilot runs it | Fair | Own hosting agent on your GPU machine, not run by CashPilot |
+| Traffic transparency | Fair | Forbidden uses listed; how renters are checked is not described |
+| Privacy | Unknown | The installer is public on GitLab; we did not check whether the hosting agent itself is open source or what it reports. |
+| Identity checks | Fair | No KYC for basic use; identity checks possible for large withdrawals |
+| Support | Unknown | No ticket experience of our own and no pattern of reports found. |
+| Earnings realism | Fair | Earns only while rented; Clore publishes ceilings, not averages |
+| Longevity | Poor | No named legal entity in the terms or privacy policy |
+
+**Cons**
+
+- Neither the terms nor the privacy policy name a legal entity, and the terms leave the governing jurisdiction to a later version. [Source](https://docs.clore.ai/legal/terms-of-service), checked 2026-11-27.
+- Clore may suspend or close an account at its sole discretion, and a prohibited use can lead to forfeiture of funds. [Source](https://docs.clore.ai/legal/terms-of-service), checked 2026-11-27.
+- Payouts are crypto only (CLORE, BTC, USDT or USDC), and Clore takes an extra 15% of a rental the renter pays in BTC, USDT or USDC, unless the host locks CLORE to cut it. [Source](https://docs.clore.ai/for-hosts/host-fees), checked 2026-11-27.
+- A host is paid only for rented minutes, and Clore's figure for an RTX 4090 is a ceiling ("up to ~$490/month") for a single card. [Source](https://clore.ai/host-4090.html), checked 2026-11-27.
+- Basic use needs no KYC, but Clore may ask for identity verification for large withdrawals or compliance cases. [Source](https://docs.clore.ai/help/faq), checked 2026-11-27.
+- Renters run any public Docker image on your machine. The terms list forbidden uses (malware, DDoS, CSAM and more), but we found no description of how renters are checked. [Source](https://docs.clore.ai/legal/terms-of-service), checked 2026-11-27.
+- CashPilot does not run Clore.ai: you install Clore's hosting agent on your own GPU machine (Ubuntu 22.04 or newer, or HiveOS), so CashPilot cannot deploy or update it for you. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/compute/clore-ai.yml), checked 2026-11-27.
+
+**Pros**
+
+- Clore keeps 5% of an on-demand rental (1.25% on spot) when the renter pays in CLORE, with no extra fee. [Source](https://docs.clore.ai/for-hosts/host-fees), checked 2026-11-27.
 
 <a id="kryptex-pearl"></a>
 
@@ -1271,6 +1305,37 @@ What a cited con or pro may rest on:
 
 - None found.
 
+<a id="teneo"></a>
+
+### Teneo Protocol
+
+**Grade F**, 2 of 20 points, 6 of 10 criteria unchecked, reviewed 2026-11-27. Setup guide: [Teneo Protocol](guides/teneo.md).
+
+| Criterion | Verdict | Note |
+|---|---|---|
+| Payout record | Unknown | We found no independent reports of Beacon Drop payouts and have none of our own. |
+| Payout terms | Poor | USDC only as seasonal draw prizes; points become non-transferable $AGENTIC |
+| Account safety | Unknown | No reports found. |
+| Fit with how CashPilot runs it | Fair | Native app, CashPilot cannot deploy or update it |
+| Traffic transparency | Fair | Vetted business customers, vetting not described |
+| Privacy | Unknown | Not reviewed. |
+| Identity checks | Unknown | Not documented. |
+| Support | Unknown | No pattern found. |
+| Earnings realism | Poor | No $TENEO launch date confirmed, Q2 2026 target passed |
+| Longevity | Unknown | We did not confirm the company behind Teneo. |
+
+**Cons**
+
+- The Beacon's Fragments pay USDC only as prizes in seasonal draws, so running it does not earn a set amount. [Source](https://teneo-protocol.ai/beacon), checked 2026-11-27.
+- Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. [Source](https://teneo-protocol.ai/blog/the-first-step-towards-future-teneo-rewards), checked 2026-11-04.
+- No $TENEO launch date, allocation or claim process had been confirmed by November 2026, after an earlier target of the second quarter of 2026 passed. [Source](https://blog.mexc.com/crypto-knowledge/teneo-airdrop-guide/), checked 2026-11-04.
+- CashPilot does not run Teneo: you install the provider's own Beacon app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/teneo.yml), checked 2026-11-27.
+- Teneo says the traffic comes from vetted business customers and blocks private addresses and abuse-prone ports, but does not say how it vets those customers. [Source](https://teneo-protocol.ai/beacon), checked 2026-11-27.
+
+**Pros**
+
+- None found.
+
 <a id="uprock"></a>
 
 ### Uprock
@@ -1461,35 +1526,6 @@ What a cited con or pro may rest on:
 **Cons**
 
 - CashPilot does not run Spide: you use the provider's own app, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/bandwidth/spide.yml), checked 2026-11-04.
-
-**Pros**
-
-- None found.
-
-<a id="teneo"></a>
-
-### Teneo Protocol
-
-**Grade F**, 1 of 20 points, 7 of 10 criteria unchecked, reviewed 2026-11-04. Setup guide: [Teneo Protocol](guides/teneo.md).
-
-| Criterion | Verdict | Note |
-|---|---|---|
-| Payout record | Unknown | No transferable token has been paid out yet. |
-| Payout terms | Poor | Points become non-transferable $AGENTIC, not $TENEO |
-| Account safety | Unknown | No reports found. |
-| Fit with how CashPilot runs it | Fair | Browser extension, CashPilot cannot deploy or update it |
-| Traffic transparency | Unknown | Not documented on pages we read. |
-| Privacy | Unknown | Not reviewed. |
-| Identity checks | Unknown | Not documented. |
-| Support | Unknown | No pattern found. |
-| Earnings realism | Poor | No $TENEO launch date confirmed, Q2 2026 target passed |
-| Longevity | Unknown | We did not confirm the company behind Teneo. |
-
-**Cons**
-
-- Teneo says points will be consolidated into $AGENTIC, a non-transferable reward token, not the $TENEO token. [Source](https://teneo-protocol.ai/blog/the-first-step-towards-future-teneo-rewards), checked 2026-11-04.
-- No $TENEO launch date, allocation or claim process had been confirmed by November 2026, after an earlier target of the second quarter of 2026 passed. [Source](https://blog.mexc.com/crypto-knowledge/teneo-airdrop-guide/), checked 2026-11-04.
-- CashPilot does not run Teneo: you use the provider's own browser extension, so CashPilot cannot deploy or update it for you. Its terms were not checked for containers. [Source](https://github.com/GeiserX/CashPilot/blob/main/services/depin/teneo.yml), checked 2026-11-04.
 
 **Pros**
 

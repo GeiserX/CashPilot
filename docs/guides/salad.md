@@ -13,7 +13,7 @@ Salad.io lets you share your GPU for distributed AI workloads and earn Salad bal
 | Metric | Value |
 |--------|-------|
 | Monthly range | $0 - $100 (estimate) |
-| Per | GPU-hour |
+| Per | GPU |
 | Minimum payout | $5 |
 | Payout frequency | On request |
 | Payment methods | Paypal, Giftcard |

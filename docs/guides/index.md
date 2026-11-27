@@ -4,7 +4,7 @@
 
 Setup and configuration for every service CashPilot supports.
 
-**60 services** across 5 categories. The table is sortable — click a heading to reorder it.
+**61 services** across 5 categories. The table is sortable — click a heading to reorder it.
 
 !!! tip "Choosing what to run"
 
@@ -90,6 +90,7 @@ Setup and configuration for every service CashPilot supports.
 
 | Service | Needs | Runs as | Minimum payout | Status |
 |---|---|---|---|---|
+| [Clore.ai](clore-ai.md) | GPU, Storage 32GB, 100 Mbps up and down | App only | 200 CLORE | active |
 | [Flux](flux.md) | Storage 220GB, 25 Mbps | App only | — | active |
 | [Golem Network](golem.md) | Storage 20GB, 10 Mbps | App only | — | active |
 | [io.net](ionet.md) | GPU | App only | — | active |

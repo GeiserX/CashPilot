@@ -358,7 +358,7 @@
 #   monthly_low: 2
 #   monthly_high: 5
 #   currency: USD
-#   per: "device" | "TB" | "GPU-hour"
+#   per: "device" | "TB" | "GPU" | "node" (the unit the monthly range is for; shown as "/ <per>")
 #   notes: ""
 
 # cashout:
