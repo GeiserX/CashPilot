@@ -74,8 +74,14 @@ Until the device is on your account it earns for nobody. Sign in to [peer.proxyr
 
 ## Troubleshooting
 
+### The copy waits for ProxyRack's update server
+
+The ProxyRack image has no client inside it. It downloads the client from ProxyRack's update server (`app-updates.sock.sh`) each time the container starts. The client also needs that server each time it starts. No copy can start while that server is down. A copy that already runs keeps earning until it restarts.
+
+CashPilot starts the client only when that server answers. When it does not answer, the logs show `ProxyRack's update server cannot be reached`, and CashPilot shows the copy under **Needs fixing**. The copy earns nothing while it waits. It tries again every 5 minutes and starts by itself once the server answers. There is nothing to fix on your side. On 27 November 2026 that server refused every connection for hours.
+
 ### Logs show `Cannot find module '/app/script.js'`
 
-The image downloads the ProxyRack client each time the container starts, and it does not retry a failed download. When that download fails, the client never starts. The container still shows as running, but it earns nothing.
+Copies deployed before CashPilot had its own start use the image's start. That start deletes the client at each start and downloads it again, with no retry. When that download fails, the client never starts. The container still shows as running, but it earns nothing.
 
-CashPilot reads the last 12 hours of the copy's logs. When they hold this error and no `connected to server` line, it shows the copy under **Needs fixing** and restarts the copy itself, at most once every 6 hours. A restart downloads the client again. If the warning stays after a restart, check that the box can reach the internet.
+CashPilot reads the last 12 hours of the copy's logs. When they hold this error and no `connected to server` line, it shows the copy under **Needs fixing** and restarts the copy itself, at most once every 6 hours. A restart fixes the copy only when the update server answers. Redeploy the copy to give it CashPilot's start, which keeps the client and tries again by itself.
