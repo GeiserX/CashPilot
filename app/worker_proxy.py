@@ -18,6 +18,8 @@ from urllib.parse import urlparse, urlunparse
 
 from fastapi import HTTPException
 
+from app import cleartext
+
 _ALLOWED_WORKER_SCHEMES = {"http", "https"}
 
 # SSRF guard for worker URLs. The worker `url` arrives in the (fleet-key-authed)
@@ -100,6 +102,29 @@ def _assert_ip_strict_allowed(addr: ipaddress.IPv4Address | ipaddress.IPv6Addres
     raise HTTPException(status_code=400, detail="Worker URL not in allowed hosts (strict mode)")
 
 
+def plain_http_refusal(raw_url: str) -> str | None:
+    """Why the UI sends nothing to this worker URL, or None when the scheme allows it.
+
+    Every command carries that worker's own key as a bearer, and the key
+    deploys containers there. Over plain http to a public host anyone on the
+    path reads it. Decided from the URL's literal host by app/cleartext.py, the
+    rule the worker, Desktop and Android apply to the UI's URL. Every policy,
+    strict included: an allow-listed public host still gets https or nothing.
+    """
+    try:
+        scheme = urlparse(raw_url).scheme.lower()
+    except ValueError:
+        return "This worker's address cannot be parsed, so CashPilot sends it nothing."
+    if scheme != "http" or cleartext.bearer_allowed(raw_url):
+        return None
+    return (
+        f"This worker's address is plain http:// to {cleartext.host_of(raw_url)}, which is not a private "
+        "address, so CashPilot sends it nothing: its key would cross the internet unencrypted. On that "
+        "worker, set CASHPILOT_WORKER_URL to an https:// address, or to an http:// address on your own "
+        f"network: {cleartext.PRIVATE_HOSTS_TEXT}."
+    )
+
+
 def _validate_worker_url(raw_url: str) -> tuple[str, str | None]:
     """Validate a worker URL; raise 400 on SSRF-risky targets.
 
@@ -122,6 +147,8 @@ def _validate_worker_url(raw_url: str) -> tuple[str, str | None]:
     host = parsed.hostname or ""
     if not host:
         raise HTTPException(status_code=400, detail="Worker URL has no host")
+    if refusal := plain_http_refusal(raw_url):
+        raise HTTPException(status_code=400, detail=refusal)
     if host in ("localhost", "localhost.localdomain"):
         raise HTTPException(status_code=400, detail="Worker URL points to localhost")
 

@@ -1775,6 +1775,25 @@ class TestApiFleet:
             body = resp.json()
             assert "watts" in body[0] and "dedicated" in body[0]
 
+    def test_api_list_workers_says_which_url_gets_no_commands(self, client):
+        """The fleet page shows why a box on plain http to a public host gets nothing."""
+        row = {"status": "online", "containers": "[]", "apps": "[]", "system_info": "{}"}
+        workers = [
+            {**row, "id": 1, "name": "public", "url": "http://203.0.113.5:8081"},
+            {**row, "id": 2, "name": "lan", "url": "http://192.168.1.5:8081"},
+            {**row, "id": 3, "name": "tls", "url": "https://203.0.113.6:8081"},
+            {**row, "id": 4, "name": "phone", "url": ""},
+        ]
+        with (
+            _auth_owner(),
+            patch("app.main.database.list_workers", new_callable=AsyncMock, return_value=workers),
+            patch("app.main.database.get_config", new_callable=AsyncMock, return_value={}),
+        ):
+            body = {w["name"]: w["url_refused"] for w in client.get("/api/workers").json()}
+        assert "plain http:// to 203.0.113.5" in body["public"]
+        assert "CASHPILOT_WORKER_URL" in body["public"]
+        assert body["lan"] is None and body["tls"] is None and body["phone"] is None
+
     def test_heartbeat_miner_fields_are_sanitized(self, client):
         read_at = "2026-11-25T12:00:00Z"
         sample = {
@@ -2102,7 +2121,7 @@ class TestValidateWorkerUrl:
             ),
             pytest.raises(Exception, match="metadata"),
         ):
-            _validate_worker_url("http://evil.example.com")
+            _validate_worker_url("http://evil.lan")
 
     def test_hostname_returns_validated_ip_to_pin(self):
         # A resolvable hostname returns the checked IP so the caller connects to it
@@ -2110,19 +2129,19 @@ class TestValidateWorkerUrl:
         from app.main import _validate_worker_url
 
         with patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.20.7", 8081))]):
-            assert _validate_worker_url("http://wk.example:8081") == ("http://wk.example:8081", "192.168.20.7")
+            assert _validate_worker_url("http://wk.lan:8081") == ("http://wk.lan:8081", "192.168.20.7")
 
     def test_pin_url_to_ip_rewrites_host_keeps_host_header(self):
         from app.main import _pin_url_to_ip
 
-        assert _pin_url_to_ip("http://wk.example:8081/x", "192.168.20.7") == (
+        assert _pin_url_to_ip("http://wk.lan:8081/x", "192.168.20.7") == (
             "http://192.168.20.7:8081/x",
-            "wk.example:8081",
+            "wk.lan:8081",
         )
         # IPv6 pins are bracketed in the URL.
-        url, host = _pin_url_to_ip("http://wk.example:8081", "fd00::5")
+        url, host = _pin_url_to_ip("http://wk.lan:8081", "fd00::5")
         assert url == "http://[fd00::5]:8081"
-        assert host == "wk.example:8081"
+        assert host == "wk.lan:8081"
 
     def test_get_verified_worker_url_pins_ip_and_sets_host_header(self):
         # End-to-end: the URL handed to httpx uses the validated IP (so httpx never
@@ -2131,14 +2150,14 @@ class TestValidateWorkerUrl:
 
         import app.main as main
 
-        worker = {"status": "online", "url": "http://wk.example:8081", "client_id": ""}
+        worker = {"status": "online", "url": "http://wk.lan:8081", "client_id": ""}
         with (
             patch("app.worker_proxy.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("192.168.30.9", 8081))]),
             patch("app.main.database.get_worker_key", new_callable=AsyncMock, return_value=None),
         ):
             url, headers = asyncio.run(main._get_verified_worker_url(worker))
         assert url == "http://192.168.30.9:8081"
-        assert headers["Host"] == "wk.example:8081"
+        assert headers["Host"] == "wk.lan:8081"
 
     def test_strict_mode_allows_listed_cidr(self):
         import app.worker_proxy as main
@@ -2216,7 +2235,7 @@ class TestValidateWorkerUrl:
                 patch("app.worker_proxy.socket.getaddrinfo", side_effect=socket.gaierror),
                 pytest.raises(Exception, match="does not resolve"),
             ):
-                main._validate_worker_url("http://nope.invalid:8081")
+                main._validate_worker_url("http://nope.lan:8081")
         finally:
             main._WORKER_URL_POLICY = orig
 
