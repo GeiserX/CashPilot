@@ -171,6 +171,12 @@ cmd_install() {
   arch=$(uname -m)
   dir="$PREFIX/$GVISOR_RELEASE"
 
+  # A state folder with no "installed" mark is an install that stopped halfway.
+  # Its backup is the only copy of daemon.json as it was, and a new install would
+  # overwrite that backup with the half-edited file.
+  if [ -d "$STATE" ] && [ ! -f "$STATE/installed" ]; then
+    fail "an earlier install stopped halfway. Run 'sudo bash $0 undo' first; it puts daemon.json back as it was. Nothing was changed."
+  fi
   for name in "${RUNTIMES[@]}"; do
     if has_runtime "$name" && [ ! -f "$STATE/installed" ]; then
       fail "Docker already has a runtime named $name, which this script did not register. Nothing was changed. If it is gVisor with --network=host, press \"Check gVisor\" in the CashPilot UI; it tests what you have."
@@ -240,6 +246,17 @@ cmd_install() {
   say "Then choose gVisor per worker or per earner there. Nothing switches over by itself."
 }
 
+restorable() {
+  # True when undo puts daemon.json back from the backup: the file is as the
+  # install left it, or the install stopped halfway, before it could record
+  # what it left.
+  if [ -f "$STATE/installed" ]; then
+    [ -f "$STATE/daemon.json.ours" ] && [ -f "$DAEMON_JSON" ] && [ "$(sha256_of "$DAEMON_JSON")" = "$(cat "$STATE/daemon.json.ours")" ]
+  else
+    [ -f "$STATE/daemon.json.orig" ] || [ -f "$STATE/daemon.json.absent" ]
+  fi
+}
+
 cmd_undo() {
   preflight undo
   [ -f "$STATE/installed" ] || [ -d "$PREFIX" ] || {
@@ -252,7 +269,7 @@ cmd_undo() {
     fail "these containers still use our gVisor runtimes: $(printf '%s' "$users" | tr '\n' ' '). Switch them to Standard in the CashPilot UI (it redeploys them), then run undo again. Nothing was changed."
   fi
   say "cashpilot-gvisor undo will:"
-  if [ -f "$STATE/daemon.json.ours" ] && [ -f "$DAEMON_JSON" ] && [ "$(sha256_of "$DAEMON_JSON")" = "$(cat "$STATE/daemon.json.ours")" ]; then
+  if restorable; then
     if [ -f "$STATE/daemon.json.absent" ]; then say "  1. remove ${DAEMON_JSON}, which did not exist before;"; else say "  1. restore ${DAEMON_JSON} from its backup;"; fi
   else
     say "  1. remove only the runtimes ${RUNTIMES[*]} from ${DAEMON_JSON}, which was edited since the install;"
@@ -263,7 +280,7 @@ cmd_undo() {
 
   local runsc restored="" untouched=0
   runsc=$(find "$PREFIX" -mindepth 2 -maxdepth 2 -name runsc -type f 2>/dev/null | head -n1 || true)
-  if [ -f "$STATE/daemon.json.ours" ] && [ -f "$DAEMON_JSON" ] && [ "$(sha256_of "$DAEMON_JSON")" = "$(cat "$STATE/daemon.json.ours")" ]; then
+  if restorable; then
     untouched=1
   fi
   # Step 1: take our two runtimes out and reload. A reload drops a runtime only
