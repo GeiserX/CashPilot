@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # البدء { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   بالأمر `docker compose version`. لا تستطيع الإصدارات الأقدم قراءة الإعدادات
   المضمّنة في ملف compose. يتضمّن Docker Desktop هذه الإضافة. على Docker
   Engine مجرّد على Linux، ثبّتها من مستودع حزم Docker
-  (https://docs.docker.com/compose/install/linux/). على macOS مع Colima،
+  (<https://docs.docker.com/compose/install/linux/>). على macOS مع Colima،
   ثبّتها باستخدام Homebrew واربطها كإضافة لـ Docker:
 
     ```sh

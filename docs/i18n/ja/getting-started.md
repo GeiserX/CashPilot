@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # はじめに { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   `docker compose version` で確認してください。これより古いバージョンは、compose
   ファイル内のインライン設定を読み込めません。Docker Desktop にはこのプラグインが含まれています。
   Linux の素の Docker Engine では、Docker のパッケージリポジトリからインストールしてください
-  (https://docs.docker.com/compose/install/linux/)。macOS で Colima を使う場合は、
+  (<https://docs.docker.com/compose/install/linux/>)。macOS で Colima を使う場合は、
   Homebrew でインストールし、Docker プラグインとしてリンクします。
 
     ```sh

@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # 시작하기 { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   `docker compose version`으로 확인합니다. 이전 버전은 compose 파일 안의 인라인 설정을
   읽지 못합니다. Docker Desktop에는 이 플러그인이 포함되어 있습니다. Linux의 기본
   Docker Engine에서는 Docker의 패키지 저장소에서 설치합니다
-  (https://docs.docker.com/compose/install/linux/). Colima를 사용하는 macOS에서는
+  (<https://docs.docker.com/compose/install/linux/>). Colima를 사용하는 macOS에서는
   Homebrew로 설치한 다음 Docker 플러그인으로 연결합니다:
 
     ```sh

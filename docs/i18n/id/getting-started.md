@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # Memulai { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   dengan `docker compose version`. Versi yang lebih lama tidak dapat membaca konfigurasi
   inline di file compose. Docker Desktop sudah menyertakan plugin ini. Pada Docker
   Engine biasa di Linux, pasang plugin dari repositori paket Docker
-  (https://docs.docker.com/compose/install/linux/). Di macOS dengan Colima,
+  (<https://docs.docker.com/compose/install/linux/>). Di macOS dengan Colima,
   pasang dengan Homebrew lalu tautkan sebagai plugin Docker:
 
     ```sh

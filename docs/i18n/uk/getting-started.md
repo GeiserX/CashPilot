@@ -1,5 +1,5 @@
 ---
-source_hash: 8b365b89d2b0
+source_hash: b7f193597284
 ---
 # Перші кроки { #getting-started }
 
@@ -9,7 +9,7 @@ source_hash: 8b365b89d2b0
   це командою `docker compose version`. Старіші версії не вміють читати вбудовану
   конфігурацію у файлі compose. Docker Desktop уже містить цей плагін. На «голому» Docker
   Engine у Linux встановіть його з репозиторію пакетів Docker
-  (https://docs.docker.com/compose/install/linux/). На macOS з Colima
+  (<https://docs.docker.com/compose/install/linux/>). На macOS з Colima
   встановіть його через Homebrew і під'єднайте як плагін Docker:
 
     ```sh
