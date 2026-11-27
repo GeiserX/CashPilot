@@ -244,5 +244,29 @@
    "total": 9
   },
   "expected": "3 left of 9"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, =0 {no boxes} one {# box} other {# boxes}}",
+  "params": {
+   "n": 1000
+  },
+  "expected": "1000 boxes"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, =0 {no boxes} one {# box} other {# boxes}}",
+  "params": {
+   "n": 1.5
+  },
+  "expected": "1.5 boxes"
+ },
+ {
+  "locale": "en",
+  "message": "{kind, select, a {Alpha} other {Something else}}",
+  "params": {
+   "kind": "constructor"
+  },
+  "expected": "Something else"
  }
 ]
