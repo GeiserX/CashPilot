@@ -873,6 +873,10 @@ def check_target(source: dict, target: dict, hashes: dict | None) -> dict:
             continue
         if isinstance(tgt, dict) and not (tgt.get("other") or "").strip():
             found["placeholder"].append((key, "the plural has no 'other' form"))
+        elif isinstance(tgt, dict) and any(not (v or "").strip() for v in tgt.values()):
+            # A form given as "" would show nothing for its counts.
+            empty = sorted(q for q, v in tgt.items() if not (v or "").strip())
+            found["placeholder"].append((key, f"empty plural form {', '.join(empty)}"))
         s_sig, t_sig = signature(src), signature(tgt)
         no_other = sorted(t[1] for t in t_sig if t[0] == "no-other")
         if no_other:
