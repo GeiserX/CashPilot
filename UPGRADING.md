@@ -345,7 +345,7 @@ CashPilot, or ask for a catalog entry.
   string, empty when not set. Each worker also has a new `unmetered` field.
 - `GET /api/earnings/breakdown` keeps 12 decimals instead of 4.
 
-**What to do.** Use cashpilot-mcp 0.4.0 or later: older versions cannot
+**What to do.** Use cashpilot-mcp 0.4.1 or later: older versions cannot
 redeploy a running service. Add the confirmation step to your scripts.
 
 ### A proxied copy may ask you to approve its containers once
@@ -401,7 +401,7 @@ the Home Assistant integration with this server.
   in the Desktop's dashboard if you want this server to command it.
 - Desktop does not update itself. Download it from its
   [releases page](https://github.com/GeiserX/CashPilot-Desktop/releases).
-- **[cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) 0.4.0 or later**
+- **[cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) 0.4.1 or later**
   is needed to redeploy a running service, because it sends the confirmation
   that 3.0 asks for.
 - CashPilot Desktop 2.0 has its own upgrade steps. Its pairing moves to a new
@@ -416,7 +416,7 @@ the Home Assistant integration with this server.
   balances in CashPilot.
 
 **What to do.** Upgrade this server to 3.0 before you upgrade a Desktop to
-2.0. Update cashpilot-mcp to 0.4.0.
+2.0. Update cashpilot-mcp to 0.4.1.
 
 ### Rolling back
 
