@@ -84,7 +84,7 @@ File rules:
   - The log names the file and says to restore it or delete it. Deleting it means pairing again.
   - The stack never replaces the file by itself.
 - The leaf key:
-  - The TLS leaf key and its chain are made again whenever either file is missing.
+  - The TLS leaf key and its chain are made again whenever either file is missing, or when the chain's identity certificate does not carry the current identity key. So a new identity key always gets a new leaf.
   - The leaf is signed by the identity key, so a new leaf needs no new pairing.
 - Encryption at rest:
   - The UI and worker files are not encrypted at rest.
@@ -228,6 +228,7 @@ The request handler needs the peer's endpoint id from the transport, never from 
 - Go reads `r.TLS.PeerCertificates[1]`, after `verifyPinned` passed.
 - Python:
   - uvicorn 0.54 does not fill in the ASGI TLS extension. A small protocol subclass (`http=` in the uvicorn config) reads the peer chain from the transport's `ssl_object` in `connection_made`. It puts the chain into `scope["extensions"]["tls"]["client_cert_chain"]` as the ASGI spec names it, and the endpoint id into `scope["extensions"]["cashpilot.peer"]["endpoint_id"]`.
+  - The endpoint id comes from the verified chain (`get_verified_chain()`): it is the key of the identity certificate that issued the leaf and matched a pin. The identity certificate the peer sent must equal that verified one, or the connection is closed. Otherwise a peer could send its own leaf with another box's public identity certificate, and OpenSSL would still complete the chain with the right one.
   - Middleware reads only `cashpilot.peer`.
   - Section 9.4 fills the same key for iroh, so one auth path serves both transports.
 - Android is only ever a client, so it needs no peer id in a handler.
@@ -248,7 +249,8 @@ A stolen bearer is useless without the box's private key. A stolen private key i
 |---|---|---|
 | UI fleet port `8443` | Only the enrolment heartbeat (section 7.2) | `POST /api/workers/heartbeat`, `POST /api/workers/earnings-import` |
 | Worker `8081` | `GET /api/health` (the container healthcheck, which connects over TLS without verifying) and the status page `/`, which keeps its bearer check. A browser shows a certificate warning there. That is expected | Every route |
-| Desktop `8086`, `8085` | The same rule: health only | Every route |
+| Desktop hub `8085` | The same rule as the UI fleet port: only the enrolment heartbeat | The UI fleet port's routes |
+| Desktop commands `8086` | Health only | Every route |
 
 ### 5.6 URLs
 
@@ -592,8 +594,10 @@ Each case must fail when its check is removed. Prove that once by breaking the c
   - Close the re-pair window when its pin is confirmed.
   - On the box, drop a cached `/data/.ui_identity.pem` whose key is not `CASHPILOT_UI_KEY`.
   - Refuse an `identity_cert` whose CN is not its key.
+  - On a Desktop hub, accept the enrolment heartbeat without a client certificate on `8085`, and refuse it on `8086`.
   - Refuse a reply whose `ui_identity_cert` is not `CASHPILOT_UI_KEY`.
-- The bearer: refuse box A's bearer on box B's certificate, and box A's certificate with box B's bearer.
+- The bearer: refuse box A's bearer on box B's certificate, and box A's certificate with box B's bearer. Refuse box A's leaf sent with box B's identity certificate.
+- Keys: a new identity key on a box that kept its TLS files gets a new leaf signed by it.
 - Removal: a removed box's next handshake fails without a restart.
 - Tickets: a server issues no session ticket.
 - iroh:
