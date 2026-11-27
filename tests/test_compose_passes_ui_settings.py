@@ -61,11 +61,23 @@ def test_the_casaos_package_offers_the_setting(var):
 @pytest.mark.parametrize("var", UI_SETTINGS)
 def test_the_runtipi_package_offers_the_setting(var):
     folder = ROOT / "contrib/app-stores/runtipi/cashpilot"
-    assert _ui_environment(folder / "docker-compose.yml", "cashpilot").get(var) == f"${{{var}}}"
+    value = _ui_environment(folder / "docker-compose.yml", "cashpilot").get(var, "")
+    assert re.fullmatch(r"\$\{" + var + r"(:-[^}]*)?\}", value), f"Runtipi does not pass {var}: {value!r}"
     fields = json.loads((folder / "config.json").read_text(encoding="utf-8"))["form_fields"]
     assert any(f.get("env_variable") == var and f.get("required") is False for f in fields), (
         f"Runtipi has no optional form field for {var}"
     )
+
+
+def test_the_runtipi_package_is_offered_as_an_update():
+    """Runtipi offers an update only when ``tipi_version`` rises.
+
+    Version 5 shipped 3.0.0 without these fields, so an install on 5 never sees
+    them unless the package moves past it.
+    """
+    config = json.loads((ROOT / "contrib/app-stores/runtipi/cashpilot/config.json").read_text(encoding="utf-8"))
+    assert config["tipi_version"] > 5, "raise tipi_version, or Runtipi installs never get the new fields"
+    assert config["updated_at"] > 1795707945625, "set updated_at to when the package changed"
 
 
 @pytest.mark.parametrize("var", UI_SETTINGS)
