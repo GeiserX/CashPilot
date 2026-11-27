@@ -21,6 +21,7 @@ docker:
   image: drumsergio/cashpilot-srbminer-multi:3.9.0-r1@sha256:a1aee5f41abc7d748827cd6e27540564c6930a74c44f954844840ece4a91c059
   platforms: [linux/amd64]
   runtime: runc
+  runtime_reason: "gVisor cannot pass the GPU through to it."
   gpu:
     vendor: nvidia
     count: 1

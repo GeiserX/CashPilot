@@ -446,7 +446,7 @@ const workerSaveSource = html.slice(
 );
 const buildWorkerPower = new Function(
   'document', 'CP', 'esc', 'brk', 'CSS', '_isOwner', '_isolation', 'loadFleetEconomics', 'loadPowerSettings',
-  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), extract('renderMiners'), workerSaveSource, 'return loadFleet;'].join('\n'),
+  [fleetSource, extract('countWorkerNames'), extract('renderWorkers'), extract('renderMiners'), extract('renderLayers'), workerSaveSource, 'return loadFleet;'].join('\n'),
 );
 
 function workerPowerFixture(owner = true) {
