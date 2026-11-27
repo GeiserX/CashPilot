@@ -126,6 +126,104 @@ class TestHeartbeatEnrollment:
             assert w._active_key() == "shared"
 
 
+def _heartbeat_client(reply):
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json = MagicMock(return_value=reply)
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.post = AsyncMock(return_value=resp)
+    return client
+
+
+class TestEnrolmentHandover:
+    """The UI signs with the shared key until our own-key heartbeat confirms it.
+
+    Refusing the shared key the moment the key arrived failed every command for
+    up to a minute after enrolment, while the dashboard showed the worker online.
+    """
+
+    def _req(self, token):
+        r = MagicMock()
+        r.headers = {"Authorization": f"Bearer {token}"}
+        return r
+
+    def _beat(self, reply):
+        with (
+            patch.object(w, "UI_URL", "http://ui:8080"),
+            patch("app.worker_api.orchestrator.get_status", return_value=[]),
+            patch("app.worker_api.orchestrator.docker_available", return_value=True),
+            patch("app.worker_api.httpx.AsyncClient", return_value=_heartbeat_client(reply)),
+        ):
+            asyncio.run(w._send_heartbeat())
+
+    def test_shared_key_works_until_the_ui_confirms_our_own(self, tmp_path):
+        with (
+            patch.object(w, "_WORKER_KEY_FILE", tmp_path / ".worker_key"),
+            patch.object(w, "_worker_key", None),
+            patch.object(w, "_key_pending", False),
+            patch.object(w, "API_KEY", "shared"),
+        ):
+            self._beat({"status": "ok", "worker_id": 1, "worker_key": "own"})
+            assert w._worker_key == "own"
+            # The UI has not seen our own key yet, so it still sends the shared one.
+            assert w._verify_api_key(self._req("shared")) is None
+            assert w._verify_api_key(self._req("own")) is None
+            with pytest.raises(HTTPException):
+                w._verify_api_key(self._req("wrong"))
+            # The next heartbeat, signed with our own key, lands: the UI confirmed it.
+            self._beat({"status": "ok", "worker_id": 1})
+            with pytest.raises(HTTPException) as ei:
+                w._verify_api_key(self._req("shared"))
+            assert ei.value.status_code == 401
+            assert w._verify_api_key(self._req("own")) is None
+
+    def test_a_key_loaded_from_disk_refuses_the_shared_key(self):
+        with (
+            patch.object(w, "_worker_key", "own"),
+            patch.object(w, "_key_pending", False),
+            patch.object(w, "API_KEY", "shared"),
+            pytest.raises(HTTPException),
+        ):
+            w._verify_api_key(self._req("shared"))
+
+    def test_discarding_the_key_ends_the_handover(self, tmp_path):
+        key_file = tmp_path / ".worker_key"
+        key_file.write_text("own")
+        with (
+            patch.object(w, "_WORKER_KEY_FILE", key_file),
+            patch.object(w, "_worker_key", "own"),
+            patch.object(w, "_key_pending", True),
+        ):
+            w._discard_worker_key("test")
+            assert w._key_pending is False
+
+    def test_enrolment_is_confirmed_at_once_not_a_heartbeat_later(self):
+        calls = []
+
+        async def beat():
+            calls.append(1)
+            if len(calls) == 1:
+                w._key_pending = True  # this heartbeat enrolled us
+
+        async def run():
+            task = asyncio.create_task(w._heartbeat_loop())
+            for _ in range(50):
+                await asyncio.sleep(0)
+                if len(calls) >= 2:
+                    break
+            task.cancel()
+
+        with (
+            patch.object(w, "_send_heartbeat", beat),
+            patch.object(w, "_key_pending", False),
+            patch.object(w, "HEARTBEAT_INTERVAL", 3600),
+        ):
+            asyncio.run(run())
+        assert len(calls) == 2, "the confirming heartbeat waited for the next interval"
+
+
 class TestKeyPersistFailure:
     def test_persist_failure_returns_false_and_does_not_adopt(self):
         fake_file = MagicMock()
@@ -567,6 +665,33 @@ class TestTheRecoveryIsDocumentedWhereItIsNeeded:
         text = text[: text.find("\n## ", 1)]
         assert "so the shared key is accepted again" not in text
         assert "/data/.worker_key" in text, "the manual recovery must be written down somewhere"
+
+    def test_the_confirm_dialog_tells_a_desktop_how_it_joins_again(self):
+        """A Desktop never re-enrols by itself and has no /data/.worker_key."""
+        import json
+        import shutil
+        import subprocess
+        from pathlib import Path
+
+        node = shutil.which("node")
+        if not node:
+            pytest.skip("node is not installed")
+        html = Path(__file__).resolve().parents[1].joinpath("app/templates/fleet.html").read_text(encoding="utf-8")
+        start = html.index("  async function removeWorker(")
+        body = html[start : html.index("\n  }\n", start) + 4]
+        harness = (
+            "const asked = []; const confirm = m => { asked.push(m); return false; };"
+            f"const fn = new Function('confirm', {json.dumps(body)} + '; return removeWorker;')(confirm);"
+            "(async () => { await fn(1, 'mac', 'c1', true); await fn(2, 'srv', 'c2', false);"
+            "console.log(JSON.stringify(asked)); })();"
+        )
+        desktop, server = json.loads(
+            subprocess.run([node, "-e", harness], capture_output=True, text=True, check=True).stdout
+        )
+        assert "Join my CashPilot" in desktop
+        assert "/data/.worker_key" not in desktop and "re-enrol on its own" not in desktop
+        assert "re-enrol on its own" in server and "/data/.worker_key" in server
+        assert 'data-worker-desktop="1"' in html and "btn.dataset.workerDesktop === '1'" in html
 
     def test_the_confirm_dialog_says_the_worker_keeps_running(self):
         from pathlib import Path

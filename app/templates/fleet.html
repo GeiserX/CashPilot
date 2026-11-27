@@ -129,7 +129,9 @@
   <summary>Add a box</summary>
   <div class="add-worker-body">
     <p class="add-worker-text">
-      Deploy <code>drumsergio/cashpilot-worker</code> on each server, or install the
+      {% if worker_image() %}Deploy <code>{{ worker_image() }}</code> on each server,{% else %}This build has no
+      release version. Deploy <code>drumsergio/cashpilot-worker:X.Y</code> on each server, with
+      <code>X.Y</code> replaced by a published release,{% endif %} or install the
       <a href="https://github.com/GeiserX/CashPilot-android">Android app</a> on your phone.
     </p>
     <p class="add-worker-text">
@@ -158,8 +160,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
         <textarea readonly rows="3" class="form-input form-input-wide mono"></textarea>
       </div>
     </div>
+    <p class="muted add-worker-text" id="env-ui-url-loopback" style="display:none;">
+      This page is open on a loopback address, which another server cannot reach.
+      Put this server's LAN or Tailscale address in <code>CASHPILOT_UI_URL</code>.
+      The default install listens only on 127.0.0.1, so set <code>CASHPILOT_BIND_ADDR</code> first
+      (<a href="https://github.com/GeiserX/CashPilot/blob/main/docs/fleet.md#adding-remote-workers">how</a>).
+    </p>
     <p class="muted add-worker-text">
-      The API key is set via <code>CASHPILOT_API_KEY</code> env var on the UI container. Use the same key on all workers.
+      This is the enrolment key. It is <code>CASHPILOT_API_KEY</code> on the UI container when that is set.
+      Otherwise CashPilot generates it in <code>/fleet/.fleet_key</code>.
+      Use the same key on all workers. Each worker uses it only to join, then gets its own key.
     </p>
   </div>
 </details>
@@ -175,7 +185,14 @@ CASHPILOT_WORKER_NAME=server-name</code>
   let _apiKeySet = false;
   const _isOwner = {{ 'true' if user.r == 'owner' else 'false' }};
 
-  document.getElementById('env-ui-url').textContent = window.location.origin;
+  // Another server cannot reach this UI at a loopback address, which is what the
+  // page shows on the default install (it listens only on 127.0.0.1).
+  const _loopback = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/i.test(window.location.hostname)
+    || window.location.hostname.toLowerCase().endsWith('.localhost');
+  document.getElementById('env-ui-url').textContent = _loopback
+    ? `${window.location.protocol}//<this-server-address>${window.location.port ? ':' + window.location.port : ''}`
+    : window.location.origin;
+  if (_loopback) document.getElementById('env-ui-url-loopback').style.display = '';
 
   // Fetch only the API-key STATUS on load (no secret value). The plaintext key is
   // fetched lazily via the owner-only reveal endpoint, on explicit user action.
@@ -186,7 +203,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       _apiKeySet = !!data.is_set;
       if (statusEl) {
         if (_apiKeySet) {
-          statusEl.textContent = 'Configured';
+          statusEl.textContent = data.source === 'file' ? 'Generated in /fleet/.fleet_key'
+            : data.source === 'env' ? 'From CASHPILOT_API_KEY' : 'Configured';
           statusEl.className = 'badge badge-deployed';
           statusEl.style.fontSize = '0.72rem';
         } else {
@@ -610,7 +628,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             ${_isOwner && !isAndroid && (sysInfo.features || []).includes('activity')
               ? `<a class="btn btn-ghost btn-sm" href="/activity" title="What each earner on this box does on the network: connections, ports, networks, LAN attempts. Off until you switch it on there.">Activity</a>`
               : ''}
-            ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}" title="Remove worker">Remove</button>` : ''}
+            ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}"${sysInfo.device_type === 'desktop' ? ' data-worker-desktop="1"' : ''} title="Remove worker">Remove</button>` : ''}
           </td>
         </tr>
         ${_isolation[w.id] && _isolation[w.id] !== 'running' ? `<tr class="worker-detail"><td colspan="7">${renderIsolation(_isolation[w.id])}</td></tr>` : ''}
@@ -1021,12 +1039,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
     }
   };
 
-  async function removeWorker(workerId, name, clientId) {
+  async function removeWorker(workerId, name, clientId, desktop) {
     // The id is in the prompt because two rows can share a display name — a
     // host redeployed with a new /data leaves its old row behind — and picking
     // the wrong one takes the LIVE host out of the fleet (CashPilot-3fr).
     const which = clientId ? `\n\nId: ${clientId}` : '';
-    if (!confirm(`Remove worker "${name}"?${which}\n\nIt is removed from the fleet here, but the worker itself keeps running. It will re-enrol on its own after a few minutes of rejected heartbeats. To bring it back immediately, delete /data/.worker_key on that host and restart the container.`)) return;
+    // A Desktop never re-enrols by itself and has no /data/.worker_key.
+    const after = desktop
+      ? 'It is removed from the fleet here and stops reporting. It does not join again by itself: on that computer, open Settings, pick Run everything here, then Join my CashPilot.'
+      : 'It is removed from the fleet here, but the worker itself keeps running. It will re-enrol on its own after a few minutes of rejected heartbeats. To bring it back immediately, delete /data/.worker_key on that host and restart the container.';
+    if (!confirm(`Remove worker "${name}"?${which}\n\n${after}`)) return;
     try {
       await CP.api(`/api/workers/${workerId}`, { method: 'DELETE' });
       CP.toast(`Worker "${name}" removed`, 'success');
@@ -1231,7 +1253,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const id = parseInt(btn.dataset.workerId, 10);
     if (isNaN(id)) return;
     const name = btn.dataset.workerName;
-    removeWorker(id, name, btn.dataset.workerClient);
+    removeWorker(id, name, btn.dataset.workerClient, btn.dataset.workerDesktop === '1');
   });
 
   window.copyWorkerEnv = async function() {

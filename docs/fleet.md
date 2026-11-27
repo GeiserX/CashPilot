@@ -129,6 +129,9 @@ docker compose -f docker-compose.worker.yml up -d
 ```
 
 `CASHPILOT_UI_URL` is the UI's published host port (`CASHPILOT_UI_PORT`).
+The worker must reach the UI, and the default UI listens only on 127.0.0.1.
+On the main server, set `CASHPILOT_BIND_ADDR` to its LAN or Tailscale
+address ([configuration](configuration.md#compose-level)).
 `CASHPILOT_WORKER_BIND_ADDR` is this server's private or VPN address, never
 `0.0.0.0` or a public IP. To use the in-app update, also add
 `CASHPILOT_COMPOSE_DIR=$PWD`. It is opt-in because it lets containers bind the
@@ -181,7 +184,7 @@ CashPilot uses **per-worker fleet keys** (since v1.0.0). The shared `CASHPILOT_A
 
 - Set `CASHPILOT_API_KEY` on the UI and all workers (or let the UI + co-located worker auto-generate one via the `/fleet` volume).
 - **Enrollment:** a worker's first heartbeat authenticates with the shared key. The UI issues that worker its own unique key (stored encrypted on the UI, and returned once). The worker persists it under its private `/data`.
-- **After enrollment:** the worker authenticates every heartbeat with its own key, and the UI calls that worker with the same key. The shared key **no longer works** for an enrolled worker, so a leaked worker key only affects that one worker, and no worker can impersonate another.
+- **After enrollment:** the worker authenticates every heartbeat with its own key, and the UI calls that worker with the same key. The shared key **no longer works** for an enrolled worker, so a leaked worker key only affects that one worker, and no worker can impersonate another. The worker sends its next heartbeat at once, with its own key, and keeps taking the shared key until a heartbeat signed with its own key lands, so commands work from the moment it enrols.
 
 The fleet key is **never sent to the browser on page load**. The fleet dashboard reveals it only on an explicit, owner-only action (the **Reveal API Key** button), and copy-to-clipboard fetches it the same way.
 

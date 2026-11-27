@@ -24,6 +24,8 @@ COPY_UUID = proxies.copy_device_id(UUID, 1)
 TIMEOUT = HTTPException(status_code=504, detail="The worker did not answer within 90 s.")
 UNREACHABLE = HTTPException(status_code=503, detail="Worker communication failed")
 REFUSED = HTTPException(status_code=409, detail="Docker did not remove cashpilot-proxyrack-p1")
+# _proxy_to_worker turns the worker's 401 into this 503; the worker did nothing.
+KEY_REFUSED = HTTPException(status_code=503, detail=main._WORKER_REFUSED_OUR_KEY)
 REMOVED = {"status": "removed", "containers": ["cashpilot-proxyrack-p1", "cashpilot-tunnel-proxyrack-p1"]}
 
 
@@ -65,8 +67,9 @@ def _run(fn):
     return asyncio.run(go())
 
 
-async def _proxy_with_copy(worker_id=7, slug="proxyrack"):
-    created = await main.api_create_proxy(_Req({"name": "P", "kind": "socks5", "host": "h.example", "port": 1}), {})
+async def _proxy_with_copy(worker_id=7, slug="proxyrack", **login):
+    proxy = {"name": "P", "kind": "socks5", "host": "h.example", "port": 1, **login}
+    created = await main.api_create_proxy(_Req(proxy), {})
     assert created["id"] == 1, "COPY_UUID is derived for proxy 1"
     await database.save_proxied_copy(created["id"], worker_id, slug)
     return created["id"]
@@ -103,8 +106,9 @@ class TestTheWorkerConfirms:
         assert out == REMOVED and copies == [] and left == []
         assert call.call_args.kwargs["timeout"] == main.COPY_REMOVE_TIMEOUT
 
-    def test_a_refusal_from_the_worker_keeps_the_copy_listed_as_it_was(self, db):
-        call = AsyncMock(side_effect=REFUSED)
+    @pytest.mark.parametrize("refusal", [REFUSED, KEY_REFUSED], ids=["docker", "key"])
+    def test_a_refusal_from_the_worker_keeps_the_copy_listed_as_it_was(self, db, refusal):
+        call = AsyncMock(side_effect=refusal)
 
         async def go():
             pid = await _proxy_with_copy()
@@ -115,7 +119,40 @@ class TestTheWorkerConfirms:
 
         status, copies = _run(go)
         # The worker said no: the copy still exists, so it is not shown as removing.
-        assert status == 409 and copies == [(7, "proxyrack", False)]
+        assert status == refusal.status_code and copies == [(7, "proxyrack", False)]
+
+
+class TestAKeyRefusalWithALoginThatIsAWordOfIt:
+    """The proxy's secrets are masked out of the worker's words only, never out of our refusal text."""
+
+    LOGIN = {"username": "worker", "password": "key"}
+
+    def test_the_removal_fails_and_is_not_left_pending(self, db):
+        async def go():
+            pid = await _proxy_with_copy(**self.LOGIN)
+            a, b, c, d = _worker(AsyncMock(side_effect=KEY_REFUSED))
+            with a, b, c, d, pytest.raises(HTTPException) as err:
+                await main.api_remove_proxied_copy(pid, 7, "proxyrack", {})
+            return err.value.detail, await _copies()
+
+        detail, copies = _run(go)
+        assert detail == main._WORKER_REFUSED_OUR_KEY and copies == [(7, "proxyrack", False)]
+
+    def test_a_retry_the_worker_refuses_lists_the_copy_again(self, db):
+        spawned: list = []
+
+        async def go():
+            pid = await _proxy_with_copy(**self.LOGIN)
+            a, b, c, d = _worker(AsyncMock(side_effect=TIMEOUT), spawned)
+            with a, b, c, d:
+                await main.api_remove_proxied_copy(pid, 7, "proxyrack", {})
+            a, b, c, d = _worker(AsyncMock(side_effect=KEY_REFUSED), spawned)
+            with a, b, c, d:
+                await main._queue_copy_removals(7)
+                await spawned.pop()
+            return await _copies()
+
+        assert _run(go) == [(7, "proxyrack", False)]
 
 
 class TestASlowWorker:
@@ -249,7 +286,8 @@ class TestASlowWorker:
         # honeygain failed and waits for the next heartbeat; proxyrack still finished.
         assert copies == [(7, "honeygain", True)] and running == set()
 
-    def test_a_refusal_on_the_retry_lists_the_copy_again(self, db):
+    @pytest.mark.parametrize("refusal", [REFUSED, KEY_REFUSED], ids=["docker", "key"])
+    def test_a_refusal_on_the_retry_lists_the_copy_again(self, db, refusal):
         spawned: list = []
 
         async def go():
@@ -257,7 +295,7 @@ class TestASlowWorker:
             a, b, c, d = _worker(AsyncMock(side_effect=TIMEOUT), spawned)
             with a, b, c, d:
                 await main.api_remove_proxied_copy(pid, 7, "proxyrack", {})
-            a, b, c, d = _worker(AsyncMock(side_effect=REFUSED), spawned)
+            a, b, c, d = _worker(AsyncMock(side_effect=refusal), spawned)
             with a, b, c, d:
                 await main._queue_copy_removals(7)
                 await spawned.pop()

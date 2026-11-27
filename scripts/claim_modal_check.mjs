@@ -83,7 +83,7 @@ check(
 );
 check(
   'it points at the actual next step',
-  /Settings/.test(withCollector.body) && /Collectors/.test(withCollector.body),
+  /Settings → Earnings collection/.test(withCollector.body) && !/Collectors/.test(withCollector.body),
   withCollector.body,
 );
 

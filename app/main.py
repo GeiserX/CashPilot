@@ -7331,6 +7331,13 @@ async def _svc_remove(
         await database.record_health_event(slug, "remove", worker_id=worker_id)
         metrics.record_container_lifecycle("remove", slug)
         return result
+    # The list the worker reported when it confirmed. A heartbeat after this
+    # one is newer than the removal, so forget_reported_service leaves it alone.
+    try:
+        reported = (await database.get_worker(worker_id) or {}).get("containers")
+    except Exception as exc:  # noqa: BLE001 - the removal itself happened
+        logger.warning("Removed %s, but could not read worker %s's container list: %s", slug, worker_id, exc)
+        reported = None
     if delete_volumes and allow_delete_critical:
         answer = result if isinstance(result, dict) else {}
         # "deleted" only when a volume went and none stayed: a removal that
@@ -7350,6 +7357,12 @@ async def _svc_remove(
         )
     await _record_removed_copies(slug, worker_id, result)
     await _forget_removed_deployment(slug, worker_id, keep_wallet_seed=keep_wallet_seed)
+    try:
+        # The worker said it removed every copy, so it no longer counts as running
+        # them; its next heartbeat would say the same a minute from now.
+        await database.forget_reported_service(worker_id, slug, reported)
+    except Exception as exc:  # noqa: BLE001 - the removal itself happened
+        logger.warning("Removed %s, but could not update worker %s's container list: %s", slug, worker_id, exc)
     # The worker removed the service's proxied copies with it (worker_api
     # remove_all), so their records go too. The removal itself already
     # happened; a failure here must not report it as failed.
@@ -7623,7 +7636,7 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
 # image) and the daemon it cannot reach (503). A 500 is an unhandled failure
 # whose text nobody vetted, and a 422 is FastAPI echoing the request body
 # (env values included), so both stay generic.
-_FORWARDABLE_WORKER_TEXT_STATUSES = {400, 401, 403, 404, 409, 503}
+_FORWARDABLE_WORKER_TEXT_STATUSES = {400, 403, 404, 409, 503}
 _WORKER_TEXT_MAX = 400
 # Env values shorter than this are not masked: a PUID of 1000 or a mode of
 # "host" would otherwise garble the worker's own numbers and words, and no
@@ -7672,6 +7685,12 @@ def _worker_failure_text(status: int) -> str:
     if status == 404:
         return "The worker does not know this request (HTTP 404); it may be older than the UI, so update it"
     return f"Worker request failed (HTTP {status}); the worker's log has the reason"
+
+
+_WORKER_REFUSED_OUR_KEY = (
+    "The worker refused the key this server uses for it. Nothing was done there. "
+    "If it joined in the last minute, try again shortly; otherwise its log says why."
+)
 
 
 async def _confirmed_worker_key(cid: str) -> str | None:
@@ -7900,12 +7919,20 @@ async def _proxy_to_worker(
                 # something on the box) tells a gateway's error from its own, so
                 # an unmarked 503 there is a gateway's too, and the worker may
                 # still finish it. Elsewhere _outcome_unknown reads the status.
+                if resp.status_code == 401:
+                    # The worker refused the key this server signs with for it. Passed on
+                    # as a 401, an API client reads it as its own key being wrong.
+                    raise HTTPException(status_code=503, detail=_WORKER_REFUSED_OUR_KEY)
                 gateway = resp.status_code in _GATEWAY_NO_ANSWER or resp.status_code == 503
                 unknown = marked and ((gateway and not _worker_restored_nothing(resp)) or _worker_left_restore(resp))
-                raise (_WorkerNoAnswer if unknown else HTTPException)(
+                err = (_WorkerNoAnswer if unknown else HTTPException)(
                     status_code=resp.status_code,
                     detail=safe or _worker_failure_text(resp.status_code),
                 )
+                # Only these words are the worker's own, so only they can echo
+                # something it was sent: _proxy_worker_call masks them, never ours.
+                err.worker_text = bool(safe)
+                raise err
             return resp.json()
     except (
         httpx.ConnectError,
@@ -8307,16 +8334,22 @@ async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
     return proxy
 
 
+_PROXIED_COPY_PATH = re.compile(r"/api/proxied/([^/?]+)/(\d+)(?:[/?]|$)")
+
+
 def _mask(text: Any, secrets_: list[str]) -> Any:
     if isinstance(text, dict):
         # A refusal's "error" is the worker's own fixed code, never a secret: a
         # short login inside it would turn it into a code the UI does not know.
         return {key: value if key == "error" else _mask(value, secrets_) for key, value in text.items()}
+    if isinstance(text, list):
+        return [_mask(value, secrets_) for value in text]
     if not isinstance(text, str):
         return text
     for value in sorted(secrets_, key=len, reverse=True):
         if value:
-            text = text.replace(value, "***")
+            # A secret put into a proxy URL comes back quoted, as proxy_tunnel.redact knows.
+            text = text.replace(value, "***").replace(urllib.parse.quote(value, safe=""), "***")
     return text
 
 
@@ -8328,6 +8361,17 @@ async def _proxy_worker_call(
     try:
         return await _proxy_to_worker(worker_id, method, path, json=json, timeout=timeout)
     except HTTPException as exc:
+        # Only the worker's own words can echo a proxy secret. Our fixed texts
+        # carry none, and a short login masked inside one changes it: the key
+        # refusal would stop reading as one (_copy_removal_pending).
+        if not getattr(exc, "worker_text", False):
+            raise
+        # The worker's answer for a copy that is gone repeats the slug and proxy
+        # id this call asked about, our own words. Masked, a short login such as
+        # "copy" would hide that it is gone. Any other text is masked.
+        asked = _PROXIED_COPY_PATH.match(path)
+        if asked and exc.detail == "No proxied copy of {} through proxy {} on this worker".format(*asked.groups()):
+            raise
         if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
             raise  # _safe_worker_detail checked the fields and supplies the message.
         raise HTTPException(status_code=exc.status_code, detail=_mask(exc.detail, proxies.secret_values(definition)))
@@ -8908,6 +8952,16 @@ COPY_REMOVE_TIMEOUT = 90
 #: own, and final.
 _COPY_REMOVE_PENDING = (503, 504)
 
+
+def _copy_removal_pending(exc: HTTPException) -> bool:
+    """Whether a failed copy removal may still happen on the worker.
+
+    A refused key comes back as a 503 (_proxy_to_worker), but the worker
+    refused before it acted, so that removal is not pending: it failed.
+    """
+    return exc.status_code in _COPY_REMOVE_PENDING and exc.detail != _WORKER_REFUSED_OUR_KEY
+
+
 #: Copies whose pending removal a heartbeat is finishing right now, so the
 #: next heartbeat does not send a second request while the first runs.
 _copy_removals_running: set[tuple[int, int, str]] = set()
@@ -9000,7 +9054,7 @@ async def _remove_copy(proxy_id: int, worker_id: int, slug: str) -> Any:
                 worker_id, "DELETE", f"/api/proxied/{slug}/{proxy_id}", proxy["definition"], timeout=COPY_REMOVE_TIMEOUT
             )
         except HTTPException as exc:
-            if exc.status_code in _COPY_REMOVE_PENDING:
+            if _copy_removal_pending(exc):
                 return JSONResponse(
                     status_code=202,
                     content={
@@ -9046,7 +9100,7 @@ async def _resume_copy_removals(copies: list[tuple[int, int, str]]) -> None:
                         timeout=COPY_REMOVE_TIMEOUT,
                     )
                 except HTTPException as exc:
-                    if exc.status_code in _COPY_REMOVE_PENDING:
+                    if _copy_removal_pending(exc):
                         continue
                     # The worker answered and could not remove it: the copy is
                     # still there, so it is listed again with its buttons.
