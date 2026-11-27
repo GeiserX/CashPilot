@@ -92,6 +92,11 @@ if not API_KEY:
 WORKER_NAME = os.getenv("CASHPILOT_WORKER_NAME", socket.gethostname())
 WORKER_PORT = int(os.getenv("CASHPILOT_PORT", "8081"))
 WORKER_URL = os.getenv("CASHPILOT_WORKER_URL", "")
+#: Set only inside a Linux Secure VM (scripts/cashpilot-vm): the name of the
+#: worker on the host this VM runs on, so the UI shows "Secure VM on <host>".
+SECURE_VM_OF = os.getenv("CASHPILOT_SECURE_VM_OF", "").strip()[:64]
+#: The host's guard writes the outer fence's state here, read-only for us.
+SECURE_VM_FENCE_FILE = Path("/run/cashpilot-vm/fence.json")
 HEARTBEAT_INTERVAL = 60  # seconds
 MINER_TARGETS, MINER_ERRORS = miner_read.parse_targets(os.getenv("CASHPILOT_MINERS", ""))
 
@@ -557,6 +562,26 @@ def _gpu_presence() -> dict[str, Any]:
     return {"available": None, "devices": [], "detected_by": None, "reason": host.get("reason")}
 
 
+def _secure_vm_info() -> dict[str, Any] | None:
+    """In a Linux Secure VM: the host worker's name and the outer fence's last check.
+
+    The fence's state comes from the host's guard, which the guest cannot see
+    otherwise. ``fence`` is None until the guard has written it, or when the
+    file does not read as the guard writes it.
+    """
+    if not SECURE_VM_OF:
+        return None
+    fence = None
+    try:
+        raw = json.loads(SECURE_VM_FENCE_FILE.read_text(encoding="utf-8")[:4096])
+        state, checked = raw.get("state"), raw.get("checked_at")
+        if state in ("ok", "failed") and isinstance(checked, int) and not isinstance(checked, bool):
+            fence = {"state": state, "checked_at": checked, "reason": str(raw.get("reason") or "")[:200]}
+    except (OSError, ValueError, AttributeError):
+        pass
+    return {"host": SECURE_VM_OF, "fence": fence}
+
+
 def _detect_network_type() -> str:
     """residential / hosting / unknown, from local hardware identifiers only.
 
@@ -824,6 +849,8 @@ async def _send_heartbeat() -> None:
             logger.error(refusal)
             _ui_url_refusal_logged = True
         return
+    if (secure_vm := _secure_vm_info()) is not None:
+        features.append("secure_vm")
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,
@@ -875,6 +902,8 @@ async def _send_heartbeat() -> None:
             "proxied_only": route_gate.proxied_only(),
         },
     }
+    if secure_vm is not None:
+        payload["system_info"]["secure_vm"] = secure_vm
     if MINER_TARGETS or MINER_ERRORS:
         features.append("miner_read")
         payload["system_info"]["miners"] = _miner_snapshot or {

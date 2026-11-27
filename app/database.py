@@ -3467,6 +3467,17 @@ async def get_worker(worker_id: int) -> dict[str, Any] | None:
         await db.close()
 
 
+async def get_worker_id(client_id: str) -> int | None:
+    """The row id of the worker with this client id, or None."""
+    db = await _get_db()
+    try:
+        cursor = await db.execute("SELECT id FROM workers WHERE client_id = ?", (client_id,))
+        row = await cursor.fetchone()
+        return row["id"] if row else None
+    finally:
+        await db.close()
+
+
 async def get_worker_status_and_name(client_id: str) -> tuple[str, str] | None:
     """The (status, display name) a worker had BEFORE its next upsert.
 
