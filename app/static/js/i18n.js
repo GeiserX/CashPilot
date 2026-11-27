@@ -34,6 +34,9 @@
 
   let plurals = null;
   try { plurals = new Intl.PluralRules(lang); } catch (e) { plurals = new Intl.PluralRules('en'); }
+  // A message the page shows in English (no current translation) counts in English too.
+  const english = new Intl.PluralRules('en');
+  const fallback = new Set(data.fallback || []);
 
   // ---- The ICU subset parser: the same grammar as app/i18n/_Parser ----
   function parse(text) {
@@ -109,7 +112,7 @@
   }
 
   const parsed = new Map();
-  function render(parts, params, number) {
+  function render(parts, params, number, rules) {
     let out = '';
     for (const part of parts) {
       if (typeof part === 'string') { out += part; continue; }
@@ -126,30 +129,30 @@
       if (kind === 'plural') {
         const count = Number(value);
         const n = Number.isFinite(count) ? count : 0;
-        chosen = options[`=${n}`] || options[plurals.select(n)];
+        chosen = options[`=${n}`] || options[rules.select(n)];
         inner = n;
       } else {
         chosen = options[String(value)];
       }
-      out += render(chosen || options.other, params, inner);
+      out += render(chosen || options.other, params, inner, rules);
     }
     return out;
   }
 
-  function format(text, params) {
+  function format(text, params, rules = plurals) {
     let tree = parsed.get(text);
     if (!tree) {
       tree = parse(text);
       parsed.set(text, tree);
     }
-    return render(tree, params || {}, '');
+    return render(tree, params || {}, '', rules);
   }
 
   function t(key, params) {
     const text = messages[key];
     if (text === undefined) return key;
     try {
-      return format(text, params);
+      return format(text, params, fallback.has(key) ? english : plurals);
     } catch (e) {
       return text;
     }

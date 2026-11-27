@@ -111,19 +111,33 @@ def source() -> dict[str, str]:
 
 
 @cache
-def catalog(locale: str) -> dict[str, str]:
-    """Every key in ``locale``: its current translation, or the English text."""
+def translated(locale: str) -> dict[str, str]:
+    """The keys with a current translation in ``locale``, key to text."""
     en = source()
     if locale == SOURCE or locale not in NAMES:
-        return dict(en)
-    merged = dict(en)
+        return {}
+    out = {}
     for key, entry in _read(locale).items():
         if key not in en or not isinstance(entry, dict):
             continue
         text, made_from = entry.get("text"), entry.get("source")
         if isinstance(text, str) and text and made_from == source_hash(en[key]):
-            merged[key] = text
-    return merged
+            out[key] = text
+    return out
+
+
+@cache
+def catalog(locale: str) -> dict[str, str]:
+    """Every key in ``locale``: its current translation, or the English text."""
+    return {**source(), **translated(locale)}
+
+
+def fallback(locale: str) -> list[str]:
+    """The keys that ``locale`` shows in English: they take English plural rules too."""
+    if locale == SOURCE:
+        return []
+    done = translated(locale)
+    return sorted(k for k in source() if k not in done)
 
 
 @cache
@@ -135,6 +149,7 @@ def available() -> tuple[str, ...]:
 def reload() -> None:
     """Forget the cached files (tests, and a translator editing a running dev server)."""
     source.cache_clear()
+    translated.cache_clear()
     catalog.cache_clear()
     available.cache_clear()
 
@@ -467,15 +482,17 @@ def t(key: str, /, **params: Any) -> str:
     text = catalog(locale).get(key)
     if text is None:
         return key
+    # A message shown in English (no current translation) counts in English too.
+    rules = locale if key in translated(locale) else SOURCE
     if key.endswith("_html"):
-        return Markup(format_message(text, params, locale, html=True))
-    return format_message(text, params, locale)
+        return Markup(format_message(text, params, rules, html=True))
+    return format_message(text, params, rules)
 
 
 def bundle_js(locale: str) -> str:
     """The script that hands the browser its strings (served at /i18n/<locale>.js)."""
     locale = locale if locale in available() else SOURCE
-    payload = {"lang": locale, "dir": direction(locale), "messages": catalog(locale)}
+    payload = {"lang": locale, "dir": direction(locale), "messages": catalog(locale), "fallback": fallback(locale)}
     return (
         "window.CP_I18N=" + json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/") + ";\n"
     )
