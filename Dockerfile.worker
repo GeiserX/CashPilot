@@ -79,6 +79,8 @@ COPY app/route_gate.py ./app/
 # against worker_api's actual imports.
 COPY app/version.py ./app/
 COPY app/worker_api.py ./app/
+# `cashpilot-vm remove` runs it in a Secure VM: the UI forgets the worker.
+COPY app/worker_retire.py ./app/
 COPY app/miner_read.py ./app/
 COPY app/orchestrator.py ./app/
 COPY app/isolation_check.py ./app/
