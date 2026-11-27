@@ -1689,7 +1689,7 @@ const CP = (() => {
 
     // Cut long device names here, not with text-overflow: WebKit drops the
     // ellipsis on vertical text. The full name stays in the header title.
-    const shortBox = (n) => { const t = String(n); return t.length > 14 ? `${t.slice(0, 13).trimEnd()}\u2026` : t; };
+    const shortBox = (n) => { const s = String(n); return s.length > 14 ? `${s.slice(0, 13).trimEnd()}\u2026` : s; };
     const head = boxes.map((w) => {
       const online = w.status === 'online';
       return `<th class="pg-box${online ? '' : ' pg-box-off'}" scope="col" title="${escapeHtml(w.name)}: ${online ? 'online' : 'not reporting'}"><span class="pg-box-name">${escapeHtml(shortBox(w.name))}</span></th>`;
@@ -1880,7 +1880,7 @@ const CP = (() => {
         let actions = '';
         if (_canWrite) {
           const targets = a.everywhere ? [{ worker_id: null, name: '' }] : (a.boxes || []);
-          actions = targets.map(t => `<button class="btn btn-ghost btn-sm" data-action="forgetDeployment" data-a1="${escapeHtml(a.platform)}"${t.worker_id != null ? ` data-a2="${escapeHtml(String(t.worker_id))}"` : ''}>${t.name ? `Forget on ${escapeHtml(t.name)}` : 'Forget'}</button>`).join(' ');
+          actions = targets.map(target => `<button class="btn btn-ghost btn-sm" data-action="forgetDeployment" data-a1="${escapeHtml(a.platform)}"${target.worker_id != null ? ` data-a2="${escapeHtml(String(target.worker_id))}"` : ''}>${target.name ? `Forget on ${escapeHtml(target.name)}` : 'Forget'}</button>`).join(' ');
         }
         items.push({ level: 'fail', tag: a.everywhere === false ? 'Gone from a box' : a.everywhere ? 'Runs nowhere' : 'Missing', what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
       }
@@ -4680,7 +4680,7 @@ const CP = (() => {
   function initCatalogFilters() {
     document.querySelectorAll('.filter-tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
         tab.classList.add('active');
         filterCatalog();
       });
@@ -5574,7 +5574,7 @@ const CP = (() => {
           || 'Downloaded from here')
         : (r.kind === 'manual' ? 'Entered by you' : (r.status === 'active' ? 'In use' : 'Removed'));
       // The ledger's times are UTC, "YYYY-MM-DD HH:MM:SS"; minutes are enough here.
-      const when = t => (t ? `${escapeHtml(String(t).slice(0, 16))} UTC` : 'unknown');
+      const when = stamp => (stamp ? `${escapeHtml(String(stamp).slice(0, 16))} UTC` : 'unknown');
       const seen = `<div class="credential-health-hint">First seen ${when(r.first_seen)} · last seen ${when(r.last_seen)}</div>`;
       const reported = r.source === 'node'
         ? '<div class="credential-health-hint">Reported by the node itself, not checked by CashPilot.</div>'
@@ -6922,9 +6922,9 @@ const CP = (() => {
   }
 
   function currentTheme() {
-    const t = document.documentElement.getAttribute('data-theme');
+    const theme = document.documentElement.getAttribute('data-theme');
     const cfg = themeConfig();
-    return cfg.ids.includes(t) ? t : cfg.default;
+    return cfg.ids.includes(theme) ? theme : cfg.default;
   }
 
   function applyTheme(theme) {
