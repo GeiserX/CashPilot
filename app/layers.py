@@ -160,9 +160,15 @@ def docker_info(fresh: bool = False) -> dict[str, Any] | None:
     return info
 
 
+def _facts_of(info: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+    """The runtimes in Docker's /info, or None when /info has no readable runtime list."""
+    if info is None or not isinstance(info.get("Runtimes"), dict):
+        return None
+    return runtime_facts(info["Runtimes"])
+
+
 def daemon_runtimes(fresh: bool = False) -> list[dict[str, Any]] | None:
-    info = docker_info(fresh=fresh)
-    return runtime_facts(info.get("Runtimes")) if info is not None else None
+    return _facts_of(docker_info(fresh=fresh))
 
 
 def pick(
@@ -216,7 +222,7 @@ def report(pins: dict[str, Any], proxy_runtimes: tuple[str, ...] | None) -> dict
     """``system_info.layers`` for the heartbeat. Reads Docker's cached /info and sysfs; runs no container."""
     info = docker_info()
     return {
-        "runtimes": runtime_facts(info.get("Runtimes")) if info is not None else None,
+        "runtimes": _facts_of(info),
         "default_runtime": (str(info.get("DefaultRuntime") or "") or None) if info is not None else None,
         "kvm": kvm(),
         # What an environment variable pins on this worker. The UI shows the

@@ -1064,6 +1064,9 @@ def container_runtime(
         _check_choice(slug, choice, required, f"its catalog entry requires the {required!r} runtime.", facts)
         return _proxy_allows_runtime(slug, required)
     if requested:
+        # The advanced ``runtime`` field names the runtime outright; a choice that
+        # disagrees with it is refused, never silently dropped.
+        _check_choice(slug, choice, requested, f"the deploy names the {requested!r} runtime.", facts)
         return _proxy_allows_runtime(slug, requested)
     # The environment covers bridge networking only: host and none networking
     # keep Docker's default unless the owner chooses, since a sandbox gains
