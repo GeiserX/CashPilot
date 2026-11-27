@@ -487,3 +487,25 @@ def test_inline_i18next_stamping_is_refused(tmp_path):
     code, out = run(en, es, "--i18next-plurals", "--stamp")
     assert code == 2 and "--hashes-dir" in out
     assert run(en, es, "--i18next-plurals", "--stamp", "--hashes-dir", tmp_path / "h")[0] == 0
+
+
+def test_placeholder_in_an_attribute_is_compared(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": '<span title="{name}">Hello</span>'}))
+    es = write(tmp_path / "es.json", json.dumps({"a": '<span title="{count}">Hola</span>'}))
+    code, out = run(en, es)
+    assert code == 1 and "placeholder a" in out
+    write(es, json.dumps({"a": "<span title='{name}'>Hola</span>"}))
+    assert run(en, es)[0] == 0
+
+
+def test_catalog_stamp_keeps_ignored_entries(tmp_path):
+    d, en = catalog(tmp_path)
+    es = write(
+        d / "es.yml",
+        'iproyal.description:\n  text: "Comparte"\niproyal.notes:\n  text: "Paga el ${DAY}"\n',
+    )
+    code, out = run(en, es, "--ignore", "iproyal.notes", "--stamp")
+    assert code == 0 and "stamped 1" in out
+    data = yaml.safe_load(es.read_text(encoding="utf-8"))
+    assert data["iproyal.notes"] == {"text": "Paga el ${DAY}"}
+    assert data["iproyal.description"]["source"] == ic.source_hash("Share bandwidth")

@@ -601,6 +601,7 @@ _SHELL = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _MUSTACHE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 _TAG = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b([^<>]*?)/?>")
 _HREF = re.compile(r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+_ATTR_VALUE = re.compile(r"""=\s*(?:"([^"]*)"|'([^']*)')""")
 _PRINTF = re.compile(r"%(?:(\d+)\$)?([-#+0,(]*)(\d+|\*)?(?:\.(\d+|\*))?([sdfiuxXeEgGoc@])")
 _PY_NAMED = re.compile(r"%\(([A-Za-z_][A-Za-z0-9_]*)\)[-#+0 ]*\d*(?:\.\d+)?([sdfiuxXeEgGoc])")
 _ICU_COMPLEX = re.compile(r"\{\s*[\w.\-]+\s*,\s*(plural|selectordinal|select)\s*,")
@@ -704,10 +705,14 @@ def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
 def placeholders(text: str) -> frozenset:
     """The placeholder signature of one string."""
     out: set = set()
+    attrs: list[str] = []
     for m in _TAG.finditer(text):
         href = _HREF.search(m.group(3))
         out.add(("tag", m.group(1) + m.group(2).lower(), (href.group(1) or href.group(2)) if href else ""))
-    text = _TAG.sub("", text)
+        # A placeholder in another attribute (title="{name}") still counts:
+        # keep the attribute values, without their quotes, for the scan below.
+        attrs += [a or b for a, b in _ATTR_VALUE.findall(_HREF.sub("", m.group(3)))]
+    text = " ".join([_TAG.sub("", text), *attrs])
     for m in _SHELL.finditer(text):
         out.add(("shell", m.group(1)))
     body = _SHELL.sub("", text)
@@ -919,8 +924,9 @@ def main(argv: list[str] | None = None) -> int:
         fmt = args.format if args.format != "auto" else None
         try:
             fmt = fmt or detect_format(path)
-            target, inline = load(path, fmt, args.i18next_plurals)
-            target = _drop_ignored(target, args.ignore)
+            whole, inline = load(path, fmt, args.i18next_plurals)
+            # Ignored keys leave the comparison, never the file a stamp rewrites.
+            target = _drop_ignored(whole, args.ignore)
             # An explicit --hashes-dir wins over inline hashes; the catalog
             # format always keeps them inline.
             sidecar = _sidecar(args.hashes_dir, locale_of(path, fmt)) if fmt != "catalog" else None
@@ -944,7 +950,7 @@ def main(argv: list[str] | None = None) -> int:
             if n:
                 try:
                     if fmt == "catalog":
-                        write_catalog(path, target, hashes, _leading_comments(path))
+                        write_catalog(path, whole, hashes, _leading_comments(path))
                     elif sidecar is not None:
                         sidecar.parent.mkdir(parents=True, exist_ok=True)
                         sidecar.write_text(
