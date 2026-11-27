@@ -1,54 +1,47 @@
 {% extends "base.html" %}
 
-{% block title %}Payouts - CashPilot{% endblock %}
+{% block title %}{{ t('payouts.title') }}{% endblock %}
 {% block page %}payouts{% endblock %}
-{% block topbar_title %}Payouts{% endblock %}
+{% block topbar_title %}{{ t('payouts.heading') }}{% endblock %}
 
 {% block content %}
 <p class="page-lede">
-  Every service in the catalog, the boxes that run it and the address it pays to.
-  <em>Runs on</em> comes from each box's own report, not from what CashPilot once
-  deployed. Addresses are read from the spec each box was <em>actually deployed</em>
-  with, or from the running container when the address is set inside it, so what
-  you see here is what your machines are really using.
-  Services you have not deployed are folded at the bottom: the time to learn a
-  service needs a wallet is <em>before</em> you deploy it.
+  {{ t('payouts.lede_html') }}
 </p>
 
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-label">Services</div>
+    <div class="stat-label">{{ t('payouts.stat.services') }}</div>
     <div class="stat-value" id="payout-total">&mdash;</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Deployed</div>
+    <div class="stat-label">{{ t('payouts.stat.deployed') }}</div>
     <div class="stat-value" id="payout-deployed">&mdash;</div>
   </div>
   <!-- The only number on this page that asks the user to DO something. -->
   <div class="stat-card">
-    <div class="stat-label">Need an address</div>
+    <div class="stat-label">{{ t('payouts.stat.need_address') }}</div>
     <div class="stat-value" id="payout-needs-address">&mdash;</div>
   </div>
   <!-- Recorded as deployed, and no box reports it. The dashboard raises it too. -->
   <div class="stat-card">
-    <div class="stat-label">Runs nowhere</div>
+    <div class="stat-label">{{ t('payouts.stat.runs_nowhere') }}</div>
     <div class="stat-value" id="payout-not-running">&mdash;</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Need a backup</div>
+    <div class="stat-label">{{ t('payouts.stat.need_backup') }}</div>
     <div class="stat-value" id="payout-critical-count">&mdash;</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Not classified</div>
+    <div class="stat-label">{{ t('payouts.stat.unclassified') }}</div>
     <div class="stat-value" id="payout-unclassified">&mdash;</div>
   </div>
 </div>
 
 <div class="card problem-panel problem-warn" id="payout-actionable-card" style="display:none;">
-  <h3 class="settings-section-title"><span class="attn-tag">No address</span> Deployed, earning, and paying to nowhere</h3>
+  <h3 class="settings-section-title"><span class="attn-tag">{{ t('payouts.actionable.tag') }}</span> {{ t('payouts.actionable.title') }}</h3>
   <p class="settings-section-desc">
-    These services are running and expect an address you have not given them.
-    Whatever they earn may be going somewhere you cannot reach.
+    {{ t('payouts.actionable.desc') }}
   </p>
   <div id="payout-actionable-body"></div>
 </div>
@@ -57,15 +50,9 @@
      quiet line once every box has one. -->
 <div class="card problem-panel problem-warn" id="payout-critical-card" style="display:none;">
   <div id="payout-critical-open">
-    <h3 class="settings-section-title"><span class="attn-tag">Back these up</span> State that exists only on your disks</h3>
+    <h3 class="settings-section-title"><span class="attn-tag">{{ t('payouts.critical.tag') }}</span> {{ t('payouts.critical.title') }}</h3>
     <p class="settings-section-desc">
-      These services keep a node identity, a keystore or a wallet on disk, and
-      nothing else holds a copy. CashPilot refuses to delete these volumes, but it
-      cannot protect them from a wiped disk, a rebuilt machine or
-      <code>docker volume rm</code>. Keep a copy somewhere else, then mark each box
-      as backed up. The page asks again when the volume changes, and after six months.
-      <a href="https://geiserx.github.io/CashPilot/backup/" target="_blank" rel="noopener">How to restore</a>,
-      or <a href="/settings#set-restore">restore from Settings</a>.
+      {{ t('payouts.critical.desc_html') }}
     </p>
   </div>
   <details class="payout-backup-quiet" id="payout-critical-quiet" hidden>
@@ -76,51 +63,50 @@
 
 <section class="payout-all">
   <div class="block-head">
-    <h2 class="block-title">Deployed</h2>
+    <h2 class="block-title">{{ t('payouts.deployed.title') }}</h2>
     <div class="search-box search-box-sm">
-      <input type="search" id="payout-filter" class="form-input" placeholder="Filter by name, chain or address"
-             aria-label="Filter payout destinations" aria-keyshortcuts="/">
+      <input type="search" id="payout-filter" class="form-input" placeholder="{{ t('payouts.filter.placeholder') }}"
+             aria-label="{{ t('payouts.filter.aria') }}" aria-keyshortcuts="/">
       <kbd class="search-kbd">/</kbd>
     </div>
   </div>
   <div id="payout-table-container">
-    <p class="loading-line">Loading&hellip;</p>
+    <p class="loading-line">{{ t('payouts.loading') }}</p>
   </div>
   <!-- The rest of the catalog, one click away. Opened by the filter when it
        matches something in here, so a search never hides its own result. -->
   <details class="payout-rest" id="payout-rest" hidden>
-    <summary class="payout-rest-summary">Not deployed <span class="muted" id="payout-rest-count"></span></summary>
+    <summary class="payout-rest-summary">{{ t('payouts.rest.title') }} <span class="muted" id="payout-rest-count"></span></summary>
     <div id="payout-rest-container"></div>
   </details>
 </section>
 
 <section class="income-export" aria-labelledby="income-export-title">
   <div class="block-head">
-    <h2 class="block-title" id="income-export-title">Income for taxes</h2>
+    <h2 class="block-title" id="income-export-title">{{ t('payouts.income.title') }}</h2>
   </div>
   <p class="income-export-note">
-    Earned and accrued rows show credit at a service. Payout rows show money you received.
-    <a href="https://geiserx.github.io/CashPilot/income-export/#choose-an-accounting-basis" target="_blank" rel="noopener">Count one or the other</a>.
+    {{ t('payouts.income.basis_html') }}
   </p>
-  <p class="income-export-note">Older earnings readings may have been deleted. A past year can be incomplete.</p>
+  <p class="income-export-note">{{ t('payouts.income.retention') }}</p>
   <form class="income-export-form" method="get" action="/api/earnings/income.csv">
     <label>
-      <span class="form-label">Start date</span>
+      <span class="form-label">{{ t('payouts.income.start') }}</span>
       <input class="form-input" type="date" name="start">
     </label>
     <label>
-      <span class="form-label">End date</span>
+      <span class="form-label">{{ t('payouts.income.end') }}</span>
       <input class="form-input" type="date" name="end">
     </label>
     <label>
-      <span class="form-label">Currency</span>
+      <span class="form-label">{{ t('payouts.income.currency') }}</span>
       <select class="form-input" name="currency" id="income-currency">
         <option value="USD">USD</option>
       </select>
     </label>
-    <button type="button" class="btn btn-ghost" data-income-range="this">This year</button>
-    <button type="button" class="btn btn-ghost" data-income-range="last">Last year</button>
-    <button type="submit" class="btn btn-primary">Download CSV</button>
+    <button type="button" class="btn btn-ghost" data-income-range="this">{{ t('payouts.income.this_year') }}</button>
+    <button type="button" class="btn btn-ghost" data-income-range="last">{{ t('payouts.income.last_year') }}</button>
+    <button type="submit" class="btn btn-primary">{{ t('payouts.income.download') }}</button>
   </form>
 </section>
 {% endblock %}
@@ -171,29 +157,29 @@
         return '<code class="payout-address" title="' + esc(a.address) + '">' + esc(a.address) + '</code>' + where;
       }).join('<br>');
       if (entry.address_missing) {
-        var on = (entry.address_missing_on || []).length && list.length
-          ? ' on ' + esc(entry.address_missing_on.join(', ')) : '';
-        return html + (html ? '<br>' : '') + '<span class="payout-missing">Not set' + on + '</span>';
+        var missing = (entry.address_missing_on || []).length && list.length
+          ? t('payouts.addr.not_set_on', {boxes: esc(entry.address_missing_on.join(', '))}) : t('payouts.addr.not_set');
+        return html + (html ? '<br>' : '') + '<span class="payout-missing">' + missing + '</span>';
       }
       if (entry.address_unchecked) {
         var why = entry.address_unchecked === 'app'
-          ? 'Set in the provider\'s app, not checked'
+          ? t('payouts.addr.unchecked_app')
           : entry.address_unchecked === 'record'
-            ? 'No deploy record to read on some boxes'
+            ? t('payouts.addr.unchecked_record')
             : entry.address_unchecked === 'settings'
-              ? 'Saved in Settings, could not be read'
-              : 'Set outside CashPilot, not checked';
-        return html + (html ? '<br>' : '') + '<span class="payout-unchecked">' + (html ? 'Not checked on every box' : why) + '</span>';
+              ? t('payouts.addr.unchecked_settings')
+              : t('payouts.addr.unchecked_outside');
+        return html + (html ? '<br>' : '') + '<span class="payout-unchecked">' + (html ? t('payouts.addr.unchecked_some') : why) + '</span>';
       }
-      return html || '<span class="payout-missing">Not set</span>';
+      return html || '<span class="payout-missing">' + t('payouts.addr.not_set') + '</span>';
     }
     if (model === 'internal') {
-      return '<span class="payout-na">Held by the service until you withdraw</span>';
+      return '<span class="payout-na">' + t('payouts.addr.internal') + '</span>';
     }
     if (model === 'minted') {
-      return '<span class="payout-na">The container generates its own wallet</span>';
+      return '<span class="payout-na">' + t('payouts.addr.minted') + '</span>';
     }
-    return '<span class="payout-na">Not classified yet</span>';
+    return '<span class="payout-na">' + t('payouts.addr.unknown') + '</span>';
   }
 
   // What is actually AT the address (CashPilot-dv6 tier 2).
@@ -208,24 +194,24 @@
   function balanceCell(result) {
     if (!result) return '<span class="payout-na">&mdash;</span>';
     if (result.state === 'known') {
-      var source = result.source ? ' title="Read from ' + esc(result.source) + '"' : '';
+      var source = result.source ? ' title="' + esc(t('payouts.bal.read_from', {source: result.source})) + '"' : '';
       var confirmed = '<span class="payout-balance"' + source + '>' + esc(result.amount)
            + (result.symbol ? ' ' + esc(result.symbol) : '') + '</span>';
       if (result.pending == null || result.pending === '0') return confirmed;
       var pending = String(result.pending);
       var delta = pending.startsWith('-') ? '&minus;' + esc(pending.slice(1)) : '+' + esc(pending);
-      return confirmed + ' <span class="payout-pending" title="Seen on the network and awaiting confirmation">('
-           + delta + ' pending)</span>';
+      return confirmed + ' <span class="payout-pending" title="' + t('payouts.bal.pending_tip') + '">'
+           + t('payouts.bal.pending', {delta: delta}) + '</span>';
     }
     if (result.state === 'unreachable') {
       return '<span class="payout-unchecked" title="' + esc(result.detail || '')
-           + '">could not check</span>';
+           + '">' + t('payouts.bal.unreachable') + '</span>';
     }
     if (result.state === 'invalid') {
-      return '<span class="payout-missing">address not valid</span>';
+      return '<span class="payout-missing">' + t('payouts.bal.invalid') + '</span>';
     }
     return '<span class="payout-na" title="' + esc(result.detail || '') + '">'
-         + (result.private ? 'private chain' : '&mdash;') + '</span>';
+         + (result.private ? t('payouts.bal.private') : '&mdash;') + '</span>';
   }
 
   // What this service would lose, in the catalog's own words.
@@ -258,25 +244,25 @@
     var day = esc(String(box.confirmed_at || '').slice(0, 10));
     var text;
     if (box.state === 'confirmed') {
-      text = 'Backup confirmed ' + day + (box.method === 'export' ? ' (downloaded here)' : '');
-      if (!box.tracks_changes) text += '. This worker is too old to notice a new volume; update it';
+      text = box.method === 'export' ? t('payouts.backup.confirmed_export', {day: day}) : t('payouts.backup.confirmed', {day: day});
+      if (!box.tracks_changes) text = t('payouts.backup.old_worker', {text: text});
     } else if (box.state === 'changed') {
-      text = 'The volume changed since the backup of ' + day + '. Back it up again';
+      text = t('payouts.backup.changed', {day: day});
     } else if (box.state === 'recheck') {
-      text = 'Confirmed ' + day + ', before this worker could notice a new volume. Confirm it once more';
+      text = t('payouts.backup.recheck', {day: day});
     } else if (box.state === 'expired') {
-      text = 'Last confirmed ' + day + ', more than six months ago';
+      text = t('payouts.backup.expired', {day: day});
     } else {
-      text = 'No backup confirmed';
+      text = t('payouts.backup.none');
     }
     var ok = box.state === 'confirmed';
     var data = ' data-slug="' + esc(entry.slug) + '" data-worker="' + esc(box.worker_id) + '"';
     var actions = ok
-      ? '<button type="button" class="btn btn-link btn-sm" data-backup-action="undo"' + data + '>Undo</button>'
-      : '<button type="button" class="btn btn-ghost btn-sm" data-backup-action="confirm"' + data + '>I have a backup</button>';
-    actions += '<button type="button" class="btn btn-ghost btn-sm" data-backup-action="export"' + data + '>Download backup</button>';
+      ? '<button type="button" class="btn btn-link btn-sm" data-backup-action="undo"' + data + '>' + t('payouts.backup.undo') + '</button>'
+      : '<button type="button" class="btn btn-ghost btn-sm" data-backup-action="confirm"' + data + '>' + t('payouts.backup.confirm') + '</button>';
+    actions += '<button type="button" class="btn btn-ghost btn-sm" data-backup-action="export"' + data + '>' + t('payouts.backup.download') + '</button>';
     return '<div class="payout-backup-box' + (ok ? ' is-confirmed' : '') + '">'
-      + '<span class="payout-backup-where">' + esc(box.name) + (box.online === false ? ' (offline)' : '') + '</span>'
+      + '<span class="payout-backup-where">' + esc(box.name) + (box.online === false ? t('payouts.offline_suffix') : '') + '</span>'
       + '<span class="' + (ok ? 'payout-na' : 'payout-missing') + '">' + text + '</span>'
       + '<span class="payout-backup-actions">' + actions + '</span>'
       + '</div>';
@@ -287,44 +273,50 @@
   function exportForm(slug, workerId) {
     var data = ' data-slug="' + esc(slug) + '" data-worker="' + esc(workerId) + '"';
     return '<form class="payout-backup-form"' + data + '>'
-      + '<label><input type="radio" name="mode" value="passphrase" checked> Passphrase (12+ characters)</label>'
-      + '<label><input type="radio" name="mode" value="recipient"> X25519 public key (hex)</label>'
+      + '<label><input type="radio" name="mode" value="passphrase" checked> ' + t('payouts.export.passphrase') + '</label>'
+      + '<label><input type="radio" name="mode" value="recipient"> ' + t('payouts.export.recipient') + '</label>'
       + '<input type="password" class="form-input" name="secret" autocomplete="new-password" required'
-      + ' aria-label="Passphrase or public key">'
+      + ' aria-label="' + t('payouts.export.secret_aria') + '">'
       + '<input type="password" class="form-input" name="secret_repeat" autocomplete="new-password" required'
-      + ' placeholder="Repeat the passphrase" aria-label="Repeat the passphrase">'
-      + '<button type="submit" class="btn btn-ghost btn-sm">Encrypt and download</button>'
-      + '<p class="payout-holds">Encrypted on the box, before it leaves. Lose the passphrase or the private key '
-      + 'and this file cannot be opened by anyone, CashPilot included.</p>'
+      + ' placeholder="' + t('payouts.export.repeat') + '" aria-label="' + t('payouts.export.repeat') + '">'
+      + '<button type="submit" class="btn btn-ghost btn-sm">' + t('payouts.export.submit') + '</button>'
+      + '<p class="payout-holds">' + t('payouts.export.note') + '</p>'
       + '</form>';
   }
 
   // Which boxes report the service, from their heartbeats. A recorded service
   // no box reports says so plainly: that row is the one to fix.
   function runsOnCell(entry) {
-    if (entry.runs_on_unknown) return '<span class="payout-unchecked">Could not read the boxes</span>';
+    if (entry.runs_on_unknown) return '<span class="payout-unchecked">' + t('payouts.runs.unknown') + '</span>';
     var boxes = entry.runs_on || [];
     if (boxes.length) {
       return boxes.map(function (b) {
-        var note = !b.online ? ' (offline)' : (b.status && b.status !== 'running' ? ' (' + b.status + ')' : '');
+        var note = !b.online ? t('payouts.offline_suffix') : (b.status && b.status !== 'running' ? ' (' + b.status + ')' : '');
         return '<span class="' + (note ? 'payout-na' : '') + '">' + esc(b.name) + esc(note) + '</span>';
       }).join(', ');
     }
-    if (entry.recorded && !entry.tracked_only) return '<span class="payout-missing">No box runs it</span>';
-    if (entry.tracked_only) return '<span class="payout-na">Not seen on any box</span>';
+    if (entry.recorded && !entry.tracked_only) return '<span class="payout-missing">' + t('payouts.runs.none') + '</span>';
+    if (entry.tracked_only) return '<span class="payout-na">' + t('payouts.runs.unseen') + '</span>';
     return '<span class="payout-na">&mdash;</span>';
   }
 
   function stateCell(entry) {
-    if (entry.runs_on_unknown && entry.tracked_only) return '<span class="state state-idle">balance only</span>';
-    if (entry.runs_on_unknown) return entry.recorded ? '<span class="state state-idle">recorded</span>' : '<span class="state state-idle">not deployed</span>';
-    if (entry.deployed) return '<span class="state state-ok">deployed</span>';
-    if (entry.recorded && !entry.tracked_only) return '<span class="state state-fail">not running</span>';
-    if (entry.tracked_only) return '<span class="state state-idle">balance only</span>';
-    return '<span class="state state-idle">not deployed</span>';
+    if (entry.runs_on_unknown && entry.tracked_only) return '<span class="state state-idle">' + t('payouts.state.balance_only') + '</span>';
+    if (entry.runs_on_unknown) return entry.recorded ? '<span class="state state-idle">' + t('payouts.state.recorded') + '</span>' : '<span class="state state-idle">' + t('payouts.state.not_deployed') + '</span>';
+    if (entry.deployed) return '<span class="state state-ok">' + t('payouts.state.deployed') + '</span>';
+    if (entry.recorded && !entry.tracked_only) return '<span class="state state-fail">' + t('payouts.state.not_running') + '</span>';
+    if (entry.tracked_only) return '<span class="state state-idle">' + t('payouts.state.balance_only') + '</span>';
+    return '<span class="state state-idle">' + t('payouts.state.not_deployed') + '</span>';
   }
 
   function payoutRow(entry) {
+    // The payout model as a badge; an unlisted model shows as the catalog spells it.
+    var MODEL_LABELS = {
+      external: t('payouts.model.external'),
+      internal: t('payouts.model.internal'),
+      minted: t('payouts.model.minted'),
+      unknown: t('payouts.model.unknown'),
+    };
     var chain = entry.chain ? esc(entry.chain) : '<span class="payout-na">&mdash;</span>';
     var deployed = stateCell(entry);
     // Only a DEPLOYED service with a missing address is urgent. An undeployed
@@ -335,7 +327,7 @@
       + '<td class="p-name">' + esc(entry.name || entry.slug) + '</td>'
       + '<td class="p-state">' + deployed + '</td>'
       + '<td class="p-runs">' + runsOnCell(entry) + '</td>'
-      + '<td class="p-model"><span class="badge badge-category">' + esc(entry.model || 'unknown') + '</span></td>'
+      + '<td class="p-model"><span class="badge badge-category">' + esc(Object.prototype.hasOwnProperty.call(MODEL_LABELS, entry.model) ? MODEL_LABELS[entry.model] : (entry.model || t('payouts.model.unknown'))) + '</span></td>'
       + '<td class="p-chain">' + chain + '</td>'
       + '<td class="p-addr">' + payoutAddressCell(entry) + '</td>'
       + '<td class="p-bal payout-balance-cell" data-slug="' + esc(entry.slug) + '">'
@@ -345,11 +337,11 @@
 
   function renderTable(entries, empty) {
     if (!entries.length) {
-      return '<p class="block-empty">' + esc(empty || 'Nothing matches that filter.') + '</p>';
+      return '<p class="block-empty">' + esc(empty || t('payouts.table.no_match')) + '</p>';
     }
     return '<div class="table-scroll"><table class="breakdown-table payout-table"><thead><tr>'
-      + '<th class="p-name">Service</th><th class="p-state">Status</th><th class="p-runs">Runs on</th><th class="p-model">Payout model</th>'
-      + '<th class="p-chain">Chain</th><th class="p-addr">Address</th><th class="p-bal">On-chain</th>'
+      + '<th class="p-name">' + t('payouts.col.service') + '</th><th class="p-state">' + t('payouts.col.status') + '</th><th class="p-runs">' + t('payouts.col.runs_on') + '</th><th class="p-model">' + t('payouts.col.model') + '</th>'
+      + '<th class="p-chain">' + t('payouts.col.chain') + '</th><th class="p-addr">' + t('payouts.col.address') + '</th><th class="p-bal">' + t('payouts.col.onchain') + '</th>'
       + '</tr></thead><tbody>'
       + entries.map(payoutRow).join('')
       + '</tbody></table></div>';
@@ -380,7 +372,7 @@
     var deployed = rows.filter(function (e) { return e.deployed || e.recorded; });
     var rest = rows.filter(function (e) { return !e.deployed && !e.recorded; });
     document.getElementById('payout-table-container').innerHTML = renderTable(deployed,
-      q ? 'No deployed service matches that filter.' : 'Nothing is deployed yet. Every service in the catalog is listed under Not deployed.');
+      q ? t('payouts.table.no_deployed_match') : t('payouts.table.none_deployed'));
     fold.hidden = !rest.length;
     document.getElementById('payout-rest-count').textContent = String(rest.length);
     document.getElementById('payout-rest-container').innerHTML = renderTable(rest);
@@ -420,8 +412,8 @@
     } catch (err) {
       // Say the registry could not be read. Never render an empty table, which
       // would look like "no services pay you anything".
-      container.innerHTML = '<p class="text-fail">Could not load payout destinations: '
-        + esc((err && err.message) || 'error') + '</p>';
+      container.innerHTML = '<p class="text-fail">'
+        + esc(t('payouts.load_failed', {error: (err && err.message) || t('payouts.error_word')})) + '</p>';
     }
   }
 
@@ -438,8 +430,7 @@
     body.innerHTML = atRisk.map(criticalStateRow).join('');
     if (!open.length) {
       document.getElementById('payout-critical-quiet-text').textContent =
-        'Backups confirmed for ' + atRisk.length + (atRisk.length === 1 ? ' service' : ' services')
-        + ' with irreplaceable state';
+        t('payouts.backup.all_confirmed', {n: atRisk.length});
       quiet.appendChild(body);
     } else {
       card.appendChild(body);
@@ -477,7 +468,7 @@
       }
       await loadPayouts();
     } catch (err) {
-      CP.toast((err && err.message) || 'That did not work', 'error');
+      CP.toast((err && err.message) || t('payouts.backup.failed_action'), 'error');
     }
   }
 
@@ -490,7 +481,7 @@
     var recipient = form.querySelector('input[name=mode]:checked').value === 'recipient';
     // A typo here makes a file nobody can open, marked as a confirmed backup.
     if (!recipient && input.value !== repeat.value) {
-      CP.toast('The two passphrases differ', 'error');
+      CP.toast(t('payouts.export.mismatch'), 'error');
       repeat.value = '';
       return;
     }
@@ -503,16 +494,16 @@
     }
     input.value = ''; repeat.value = '';
     var button = form.querySelector('button[type=submit]');
-    button.disabled = true; button.textContent = 'Reading and encrypting\u2026';
+    button.disabled = true; button.textContent = t('payouts.export.busy');
     try {
       var data = await CP.api('/api/payout-registry/' + encodeURIComponent(form.dataset.slug) + '/backup-export',
         {method: 'POST', body: body});
       download(data.filename, data.bundle_b64);
-      CP.toast('Backup downloaded: ' + data.filename, 'success');
+      CP.toast(t('payouts.export.done', {file: data.filename}), 'success');
       await loadPayouts();
     } catch (err) {
-      CP.toast((err && err.message) || 'The backup failed', 'error');
-      button.disabled = false; button.textContent = 'Encrypt and download';
+      CP.toast((err && err.message) || t('payouts.export.failed'), 'error');
+      button.disabled = false; button.textContent = t('payouts.export.submit');
     } finally {
       body = null;
     }

@@ -24,6 +24,7 @@
 // Exits non-zero on any mismatch.
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
+import './i18n_stub.mjs';
 
 const html = readFileSync('app/templates/payouts.html', 'utf8');
 
@@ -310,6 +311,7 @@ const incomeForm = {
   addEventListener(event, callback) { if (event === 'click') onPreset = callback; },
 };
 runInNewContext(payoutScript, {
+  t: globalThis.t,
   document: {
     body: {dataset: {page: 'payouts'}},
     addEventListener(event, callback) { if (event === 'DOMContentLoaded') onReady = callback; },

@@ -74,10 +74,11 @@ async def _rearm_setup_token() -> None:
 
 
 # Message keys, looked up per request so the page's language applies.
+# Read at request time, so each message comes in the reader's language.
 _CAPTCHA_ERRORS = {
-    "missing": "auth.captcha.retry",
-    "rejected": "auth.captcha.retry",
-    "unavailable": "auth.captcha.unavailable",
+    "missing": lambda: i18n.t("auth.captcha.retry"),
+    "rejected": lambda: i18n.t("auth.captcha.retry"),
+    "unavailable": lambda: i18n.t("auth.captcha.unavailable"),
 }
 
 
@@ -149,9 +150,7 @@ async def do_login(
         if not result.ok:
             metrics.record_login(success=False)
             metrics.record_captcha_failure(result.reason)
-            return _login_page(
-                request, error=i18n.t(_CAPTCHA_ERRORS[result.reason]), status_code=400
-            )  # i18n-keys: auth.captcha.retry, auth.captcha.unavailable
+            return _login_page(request, error=_CAPTCHA_ERRORS[result.reason](), status_code=400)
     user = await database.get_user_by_username(username)
     if user:
         ok = await auth_module.verify_password_async(password, user["password"])
