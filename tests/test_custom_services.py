@@ -83,6 +83,8 @@ class TestValidation:
             [{"key": "A", "value": "x\x00y"}],
             [{"key": "A", "value": "x" * 4097}],
             [{"key": f"K{i}", "value": ""} for i in range(51)],
+            [{"key": "NVIDIA_DRIVER_CAPABILITIES", "value": "all"}],
+            [{"key": "nvidia_visible_devices", "value": "0"}],
             "A=1",
         ],
     )
@@ -395,6 +397,67 @@ class TestTheRoutes:
         assert "box-a" in refused.detail
         assert done == {"status": "deleted"}
         assert stored is None
+
+    def test_delete_is_allowed_right_after_a_remove_succeeds(self, db):
+        """The box that confirmed the removal stopped counting before its next heartbeat."""
+
+        async def go():
+            slug = (await _create())["slug"]
+            containers = json.dumps([{"slug": slug, "status": "running"}, {"slug": "honeygain", "status": "running"}])
+            wid = await database.upsert_worker("cid-a", "box-a", "http://box-a:8081", containers=containers)
+            await database.save_deployment(slug=slug, container_id="c1", spec={"image": "x"}, worker_id=wid)
+            with (
+                patch.object(main, "_require_writer", lambda r: None),
+                patch.object(main, "_proxy_worker_command", AsyncMock(return_value={"status": "removed"})),
+            ):
+                await main._svc_remove(MagicMock(), slug, wid, False)
+            done = await main.api_delete_custom_service(MagicMock(), slug, {})
+            return done, json.loads((await database.get_worker(wid))["containers"])
+
+        done, left = _run(go)
+        assert done == {"status": "deleted"}
+        assert left == [{"slug": "honeygain", "status": "running"}], "the other service must stay listed"
+
+    @pytest.mark.parametrize("stored", ["not json", '{"slug": "x"}', "5"], ids=["broken", "object", "number"])
+    def test_a_stored_list_this_server_never_wrote_is_left_as_it_is(self, db, stored):
+        """The removal happened, so it still answers removed; the row it cannot read stays untouched."""
+
+        async def go():
+            slug = (await _create())["slug"]
+            wid = await database.upsert_worker("cid-a", "box-a", "http://box-a:8081", containers=stored)
+            with (
+                patch.object(main, "_require_writer", lambda r: None),
+                patch.object(main, "_proxy_worker_command", AsyncMock(return_value={"status": "removed"})),
+            ):
+                done = await main._svc_remove(MagicMock(), slug, wid, False)
+            return done, (await database.get_worker(wid))["containers"]
+
+        done, left = _run(go)
+        assert done == {"status": "removed"} and left == stored
+
+    def test_a_heartbeat_after_the_removal_keeps_its_list(self, db):
+        """A deploy of the same slug can start and report while the removal is still bookkeeping."""
+
+        async def go():
+            slug = (await _create())["slug"]
+            wid = await database.upsert_worker(
+                "cid-a", "box-a", "http://box-a:8081", containers=json.dumps([{"slug": slug, "status": "running"}])
+            )
+            newer = json.dumps([{"slug": slug, "status": "running", "id": "new"}])
+
+            async def heartbeat(*args, **kwargs):
+                await database.upsert_worker("cid-a", "box-a", "http://box-a:8081", containers=newer)
+
+            with (
+                patch.object(main, "_require_writer", lambda r: None),
+                patch.object(main, "_proxy_worker_command", AsyncMock(return_value={"status": "removed"})),
+                patch.object(main, "_forget_removed_deployment", heartbeat),
+            ):
+                await main._svc_remove(MagicMock(), slug, wid, False)
+            return (await database.get_worker(wid))["containers"], newer
+
+        stored, newer = _run(go)
+        assert stored == newer, "the newer report must win over the removal"
 
     def test_delete_is_refused_while_a_box_has_a_record_of_it(self, db):
         async def go():

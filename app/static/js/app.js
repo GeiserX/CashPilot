@@ -2223,6 +2223,8 @@ const CP = (() => {
     // The Instances box appears only where the service detail said how many
     // copies one worker may run (the setup wizard's list has no such answer).
     const maxInstances = svc.max_instances;
+    // A single box is the only choice, so it starts ticked: Deploy works on the first click.
+    const onlyChoice = onlineWorkers.length === 1;
     for (const w of onlineWorkers) {
       const copies = workerCopies(w, svc.slug).length;
       const deployed = copies > 0;
@@ -2245,7 +2247,7 @@ const CP = (() => {
       }
       rows += `
       <label class="worker-pick">
-        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : ''}>
+        <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : (onlyChoice ? 'checked' : '')}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
         ${isDesktopWorker(w) ? '<span class="badge" title="CashPilot Desktop: it runs the image its own catalog pins, one copy per service">Desktop</span>' : ''}
         ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
@@ -3007,7 +3009,7 @@ const CP = (() => {
     // cause, because "no data" without a reason reads as a broken page.
     const reason = service.has_collector
       ? 'No earnings have been read for this service yet. Add its credentials in '
-        + 'Settings \u2192 Collectors, or wait for the next hourly collection if you already have.'
+        + 'Settings \u2192 Earnings collection, or wait for the next hourly collection if you already have.'
       : 'CashPilot has no earnings collector for this service yet, so it cannot read a balance. '
         + 'It may still be running and earning \u2014 check the provider\'s own dashboard.';
     body.innerHTML = `<p>${escapeHtml(reason)}</p>`;
@@ -3226,6 +3228,24 @@ const CP = (() => {
     return `critical_set=${encodeURIComponent(reviewed)}`;
   }
 
+  // CashPilot Desktop deletes data that cannot be made again only on that
+  // computer, and refuses that delete from here whatever the password. So the
+  // owner is told at once, and not asked to review the volumes or for the password.
+  // A partial restore has its own words: a Remove that keeps the data is
+  // refused while it stays, so "keep the data" would lead back here.
+  function _desktopKeepsCriticalData(slug, workerId, boxName, partialRestore = false) {
+    const worker = (_detailWorkers || []).find((w) => String(w.id) === String(workerId));
+    if (!isDesktopWorker(worker)) return false;
+    toast(partialRestore
+      ? `Nothing was removed from ${boxName}. The data of ${slug} there holds a partial restore, `
+        + 'and CashPilot Desktop deletes that only on that computer. Remove cannot finish while it stays: '
+        + 'delete it in CashPilot Desktop on that computer.'
+      : `Nothing was removed from ${boxName}. The data of ${slug} there holds a node identity or wallet, `
+        + 'and CashPilot Desktop deletes that only on that computer. To remove only the container, '
+        + 'press Remove again and keep the data.', 'error');
+    return true;
+  }
+
   // What a Remove's answer says about the volumes it was asked to delete:
   // success only when none stayed. byHandOn names the box when a Remove again
   // cannot reach a volume that stays: a custom service's Remove already
@@ -3293,6 +3313,7 @@ const CP = (() => {
         // refusal reported, and the approval binds them: the box deletes
         // those or nothing, never one mounted since.
         if (withData && err.code === 'critical_volume') {
+          if (_desktopKeepsCriticalData(slug, workerId, boxName || `worker #${workerId}`, leftover === 'leftover')) return;
           const reviewed = confirmCriticalVolumes(slug, boxName || `worker #${workerId}`, err.refusal);
           if (!reviewed) return;
           return removed(await api(path([...params, 'allow_delete_critical=true', reviewed]), { method: 'DELETE', body: {} }));
@@ -3317,6 +3338,7 @@ const CP = (() => {
           result = await api(retry, { method: 'DELETE' });
         } catch (again) {
           if (again.code !== 'critical_volume') throw again;
+          if (_desktopKeepsCriticalData(slug, refused, name, true)) return;
           const reviewed = confirmCriticalVolumes(slug, name, again.refusal);
           if (!reviewed) return;
           result = await api(`${retry}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
@@ -3770,7 +3792,7 @@ const CP = (() => {
         <div class="inline-note">
           The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
           add earnings-tracking credentials under
-          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}">Settings → Collectors</a>
+          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}">Settings → Earnings collection</a>
           after deploying. This is optional — the service earns either way.
         </div>`;
   }
@@ -4352,7 +4374,7 @@ const CP = (() => {
         ${todo.map(l => item(l, true)).join('')}` : ''}
         ${done.length ? `
         <div class="device-link-title">Added to your account</div>
-        <p class="device-link-text">CashPilot added this device with the credentials saved under Settings → Collectors.</p>
+        <p class="device-link-text">CashPilot added this device with the credentials saved under Settings → Earnings collection.</p>
         ${done.map(l => item(l, false)).join('')}` : ''}
       </div>`);
   }
@@ -4904,7 +4926,7 @@ const CP = (() => {
       // A custom service's image is edited in its definition, not per deploy.
       if (!svc.custom) html += imageChoiceSection(svc, workers);
 
-      // Earnings tracking uses SEPARATE credentials (Settings → Collectors).
+      // Earnings tracking uses SEPARATE credentials (Settings → Earnings collection).
       // The fields above only configure the container that earns; they don't
       // let CashPilot read your balance. Make that explicit at deploy time.
       if (svc.has_collector) {
@@ -5248,6 +5270,7 @@ const CP = (() => {
         // The box names the volumes it cannot judge (its catalog does not know
         // this service): the owner reviews exactly those, then the password.
         if (!withData || err.code !== 'critical_volume') throw err;
+        if (_desktopKeepsCriticalData(slug, workerId, boxName)) return;
         const reviewed = confirmCriticalVolumes(slug, boxName, err.refusal);
         if (!reviewed) return;
         result = await api(`${path}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });

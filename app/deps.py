@@ -57,6 +57,11 @@ templates.env.globals["csp_nonce"] = _csp_nonce
 # reintroduce a hardcoded literal by copy-paste (CashPilot: the sidebar shipped
 # "v0.2.49" for ~150 releases).
 templates.env.globals["app_version"] = version.display
+# The worker image to run beside this UI: its MAJOR.MINOR, as the compose files pin it.
+# None when this build has no release version: no published tag matches it.
+templates.env.globals["worker_image"] = lambda: (
+    f"drumsergio/cashpilot-worker:{series}" if (series := version.series(version.current())) else None
+)
 # The built-in themes (app/themes.json): the picker lists them, and the pre-paint
 # script gets the ids and the default so an unknown stored value falls back.
 templates.env.globals["themes"] = themes.THEME_LIST
