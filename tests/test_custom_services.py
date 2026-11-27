@@ -83,6 +83,8 @@ class TestValidation:
             [{"key": "A", "value": "x\x00y"}],
             [{"key": "A", "value": "x" * 4097}],
             [{"key": f"K{i}", "value": ""} for i in range(51)],
+            [{"key": "NVIDIA_DRIVER_CAPABILITIES", "value": "all"}],
+            [{"key": "nvidia_visible_devices", "value": "0"}],
             "A=1",
         ],
     )
