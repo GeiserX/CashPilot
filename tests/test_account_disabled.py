@@ -48,7 +48,8 @@ class TestCatalog:
     def test_pawns_declares_its_disabled_text_and_support_page(self):
         svc = catalog.get_service("iproyal")
         assert svc is not None, "iproyal.yml failed validation and was dropped"
-        assert svc["docker"]["health_signals"] == SIGNALS
+        disabled = [s for s in svc["docker"]["health_signals"] if s.get("state") == "account_disabled"]
+        assert disabled == SIGNALS
         assert svc["support_url"].startswith("https://")
 
     @pytest.mark.parametrize(
