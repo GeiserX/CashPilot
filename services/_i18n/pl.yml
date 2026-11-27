@@ -1,0 +1,2511 @@
+# Polish translations of the catalog strings in en.yml, keyed <slug>.<path>.
+# Each entry holds the text and the hash of the English it translates
+# (scripts/i18n_check.py documents the format). A key whose English changed
+# since shows English until it is updated here. To fix a translation, edit
+# its text and run:
+#   python scripts/i18n_check.py services/_i18n/en.yml services/_i18n/pl.yml --restamp '<key>'
+2miners-etc.description:
+  text: "Śledź niewypłacone saldo Ethereum Classic, które 2Miners przechowuje dla Twojego publicznego adresu wypłat ETC. Uruchom własnego minera i skieruj go na pulę. CashPilot odczytuje saldo i prosi Cię o potwierdzenie wypłat, gdy saldo spada.\n"
+  source: "747461faaaff"
+2miners-etc.short_description:
+  text: "Pula kopania Ethereum Classic, śledzona po adresie wypłat"
+  source: "9a19622426b4"
+2miners-etc.payment.minimum_payout:
+  text: "0.1 ETC (do ustawienia)"
+  source: "81237ec07067"
+2miners-etc.payment.frequency:
+  text: "Pula sprawdza Twój próg wypłaty co dwie godziny"
+  source: "0db320b4148d"
+2miners-etc.cashout.notes:
+  text: "2Miners automatycznie wysyła środki na Twój adres, gdy osiągniesz wybrany próg. Najniższy próg wypłat ETC to 0.1 ETC.\n"
+  source: "67ca63927abf"
+2miners-etc.payout.notes:
+  text: "Niewypłacone saldo narasta w 2Miners. Saldo portfela to osobny odczyt z sieci Ethereum Classic. Zanim potwierdzisz wypłatę w CashPilot, sprawdź w portfelu otrzymaną kwotę.\n"
+  source: "72e95aebfc18"
+2miners-etc.collector.credential_hint:
+  text: "Wpisz publiczny adres wypłat Ethereum Classic, którego Twój miner używa w 2Miners, zaczynający się od <b>0x</b>. Nie dodawaj nazwy workera.\n"
+  source: "70b5e684377a"
+2miners-etc.requirements.note:
+  text: "Wymaga minera ETCHash skierowanego na 2Miners"
+  source: "259f94834811"
+2miners-etc.disclosure.sells:
+  text: "moc obliczeniowa"
+  source: "b04a12f6483e"
+2miners-etc.disclosure.third_party_traffic:
+  text: "Nie. Twój miner wysyła do puli wyniki kopania."
+  source: "2e13888ee2d6"
+2miners-etc.disclosure.data_collected:
+  text: "Pula używa Twojego adresu wypłat, wybranych przez Ciebie nazw workerów i adresu IP Twojego minera."
+  source: "1bae14e78937"
+2miners-etc.disclosure.account_rules:
+  text: "Każdy może zobaczyć statystyki po adresie wypłat. Aby zmienić próg, pula prosi o potwierdzenie IP workera."
+  source: "d2a40ebb0088"
+2miners-etc.rating.cons.0.text:
+  text: "Pula pobiera prowizję 1% i wstrzymuje wypłaty do osiągnięcia Twojego progu."
+  source: "b47e2ed1a2ed"
+anyone-protocol.description:
+  text: "Anyone Protocol (dawniej ATOR) to zdecentralizowana sieć prywatności oparta na trasowaniu cebulowym. Operatorzy węzłów uruchamiają węzły przekaźnikowe i zarabiają tokeny ANYONE za udostępnioną przepustowość. To coś jak „Tor z nagrodami”. CashPilot uruchamia go z własnego obrazu, zbudowanego z podpisanego pakietu Debiana projektu, dla amd64 i arm64. Konfiguracja odbywa się przez plik anonrc zamontowany w kontenerze (Nickname, ContactInfo, ORPort itd.). Przekaźnik nic nie zarabia, dopóki nie zablokujesz dla niego 100 ANYONE na co najmniej 180 dni, a nagrody odbiera się, podpisując transakcję w portfelu. Przekaźnik umieszcza też Twój publiczny IP w katalogu przekaźników sieci, co może zaszkodzić reputacji IP, za którą płacą aplikacje udostępniające przepustowość domową.\n"
+  source: "386991ed6f0d"
+anyone-protocol.short_description:
+  text: "Zdecentralizowane trasowanie cebulowe - węzły przekaźnikowe Tor z nagrodami"
+  source: "08395b97ce31"
+anyone-protocol.docker.critical_volumes.0.holds:
+  text: "Klucz tożsamości ed25519 przekaźnika. Jego zniszczenie kasuje reputację przekaźnika i zaczyna jego historię zarobków od zera."
+  source: "f299f20448cf"
+anyone-protocol.earnings.notes:
+  text: "Płaci tylko wtedy, gdy na każdy przekaźnik zablokowano 100 ANYONE na co najmniej 180 dni, a odbiór nagrody podpisano w portfelu. Bez tej stawki przekaźnik nic nie zarabia. Z nią zarobki zależą od udostępnionej przepustowości i czasu działania."
+  source: "543e9f06e1be"
+anyone-protocol.payment.frequency:
+  text: "Według epok"
+  source: "75743e03bad2"
+anyone-protocol.payout.notes:
+  text: "Ustawiane jako ContactInfo w anonrc, z prefiksem '@anon:0x...'."
+  source: "c1a9df600b29"
+anyone-protocol.collector.credential_hint:
+  text: "Odciski przekaźników rozdzielone przecinkami. Nie znajdziesz ich w panelu WWW: uruchom <b>docker exec cashpilot-anyone-protocol cat /var/lib/anon/fingerprint</b> na hoście, na którym działa przekaźnik.\n"
+  source: "9b5c068c9636"
+anyone-protocol.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+anyone-protocol.disclosure.sells:
+  text: "Przepustowość, jako przekaźnik w sieci Anyone (fork Tora)."
+  source: "87745f627646"
+anyone-protocol.disclosure.third_party_traffic:
+  text: "Tak. Przekazuje ruch innych osób. To, czy Twój IP jest ostatnim przeskokiem, zależy od tego, czy przekaźnik skonfigurowano jako węzeł wyjściowy."
+  source: "2f0ad3858a2b"
+anyone-protocol.disclosure.data_collected:
+  text: "Publiczny klucz tożsamości przekaźnika, Twój IP i port oraz statystyki czasu działania, z założenia publikowane w katalogu sieci. Jeśli ustawisz ContactInfo w anonrc, ono również jest tam publikowane i na zawsze publicznie indeksowane — zwykle jest to adres e-mail, więc zostaw je puste, chyba że chcesz, by było publiczne."
+  source: "df790fb50263"
+anyone-protocol.disclosure.isp_risk:
+  text: "Realne. Ruch przekaźnika jest przypisywany do Twojego łącza. Zwłaszcza przekaźniki wyjściowe ściągają skargi na nadużycia; wielu dostawców internetu dla klientów domowych ich zabrania."
+  source: "d459ba0e209d"
+anyone-protocol.disclosure.account_rules:
+  text: "Nie ma konta do założenia, więc nie ma limitów na konto. Aby zarabiać, nadal potrzebujesz portfela Ethereum ze 100 ANYONE zablokowanymi dla każdego przekaźnika na co najmniej 180 dni, a CashPilot potrzebuje odcisków przekaźników, aby odczytać nagrody. Projekt nie publikuje limitu przekaźników na IP, a katalog go nie deklaruje."
+  source: "291f7428f6a2"
+anyone-protocol.rating.cons.0.text:
+  text: "Przekaźnik nic nie zarabia, jeśli nie zablokujesz dla niego 100 ANYONE na co najmniej 180 dni, a każdy odbiór nagrody podpisujesz w portfelu."
+  source: "28f5fad0e47d"
+anyone-protocol.rating.cons.1.text:
+  text: "Z założenia przekazuje ruch innych osób, bez sprawdzania, kim są; przekaźniki wyjściowe ściągają skargi na nadużycia."
+  source: "4627257ae65e"
+anyone-protocol.rating.cons.2.text:
+  text: "Tożsamość, IP i czas działania przekaźnika są publikowane w katalogu sieci, a każde ustawione ContactInfo jest publiczne na zawsze."
+  source: "adb751a90cda"
+anyone-protocol.rating.pros.0.text:
+  text: "Nie ma konta do założenia. Przekaźnik potrzebuje tylko portfela, bez weryfikacji tożsamości."
+  source: "7a5284c217e4"
+anyone-protocol.rating.pros.1.text:
+  text: "Oprogramowanie przekaźnika to opublikowany fork Tora, na licencji Tora."
+  source: "0574b7d829b6"
+anyone-protocol.rating.pros.2.text:
+  text: "CashPilot buduje własny obraz z opublikowanego oprogramowania przekaźnika Anyone, które nie wymaga konta."
+  source: "2e36c9093df6"
+bitping.description:
+  text: "Bitping to zdecentralizowana platforma monitorowania sieci, która płaci Ci za uruchomienie węzła. Twój węzeł monitoruje strony WWW, mierzy opóźnienia i sprawdza jakość sieci dla klientów Bitping. Działa zarówno na łączach domowych, jak i na VPS. Obraz Docker przy pierwszym uruchomieniu loguje się za pomocą zmiennych środowiskowych BITPING_EMAIL i BITPING_PASSWORD (w jego logu widać „Attempting login with environment variables”), a potem zapisuje sesję w zamontowanym wolumenie, więc restarty nie wymagają ponownego logowania.\n"
+  source: "6da6f3949103"
+bitping.short_description:
+  text: "Udostępnianie przepustowości - zdecentralizowane monitorowanie sieci, działa na VPS"
+  source: "9ed1674242c5"
+bitping.docker.env.BITPING_EMAIL.label:
+  text: "E-mail"
+  source: "969ccbd3cf63"
+bitping.docker.env.BITPING_PASSWORD.label:
+  text: "Hasło"
+  source: "e7cf3ef4f17c"
+bitping.docker.env.BITPING_EMAIL.description:
+  text: "E-mail Twojego konta Bitping (ten sam login co w <a href='https://app.bitping.com' target='_blank'>app.bitping.com</a>)"
+  source: "3b8f428e73bc"
+bitping.docker.env.BITPING_PASSWORD.description:
+  text: "Hasło Twojego konta Bitping. Używane raz do utworzenia sesji węzła, która potem jest przechowywana w wolumenie danych."
+  source: "acb49b137850"
+bitping.earnings.notes:
+  text: "Zarobki zależą od jakości sieci i popytu na monitorowanie z Twojej lokalizacji. Węzły na VPS są akceptowane."
+  source: "4f1c5f96b80e"
+bitping.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+bitping.cashout.notes:
+  text: "Zarobki węzłów są na nodes.bitping.com; app.bitping.com to panel klientów API. Wypłaty tylko w SOL: gdy niewypłacone saldo przekroczy $0.05, wpisz w zleceniu adres Solana; zlecenie jest realizowane w ciągu 24 godzin. Nowy lub pusty portfel Solana potrzebuje najpierw około 0.001 SOL na minimalny depozyt (rent) sieci."
+  source: "fdc63e6d572b"
+bitping.payout.notes:
+  text: "Teraz tylko Solana, a adres wpisujesz W MOMENCIE WYPŁATY, zamiast go zapisywać."
+  source: "e34576107a98"
+bitping.collector.credential_hint:
+  text: "Użyj e-maila i hasła swojego konta Bitping (tych samych co w <a href='https://nodes.bitping.com' target='_blank'>nodes.bitping.com</a>)."
+  source: "e7173a122598"
+bitping.obligations.withdraw-before-12-month-forfeit.title:
+  text: "Wypłać saldo Bitping"
+  source: "469c2e1bdbef"
+bitping.obligations.withdraw-before-12-month-forfeit.loss:
+  text: "Bitping może anulować zarobki nieodebrane przez ponad 12 miesięcy, po uprzedzeniu e-mailem z 30-dniowym wyprzedzeniem."
+  source: "4bb16828d6be"
+bitping.obligations.withdraw-before-12-month-forfeit.how:
+  text: "Zleć wypłatę SOL na nodes.bitping.com i wpisz w zleceniu swój adres Solana."
+  source: "e3b5db7e604b"
+bitping.rating.cons.0.text:
+  text: "Wypłaty są w Solanie (SOL), na adres, który wpisujesz w każdym zleceniu."
+  source: "e339ed3b3d01"
+bitping.rating.cons.1.text:
+  text: "Pomoc Bitping podaje, że wypłata na nowy, pusty portfel Solana może się nie udać, dopóki samodzielnie nie zasilisz go niewielką ilością SOL."
+  source: "c805fc86ffe4"
+bitping.rating.pros.0.text:
+  text: "Pomoc Bitping podaje, że serwery i kontenery Docker są obsługiwane."
+  source: "e472a4936057"
+bitping.rating.pros.1.text:
+  text: "Wypłata wymaga tylko adresu Solana wpisanego w zleceniu."
+  source: "57f0e1d81433"
+bytebenefit.description:
+  text: "Bytebenefit to usługa udostępniania przepustowości, która płaci przez PayPal i Stripe. Nie ma oficjalnego obrazu Docker; klientami są aplikacja na Windows i aplikacja na Androida. Usługa działa pod adresem bytebenefit.io -- stara domena bytebenefit.com została porzucona i jest wystawiona na sprzedaż na giełdzie domen, dlatego kiedyś była tu oznaczona jako martwa.\n"
+  source: "bd969b0c277e"
+bytebenefit.short_description:
+  text: "Udostępnianie przepustowości - wypłaty PayPal/Stripe, aplikacja desktopowa/Android"
+  source: "db7c950262ba"
+bytebenefit.earnings.notes:
+  text: "Brak obrazu Docker. Tylko aplikacje na Windows i Androida."
+  source: "981d492a84fb"
+bytebenefit.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+bytebenefit.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+bytebenefit.referral.bonus.referrer:
+  text: "20% zarobków z ruchu poleconych osób"
+  source: "096a1e669ce2"
+bytebenefit.referral.bonus.referee:
+  text: "Bonus powitalny $1 (10 000 Coins)"
+  source: "e51d68265bf4"
+bytebenefit.rating.cons.0.text:
+  text: "Opis aplikacji w Google Play mówi, że Twój ruch obsługuje zapytania web intelligence klientów Infatica, bez podania, kim są ani jak są weryfikowani."
+  source: "2d17935e1e6c"
+bytebenefit.rating.cons.1.text:
+  text: "Aplikacja na Androida zniknęła z Google Play w kwietniu 2026 po 17 miesiącach."
+  source: "1dc7dddf70fe"
+bytebenefit.rating.cons.2.text:
+  text: "CashPilot nie uruchamia ByteBenefit: korzystasz z własnej aplikacji dostawcy, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "550e4508aba2"
+bytelixir.description:
+  text: "Bytelixir pozwala zarabiać dochód pasywny, udostępniając nieużywaną przepustowość internetu. Obsługuje tylko Windows i Androida — oficjalne FAQ mówi, że klient na Linuksa ani Dockera nie jest planowany, iOS nie jest obsługiwany, a macOS nie jest oferowany. Zarobki mocno zależą od lokalizacji. Do śledzenia służy panel WWW pod adresem dash.bytelixir.com. Brak obrazu Docker.\n"
+  source: "2ec58eb10494"
+bytelixir.short_description:
+  text: "Udostępnianie przepustowości - tylko Windows + Android"
+  source: "071f817595d7"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.label:
+  text: "Ciasteczko sesji"
+  source: "63d68f7e128e"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.label:
+  text: "Ciasteczko Remember Web"
+  source: "12b9a9c2a4eb"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.label:
+  text: "Token XSRF"
+  source: "a40b4091608e"
+bytelixir.docker.env.BYTELIXIR_SESSION_COOKIE.description:
+  text: "Zaloguj się na <a href=\"https://dash.bytelixir.com\">dash.bytelixir.com</a>, naciśnij F12 → Application → rozwiń <b>Cookies</b> na lewym pasku bocznym → kliknij podpozycję <code>https://dash.bytelixir.com</code> → na liście ciasteczek po prawej znajdź <code>bytelixir_session</code> → skopiuj jego Value (długi JWT zaczynający się od eyJ)"
+  source: "e555d739498a"
+bytelixir.docker.env.BYTELIXIR_REMEMBER_WEB.description:
+  text: "To samo miejsce (Cookies → <code>https://dash.bytelixir.com</code>) → znajdź ciasteczko o nazwie <code>remember_web_...</code> → skopiuj jego Value (opcjonalne, wydłuża czas trwania sesji)"
+  source: "af3d0da7126a"
+bytelixir.docker.env.BYTELIXIR_XSRF_TOKEN.description:
+  text: "To samo miejsce → znajdź <code>XSRF-TOKEN</code> → skopiuj jego Value (opcjonalne)"
+  source: "e638c59de75d"
+bytelixir.earnings.notes:
+  text: "Zarobki zależą od lokalizacji ($2-50/miesiąc). Brak obrazu Docker. Wymagana aplikacja desktopowa lub aplikacja na Androida."
+  source: "9c8718533f05"
+bytelixir.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+bytelixir.cashout.notes:
+  text: "Tylko kryptowaluty. Minimum zależy od monety: USDT $5, USDC $5, TON $8, LTC $10, ETH $40, BTC $250. Adres wpisujesz w każdym zleceniu. Zlecenia są realizowane w godzinach pracy, w ciągu 24 godzin."
+  source: "41145f17bdd1"
+bytelixir.payout.notes:
+  text: "Saldo przechowuje Bytelixir; adres portfela wpisujesz w każdym zleceniu wypłaty i nigdy nie jest zapisywany w kontenerze."
+  source: "58e23889cb05"
+bytelixir.collector.credential_hint:
+  text: "Zaloguj się na <a href='https://dash.bytelixir.com' target='_blank'>dash.bytelixir.com</a>, <b>zaznaczając Remember Me</b>, naciśnij F12 → Application → rozwiń <b>Cookies</b> na lewym pasku bocznym → kliknij <code>https://dash.bytelixir.com</code>, a potem skopiuj trzy wartości: <b>bytelixir_session</b>, <b>remember_web_…</b> (ta długa, zaczynająca się od tego prefiksu) i <b>XSRF-TOKEN</b>. Samo ciasteczko sesji wygasa około dwóch godzin po skopiowaniu, więc zbieranie danych zatrzymuje się jeszcze tego samego popołudnia; ciasteczko remember_web działa rok i to ono utrzymuje zbieranie."
+  source: "5a3362c1c9fa"
+bytelixir.referral.bonus.referrer:
+  text: "50% ich zysku dożywotnio"
+  source: "04db04d249f2"
+bytelixir.referral.bonus.referee:
+  text: "Bonus powitalny $1"
+  source: "0fc234cbd148"
+bytelixir.rating.cons.0.text:
+  text: "Tylko kryptowaluty, a minimum zależy od monety: od $5 dla USDT do $250 dla Bitcoina."
+  source: "d63d0b15c13d"
+bytelixir.rating.cons.1.text:
+  text: "CashPilot nie uruchamia Bytelixir: korzystasz z własnej aplikacji dostawcy, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "afea7eb7cc1f"
+bytelixir.rating.pros.0.text:
+  text: "Trustpilot ocenia go na 4.6 na podstawie 283 opinii, w większości chwalących wypłaty w kryptowalutach; kilka zgłasza wypłaty, które nie dotarły."
+  source: "7ebaccd91dfd"
+bytelixir.rating.pros.1.text:
+  text: "Wypłata wymaga tylko adresu kryptowalutowego wpisanego w zleceniu."
+  source: "89f36ce9e779"
+clore-ai.description:
+  text: "Clore.ai to rynek GPU peer-to-peer. Wystawiasz maszynę z Linuksem i kartami NVIDIA, ustalasz własne ceny spot i na żądanie, a najemcy uruchamiają na niej własne kontenery Docker. Płacą Ci tylko za minuty wynajmu, w CLORE, BTC, USDT lub USDC. Hosting wymaga maszyny x86_64 z Ubuntu 22.04 lub nowszym (albo HiveOS), działającego sterownika NVIDIA i co najmniej 100 Mbps w obie strony. Karty AMD nie są obsługiwane.\n"
+  source: "d4817118c773"
+clore-ai.short_description:
+  text: "Rynek GPU - wynajmuj karty NVIDIA, wypłaty w CLORE, BTC lub stablecoinach USD"
+  source: "a124538d51cc"
+clore-ai.earnings.notes:
+  text: "Płatne tylko za minuty wynajmu, po ustalonej przez Ciebie cenie. Górna granica przedziału, $490, to własny pułap Clore dla jednej karty RTX 4090 wystawionej na minuty ('up to ~$490/month'); mniejsze karty zarabiają mniej, a bezczynna karta nie zarabia nic. Clore zatrzymuje 5% (na żądanie) lub 1.25% (spot) z każdego wynajmu oraz dodatkowe 15%, gdy najemca płaci w BTC, USDT lub USDC zamiast w CLORE."
+  source: "d13b02266fce"
+clore-ai.payment.minimum_payout:
+  text: "200 CLORE"
+  source: "c1424a955e0e"
+clore-ai.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+clore-ai.cashout.notes:
+  text: "Wypłacasz z Account > Billing do własnego portfela: CLORE (ERC-20, minimum 200, opłata około $0.50), BTC (minimum 0.0001, opłata 0.00005 BTC) lub USDT/USDC w sieci Ethereum albo BNB Chain (minimum $10, opłata $1)."
+  source: "7b54a2467799"
+clore-ai.payout.notes:
+  text: "Clore przechowuje saldo (CLORE, BTC i jedno saldo USD dla USDT/USDC), dopóki go nie wypłacisz. Sieć wybierasz przy każdej wypłacie: Ethereum dla CLORE, Bitcoin dla BTC, Ethereum lub BNB Chain dla USDT/USDC."
+  source: "1922639107be"
+clore-ai.referral.bonus.referrer:
+  text: "15% (poziom standardowy) opłat platformy wnoszonych przez poleconych przez Ciebie hostów i najemców, od każdego wynajmu; kod nigdy nie wygasa; wypłacane w walucie wynajmu (CLORE, BTC lub USD)"
+  source: "1d7bd3513d42"
+clore-ai.requirements.min_bandwidth:
+  text: "100 Mbps w obie strony"
+  source: "7a2496f19e72"
+clore-ai.requirements.min_storage:
+  text: "32GB"
+  source: "bf24550293d5"
+clore-ai.disclosure.sells:
+  text: "Czas obliczeniowy GPU na Twojej maszynie."
+  source: "502ae194879a"
+clore-ai.disclosure.third_party_traffic:
+  text: "Tak. Najemcy uruchamiają na Twojej maszynie własne kontenery Docker, a ich ruch wychodzi z Twojego łącza; porty SSH i aplikacji są przekierowane do internetu."
+  source: "5b8b36ea210e"
+clore-ai.disclosure.data_collected:
+  text: "Polityka prywatności Clore obejmuje dane konta oraz Twój adres IP z przybliżoną lokalizacją; dokumenty tożsamości tylko wtedy, gdy Clore poprosi o KYC."
+  source: "c17be18a1dd4"
+clore-ai.disclosure.isp_risk:
+  text: "Porty przychodzące muszą być osiągalne z internetu (domyślnie 22, 8080 i 3000-4000), a na Twoim łączu działają zadania obcych osób. Sam przewodnik sieciowy Clore mówi, że niektórzy dostawcy internetu blokują hosting."
+  source: "e46ffae26d51"
+clore-ai.disclosure.account_rules:
+  text: "Ukończone 18 lat, kraj nieobjęty sankcjami. Clore może zawiesić lub zamknąć konto według własnego uznania, a niedozwolone użycie może kosztować utratę środków."
+  source: "8bd6f65077a2"
+clore-ai.rating.cons.0.text:
+  text: "Ani regulamin, ani polityka prywatności nie podają nazwy podmiotu prawnego, a regulamin pozostawia wskazanie właściwej jurysdykcji przyszłej wersji."
+  source: "4085fd9eadf6"
+clore-ai.rating.cons.1.text:
+  text: "Clore może zawiesić lub zamknąć konto według własnego uznania, a niedozwolone użycie może prowadzić do przepadku środków."
+  source: "951c5c13d3bd"
+clore-ai.rating.cons.2.text:
+  text: "Wypłaty tylko w kryptowalutach (CLORE, BTC, USDT lub USDC), a Clore pobiera dodatkowe 15% z wynajmu opłaconego przez najemcę w BTC, USDT lub USDC, chyba że host zablokuje CLORE, aby to obniżyć."
+  source: "3c92c0ec25bd"
+clore-ai.rating.cons.3.text:
+  text: "Host dostaje zapłatę tylko za minuty wynajmu, a podana przez Clore kwota dla RTX 4090 to pułap („up to ~$490/month”) dla jednej karty."
+  source: "7c9e0446e764"
+clore-ai.rating.cons.4.text:
+  text: "Podstawowe użycie nie wymaga KYC, ale Clore może poprosić o weryfikację tożsamości przy dużych wypłatach lub w sprawach zgodności z przepisami."
+  source: "273c4f99bf2e"
+clore-ai.rating.cons.5.text:
+  text: "Najemcy uruchamiają na Twojej maszynie dowolny publiczny obraz Docker. Regulamin wymienia zakazane zastosowania (malware, DDoS, CSAM i inne), ale nie znaleźliśmy opisu, jak najemcy są weryfikowani."
+  source: "a6bf958765ab"
+clore-ai.rating.cons.6.text:
+  text: "CashPilot nie uruchamia Clore.ai: instalujesz agenta hostingowego Clore na własnej maszynie z GPU (Ubuntu 22.04 lub nowszy albo HiveOS), więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować."
+  source: "705e4c68172b"
+clore-ai.rating.pros.0.text:
+  text: "Clore zatrzymuje 5% z wynajmu na żądanie (1.25% przy spot), gdy najemca płaci w CLORE, bez dodatkowej opłaty."
+  source: "699adf0a2179"
+dawn.description:
+  text: "DAWN prowadzi sieć walidatorów, która sprawdza przepustowość i zasięg infrastruktury AI finansowanej przez protokół DAWN. Rozszerzenie przeglądarki DAWN Validator bierze udział w tych kontrolach proof-of-bandwidth i zasięgu i zarabia nagrody DAWN, gdy działa. Nagrody nie mają jeszcze ustalonej wartości pieniężnej. Załóż konto w rozszerzeniu i podaj kod polecający 2QLQV97F, gdy o niego poprosi.\n"
+  source: "bea38e2849d6"
+dawn.short_description:
+  text: "Walidator DePIN - rozszerzenie przeglądarki zarabia punkty DAWN"
+  source: "3cf2793b3b2a"
+dawn.earnings.notes:
+  text: "Zarabia Dawn Points przed premierą tokena. Rzeczywista wartość zależy od przyszłej ceny tokena. Urządzenie sprzętowe zarabia więcej niż rozszerzenie przeglądarki."
+  source: "607d3b0c3f7c"
+dawn.payment.frequency:
+  text: "Airdrop tokenów (termin nieogłoszony)"
+  source: "73bb8600bb37"
+dawn.cashout.notes:
+  text: "Rozszerzenie działa, ale jest niedopracowane. Zapowiedziano sprzęt Black Box. Sprawdź w przyszłości."
+  source: "45ccbe07d490"
+dawn.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+dawn.rating.cons.0.text:
+  text: "Rozszerzenie zarabia punkty; do października 2026 nie potwierdzono żadnej dystrybucji tokenów dla operatorów węzłów."
+  source: "136c9d15219e"
+dawn.rating.cons.1.text:
+  text: "Punkty nie mają ustalonej wartości, dopóki nie wystartuje token i nie zostanie ogłoszony przelicznik."
+  source: "5ecb8c0c7382"
+dawn.rating.cons.2.text:
+  text: "CashPilot nie uruchamia Dawn: korzystasz z własnego rozszerzenia przeglądarki dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "8232c9563c84"
+deeper-network.description:
+  text: "Deeper Network to projekt zdecentralizowanego VPN i infrastruktury web3. Wymaga przede wszystkim własnościowych urządzeń sprzętowych Deeper Connect. Moken to powiązana platforma do kopania i stakingu. Nie działa jako samo oprogramowanie.\n"
+  source: "12f422cc2aa8"
+deeper-network.short_description:
+  text: "Zdecentralizowany VPN - wymaga własnościowego urządzenia sprzętowego"
+  source: "c1e7f82b138f"
+deeper-network.earnings.notes:
+  text: "Wymaga sprzętu Deeper Connect ($200-500). Platforma Moken do kopania i stakingu. Nie działa jako samo oprogramowanie."
+  source: "ce760f192baa"
+deeper-network.payment.frequency:
+  text: "Na bieżąco"
+  source: "04f13cecbc50"
+deeper-network.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+deeper-network.referral.bonus.referrer:
+  text: "Prowizja od sprzedaży urządzenia"
+  source: "571e7524161f"
+deeper-network.referral.bonus.referee:
+  text: "5% zniżki na urządzenie Deeper Connect z kuponem SERGIO"
+  source: "5ad6de87c70a"
+deeper-network.rating.cons.0.text:
+  text: "Nagrody za kopanie są w DPR i zależą od wskaźnika kredytowego, który rośnie powoli albo dzięki stakingowi DPR."
+  source: "69856242403f"
+deeper-network.rating.cons.1.text:
+  text: "CashPilot nie uruchamia Deeper Network: korzystasz z własnego routera dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "b1ba1636070f"
+earnapp.description:
+  text: "EarnApp od Bright Data pozwala sprzedawać nieużywaną przepustowość i uzyskiwać dochód pasywny. Bright Data to największa na świecie sieć proxy, która obsługuje zbieranie danych dla firm z listy Fortune 500. CashPilot uruchamia go z własnego obrazu, który przy pierwszym uruchomieniu pobiera przypiętą wersję EarnApp z CDN Bright Data, sprawdza jej sha256 i uruchamia ją w trybie lite, tylko z UUID.\n"
+  source: "ae6a864e8bbb"
+earnapp.short_description:
+  text: "Udostępnianie przepustowości - wspierane przez Bright Data"
+  source: "1b9f049172c9"
+earnapp.docker.env.EARNAPP_UUID.label:
+  text: "UUID węzła"
+  source: "085ebaea0cd9"
+earnapp.docker.env.EARNAPP_UUID.description:
+  text: "ID Twojego węzła EarnApp: sdk-node-, a po nim 32 małe znaki szesnastkowe, tak jak wypisuje je 'earnapp showid'. Po wdrożeniu połącz go raz, otwierając https://earnapp.com/r/ z tym UUID na końcu po zalogowaniu się w EarnApp; niepołączony węzeł zarabia, ale nic nie trafia na Twoje saldo"
+  source: "8338c981f36e"
+earnapp.docker.health_signals.0.means:
+  text: "EarnApp ciągle nie może połączyć się ze swoimi serwerami i restartuje się, więc zarabia mało albo nic. Zrestartuj tę kopię; jeśli problem się powtarza, sprawdź połączenie internetowe tej maszyny."
+  source: "5a0ef895b7d5"
+earnapp.device_link.steps:
+  text: "Otwórz ten link po zalogowaniu się w EarnApp, aby dodać węzeł do swojego konta. Dopóki tego nie zrobisz, węzeł zarabia, ale nic nie trafia na Twoje saldo."
+  source: "61827aa4281b"
+earnapp.earnings.notes:
+  text: "Bardzo zależne od lokalizacji. Najwięcej zarabiają IP z USA i UE. Zarobki rosną wraz ze zużytą przepustowością."
+  source: "460beb388888"
+earnapp.payment.frequency:
+  text: "Na żądanie (dostępne automatyczne wypłaty: PayPal min. $10, Wise min. $10, Amazon min. $50)"
+  source: "31879a4f4518"
+earnapp.cashout.notes:
+  text: "Włącz raz automatyczne wypłaty (auto-redeem), a EarnApp sam zapłaci, gdy saldo osiągnie minimum danej metody: PayPal $10, Wise $10, Amazon $50. Płatności PayPal przychodzą od Bright Data Ltd. W październiku 2026 płatność PayPal dotarła w kwocie o około 2% niższej niż saldo zlecone do wypłaty."
+  source: "a409f6b02e58"
+earnapp.payout.notes:
+  text: "Saldo przechowuje EarnApp; wypłacane na Amazon/Wise/PayPal."
+  source: "7694deaf42b8"
+earnapp.collector.credential_hint:
+  text: "Zaloguj się na <a href='https://earnapp.com' target='_blank'>earnapp.com</a>, naciśnij F12 → Application → Cookies, skopiuj wartość <b>oauth-refresh-token</b>."
+  source: "9058ca90793f"
+earnapp.referral.bonus.referrer:
+  text: "10% ich zarobków dożywotnio, wypłacane ponad ich zarobki"
+  source: "981b8c4109b7"
+earnapp.rating.cons.0.text:
+  text: "Centrum pomocy EarnApp mówi, że instalowanie go w kontenerach Docker, maszynach wirtualnych, usługach hostingowych lub na serwerach domowych jest surowo zabronione, a właśnie tak uruchamia go CashPilot."
+  source: "f37a60bfdb30"
+earnapp.rating.cons.1.text:
+  text: "Ten sam artykuł pomocy mówi, że konto wykryte przy takim użyciu jest likwidowane bez uprzedzenia, a jego oczekujące płatności są anulowane."
+  source: "a800fa42ea79"
+earnapp.rating.pros.0.text:
+  text: "Nasza wypłata PayPal dotarła w październiku 2026, w kwocie o około 2% niższej niż saldo zlecone do wypłaty."
+  source: "8f3b4f399fe9"
+earnapp.rating.pros.1.text:
+  text: "Minimum $10 dla PayPal i Wise oraz automatyczne wypłaty, które realizują się same."
+  source: "9c8d5c20bc05"
+earnapp.rating.pros.2.text:
+  text: "EarnApp należy do Bright Data, a jego płatności PayPal przychodzą od Bright Data Ltd., firmy o podanej nazwie."
+  source: "ead3e8e87bba"
+earnfm.description:
+  text: "Earn.fm płaci Ci za udostępnianie przepustowości internetu. Kolektor zarobków loguje się e-mailem i hasłem przez Supabase. Lekki obraz Docker z prostym wdrożeniem (klient Docker używa osobnego tokena UUID).\n"
+  source: "1a3ca938fc72"
+earnfm.short_description:
+  text: "Udostępnianie przepustowości - logowanie e-mailem i hasłem, lekki klient"
+  source: "d74693321b51"
+earnfm.docker.env.EARNFM_TOKEN.label:
+  text: "Klucz API"
+  source: "23189d55f697"
+earnfm.docker.env.EARNFM_TOKEN.description:
+  text: "Zaloguj się na <a href=\"https://app.earn.fm\">app.earn.fm</a> → kliknij ikonę profilu (w prawym górnym rogu) → Account Settings → skopiuj API Key (w formacie UUID)"
+  source: "ffda6d89eec7"
+earnfm.earnings.notes:
+  text: "Stosunkowo nowa platforma. Zarobki zależą od lokalizacji i dostępnej przepustowości."
+  source: "8fc36f3ab110"
+earnfm.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+earnfm.cashout.notes:
+  text: "Minimum $15. Metody: USDT w sieci BEP20 lub Polygon (opłata $1) albo TRC20 (opłata $3), PayPal, karty podarunkowe Amazon lub Starbucks od $15 albo przelew bankowy od $1,000 z potrąceniem opłat za przelew. Przed pierwszą wypłatą wypełniasz profil rozliczeniowy (imię i nazwisko oraz adres), używany na potwierdzeniach wypłat."
+  source: "3df5624c8702"
+earnfm.payout.notes:
+  text: "Saldo przechowuje Earn.fm; wypłacane na żądanie."
+  source: "a4456fdb2585"
+earnfm.collector.credential_hint:
+  text: "Użyj e-maila i hasła swojego konta Earn.fm (tych samych co przy logowaniu na <a href='https://app.earn.fm' target='_blank'>app.earn.fm</a>)."
+  source: "cd2a625dffa6"
+earnfm.referral.bonus.referrer:
+  text: "10% ich zarobków dożywotnio"
+  source: "f0262d54b65c"
+earnfm.referral.bonus.referee:
+  text: "$5 salda na start"
+  source: "fb8d2b82e1e7"
+earnfm.rating.cons.0.text:
+  text: "Minimum $15, opłata od $1 do $3 przy USDT, a przelew bankowy dopiero od $1,000."
+  source: "1e1a5493f40f"
+earnfm.rating.cons.1.text:
+  text: "Przed pierwszą wypłatą wypełniasz profil rozliczeniowy z imieniem i nazwiskiem oraz adresem."
+  source: "bec69b884da2"
+earnfm.rating.cons.2.text:
+  text: "Recenzenci w 2025 zgłaszają, że wsparcie przez e-mail i Discord nie odpowiada; Trustpilot zaznacza, że Earn.fm nie odpowiedział na negatywne opinie."
+  source: "cb53e3b66c35"
+earnfm.rating.pros.0.text:
+  text: "Earn.fm publikuje własny obraz Docker, earnfm/earnfm-client."
+  source: "0be7297e2539"
+ebesucher.description:
+  text: "Ebesucher to platforma wymiany ruchu, na której zdobywasz kredyty, odwiedzając strony WWW przez zautomatyzowany surfbar. Działa jako rozszerzenie/dodatek przeglądarki. To nie jest klasyczna usługa udostępniania przepustowości — generuje ruch, automatycznie przeglądając strony.\n"
+  source: "d634f4bfa5b6"
+ebesucher.short_description:
+  text: "Surfbar wymiany ruchu - rozszerzenie przeglądarki"
+  source: "a1396a23b7e4"
+ebesucher.earnings.notes:
+  text: "Zarobki w punktach BTP wymienialnych na EUR. Tylko rozszerzenie przeglądarki."
+  source: "0fc656e16790"
+ebesucher.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+ebesucher.cashout.notes:
+  text: "Wypłata w euro przez PayPal lub przelew bankowy."
+  source: "abf928e1d583"
+ebesucher.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+ebesucher.rating.cons.0.text:
+  text: "CashPilot nie uruchamia eBesucher: to rozszerzenie przeglądarki, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "5dd331c10c14"
+ebesucher.rating.pros.0.text:
+  text: "Wypłaty od 2 euro przez PayPal lub SEPA, co najmniej raz w tygodniu, bez opłat."
+  source: "8513a736559f"
+ebesucher.rating.pros.1.text:
+  text: "eBesucher działa od 2002 roku."
+  source: "8cd95da74eec"
+ebesucher.rating.pros.2.text:
+  text: "Nota prawna (Impressum) podaje operatora, TurboAd GmbH, zarejestrowanego w Berlin-Charlottenburg (HRB 160730 B)."
+  source: "84cbddd4330b"
+flux.description:
+  text: "Flux to globalnie rozproszona infrastruktura obliczeniowa. Operatorzy węzłów stakują tokeny FLUX i udostępniają zasoby serwerowe. Trzy poziomy: Cumulus (1,000 FLUX), Nimbus (12,500 FLUX), Stratus (40,000 FLUX). Dostępne oficjalne obrazy Docker.\n"
+  source: "02dfc13a22fc"
+flux.short_description:
+  text: "Zdecentralizowana moc obliczeniowa - wymaga stakingu tokenów FLUX"
+  source: "ba2bca8449db"
+flux.earnings.notes:
+  text: "Wymaga stakingu 1,000+ FLUX (~$50-500 zależnie od ceny). Wyższe poziomy wymagają większego zabezpieczenia, ale zarabiają więcej."
+  source: "a8f6679daf85"
+flux.payment.frequency:
+  text: "Nagrody za bloki"
+  source: "590433237f8a"
+flux.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+flux.requirements.min_bandwidth:
+  text: "25 Mbps"
+  source: "414c5c9be937"
+flux.requirements.min_storage:
+  text: "220GB"
+  source: "fd0df44a57f5"
+flux.rating.cons.0.text:
+  text: "Najmniejszy poziom węzła wymaga 1,000 FLUX zablokowanych jako zabezpieczenie."
+  source: "a69f2d39e25d"
+flux.rating.cons.1.text:
+  text: "Nagroda za blok spada co roku o 10%, a przewodnik z 2026 ocenił nagrody na najniższym poziomie jako słabe w przeliczeniu na dolary."
+  source: "1d37f3333e5f"
+flux.rating.cons.2.text:
+  text: "CashPilot nie uruchamia Flux: korzystasz z własnego oprogramowania węzła dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "202359e2fa37"
+flux.rating.pros.0.text:
+  text: "Demon Flux jest otwartoźródłowy, na licencji MIT."
+  source: "1d44e028b43d"
+golem.description:
+  text: "Golem Network to zdecentralizowany rynek mocy obliczeniowej, na którym udostępniasz zasoby CPU i GPU w zamian za tokeny GLM. Dostawcy uruchamiają agenta Yagna, który zarządza wykonywaniem zadań w odizolowanych środowiskach (sandbox). To jeden z najstarszych projektów zdecentralizowanej mocy obliczeniowej (założony w 2016). Obsługuje zadania CPU, renderowanie na GPU i obliczenia ogólnego przeznaczenia. Płatności przez Polygon L2.\n"
+  source: "9a6843f56459"
+golem.short_description:
+  text: "Zdecentralizowany rynek mocy obliczeniowej - tokeny GLM przez agenta Yagna"
+  source: "88f817c25848"
+golem.earnings.notes:
+  text: "Zarobki zależą od sprzętu, cen i popytu na zadania. Węzły tylko z CPU zarabiają mniej. Węzły z GPU zarabiają więcej, ale wymagają karty NVIDIA. Uruchamiasz agenta dostawcy Yagna (nie obraz Docker). Płatności w sieci Polygon w tokenach GLM."
+  source: "07287d437d51"
+golem.payment.frequency:
+  text: "Po ukończeniu każdego zadania"
+  source: "1036d0c453bb"
+golem.cashout.notes:
+  text: "Zarabiasz tokeny GLM. Portfel do wypłat ustawiasz w konfiguracji dostawcy."
+  source: "b796f82bcc3a"
+golem.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+golem.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+golem.requirements.min_storage:
+  text: "20GB"
+  source: "f889bc49e99f"
+golem.rating.cons.0.text:
+  text: "CashPilot nie uruchamia Golem: samodzielnie instalujesz agenta dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Golem opisuje w dokumentacji uruchamianie dostawcy we własnym obrazie Docker."
+  source: "f3276e47b782"
+golem.rating.pros.0.text:
+  text: "Agent dostawcy, yagna, jest otwartoźródłowy, na licencji GPL-3.0."
+  source: "bcacb899db4f"
+golem.rating.pros.1.text:
+  text: "Bez konta: portfel do wypłat ustawiasz w konfiguracji dostawcy."
+  source: "46c47cc22b05"
+golem.rating.pros.2.text:
+  text: "Sieć działa od około dziesięciu lat."
+  source: "c2cf7bd5f171"
+golem.rating.pros.3.text:
+  text: "Polityka prywatności Golem podaje operatora, Golem Factory GmbH z Zug w Szwajcarii."
+  source: "bae79b651923"
+grass.description:
+  text: "Grass to zdecentralizowana sieć, która pozwala sprzedawać nieużywaną przepustowość na potrzeby danych do trenowania AI. Działa jako rozszerzenie przeglądarki i aplikacja desktopowa, kierując przez Twoje łącze zapytania web scrapingu, z których powstają uporządkowane zbiory danych. Z ponad 8.5 mln użytkowników jest jedną z największych sieci przepustowości DePIN. Zarabia tokeny GRASS na blockchainie Solana.\n"
+  source: "046951d812f9"
+grass.short_description:
+  text: "Udostępnianie przepustowości DePIN na dane dla AI - zarabia tokeny GRASS"
+  source: "75e8627ac8ff"
+grass.docker.env.GRASS_ACCESS_TOKEN.label:
+  text: "Token dostępu"
+  source: "f9db72ced1ee"
+grass.docker.env.GRASS_ACCESS_TOKEN.description:
+  text: "Zaloguj się na <a href=\"https://app.grass.io\">app.grass.io</a>, naciśnij F12 → Application → Local Storage → kliknij <code>https://app.grass.io</code> → skopiuj wartość <code>token</code>"
+  source: "635dbccffc75"
+grass.earnings.notes:
+  text: "Zarabia Grass Points wymienialne na tokeny GRASS w airdropach. Rzeczywista wartość w USD zależy od ceny tokena. Wymagane rozszerzenie przeglądarki lub aplikacja desktopowa."
+  source: "da61137319f8"
+grass.payment.frequency:
+  text: "Airdrop według epok"
+  source: "4feb7a217efd"
+grass.cashout.notes:
+  text: "Nagrody przychodzą jako okresowe dystrybucje odbierane w panelu Grass. Dystrybucja Stage 2 (aktywność od października 2024 do czerwca 2026) jest wypłacana w USDC: odbierz ją na app.grass.io/dashboard do 22 stycznia 2027 albo wcześniej, jeśli wszystkie przydziały zostaną odebrane przed tym terminem. Grass zatrzymuje nieodebrane nagrody."
+  source: "b46ff0a210b4"
+grass.payout.notes:
+  text: "Narastają PUNKTY; GRASS odbiera się w panelu Grass podczas okresowych airdropów."
+  source: "14879f750890"
+grass.collector.credential_hint:
+  text: "Zaloguj się na <a href='https://app.getgrass.io' target='_blank'>app.getgrass.io</a>, naciśnij F12 → Application → Local Storage, skopiuj wartość <b>accessToken</b>."
+  source: "67fc88ee45fb"
+grass.referral.bonus.referrer:
+  text: "20% punktów za czas działania bezpośrednio poleconych osób, 10% na drugim poziomie, 5% na trzecim"
+  source: "6f5f70c2d5cd"
+grass.obligations.claim-stage2-usdc.title:
+  text: "Odbierz swoje USDC z Grass Stage 2"
+  source: "da0c06c48ac0"
+grass.obligations.claim-stage2-usdc.loss:
+  text: "Grass zatrzymuje każdy przydział Stage 2 nieodebrany do 22 stycznia 2027, a okno może zamknąć się wcześniej, gdy wszystkie przydziały zostaną odebrane."
+  source: "bd617e4fca90"
+grass.obligations.claim-stage2-usdc.how:
+  text: "Zaloguj się na app.grass.io kontem używanym w Stage 2, aktywuj Grass Wallet, otwórz kartę Allocation i potwierdź. Odbieraj tylko na app.grass.io. Nie masz punktów ze Stage 2? Wybierz Nie dla mnie."
+  source: "803f5486c467"
+grass.rating.cons.0.text:
+  text: "Nagrody przychodzą tylko w sezonach airdropów. Operatorzy węzłów działających od dawna podawali szacunki za sezon 2 rzędu od kilku do kilkunastu dolarów."
+  source: "ebf2e9c97963"
+grass.rating.cons.1.text:
+  text: "Nagrody za sezon 2 nieodebrane do 22 stycznia 2027 przepadają na zawsze."
+  source: "2498f2f59530"
+grass.rating.cons.2.text:
+  text: "Pierwszy airdrop wywołał falę krytyki z powodu małych nagród za punkt, rozłożonych na ponad dwa miliony użytkowników."
+  source: "9ff2dd4985d5"
+grass.rating.cons.3.text:
+  text: "CashPilot nie uruchamia Grass: korzystasz z własnej aplikacji lub rozszerzenia dostawcy, więc CashPilot nie może ich za Ciebie wdrożyć ani zaktualizować. Ich regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "d318e920488a"
+grass.rating.pros.0.text:
+  text: "Pierwszy airdrop dotarł do prawie 1.5 mln adresów, które odebrały nagrody."
+  source: "a4c55e10affa"
+helium.description:
+  text: "Helium to uznana zdecentralizowana sieć bezprzewodowa. Początkowo hotspoty LoRaWAN, teraz rozszerzona o 5G. Wymaga dedykowanego sprzętu ($500+). Zarabia tokeny HNT/MOBILE. Zwrot z inwestycji mocno spadł - typowo $4-8/miesiąc.\n"
+  source: "18a56f04dce4"
+helium.short_description:
+  text: "Zdecentralizowana sieć bezprzewodowa - wymaga sprzętu, tokeny HNT"
+  source: "d0736e0a0920"
+helium.earnings.notes:
+  text: "Wymaga zakupu sprzętu za $500+. Zwrot z inwestycji mocno spadł. Nowi operatorzy przechodzą proces zatwierdzania."
+  source: "08f96e23aa20"
+helium.payment.frequency:
+  text: "Według epok"
+  source: "75743e03bad2"
+helium.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+helium.rating.cons.0.text:
+  text: "HIP 149 wycofało nagrody Proof-of-Coverage 6 lipca 2026; hotspoty IoT zarabiają teraz tylko za przesyłane dane, a ponad 114 000 z nich nie przesłało żadnych."
+  source: "e05c0111696f"
+helium.rating.cons.1.text:
+  text: "Model nagród Helium kilka razy zmieniano w głosowaniu, jego CEO ustąpił, a HNT spadł o około 96%."
+  source: "4a7f931ec013"
+helium.rating.cons.2.text:
+  text: "CashPilot nie uruchamia Helium: korzystasz z własnego hotspotu dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "4828f2a97494"
+helium.rating.pros.0.text:
+  text: "Oprogramowanie bramy hotspotu jest otwartoźródłowe, na licencji Apache-2.0."
+  source: "0bfd3d74c093"
+herominers-kas.description:
+  text: "Śledź niewypłacone saldo Kaspa, które HeroMiners przechowuje dla Twojego publicznego adresu wypłat. Uruchom własnego minera Kaspa i skieruj go na pulę. CashPilot odczytuje saldo puli i prosi Cię o potwierdzenie wypłat, gdy saldo spada.\n"
+  source: "d27cc4c96f02"
+herominers-kas.short_description:
+  text: "Pula kopania Kaspa, śledzona po adresie wypłat"
+  source: "92c5784dcf30"
+herominers-kas.payment.minimum_payout:
+  text: "1 KAS (do ustawienia)"
+  source: "d33ca7065ff9"
+herominers-kas.payment.frequency:
+  text: "Pula sprawdza Twój próg wypłaty co godzinę"
+  source: "eb78dff751e8"
+herominers-kas.cashout.notes:
+  text: "HeroMiners automatycznie wysyła środki na Twój adres, gdy osiągniesz wybrany próg. Najniższy próg to 1 KAS.\n"
+  source: "ec7d597521ec"
+herominers-kas.payout.notes:
+  text: "Saldo narasta w HeroMiners. Zanim potwierdzisz wypłatę w CashPilot, sprawdź w portfelu otrzymaną kwotę.\n"
+  source: "547b95fc6f1f"
+herominers-kas.collector.credential_hint:
+  text: "Wpisz pełny publiczny adres wypłat Kaspa, którego Twój miner używa w HeroMiners. Dołącz prefiks <b>kaspa:</b> i pomiń nazwę workera.\n"
+  source: "11b04c49529a"
+herominers-kas.requirements.note:
+  text: "Wymaga minera Kaspa skierowanego na HeroMiners"
+  source: "898e36e7a701"
+herominers-kas.disclosure.sells:
+  text: "moc obliczeniowa"
+  source: "b04a12f6483e"
+herominers-kas.disclosure.third_party_traffic:
+  text: "Nie. Twój miner wysyła do puli wyniki kopania."
+  source: "2e13888ee2d6"
+herominers-kas.disclosure.data_collected:
+  text: "Publiczne statystyki puli pokazują każdy adres wypłat i jego aktywność kopania."
+  source: "672cec455360"
+herominers-kas.disclosure.account_rules:
+  text: "Pula używa Twojego adresu wypłat zamiast konta."
+  source: "93ed10865cd2"
+herominers-kas.rating.cons.0.text:
+  text: "Pula pobiera prowizję 0.9% i wstrzymuje wypłaty do osiągnięcia Twojego progu."
+  source: "7eb2950589fa"
+honeygain.description:
+  text: "Udostępniaj nieużywaną przepustowość internetu i zarabiaj dochód pasywny. Honeygain kieruje przez Twoje łącze ruch związany z web intelligence, dostarczaniem treści i badaniami rynku. To jedna z najbardziej uznanych platform udostępniania przepustowości, z ponad 12 mln użytkowników i ponad 1 mln zrealizowanych wypłat.\n"
+  source: "b219f969ba34"
+honeygain.short_description:
+  text: "Udostępnianie przepustowości - najbardziej uznana platforma"
+  source: "c0542c471f29"
+honeygain.docker.env.HONEYGAIN_EMAIL.label:
+  text: "E-mail"
+  source: "969ccbd3cf63"
+honeygain.docker.env.HONEYGAIN_PASSWORD.label:
+  text: "Hasło"
+  source: "e7cf3ef4f17c"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.label:
+  text: "Nazwa urządzenia"
+  source: "155106be1173"
+honeygain.docker.env.HONEYGAIN_EMAIL.description:
+  text: "E-mail Twojego konta Honeygain"
+  source: "482869cea18f"
+honeygain.docker.env.HONEYGAIN_PASSWORD.description:
+  text: "Hasło Twojego konta Honeygain"
+  source: "f3ba1584b384"
+honeygain.docker.env.HONEYGAIN_DEVICE_NAME.description:
+  text: "Nazwa wyświetlana w Twoim panelu Honeygain"
+  source: "a3ba173cae35"
+honeygain.earnings.notes:
+  text: "Zależy od lokalizacji. IP z USA i UE zarabiają więcej. Maks. 10 urządzeń na konto."
+  source: "63596c227cd4"
+honeygain.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+honeygain.cashout.notes:
+  text: "Minimum $20 (20,000 kredytów). Dwie opcje: PayPal przez Tipalti, z opłatą około 15%, albo kredyty JumpTask bez opłat, wypłacane do portfela JumpTask. Zlecenie wymaga 6-cyfrowego kodu wysłanego e-mailem. Pierwsza wypłata PayPal ma status „waiting for details”, dopóki nie zarejestrujesz się w Tipalti przez link z e-maila. Ten link działa tylko raz, więc otwórz go, gdy możesz skończyć za jednym podejściem i masz telefon pod ręką: po ustawieniu hasła Tipalti każe potwierdzić numer telefonu komórkowego SMS-em (kody wygasają w ciągu kilku minut), a potem prosi o imię i nazwisko, adres, kraj i datę urodzenia oraz adres PayPal. Tipalti pobiera $2.02 za każdą płatność; wybierz USD, aby uniknąć jego opłaty za przewalutowanie 1.9-3%. Płatność następuje w ciągu 2 dni roboczych. Saldo znika z Twojego konta od razu po zleceniu, nawet gdy wypłata czeka na Tipalti. Każde kolejne logowanie do Tipalti wysyła nowy kod SMS, chyba że zaznaczysz opcję zapamiętania urządzenia na 30 dni. W październiku 2026 Tipalti nie poprosił odbiorcy w Hiszpanii o formularz podatkowy."
+  source: "553463d96535"
+honeygain.payout.notes:
+  text: "Saldo przechowuje Honeygain; wypłacane na żądanie."
+  source: "cd21f1bead11"
+honeygain.collector.credential_hint:
+  text: "Użyj e-maila i hasła swojego konta Honeygain (tych samych co w <a href='https://dashboard.honeygain.com' target='_blank'>dashboard.honeygain.com</a>)."
+  source: "fd0be22aeb14"
+honeygain.referral.bonus.referrer:
+  text: "Do 25% zarobków każdego poleconego znajomego w trybie Honeygain"
+  source: "30385153a66b"
+honeygain.referral.bonus.referee:
+  text: "$3 bonusu za rejestrację z tego linku"
+  source: "9ee5d2215305"
+honeygain.obligations.withdraw-before-24-month-write-off.title:
+  text: "Wypłać saldo Honeygain"
+  source: "0868662c5a12"
+honeygain.obligations.keep-active-6-months.title:
+  text: "Utrzymuj udostępnianie na urządzeniu Honeygain albo zrób wypłatę"
+  source: "936e03475b32"
+honeygain.obligations.withdraw-before-24-month-write-off.loss:
+  text: "Zarobki pozostają ważne przez 24 miesiące od osiągnięcia minimum $20. Potem Honeygain może umorzyć to, co nie zostało wypłacone."
+  source: "6a5d724f3154"
+honeygain.obligations.keep-active-6-months.loss:
+  text: "Jeśli aplikacja nie jest używana przez ponad 6 miesięcy, Honeygain uznaje niewypłacone saldo za wygasłe, nawet poniżej $20."
+  source: "1ef249cfc7e2"
+honeygain.obligations.keep-active-6-months.how:
+  text: "Utrzymuj udostępnianie na jednym urządzeniu albo zleć wypłatę. W trybie JumpTask stałe saldo jest normalne, więc wybierz Nie dla mnie."
+  source: "dc9f336970db"
+honeygain.rating.cons.0.text:
+  text: "Regulamin pozwala Honeygain umorzyć zarobki, które osiągnęły próg $20 i nie zostały wypłacone w ciągu 24 miesięcy, oraz uznać zarobki za wygasłe po sześciu miesiącach nieużywania."
+  source: "de362cb2d239"
+honeygain.rating.cons.1.text:
+  text: "Minimum to $20, a wypłaty PayPal idą przez Tipalti, który pobiera $2.02 za każdą płatność."
+  source: "bb6affb086a6"
+honeygain.rating.cons.2.text:
+  text: "Regulamin pozwala Honeygain zawiesić konto oraz wstrzymać lub umorzyć zarobki, które uzna za zgromadzone pod fałszywym pretekstem."
+  source: "d3b629e06af3"
+honeygain.rating.cons.3.text:
+  text: "Przed pierwszą wypłatą PayPal Tipalti każe potwierdzić numer telefonu komórkowego SMS-em i podać imię i nazwisko, adres oraz datę urodzenia."
+  source: "10ee30dd6977"
+honeygain.rating.cons.4.text:
+  text: "Regulamin mówi, że klienci biznesowi używają ruchu do zbierania publicznie dostępnych danych z sieci, ale nie wymienia żadnego klienta, a Ty nie możesz wiedzieć, który klient korzysta z Twojego łącza."
+  source: "afddb18119bc"
+honeygain.rating.cons.5.text:
+  text: "Odpowiedzi samego Honeygain na opinie o niskich zarobkach mówią, że zarobki zależą od popytu w sieci i lokalizacji; recenzenci piszą, że dojście do minimum $20 zajęło im bardzo dużo czasu."
+  source: "634fb331e65b"
+honeygain.rating.pros.0.text:
+  text: "Honeygain publikuje własny obraz Docker, honeygain/honeygain."
+  source: "ea44bd3c855c"
+honeygain.rating.pros.1.text:
+  text: "Regulamin podaje operatora, Honeygain UAB, zarejestrowanego w Wilnie na Litwie."
+  source: "579a169fcf35"
+honeygain.rating.pros.2.text:
+  text: "Strona prasowa Honeygain podaje, że firmę założono w 2019 roku."
+  source: "a3bfbdb33f54"
+ionet.description:
+  text: "io.net to zdecentralizowana sieć GPU do zadań AI/ML. Zbiera bezczynne karty GPU od użytkowników prywatnych i centrów danych. Aby zarobki były znaczące, wymaga karty NVIDIA z co najmniej 8GB VRAM. Obsługiwane są wdrożenia oparte na kontenerach.\n"
+  source: "5d017f77f0ac"
+ionet.short_description:
+  text: "Zdecentralizowana sieć GPU dla AI - wymagana karta NVIDIA"
+  source: "fe3c9f266aaf"
+ionet.earnings.notes:
+  text: "Wymaga karty NVIDIA z co najmniej 8GB VRAM. Deklaracje dla RTX 4090 to $500-1000/mies. (w praktyce prawdopodobnie mniej)."
+  source: "758e456cefa1"
+ionet.payment.frequency:
+  text: "Według epok"
+  source: "75743e03bad2"
+ionet.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+ionet.rating.cons.0.text:
+  text: "Nagrody dla dostawców były wypłacane z emisji tokenów niezależnie od opłaconych zadań, a właściciele GPU piszą, że ich karty przez większość czasu stoją bezczynnie."
+  source: "177f8e83c339"
+ionet.rating.cons.1.text:
+  text: "Nagrody są w tokenie IO, a w 2026 model wypłat zmieniono na mechanizm powiązany z dolarem."
+  source: "dfc046680d1d"
+ionet.rating.cons.2.text:
+  text: "W kwietniu 2024 około 1.8 mln fałszywych GPU próbowało dołączyć dzięki wyciekłemu tokenowi uwierzytelniającemu, a CEO ustąpił później, jeszcze przed premierą tokena."
+  source: "570b7951f0b2"
+ionet.rating.cons.3.text:
+  text: "CashPilot nie uruchamia io.net: korzystasz z własnego oprogramowania workera dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "1cac289c99ad"
+iproyal.description:
+  text: "IPRoyal Pawns pozwala zarabiać na udostępnianiu nieużywanej przepustowości. IPRoyal to uznany dostawca proxy, a Pawns to jego dział udostępniania przepustowości domowej. Obraz Docker z CLI przyjmuje dane logowania przez flagi wiersza poleceń. Nowy użytkownik, który zarejestruje się przez link polecający, dostaje $1 przy każdej z pierwszych trzech wypłat, łącznie do $3. Każda wypłata musi nastąpić w oknie czasowym od jednego do trzech tygodni, zależnym od lokalizacji. Okno zaczyna się w chwili rejestracji i zaczyna od nowa po każdej wypłacie. Jeśli okno zamknie się wcześniej, pozostałe bonusy przepadają.\n"
+  source: "b12878d5917a"
+iproyal.short_description:
+  text: "Udostępnianie przepustowości - do $3 bonusu przy pierwszych wypłatach"
+  source: "20091c7b26ed"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.label:
+  text: "E-mail"
+  source: "969ccbd3cf63"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.label:
+  text: "Hasło"
+  source: "e7cf3ef4f17c"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.label:
+  text: "Nazwa urządzenia"
+  source: "155106be1173"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.label:
+  text: "ID urządzenia"
+  source: "6e0a0b9d8c5e"
+iproyal.docker.env.IPROYALPAWNS_EMAIL.description:
+  text: "E-mail Twojego konta IPRoyal Pawns (przekazywany jako flaga -email)"
+  source: "181458e40c24"
+iproyal.docker.env.IPROYALPAWNS_PASSWORD.description:
+  text: "Hasło Twojego konta IPRoyal Pawns (przekazywane jako flaga -password)"
+  source: "957c9e825f2b"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_NAME.description:
+  text: "Nazwa wyświetlana w Twoim panelu Pawns (przekazywana jako flaga -device-name)"
+  source: "ea41d9e8d6e1"
+iproyal.docker.env.IPROYALPAWNS_DEVICE_ID.description:
+  text: "Unikalny identyfikator urządzenia (przekazywany jako flaga -device-id)"
+  source: "e3aa886b5ab0"
+iproyal.docker.health_signals.0.means:
+  text: "IPRoyal Pawns wyłączył to konto."
+  source: "a3a68b67f1aa"
+iproyal.docker.health_signals.1.means:
+  text: "Pawns widzi inne aktywne urządzenie na tym adresie IP i płaci tylko za jedno na IP, więc ta kopia działa, ale nic nie udostępnia i nic nie zarabia. Zatrzymaj każdą inną aplikację Pawns na tym IP: na innej maszynie, komputerze lub telefonie. Jeśli żadnej nie ma, poczekaj, aż Pawns usunie stare urządzenie, albo poproś wsparcie Pawns o jego zwolnienie."
+  source: "64e79b0e73b4"
+iproyal.earnings.notes:
+  text: "Zarobki zależą od lokalizacji i zużycia przepustowości. Domowe IP z USA i UE zarabiają więcej."
+  source: "424261bf08d4"
+iproyal.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+iproyal.cashout.notes:
+  text: "Minimum $5. Najpierw wybierz kraj; od niego zależą metody. Z Hiszpanii (październik 2026): PayPal 4% z minimalną opłatą $0.25, wypłacany przez Tremendous, który wysyła e-mailem link, pod którym podajesz imię i nazwisko oraz adres PayPal; USDT (BEP20, ERC20, TRC20) lub USDC (BEP20, ERC20) z opłatą sieciową $1; Bitcoin z minimalną opłatą $2; karty podarunkowe bez opłat. Pierwsza wypłata wymaga jednorazowej weryfikacji numeru telefonu SMS-em: otwiera ją Withdraw, a numer podajesz z kierunkowym kraju. Potem każda wypłata wymaga kodu wysłanego na e-mail konta i jest sprawdzana do 72 godzin przed wysłaniem."
+  source: "0430fae34eb5"
+iproyal.payout.notes:
+  text: "Saldo przechowuje IPRoyal Pawns; wypłacane na żądanie."
+  source: "e11da90d5216"
+iproyal.collector.credential_hint:
+  text: "Użyj e-maila i hasła swojego konta IPRoyal Pawns (tych samych co w <a href='https://pawns.app' target='_blank'>pawns.app</a>)."
+  source: "b9dcb3a01d17"
+iproyal.referral.bonus.referrer:
+  text: "$1 przy każdej z ich pierwszych trzech wypłat, łącznie do $3, jeśli każda nastąpi w swoim oknie 1-3 tygodni"
+  source: "ef642a125d1d"
+iproyal.referral.bonus.referee:
+  text: "$1 przy każdej z Twoich pierwszych trzech wypłat, łącznie do $3; jeśli przegapisz okno 1-3 tygodni, pozostałe wygasają"
+  source: "619d5960686c"
+iproyal.rating.cons.0.text:
+  text: "Regulamin mówi, że konto może zostać zablokowane bez uprzedzenia za nadużywanie warunków wypłat lub posiadanie wielu kont, a jego zarobki mogą wtedy nie zostać wypłacone."
+  source: "85027b205641"
+iproyal.rating.cons.1.text:
+  text: "Regulamin mówi, że Pawns nie dopuszcza do udostępniania ruchu żadnych serwerów, VPN ani usług proxy, i tylko jedno urządzenie na IP."
+  source: "449c1cdf793f"
+iproyal.rating.cons.2.text:
+  text: "PayPal kosztuje 4% (co najmniej $0.25) przez Tremendous, a każda wypłata jest sprawdzana do 72 godzin."
+  source: "56449f2db6ce"
+iproyal.rating.cons.3.text:
+  text: "Pierwsza wypłata wymaga weryfikacji numeru telefonu SMS-em, a każda wypłata kodu wysłanego e-mailem."
+  source: "862333dc3a50"
+iproyal.rating.cons.4.text:
+  text: "Polityka prywatności podaje operatora, Pawns.App Ltd (spółka 16043795 w Anglii i Walii), która według Companies House została zarejestrowana 28 października 2024, niecałe trzy lata temu."
+  source: "a7fcb7aea980"
+iproyal.rating.cons.5.text:
+  text: "Regulamin mówi, że Pawns i jego klienci biznesowi kierują ruch przez Twoje urządzenie i że nie możesz ustalić, który klient z niego korzysta."
+  source: "ca979ac10720"
+iproyal.rating.pros.0.text:
+  text: "Minimum $5, a karty podarunkowe bez opłat."
+  source: "0fa4f89bbd63"
+kryptex-pearl.description:
+  text: "Kop Pearl za pomocą KRig na jednej karcie NVIDIA. Kryptex przelicza nagrody na Bitcoin i przechowuje saldo na Twoim koncie, dopóki nie zlecisz wypłaty."
+  source: "4f7cb8fe1273"
+kryptex-pearl.short_description:
+  text: "Kop Pearl na karcie NVIDIA i otrzymuj środki na koncie w Bitcoinie"
+  source: "b0398c2b2485"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.label:
+  text: "E-mail konta Kryptex"
+  source: "5859b93a0ff5"
+kryptex-pearl.docker.env.WORKER_NAME.label:
+  text: "Nazwa workera"
+  source: "73f1a739a9a5"
+kryptex-pearl.docker.env.KRYPTEX_EMAIL.description:
+  text: "Zweryfikowany e-mail Twojego konta Kryptex."
+  source: "3809c99ec5ff"
+kryptex-pearl.docker.env.WORKER_NAME.description:
+  text: "Nadaj każdej maszynie inną nazwę na swoim koncie Kryptex."
+  source: "277ed1b0adb3"
+kryptex-pearl.payment.minimum_payout:
+  text: "0.00001 BTC przez Lightning (inne metody się różnią)"
+  source: "134616d8ae98"
+kryptex-pearl.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+kryptex-pearl.cashout.notes:
+  text: "Kryptex przelicza nagrody Pearl na BTC i przechowuje saldo na Twoim koncie. Zleć wypłatę w Kryptex. Każda metoda ma własne minimum i opłatę. Minimum dla Bitcoin Lightning to 0.00001 BTC."
+  source: "0b64f906f7db"
+kryptex-pearl.payout.notes:
+  text: "Kryptex przechowuje przeliczony Bitcoin na Twoim koncie, dopóki go nie wypłacisz."
+  source: "662740464ed7"
+kryptex-pearl.referral.bonus.referrer:
+  text: "20% przychodu puli Kryptex od poleconych użytkowników"
+  source: "de0f80ea1cd2"
+kryptex-pearl.requirements.note:
+  text: "Linux amd64, karta NVIDIA od generacji Volta (sm_70) wzwyż i NVIDIA Container Toolkit"
+  source: "0feb85dc1ef2"
+kryptex-pearl.requirements.hosting_note:
+  text: "Ta maszyna zgłasza łącze hostingowe. Przed kopaniem sprawdź regulamin swojego dostawcy. Niektórzy dostawcy, w tym Hetzner Cloud, tego zabraniają. Zanim zaufasz szacunkowi zysku, sprawdź swoje rzeczywiste koszty prądu."
+  source: "8896f33e3cc8"
+kryptex-pearl.mining.pool_fee_note:
+  text: "KRig pobiera 0% opłaty minera w Kryptex Pool. Kryptex podaje osobną opłatę puli Pearl PPS+ w wysokości 3%. Opłaty za wypłaty zależą od metody."
+  source: "f2e70f65b538"
+kryptex-pearl.disclosure.sells:
+  text: "moc obliczeniowa"
+  source: "b04a12f6483e"
+kryptex-pearl.disclosure.third_party_traffic:
+  text: "Nie. KRig wysyła wyniki kopania do Kryptex Pool."
+  source: "c5718af09746"
+kryptex-pearl.disclosure.data_collected:
+  text: "Kryptex widzi e-mail Twojego konta, nazwę workera, hashrate i adres IP."
+  source: "0a932e1163a6"
+kryptex-pearl.disclosure.isp_risk:
+  text: "Niektóre sieci i serwery DNS blokują połączenia z pulami kopania."
+  source: "6e2ea365730d"
+kryptex-pearl.disclosure.account_rules:
+  text: "Zweryfikuj e-mail swojego konta Kryptex, zanim zaczniesz na nie kopać."
+  source: "1990183a5b00"
+kryptex-pearl.rating.cons.0.text:
+  text: "Kryptex może zawiesić nieaktywne konta po sześciu miesiącach i usunąć je po roku."
+  source: "1a40d04b07ad"
+kryptex-pearl.rating.cons.1.text:
+  text: "Minimalne kwoty wypłat i opłaty zależą od metody."
+  source: "05d8f85527c7"
+kryptex-pearl.rating.pros.0.text:
+  text: "Licencja KRig pozwala pobrać wydanie i uruchamiać je z oprogramowania do kopania."
+  source: "c710f405be6f"
+kryptex-pearl.rating.pros.1.text:
+  text: "KRig wysyła udziały Pearl do Kryptex Pool przez opublikowany punkt końcowy TLS."
+  source: "fd21819f191a"
+mysterium.description:
+  text: "MystNodes (Mysterium Network) to zdecentralizowana sieć VPN i proxy oparta na technologii blockchain. Zarabiasz tokeny MYST, uruchamiając węzeł, który świadczy użytkownikom usługi VPN, proxy i scrapingu danych. Wymaga uprawnień NET_ADMIN, SETUID i SETGID oraz urządzenia TUN, którego używa we własnej przestrzeni nazw sieci na odgrodzonym barierą moście aplikacji zarobkowych. Ma wbudowany interfejs WWW do zarządzania węzłem. Działa zarówno na łączach domowych, jak i na VPS, ale bonus za polecenie jest wypłacany tylko za węzły na IP domowym.\n"
+  source: "7d3687f6edbd"
+mysterium.short_description:
+  text: "Zdecentralizowany węzeł VPN - oparty na blockchainie, działa na VPS"
+  source: "ad1413ac81fa"
+mysterium.docker.env.UI_ADDRESS.label:
+  text: "Adres WebUI"
+  source: "785ea576cfed"
+mysterium.docker.env.UDP_PORTS.label:
+  text: "Zakres portów UDP"
+  source: "531a2e328ce3"
+mysterium.docker.env.UI_ADDRESS.description:
+  text: "Adresy hosta, na których publikowany jest WebUI węzła (port 4449). 127.0.0.1 ogranicza go do tej maszyny. Aby dostać się do niego przez reverse proxy, dodaj adres, z którego łączy się proxy, po przecinku bez spacji: 127.0.0.1,172.18.0.1."
+  source: "45c712be523e"
+mysterium.docker.env.UDP_PORTS.description:
+  text: "Porty UDP, których węzeł używa do sesji VPN, w formacie start:end. Przekieruj ten sam zakres na routerze. Każda sesja zajmuje około dwóch portów, więc domyślne 30 obsłuży około 15 sesji naraz, więcej niż dostaje węzeł domowy. Szerszy zakres niczego nie naprawi i więcej kosztuje: każdy opublikowany port spowalnia start i usuwanie węzła (300 portów to około 12 s startu), CashPilot przyjmuje najwyżej 300, a przy domyślnym userland proxy Dockera każdy port zajmuje też około 2.5 MB pamięci. Sesje, które wszystkie się nie udają, to problem routera, a nie za mała liczba portów: zobacz „Routers that rewrite UDP source ports” w przewodniku Mysterium. Trzymaj się poniżej 32768: porty 32768-60999 to zakres efemeryczny Linuksa, w którym dowolny program na hoście może na chwilę zająć port, a jeden zajęty port uniemożliwia start węzła. Węzeł, który ma już zakres, zachowuje go."
+  source: "530524e2e718"
+mysterium.docker.critical_volumes.0.holds:
+  text: "Magazyn kluczy tożsamości węzła. Jego zniszczenie tworzy zupełnie nową tożsamość: węzeł traci reputację i wszystkie zarobki wciąż przypisane do starej."
+  source: "97272764fec0"
+mysterium.docker.health_signals.0.means:
+  text: "Węzeł nie może uruchomić sudo w swoim kontenerze, więc nie może skonfigurować interfejsu VPN ani zapory i każda sesja kończy się błędem przy konfiguracji: wygląda na aktywny, a nic nie zarabia. Kontener utworzono bez uprawnień SETUID i SETGID. Zaktualizuj CashPilot i workera, na którym działa ten węzeł, a potem wdróż ponownie Mysterium z panelu; tożsamość węzła jest w jego wolumenie danych i zostanie zachowana."
+  source: "8b06c9deb5fd"
+mysterium.docker.health_signals.1.means:
+  text: "W ciągu ostatnich 6 godzin żadna sesja VPN nie dotarła do tego węzła bezpośrednio. Każda przeszła na hole punching, a wielu kupujących nie może połączyć się w ten sposób, więc węzeł zarabia mniej. Jego porty UDP nie są osiągalne z internetu. Na routerze przekieruj zakres portów UDP ${UDP_PORTS} (start:end, ten sam zakres po obu stronach) na ${HOST_ADDRESS}. Komunikat zniknie sam, gdy jakaś sesja połączy się bezpośrednio."
+  source: "86ff9f3ffbb4"
+mysterium.docker.health_probe.checks.0.means:
+  text: "Monitoring Mysterium oznacza węzeł na ${WORKER_NAME} jako niesprawny, więc nie trafia on na listę węzłów, z której wybiera większość kupujących, nawet gdy jego własna kontrola mówi, że każdy port jest osiągalny. Najpierw upewnij się, że węzeł ma /dev/net/tun oraz SETUID/SETGID, bo ich brak daje taki sam błąd: https://geiserx.github.io/CashPilot/guides/mysterium/#running-but-not-earning-monitoring-failed-quality-0 Gdy to jest w porządku, częstą przyczyną jest router przed ${WORKER_NAME}, który przepisuje port źródłowy UDP odpowiedzi węzła, gdy tylko pakiet z zewnątrz dotrze do tego portu. Zobacz test w przewodniku: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports"
+  source: "f73f26fa929b"
+mysterium.docker.health_probe.checks.1.means:
+  text: "Ostatnie pięć sesji VPN węzła na ${WORKER_NAME} kończyło się po około minucie bez przesłania danych, więc węzeł nic nie zarabia, choć wygląda na aktywny. Prawdopodobną przyczyną jest router przed ${WORKER_NAME}: gdy pakiet z zewnątrz dotrze do portu, router przepisuje port źródłowy kolejnych odpowiedzi węzła z tego portu, a każda sesja zaczyna się od takiego pakietu (własnej kontroli portów węzła), więc kupujący odrzucają odpowiedzi węzła. Szerszy zakres portów nie pomoże. Zobacz test i rozwiązania w przewodniku: https://geiserx.github.io/CashPilot/guides/mysterium/#routers-that-rewrite-udp-source-ports Komunikat zniknie, gdy jakaś sesja prześle dane."
+  source: "bfb5d5c77bf3"
+mysterium.earnings.notes:
+  text: "Zarobki w tokenach MYST. IP domowe zarabiają znacznie więcej. WebUI węzła na porcie 4449 służy do zarządzania i domyślnie jest publikowane tylko na maszynie, na której działa (127.0.0.1); z innej maszyny najpierw otwórz tunel SSH (ssh -L 14449:127.0.0.1:4449 i adres maszyny, na której działa węzeł, a potem otwórz w przeglądarce http://127.0.0.1:14449; lokalny port 14449, aby nie kolidował z węzłem na Twojej własnej maszynie) albo dodaj adres do UI_ADDRESS (zobacz WebUI address w przewodniku Mysterium). VPS akceptowane. Przekierowanie portów UDP 23000-23029 (domyślne UDP_PORTS) jest mocno zalecane -- bez niego węzły dostają status Strict NAT, a wiele sesji VPN się nie udaje, co poważnie obniża przychód. Ważne: po pierwszym uruchomieniu ustaw portfel beneficjenta (rozliczeniowy) przez WebUI węzła lub CLI zgodnie ze swoim kontem mystnodes.com -- to łączy zarobki on-chain z Twoim panelem w chmurze."
+  source: "d969069dbae3"
+mysterium.payment.minimum_payout:
+  text: "5 MYST"
+  source: "6295c6ec8d64"
+mysterium.payment.frequency:
+  text: "Automatyczne rozliczenie on-chain za każdym razem, gdy węzeł ma 5 MYST nierozliczonych"
+  source: "a30a1b9140d0"
+mysterium.cashout.notes:
+  text: "Nie ma przycisku do naciśnięcia. Każdy węzeł sam rozlicza się w sieci Polygon, gdy uzbiera 5 MYST nierozliczonych, a około 21% pochłaniają opłaty (20% opłaty Hermes plus niewielka opłata transakcyjna), więc na portfel beneficjenta trafia z każdego rozliczenia mniej więcej 3.9 MYST. TequilAPI każdego węzła wyświetla jego rozliczenia pod /transactor/settle/history. Kwota „total earnings” w MystNodes obejmuje tylko ostatnie 30 dni; nie jest to ani saldo, ani suma od początku. Bonusowe MYST z programu nagród MystNodes nie rozliczają się same: odbierz je na stronie Rewards, według centrum pomocy MystNodes w ciągu 30 dni od dystrybucji."
+  source: "35e2f300cdf3"
+mysterium.payout.notes:
+  text: "Portfel beneficjenta ustawia się PO wdrożeniu, przez TequilAPI lub WebUI węzła -- nie przez zmienną środowiskową, więc nie da się go odczytać ze specyfikacji kontenera."
+  source: "1f9c67dc895a"
+mysterium.collector.credential_hint:
+  text: "Użyj e-maila i hasła swojego konta MystNodes (tych samych co w <a href='https://my.mystnodes.com' target='_blank'>my.mystnodes.com</a>)."
+  source: "33e956b7b9ad"
+mysterium.referral.bonus.referrer:
+  text: "5 MYST za każdego znajomego, którego węzeł zarobi 5 MYST (tylko IP domowe)"
+  source: "5b851641f2a7"
+mysterium.referral.bonus.referee:
+  text: "5 MYST, gdy Twój węzeł zarobi pierwsze 5 MYST (IP domowy, węzeł przypisany na mystnodes.com)"
+  source: "0368a5944c49"
+mysterium.obligations.claim-monthly-rewards-pool.title:
+  text: "Odbierz nagrody MystNodes z zeszłego miesiąca"
+  source: "2d467a0c60a5"
+mysterium.obligations.claim-monthly-rewards-pool.loss:
+  text: "Nagrody nieodebrane w ciągu 30 dni od comiesięcznej dystrybucji przepadają i wracają do puli następnego miesiąca."
+  source: "e98e4c5a604b"
+mysterium.obligations.claim-monthly-rewards-pool.how:
+  text: "Otwórz stronę Rewards i wymień swoje punkty na MYST."
+  source: "305cc1650e77"
+mysterium.disclosure.sells:
+  text: "Przepustowość. Twoje łącze służy jako węzeł wyjściowy sieci Mysterium, która sprzedaje usługi VPN, proxy ORAZ scrapingu danych. Ruch scrapingowy wychodzący z IP domowego najczęściej ściąga skargi, a nie możesz wybrać, który z tych trzech rodzajów obsługuje Twój węzeł."
+  source: "004fea96f9af"
+mysterium.disclosure.third_party_traffic:
+  text: "Tak. Obcy ludzie kierują swój ruch przez Twój adres IP — to jest właśnie produkt."
+  source: "7ba94dcdb6fd"
+mysterium.disclosure.data_collected:
+  text: "Tożsamość węzła (adres blockchain), Twój IP i przybliżona lokalizacja (kraj/miasto/dostawca internetu), które węzeł publikuje w sieci, aby kupujący mogli go wybrać."
+  source: "4a84822767e1"
+mysterium.disclosure.isp_risk:
+  text: "Realne i warte zrozumienia. Ruch innych osób wychodzi z Twojego łącza i jest przypisywany Tobie, więc wszystko, co robią, wygląda tak, jakby pochodziło z Twojej linii. Wiele umów z dostawcami internetu dla klientów domowych tego zabrania. Sprawdź swoją, zanim go uruchomisz."
+  source: "cc0999704d14"
+mysterium.disclosure.account_rules:
+  text: "Bez limitu urządzeń na konto i na IP."
+  source: "04181838cbbc"
+mysterium.rating.cons.0.text:
+  text: "Około 21% każdego rozliczenia pochłaniają opłaty: 20% opłaty Hermes plus opłata transakcyjna, a zarobki są wypłacane w tokenie MYST."
+  source: "b1995e485858"
+mysterium.rating.cons.1.text:
+  text: "Twój węzeł jest wyjściem dla klientów VPN, proxy i scrapingu danych Mysterium, a nie możesz wybrać, których z nich obsługuje."
+  source: "fec2996bf4fe"
+mysterium.rating.pros.0.text:
+  text: "Oprogramowanie węzła jest otwartoźródłowe, na licencji GPL-3.0."
+  source: "35cdbfdd396b"
+mysterium.rating.pros.1.text:
+  text: "Mysterium publikuje własny obraz Docker, mysteriumnetwork/myst."
+  source: "9d195a76812c"
+mysterium.rating.pros.2.text:
+  text: "Rozliczenia trafiają do portfela, który należy do Ciebie; nie jest potrzebny numer telefonu ani dokument tożsamości."
+  source: "5de52ab5bcc5"
+mysterium.rating.pros.3.text:
+  text: "Projekt węzła działa od 2017 roku."
+  source: "f4e75acc2227"
+mysterium.rating.pros.4.text:
+  text: "Strona Mysterium podaje, że sieć rozwija Blockdev AG z Zug w Szwajcarii."
+  source: "7764b2d4ac85"
+nodepay.description:
+  text: "Nodepay to sieć DePIN, która nagradza użytkowników za udostępnianie przepustowości przez rozszerzenie przeglądarki. Platforma jest za ochroną Cloudflare, co może utrudniać automatyczny dostęp. Użytkownicy zarabiają Nodepay Points, utrzymując rozszerzenie aktywne. Sieć skupia się na dostarczaniu infrastruktury danych do trenowania AI.\n"
+  source: "1fce773d6b34"
+nodepay.short_description:
+  text: "Udostępnianie przepustowości DePIN dla AI - rozszerzenie przeglądarki"
+  source: "7aa93479e001"
+nodepay.earnings.notes:
+  text: "Zarabia Nodepay Points; punkty użytkowników, którzy przejdą kontrole kwalifikacyjne Nodepay, są wymieniane na token NC. Ochrona Cloudflare może blokować automatyczne zbieranie danych. Wymagane rozszerzenie przeglądarki."
+  source: "6a4c4b37179f"
+nodepay.payment.frequency:
+  text: "Airdrop tokena NC (termin niepotwierdzony)"
+  source: "a52193cf5e1e"
+nodepay.cashout.notes:
+  text: "System oparty na punktach. Punkty użytkowników, którzy przejdą kontrole kwalifikacyjne Nodepay, są wymieniane na token NC, który wystartował w styczniu 2025."
+  source: "2ecac5788681"
+nodepay.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+nodepay.rating.cons.0.text:
+  text: "W podsumowaniu pierwszego sezonu Nodepay usunął ponad 300 000 kont uznanych za boty i anulował 17 mld punktów."
+  source: "d97fddce3502"
+nodepay.rating.cons.1.text:
+  text: "Nagrody to punkty wymieniane na token NC, więc ich wartość zależy od tokena."
+  source: "6c1338a876e7"
+nodepay.rating.cons.2.text:
+  text: "CashPilot nie uruchamia Nodepay: korzystasz z własnego rozszerzenia przeglądarki dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "08a3715c74a3"
+noderr.description:
+  text: "Noderr Micronodes to darmowy poziom wejściowy Noderr Protocol, projektu DeFi na Base L2. Mikrowęzeł to mały agent na zapasowym telefonie z Androidem, komputerze z Windows, Macu lub w przeglądarce Chromium. Na Androidzie udostępnia mobilne łącze telefonu: inny ruch Noderr wychodzi przez IP operatora komórkowego telefonu, więc potrzebna jest karta SIM z transmisją danych. Na komputerze lub w przeglądarce wykonuje dla protokołu zadania automatyzacji, używając wolnej mocy obliczeniowej. Nagrody mają być wypłacane w NODR, skalowane według zapisanej on-chain oceny czasu działania i niezawodności, ale w fazie beta sieć działa na testnecie Base Sepolia: nagrody dla węzłów nie są zasilone i dotąd żadnych nie wypłacono.\n"
+  source: "47989c8074a3"
+noderr.short_description:
+  text: "Darmowy mikrowęzeł (udostępnianie łącza na Androidzie, Windows, Mac, przeglądarka) - testnet, nagrody na razie niezasilone"
+  source: "0bce4476102f"
+noderr.earnings.notes:
+  text: "Beta na testnecie: nagrody dla węzłów nie są zasilone i dotąd żadnych nie wypłacono. Podawane na stronie APY 5-10% to cel projektowy. Wróć do tego, gdy sieć opuści Base Sepolia."
+  source: "83c78063f5b8"
+noderr.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+noderr.cashout.notes:
+  text: "Nagrody trafiają do własnego portfela węzła i odbiera się je z aplikacji lub dAppki. W fazie beta są to tokeny testnetu Base Sepolia bez wartości rynkowej."
+  source: "f7a6be9551ae"
+noderr.payout.notes:
+  text: "Aplikacja przy pierwszym uruchomieniu tworzy portfel węzła i wybija do niego darmowy, nieprzenoszalny (soulbound) Utility NFT. Zrób kopię zapasową portfela z aplikacji: utrata urządzenia oznacza utratę tożsamości węzła. W fazie beta nagrody są na Base Sepolia (testnet)."
+  source: "f12d6a765740"
+noderr.requirements.note:
+  text: "Android wymaga karty SIM z transmisją danych; klienci desktopowi i przeglądarkowi nie mają opublikowanych wymagań co do IP."
+  source: "f822611224eb"
+noderr.disclosure.sells:
+  text: "Zależy od urządzenia. Telefon z Androidem sprzedaje swoje łącze mobilne: inny ruch Noderr wychodzi przez adres IP operatora komórkowego telefonu i zużywa jego pakiet danych. Komputer z Windows, Mac lub przeglądarka sprzedaje wolną moc obliczeniową na to, co dostawca nazywa zadaniami automatyzacji mediów społecznościowych i treści."
+  source: "52166304a81f"
+noderr.disclosure.third_party_traffic:
+  text: "Tak. Na Androidzie inny ruch Noderr wychodzi przez mobilny adres IP Twojego telefonu; przed startem aplikacja prosi o zarejestrowaną zgodę, a udostępnianie możesz zatrzymać na tym samym ekranie. W przypadku klientów na Windows, Mac i przeglądarkę dostawca opisuje zadania automatyzacji i nie mówi, czy przenoszą one ruch innych osób."
+  source: "3b72c625497c"
+noderr.disclosure.data_collected:
+  text: "Adres portfela węzła oraz dane o czasie działania i wykonanych zadaniach trafiają on-chain jako ocena reputacji (TrustFingerprint). Dostawca mówi, że zadania są anonimizowane, działają w sandboxie, a klucze portfela nigdy nie opuszczają urządzenia. Nic bardziej szczegółowego nie opublikowano."
+  source: "1e3b0b7fb15d"
+noderr.disclosure.isp_risk:
+  text: "Na Androidzie udostępniane łącze to mobilny abonament operatora: dokumentacja samego dostawcy ostrzega, że udostępnianie może być niedozwolone w zasadach dopuszczalnego użytkowania niektórych operatorów, a udostępniany ruch zużywa limit pakietu. W przypadku klientów desktopowych i przeglądarkowych dostawca nic nie mówi o regulaminach dostawców internetu."
+  source: "9b1b4ea7d939"
+noderr.disclosure.account_rules:
+  text: "Jeden węzeł na urządzenie, każdy z własnym nieprzenoszalnym Utility NFT; uruchamianie kilku urządzeń jest dozwolone i zalecane. Nie opublikowano limitu na IP. Nie ma konta w zwykłym sensie: tożsamością jest portfel generowany przez aplikację przy pierwszym uruchomieniu."
+  source: "a5eb4c84d09b"
+noderr.rating.cons.0.text:
+  text: "Nagrody dla węzłów to niezasilone tokeny testnetu bez wartości rynkowej i żadnych nie wypłacono; APY 5 do 10% na jego stronie to cel projektowy."
+  source: "88ac818edde1"
+noderr.rating.cons.1.text:
+  text: "W przypadku klientów desktopowych i przeglądarkowych Noderr opisuje zadania automatyzacji i nie mówi, czy przenoszą one ruch innych osób."
+  source: "1baf89e17ec3"
+noderr.rating.cons.2.text:
+  text: "Dostawca mówi, że zadania są anonimizowane i działają w sandboxie, ale nie publikuje nic bardziej szczegółowego."
+  source: "27ee8e7619b9"
+noderr.rating.cons.3.text:
+  text: "Wciąż beta na testnecie Base Sepolia."
+  source: "72109abffaf2"
+noderr.rating.cons.4.text:
+  text: "CashPilot nie uruchamia Noderr: korzystasz z własnej aplikacji lub rozszerzenia dostawcy, więc CashPilot nie może ich za Ciebie wdrożyć ani zaktualizować. Ich regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "77c0f8f36c93"
+noderr.rating.pros.0.text:
+  text: "Bez konta: aplikacja generuje portfel przy pierwszym uruchomieniu."
+  source: "bf85f2f80b20"
+nodle.description:
+  text: "Nodle wykorzystuje Bluetooth w smartfonach do tworzenia infrastruktury IoT. Aplikacja w tle wykrywa i przekazuje dane z pobliskich urządzeń IoT, zarabiając tokeny NODL. Opisywany w Forbes, partnerstwa biznesowe z Vivendi i Hayden AI. Tylko na urządzenia mobilne (iOS i Android).\n"
+  source: "1bdb28d21b76"
+nodle.short_description:
+  text: "Przekaźnik IoT przez Bluetooth - aplikacja mobilna, nagrody w tokenach NODL"
+  source: "23e023813fc6"
+nodle.earnings.notes:
+  text: "Bardzo niskie zarobki. Aplikacja telefoniczna działająca w tle przez Bluetooth. Połączenie portfela może działać zawodnie."
+  source: "720e2341faa8"
+nodle.payment.frequency:
+  text: "Na bieżąco"
+  source: "04f13cecbc50"
+nodle.cashout.notes:
+  text: "NODL znajduje się we własnym portfelu aplikacji na ZKsync Era; sprawdzisz go w aplikacji lub w eksploratorze bloków ZKsync Era. Nodle opuścił swój parachain Polkadot, a most Polkadot-ZKsync zamknięto 31 grudnia 2025, więc NODL pozostałych po stronie Polkadot nie da się już przenieść na ZKsync."
+  source: "cd2b7f7914f7"
+nodle.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+nodle.referral.bonus.referrer:
+  text: "Nagroda NODL za każdego nowego aktywnego użytkownika, który dołączy z zaproszenia (Nodle nie podaje kwoty)"
+  source: "03308fe33661"
+nodle.rating.cons.0.text:
+  text: "Jeden recenzent pisze o około $3 zarobionych w ciągu trzech-czterech lat; inni zgłaszają gwałtowny spadek dziennych zarobków."
+  source: "70cce6bcf8bc"
+nodle.rating.cons.1.text:
+  text: "CashPilot nie uruchamia Nodle: korzystasz z własnej aplikacji telefonicznej dostawcy, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "6b6132c859c2"
+nosana.description:
+  text: "Nosana to zdecentralizowany rynek mocy obliczeniowej GPU zbudowany na Solanie. Łączy właścicieli GPU z popytem na zadania AI i płaci w tokenach NOS. RTX 3060 zarabia około $0.048/godz. Platforma skupia się na zadaniach wnioskowania AI i używa blockchaina Solana do planowania zadań i rozliczania płatności. Węzły uruchamiają skonteneryzowane zadania przez Nosana CLI.\n"
+  source: "6767fa2885ea"
+nosana.short_description:
+  text: "Moc obliczeniowa GPU na Solanie - tokeny NOS, RTX 3060 ~$0.048/godz."
+  source: "317724b762f3"
+nosana.earnings.notes:
+  text: "RTX 3060 ~$0.048/godz., mocniejsze karty zarabiają więcej. Zarobki zależą od dostępności zadań i modelu GPU. Wymaga karty NVIDIA, Linuksa, Dockera i Nosana CLI. Płatności w tokenie NOS na Solanie."
+  source: "77a9ba8e9b73"
+nosana.payment.frequency:
+  text: "Po ukończeniu każdego zadania"
+  source: "4d299a0eeedb"
+nosana.cashout.notes:
+  text: "Zarabiasz tokeny NOS na Solanie. Wypłata na skonfigurowany portfel."
+  source: "ac23db0b1896"
+nosana.payout.notes:
+  text: "Nosana domyślnie tworzy portfel Solana, więc większość użytkowników nigdy nie widziała jego adresu."
+  source: "07691c7278fc"
+nosana.requirements.min_bandwidth:
+  text: "50 Mbps"
+  source: "9da58f1eb55e"
+nosana.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+nosana.rating.cons.0.text:
+  text: "Każdy host musi zablokować stawkę NOS dopasowaną do godzinowej ceny swojego GPU."
+  source: "6271b4473eff"
+nosana.rating.cons.1.text:
+  text: "Hosty dostają zapłatę w NOS, więc zarobki w dolarach zmieniają się wraz z tokenem i popytem na ich kartę."
+  source: "f8836492f010"
+nosana.rating.cons.2.text:
+  text: "CashPilot nie uruchamia Nosana: korzystasz z własnego oprogramowania hosta dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "1a3ea3856a00"
+ocean.description:
+  text: "OCEAN to pula kopania Bitcoina bez konta: Twój miner loguje się, używając Twojego adresu Bitcoin jako nazwy użytkownika, a pula płaci na ten adres. CashPilot nie uruchamia tu minera. Odczytuje niewypłacone saldo, które OCEAN przechowuje dla Twojego adresu, więc widzisz, ile zarobił Twój ASIC (Bitaxe, Antminer), obok pozostałych dochodów. Niewypłacone saldo jest zarobione, ale jeszcze nie otrzymane: OCEAN wypłaca je on-chain, gdy przekroczy próg wypłaty.\n"
+  source: "5d25f28a3de5"
+ocean.short_description:
+  text: "Pula kopania Bitcoina, śledzona po adresie wypłat"
+  source: "7fb9a12a78b2"
+ocean.payment.minimum_payout:
+  text: "0.01048576 BTC"
+  source: "882384c2d99e"
+ocean.payment.frequency:
+  text: "Gdy blok podniesie Twoje saldo powyżej progu"
+  source: "8e74f0cc80ec"
+ocean.cashout.notes:
+  text: "OCEAN płaci on-chain na Twój adres, gdy niewypłacone saldo osiągnie próg. Wypłat przez Lightning (opcjonalnych, BOLT12) CashPilot nie wykrywa."
+  source: "2d0f3e2d7422"
+ocean.payout.notes:
+  text: "Niewypłacone jest zarobione, ale nie otrzymane, dopóki OCEAN nie wypłaci tego on-chain na ten adres, chyba że włączono wypłaty przez Lightning."
+  source: "ede2765fcbdd"
+ocean.collector.credential_hint:
+  text: "Twój adres wypłat BTC: nazwa użytkownika, której Twój miner używa w OCEAN, bez części <b>.workername</b>. Jest publiczny i nie daje dostępu do żadnych środków."
+  source: "53cb5da14daf"
+ocean.requirements.note:
+  text: "Wymaga koparki ASIC do Bitcoina (Bitaxe, Antminer) skierowanej na mine.ocean.xyz:3334"
+  source: "e2e956c27e48"
+ocean.disclosure.sells:
+  text: "moc obliczeniowa"
+  source: "b04a12f6483e"
+ocean.disclosure.third_party_traffic:
+  text: "Nie. Twój miner wysyła hashe do puli; nikt nie kieruje ruchu przez Twoje łącze."
+  source: "7239118f749a"
+ocean.disclosure.data_collected:
+  text: "Twój adres Bitcoin, wybrane przez Ciebie nazwy workerów, Twój hashrate i adres IP Twojego minera widziany przez pulę."
+  source: "22282404721c"
+ocean.disclosure.isp_risk:
+  text: "Miner utrzymuje jedno otwarte połączenie z pulą i zużywa mało przepustowości. Kosztem, na który trzeba uważać, jest prąd, a nie dostawca internetu."
+  source: "7bf5f9f6b028"
+ocean.disclosure.account_rules:
+  text: "Nie ma konta. Tożsamością jest adres, a jego statystyki każdy może odczytać na ocean.xyz."
+  source: "e3c8fd5863c1"
+ocean.rating.cons.0.text:
+  text: "Płatne tylko w Bitcoinie, a nic nie jest wypłacane on-chain, dopóki saldo nie osiągnie 0.01048576 BTC."
+  source: "9c9981f2fbd5"
+ocean.rating.cons.1.text:
+  text: "Opłata puli 2% albo 1%, gdy budujesz własne szablony bloków za pomocą DATUM."
+  source: "497f4f1ec62e"
+ocean.rating.cons.2.text:
+  text: "CashPilot nie uruchamia minera dla OCEAN: kierujesz na pulę własny sprzęt, a CashPilot tylko odczytuje saldo."
+  source: "eccc0b4b47ae"
+ocean.rating.pros.0.text:
+  text: "Bez konta i bez weryfikacji tożsamości. OCEAN prosi tylko o adres Bitcoin, na który płaci."
+  source: "38c4a7764846"
+packetstream.description:
+  text: "PacketStream to rynek przepustowości peer-to-peer, na którym możesz sprzedawać nieużywaną przepustowość. Napędza sieć proxy domowych używaną do badań rynku, monitorowania SEO i weryfikacji reklam. Prosta konfiguracja Docker, wymagany tylko CID (Client ID). Pamiętaj, że logowanie chronione CAPTCHA może utrudniać automatyczne zbieranie zarobków.\n"
+  source: "ee363f486228"
+packetstream.short_description:
+  text: "Udostępnianie przepustowości - prosta konfiguracja przez CID"
+  source: "583d6cb0e210"
+packetstream.docker.env.CID.label:
+  text: "Client ID"
+  source: "8726db013948"
+packetstream.docker.env.CID.description:
+  text: "Zaloguj się na <a href=\"https://packetstream.io/dashboard\">packetstream.io/dashboard</a> → kliknij Setup na pasku bocznym → Twój CID jest widoczny w poleceniu Docker"
+  source: "98b278da2ff7"
+packetstream.docker.health_signals.0.means:
+  text: "PacketStream odrzuca adres IP tej kopii jako niedomowy, więc nic ona nie zarabia. Uruchom ją na maszynie podłączonej do domowego łącza internetowego albo usuń tę kopię."
+  source: "fd7c962a931b"
+packetstream.docker.health_signals.1.means:
+  text: "PacketStream ma już innego klienta na tym adresie IP i płaci tylko za jednego na IP. Usuń tę kopię albo tę drugą, która dzieli z nią IP."
+  source: "ff7bc9892ef4"
+packetstream.earnings.notes:
+  text: "Płaci $0.10/GB za udostępnioną przepustowość. Zarobki mocno zależą od popytu na lokalizację Twojego IP."
+  source: "426cb6a734ee"
+packetstream.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+packetstream.cashout.notes:
+  text: "Tylko PayPal, minimum $5, opłata 3% pokazywana przed potwierdzeniem. Pierwsza wypłata zapisuje Twój e-mail PayPal; późniejsza zmiana wymaga potwierdzenia e-mailem i 7 dni oczekiwania, więc sprawdź adres przed potwierdzeniem. Zlecenia są sprawdzane i wysyłane w ciągu 7 dni; oczekujące zlecenie możesz anulować, a nowe możesz złożyć dopiero, gdy poprzednie zostanie wypłacone."
+  source: "ca9e35054ffd"
+packetstream.payout.notes:
+  text: "Saldo przechowuje PacketStream; wypłacane na żądanie."
+  source: "cf5fc7ddda3b"
+packetstream.collector.credential_hint:
+  text: "Zaloguj się na <a href='https://packetstream.io' target='_blank'>packetstream.io</a>, naciśnij F12 → Application → Cookies, skopiuj wartość ciasteczka <b>auth</b> (to JWT)."
+  source: "15bae9d455f5"
+packetstream.referral.bonus.referrer:
+  text: "20% ich zarobków z przepustowości (czasowy bonus Packeter)"
+  source: "964a44bb9e65"
+packetstream.referral.bonus.referee:
+  text: "10% bonusu przy pierwszej wpłacie kartą lub przez PayPal (klienci proxy)"
+  source: "b3485c0e6eef"
+packetstream.rating.cons.0.text:
+  text: "Recenzenci na Trustpilot w 2025 i 2026 zgłaszają wypłaty, które przychodzą z opóźnieniem albo wcale, a jeden wieloletni użytkownik pisze, że wypłaty zwolniły, a potem ustały; inni w 2026 zgłaszają, że dostali zapłatę."
+  source: "2d4eefe9c2a2"
+packetstream.rating.cons.1.text:
+  text: "Tylko PayPal, z opłatą 3% za wypłatę; użytkownicy w krajach, których PayPal nie obsługuje, nie mają innej metody."
+  source: "f31b2ebf4935"
+packetstream.rating.cons.2.text:
+  text: "Regulamin pozwala PacketStream wstrzymać, cofnąć lub unieważnić zarobki, które powiąże z oszustwem, manipulacją lub niedozwoloną działalnością."
+  source: "f9be9a406341"
+packetstream.rating.cons.3.text:
+  text: "Regulamin mówi, że klienci proxy i sam PacketStream kierują ruch przez Twoje łącze; nie opisuje żadnej weryfikacji zwykłych kupujących."
+  source: "fd4707690d2b"
+packetstream.rating.cons.4.text:
+  text: "Trustpilot zaznacza, że PacketStream nie odpowiedział na negatywne opinie; recenzenci zgłaszają e-maile bez odpowiedzi."
+  source: "4885bceb8df9"
+packetstream.rating.pros.0.text:
+  text: "PacketStream publikuje własny obraz Docker, packetstream/psclient."
+  source: "b358af0b3419"
+packetstream.rating.pros.1.text:
+  text: "Regulamin wymaga tylko urządzenia i łącza, które należą do Ciebie lub z których możesz korzystać."
+  source: "bde1b5ad5a6a"
+packetstream.rating.pros.2.text:
+  text: "Regulamin nie opisuje weryfikacji tożsamości; wypłata wymaga adresu PayPal."
+  source: "a05886b55edc"
+packetstream.rating.pros.3.text:
+  text: "Regulamin podaje PacketStream Inc. i prawo Kalifornii."
+  source: "7966bde559dd"
+packetstream.rating.pros.4.text:
+  text: "PacketStream działa od 2018 roku."
+  source: "70db8167d5bc"
+passiveapp.description:
+  text: "PassiveApp to platforma DePIN, która pozwala zarabiać nagrody w kryptowalutach i przez PayPal, udostępniając nieużywaną przepustowość i moc obliczeniową. W praktyce tylko Windows: własna strona pobierania producenta od co najmniej lutego 2025 bez zmian podaje Androida, iOS i Linuksa jako „coming soon”, a wersji na macOS nie ma — mimo że teksty marketingowe na tej samej stronie obiecują szerszą obsługę. Brak obrazu Docker.\n"
+  source: "e0f069b6b6e0"
+passiveapp.short_description:
+  text: "Przepustowość/moc obliczeniowa DePIN - tylko Windows, wypłaty w kryptowalutach i przez PayPal"
+  source: "e23871afdcd9"
+passiveapp.earnings.notes:
+  text: "Tylko aplikacja desktopowa na Windows (v1.0.x); Android/iOS/Linux producent zapowiada jako 'coming soon' od początku 2025 i nigdy ich nie wydał. Brak oficjalnego obrazu Docker."
+  source: "57f5891e1772"
+passiveapp.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+passiveapp.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+passiveapp.referral.bonus.referrer:
+  text: "10% ich zarobków dożywotnio"
+  source: "f0262d54b65c"
+passiveapp.rating.cons.0.text:
+  text: "CashPilot nie uruchamia PassiveApp: korzystasz z własnej aplikacji desktopowej dostawcy, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "2b27df807548"
+passiveapp.rating.pros.0.text:
+  text: "Strona PassiveApp podaje PayPal, kryptowaluty i karty podarunkowe od minimum $3."
+  source: "5fb04eb0efdc"
+proxybase.description:
+  text: "ProxyBase to platforma udostępniania przepustowości, która płaci użytkownikom w kryptowalutach za udostępnianie nieużywanego łącza internetowego. Klienta peer uwierzytelniasz tokenem dostępu (Access Token) z panelu. Najwięcej zarabiają IP domowe, ale obsługiwane są też IP z centrów danych. Oficjalny wieloarchitekturowy obraz Docker (amd64/arm64/armv7).\n"
+  source: "7a558682be11"
+proxybase.short_description:
+  text: "proxybase.org - udostępnianie przepustowości, wypłaty w kryptowalutach, logowanie tokenem dostępu. Żaden portfel nie jest generowany"
+  source: "5224bb16fee4"
+proxybase.docker.env.ID.label:
+  text: "Token dostępu"
+  source: "f9db72ced1ee"
+proxybase.docker.env.NAME.label:
+  text: "Nazwa urządzenia"
+  source: "6415f86bc24f"
+proxybase.docker.env.ID.description:
+  text: "Zaloguj się na <a href=\"https://peer.proxybase.org/dashboard/login?referral=nXzS3c6iTO\">peer.proxybase.org/dashboard</a> → skopiuj swój Access Token (widoczny w poleceniu Docker na stronie konfiguracji)"
+  source: "3571c2e99729"
+proxybase.docker.env.NAME.description:
+  text: "Dowolna nazwa (bez spacji) identyfikująca to urządzenie w Twoim panelu ProxyBase"
+  source: "906ebedecbc7"
+proxybase.docker.health_signals.0.means:
+  text: "ProxyBase od co najmniej pół godziny nie może połączyć się ze swoim przekaźnikiem, więc nic nie zarabia. Restart to naprawia; jeśli problem nie zniknie po restarcie, sprawdź, czy ta maszyna ma dostęp do internetu."
+  source: "cbe6b5ef771f"
+proxybase.earnings.notes:
+  text: "Wypłaty w kryptowalutach. Zarobki zależą od lokalizacji i zużycia przepustowości."
+  source: "39229c292994"
+proxybase.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+proxybase.cashout.notes:
+  text: "Strona podaje minimum $0.20, a zlecenie poniżej $1 przeszło w październiku 2026. Zlecenie zawsze wypłaca całe saldo, jako USDC w sieci Polygon, POL lub Litecoin, na adres, który wpisujesz. ProxyBase pokrywa opłatę sieciową."
+  source: "940e2e26e26b"
+proxybase.payout.notes:
+  text: "Zarobki narastają na KONCIE ProxyBase, do którego należy token dostępu, i są wypłacane z panelu na żądanie. Klient peer nie ma portfela, a kontener nie przechowuje stanu -- docker.volumes jest puste. Nie myl z proxybase-xyz (ProxyBase Markets, ta sama organizacja), który naprawdę tworzy lokalny portfel i deklaruje go jako krytyczny wolumen."
+  source: "3b630846bb51"
+proxybase.rating.cons.0.text:
+  text: "Sam ProxyBase napisał w sierpniu 2025, że jest nowy i nie jest jeszcze miejscem do maksymalizowania zarobków."
+  source: "9f5177f749d7"
+proxybase.rating.cons.1.text:
+  text: "ProxyBase zmienił klienta peer w 2026 i wyłączył stary backend, więc kontenery na starym obrazie dalej działały, ale przestały zarabiać."
+  source: "452b38e35357"
+proxybase.rating.cons.2.text:
+  text: "Tylko kryptowaluty, jako USDC w sieci Polygon, POL lub Litecoin, bez metody fiat. Minimum to $0.20, a opłatę sieciową płaci ProxyBase."
+  source: "2f15ff41b14c"
+proxybase.rating.pros.0.text:
+  text: "Nasza wypłata poniżej $1 przeszła w październiku 2026."
+  source: "00e8781a2252"
+proxybase.rating.pros.1.text:
+  text: "Wypłata wymaga tylko adresu wpisanego w zleceniu."
+  source: "985d03ae1755"
+proxybase.rating.pros.2.text:
+  text: "ProxyBase publikuje własny obraz klienta peer i obsługuje IP z centrów danych."
+  source: "cf916eded5f1"
+proxybase-xyz.description:
+  text: "ProxyBase Markets to rynek proxy SOCKS5 stworzony dla agentów AI. Sprzedawcy uruchamiają lekki demon CLI w Rust, który łączy się przez WebSocket i przekazuje ruch kupujących przez ich łącze internetowe, zarabiając USDC w sieci Tempo Chain za każdy sprzedany GB. Obsługuje tryb bezpośredni (własna przepustowość) i upstream (odsprzedaż zewnętrznych proxy) z automatycznym ponownym łączeniem. Kupujący kupują sesje proxy według kraju, dostawcy internetu i przepustowości. Płatności przechodzą przez Machine Payments Protocol (MPP) w sieci Tempo Chain. Link polecający jest dla kupujących: kupujący, który otworzy przez niego konsolę, dostaje 10% więcej przy pierwszej wpłacie.\n"
+  source: "f130fd8beea7"
+proxybase-xyz.short_description:
+  text: "proxybase.xyz - rynek SOCKS5 dla agentów AI, wypłaty w USDC. Generuje portfel, którego wolumen przechowuje jedyną kopię klucza"
+  source: "818327893d5b"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.label:
+  text: "URL API backendu"
+  source: "b5e52c6b16d5"
+proxybase-xyz.docker.env.PROXYBASE_BACKEND.description:
+  text: "Nadpisz URL API backendu (domyślnie https://api.proxybase.xyz)"
+  source: "c86a425db04b"
+proxybase-xyz.docker.setup:
+  text: "Kontener sam się konfiguruje przy pierwszym uruchomieniu: generuje portfel secp256k1 (BIP-39), uwierzytelnia się metodą challenge-response ECDSA i zaczyna sprzedawać przepustowość w trybie tylko bezpośrednim. Cały stan (portfel, token sesji, konfiguracja sprzedawcy) jest zapisywany w wolumenie <code>proxybase-data</code>. Przy pierwszym uruchomieniu sprawdź adres portfela w logach kontenera. Użyj <code>--upstream</code>, aby dodać ścieżki odsprzedaży zewnętrznych proxy.\n"
+  source: "687c4243b292"
+proxybase-xyz.docker.critical_volumes.0.holds:
+  text: "Plik klucza wygenerowanego portfela. Ten wolumen TO są pieniądze: nie ma kopii po stronie serwera, więc jego usunięcie niszczy razem z nim środki."
+  source: "e068cfb775cf"
+proxybase-xyz.earnings.notes:
+  text: "Zarobki zależą od liczby GB sprzedanych po stawkach rynkowych. IP z VPS i centrów danych zarabiają mniej niż domowe. Tryb wielu upstreamów pozwala łączyć własną przepustowość z zewnętrznymi proxy."
+  source: "a18f27f3f0dd"
+proxybase-xyz.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+proxybase-xyz.cashout.notes:
+  text: "Zablokuj zarobki poleceniem <code>proxybase-cli seller payout create</code>; otrzymasz je jako USDC w sieci Tempo Chain (Tempo MPP). Płaci na dowolny adres EVM, do którego masz klucz (Tempo to sieć EVM), bez niczego do podpisywania; dodaj sieć Tempo do portfela, aby zobaczyć USDC. Jeśli portfel nadal go nie pokazuje, trzeba ręcznie dodać token Tempo USDC: zaimportuj go po adresie kontraktu podanym przez Proxybase i sprawdź ten adres, zanim zaufasz saldu."
+  source: "c3daffcb3fa4"
+proxybase-xyz.payout.notes:
+  text: "Klient przy pierwszym uruchomieniu tworzy własny portfel."
+  source: "e4a9ee1e1f5c"
+proxybase-xyz.referral.bonus.referrer:
+  text: "15% każdej wpłaty poleconego kupującego, jako kredyt na Twoje własne sesje proxy"
+  source: "572fc74d91cd"
+proxybase-xyz.referral.bonus.referee:
+  text: "+10% przy pierwszej wpłacie kupującego"
+  source: "6bae1a2e30d6"
+proxybase-xyz.disclosure.sells:
+  text: "Przepustowość, jako proxy SOCKS5 sprzedawane kupującym na rynku ProxyBase."
+  source: "515b89c5bf43"
+proxybase-xyz.disclosure.third_party_traffic:
+  text: "Tak. Kupujący kierują swój ruch przez Twoje łącze — dokładnie to jest sprzedawane."
+  source: "4b867536efdb"
+proxybase-xyz.disclosure.data_collected:
+  text: "Adres portfela wygenerowany na Twojej maszynie oraz ilość przekazywanego ruchu."
+  source: "1434152ba77c"
+proxybase-xyz.disclosure.isp_risk:
+  text: "Realne i dotyczy bezpośrednio łączy domowych. Ruch proxy od nieznanych kupujących wychodzi z Twojego IP, więc skargi na nadużycia trafiają do Ciebie. Nic w tym katalogu nie ogranicza usługi do adresów z centrów danych, a IP domowe zarabiają więcej, więc zachęta działa tu w złą stronę: zanim uruchomisz to w domu, przeczytaj regulamin swojego dostawcy internetu."
+  source: "686837157681"
+proxybase-xyz.disclosure.account_rules:
+  text: "nieznane - dostawca nie publikuje limitu urządzeń na konto ani na IP, a katalog go nie deklaruje."
+  source: "761e9afbecd3"
+proxybase-xyz.rating.cons.0.text:
+  text: "Wypłaty są w USDC w sieci Tempo Chain, na dowolny adres EVM, do którego masz klucz."
+  source: "349f93fcfa2b"
+proxybase-xyz.rating.cons.1.text:
+  text: "Twoje łącze jest sprzedawane jako proxy SOCKS5 kupującym na rynku; nie znaleźliśmy opisu, jak kupujący są weryfikowani."
+  source: "2dec55ca610f"
+proxybase-xyz.rating.pros.0.text:
+  text: "Tytuł jego własnej strony o zarabianiu mówi, że nie wymaga KYC, a wypłata jest od $1."
+  source: "25b6dc3b4608"
+proxybase-xyz.rating.pros.1.text:
+  text: "ProxyBase publikuje własny obraz klienta i akceptuje łącza z centrów danych."
+  source: "ae81d006093f"
+proxylite.description:
+  text: "ProxyLite zarabia na Twoim ruchu internetowym, udostępniając przepustowość zweryfikowanym organizacjom. Działa zarówno na łączach domowych, jak i na VPS oraz w centrach danych. Prosta konfiguracja, wymaga tylko ID użytkownika z panelu. Oferuje hojną dożywotnią prowizję 15% za polecenia.\n"
+  source: "9d0fe8c60b32"
+proxylite.short_description:
+  text: "Udostępnianie przepustowości - 15% dożywotnio za polecenia, działa na VPS"
+  source: "25e7184f582e"
+proxylite.docker.env.USER_ID.label:
+  text: "ID użytkownika"
+  source: "7967e089a7b9"
+proxylite.docker.env.USER_ID.description:
+  text: "Zaloguj się na <a href=\"https://lk.proxylite.ru\">lk.proxylite.ru</a> → Twój User ID jest widoczny na głównej stronie panelu obok e-maila. Potrzebujesz konta? Zarejestruj się przez <a href=\"https://proxylite.ru/?r=KMUPRZIZ\">proxylite.ru/?r=KMUPRZIZ</a>"
+  source: "e6a7e1aa42c4"
+proxylite.earnings.notes:
+  text: "IP domowe zarabiają więcej. Łącza VPS i z centrów danych są akceptowane po niższych stawkach."
+  source: "d4c0149d1143"
+proxylite.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+proxylite.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+proxylite.referral.bonus.referrer:
+  text: "15% ich zarobków dożywotnio"
+  source: "3168431b6644"
+proxylite.rating.cons.0.text:
+  text: "Właściciel strony jest ukryty w rekordach domeny i nie znaleźliśmy za nią żadnej firmy z nazwy."
+  source: "7aa89b3713f9"
+proxylite.rating.pros.0.text:
+  text: "Minimum $5, w kryptowalutach lub przez PayPal."
+  source: "62a28acac77c"
+proxylite.rating.pros.1.text:
+  text: "ProxyLite publikuje obraz Docker, proxylite/proxyservice, i akceptuje łącza z centrów danych po niższej stawce."
+  source: "0d8c6faf88af"
+proxyrack.description:
+  text: "Program Peer od ProxyRack pozwala zarabiać, udostępniając przepustowość jako część ich sieci proxy. Każde urządzenie wymaga unikalnego 64-znakowego szesnastkowego UUID i opcjonalnie klucza API do automatycznej rejestracji urządzenia. Działa zarówno na łączach domowych, jak i na VPS oraz w centrach danych. Panel jest za Cloudflare, przez co klucz API może trzeba będzie pobrać ręcznie w przeglądarce.\n"
+  source: "16b74380bb2a"
+proxyrack.short_description:
+  text: "Udostępnianie przepustowości - UUID na urządzenie, działa na VPS"
+  source: "7c899dc1ba2d"
+proxyrack.docker.env.UUID.label:
+  text: "UUID urządzenia"
+  source: "dff993a2511b"
+proxyrack.docker.env.API_KEY.label:
+  text: "Klucz API"
+  source: "23189d55f697"
+proxyrack.docker.env.DEVICE_NAME.label:
+  text: "Nazwa urządzenia"
+  source: "155106be1173"
+proxyrack.docker.env.UUID.description:
+  text: "Unikalny 64-znakowy szesnastkowy ID dla każdego urządzenia. Wygeneruj go poleceniem: cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1"
+  source: "5de5d7264318"
+proxyrack.docker.env.API_KEY.description:
+  text: "Zaloguj się na <a href=\"https://peer.proxyrack.com\">peer.proxyrack.com</a> → klucz API jest widoczny na głównej stronie panelu (jeśli go podasz, urządzenie zarejestruje się automatycznie). Potrzebujesz konta? Zarejestruj się przez <a href=\"https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn\">peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>"
+  source: "96df71a6ca26"
+proxyrack.docker.env.DEVICE_NAME.description:
+  text: "Przyjazna nazwa urządzenia w panelu"
+  source: "df01af60b81c"
+proxyrack.docker.health_signals.0.means:
+  text: "Klient Proxyrack nie pobrał się przy starcie kontenera, więc kontener działa, ale nic nie zarabia. Restart pobierze go ponownie; jeśli problem nie zniknie po restarcie, sprawdź, czy ta maszyna ma dostęp do internetu."
+  source: "b5143d72ce35"
+proxyrack.device_link.steps:
+  text: "Zaloguj się do ProxyRack, otwórz Devices, wybierz Add device i wklej ten UUID. Dopóki urządzenie nie jest na Twoim koncie, nie zarabia dla nikogo. Jeśli podano klucz API, kontener rejestruje się sam: sprawdź, czy urządzenie jest tam na liście."
+  source: "54c4041903b5"
+proxyrack.earnings.notes:
+  text: "IP domowe zarabiają więcej niż z centrów danych. Panel za Cloudflare może utrudniać automatyczny dostęp."
+  source: "b6e36d751afd"
+proxyrack.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+proxyrack.cashout.notes:
+  text: "Zleć wypłatę w panelu. ProxyRack sprawdza ją w ciągu 72 godzin, a potem Tremendous wysyła Ci e-mailem nagrodę do wymiany na PayPal, kartę podarunkową lub przelew bankowy. Nie ma opcji kryptowalutowej."
+  source: "6201d57f50be"
+proxyrack.payout.notes:
+  text: "Saldo przechowuje ProxyRack; wypłacane na żądanie."
+  source: "08371935705e"
+proxyrack.collector.credential_hint:
+  text: "Zaloguj się na <a href='https://peer.proxyrack.com' target='_blank'>peer.proxyrack.com</a>, naciśnij F12 → Network, znajdź dowolne zapytanie API i skopiuj wartość nagłówka <b>Api-Key</b>. Potrzebujesz konta? Zarejestruj się przez <a href='https://peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn' target='_blank'>peer.proxyrack.com/ref/mpwiok3xlaxeycnn5znqlg7ipjeutxyxr6xl7vmn</a>."
+  source: "8f7aa2aa70be"
+proxyrack.requirements.note:
+  text: "Proxyrack podaje limit 500 urządzeń na KONTO i brak limitu na IP. IP z centrów danych są akceptowane, ale przenoszone do niższej stawki."
+  source: "7825f1f0ee9e"
+proxyrack.rating.cons.0.text:
+  text: "Centrum pomocy ProxyRack mówi, że usunięcie urządzenia zabiera z Twojego konta zarobki tego urządzenia, a wracają one tylko wtedy, gdy to samo urządzenie zostanie dodane ponownie."
+  source: "72de83fdde0e"
+proxyrack.rating.pros.0.text:
+  text: "ProxyRack publikuje własny obraz Docker, proxyrack/pop, i akceptuje IP z centrów danych po niższej stawce."
+  source: "278541f81053"
+repocket.description:
+  text: "Repocket pozwala zarabiać dochód pasywny, udostępniając nieużywaną przepustowość internetu. Najwięcej zarabiają IP domowe; IP z VPS i centrów danych są akceptowane po niższych stawkach. Maks. 5 urządzeń i 5 aktywnych sesji na konto. Kontener Docker uwierzytelnia się e-mailem konta i kluczem API z panelu Repocket (nie hasłem).\n"
+  source: "23f07d968c4a"
+repocket.short_description:
+  text: "Udostępnianie przepustowości - maks. 5 urządzeń, logowanie kluczem API"
+  source: "5851a7eb5769"
+repocket.docker.env.RP_EMAIL.label:
+  text: "E-mail"
+  source: "969ccbd3cf63"
+repocket.docker.env.RP_API_KEY.label:
+  text: "Klucz API (UUIDv4, nie hasło)"
+  source: "97ec806e0e5a"
+repocket.docker.env.RP_EMAIL.description:
+  text: "E-mail Twojego konta Repocket"
+  source: "24f7b113af79"
+repocket.docker.env.RP_API_KEY.description:
+  text: "Twój klucz API Repocket — zaloguj się na <a href=\"https://app.repocket.com/bandwidth-earnings\">app.repocket.com</a> i skopiuj klucz API widoczny na stronie bandwidth-earnings (to NIE jest hasło do konta). Potrzebujesz konta? Zarejestruj się przez <a href=\"https://link.repocket.com/b1zM\">link.repocket.com/b1zM</a>"
+  source: "aee9c20af748"
+repocket.earnings.notes:
+  text: "IP domowe zarabiają więcej. IP z VPS i centrów danych są akceptowane, ale po niższych stawkach."
+  source: "aca747392709"
+repocket.payment.minimum_payout:
+  text: "$4 ($2 po pierwszej wypłacie)"
+  source: "7e4440ec5ec8"
+repocket.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+repocket.cashout.notes:
+  text: "Repocket ustala minimum dla każdego konta: w październiku 2026 było to $4 przed pierwszą wypłatą i $2 po niej, znacznie poniżej $20, które kiedyś reklamował. Metody: Tremendous (na Twój e-mail) lub USDT w sieci Polygon. Każde zlecenie potwierdzasz linkiem z e-maila w ciągu 2 godzin, a naraz może oczekiwać tylko jedno zlecenie. W październiku 2026 Repocket odrzucił zlecenie Tremendous komunikatem „Please, message support”, a USDT w sieci Polygon przeszło."
+  source: "4257bc89db22"
+repocket.payout.notes:
+  text: "Saldo przechowuje Repocket; wypłacane na żądanie."
+  source: "433a8673024f"
+repocket.collector.credential_hint:
+  text: "Użyj e-maila i hasła swojego konta Repocket (tych samych co w <a href='https://app.repocket.com' target='_blank'>app.repocket.com</a>). Potrzebujesz konta? Zarejestruj się przez <a href='https://link.repocket.com/b1zM' target='_blank'>link.repocket.com/b1zM</a>."
+  source: "3512375c4c8d"
+repocket.referral.bonus.referrer:
+  text: "$2, gdy polecona osoba zarobi $7, a potem 5% jej zarobków dożywotnio"
+  source: "cac3b7365190"
+repocket.referral.bonus.referee:
+  text: "$2 bonusu do portfela przy rejestracji"
+  source: "0227076a427a"
+repocket.requirements.note:
+  text: "Repocket podaje limit pięciu urządzeń na KONTO, ale nie publikuje limitu urządzeń na IP. Liczba „2 urządzenia na IP” powtarzana na stronach z recenzjami nie ma źródła u dostawcy, więc CashPilot jej nie podaje jako faktu."
+  source: "cab1a64a99de"
+repocket.obligations.avoid-12-month-dormancy.title:
+  text: "Utrzymuj udostępnianie na urządzeniu Repocket albo wypłać saldo"
+  source: "3f73daf88013"
+repocket.obligations.avoid-12-month-dormancy.loss:
+  text: "Po 12 miesiącach bez logowania, wypłaty czy udostępniania przepustowości Repocket może anulować niewypłacone saldo."
+  source: "7a34159de0a3"
+repocket.obligations.avoid-12-month-dormancy.how:
+  text: "Utrzymuj udostępnianie na jednym urządzeniu, zaloguj się albo wypłać saldo. Jeśli przestajesz korzystać z Repocket, najpierw wypłać saldo."
+  source: "9a9c90982c1f"
+repocket.rating.cons.0.text:
+  text: "Kilku recenzentów na Trustpilot zgłasza anulowane wypłaty i salda wyzerowane; jeden pisze, że wsparcie powołało się na nieprawidłowe zarobki z przepustowości. Strona ocenia Repocket na 2.7 i zaznacza, że nie odpowiedział on na negatywne opinie."
+  source: "9c914f1442de"
+repocket.rating.cons.1.text:
+  text: "Recenzenci zgłaszają odrzucone wypłaty i konieczność upominania się o płatność."
+  source: "5a1bec3c2b0a"
+repocket.rating.cons.2.text:
+  text: "Zasady płatności Repocket pozwalają mu cofnąć, anulować lub trwale unieważnić zarobki, gdy tylko podejrzewa, że są nieprawidłowe, a także anulować niewypłacone zarobki nieaktywnego konta."
+  source: "e8734ecbadca"
+repocket.rating.cons.3.text:
+  text: "Te same zasady pozwalają Repocket w dowolnej chwili bez uprzedzenia dodawać, usuwać lub zmieniać metody wypłat; PayPal został usunięty."
+  source: "ea94189515f8"
+repocket.rating.cons.4.text:
+  text: "Regulamin mówi, że Repocket może w dowolnej chwili wymagać weryfikacji tożsamości lub konta, a prawo do wypłaty od niej zależy."
+  source: "2b636ca32b29"
+repocket.rating.cons.5.text:
+  text: "Regulamin mówi, że Repocket i jego partnerzy korzystają z przepustowości sieci, ale nie podaje, kim są partnerzy ani jak są weryfikowani."
+  source: "914de00dcae8"
+repocket.rating.cons.6.text:
+  text: "Trustpilot zaznacza, że Repocket nie odpowiedział na negatywne opinie, a recenzenci piszą, że wiadomości są ignorowane."
+  source: "d0919ce86cd1"
+repocket.rating.cons.7.text:
+  text: "Obecny regulamin podaje Repocket Pte. Ltd. w Singapurze; starszy nie podawał żadnej firmy."
+  source: "c5446659b3fd"
+repocket.rating.pros.0.text:
+  text: "Repocket publikuje własny obraz Docker, repocket/repocket, a jego regulamin dopuszcza kontenery, które należą do Ciebie."
+  source: "251ccf7350a1"
+repocket.rating.pros.1.text:
+  text: "Minimum jest niskie: $4 przed pierwszą wypłatą i $2 po niej."
+  source: "ff8121a15aeb"
+salad.description:
+  text: "Salad.io pozwala udostępniać GPU do rozproszonych zadań AI i zarabiać saldo Salad wymienialne na karty podarunkowe, gry lub gotówkę. Tylko Windows, z natywną aplikacją desktopową. Wymaga dedykowanego GPU (NVIDIA lub AMD). Platforma kieruje na Twoją maszynę wnioskowanie AI, renderowanie i inne zadania obliczeniowe, gdy jest bezczynna. To jedna z bardziej przyjaznych dla użytkownika platform udostępniania GPU.\n"
+  source: "09335baccea6"
+salad.short_description:
+  text: "Udostępnianie GPU dla AI - tylko Windows, wypłata w kartach podarunkowych lub gotówce"
+  source: "4665796e0965"
+salad.earnings.notes:
+  text: "Zarobki zależą od modelu GPU i dostępności pracy. RTX 3060 ~$1-3/dzień. Tylko Windows. Natywna aplikacja, bez obsługi Dockera. Do wymiany na karty podarunkowe, gry lub PayPal."
+  source: "7d2dd00d66b6"
+salad.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+salad.cashout.notes:
+  text: "PayPal lub karty podarunkowe przez sklep Salad."
+  source: "5128232e4f57"
+salad.payout.notes:
+  text: "Tylko PayPal i karty podarunkowe, nigdy kryptowaluty. Nie ma adresu portfela, więc CashPilot nie ma salda on-chain do pokazania."
+  source: "202ba88e23ba"
+salad.collector.credential_hint:
+  text: "Zaloguj się na <a href='https://app.salad.io' target='_blank'>app.salad.io</a>, naciśnij F12 → Application → Cookies, skopiuj wartość ciasteczka <b>auth</b>."
+  source: "06866b08538f"
+salad.obligations.earn-within-12-months.title:
+  text: "Zarób trochę Salad Reward Points albo wydaj saldo"
+  source: "8be6d7f8e071"
+salad.obligations.earn-within-12-months.loss:
+  text: "Jeśli konto nie zarobi żadnych Reward Points przez 12 miesięcy z rzędu, jego niewymienione saldo może wygasnąć."
+  source: "d5d6383270a0"
+salad.obligations.earn-within-12-months.how:
+  text: "Uruchom aplikację Salad, aż zacznie zarabiać, albo wydaj całe saldo w Salad Storefront. Wydanie tylko części nie resetuje 12 miesięcy."
+  source: "7f3ce451f908"
+salad.rating.cons.0.text:
+  text: "CashPilot nie uruchamia Salad: korzystasz z własnej aplikacji desktopowej dostawcy, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "1cd8e42748e0"
+salad.rating.pros.0.text:
+  text: "Kilku recenzentów na Trustpilot w październiku i listopadzie 2026 zgłasza, że wypłaty PayPal przychodzą szybko, u niektórych więcej niż raz; jeden recenzent z tego samego okresu pisze, że kolejne próby wypłaty się nie udały."
+  source: "b3e38d8e84a9"
+sentinel-dvpn.description:
+  text: "Sentinel to blockchain Layer 1 w ekosystemie Cosmos do zdecentralizowanego VPN. Operatorzy węzłów sprzedają przepustowość użytkownikom VPN z elastycznymi cenami (za GB lub za godzinę). Dostępny jest oficjalny przewodnik wdrożenia w Dockerze. Projekt działa od dawna i ma aktywną społeczność.\n"
+  source: "579e4912549d"
+sentinel-dvpn.short_description:
+  text: "Zdecentralizowany VPN w Cosmos - operatorzy węzłów sprzedają przepustowość"
+  source: "d67d845ed44c"
+sentinel-dvpn.earnings.notes:
+  text: "Operatorzy sami ustalają ceny za GB lub za godzinę. Zarobki zależą od popytu użytkowników VPN w Twoim regionie."
+  source: "81a547302ace"
+sentinel-dvpn.payment.frequency:
+  text: "Za sesję"
+  source: "02466db591a8"
+sentinel-dvpn.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+sentinel-dvpn.requirements.min_bandwidth:
+  text: "10 Mbps"
+  source: "9941480e122c"
+sentinel-dvpn.rating.cons.0.text:
+  text: "Płatności są w tokenie P2P, a 20% każdej płatności za przepustowość trafia do stakerów, a nie do hosta węzła."
+  source: "8f438c673bed"
+sentinel-dvpn.rating.cons.1.text:
+  text: "Token zmienił nazwę z SENT na DVPN w 2021 i z DVPN na P2P w 2025."
+  source: "fe00f1052e84"
+sentinel-dvpn.rating.cons.2.text:
+  text: "CashPilot nie uruchamia Sentinel: korzystasz z własnego oprogramowania węzła dostawcy, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Jego regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "e15d3cbbb7f0"
+sentinel-dvpn.rating.pros.0.text:
+  text: "Sentinel publikuje kod źródłowy węzła na własnej licencji open source."
+  source: "1ec84f6772aa"
+sia-hostd.description:
+  text: "Sia to zdecentralizowany rynek przestrzeni dyskowej prowadzony przez Sia Foundation (szwajcarską organizację non-profit), działający od 2015. Uruchom oficjalny węzeł hostd Fundacji, aby wynajmować wolne miejsce na dysku i zarabiać Siacoin z kontraktów na przechowywanie i transfer. Zanim węzeł zacznie zarabiać, musisz kupić trochę Siacoin: hosty blokują zabezpieczenie (collateral) przy każdym kontrakcie i płacą opłatę za każdy dowód przechowywania. Zabezpieczenie wraca po zakończeniu kontraktu i jest spalane, jeśli węzeł przestanie działać lub utraci dane, więc potrzebna jest maszyna działająca bez przerwy (Sia podaje co najmniej 95% czasu działania). Zarobki zależą od tego, ile danych najemcy faktycznie przechowują; Sia zaleca cenę $1 za TB miesięcznie, więc nadaje się to do maszyn z dużymi wolnymi dyskami, a nie do małych VPS.\n"
+  source: "fbf5a0d9cc23"
+sia-hostd.short_description:
+  text: "Węzeł przestrzeni dyskowej Sia Foundation - oficjalny obraz Docker, zarabiaj Siacoin"
+  source: "b0ced885ebf3"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.label:
+  text: "Fraza seed portfela"
+  source: "8dd38106e7a8"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.label:
+  text: "Hasło do panelu"
+  source: "0d698d17c770"
+sia-hostd.docker.env.SIA_STORAGE_DIR.label:
+  text: "Katalog danych"
+  source: "e5e630e5c8d5"
+sia-hostd.docker.env.HOSTD_WALLET_SEED.description:
+  text: "Fraza seed BIP-39, która kontroluje portfel Siacoin hosta. Wygeneruj ją poleceniem `docker run --rm ghcr.io/siafoundation/hostd seed` i zrób jej kopię zapasową -- to JEDYNY sposób dostępu do zarobków"
+  source: "b6567587dec1"
+sia-hostd.docker.env.HOSTD_API_PASSWORD.description:
+  text: "Hasło do interfejsu WWW hostd i lokalnego API (BasicAuth). Dowolne długie hasło"
+  source: "8008360c6e3f"
+sia-hostd.docker.env.SIA_STORAGE_DIR.description:
+  text: "Ścieżka na hoście, na Twoim największym dysku, gdzie przechowywane są dane najemców (np. /srv/sia). Wymaga co najmniej 256GB wolnego miejsca"
+  source: "f6d6275a3a95"
+sia-hostd.docker.setup:
+  text: "Przy wdrożeniu CashPilot tworzy nowy portfel na maszynie, na której działa węzeł, i jeden raz pokazuje jego frazę seed: zapisz ją. Aby użyć portfela, który już masz, wklej zamiast tego jego frazę seed. Po wdrożeniu wyślij trochę Siacoin na portfel węzła na zabezpieczenie i opłaty, a potem w panelu dodaj folder danych (/storage), ustaw ceny i ogłoś hosta.\n"
+  source: "63ba7c0d2fe1"
+sia-hostd.docker.critical_volumes.0.holds:
+  text: "Fraza seed portfela (hostd.yml), baza danych portfela, ustawienia hosta i stan kontraktów. Ich utrata oznacza utratę tożsamości węzła i śledzenia przychodów z kontraktów; zapisana przez Ciebie fraza seed jest wtedy jedynym sposobem odzyskania środków."
+  source: "d4893e66d686"
+sia-hostd.docker.critical_volumes.1.holds:
+  text: "Przechowywane dane najemców. Ich utrata powoduje niezaliczenie dowodów przechowywania i przepadek zabezpieczenia zablokowanego przy tych kontraktach."
+  source: "27609c8f3b56"
+sia-hostd.earnings.notes:
+  text: "Hosty same ustalają ceny. Sia zaleca $1 za przechowywany TB miesięcznie i ponad $5 za pobrany TB, a 3.9% każdej wypłaty z kontraktu trafia do posiadaczy Siafund. Przychód rośnie wraz z ilością danych najemców trafiających na węzeł, która zaczyna się od zera i rośnie wraz z czasem działania i ceną. Zabezpieczenie (Sia sugeruje 2x cena przechowywania) jest blokowane przy każdym kontrakcie i zwracane po jego pomyślnym zakończeniu.\n"
+  source: "c75b5ef120a2"
+sia-hostd.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+sia-hostd.cashout.notes:
+  text: "Zarobki narastają we własnym portfelu Siacoin hosta (kontrolowanym frazą seed). Wymień SC na giełdzie i stamtąd wypłać na konto bankowe lub kartę; nie ma zlecenia wypłaty po stronie dostawcy.\n"
+  source: "d7cd78aecc51"
+sia-hostd.payout.notes:
+  text: "Środki są w kontrolowanym frazą seed portfelu Sia wewnątrz węzła. Fraza seed jest tylko w wolumenie danych hostd na maszynie, na której działa; CashPilot nigdy jej nie przechowuje. Fraza zapisana przy tworzeniu portfela to jedyny sposób odzyskania.\n"
+  source: "1ebb53c82965"
+sia-hostd.requirements.note:
+  text: "Stały publiczny adres z przekierowanymi portami 9981 (TCP, konsensus) i 9984 (TCP i UDP, kontrakty najemców). Hosting w centrach danych i na VPS jest w Sia powszechny. Portfel potrzebuje Siacoin, zanim węzeł będzie mógł przyjmować kontrakty."
+  source: "c703c483d7de"
+sia-hostd.requirements.min_storage:
+  text: "256GB"
+  source: "713d8025cf43"
+sia-hostd.disclosure.sells:
+  text: "Miejsce na dysku i przepustowość do jego udostępniania."
+  source: "feb277d10fc3"
+sia-hostd.disclosure.third_party_traffic:
+  text: "Nie. Najemcy przechowują zaszyfrowane fragmenty plików na Twoim dysku i pobierają je z powrotem. Inni ludzie nie kierują dowolnego ruchu przez Twój IP."
+  source: "b382f0dedda8"
+sia-hostd.disclosure.data_collected:
+  text: "Adres Twojego portfela Sia, klucz publiczny hosta oraz publiczny IP:port, który węzeł ogłasza, aby najemcy mogli się z nim połączyć."
+  source: "ed668332f74c"
+sia-hostd.disclosure.isp_risk:
+  text: "Stały ruch wysyłania i pobierania na łączu, podobnie jak przy każdym serwerze danych; żaden zanonimizowany ruch WWW osób trzecich nie jest przypisywany Tobie."
+  source: "5667d9bb1bbd"
+sia-hostd.disclosure.account_rules:
+  text: "Bez zezwoleń: bez rejestracji i konta. Zabezpieczenie jest spalane, jeśli węzeł nie dostarczy dowodów przechowywania, bo przestał działać lub utracił dane."
+  source: "b397ece8c8b1"
+sia-hostd.rating.cons.0.text:
+  text: "Zarobki to Siacoin w Twoim własnym portfelu: nie ma wypłaty na konto bankowe, więc sprzedajesz je samodzielnie na giełdzie."
+  source: "deab002c0c25"
+sia-hostd.rating.cons.1.text:
+  text: "Zabezpieczenie jest blokowane przy każdym kontrakcie i spalane, jeśli host nie dostarczy dowodów przechowywania, bo przestał działać lub utracił dane."
+  source: "bba604ff84a8"
+sia-hostd.rating.cons.2.text:
+  text: "Używane jest tylko około 30% przestrzeni oferowanej w sieci, więc nowy host konkuruje o niewielki popyt."
+  source: "9d6e510fc17d"
+sia-hostd.rating.cons.3.text:
+  text: "Najemcy przechowują zaszyfrowane fragmenty plików i nikt nie kieruje ruchu przez Twój IP, ale nie znaleźliśmy miejsca, w którym Sia podaje, kim są najemcy ani jak są weryfikowani."
+  source: "7c08211baa39"
+sia-hostd.rating.pros.0.text:
+  text: "hostd jest rozwijany otwarcie przez Sia Foundation od 2022."
+  source: "fc5085d984bd"
+sia-hostd.rating.pros.1.text:
+  text: "hostd jest otwartoźródłowy, na licencji MIT."
+  source: "a1f7384689ac"
+sia-hostd.rating.pros.2.text:
+  text: "Sia Foundation publikuje hostd jako obraz kontenera."
+  source: "9bff2e45b3d5"
+sia-hostd.rating.pros.3.text:
+  text: "Bez zezwoleń: bez rejestracji i konta."
+  source: "f1f8d4114f1e"
+spide.description:
+  text: "Spide to usługa udostępniania przepustowości, która pozwala zarabiać na nieużywanej przepustowości internetu. Używa opcjonalnego ID maszyny do śledzenia urządzenia. Dostępna przez społecznościowe obrazy Docker z projektu income-generator.\n"
+  source: "d8baa5c2cd58"
+spide.short_description:
+  text: "Udostępnianie przepustowości - oparte na ID maszyny"
+  source: "d991c5cf3130"
+spide.docker.env.SPIDE_MACHINE_ID.label:
+  text: "ID maszyny"
+  source: "ef6727e4053f"
+spide.docker.env.SPIDE_MACHINE_ID.description:
+  text: "ID maszyny dla istniejącego, już zarejestrowanego urządzenia (generowany automatycznie, jeśli puste)"
+  source: "748bd7895b01"
+spide.earnings.notes:
+  text: "Dostępnych jest niewiele informacji. Zarobki zależą od lokalizacji."
+  source: "5f1a99c2e9aa"
+spide.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+spide.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+spide.referral.bonus.referrer:
+  text: "10% ich zarobków"
+  source: "4a3b60ba9934"
+spide.referral.bonus.referee:
+  text: "$5 bonusu za rejestrację"
+  source: "ed267fc12fb2"
+spide.requirements.note:
+  text: "Ruch przez jeden publiczny IP jest dzielony między urządzenia, które z niego korzystają, więc drugie urządzenie na tym samym łączu nic nie dodaje."
+  source: "20f95ea262c7"
+spide.rating.cons.0.text:
+  text: "CashPilot nie uruchamia Spide: korzystasz z własnej aplikacji dostawcy, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "5e58a2dc6f66"
+srbminer-multi.description:
+  text: "Kop Pearl, Zano lub Ravencoin na jednej karcie NVIDIA. CashPilot przy pierwszym uruchomieniu pobiera oficjalne wydanie SRBMiner-Multi i sprawdza jego SHA-256. Wybrana przez Ciebie pula płaci na Twój publiczny adres wypłat. SRBMiner-Multi zatrzymuje 2% czasu haszowania przy Pearl i 0.85% przy dwóch pozostałych. Prąd może kosztować więcej niż zarobione monety."
+  source: "a32202ef76d4"
+srbminer-multi.short_description:
+  text: "Kop Pearl i inne monety GPU na karcie NVIDIA"
+  source: "21ebe0c11493"
+srbminer-multi.docker.env.WALLET.label:
+  text: "Adres wypłat"
+  source: "a611868d7f79"
+srbminer-multi.docker.env.WORKER_NAME.label:
+  text: "Nazwa workera"
+  source: "73f1a739a9a5"
+srbminer-multi.docker.env.ALGO.label:
+  text: "Algorytm"
+  source: "d704d8af25be"
+srbminer-multi.docker.env.POOL_URL.label:
+  text: "Pula (host:port)"
+  source: "ab1c82ce8afb"
+srbminer-multi.docker.env.POOL_TLS.label:
+  text: "Szyfruj połączenie z pulą (TLS)"
+  source: "4e0bd161c5ae"
+srbminer-multi.docker.env.WALLET.description:
+  text: "Twój publiczny adres Pearl (prl1...). Dla Zano lub Ravencoin wpisz adres tej monety i pulę dla niej."
+  source: "2a587f09956a"
+srbminer-multi.docker.env.ALGO.description:
+  text: "pearlhash dla Pearl, progpow_zano dla Zano, kawpow dla Ravencoin."
+  source: "31c8ee0aa660"
+srbminer-multi.earnings.notes:
+  text: "Szacunek brutto, przed kosztami prądu. 2026-11-25 hashrate.no szacował około $2.45 dziennie na Pearl dla RTX 4070 pobierającej około 142 W. Nie zmierzyliśmy tego. Pearl to nowa moneta, a jej cena i trudność szybko się zmieniają. Sprawdź pobór mocy swojego GPU i cenę prądu, aby zobaczyć, czy to się opłaca."
+  source: "e7b856e43825"
+srbminer-multi.payment.minimum_payout:
+  text: "1 PRL (HeroMiners)"
+  source: "4b77c18046d5"
+srbminer-multi.payment.frequency:
+  text: "Po osiągnięciu progu puli"
+  source: "6c6d28b5c7e0"
+srbminer-multi.cashout.notes:
+  text: "Pula płaci na Twój adres, gdy saldo osiągnie Twój próg. Do tego czasu saldo przechowuje pula."
+  source: "8e034725e268"
+srbminer-multi.requirements.note:
+  text: "Linux amd64, karta NVIDIA i NVIDIA Container Toolkit"
+  source: "97ce03b75cdb"
+srbminer-multi.requirements.hosting_note:
+  text: "Ta maszyna zgłasza łącze hostingowe. Przed kopaniem sprawdź regulamin swojego dostawcy. Niektórzy dostawcy, w tym Hetzner Cloud, tego zabraniają. Zanim zaufasz szacunkowi zysku, sprawdź swoje rzeczywiste koszty prądu."
+  source: "8896f33e3cc8"
+srbminer-multi.mining.pool_fee_note:
+  text: "Opłata minera 2% dotyczy pearlhash. Przy progpow_zano i kawpow SRBMiner-Multi zatrzymuje 0.85%. HeroMiners, domyślna pula dla Pearl, pobiera opłatę puli 1%. Sprawdza wypłaty co godzinę i płaci od 1 PRL. Inne pule ustalają własne stawki i progi."
+  source: "86701ce10f63"
+srbminer-multi.disclosure.sells:
+  text: "moc obliczeniowa"
+  source: "b04a12f6483e"
+srbminer-multi.disclosure.third_party_traffic:
+  text: "Nie. Miner wysyła wyniki do wybranej przez Ciebie puli."
+  source: "110e9ac94486"
+srbminer-multi.disclosure.data_collected:
+  text: "Twój adres wypłat, nazwa workera i adres IP trafiają do puli. Pierwsze uruchomienie pobiera minera z GitHuba."
+  source: "a6331cbbb4b5"
+srbminer-multi.disclosure.isp_risk:
+  text: "Niektóre sieci i serwery DNS blokują połączenia z pulami kopania."
+  source: "6e2ea365730d"
+srbminer-multi.disclosure.account_rules:
+  text: "Większość pul identyfikuje Cię po publicznym adresie wypłat."
+  source: "5669141a44b8"
+srbminer-multi.rating.cons.0.text:
+  text: "Miner zatrzymuje 2% czasu haszowania przy Pearl i 0.85% przy Zano i Ravencoin."
+  source: "2472255145fc"
+srbminer-multi.rating.cons.1.text:
+  text: "Niektórzy dostawcy hostingu zabraniają kopania kryptowalut."
+  source: "75c328007375"
+srbminer-multi.rating.cons.2.text:
+  text: "Miner ma zamknięty kod, więc nikt poza jego twórcą nie może sprawdzić, co uruchamia."
+  source: "b2aef0ab418e"
+srbminer-multi.rating.cons.3.text:
+  text: "Prąd zużywany przez GPU może kosztować więcej niż zarobione monety, a cena Pearl szybko się zmienia."
+  source: "5a93bbb42b19"
+srbminer-multi.rating.pros.0.text:
+  text: "Miner wysyła wyniki do puli i nie przekazuje niczyjego ruchu."
+  source: "148c3c69025e"
+srbminer-multi.rating.pros.1.text:
+  text: "Możesz kopać Pearl w HeroMiners z publicznym adresem i bez konta."
+  source: "1844ccbbc00a"
+storj.description:
+  text: "Storj to zdecentralizowana sieć przechowywania danych w chmurze, w której zarabiasz, wynajmując nieużywane miejsce na dysku. Uruchom węzeł przez Dockera i otrzymuj $1.35/TB przechowywanych danych miesięcznie plus $1/TB transferu wychodzącego (stawki od 1 września 2026). Wypłaty są miesięczne, w USDC, stablecoinie powiązanym z dolarem amerykańskim, w sieci głównej Ethereum, na portfel, który kontrolujesz, gdy saldo przekroczy minimum zależne od opłat (do wypłaty za wrzesień 2026 w tokenie STORJ). Wymaga co najmniej 550GB wolnego miejsca na dysku i stabilnego łącza internetowego. Nie potrzeba konta ani rejestracji -- od połowy 2025 węzły nie wymagają zezwoleń. UWAGA (październik 2026): Storj Labs złożył 26 lipca 2026 wniosek o postępowanie Chapter 11 (Sąd Upadłościowy USA, Northern District of West Virginia, sprawa 5:26-bk-00512), aby zrestrukturyzować dawne zadłużenie. Sieć nadal działa, a Storj nadal płaci aktywnym węzłom, ale zarobki węzłów sprzed złożenia wniosku są zamrożone do czasu rozstrzygnięcia przez sąd. Token STORJ jest o około 98% niżej niż na szczycie z 2021. Binance usunął go z notowań 3 września 2026, a Coinbase zawiesił handel nim 28 września 2026. Nowy węzeł przez pierwsze dziewięć miesięcy zatrzymuje część zarobków i zapełnia się tylko na tyle, na ile pozwala popyt klientów, więc uruchomienie go teraz wiąże długi okres zwrotu z firmą w restrukturyzacji, która nadal może zostać zlikwidowana.\n"
+  source: "491c6a4d439a"
+storj.short_description:
+  text: "Zdecentralizowany węzeł przestrzeni dyskowej - $1.35/TB przechowywania + $1/TB transferu wychodzącego"
+  source: "c68d5964b002"
+storj.docker.env.WALLET.label:
+  text: "Adres portfela"
+  source: "5c498d0d2aff"
+storj.docker.env.EMAIL.label:
+  text: "E-mail"
+  source: "969ccbd3cf63"
+storj.docker.env.ADDRESS.label:
+  text: "Adres zewnętrzny"
+  source: "bf3e83d766cb"
+storj.docker.env.STORAGE.label:
+  text: "Przydział miejsca"
+  source: "c1b56c2a43dc"
+storj.docker.env.IDENTITY_DIR.label:
+  text: "Katalog tożsamości"
+  source: "529f308c099f"
+storj.docker.env.STORAGE_DIR.label:
+  text: "Katalog danych"
+  source: "e5e630e5c8d5"
+storj.docker.env.WALLET.description:
+  text: "Adres portfela Ethereum do wypłat w USDC (np. 0x1234...abcd). Musi to być portfel z własną kontrolą kluczy (MetaMask, Ledger itp.) -- nigdy nie używaj adresu z giełdy"
+  source: "5301b6030345"
+storj.docker.env.EMAIL.description:
+  text: "Adres e-mail na powiadomienia dla operatora"
+  source: "7ff1fa835a7b"
+storj.docker.env.ADDRESS.description:
+  text: "Nazwa hosta DDNS z portem (np. mynode.ddns.net:28967) -- zdecydowanie lepsza niż dosłowny IP, który odetnie węzeł w dniu, w którym Twój dostawca internetu po cichu go zmieni. Port 28967 musi być przekierowany (TCP+UDP)"
+  source: "408df4211220"
+storj.docker.env.STORAGE.description:
+  text: "Maksymalne miejsce na dysku do przydzielenia (np. 2TB). Używaj dysków talerzowych (HDD), nie SSD"
+  source: "9cb4ccc405fd"
+storj.docker.env.IDENTITY_DIR.description:
+  text: "Ścieżka na hoście, w której przechowywane są pliki tożsamości (musi zawierać ca.cert, ca.key, identity.cert, identity.key)"
+  source: "160329f11576"
+storj.docker.env.STORAGE_DIR.description:
+  text: "Ścieżka na hoście, na dysku talerzowym (HDD), na dane Storj. Wymaga co najmniej 550GB wolnego miejsca"
+  source: "71bbe07a51d1"
+storj.docker.setup:
+  text: "Przed pierwszym uruchomieniem zainicjuj konfigurację węzła: docker run --rm -e SETUP=\"true\" --user $(id -u):$(id -g) --mount type=bind,source=\"<IDENTITY_DIR>\",destination=/app/identity --mount type=bind,source=\"<STORAGE_DIR>\",destination=/app/config --name storagenode storjlabs/storagenode:latest\n"
+  source: "8dbddeb01bd7"
+storj.docker.critical_volumes.0.holds:
+  text: "Tożsamość węzła. Jej ID jest powiązane z proof-of-work, a ponowne wygenerowanie zajmuje godziny; nie da się jej odtworzyć z kopii zapasowej czegokolwiek innego. Jej utrata oznacza przepadek wstrzymanego salda wypłat."
+  source: "23b24ee72d12"
+storj.docker.critical_volumes.1.holds:
+  text: "Przechowywane dane klientów i wstrzymana kwota węzła. Ich utrata dyskwalifikuje węzeł i oznacza przepadek wstrzymanego salda."
+  source: "82eec0646b75"
+storj.docker.health_signals.0.means:
+  text: "Sieć Storj nie może połączyć się z Twoim węzłem pod ogłaszanym ADDRESS, więc satelity uznają go za niedostępny: nowe dane przestają napływać, przychód z transferu wychodzącego staje, a dłuższa niedostępność prowadzi do zawieszenia. Sprawdź, czy ADDRESS odpowiada Twojemu OBECNEMU publicznemu IP (użyj nazwy hosta DDNS, a nie dosłownego IP, aby zmiana adresu przez dostawcę internetu nie odcięła węzła) i czy port 28967 TCP+UDP jest przekierowany na tę maszynę."
+  source: "dae57f7f1fd0"
+storj.earnings.notes:
+  text: "$1.35/TB przechowywania + $1/TB transferu wychodzącego + $1/TB audytu/naprawy od 1 września 2026. Zarobki rosną wraz z ilością przechowywanych danych i wiekiem węzła. Przez pierwsze 9 miesięcy wstrzymywane jest 75%, potem 50%, potem 25% zarobków; połowa wstrzymanej kwoty wraca w 16. miesiącu, a reszta przy kontrolowanym wyjściu (graceful exit). Port 28967 musi być przekierowany."
+  source: "c2edb0df32bc"
+storj.payment.minimum_payout:
+  text: "4x opłata transakcyjna Ethereum, mniejsze salda przechodzą na kolejny miesiąc"
+  source: "29ecc25530cd"
+storj.payment.frequency:
+  text: "Co miesiąc"
+  source: "9b11f6b707d2"
+storj.cashout.notes:
+  text: "Wypłacane co miesiąc w USDC w sieci głównej Ethereum, gdy saldo portfela wynosi co najmniej czterokrotność bieżącej opłaty transakcyjnej; mniejsze salda przechodzą na kolejny miesiąc. Do wypłaty za wrzesień 2026 w tokenie STORJ. Panel na porcie 14002."
+  source: "6208f04947d2"
+storj.payout.notes:
+  text: "Wypłacane co miesiąc w USDC w sieci głównej Ethereum na adres z WALLET, gdy saldo przekroczy minimum zależne od opłat. Do wypłaty za wrzesień 2026 w tokenie STORJ; wypłaty przez zkSync Era zakończyły się 1 września 2026."
+  source: "40cd2cdd19a1"
+storj.collector.credential_hint:
+  text: "URL panelu węzła na porcie 14002, z adresem IP serwera w sieci LAN zamiast localhost, na przykład <b>http://192.168.1.10:14002</b>. Przy kilku węzłach podaj ich URL-e rozdzielone przecinkami: CashPilot je zsumuje."
+  source: "e582f1e74baa"
+storj.requirements.note:
+  text: "Węzły Storj w tej samej podsieci /24 dzielą przydział danych, co obniża zarobki każdego węzła."
+  source: "02fc05656d59"
+storj.requirements.min_bandwidth:
+  text: "5 Mbps wysyłania"
+  source: "0ad43a8f48e5"
+storj.requirements.min_storage:
+  text: "550GB"
+  source: "23e6bd08c411"
+storj.disclosure.sells:
+  text: "Miejsce na dysku i przepustowość do jego udostępniania."
+  source: "feb277d10fc3"
+storj.disclosure.third_party_traffic:
+  text: "Nie. Przechowujesz zaszyfrowane fragmenty danych klientów zakodowane kodem korekcyjnym (erasure coding). Inni ludzie nie kierują swojego ruchu przez Twój IP."
+  source: "717aab4d790c"
+storj.disclosure.data_collected:
+  text: "Tożsamość węzła, adres Twojego portfela, adres e-mail wymagany przez węzeł do powiadomień dla operatora oraz Twój IP i port, które muszą być osiągalne, aby węzeł mógł udostępniać dane."
+  source: "866fddd1e24e"
+storj.disclosure.isp_risk:
+  text: "Głównie kwestia limitu danych, a nie odpowiedzialności: węzeł bez przerwy wysyła i przyjmuje dane klientów, co oznacza realny, stały ruch na Twoim łączu. W przeciwieństwie do proxy lub przekaźnika nie jest to jednak zanonimizowany ruch osób trzecich przypisywany Tobie jako źródłu, więc nie ściąga skarg na nadużycia, jak tamte."
+  source: "8ea3292ea827"
+storj.disclosure.account_rules:
+  text: "Bez limitu węzłów, ale węzły w tej samej podsieci /24 dzielą przydział, więc kilka węzłów na jednym łączu zarabia każdy mniej."
+  source: "ff520ffe859f"
+storj.rating.cons.0.text:
+  text: "CoinDesk podał 27 lipca 2026, że Storj Labs złożył wniosek o ochronę przed wierzycielami w ramach Chapter 11."
+  source: "64be355f8a0c"
+storj.rating.cons.1.text:
+  text: "Płatności dla operatorów węzłów sprzed złożenia wniosku trafiły do procesu zgłaszania wierzytelności w postępowaniu upadłościowym."
+  source: "57fc1c448578"
+storj.rating.cons.2.text:
+  text: "Nowy węzeł ma wstrzymywane 75%, potem 50%, potem 25% zarobków w pierwszych dziewięciu miesiącach; połowa wraca w 16. miesiącu, a reszta tylko przy kontrolowanym wyjściu."
+  source: "73c15c028e81"
+storj.rating.cons.3.text:
+  text: "Klienci przechowują zaszyfrowane fragmenty plików i nikt nie kieruje ruchu przez Twój IP, ale nie znaleźliśmy miejsca, w którym Storj podaje, kim są klienci ani jak są weryfikowani."
+  source: "7dec7f83c580"
+storj.rating.pros.0.text:
+  text: "Oprogramowanie węzła jest otwartoźródłowe, na licencji AGPL-3.0."
+  source: "4f72f917d7ad"
+storj.rating.pros.1.text:
+  text: "Storj publikuje własny obraz Docker, storjlabs/storagenode."
+  source: "4446ff097b44"
+storj.rating.pros.2.text:
+  text: "Bez konta: adres portfela i e-mail na powiadomienia dla operatora."
+  source: "223370a666dc"
+storj.rating.pros.3.text:
+  text: "Aktywne węzły nadal otrzymywały płatności po złożeniu wniosku."
+  source: "4fe86a05f5b4"
+supportxmr.description:
+  text: "SupportXMR to pula kopania Monero bez konta: Twój miner loguje się, używając Twojego adresu Monero jako nazwy użytkownika, a pula płaci na ten adres. CashPilot nie uruchamia tu minera. Odczytuje saldo, które SupportXMR przechowuje dla Twojego adresu, więc widzisz, ile zarobił Twój miner CPU, obok pozostałych dochodów. Saldo jest zarobione, ale jeszcze nie otrzymane: pula wypłaca je, gdy przekroczy Twój próg wypłaty.\n"
+  source: "46775dea0e78"
+supportxmr.short_description:
+  text: "Pula kopania Monero, śledzona po adresie wypłat"
+  source: "9addded0c933"
+supportxmr.payment.minimum_payout:
+  text: "0.1 XMR (automatycznie), 0.01 XMR na żądanie"
+  source: "766cf858f810"
+supportxmr.payment.frequency:
+  text: "Gdy saldo przekroczy Twój próg albo na żądanie"
+  source: "a7d739013f98"
+supportxmr.cashout.notes:
+  text: "SupportXMR płaci na Twój adres, gdy saldo osiągnie Twój próg (domyślnie 0.1 XMR). Na jego stronie możesz też zlecić natychmiastową wypłatę od 0.01 XMR, z opłatą 0.001 XMR."
+  source: "f3c8eaa23884"
+supportxmr.payout.notes:
+  text: "Saldo jest zarobione, ale nie otrzymane, dopóki SupportXMR nie wypłaci go na ten adres. Sald Monero nie da się odczytać on-chain bez prywatnego klucza podglądu (view key), o który CashPilot nigdy nie prosi, więc każdą wypłatę potwierdzasz samodzielnie."
+  source: "cef087f09264"
+supportxmr.collector.credential_hint:
+  text: "Twój adres wypłat Monero: nazwa użytkownika, której Twój miner używa w SupportXMR, bez części <b>.workername</b> ani <b>+difficulty</b>. Jest publiczny i nie daje dostępu do żadnych środków."
+  source: "aa51d0d3b25f"
+supportxmr.requirements.note:
+  text: "Wymaga minera Monero (XMRig) skierowanego na pool.supportxmr.com"
+  source: "f5cc305b8e5e"
+supportxmr.disclosure.sells:
+  text: "moc obliczeniowa"
+  source: "b04a12f6483e"
+supportxmr.disclosure.third_party_traffic:
+  text: "Nie. Twój miner wysyła hashe do puli; nikt nie kieruje ruchu przez Twoje łącze."
+  source: "7239118f749a"
+supportxmr.disclosure.data_collected:
+  text: "Twój adres Monero, wybrane przez Ciebie nazwy workerów, Twój hashrate i adres IP Twojego minera widziany przez pulę."
+  source: "996b8412a2a2"
+supportxmr.disclosure.isp_risk:
+  text: "Miner utrzymuje jedno otwarte połączenie z pulą i zużywa mało przepustowości. Kosztem, na który trzeba uważać, jest prąd, a nie dostawca internetu."
+  source: "7bf5f9f6b028"
+supportxmr.disclosure.account_rules:
+  text: "Nie ma konta. Tożsamością jest adres, a jego statystyki każdy może odczytać na supportxmr.com."
+  source: "6435e3dd0df8"
+supportxmr.rating.cons.0.text:
+  text: "Płatne tylko w Monero, z opłatą puli 0.6% i domyślnym progiem 0.1 XMR przed automatyczną wypłatą."
+  source: "77a1f0ce4c3b"
+supportxmr.rating.cons.1.text:
+  text: "CashPilot nie uruchamia minera dla SupportXMR: kierujesz na pulę własnego minera, a CashPilot tylko odczytuje saldo."
+  source: "dfddab40ccc1"
+teneo.description:
+  text: "Teneo Protocol daje agentom AI dostęp do internetu na żywo przez sieć Beaconów. Teneo Beacon to własna aplikacja Teneo na Androida, iOS, macOS, Windows i Linuksa, z wersją wiersza poleceń na serwery i Raspberry Pi. Po zaakceptowaniu ekranu zgody udostępnia nieużywaną przepustowość i zarabia Teneo Protocol Points oraz Fragments, gdy jest online. Fragments liczą się do sezonowych losowań z nagrodami w USDC (Beacon Drop). Teneo podaje, że Beacon zarabia dwa razy więcej punktów niż starsze rozszerzenie przeglądarki. Na jednym łączu internetowym zarabia jeden Beacon. Pozostałe urządzenia na tym samym łączu czekają w gotowości. Zarejestruj się w Expedition Hub przez link polecający lub kod PSA3BHPJ, a potem zaloguj się w Beaconie.\n"
+  source: "99fa3c58ed09"
+teneo.short_description:
+  text: "Aplikacja przepustowości DePIN (Beacon) - Fragments do sezonowych losowań USDC, +100 Fragments z linkiem polecającym"
+  source: "611b2fe95a62"
+teneo.earnings.notes:
+  text: "Zarabia Teneo Points i Fragments. Fragments liczą się do sezonowych losowań USDC, więc sezon wypłaca nagrodę, a nie stawkę. Teneo podaje, że Beacon zarabia dwa razy więcej punktów niż rozszerzenie przeglądarki. Odbieraj boost co 8 godzin, aby mieć do 3x Fragments; przegapione okno obniża mnożnik."
+  source: "7a9714079893"
+teneo.payment.frequency:
+  text: "Sezonowe losowanie (Beacon Drop)"
+  source: "5e2e1da9e1ad"
+teneo.cashout.notes:
+  text: "Nagrody Beacon Drop są wypłacane w USDC na portfel powiązany w Expedition Hub. Hub pokazuje, ile dni masz na powiązanie portfela; nagroda bez portfela powiązanego na czas przepada."
+  source: "4edbb3f949fe"
+teneo.payout.notes:
+  text: "Powiąż portfel w Expedition Hub, zanim zostaną wypłacone nagrody za sezon; Hub anuluje nagrodę, jeśli portfel nie zostanie powiązany na czas."
+  source: "4657ddd2fc8f"
+teneo.referral.bonus.referrer:
+  text: "8% Fragments każdego poleconego znajomego i 2% Fragments osób przez niego poleconych, gdy znajomy zarejestruje się w ciągu 7 dni i zarobi 480 Fragments"
+  source: "17fa3888054e"
+teneo.referral.bonus.referee:
+  text: "+100 Fragments przy rejestracji i kolejne +150, gdy osiągniesz 480 Fragments"
+  source: "6a12fe8e4754"
+teneo.requirements.note:
+  text: "Na jednym łączu internetowym zarabia jeden Beacon. Maszyny w centrach danych zarabiają tylko u dostawców hostingu, których Teneo dopuściło, za połowę Fragments i bez punktów oraz bonusu za polecenie. Połączenia VPN nigdy nie zarabiają."
+  source: "f567880b8f24"
+teneo.rating.cons.0.text:
+  text: "Fragments z Beacona dają USDC tylko jako nagrody w sezonowych losowaniach, więc jego uruchomienie nie przynosi ustalonej kwoty."
+  source: "aa946d8317c0"
+teneo.rating.cons.1.text:
+  text: "Teneo podaje, że punkty zostaną połączone w $AGENTIC, nieprzenoszalny token nagród, a nie w token $TENEO."
+  source: "70349aaccbb0"
+teneo.rating.cons.2.text:
+  text: "Do listopada 2026 nie potwierdzono daty startu $TENEO, przydziału ani procesu odbioru, po tym jak minął wcześniejszy termin w drugim kwartale 2026."
+  source: "77717754fe10"
+teneo.rating.cons.3.text:
+  text: "CashPilot nie uruchamia Teneo: instalujesz własną aplikację Beacon dostawcy, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "e13c3bdfca7b"
+teneo.rating.cons.4.text:
+  text: "Teneo podaje, że ruch pochodzi od zweryfikowanych klientów biznesowych i blokuje adresy prywatne oraz porty podatne na nadużycia, ale nie mówi, jak weryfikuje tych klientów."
+  source: "b3d1634ab7a1"
+theta-edge.description:
+  text: "Theta Network to uznana zdecentralizowana sieć dostarczania wideo i mocy obliczeniowej AI (od 2018). Użytkownicy uruchamiają Edge Nodes, udostępniając przepustowość, przestrzeń dyskową i moc obliczeniową. Duże partnerstwa z dostawcami treści. Zarabia tokeny TFUEL.\n"
+  source: "6d74a9520fd5"
+theta-edge.short_description:
+  text: "Zdecentralizowany CDN + moc obliczeniowa AI - nagrody TFUEL, uznany projekt"
+  source: "aa7432c1c003"
+theta-edge.earnings.notes:
+  text: "Tylko aplikacja desktopowa. Zarobki zależą od zasobów i lokalizacji. Duże partnerstwa, notowany na wszystkich giełdach."
+  source: "bc452e52af4f"
+theta-edge.payment.frequency:
+  text: "Na bieżąco"
+  source: "04f13cecbc50"
+theta-edge.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+theta-edge.rating.cons.0.text:
+  text: "CashPilot nie uruchamia Theta Edge: korzystasz z własnej aplikacji desktopowej dostawcy, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "893de938ed14"
+titan.description:
+  text: "Titan Network to platforma DePIN, która udostępnia Twój adres IP, przestrzeń dyskową i przepustowość w zamian za nagrody w tokenach TNT. Dostępna na Windows, Mac i Androida. Węzły tworzą zdecentralizowaną warstwę CDN i przechowywania danych. Typowe zarobki to $5-30/miesiąc, zależnie od udostępnionych zasobów i lokalizacji geograficznej.\n"
+  source: "0025b1c985a4"
+titan.short_description:
+  text: "DePIN udostępniający IP, przestrzeń dyskową, przepustowość - $5-30/miesiąc"
+  source: "799e68401067"
+titan.earnings.notes:
+  text: "Udostępnia IP, przestrzeń dyskową i przepustowość. Zarobki zależą od udostępnionych zasobów i regionu. Większy przydział przestrzeni daje wyższe nagrody."
+  source: "2e57fac7ce05"
+titan.payment.frequency:
+  text: "Według epok"
+  source: "75743e03bad2"
+titan.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+titan.requirements.min_storage:
+  text: "50GB"
+  source: "f017c0207e78"
+titan.rating.cons.0.text:
+  text: "Własna pomoc Titan mówi, że działający węzeł nie gwarantuje zarobków: bez przydzielonego zadania nic nie zarabia, a nagrody są w tokenie TNT."
+  source: "bc5de572a095"
+titan.rating.cons.1.text:
+  text: "CashPilot nie uruchamia Titan: korzystasz z własnej aplikacji lub rozszerzenia dostawcy, więc CashPilot nie może ich za Ciebie wdrożyć ani zaktualizować. Ich regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "c5b81574c185"
+traffmonetizer.description:
+  text: "Traffmonetizer pozwala zarabiać na ruchu internetowym, udostępniając przepustowość zweryfikowanym firmom. To jedna z niewielu usług udostępniania przepustowości, które dobrze działają nie tylko na łączach domowych, ale też na IP z VPS i centrów danych. Używa prostego uwierzytelniania tokenem przekazywanym w argumentach wiersza poleceń. Obsługuje architektury ARM dla Raspberry Pi i podobnych urządzeń.\n"
+  source: "16b119637b0e"
+traffmonetizer.short_description:
+  text: "Udostępnianie przepustowości - działa na VPS, logowanie tokenem"
+  source: "d935a03e99a8"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.label:
+  text: "Token"
+  source: "d2089be67295"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.label:
+  text: "Nazwa urządzenia"
+  source: "155106be1173"
+traffmonetizer.docker.env.TRAFFMONETIZER_TOKEN.description:
+  text: "Zaloguj się na <a href=\"https://app.traffmonetizer.io/sign-in?aff=2111758\">app.traffmonetizer.io</a>, naciśnij F12 → Application → Local Storage → kliknij <code>https://app.traffmonetizer.io</code> → skopiuj wartość <code>authToken</code> (około 54 znaków: cyfry, znak <code>|</code>, a potem litery i cyfry)"
+  source: "94912e2bae8a"
+traffmonetizer.docker.env.TRAFFMONETIZER_DEVICE_NAME.description:
+  text: "Nazwa wyświetlana w panelu do zarządzania urządzeniami"
+  source: "89a674907060"
+traffmonetizer.earnings.notes:
+  text: "IP z VPS i centrów danych zarabiają mniej niż domowe. Lokalizacje w USA i UE zarabiają więcej. Wiele IP obsługiwanych przez sieci Docker."
+  source: "6063df4f9b02"
+traffmonetizer.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+traffmonetizer.cashout.notes:
+  text: "Minimum $10. PayPal nie jest już oferowany. Najpierw zapisz w profilu jedną metodę wypłaty: USDT w sieci Solana lub TON (najniższe opłaty), Arbitrum (niskie opłaty) lub Tron TRC20 (wysokie opłaty sieciowe) albo przelew bankowy od $1,000. Pierwszy zapisany adres obowiązuje od razu; późniejsza zmiana wymaga potwierdzenia e-mailem. Przed pierwszą wypłatą panel może poprosić o kontakt w komunikatorze (WhatsApp, Telegram lub Skype). Zlecenie wypłaca pełne dolary, a centy zostają na saldzie."
+  source: "0bf13220a706"
+traffmonetizer.payout.notes:
+  text: "USDT w sieci zapisanej w ustawieniach wypłat profilu (Solana, TON, Arbitrum lub Tron) albo przelew bankowy. Adres jest w ustawieniach Traffmonetizer, a nie w kontenerze."
+  source: "d0692ca0a738"
+traffmonetizer.collector.credential_hint:
+  text: "Zaloguj się na <a href='https://app.traffmonetizer.io/sign-in?aff=2111758' target='_blank'>app.traffmonetizer.io</a>, naciśnij F12 → Application → Local Storage → wartość <b>authToken</b> (około 54 znaków: cyfry, znak <code>|</code>, a potem litery i cyfry)."
+  source: "8e328668bca3"
+traffmonetizer.referral.bonus.referrer:
+  text: "10% każdej wypłaty, którą zlecą"
+  source: "5f4e86916609"
+traffmonetizer.requirements.note:
+  text: "Regulamin Traffmonetizer wymaga IP domowego, ale w praktyce węzły na VPS są akceptowane."
+  source: "d6ae5ddd33c1"
+traffmonetizer.rating.cons.0.text:
+  text: "Trustpilot ocenia go na 1.9; recenzenci od 2023 do listopada 2026 zgłaszają wypłaty oczekujące tygodniami albo oznaczone jako zrealizowane bez odpowiadającej im transakcji."
+  source: "67ac54d8eec2"
+traffmonetizer.rating.cons.1.text:
+  text: "Ci sami recenzenci zgłaszają, że czat na żywo i wsparcie e-mailowe nie odpowiadają, czasem przez tygodnie."
+  source: "514323fc7b1f"
+traffmonetizer.rating.cons.2.text:
+  text: "Tylko kryptowaluty lub przelew bankowy od $1,000; PayPala już nie ma, a zlecenie wypłaca tylko pełne dolary."
+  source: "ad8194944e13"
+traffmonetizer.rating.cons.3.text:
+  text: "Regulamin Traffmonetizer wymaga IP domowego, więc serwer na łączu hostingowym go nie spełnia."
+  source: "c247994b3fe3"
+traffmonetizer.rating.cons.4.text:
+  text: "Czterech recenzentów na Trustpilot od 2023 do 2025 zgłasza bardzo powolne zarobki, np. jeden cent dziennie na czterech urządzeniach albo prawie dwa lata, by dojść do $10."
+  source: "16701da2a495"
+traffmonetizer.rating.pros.0.text:
+  text: "Wypłata wymaga tylko zapisanego adresu kryptowalutowego potwierdzonego e-mailem; panel może poprosić o kontakt w komunikatorze."
+  source: "8e85bb227772"
+traffmonetizer.rating.pros.1.text:
+  text: "Traffmonetizer publikuje własny obraz Docker, traffmonetizer/cli_v2."
+  source: "007cb0d9fa02"
+unmineable.description:
+  text: "Kop za pomocą CPU i otrzymuj zapłatę w wybranej monecie, np. SHIB, DOGE lub XMR. CashPilot uruchamia XMRig na puli RandomX od unMineable, a unMineable przelicza Monero wykopane przez Twój CPU na Twoją monetę. Płaci na Twój publiczny adres, gdy saldo osiągnie próg płatności danej monety. Każdy worker wdrożony przez CashPilot zawiera kod polecający CashPilot w unMineable, który obniża Twoją opłatę platformy z 1% do 0.75%. Prąd może kosztować więcej, niż zarobisz."
+  source: "a91a1a6282bd"
+unmineable.short_description:
+  text: "Kop za pomocą CPU i otrzymuj zapłatę w wybranej monecie"
+  source: "03bd0d4f2004"
+unmineable.docker.env.PAYOUT_COIN.label:
+  text: "Moneta wypłaty"
+  source: "1df0eef6b4db"
+unmineable.docker.env.WALLET.label:
+  text: "Adres wypłat"
+  source: "a611868d7f79"
+unmineable.docker.env.WORKER_NAME.label:
+  text: "Nazwa workera"
+  source: "73f1a739a9a5"
+unmineable.docker.env.CPU_PERCENT.label:
+  text: "Maks. wątki CPU (%)"
+  source: "be64e751afbf"
+unmineable.docker.env.RANDOMX_MODE.label:
+  text: "Tryb RandomX"
+  source: "bbfb4f45c178"
+unmineable.docker.env.PAYOUT_COIN.description:
+  text: "Symbol monety, w której płaci unMineable, np. SHIB, DOGE lub XMR"
+  source: "219728b39fdb"
+unmineable.docker.env.WALLET.description:
+  text: "Twój publiczny adres dla tej monety. Monety wymagające memo lub tagu nie są obsługiwane."
+  source: "8f546391732c"
+unmineable.earnings.notes:
+  text: "Szacunek brutto, przed kosztami prądu, wypłacany w Twojej monecie po kursie przeliczenia unMineable. 2026-11-25 1 kH/s RandomX był wart około $1 miesięcznie. Procesor desktopowy na połowie wątków może pobierać dodatkowe 30 do 50 W. Sprawdź swoje rzeczywiste zużycie i cenę prądu, aby zobaczyć, czy to się opłaca."
+  source: "cfe83489865c"
+unmineable.payment.minimum_payout:
+  text: "Ustalane przez unMineable dla każdej monety (0.03 XMR na 2026-11-26)"
+  source: "490f58bdea80"
+unmineable.payment.frequency:
+  text: "Po osiągnięciu progu płatności monety"
+  source: "6132dc539a14"
+unmineable.cashout.notes:
+  text: "unMineable płaci na Twój adres, gdy saldo osiągnie próg płatności danej monety. Progi różnią się w zależności od monety i sieci; CashPilot odczytuje próg, który unMineable podaje dla Twojego adresu."
+  source: "119caa81a181"
+unmineable.payout.notes:
+  text: "Saldo jest zarobione, ale nie otrzymane, dopóki unMineable nie wypłaci go na ten adres. Sieć zależy od wybranej monety."
+  source: "25091c7aca36"
+unmineable.collector.credential_hint:
+  text: "Ten sam adres wypłat i symbol monety, z którymi wdrożono minera, na przykład <b>XMR</b>. Wpisz sam adres, bez monety, nazwy workera ani kodu polecającego. Jest publiczny i nie daje dostępu do żadnych środków."
+  source: "420da7e418d8"
+unmineable.referral.bonus.referrer:
+  text: "0.25% nagród za kopanie każdego poleconego minera"
+  source: "92d54e25b9de"
+unmineable.referral.bonus.referee:
+  text: "Opłata platformy obniżona z 1% do 0.75%"
+  source: "cd671ac34b5a"
+unmineable.requirements.hosting_note:
+  text: "Ta maszyna zgłasza łącze hostingowe. Przed kopaniem sprawdź regulamin swojego dostawcy. Niektórzy dostawcy, w tym Hetzner Cloud, tego zabraniają. Zanim zaufasz szacunkowi zysku, sprawdź swoje rzeczywiste koszty prądu."
+  source: "8896f33e3cc8"
+unmineable.mining.pool_fee_note:
+  text: "unMineable pobiera opłatę platformy 1%. CashPilot dodaje swój kod polecający (#awk6-j1z0) po każdej nazwie workera, co obniża Twoją opłatę do 0.75%. unMineable płaci wtedy opiekunowi CashPilot 0.25% Twoich nagród za kopanie; Ty zachowujesz 99.25%. Każda moneta ma własny próg płatności, na przykład 0.03 XMR."
+  source: "009c367f43f9"
+unmineable.disclosure.sells:
+  text: "moc obliczeniowa"
+  source: "b04a12f6483e"
+unmineable.disclosure.third_party_traffic:
+  text: "Nie. Miner wysyła wyniki do puli unMineable."
+  source: "8aebee2ead40"
+unmineable.disclosure.data_collected:
+  text: "Twój adres wypłat, moneta, nazwa workera, hashrate i adres IP trafiają do unMineable."
+  source: "93b1e63a16f9"
+unmineable.disclosure.isp_risk:
+  text: "Niektóre sieci i serwery DNS blokują połączenia z pulami kopania."
+  source: "6e2ea365730d"
+unmineable.disclosure.account_rules:
+  text: "Konto nie jest potrzebne. Tożsamością są adres i moneta, a ich statystyki każdy może odczytać na unmineable.com."
+  source: "1e3669950a46"
+unmineable.rating.cons.0.text:
+  text: "unMineable zatrzymuje 0.75% opłaty platformy z kodem polecającym i płaci dopiero od progu danej monety."
+  source: "e1316430b7c0"
+unmineable.rating.cons.1.text:
+  text: "Niektórzy dostawcy hostingu zabraniają kopania kryptowalut."
+  source: "75c328007375"
+unmineable.rating.cons.2.text:
+  text: "Dodatkowy prąd może kosztować więcej niż zarobione monety."
+  source: "a64eb19765e6"
+unmineable.rating.cons.3.text:
+  text: "Statystyki adresu, w tym saldo, są publiczne dla każdego, kto zna adres."
+  source: "59719921c793"
+unmineable.rating.pros.0.text:
+  text: "Miner wysyła hashe do puli i nie przekazuje niczyjego ruchu."
+  source: "717be3799617"
+unmineable.rating.pros.1.text:
+  text: "Możesz kopać na publiczny adres w wybranej monecie bez zakładania konta."
+  source: "c0b45001dc5c"
+uprock.description:
+  text: "Uprock to platforma DePIN (Decentralized Physical Infrastructure Network), która pozwala zarabiać kryptowaluty, udostępniając łącze internetowe. Część szerszego ekosystemu Web3. Dostępne są społecznościowe obrazy Docker, ale nie ma oficjalnego. Głównym interfejsem jest rozszerzenie przeglądarki.\n"
+  source: "10af70251bd4"
+uprock.short_description:
+  text: "Udostępnianie internetu DePIN - wypłaty w kryptowalutach, głównie rozszerzenie przeglądarki"
+  source: "8a2d46191a56"
+uprock.earnings.notes:
+  text: "Zarobki w kryptowalutach/tokenach. Brak oficjalnego obrazu Docker — głównym klientem jest rozszerzenie przeglądarki."
+  source: "efc9c728dbb6"
+uprock.payment.minimum_payout:
+  text: "250 UPT"
+  source: "3a851670634a"
+uprock.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+uprock.cashout.notes:
+  text: "Tokeny UPT, wypłacane na portfel Solana od 250 UPT, przy włączonym uwierzytelnianiu dwuskładnikowym. Pobierana jest opłata za wypłatę."
+  source: "9a70ab978908"
+uprock.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+uprock.rating.cons.0.text:
+  text: "Centrum pomocy UpRock mówi, że wypłaty to tokeny UPT na portfel Solana, z minimum 250 UPT."
+  source: "0e76003a78e8"
+uprock.rating.cons.1.text:
+  text: "Nagrody to tokeny UPT; recenzenci i niezależna recenzja podają, że ich wartość jest bardzo niska."
+  source: "15e178a37580"
+uprock.rating.cons.2.text:
+  text: "CashPilot nie uruchamia UpRock: korzystasz z własnej aplikacji lub rozszerzenia dostawcy, więc CashPilot nie może ich za Ciebie wdrożyć ani zaktualizować. Ich regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "51f68f082425"
+urnetwork.description:
+  text: "URnetwork to zdecentralizowana sieć VPN i udostępniania przepustowości. Zarabiasz, udostępniając przepustowość jako dostawca społecznościowy. Program dostawcy sam się uwierzytelnia e-mailem i hasłem Twojego konta (podpolecenie auth-provide) i zapisuje uzyskany JWT sesji w wolumenie danych. Oficjalny obraz Docker od BringYour, Inc.\n"
+  source: "b2d9fdade2ff"
+urnetwork.short_description:
+  text: "Zdecentralizowany VPN/przepustowość - logowanie e-mailem i hasłem, sesja JWT w wolumenie"
+  source: "ee8666358a75"
+urnetwork.docker.env.UR_USER_AUTH.label:
+  text: "E-mail"
+  source: "969ccbd3cf63"
+urnetwork.docker.env.UR_PASSWORD.label:
+  text: "Hasło"
+  source: "e7cf3ef4f17c"
+urnetwork.docker.env.UR_USER_AUTH.description:
+  text: "E-mail Twojego konta URnetwork (login, którego używasz na <a href=\"https://ur.io\" target=\"_blank\">ur.io</a>). Konta utworzone przez logowanie Google/Apple muszą najpierw mieć ustawione hasło. Potrzebujesz konta? Zarejestruj się przez <a href=\"https://ur.io/c?bonus=1Q3G19\" target=\"_blank\">ur.io/c?bonus=1Q3G19</a>"
+  source: "d3842d2e50db"
+urnetwork.docker.env.UR_PASSWORD.description:
+  text: "Hasło Twojego konta URnetwork (bez spacji). Używane przy logowaniu auth-provide dostawcy; sesja jest potem przechowywana w wolumenie danych."
+  source: "e8c9783f68ce"
+urnetwork.earnings.notes:
+  text: "Działa na VPS i łączach domowych. Od 2026-10-06 płatne w SN25α (podsieć Bittensor 25) za każdą tygodniową epokę. Obsługuje tryb proxy dla konfiguracji z wieloma IP."
+  source: "0a7ce0725f33"
+urnetwork.payment.frequency:
+  text: "Według epok"
+  source: "75743e03bad2"
+urnetwork.payout.notes:
+  text: "Ustaw coldkey Bittensor na ur.io/app/account/earnings (podpisany w Talisman, TAO.com lub portfelu WalletConnect), a potem odbieraj każdą zakończoną epokę. Odbiór płaci gas w TAO z klucza gas EVM. NIEODEBRANE EPOKI WYGASAJĄ, a stare wypłaty USDC anulowano, gdy w ciągu 30 dni nie powiązano portfela."
+  source: "3b2d56971147"
+urnetwork.referral.bonus.referrer:
+  text: "3 GiB dziennie darmowych danych UR za każdego znajomego, do 20 znajomych (dane, nie pieniądze)"
+  source: "30d98f243d0b"
+urnetwork.referral.bonus.referee:
+  text: "3 GiB dziennie darmowych danych UR, gdy w ciągu 90 dni od dołączenia przez 2 dni zużyjesz w aplikacji co najmniej 10 MiB; w przeciwnym razie polecenie wygasa"
+  source: "a1453cf73091"
+urnetwork.rating.cons.0.text:
+  text: "Nieodebrane epoki wygasają, a stare wypłaty USDC anulowano dla sieci, w których w ciągu 30 dni nie powiązano portfela."
+  source: "8df4496c47ef"
+urnetwork.rating.cons.1.text:
+  text: "Od października 2026 nagrody są wypłacane w SN25α, tokenie podsieci Bittensor, a każdy odbiór kosztuje gas w TAO."
+  source: "f335a63825dc"
+urnetwork.rating.cons.2.text:
+  text: "URnetwork nazywał się wcześniej BringYour; jego zarchiwizowany whitepaper nosi starą nazwę."
+  source: "117e18fed61e"
+urnetwork.rating.pros.0.text:
+  text: "URnetwork publikuje kod źródłowy swojego klienta dostawcy."
+  source: "c4d03ce2f3f7"
+urnetwork.rating.pros.1.text:
+  text: "URnetwork publikuje własny obraz Docker, bringyour/community-provider, i działa na VPS oraz łączach domowych."
+  source: "ded39ac96493"
+urnetwork.rating.pros.2.text:
+  text: "Odbiór wymaga tylko portfela Bittensor, który kontrolujesz."
+  source: "0810fa9d3a2e"
+vast-ai.description:
+  text: "Vast.ai to chmurowy rynek GPU, na którym wynajmujesz swoją kartę NVIDIA badaczom i programistom AI/ML. Platforma natywnie oparta na Dockerze, na której samodzielnie ustalasz stawki godzinowe. RTX 3090 zwykle zarabia $0.20-0.40/godz., gdy jest wynajęta. Wymaga karty NVIDIA z aktualnymi sterownikami i stabilnego łącza internetowego. Przychód mocno zależy od modelu GPU, strategii cenowej i popytu na rynku.\n"
+  source: "27599d9c6362"
+vast-ai.short_description:
+  text: "Rynek GPU - ustalasz własne ceny, RTX 3090 ~$0.20-0.40/godz."
+  source: "74bf0bdf465f"
+vast-ai.docker.env.VAST_API_KEY.label:
+  text: "Klucz API"
+  source: "23189d55f697"
+vast-ai.docker.env.VAST_API_KEY.description:
+  text: "Klucz API hosta Vast.ai z panelu"
+  source: "434902a5680d"
+vast-ai.earnings.notes:
+  text: "RTX 3090 ~$0.20-0.40/godz., RTX 4090 ~$0.40-0.80/godz., gdy są wynajęte. Wykorzystanie bywa różne. Wymaga karty NVIDIA, hosta z Linuksem, Dockera i nvidia-container-toolkit. Ceny ustalasz samodzielnie."
+  source: "feb21f77d17e"
+vast-ai.payment.frequency:
+  text: "Co tydzień (w piątki)"
+  source: "08d2916f2ff6"
+vast-ai.cashout.notes:
+  text: "Zarobki gromadzą się na saldzie Vast.ai. Wypłata przez Wise, PayPal lub Stripe."
+  source: "4fd2a1b89e19"
+vast-ai.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+vast-ai.referral.bonus.referrer:
+  text: "3% wydatków poleconych najemców, przez cały okres istnienia ich konta, jako kredyty za polecenia; do 75% można wypłacić z osobnego konta poleceń"
+  source: "a52e6fabeaac"
+vast-ai.requirements.min_bandwidth:
+  text: "100 Mbps"
+  source: "c21afb7c4c51"
+vast-ai.requirements.min_storage:
+  text: "100GB"
+  source: "2003463b0a63"
+vast-ai.rating.cons.0.text:
+  text: "Host zarabia tylko wtedy, gdy jest wynajęty, a dane samego Vast dla konsumenckiego GPU zależą od rodzaju wynajmu i oceny niezawodności."
+  source: "e9c6b2047b24"
+vast-ai.rating.cons.1.text:
+  text: "CashPilot nie uruchamia Vast.ai: instalujesz oprogramowanie hosta Vast na własnej maszynie z GPU, więc CashPilot nie może go za Ciebie wdrożyć ani zaktualizować. Vast opiera hosting na Dockerze na hoście z Linuksem."
+  source: "115860055e8e"
+vast-ai.rating.pros.0.text:
+  text: "Vast podaje, że stawka ustalona przez hosta to stawka, którą host otrzymuje, bez potrącania opłat."
+  source: "ebd16d43c26a"
+vast-ai.rating.pros.1.text:
+  text: "Wypłaty idą przez Wise, PayPal lub Stripe od minimum $20, rozliczane co tydzień; mniejsze saldo przechodzi na kolejny tydzień."
+  source: "1f51b1d2ddac"
+wipter.description:
+  text: "Wipter to platforma udostępniania przepustowości dostępna na Windows, Mac, Linuksa i Androida. Deklaruje wypłatę do $1/GB udostępnionej przepustowości przy minimalnym progu wypłaty $20. Platforma działa podobnie jak klasyczne aplikacje udostępniania przepustowości, kierując legalny ruch przez łącza domowe.\n"
+  source: "4c6a5b747327"
+wipter.short_description:
+  text: "Udostępnianie przepustowości - deklaruje do $1/GB, min. wypłata $20"
+  source: "01d7d7fa2c7d"
+wipter.earnings.notes:
+  text: "Deklaruje do $1/GB, ale rzeczywiste zarobki są niższe. Minimalna wypłata $20. Zarobki mocno zależą od lokalizacji i popytu."
+  source: "2be529de3995"
+wipter.payment.frequency:
+  text: "Na żądanie"
+  source: "be820103712e"
+wipter.cashout.notes:
+  text: "Wipter nie ma panelu WWW. Otwórz aplikację Wipter na komputerze lub telefonie, zaloguj się i tam zleć wypłatę, gdy saldo osiągnie $20. Wipter płaci tylko w USDT w sieci BNB Smart Chain (BEP20), na portfel ustawiony w sekcji Payments aplikacji; nie ma opcji PayPal."
+  source: "80cc5b3e017b"
+wipter.payout.notes:
+  text: "Jeszcze nieustalone: CashPilot nie sprawdził jeszcze, gdzie ta usługa przechowuje Twoje zarobki."
+  source: "8d61a71de590"
+wipter.referral.bonus.referrer:
+  text: "10% ich zarobków z ruchu, gdy osiągną minimalną wypłatę, za każdego poleconego znajomego bez limitu"
+  source: "1626bbf63745"
+wipter.referral.bonus.referee:
+  text: "$5 bonusu za rejestrację"
+  source: "ed267fc12fb2"
+wipter.rating.cons.0.text:
+  text: "CashPilot nie uruchamia Wipter: korzystasz z własnej aplikacji dostawcy na komputer lub telefon, więc CashPilot nie może jej za Ciebie wdrożyć ani zaktualizować. Jej regulaminu nie sprawdzono pod kątem kontenerów."
+  source: "fa32942c6b4f"
+xmrig.description:
+  text: "Kop Monero za pomocą CPU. CashPilot uruchamia XMRig, a wybrana przez Ciebie pula płaci Monero na Twój publiczny adres wypłat. XMRig przeznacza 1% czasu haszowania na wsparcie swoich twórców. Prąd może kosztować więcej niż zarobione XMR."
+  source: "a578c826aa2d"
+xmrig.short_description:
+  text: "Kop Monero za pomocą CPU w wybranej przez siebie puli"
+  source: "67b33077256d"
+xmrig.docker.env.WALLET.label:
+  text: "Adres Monero"
+  source: "a888ebb3ae9b"
+xmrig.docker.env.POOL_URL.label:
+  text: "Pula"
+  source: "f13024272c38"
+xmrig.docker.env.WORKER_NAME.label:
+  text: "Nazwa workera"
+  source: "73f1a739a9a5"
+xmrig.docker.env.CPU_PERCENT.label:
+  text: "Maks. wątki CPU (%)"
+  source: "be64e751afbf"
+xmrig.docker.env.RANDOMX_MODE.label:
+  text: "Tryb RandomX"
+  source: "bbfb4f45c178"
+xmrig.earnings.notes:
+  text: "Szacunek brutto, przed kosztami prądu. 2026-11-25 1 kH/s był wart około $1 miesięcznie przy zaobserwowanej cenie XMR i trudności sieci. Procesor desktopowy na połowie wątków może pobierać dodatkowe 30 do 50 W. Sprawdź swoje rzeczywiste zużycie i cenę prądu, aby zobaczyć, czy to się opłaca."
+  source: "917ca0ef4712"
+xmrig.payment.minimum_payout:
+  text: "0.003 XMR (MoneroOcean, po obniżeniu progu)"
+  source: "69f37901c92d"
+xmrig.payment.frequency:
+  text: "Po osiągnięciu progu puli"
+  source: "6c6d28b5c7e0"
+xmrig.cashout.notes:
+  text: "Pula płaci na Twój adres Monero, gdy saldo osiągnie Twój próg. Do tego czasu saldo przechowuje pula."
+  source: "50ba1d778c7d"
+xmrig.requirements.hosting_note:
+  text: "Ta maszyna zgłasza łącze hostingowe. Przed kopaniem sprawdź regulamin swojego dostawcy. Niektórzy dostawcy, w tym Hetzner Cloud, tego zabraniają. Zanim zaufasz szacunkowi zysku, sprawdź swoje rzeczywiste koszty prądu."
+  source: "8896f33e3cc8"
+xmrig.mining.pool_fee_note:
+  text: "MoneroOcean, domyślna pula, pobiera 0% opłaty za kopanie. Domyślny próg wypłaty to 0.3 XMR i możesz go obniżyć do 0.003 XMR. Wypłaty poniżej 4 XMR mogą kosztować do 0.0004 XMR. Inne pule ustalają własne stawki i progi."
+  source: "0a5db026488f"
+xmrig.disclosure.sells:
+  text: "moc obliczeniowa"
+  source: "b04a12f6483e"
+xmrig.disclosure.third_party_traffic:
+  text: "Nie. Miner wysyła wyniki do pul kopania."
+  source: "a74a269d9be1"
+xmrig.disclosure.data_collected:
+  text: "Twój adres Monero, nazwa workera i adres IP trafiają do puli."
+  source: "bd3caa18d6e2"
+xmrig.disclosure.isp_risk:
+  text: "Niektóre sieci i serwery DNS blokują połączenia z pulami kopania."
+  source: "6e2ea365730d"
+xmrig.disclosure.account_rules:
+  text: "Większość pul Monero identyfikuje Cię po publicznym adresie wypłat."
+  source: "c27e407843d1"
+xmrig.rating.cons.0.text:
+  text: "Wypłata wymaga wystarczającej ilości XMR, by osiągnąć próg Twojej puli."
+  source: "4c765903b56d"
+xmrig.rating.cons.1.text:
+  text: "Niektórzy dostawcy hostingu zabraniają kopania kryptowalut."
+  source: "75c328007375"
+xmrig.rating.cons.2.text:
+  text: "Dodatkowy prąd może kosztować więcej niż zarobione XMR."
+  source: "e2c2f6aed230"
+xmrig.rating.pros.0.text:
+  text: "Miner wysyła hashe do pul i nie przekazuje niczyjego ruchu."
+  source: "342d4fa7dcfd"
+xmrig.rating.pros.1.text:
+  text: "Miner jest otwartoźródłowy, a obraz przypina podpisane wydanie upstream."
+  source: "d673694451d2"
+xmrig.rating.pros.2.text:
+  text: "Możesz kopać z publicznym adresem Monero bez ujawniania imienia i nazwiska."
+  source: "752cbb728aac"
