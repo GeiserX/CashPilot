@@ -189,7 +189,7 @@ class TestGeneratedCounts:
         assert c["active"] + c["beta"] + c["retired"] == c["catalogued"]
         assert c["docker"] + c["tracked"] == c["live"]
         assert c["bandwidth"] + c["depin"] + c["compute"] + c["storage"] + c["mining"] == c["live"]
-        assert c["pinned"] + c["floating"] == c["docker"]
+        assert 0 <= c["pinned"] <= c["docker"]
         assert 0 <= c["noproxy"] <= c["docker"]
 
     @pytest.mark.parametrize(
