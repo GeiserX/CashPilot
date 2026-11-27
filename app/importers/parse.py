@@ -48,6 +48,10 @@ _PROXY_SCHEME_RE = re.compile(r"[a-z0-9]+")
 # any of these is not the value its tool actually used.
 _SHELL_SPECIAL = set("$`\\\"'*?[]{}()<>|&;~!#") | {" ", "\t"}
 
+# money4band 5.0 writes user-config.json as this prefix plus one Fernet token of
+# the whole JSON (money4band/core/crypto.py at tag 5.0.0). Only its own key reads it.
+_M4B_ENCRYPTED_PREFIX = "M4B_ENCRYPTED:"
+
 _SOURCES_PATH = Path(__file__).with_name("sources.yml")
 
 
@@ -100,6 +104,12 @@ def _check_text(name: str, content: str) -> str:
     except UnicodeEncodeError:
         raise ImportRefused(f"{name} is not a UTF-8 text file.") from None
     content = content.lstrip("\ufeff")
+    # Before the line cap: the token is one line, and a filled-in config passes 8 KiB.
+    if content.lstrip().startswith(_M4B_ENCRYPTED_PREFIX):
+        raise ImportRefused(
+            f"{name} is an encrypted money4band 5.0 file. Run `m4b config edit`, "
+            "copy the decrypted JSON it opens, and paste it here."
+        )
     lines = content.splitlines()
     if len(lines) > MAX_LINES:
         raise ImportRefused(f"{name} has more than {MAX_LINES} lines; this is not a config file.")
