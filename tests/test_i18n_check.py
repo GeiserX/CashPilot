@@ -509,3 +509,12 @@ def test_catalog_stamp_keeps_ignored_entries(tmp_path):
     data = yaml.safe_load(es.read_text(encoding="utf-8"))
     assert data["iproyal.notes"] == {"text": "Paga el ${DAY}"}
     assert data["iproyal.description"]["source"] == ic.source_hash("Share bandwidth")
+
+
+def test_attribute_placeholders_keep_their_printf_order(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": '<span title="%s">%d</span>'}))
+    es = write(tmp_path / "es.json", json.dumps({"a": '<span title="%1$s">%2$d</span>'}))
+    assert run(en, es)[0] == 0
+    en2 = write(tmp_path / "en2.json", json.dumps({"a": '<span title="%s">Hello</span> %d'}))
+    es2 = write(tmp_path / "es2.json", json.dumps({"a": '%d <span title="%s">Hola</span>'}))
+    assert run(en2, es2)[0] == 1
