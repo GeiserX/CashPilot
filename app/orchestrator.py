@@ -51,7 +51,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from app import gpu, route_gate, socket_policy, version  # noqa: E402
+from app import gpu, layers, route_gate, socket_policy, version  # noqa: E402
 from app.constants import (  # noqa: E402
     CASHPILOT_DEPLOYED,
     CONTAINER_PREFIX,
@@ -589,6 +589,19 @@ def _shape(container: Any) -> dict[str, Any]:
     }
 
 
+def _layer_entry(container: Any) -> dict[str, Any]:
+    """The layers a container really got, for the UI's per-earner status (app/layers.py).
+
+    ``runtime`` is the runtime Docker started it under (None when Docker does
+    not say, an older daemon) and ``network`` its network mode, which is the
+    network's name for a user-defined bridge such as cashpilot-isolated.
+    Read from the container's own record, so no extra Docker call.
+    """
+    attrs = container.attrs if isinstance(getattr(container, "attrs", None), dict) else {}
+    host = attrs.get("HostConfig") if isinstance(attrs.get("HostConfig"), dict) else {}
+    return {"runtime": str(host.get("Runtime") or "") or None, "network": str(host.get("NetworkMode") or "") or None}
+
+
 def _shape_entry(container: Any) -> dict[str, Any]:
     """``{"shape": ...}`` for a container CashPilot's worker made, else nothing.
 
@@ -989,33 +1002,96 @@ def _proxy_allows_runtime(slug: str, runtime: str) -> str:
     return runtime
 
 
-def container_runtime(slug: str, network_mode: str | None, requested: str | None) -> str | None:
+def runtime_pins() -> dict[str, Any]:
+    """What CASHPILOT_CONTAINER_RUNTIME and its overrides pin, for the heartbeat (app/layers.py).
+
+    The variables win over the UI's choice, so the UI shows a pinned earner
+    locked. ``error`` carries a malformed overrides setting, which refuses
+    every deploy until it is fixed.
+    """
+    try:
+        overrides = _runtime_overrides()
+    except ContainerRuntimeError as exc:
+        return {"default": _CONTAINER_RUNTIME or None, "overrides": {}, "error": str(exc)}
+    return {"default": _CONTAINER_RUNTIME or None, "overrides": overrides}
+
+
+def _catalog_caps(slug: str) -> set[str]:
+    if not get_service:
+        return set()
+    caps = ((get_service(slug) or {}).get("docker") or {}).get("cap_add") or []
+    return {str(c).upper().removeprefix("CAP_") for c in caps}
+
+
+def _check_choice(slug: str, choice: str | None, runtime: str, why: str, facts: list[dict[str, Any]] | None) -> None:
+    """Refuse a runtime choice that a catalog requirement or an environment variable overrules."""
+    if choice and layers.kind(runtime, facts) != choice:
+        raise ContainerRuntimeError(
+            f"{service_name(slug)} cannot run under {_CHOICE_NAMES.get(choice, choice)} here: {why} "
+            f"The running container was not touched."
+        )
+
+
+_CHOICE_NAMES = {layers.RUNC: "the standard runtime (runc)", layers.GVISOR: "gVisor"}
+
+
+def container_runtime(
+    slug: str, network_mode: str | None, requested: str | None, choice: str | None = None
+) -> str | None:
     """The runtime a new container runs under, or None for Docker's default.
 
-    A runtime named in the deploy request wins; the worker API has already
-    checked it against the daemon. A runtime the service's catalog entry
-    requires wins over both. Otherwise a container on bridge networking takes
-    the service's override or the worker's default. Host and none networking
-    keep Docker's default: a sandbox gains little on the host's own network
-    stack. Mysterium's catalog entry requires runc: a TUN device works under
-    gVisor, but iptables-nft and kernel WireGuard do not.
+    A runtime the service's catalog entry requires wins over everything.
+    Mysterium's requires runc: a TUN device works under gVisor, but
+    iptables-nft and kernel WireGuard do not. Next a runtime named in the
+    deploy request (the advanced ``runtime`` field); the worker API has already
+    checked it against the daemon. Next the environment: the service's
+    override, or for bridge networking the worker's default. Last the owner's
+    ``choice`` from the UI (app/layers.py), ``runc`` or ``gvisor``. A choice
+    that the catalog or the environment overrules is refused with the reason,
+    never silently swapped, so what the UI shows is what the earner got.
 
-    Like container_network, a runtime the daemon does not provide is refused
-    here, BEFORE the running container is stopped, so a typo in the compose
-    file cannot take a service down.
+    Like container_network, a runtime that cannot be used is refused here,
+    BEFORE the running container is stopped, so a typo in the compose file
+    cannot take a service down.
     """
+    facts = layers.daemon_runtimes(fresh=True) if choice else None
+    if choice and choice not in layers.CHOICES:
+        raise ContainerRuntimeError(f"{choice!r} is not a runtime choice; use one of {', '.join(layers.CHOICES)}.", 400)
     if required := catalog_runtime(slug):
         # The service's own catalog entry names the one runtime it works under
         # (Mysterium: runc, since gVisor has no iptables-nft or kernel WireGuard).
         # Neither the request nor the operator's default can change it.
+        _check_choice(slug, choice, required, f"its catalog entry requires the {required!r} runtime.", facts)
         return _proxy_allows_runtime(slug, required)
     if requested:
         return _proxy_allows_runtime(slug, requested)
-    if (network_mode or "bridge") not in ("bridge", "default"):
+    # The environment covers bridge networking only: host and none networking
+    # keep Docker's default unless the owner chooses, since a sandbox gains
+    # little on the host's own network stack.
+    bridge = (network_mode or "bridge") in ("bridge", "default")
+    overrides = _runtime_overrides() if bridge else {}
+    if slug in overrides:
+        runtime = overrides[slug]
+        why = f"CASHPILOT_CONTAINER_RUNTIME_OVERRIDES on this worker sets {slug}={runtime}."
+    elif bridge and _CONTAINER_RUNTIME:
+        runtime = _CONTAINER_RUNTIME
+        why = f"CASHPILOT_CONTAINER_RUNTIME on this worker is {runtime}."
+    elif choice:
+        allowed = socket_policy.ALLOWED_RUNTIMES if proxied() else None
+        try:
+            return layers.pick(
+                choice,
+                slug,
+                facts,
+                net_raw="NET_RAW" in _catalog_caps(slug),
+                allowed=allowed,
+                service=service_name(slug),
+            )
+        except layers.ChoiceRefused as exc:
+            raise ContainerRuntimeError(f"{exc} The running container was not touched.") from None
+    else:
         return None
-    runtime = _runtime_overrides().get(slug, _CONTAINER_RUNTIME)
-    if not runtime:
-        return None
+    _check_choice(slug, choice, runtime, why + " Change or remove it to choose here.", facts)
     _proxy_allows_runtime(slug, runtime)
     available = available_runtimes()
     if available is None:
@@ -1202,6 +1278,7 @@ def deploy_raw(
     resources: Any = None,
     category: str = "bandwidth",
     runtime: str | None = None,
+    runtime_choice: str | None = None,
     moved_mounts: list[str] | None = None,
     kept_mounts: list[dict[str, str]] | None = None,
     keep_targets: set[str] | None = None,
@@ -1285,7 +1362,7 @@ def deploy_raw(
     # cannot be used must fail the deploy while the running service is still running.
     # The resolvers are checked here for the same reason.
     network = container_network(network_mode)
-    runtime = container_runtime(slug, network_mode, runtime)
+    runtime = container_runtime(slug, network_mode, runtime, runtime_choice)
     dns = container_dns(network)
     # The GPU this worker's own catalog gives the service (app/gpu.py), never
     # the request's choice. A proxied copy gets none. Every container without
@@ -5578,6 +5655,7 @@ def get_status() -> list[dict[str, Any]]:
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
                 **_shape_entry(c),
+                **_layer_entry(c),
                 **_stop_facts(c),
                 **_identity_entry(c, slug),
                 **_state_id_entry(c, slug, client),
@@ -5651,6 +5729,7 @@ def get_status() -> list[dict[str, Any]]:
                     "created": c.attrs.get("Created", ""),
                     "container_id": c.short_id,
                     "deployed_by": "external",
+                    **_layer_entry(c),
                     "category": "",
                     **_state_id_entry(c, slug, client),
                     **_fatal_entry(c, slug),
@@ -5876,6 +5955,7 @@ def get_status_light() -> list[dict[str, Any]]:
                 "category": c.labels.get(LABEL_CATEGORY, ""),
                 "instance": _instance_of(c),
                 **_shape_entry(c),
+                **_layer_entry(c),
                 **_stop_facts(c),
                 **_fatal_entry(c, slug),
                 **_held_entry(c),
@@ -5932,6 +6012,7 @@ def get_status_light() -> list[dict[str, Any]]:
                         "created": c.attrs.get("Created", ""),
                         "container_id": c.short_id,
                         "deployed_by": "external",
+                        **_layer_entry(c),
                         "category": "",
                         **_fatal_entry(c, slug),
                     }
