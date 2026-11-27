@@ -1685,15 +1685,14 @@ class TestStorageAndRoutes:
         assert view["cap"]["used_bytes"] == 0 and view["cap"]["period_start"]
 
     def test_a_failed_test_is_kept_on_the_proxy(self, db):
-        failing = AsyncMock(side_effect=HTTPException(status_code=409, detail=f"bad auth socks5://u:{PASSWORD}@h"))
+        failing = _worker_answer(409, {"detail": f"bad auth socks5://u:{PASSWORD}@h"})
 
         async def go():
             created = await main.api_create_proxy(_Req(_socks(password=PASSWORD)), {})
             with (
                 patch.object(main, "_resolve_worker_id", new_callable=AsyncMock, return_value=7),
                 patch.object(main, "_worker_features", new_callable=AsyncMock, return_value={"proxy_tunnel"}),
-                patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value={"name": "box-a"}),
-                patch.object(main, "_proxy_to_worker", failing),
+                _worker_replies(failing, name="box-a"),
                 pytest.raises(HTTPException),
             ):
                 await main.api_test_proxy(created["id"], 7, {})
@@ -1773,19 +1772,25 @@ def _worker_answer(status, body=None):
     return resp
 
 
-def _proxy_call_error(definition, resp):
-    """What _proxy_worker_call raises when the real _proxy_to_worker gets ``resp`` from the worker."""
+@contextlib.contextmanager
+def _worker_replies(resp, name="box"):
+    """Worker 7, reached through the real _proxy_to_worker, answers every POST with ``resp``."""
     client = AsyncMock()
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
     client.post.return_value = resp
-    worker = {"id": 7, "name": "box", "status": "online", "url": "http://192.168.1.10:8081"}
+    worker = {"id": 7, "name": name, "status": "online", "url": "http://192.168.1.10:8081"}
     with (
         patch.object(main.database, "get_worker", new_callable=AsyncMock, return_value=worker),
         patch.object(main.httpx, "AsyncClient", return_value=client),
         patch.object(main, "FLEET_API_KEY", "test-key"),
-        pytest.raises(HTTPException) as err,
     ):
+        yield
+
+
+def _proxy_call_error(definition, resp):
+    """What _proxy_worker_call raises when the worker answers ``resp``."""
+    with _worker_replies(resp), pytest.raises(HTTPException) as err:
         asyncio.run(main._proxy_worker_call(7, "POST", "/x", definition))
     return err.value
 
