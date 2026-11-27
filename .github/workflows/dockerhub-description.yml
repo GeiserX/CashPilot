@@ -18,7 +18,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: drumsergio/cashpilot
-          short-description: "Self-hosted dashboard that runs passive-income services in Docker and tracks what they earn"
+          short-description: "Every earner, every box, one view. Self-hosted dashboard for bandwidth, DePIN and mining earners"
 
       - name: Sync worker Docker Hub description
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
@@ -26,4 +26,4 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: drumsergio/cashpilot-worker
-          short-description: "CashPilot worker: deploys and monitors the passive-income containers for the cashpilot UI"
+          short-description: "CashPilot worker: starts and watches the earners on one box for the CashPilot dashboard"
