@@ -38,6 +38,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from app import catalog, themes, usage, wallet_seed
 from app.exchange_rates import HISTORY_DAYS, UNPRICED_BY_DESIGN
+from app.i18n import t
 
 _logger = logging.getLogger(__name__)
 
@@ -265,9 +266,7 @@ def verify_encryption_key_persisted() -> None:
     auth failure, which points nowhere near the real cause.
     """
     if _fernet_key_error:
-        raise RuntimeError(
-            f"{_fernet_key_error} Refusing to start rather than encrypting credentials under a throwaway key."
-        )
+        raise RuntimeError(t("err.database.refusing_start_rather_than_encrypting", fernet_key_error=_fernet_key_error))
 
     if not _fernet_key_is_ephemeral:
         return
@@ -281,13 +280,11 @@ def verify_encryption_key_persisted() -> None:
         return
 
     raise RuntimeError(
-        f"Cannot persist the credential-encryption key to {_FERNET_KEY_FILE}: "
-        f"{_fernet_key_persist_error}. Credentials encrypted now would be "
-        "permanently unreadable after a restart, so CashPilot is refusing to "
-        "start. Fix the permissions or the volume mount for the data directory "
-        "(CASHPILOT_DATA_DIR), supply a key via CASHPILOT_ENCRYPTION_KEY on a "
-        "writable volume, or set CASHPILOT_ALLOW_EPHEMERAL_KEY=true if you "
-        "genuinely want a throwaway instance."
+        t(
+            "err.database.cannot_persist_credential_encryption_key",
+            fernet_key_file=_FERNET_KEY_FILE,
+            fernet_key_persist_error=_fernet_key_persist_error,
+        )
     )
 
 
@@ -2979,7 +2976,7 @@ async def save_import_draft(slug: str, source: str, env: dict[str, str]) -> None
     credential encrypted now would be unreadable after the next restart.
     """
     if _fernet_key_is_ephemeral:
-        raise EphemeralKeyError("the credential-encryption key is temporary")
+        raise EphemeralKeyError(t("err.database.credential_encryption_key_temporary"))
     blob = encrypt_value(json.dumps(env, sort_keys=True))
     db = await _get_db()
     try:
@@ -6156,9 +6153,9 @@ _MANUAL_LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}")
 def manual_identity_error(label: str, value: str) -> str | None:
     """Why ``label`` and ``value`` cannot be an id the owner types in, or None when they can."""
     if not _MANUAL_LABEL.fullmatch(label):
-        return "The field name must be 1 to 64 letters, digits, spaces or _ . : -"
+        return t("api.field_name_must_1_64")
     if len(value) > IDENTITY_VALUE_MAX or not _MANUAL_IDENTITY.fullmatch(value):
-        return f"The id must be one word of up to {IDENTITY_VALUE_MAX} letters, digits or _ . : @ + = / -"
+        return t("api.id_must_one_word_up", identity_value_max=IDENTITY_VALUE_MAX)
     return None
 
 
@@ -6370,7 +6367,7 @@ async def record_backup(
     """
     sha256 = str(sha256 or "").lower()
     if not _SHA256.fullmatch(sha256) or source not in ("export", "restore", "pending"):
-        raise ValueError("not a backup hash")
+        raise ValueError(t("err.database.not_backup_hash"))
     origin = origin or here or _backup_new_origin(worker_id)
     db = await _get_db()
     try:

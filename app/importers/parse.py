@@ -23,6 +23,7 @@ from typing import Any
 import yaml
 
 from app.constants import UNDEPLOYABLE_STATUSES
+from app.i18n import t
 
 MAX_FILES = 4
 MAX_TOTAL_BYTES = 64 * 1024
@@ -98,11 +99,11 @@ class FileSettings:
 
 def _check_text(name: str, content: str) -> str:
     if "\x00" in content:
-        raise ImportRefused(f"{name} is not a text file.")
+        raise ImportRefused(t("err.importers_parse.not_text_file", name=name))
     try:
         content.encode("utf-8")
     except UnicodeEncodeError:
-        raise ImportRefused(f"{name} is not a UTF-8 text file.") from None
+        raise ImportRefused(t("err.importers_parse.not_utf_8_text_file", name=name)) from None
     content = content.lstrip("\ufeff")
     # Before the line cap: the token is one line, and a filled-in config passes 8 KiB.
     if content.lstrip().startswith(_M4B_ENCRYPTED_PREFIX):
@@ -112,9 +113,9 @@ def _check_text(name: str, content: str) -> str:
         )
     lines = content.splitlines()
     if len(lines) > MAX_LINES:
-        raise ImportRefused(f"{name} has more than {MAX_LINES} lines; this is not a config file.")
+        raise ImportRefused(t("err.importers_parse.has_more_than_lines_not", name=name, max_lines=MAX_LINES))
     if any(len(line.encode("utf-8")) > MAX_LINE_BYTES for line in lines):
-        raise ImportRefused(f"{name} has a line longer than {MAX_LINE_BYTES // 1024} KiB.")
+        raise ImportRefused(t("err.importers_parse.has_line_longer_than_kib", name=name, value=MAX_LINE_BYTES // 1024))
     return content
 
 
@@ -201,7 +202,7 @@ def _parse_json(name: str, text: str) -> dict[str, Any]:
         nonlocal count
         count += len(pairs)
         if count > MAX_JSON_KEYS:
-            raise ImportRefused(f"{name} has more than {MAX_JSON_KEYS} keys; this is not a config file.")
+            raise ImportRefused(t("err.importers_parse.has_more_than_keys_not", name=name, max_json_keys=MAX_JSON_KEYS))
         return dict(pairs)
 
     try:
@@ -209,11 +210,11 @@ def _parse_json(name: str, text: str) -> dict[str, Any]:
     except ImportRefused:
         raise
     except (ValueError, RecursionError):
-        raise ImportRefused(f"{name} is not valid JSON.") from None
+        raise ImportRefused(t("err.importers_parse.not_valid_json", name=name)) from None
     if not isinstance(data, dict):
-        raise ImportRefused(f"{name} is not a JSON object.")
+        raise ImportRefused(t("err.importers_parse.not_json_object", name=name))
     if not _json_depth_ok(data):
-        raise ImportRefused(f"{name} is nested too deeply; this is not a config file.")
+        raise ImportRefused(t("err.importers_parse.nested_too_deeply_not_config", name=name))
     return data
 
 
@@ -244,25 +245,27 @@ def _state_file(name: str, text: str) -> FileSettings | None:
 def read_files(files: Any, source: str = "auto") -> list[FileSettings]:
     """Check and read the uploaded files. Raises ImportRefused on anything off."""
     if not isinstance(files, list) or not files:
-        raise ImportRefused("Add at least one file.")
+        raise ImportRefused(t("err.importers_parse.add_least_one_file"))
     if len(files) > MAX_FILES:
-        raise ImportRefused(f"At most {MAX_FILES} files at a time.")
+        raise ImportRefused(t("err.importers_parse.most_files_time", max_files=MAX_FILES))
     total = 0
     checked: list[tuple[str, str]] = []
     for i, item in enumerate(files, 1):
         if not isinstance(item, dict):
-            raise ImportRefused("Each file needs a name and its content.")
+            raise ImportRefused(t("err.importers_parse.each_file_needs_name_content"))
         name, content = item.get("name"), item.get("content")
         if not isinstance(content, str):
-            raise ImportRefused("Each file needs a name and its content.")
+            raise ImportRefused(t("err.importers_parse.each_file_needs_name_content"))
         name = name if isinstance(name, str) and name.strip() else f"file {i}"
         name = "".join(ch for ch in name if ch.isprintable())[:MAX_NAME_LEN] or f"file {i}"
         try:
             total += len(content.encode("utf-8"))
         except UnicodeEncodeError:
-            raise ImportRefused(f"{name} is not a UTF-8 text file.") from None
+            raise ImportRefused(t("err.importers_parse.not_utf_8_text_file", name=name)) from None
         if total > MAX_TOTAL_BYTES:
-            raise ImportRefused(f"The files add up to more than {MAX_TOTAL_BYTES // 1024} KiB.", status=413)
+            raise ImportRefused(
+                t("err.importers_parse.files_add_up_more_than", value=MAX_TOTAL_BYTES // 1024), status=413
+            )
         checked.append((name, _check_text(name, content)))
 
     shell = source == "internetincome"
@@ -322,19 +325,21 @@ def _file_tool(fs: FileSettings) -> str | None:
 
 def detect_source(files: list[FileSettings], source: str = "auto") -> str:
     """The tool that wrote ``files``. Never guesses between two."""
-    seen = {t for t in (_file_tool(f) for f in files) if t}
+    seen = {tool_name for tool_name in (_file_tool(f) for f in files) if tool_name}
     if "ambiguous" in seen:
-        raise ImportRefused("These files could come from more than one tool. Pick the tool you used.")
+        raise ImportRefused(t("err.importers_parse.these_files_could_come_more"))
     if source in SOURCES:
         others = seen - {source}
         if others:
             name = _tools()[sorted(others)[0]]["name"]
-            raise ImportRefused(f"These files look like {name}'s, not {_tools()[source]['name']}'s. Check the tool.")
+            raise ImportRefused(
+                t("err.importers_parse.these_files_look_like_s", name=name, name2=_tools()[source]["name"])
+            )
         return source
     if len(seen) > 1:
-        raise ImportRefused("These files come from different tools. Import one tool at a time.")
+        raise ImportRefused(t("err.importers_parse.these_files_come_different_tools"))
     if not seen:
-        raise ImportRefused("Could not tell which tool wrote these files. Pick the tool you used.")
+        raise ImportRefused(t("err.importers_parse.could_not_tell_which_tool"))
     return seen.pop()
 
 
@@ -400,7 +405,7 @@ def _apps_from_json(files: list[FileSettings], spec: dict[str, Any], skipped: li
             skipped.append({"key": top, "reason": reason})
         apps_conf = data.get("apps") or {}
         if not isinstance(apps_conf, dict):
-            raise ImportRefused("The apps setting is not an object.")
+            raise ImportRefused(t("err.importers_parse.apps_setting_not_object"))
         for app_name, app_conf in apps_conf.items():
             if not isinstance(app_conf, dict):
                 continue

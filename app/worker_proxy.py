@@ -115,14 +115,13 @@ def plain_http_refusal(raw_url: str) -> str | None:
     try:
         scheme = urlparse(raw_url).scheme.lower()
     except ValueError:
-        return "This worker's address cannot be parsed, so CashPilot sends it nothing."
+        return t("api.worker_s_address_cannot_parsed")
     if scheme != "http" or cleartext.bearer_allowed(raw_url):
         return None
-    return (
-        f"This worker's address is plain http:// to {cleartext.host_of(raw_url)}, which is not a private "
-        "address, so CashPilot sends it nothing: its key would cross the internet unencrypted. On that "
-        "worker, set CASHPILOT_WORKER_URL to an https:// address, or to an http:// address on your own "
-        f"network: {cleartext.PRIVATE_HOSTS_TEXT}."
+    return t(
+        "api.worker_s_address_plain_http",
+        raw_url=cleartext.host_of(raw_url),
+        private_hosts_text=cleartext.PRIVATE_HOSTS_TEXT,
     )
 
 
