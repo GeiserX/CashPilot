@@ -74,6 +74,14 @@ def _is_dockerable(service: dict) -> bool:
     return bool((service.get("docker") or {}).get("image"))
 
 
+def _is_pinned(image: str) -> bool:
+    """Pinned to a digest or a version tag; no tag, or a tag naming latest, floats."""
+    if "@sha256:" in image:
+        return True
+    tag = image.rsplit("/", 1)[-1].partition(":")[2]
+    return bool(tag) and "latest" not in tag.lower()
+
+
 _LABELS = {
     DOCKER: "Run in Docker by CashPilot",
     EXTENSION: "Browser extension or desktop app, tracked",
@@ -126,6 +134,15 @@ def counts() -> dict[str, int]:
         "collectors": len(COLLECTOR_MAP),
     }
     out["tracked"] = out["extension"] + out["gpu"] + out["mining_pools"]
+    # The comparison page says how many of the run-by-the-worker images are
+    # pinned and how many cannot run through a proxy; typed by hand, both went
+    # wrong after the next catalog change.
+    from app import proxies
+
+    run = _selected(DOCKER) + [s for s in mining if _is_dockerable(s)]
+    out["pinned"] = sum(_is_pinned(s["docker"]["image"]) for s in run)
+    out["floating"] = len(run) - out["pinned"]
+    out["noproxy"] = sum(proxies.refusal(s) is not None for s in run)
     for category in ("bandwidth", "depin", "compute", "storage", "mining"):
         out[category] = sum(s.get("category") == category for s in live)
     return out
