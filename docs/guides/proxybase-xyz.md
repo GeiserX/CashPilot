@@ -2,13 +2,23 @@
 
 > **Category:** Bandwidth Sharing | **Status:** Active
 >
-> **Website:** [proxybase.xyz](https://proxybase.xyz?referral=nXzS3c6iTO)
+> **Website:** [proxybase.xyz](https://proxybase.xyz/console?ref=cashpilot)
 >
 > <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 
 ## Description
 
 ProxyBase Markets is a SOCKS5 proxy marketplace built for AI agents. Sellers run a lightweight Rust CLI daemon that connects via WebSocket to relay buyer traffic through their internet connection, earning USDC on Tempo Chain per GB sold. Supports both **direct mode** (sell your own bandwidth) and **upstream mode** (resell external SOCKS5 proxies alongside your own connection). The official multi-arch Docker image (amd64/arm64) handles wallet creation, authentication, and seller startup automatically.
+
+## Referral link
+
+The link above opens the ProxyBase console with referral code `cashpilot`. It is for **buyers** of proxy sessions, not for sellers: running the seller container needs no account and no code.
+
+- A buyer who opens the link and then connects a wallet in the console is linked to the code. Each wallet keeps the first code it uses.
+- The buyer gets 10% extra on their first deposit.
+- The referrer gets 15% of every deposit that buyer makes, as credit to spend on their own proxy sessions.
+
+Source: [ProxyBase referral program](https://proxybase.xyz/referrals).
 
 ## Earning Estimates
 

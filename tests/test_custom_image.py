@@ -98,6 +98,9 @@ def _deploy(recorded, image):
             patch.object(main, "_resolve_worker_id", AsyncMock(return_value=1)),
             patch.object(main, "_proxy_worker_deploy", _capture),
             patch.object(main.database, "get_deployment_spec", AsyncMock(return_value=recorded)),
+            # The device name reads the worker. Stubbed, so the test never reads
+            # whatever database an earlier test left behind.
+            patch.object(main.database, "get_worker", AsyncMock(return_value=None)),
             patch.object(main.database, "save_deployment", saved),
             patch.object(main.database, "record_health_event", AsyncMock()),
             patch.object(main, "_spawn", lambda coro: coro.close()),

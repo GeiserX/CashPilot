@@ -75,3 +75,5 @@ Convert income rows to CoinTracking's regular CSV format. The Custom Importer re
 ```
 
 Set Type to Income or Mining as appropriate. Map amount to Buy Amount, coin to Buy Currency and service to Comment. Leave the Sell fields blank. Format Date as DD.MM.YYYY HH:MM:SS. The export provides the UTC day, so use 00:00:00 for the time. Use the type labels for your account language. [CoinTracking regular CSV format](https://cointracking.freshdesk.com/en/support/solutions/articles/29000038366-how-can-i-import-2gether-csv-data-into-cointracking-)
+
+No CoinTracking account yet? This signup link gives you 10% off every paid plan: https://cointracking.info?ref=G962413. It is a referral link. CoinTracking pays the CashPilot project 20% of what you pay, and it does not cost you more.
