@@ -77,7 +77,10 @@ def test_the_env_fix_is_its_own_section_with_the_lines_to_add():
     section = _section(title, "\n---")
     for var in ("CASHPILOT_READONLY_API_KEY", "CASHPILOT_METRICS_ENABLED", "CASHPILOT_METRICS_TOKEN"):
         assert f"- {var}=${{{var}:-" in section, var
-    assert "curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/" in section
+    assert (
+        "curl -fsSL -o docker-compose.upstream.yml https://raw.githubusercontent.com/GeiserX/CashPilot/main/" in section
+    ), "download the current file under another name, never over the reader's own"
+    assert "docker compose -f docker-compose.fleet.yml up -d" in section
     assert "#after-301-the-read-only-key-and-metrics-work-from-env" in UPGRADE
 
 

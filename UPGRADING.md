@@ -42,17 +42,25 @@ pass `CASHPILOT_ADMIN_API_KEY` either.
 In `docker-compose.fleet.yml`, also add
 `- CASHPILOT_ADMIN_API_KEY=${CASHPILOT_ADMIN_API_KEY:-}` if it is not there.
 
-Or take the current file. Keep a copy of yours first, then carry over your own
-changes and keep your `.env`:
+Or compare with the current file. Download it under another name, so it does
+not overwrite yours:
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
+curl -fsSL -o docker-compose.upstream.yml https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
 ```
 
-Replace `docker-compose.yml` with the file name you use. Check that its image
-tags are the series you run, and set them back if they are not. Then run
-`docker compose up -d`, with `-f docker-compose.fleet.yml` if you use that
-file.
+If you run `docker-compose.fleet.yml`, put that name in the URL. Merge its
+settings into your own compose file, and keep the image tags of the series you
+run. Keep your `.env`.
+
+Then recreate the UI with your own compose file:
+
+```sh
+# With docker-compose.yml:
+docker compose up -d
+# With docker-compose.fleet.yml:
+docker compose -f docker-compose.fleet.yml up -d
+```
 
 ---
 
@@ -441,14 +449,16 @@ cp docker-compose.worker.2.10.yml docker-compose.worker.yml
 docker compose -f docker-compose.worker.yml up -d --force-recreate
 ```
 
-If you did not keep it, take the 2.10 file again, then carry over your own
-changes and recreate the containers as above:
+If you did not keep it, download the 2.10 file under the name of the copy, so
+it does not overwrite your current file:
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/v2.10.2/docker-compose.yml
+curl -fsSL -o docker-compose.2.10.yml https://raw.githubusercontent.com/GeiserX/CashPilot/v2.10.2/docker-compose.yml
 ```
 
-Replace `docker-compose.yml` with the file name that host uses.
+For the fleet or worker file, put its name in the URL and in the copy name, as
+in the lines above. Carry over your own changes from your current file into the
+copy. Then run the lines above for that host.
 
 If you only changed the tags, change them back to `2.10`. If you also took the
 3.0 proxy policy, the 2.10 worker may report that its proxy policy is out of
