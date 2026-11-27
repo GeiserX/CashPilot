@@ -189,7 +189,8 @@ from sysfs, and it gives a GPU only to a catalog service that declares one.
 **Affects you if** a service you deploy sets an environment variable that
 starts with `NVIDIA_`, or a custom service uses an NVIDIA GPU.
 
-- The worker refuses a deploy with any `NVIDIA_` variable (HTTP 403).
+- The worker refuses a deploy with any `NVIDIA_` variable (HTTP 403). Saving a
+  custom service with one is refused too (HTTP 400).
 - The worker sets `NVIDIA_VISIBLE_DEVICES=void` on every container it creates
   without an NVIDIA grant. On a host whose default Docker runtime is `nvidia`,
   such a container loses the GPU on its next deploy
