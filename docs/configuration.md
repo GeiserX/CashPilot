@@ -51,7 +51,7 @@ defensible on its own; together they are impossible to guess.
 | `CASHPILOT_TELEGRAM_CHAT_ID` | unset | Telegram alerts. | - |
 | `CASHPILOT_WORKER_ALLOWED_HOSTS` | unset | Worker hosts allowed under the `strict` policy: CIDRs, host names and `*.suffix` patterns, separated by commas. | - |
 | `CASHPILOT_WORKER_ALLOW_METADATA` | `false` | Allow proxying to cloud metadata IPs. Leave off. | - |
-| `CASHPILOT_WORKER_URL_POLICY` | `permissive` | How worker URLs are validated. `permissive` accepts any address except loopback, link-local and cloud metadata, so LAN, Tailscale and public addresses all pass. `strict` accepts only `CASHPILOT_WORKER_ALLOWED_HOSTS`. | - |
+| `CASHPILOT_WORKER_URL_POLICY` | `permissive` | How worker URLs are validated. `permissive` accepts any address except loopback, link-local and cloud metadata, so LAN, Tailscale and public addresses all pass. `strict` accepts only `CASHPILOT_WORKER_ALLOWED_HOSTS`. In both, a public address must use `https://`: the UI sends no worker key over plain `http://` to a host that is not private ([the rule](fleet.md#plain-http-only-on-your-own-network)). | - |
 | `CASHPILOT_ACTIVITY_ASN_URL` | iptoasn.com's `ip2asn-combined.tsv.gz` | Where the [Activity](activity.md) page's network and country table is downloaded from, weekly while a box has Activity on. Empty disables the download; networks and countries then read as unknown unless you place `/data/ipgeo.sqlite` by hand. | - |
 | `CASHPILOT_ONCHAIN_URL_<CHAIN>` | Chain's public explorer or RPC | Base URL for a [Payouts lookup](onchain.md). Set an empty value in the UI container to turn off the chain. | - |
 
@@ -59,7 +59,7 @@ defensible on its own; together they are impossible to guess.
 
 | Variable | Default | What it does | Precedence |
 |---|---|---|---|
-| `CASHPILOT_UI_URL` | - | **Required.** Where to send heartbeats. | - |
+| `CASHPILOT_UI_URL` | - | **Required.** Where to send heartbeats. Plain `http://` works only to a private or Tailscale host; to anything else the worker sends nothing and says why ([the rule](fleet.md#plain-http-only-on-your-own-network)). | - |
 | `CASHPILOT_API_KEY` | - | **Required for enrolment only.** After enrolling, the worker uses its own key from `/data/.worker_key`. | - |
 | `CASHPILOT_WORKER_NAME` | hostname | Display name. **Set it.** Inside a container the default is the container ID, which Docker regenerates on every recreate. | - |
 | `CASHPILOT_WORKER_URL` | detected | The URL this worker **advertises**. | - |
