@@ -1,8 +1,10 @@
 # Upgrading CashPilot
 
-**Read this before upgrading.** Only releases that need you to *do* something are
-listed here. If a version is not mentioned, `docker compose pull && docker compose up -d`
-is all it needs.
+**Read this before upgrading.** Each major release has its own section, newest
+first: what changed in that version, then how to upgrade, step by step. Between
+the majors, only releases that need you to *do* something are listed here. If a
+version is not mentioned, `docker compose pull && docker compose up -d` is all
+it needs.
 
 [CHANGELOG.md](CHANGELOG.md) carries the detailed notes recorded so far, but it is
 **not** a complete release history, so do not treat it as the authoritative list
@@ -21,9 +23,91 @@ commands, and [Backing up node identities](docs/backup.md) covers the rest.
 
 ## 3.0: upgrade the UI first, then change the image tags
 
-**Affects everyone on 2.x.** The compose files pin a release series, so
-`docker compose pull` and the in-app **Update** button keep a 2.x install on
-2.x. The update card still tells you that 3.0.0 exists.
+### What changed in 3.0
+
+CashPilot 3.0 changes how the UI and the workers agree on which container to
+replace. A worker now replaces a running container only when the UI names that
+exact container. A 2.x UI cannot do that, so a 3.0 worker under a 2.x UI
+refuses to replace anything. That is why this release is a major version: the
+UI and every worker must move to 3.0 together, the UI first. The same release
+adds mining, GPU grants and new earnings figures.
+
+#### Why upgrade
+
+- **A redeploy cannot replace the wrong container.** Before 3.0, a redeploy
+  replaced whatever container had the service's name. A container that
+  changed outside CashPilot could be replaced, and the files in it lost. In
+  3.0 the UI shows you the container IDs it is about to replace, and the
+  worker refuses if the container changed in the meantime. Proxied copies get
+  the same check on Start and on tunnel recovery.
+- **GPU services get a GPU, and nothing else does.** A catalog service that
+  declares a GPU gets that one device. Every other container gets
+  `NVIDIA_VISIBLE_DEVICES=void`, so a CUDA image cannot take the GPU through a
+  host whose default Docker runtime is `nvidia`.
+- **Mining is in the catalog** (beta), with pool balances read from your
+  public payout address only.
+
+#### Approval before a container is replaced
+
+- A redeploy, a settings change or a rename of a running service shows the
+  containers it will replace, by ID, and waits for your approval.
+- A proxied copy saves the full Docker ID of its container. A copy whose ID is
+  not saved yet, or changed, asks for your approval on its next Start.
+  Automatic recovery skips such a copy and shows an alert on the Fleet page.
+- From the Fleet page you can deploy to a joined CashPilot Desktop, and stop
+  and start its services, once it runs Desktop 2.0.
+  [Fleet dashboard](docs/fleet.md#fleet-dashboard)
+
+#### Mining (beta)
+
+- **A new Mining section in the catalog.** Run [XMRig](docs/guides/xmrig.md) or
+  [unMineable](docs/guides/unmineable.md) on your CPU, or
+  [SRBMiner-Multi](docs/guides/srbminer-multi.md) or
+  [KRig for Kryptex Pool](docs/guides/kryptex-pearl.md) on an NVIDIA GPU. The
+  CPU thread setting caps the threads the miner starts, also on virtual
+  machines.
+- **Pool balances without a key.** CashPilot reads the unpaid balance of
+  [OCEAN](docs/guides/ocean.md), [SupportXMR](docs/guides/supportxmr.md),
+  [HeroMiners Kaspa](docs/guides/herominers-kas.md),
+  [2Miners ETC](docs/guides/2miners-etc.md) and unMineable from your public
+  payout address. For OCEAN it also shows what your hashrate should earn next
+  to what the pool credited. [Mining](docs/mining.md)
+- **Miners on your network.** Set `CASHPILOT_MINERS` on a worker, and Fleet
+  shows the hashrate, temperature and power of Bitaxe (AxeOS) and cgminer
+  devices. [LAN miner readings](docs/mining-devices.md)
+
+#### GPU grants (beta)
+
+A catalog entry can declare the GPU it needs. The worker then passes in one
+NVIDIA device request, or the AMD or Intel render node, and nothing more. It
+gives each miner its own GPU, and it notices when a grant is gone. A custom
+service and a proxied copy never get a GPU. [GPU services](docs/gpu.md)
+
+#### Earnings and running costs
+
+- **Bitcoin and Kaspa payout addresses** are read without a key.
+  `CASHPILOT_ONCHAIN_URL_<CHAIN>` points the lookup at your own server.
+  [On-chain payout balances](docs/onchain.md)
+- **Coin balances keep 12 decimals**, so a small payout no longer shows as
+  0.00.
+- **Break-even tariff, fixed-price hosting and heat credit** on the Fleet
+  page's running costs. A miner tracked through its pool is no longer counted
+  as running on free electricity. [Running costs](docs/fleet.md#running-costs)
+- **Income export.** `GET /api/earnings/income.csv` writes your income for a
+  tax tool. [Income export for taxes](docs/income-export.md)
+- A catalog entry with no account to create shows **Visit** instead of
+  **Sign Up**.
+
+The companion apps that work with 3.0 are listed under
+[Companion apps](#companion-apps) below.
+
+### Upgrade from 2.x
+
+**Affects everyone on 2.x.** The compose files pin a release series
+(`drumsergio/cashpilot:2.10`), so `docker compose pull` and the in-app
+**Update** button keep a 2.x install on 2.x. The update card still tells you
+that 3.0.0 exists. Moving to 3.0 means taking the new compose file or
+changing the tags.
 
 **What breaks if you do nothing.** Nothing, while the UI and every worker stay
 on 2.x. The risk is a worker that reaches 3.0 before the UI. A 3.0 worker
@@ -45,7 +129,9 @@ running containers itself and asks you to approve a replacement.
 
 **What to do.**
 
-1. Back up `/data` and your node identities (see the top of this file).
+1. Back up the dashboard's `/data` and your node identities (see the top of
+   this file). [Backing up and restoring](docs/backup-restore.md#backup) and
+   [Backing up node identities](docs/backup.md) have the steps.
 2. On the UI host, take the 3.0 compose file, or change every
    `drumsergio/cashpilot:2.10` and `drumsergio/cashpilot-worker:2.10` tag to
    `3.0`. Then run `docker compose up -d --force-recreate`.
@@ -58,8 +144,18 @@ both images. So the next update of either app takes it to 3.0. Update the UI
 app first, then the worker app. If Watchtower or a similar tool updates your
 containers, keep the same order.
 
-Then read the parts below that apply to you.
-[What's new in 3.0](docs/whats-new-3.0.md) says what changed and why.
+Then read the parts below that apply to you. Each one has the details and the
+commands:
+
+- A worker behind the socket proxy needs the new proxy policy before it
+  deploys a service that uses a GPU.
+- A service that sets an `NVIDIA_` variable is refused until you remove it.
+- A proxied copy made before 3.0 asks you once to approve its containers.
+- Scripts must confirm in a second call before a route replaces a running
+  container. These routes ask: deploy, rename, device ID change, import-draft
+  deploy, adding a proxied copy that already runs, and the worker command
+  deploy. A proxied copy's Start may also ask for its containers and a
+  `group_approval` in return.
 
 ### Take the new proxy policy before you deploy a service that uses a GPU
 
@@ -194,8 +290,8 @@ the Fleet page.
 **Affects you if** you use CashPilot Desktop, cashpilot-mcp, the Android app or
 the Home Assistant integration with this server.
 
-- **CashPilot Desktop 2.0.0 or later** takes server commands (deploy, stop,
-  start) from a 3.0 server. It offers its command address only to a server that
+- **[CashPilot Desktop](https://github.com/GeiserX/CashPilot-Desktop) 2.0.0 or
+  later** takes server commands (deploy, stop, start) from a 3.0 server. It offers its command address only to a server that
   says it can command a Desktop safely, and 3.0 is the first such release.
   Under a 2.x server, Desktop 2.0 only reports what runs on it. Desktop 1.7.0
   under a 3.0 server also only reports.
@@ -203,17 +299,19 @@ the Home Assistant integration with this server.
   in the Desktop's dashboard if you want this server to command it.
 - Desktop does not update itself. Download it from its
   [releases page](https://github.com/GeiserX/CashPilot-Desktop/releases).
-- **cashpilot-mcp 0.4.0 or later** is needed to redeploy a running service,
-  because it sends the confirmation that 3.0 asks for.
+- **[cashpilot-mcp](https://github.com/GeiserX/cashpilot-mcp) 0.4.0 or later**
+  is needed to redeploy a running service, because it sends the confirmation
+  that 3.0 asks for.
 - CashPilot Desktop 2.0 has its own upgrade steps. Its pairing moves to a new
   file once, so a later downgrade to 1.x needs a new join. When the server
   refuses its key (HTTP 401), you must join again by hand. It also refuses
   `NVIDIA_` variables, so a 1.x custom service that sets one cannot be
   redeployed until you remove them.
-- The Android app and the Home Assistant integration talk to 3.0 as they did
-  to 2.x. They need no update. Home Assistant shows every balance in USD with
-  2 decimals, so a coin balance from a mining pool shows wrong there (0.0006
-  XMR shows as 0.00). Read coin balances in CashPilot.
+- The [Android app](https://github.com/GeiserX/CashPilot-android) and the Home
+  Assistant integration talk to 3.0 as they did to 2.x. They need no update.
+  Home Assistant shows every balance in USD with 2 decimals, so a coin balance
+  from a mining pool shows wrong there (0.0006 XMR shows as 0.00). Read coin
+  balances in CashPilot.
 
 **What to do.** Upgrade this server to 3.0 before you upgrade a Desktop to
 2.0. Update cashpilot-mcp to 0.4.0.
@@ -333,22 +431,307 @@ folder. Back it up first, as for the redeploy.
 
 ## 2.0: change the image tags
 
-**Affects everyone on 1.x.** The compose files pin a release series, so
-`docker compose pull` and the in-app **Update** button never move a 1.x install
-to 2.0.
+### What changed in 2.0
+
+CashPilot 2.0 adds no big feature of its own. It closes a run of releases,
+1.62 to 1.73, that changed what the worker can do on your host, how far an
+earner can reach into your network, and how many IPs one box can earn on.
+Several of those releases need a step from you when you upgrade, so they get a
+major version together.
+
+#### Why upgrade
+
+What an older install leaves open, by version:
+
+- **1.70 and older:** the worker holds the raw Docker socket. Whoever takes
+  over the worker is root on your host.
+- **1.72 and older,** with the dashboard and a worker on one host: a
+  compromised worker can read `.fernet_key` and decrypt every provider login
+  you stored.
+- **Anything deployed before 1.70:** earners carrying strangers' traffic can
+  reach your LAN, your router and your other machines, until you turn the
+  fence on.
+
+2.0 closes all three. It also carries the fixes since 1.73: the in-app update
+works behind the socket proxy, identity backups you confirmed stay confirmed
+through the migration, earners from the old pre-worker deploy path stay
+visible after it, Podman workers can deploy, and traffic caps on proxies
+recover after a box was offline. Releases are cut from one branch, so every
+fix from now on ships in 2.x and the `1.73` tag gets no more patches.
+
+#### Security
+
+##### The worker no longer holds the Docker socket
+
+Whoever holds the Docker socket is root on the host. In the shipped compose
+files the socket now sits with a socket proxy,
+[sockguard](https://github.com/CodesWhat/sockguard) 2.4.6, pinned by digest.
+The worker talks to Docker only through it. The proxy reads every request,
+including its JSON body, and refuses:
+
+- every Docker API call the worker does not make (swarm, secrets, plugins,
+  builds, exec of arbitrary commands, image push, and more);
+- privileged containers, host PID, IPC and user namespaces, unconfined seccomp
+  or AppArmor;
+- binds of `/`, of the socket, or of any host folder you did not list;
+- any added capability other than `NET_ADMIN`, `NET_RAW`, `SETUID` and
+  `SETGID`, any device other than `/dev/net/tun`, and any runtime other than
+  `runc` and gVisor.
+
+A CI job opens a pull request when sockguard ships a new release, so the pin
+does not go stale.
+[Docker socket proxy](docs/security-defaults.md#docker-socket-proxy) has the
+full list.
+
+##### Owner isolation keeps a compromised worker out of the dashboard
+
+The proxy labels every container, volume and network the worker creates with
+`cashpilot.deployed-by=worker`, and refuses the worker everything without that
+label. On a host that runs the dashboard and a worker together, a compromised
+worker can no longer read the dashboard's `/data`. That folder holds
+`.fernet_key`, the key that decrypts every login CashPilot stores. Nor can it
+read the keys in the dashboard container's environment. It cannot touch
+containers you started by hand either.
+
+It is not yet a full root boundary. If you set `CASHPILOT_COMPOSE_DIR` or
+`CASHPILOT_PROXY_BIND_MOUNTS`, a symlink planted in one of those folders can
+still reach the host's root, until sockguard can check binds for symlinks.
+Leave both unset and that path is closed.
+[Owner isolation](docs/security-defaults.md#docker-socket-proxy) lists what a
+compromised worker can still do.
+
+##### Earners are fenced off your LAN
+
+On a new install the worker puts bridge-networked earners on their own Docker
+network and writes one firewall table that drops traffic from them to:
+
+- private ranges (`10/8`, `172.16/12`, `192.168/16`);
+- `100.64/10`, which covers carrier-grade NAT and your tailnet;
+- `169.254/16`, cloud metadata;
+- the host itself, any subnet directly attached to it, and your home's own
+  public IP, which most routers would loop back into the LAN.
+
+An upgraded install turns it on with **Turn on isolation** on the Fleet page,
+and **Check isolation** starts two short-lived containers to test that it holds.
+
+Limits: through 2.0.6 Mysterium ran on host networking and was not covered by
+the fence; later releases move it onto the fenced bridge in its own network
+namespace on its next redeploy, and run it only with isolation on or on your
+own network
+([Mysterium on the fenced bridge](docs/isolation.md#mysterium-on-the-fenced-bridge)).
+A second WAN or extra public IPs are not dropped. Docker Desktop, rootless
+Docker, and Unraid are not tested yet. On Podman the fence is not available
+yet: a worker there deploys on Podman's default network and the Fleet page says
+so. [Network isolation](docs/isolation.md#lan-isolation-by-default) has the
+details, and [Test your isolation](docs/isolation-check.md) has the checks by
+platform.
+
+##### gVisor where it works
+
+If your Docker daemon has gVisor's `runsc` runtime, `CASHPILOT_CONTAINER_RUNTIME`
+puts the bridge-networked earners in it, with exceptions per service. We
+measured about a fifth less peak throughput and six to nine times the CPU per
+byte moved. It does not run on stock Unraid.
+[gVisor, optional](docs/home-network-security.md#7-gvisor-optional) has the
+numbers and the install steps.
+
+##### Node identities are backed up before you can lose them
+
+Some earners keep state that has no copy anywhere else: a Mysterium keystore,
+a Storj identity. CashPilot refuses to delete those volumes unless you ask for
+it explicitly. The Payouts page lists them under **Back these up**, one line
+per box, with an encrypted **Download backup** button. A box that has been
+backed up asks again when its volume changes or after six months.
+[Backing up node identities](docs/backup.md) explains how.
+
+#### Proxied copies: earn on more than one IP
+
+Providers count devices per public IP, so a second copy of an earner on the
+same box usually earns nothing. A proxied copy is an extra copy of a deployed
+service that leaves through a proxy instead, so one box earns on its own IP plus
+one IP per proxy.
+
+- Three kinds of proxy: SOCKS5, HTTP CONNECT, or a Tailscale exit node on
+  another connection you own.
+- **Test** starts a throwaway tunnel, shows the exit IP and country, and passes
+  only when that IP is public and, when the worker knows its own public IP, is
+  not the box's own.
+- It fails closed. The earner has no network of its own. It shares the
+  namespace of a tunnel container whose firewall drops every packet that does
+  not go through the proxy. The earner starts only after the tunnel has seen an
+  exit IP within 45 seconds. If the proxy dies, the copy stops earning
+  and nothing leaks out of your own IP. `scripts/proxy_leak_test.sh` checks
+  this against a real Docker daemon.
+- An optional traffic cap per proxy, in GB, stops its copies at a threshold
+  (90% of the cap by default) and starts them again on the reset day.
+
+Limits: services that need host networking, published ports, volumes, devices
+or extra network capabilities cannot run through a proxy. That rules out
+Mysterium, Bitping and Storj. Neither can a service whose terms forbid proxies.
+UDP goes out only through a Tailscale exit node, never through SOCKS5 or HTTP
+CONNECT. [Proxied copies](docs/proxies.md) covers setup and DNS.
+
+#### Also new since 1.62
+
+- **Provider ratings.** Every provider gets a letter grade from the same ten
+  questions, each answer backed by a source you can open. At 2.0.0 none of the
+  graded providers earned an A or a B. [Provider ratings](docs/ratings.md)
+- **Activity.** Off by default. Once you turn it on, it shows what each earner
+  does on the network: connections, ports, networks, countries, and alerts for
+  mail ports and attempts on your LAN. It reads socket tables only, never
+  traffic. [Activity](docs/activity.md)
+- **Custom services.** Run any image the catalog lacks, by name and tag, with
+  the catalog's restrictions. [Custom services](docs/custom-services.md)
+- **Import from another tool.** Bring your logins over from money4band,
+  CashFactory or InternetIncome, and review them before saving.
+  [Moving from money4band](docs/migrate/money4band.md)
+- **Payouts.** The Payouts page lists each service, the boxes it runs on and
+  the address it pays to. A balance drop is offered as a payout for you to
+  confirm. The [service guides](docs/guides/index.md) give each minimum payout,
+  and several say what a first cash-out asks for, such as a one-time
+  registration link or a phone check by SMS.
+- **App stores.** Install from Unraid Community Applications or TrueNAS SCALE.
+  CasaOS and Runtipi packages are in this repository and run the socket proxy.
+  [App stores](docs/app-stores.md)
+- **Catalog.** At 2.0.0 the catalog held 40 active services and 1 in beta: 17
+  ran in Docker, 24 were tracked, and 15 had a balance collector.
+  [How CashPilot compares](docs/comparison.md) sets today's catalog against
+  five other stacks, every cell sourced.
+
+#### Companion apps in 2.0
+
+- **[CashPilot Desktop 1.0](https://github.com/GeiserX/CashPilot-Desktop)**
+  runs the same catalog as an app for macOS (Apple Silicon), Windows and
+  Linux. It works as a full dashboard or as a worker that joins this one, and
+  pins every service image by digest.
+- **[CashPilot for Android 1.0](https://github.com/GeiserX/CashPilot-android)**
+  reports a phone's earning apps to the
+  [Fleet page](docs/fleet.md#fleet-dashboard) next to your servers. It ships
+  from GitHub releases and is waiting for review on
+  [F-Droid](https://gitlab.com/fdroid/fdroiddata/-/merge_requests/56196).
+
+### Upgrade from 1.x
+
+**Affects everyone on 1.x.** The compose files pin a release series
+(`drumsergio/cashpilot:1.73`), so `docker compose pull` and the in-app
+**Update** button never move a 1.x install to 2.0. Moving to 2.0 means taking
+the new compose file or changing the tags.
 
 Beyond the fixes since 1.73, 2.0 changes nothing of its own, and it uses the
-same database. It is the major version for the releases below, several of which need
-a step from you: the socket proxy, owner isolation and its one-shot migration,
-and LAN isolation for upgraded installs.
+same database. It is the major version for the releases below, several of
+which need a step from you: the socket proxy, owner isolation and its one-shot
+migration, and LAN isolation for upgraded installs.
 
-**What to do.** Back up `/data` and your node identities, then take the 2.0
-compose file for each host (or change every `drumsergio/cashpilot:1.x` and
-`drumsergio/cashpilot-worker:1.x` tag to `2.0`) and run
-`docker compose up -d --force-recreate`. Coming from before 1.73, also follow
-the sections below for your version.
-[What's new in 2.0](docs/whats-new-2.0.md#upgrading-from-1x) has a table by
-version and how to roll back.
+**What to do.** Follow the three steps below on each host. Coming from before
+1.73, also follow the sections below for your version.
+
+#### 1. Back up first
+
+- **The dashboard's `/data`.** `cashpilot.db` holds your earnings history and
+  `.fernet_key` decrypts every stored login. Without that key the logins
+  cannot be recovered. [Backing up and restoring](docs/backup-restore.md#backup)
+  has a script that copies both without stopping the container, and the
+  commands to check the copy.
+- **Node identities.** On the Payouts page, use **Download backup** for every
+  box listed under **Back these up**. A Mysterium keystore or a Storj identity
+  has no other copy. [Backing up node identities](docs/backup.md)
+
+The migration below keeps its own copy of every volume it touches, but a
+backup you hold is the one that survives a lost disk.
+
+#### 2. Take the 2.0 compose file
+
+On each host, replace your compose file with the 2.0 one:
+`docker-compose.yml` where the dashboard runs, `docker-compose.fleet.yml` for a
+dashboard with remote workers, or `docker-compose.worker.yml` on a worker-only
+host. Carry over your own changes and keep your `.env`. If you keep your old
+file, it must already have the `cashpilot-socket-proxy` and
+`cashpilot-migrate` services; then change every `drumsergio/cashpilot:1.x` and
+`drumsergio/cashpilot-worker:1.x` tag to `2.0`.
+
+If your worker still mounts `/var/run/docker.sock`, the new file is what moves
+the socket to the proxy. Set `CASHPILOT_COMPOSE_DIR=/folder/with/the/compose/file`
+in `.env` if you want the in-app update, which opens the symlink path
+described above. On a GPU host, read
+[the socket proxy section](#docker-socket-proxy-take-the-new-compose-file-once)
+first: the proxy refuses to recreate a CashPilot service with a GPU.
+
+#### 3. Start it
+
+```sh
+docker compose up -d --force-recreate
+```
+
+Add `-f` and your file name if it is not `docker-compose.yml`. Do the
+dashboard host first, then every worker host. The dashboard and every worker
+should run the same version.
+
+#### What the one-shot migrator does
+
+On an install from before 1.73, `cashpilot-migrate` runs once, before the
+socket proxy starts. Docker cannot add a label to an existing volume or
+network, so it moves your data onto labelled ones:
+
+- each volume of an earner the worker started is copied to a backup named
+  `<volume>-pre-isolation`, checked by digest, recreated with the label,
+  filled back from the backup and checked again. The earner is then recreated
+  as it was. A Mysterium identity keeps its address;
+- the worker's own volumes are copied into new ones named
+  `cashpilot_worker_data_owned` and, where the dashboard runs too,
+  `cashpilot_fleet_owned`;
+- the `cashpilot-isolated` network is rebuilt with the label, with its earners
+  put back on it.
+
+It deletes nothing. It can take a few minutes on a node with a large volume.
+If it stops halfway, after a reboot or a kill, run the same command again and
+it finishes from where it stopped. If it already ran on 1.73, it finds nothing
+to do and exits.
+
+#### What you see when it is done
+
+- `docker logs cashpilot-migrate` ends with *Migration complete: everything the
+  worker uses carries cashpilot.deployed-by=worker.* A run that had to leave
+  something alone ends with *Migration done, with N thing(s) left as they
+  were*, and the lines above it say what and why.
+- The worker's status page says *Docker access: socket proxy*.
+- The dashboard shows every earner running, the Fleet page shows each worker on
+  2.0, and a Mysterium node shows the same address as before.
+
+Two things work differently afterwards:
+
+- On the host where the dashboard and a worker run together, the in-app update
+  updates the worker only. Update the dashboard with
+  `docker compose pull && docker compose up -d`.
+- Earners you started by hand, or from a compose file CashPilot exported, no
+  longer show in the dashboard. They keep running and earning.
+
+If you came from 1.69 or older, your earners are still on Docker's default
+bridge. Press **Turn on isolation** on each worker's row on the Fleet page,
+then **Check isolation**.
+
+Once everything has run well for a while, remove what the migration left
+behind.
+[The owner isolation section](#owner-isolation-take-the-compose-file-again-two-features-change-on-the-uis-host)
+lists each leftover and the commands.
+
+#### Rolling back from 2.0
+
+2.0 uses the same database schema as every release since 1.67. To go back to
+1.73, set the tags back to `1.73` and run `docker compose up -d`.
+
+To go back further, put your old compose file back and run
+`docker compose up -d`. The migration copies and never deletes, so your old
+worker volumes and each `<volume>-pre-isolation` backup are still there,
+unless you removed them. That is why you keep them for a while. A compose file
+from before the socket proxy leaves the proxy running: remove it with
+`docker rm -f cashpilot-socket-proxy`. Going back past 1.67, restore the
+`/data` backup you took as well.
+
+> **The old volumes hold the data from the day you migrated.** On 2.0 the
+> worker writes to `cashpilot_worker_data_owned`, and on its host the dashboard to
+> `cashpilot_fleet_owned`. The old compose file mounts `cashpilot_worker_data`
+> and `cashpilot_fleet` again, so everything written on 2.0 is missing there.
+> The newest data stays in the `_owned` volumes until you remove them.
 
 ---
 
@@ -813,11 +1196,88 @@ docker compose up -d
 
 ## v1.0.0: per-worker fleet keys
 
-A full cutover with its own page: **[Upgrade to v1.0.0](docs/upgrade-v1.md)**.
+### What changed in v1.0.0
 
-In short: every worker is issued its own key on first heartbeat and uses it
-thereafter; `CASHPILOT_API_KEY` becomes an enrollment credential only. Keep it
-set, because enrollment still needs it. Upgrade the UI first, then every worker.
+v1.0.0 hardens fleet authentication. Instead of one shared key doing
+everything, **each worker now gets its own key**. This is a breaking change
+for existing fleets: worker and UI images must both be on v1.0.0+, and workers
+re-enroll automatically on their first heartbeat after the upgrade.
+
+| | Before (0.x) | v1.0.0 |
+|---|---|---|
+| Heartbeat, worker to UI | shared `CASHPILOT_API_KEY` | worker's **own** key (after enrollment) |
+| Commands, UI to worker | shared key | that worker's **own** key |
+| Role of `CASHPILOT_API_KEY` | authenticates everything | **enrollment/bootstrap only** |
+
+**Why:** with per-worker keys, a key that leaks from one worker only affects
+that one worker, and no worker can present another worker's identity to the
+UI. The shared key stops being a fleet-wide credential once a worker is
+enrolled.
+
+> **The shared key is still sensitive.** `CASHPILOT_API_KEY` is now an
+> *enrollment* credential, not a fleet-wide command key. It remains
+> high-value: anyone holding it can enroll a new worker that then receives
+> deploy specs (which carry service credentials). Keep protecting it.
+
+#### How enrollment works (automatic)
+
+1. A worker's **first** heartbeat authenticates with the shared
+   `CASHPILOT_API_KEY`.
+2. The UI issues that worker a unique key. The UI stores it **encrypted** and
+   returns it to the worker **once**.
+3. The worker persists the key under its own private `/data/.worker_key` and
+   uses it from then on. The UI addresses that worker with the same key.
+4. Once enrolled, the shared key **no longer works** for that worker.
+
+You don't handle keys by hand: this all happens on the next heartbeat.
+
+### Upgrade from 0.x
+
+**Affects you if** you run CashPilot 0.x: the UI and its workers must both
+move to v1.0.0.
+
+**What breaks if you do nothing.** A worker left on a 0.x image under a v1.0.0
+UI never finishes enrolling, and after 24 hours it goes offline. Step 2 below
+says why.
+
+**What to do.**
+
+1. **Upgrade the UI** image to `drumsergio/cashpilot:1.0.0` or newer.
+2. **Upgrade every worker** image to `drumsergio/cashpilot-worker` at the same
+   version as the UI. A worker newer than its UI can refuse work: a 3.0
+   worker refuses redeploys from a 2.x UI. Do not leave old-version workers
+   running against a v1.0.0 UI. An
+   old worker image only knows the shared key and cannot persist the one it is
+   issued, so it never finishes enrolling. For the first 24 hours it keeps
+   heartbeating on the shared key, which means anyone holding
+   `CASHPILOT_API_KEY` can impersonate it for that long. After that it is
+   refused and goes offline. The fleet page marks such a worker
+   **enrollment incomplete**.
+
+   The same thing happens to a current worker image whose `/data` is read-only
+   or is not a persistent volume, because it has nowhere to keep
+   `/data/.worker_key`. To recover one: fix the image or the volume, then
+   remove the worker in the fleet page so it enrolls again from scratch.
+3. Keep `CASHPILOT_API_KEY` **unchanged**: enrollment still needs it.
+4. Restart the containers. Each worker auto-enrolls on its first heartbeat.
+   Confirm that every worker shows **online** in the fleet dashboard.
+
+Persist the worker's `/data` volume (the compose files already do) so its key
+survives restarts.
+
+#### Recovery and rollback
+
+- **A worker's `/data` was wiped** (lost its key): it will try the shared key,
+  which the UI now rejects for an enrolled worker. Remove the worker in the
+  fleet dashboard, and it re-enrols on its own. The worker keeps sending the
+  key it persisted. After roughly ten consecutive rejections, it discards that
+  key and re-enrols with the shared one. Expect a few minutes of 401s in the
+  worker log while that plays out. To skip the wait, delete `/data/.worker_key`
+  on that host and restart the container.
+- **Rolling back to 0.x:** roll back the UI and every worker together, never
+  a worker alone. A 0.x worker under a v1.0.0 UI never finishes enrolling, and
+  it goes offline after 24 hours (step 2 above). Set the UI image back to the
+  0.x tag you ran before, then set every worker to the same 0.x tag.
 
 ---
 

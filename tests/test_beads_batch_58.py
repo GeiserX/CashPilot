@@ -312,9 +312,11 @@ class TestTheChangelogStaysOutOfTheDocsSite:
         assert "changelog-0.x-handwritten" not in nav
 
     def test_neither_changelog_file_lives_under_docs_nav(self):
+        """The nav may link UPGRADING.md on GitHub, never as a page of the site."""
         nav = self._nav()
         assert "CHANGELOG" not in nav
-        assert "UPGRADING" not in nav
+        outside = nav.replace("https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md", "")
+        assert "UPGRADING" not in outside
 
     def test_the_root_files_exist_where_a_reader_expects_them(self):
         """The flip side: excluded from the site must not mean missing."""

@@ -408,11 +408,26 @@ jobs:
       # generated notes after it. `append_body` stays unset: on a re-run, when
       # the release already exists, it would keep the old body and add the
       # line and the notes a second time.
+      #
+      # A major (X.0.0) links its own "## X.0:" section of UPGRADING.md, so its
+      # notes open on what changed and how to upgrade; any other release links
+      # the top of the file (scripts/release_upgrade_link.py).
+      - name: Release notes header
+        id: notes
+        env:
+          TAG: ${{ needs.release.outputs.new_tag }}
+        # Assign first: inside echo's argument a failed script would not stop the
+        # step, and the release would go out with no UPGRADING.md line.
+        run: |
+          line=$(python3 scripts/release_upgrade_link.py "$TAG")
+          [ -n "$line" ]
+          echo "body=$line" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: ${{ needs.release.outputs.new_tag }}
-          body: "Upgrading? Read https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md first."
+          body: ${{ steps.notes.outputs.body }}
           generate_release_notes: true
           draft: false
           prerelease: false

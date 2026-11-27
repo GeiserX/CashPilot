@@ -439,7 +439,7 @@ class TestRemovingAWorkerDoesNotLockTheHostOut(TestAuthFailureAlarmCounter):
     UI side. The worker keeps sending the key it persisted at /data/.worker_key
     — _active_key() returns `_worker_key or API_KEY`, so once that file exists
     the shared key is never used again — and 401s forever, on a host whose
-    service containers are still running and still earning. docs/upgrade-v1.md
+    service containers are still running and still earning. The v1.0.0 upgrade guide
     promised removal "clears its enrollment so the shared key is accepted
     again"; nothing cleared anything. The only real recovery was SSHing in to
     delete a file documented nowhere.
@@ -562,7 +562,9 @@ class TestTheRecoveryIsDocumentedWhereItIsNeeded:
     def test_the_upgrade_doc_no_longer_promises_the_shared_key_is_accepted(self):
         from pathlib import Path
 
-        text = Path(__file__).resolve().parents[1].joinpath("docs/upgrade-v1.md").read_text(encoding="utf-8")
+        text = Path(__file__).resolve().parents[1].joinpath("UPGRADING.md").read_text(encoding="utf-8")
+        text = text[text.index("\n## v1.0.0:") :]
+        text = text[: text.find("\n## ", 1)]
         assert "so the shared key is accepted again" not in text
         assert "/data/.worker_key" in text, "the manual recovery must be written down somewhere"
 
