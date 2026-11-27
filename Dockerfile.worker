@@ -82,6 +82,9 @@ COPY app/worker_api.py ./app/
 COPY app/miner_read.py ./app/
 COPY app/orchestrator.py ./app/
 COPY app/isolation_check.py ./app/
+# The security layers this worker can give an earner (system_info.layers, runtime_choice).
+COPY app/layers.py ./app/
+COPY app/gvisor_check.py ./app/
 COPY app/socket_policy.py ./app/
 # The one-shot cashpilot-migrate service of the compose files runs it.
 COPY app/owner_migrate.py ./app/

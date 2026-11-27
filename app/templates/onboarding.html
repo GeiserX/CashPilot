@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ theme_default }}" data-theme-fallback>
+<html lang="{{ lang() }}" dir="{{ lang_dir() }}" data-theme="{{ theme_default }}" data-theme-fallback>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -51,6 +51,7 @@
       </svg>
       CashPilot
     </span>
+    {% include "_language_picker.html" %}
   </header>
 
   <main class="gate-main">
@@ -217,6 +218,7 @@
       return false;
     }
   </script>
+  {% include "_i18n_scripts.html" %}
   <script src="/static/js/delegate.js"></script>
 </body>
 </html>

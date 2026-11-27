@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ theme_default }}" data-theme-fallback>
+<html lang="{{ lang() }}" dir="{{ lang_dir() }}" data-theme="{{ theme_default }}" data-theme-fallback>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -46,6 +46,7 @@
       </svg>
       CashPilot
     </span>
+    {% include "_language_picker.html" %}
   </header>
 
   <main class="gate-main">
@@ -108,6 +109,7 @@
     <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">Source</a>
     <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
   </footer>
+  {% include "_i18n_scripts.html" %}
   <script src="/static/js/delegate.js"></script>
   {%- if mode == "login" and captcha %}
   <script src="{{ captcha.provider.script_url }}" nonce="{{ csp_nonce(request) }}" async defer></script>

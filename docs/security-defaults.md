@@ -381,8 +381,9 @@ it uses: *Docker access: socket proxy* or *direct socket (root on this host)*.
 
 ## Container runtimes: gVisor where it works
 
-CashPilot supports an optional `runtime` on a deploy spec, allowed only when your
-Docker daemon reports it. Nothing selects one for you.
+You choose, per worker and per earner, whether an earner runs under Docker's
+own runtime (Standard, `runc`) or under gVisor. The Fleet page shows the runtime
+each earner really got. Nothing selects gVisor for you.
 
 gVisor's `runsc` runtime puts a user-space kernel between a container and
 yours. That is a real extra layer against a container escaping through a kernel
@@ -398,11 +399,23 @@ typical bandwidth-sharing service, and more for a busy storage node. Plain
 networks it needs its network passthrough mode. It turns off raw sockets unless
 registered with `--net-raw`, gains little for services on host networking, and
 cannot run at all on stock Unraid, where a VM is the better boundary. The figures, the install steps and the details are in
-[the gVisor section](home-network-security.md#7-gvisor-optional).
+[the gVisor section](home-network-security.md#7-gvisor-optional), and every
+layer is on [Security layers](security-layers.md).
 
-If you have installed a runtime, `CASHPILOT_CONTAINER_RUNTIME` on the worker puts
-its bridge-networked services in it, and `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES`
-sets exceptions per service ([configuration](configuration.md)). A deploy spec can
-also name a `runtime` for one service. Either way you own the outcome. The allowlist is read from your daemon, so
-you cannot select something the host does not have; that would only fail later
-with an error you could not act on.
+The worker decides the runtime in this order:
+
+1. A runtime the service's catalog entry requires. Mysterium requires `runc`.
+2. A `runtime` named in the deploy spec.
+3. `CASHPILOT_CONTAINER_RUNTIME_OVERRIDES` for that service, then
+   `CASHPILOT_CONTAINER_RUNTIME`, both for bridge networking only
+   ([configuration](configuration.md)).
+4. The owner's choice from the Fleet page, sent with the deploy as
+   `runtime_choice` (`runc` or `gvisor`).
+
+A choice that an earlier step overrules is refused with the reason, never
+swapped for another runtime, so what the Fleet page shows is what the earner
+got. A gVisor choice needs a gVisor runtime registered with `--network=host`,
+and one with `--net-raw` as well for an earner that declares `NET_RAW`. The
+worker reads the list of runtimes from your daemon. So you cannot select
+something that the host does not have, which would only fail later with an
+error you could not act on.

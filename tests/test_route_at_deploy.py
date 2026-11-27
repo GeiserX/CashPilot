@@ -966,7 +966,7 @@ class TestACopyDeployNeverReadsARouteThatIsTakenBack:
         client.images.get.return_value.attrs = {"Config": {}}
         monkeypatch.setattr(orchestrator, "_get_client", lambda: client)
         monkeypatch.setattr(orchestrator, "container_network", lambda mode: None)
-        monkeypatch.setattr(orchestrator, "container_runtime", lambda slug, mode, runtime: None)
+        monkeypatch.setattr(orchestrator, "container_runtime", lambda slug, mode, runtime, choice=None: None)
         monkeypatch.setattr(orchestrator, "container_dns", lambda network: None)
         monkeypatch.setattr(proxy_tunnel, "copy_name", lambda slug, pid: None)
         monkeypatch.setattr(proxy_tunnel, "routed_copies", lambda slug, marked: [])
