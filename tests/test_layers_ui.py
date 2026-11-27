@@ -334,3 +334,44 @@ class TestTheDashboardRow:
         assert rows["earnapp"] == {"fence": False, "runtime": "runc"}
         # An older worker reports neither: unknown, never "not fenced".
         assert rows["repocket"] == {"fence": None, "runtime": None}
+
+
+class TestTheSecureVm:
+    NOW = 1_800_000_000
+
+    def _info(self, fence, features=("runtime_choice", "secure_vm")):
+        return {"features": list(features), "secure_vm": {"host": "big-box", "fence": fence}}
+
+    def test_a_fresh_ok_is_ok(self):
+        vm = layers_ui.secure_vm(self._info({"state": "ok", "checked_at": self.NOW - 60}), now=self.NOW)
+        assert vm == {"host": "big-box", "state": "ok", "reason": ""}
+
+    def test_an_old_ok_is_stale_never_ok(self):
+        vm = layers_ui.secure_vm(self._info({"state": "ok", "checked_at": self.NOW - 3600}), now=self.NOW)
+        assert vm["state"] == "stale"
+
+    def test_no_state_yet_is_unknown_never_ok(self):
+        assert layers_ui.secure_vm(self._info(None), now=self.NOW)["state"] == "unknown"
+
+    def test_a_failed_fence_says_why(self):
+        fence = {"state": "failed", "checked_at": self.NOW, "reason": "the guard found a route to the LAN"}
+        vm = layers_ui.secure_vm(self._info(fence), now=self.NOW)
+        assert vm["state"] == "failed" and "route to the LAN" in vm["reason"]
+
+    def test_a_worker_without_the_feature_has_no_vm(self):
+        info = self._info({"state": "ok", "checked_at": self.NOW}, features=("runtime_choice",))
+        assert layers_ui.secure_vm(info, now=self.NOW) is None
+
+    def test_each_earner_carries_the_vm_fence(self):
+        w = _worker(
+            _layers(),
+            [{"slug": "honeygain", "runtime": "runc", "network": "cashpilot-isolated"}],
+            features=("runtime_choice", "secure_vm"),
+            secure_vm={"host": "big-box", "fence": {"state": "failed", "checked_at": 1, "reason": "x"}},
+        )
+        view = layers_ui.worker_view(w, NONE)
+        assert view["secure_vm"]["state"] == "failed"
+        assert view["earners"][0]["vm"] is False
+        # A worker that is not in a VM shows no VM fence per earner.
+        plain = layers_ui.worker_view(_worker(_layers(), [{"slug": "honeygain", "runtime": "runc"}]), NONE)
+        assert plain["secure_vm"] is None and plain["earners"][0]["vm"] is None

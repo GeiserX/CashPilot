@@ -20,6 +20,7 @@ worker's client_id as the other per-worker settings are.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from app import catalog, database, i18n, layer_scripts, placement
@@ -163,10 +164,39 @@ def fence(container: dict[str, Any], info: dict[str, Any]) -> bool | None:
     return bool(iso.get("mode") == "operator" and network == iso.get("network"))
 
 
+#: Seconds after which a Secure VM fence state is stale. The host's guard
+#: pushes it into the guest at most every 5 minutes, or at once on a change.
+VM_FENCE_STALE = 600
+
+
+def secure_vm(info: dict[str, Any], now: float | None = None) -> dict[str, Any] | None:
+    """The Secure VM fence of a worker that runs inside one, or None for any other worker.
+
+    ``state`` is ``ok`` only for a fresh ok from the host's guard. A missing,
+    unreadable or old state is ``unknown`` or ``stale``, never ``ok``.
+    """
+    if "secure_vm" not in _features(info) or not isinstance(info.get("secure_vm"), dict):
+        return None
+    block = info["secure_vm"]
+    fence = block.get("fence") if isinstance(block.get("fence"), dict) else None
+    view = {"host": str(block.get("host") or ""), "state": "unknown", "reason": ""}
+    if fence is None:
+        return view
+    checked = fence.get("checked_at")
+    view["reason"] = str(fence.get("reason") or "")[:200]
+    if fence.get("state") == "failed":
+        view["state"] = "failed"
+    elif fence.get("state") == "ok" and isinstance(checked, (int, float)):
+        fresh = ((time.time() if now is None else now) - checked) <= VM_FENCE_STALE
+        view["state"] = "ok" if fresh else "stale"
+    return view
+
+
 def worker_view(worker: dict[str, Any], stored: dict[str, Any]) -> dict[str, Any]:
     """What the Fleet page shows for one worker's layers."""
     info = placement.system_info(worker)
     report = info.get("layers") if isinstance(info.get("layers"), dict) else None
+    vm = secure_vm(info)
     earners = []
     seen: set[str] = set()
     for c in _containers(worker):
@@ -185,6 +215,10 @@ def worker_view(worker: dict[str, Any], stored: dict[str, Any]) -> dict[str, Any
                 "runtime": runtime,
                 "runtime_name": c.get("runtime"),
                 "fence": fence(c, info),
+                # Inside a Secure VM: True only for a fresh ok fence, None when unknown or stale.
+                "vm": None
+                if vm is None
+                else (True if vm["state"] == "ok" else False if vm["state"] == "failed" else None),
                 "choice": choice,
                 # Why the owner cannot switch this earner to the other runtime.
                 "locked": locked(slug, info, other),
@@ -197,6 +231,7 @@ def worker_view(worker: dict[str, Any], stored: dict[str, Any]) -> dict[str, Any
         "check": (report or {}).get("gvisor_check"),
         "can_check": CHECK_FEATURE in _features(info),
         "kvm": (report or {}).get("kvm"),
+        "secure_vm": vm,
         "pins": (report or {}).get("pins"),
         "default": stored["default"],
         "default_locked": locked("", info, GVISOR) if stored["default"] != GVISOR else None,
