@@ -39,7 +39,7 @@ const CP = (() => {
         // the same deploy again, saying the owner saw it.
         if (asked && asked.error === 'identity_in_use' && !opts.sharedOk
             && opts.body && typeof opts.body === 'object'
-            && window.confirm(`${asked.message}\n\nDeploy anyway?`)) {
+            && window.confirm(`${asked.message}\n\n${t('app.api.deploy_anyway')}`)) {
           return api(path, { ...opts, sharedOk: true, body: { ...opts.body, allow_shared_identity: true } });
         }
         if (asked && asked.error === 'confirm_deploy_targets' && opts.body
@@ -52,12 +52,12 @@ const CP = (() => {
         const refusal = detail && typeof detail === 'object' ? detail : {};
         if (detail && typeof detail === 'object') detail = detail.message || JSON.stringify(detail);
         // The refusal's code and fields go with it, for a caller that offers a way out.
-        throw Object.assign(new Error(detail || `Error ${res.status}`), { code: refusal.error, refusal });
+        throw Object.assign(new Error(detail || t('app.api.error_status', { status: res.status })), { code: refusal.error, refusal });
       }
       return data;
     } catch (err) {
       if (err.name === 'TypeError') {
-        throw new Error('Network error — is the server running?');
+        throw new Error(t('app.api.network_error'));
       }
       throw err;
     }
@@ -81,7 +81,7 @@ const CP = (() => {
     const input = document.getElementById('stepup-password');
     if (!overlay || !input) return Promise.resolve(null);
     const text = document.getElementById('stepup-message');
-    if (text) text.textContent = message || 'Enter your password to continue.';
+    if (text) text.textContent = message || t('app.stepup.default');
     input.value = '';
     // Focus goes back where it was when the prompt closes, however it closes,
     // so a keyboard or screen-reader user keeps their place in the page.
@@ -201,6 +201,36 @@ const CP = (() => {
 
   function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
+  // A container status as a label. The states Docker names are translated; any
+  // other status shows as it came, capitalised.
+  function statusLabelOf(s) {
+    switch (s) {
+      case 'running': return t('app.status.running');
+      case 'exited': return t('app.status.exited');
+      case 'stopped': return t('app.status.stopped');
+      case 'paused': return t('app.status.paused');
+      case 'restarting': return t('app.status.restarting');
+      case 'created': return t('app.status.created');
+      case 'dead': return t('app.status.dead');
+      case 'removing': return t('app.status.removing');
+      case 'unknown': return t('app.status.unknown');
+      default: return capFirst(s);
+    }
+  }
+
+  // A catalog category as a label: "Depin" in the badges, "DePIN" in the
+  // catalog table (dePin true). Unknown categories show as they came, capitalised.
+  function categoryLabel(c, dePin = false) {
+    switch (c) {
+      case 'bandwidth': return t('app.category.bandwidth');
+      case 'depin': return dePin ? t('app.category.depin_table') : t('app.category.depin');
+      case 'storage': return t('app.category.storage');
+      case 'compute': return t('app.category.compute');
+      case 'mining': return t('app.category.mining');
+      default: return capFirst(c);
+    }
+  }
+
   function fmtNetBytes(b) {
     if (!b || b < 1024) return (b || 0) + ' B';
     if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
@@ -300,10 +330,8 @@ const CP = (() => {
     // kind of noise that teaches people to ignore warnings.
     const fiatStale = _exchangeRates.fiat_stale === true && _displayCurrency !== 'USD';
     if (!cryptoStale && !fiatStale) return '';
-    const sources = [];
-    if (cryptoStale) sources.push('crypto prices');
-    if (fiatStale) sources.push(`${_displayCurrency} exchange rates`);
-    return `Using cached ${sources.join(' and ')} — the last refresh failed, so converted figures may be out of date.`;
+    if (cryptoStale && fiatStale) return t('app.rates.stale_both', { currency: _displayCurrency });
+    return cryptoStale ? t('app.rates.stale_crypto') : t('app.rates.stale_fiat', { currency: _displayCurrency });
   }
 
   function renderStaleRateNotice() {
@@ -426,7 +454,7 @@ const CP = (() => {
     const start = d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     if (!step || step <= 3600) return start;
     const end = new Date((epoch + step) * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    return `${start} to ${end}`;
+    return t('app.usage.hour_range', { start, end });
   }
 
   // A weekday at each local midnight on 7 days, a date each week on 30. The
@@ -554,10 +582,10 @@ const CP = (() => {
     const containerSel = document.getElementById('usage-container');
     if (!serverSel || !containerSel) return null;
     const servers = data.servers || [];
-    serverSel.innerHTML = servers.map(sv => `<option value="${escapeHtml(String(sv.worker_id))}">${escapeHtml(sv.name)}${sv.status === 'online' ? '' : ' (offline)'}</option>`).join('');
+    serverSel.innerHTML = servers.map(sv => `<option value="${escapeHtml(String(sv.worker_id))}">${escapeHtml(sv.name)}${sv.status === 'online' ? '' : escapeHtml(t('app.offline_suffix'))}</option>`).join('');
     serverSel.value = data.worker_id === null || data.worker_id === undefined ? '' : String(data.worker_id);
     const server = servers.find(sv => sv.worker_id === data.worker_id) || { containers: [], name: '' };
-    containerSel.innerHTML = '<option value="">All containers</option>' + server.containers.map(c =>
+    containerSel.innerHTML = `<option value="">${escapeHtml(t('app.usage.all_containers'))}</option>` + server.containers.map(c =>
       `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name === `cashpilot-${c.slug}` ? c.service : `${c.service} \u00b7 ${c.name}`)}</option>`).join('');
     containerSel.value = data.container || '';
     if (!serverSel.dataset.bound) {
@@ -572,13 +600,13 @@ const CP = (() => {
     if (data.container) {
       const c = server.containers.find(x => x.name === data.container);
       return c && c.no_counters
-        ? 'This container runs on the host network, so Docker counts no traffic for it: its network line stays empty.'
+        ? t('app.usage.host_network_one')
         : '';
     }
     const host = server.containers.filter(c => c.no_counters).map(c => c.service);
-    const parts = ['Each point adds up every container on this server. CPU: 100% is one core.'];
+    const parts = [t('app.usage.sum_note')];
     if (host.length) {
-      parts.push(`Network leaves out ${[...new Set(host)].join(', ')}: on the host network, Docker counts no traffic for it, so the network line is a minimum.`);
+      parts.push(t('app.usage.host_network_some', { names: [...new Set(host)].join(', ') }));
     }
     return parts.join(' ');
   }
@@ -592,7 +620,7 @@ const CP = (() => {
     if (charts) charts.hidden = !hasData;
     if (empty) {
       empty.hidden = !!hasData;
-      empty.innerHTML = hasData ? '' : '<div class="block-empty">No readings yet. The graphs fill in from each worker heartbeat, one point per hour.</div>';
+      empty.innerHTML = hasData ? '' : `<div class="block-empty">${t('app.usage.empty')}</div>`;
     }
     if (!hasData) { if (foot) foot.textContent = ''; return; }
     if (foot) foot.textContent = usageFoot(data, server);
@@ -601,11 +629,11 @@ const CP = (() => {
     if (!usageCharts.cpu) {
       // A container whose stats read failed is missing from the sum: a floor.
       const geq = (flags, i) => (usageCharts.net._cpModel[flags][i] ? '\u2265 ' : '');
-      usageCharts.cpu = usageChart('usage-cpu', [{ label: 'CPU', color: '--series-1' }], (v) => `${v}%`,
-        (ctx) => `CPU ${geq('cpuPartial', ctx.dataIndex)}${usageCpu(ctx.parsed.y)}`);
-      usageCharts.mem = usageChart('usage-mem', [{ label: 'Memory', color: '--series-1' }], (v) => usageMem(v),
-        (ctx) => `Memory ${geq('memPartial', ctx.dataIndex)}${usageMem(ctx.parsed.y)}`);
-      usageCharts.net = usageChart('usage-net', [{ label: 'Down', color: '--series-1' }, { label: 'Up', color: '--series-2' }],
+      usageCharts.cpu = usageChart('usage-cpu', [{ label: t('app.usage.cpu'), color: '--series-1' }], (v) => `${v}%`,
+        (ctx) => `${t('app.usage.cpu')} ${geq('cpuPartial', ctx.dataIndex)}${usageCpu(ctx.parsed.y)}`);
+      usageCharts.mem = usageChart('usage-mem', [{ label: t('app.usage.memory'), color: '--series-1' }], (v) => usageMem(v),
+        (ctx) => `${t('app.usage.memory')} ${geq('memPartial', ctx.dataIndex)}${usageMem(ctx.parsed.y)}`);
+      usageCharts.net = usageChart('usage-net', [{ label: t('app.usage.down'), color: '--series-1' }, { label: t('app.usage.up'), color: '--series-2' }],
         (v) => usageRate(v), (ctx) => {
           const cur = usageCharts.net._cpModel;
           const i = ctx.dataIndex;
@@ -623,16 +651,15 @@ const CP = (() => {
     usageSetChart('net', labels, [m.rx, m.tx]);
 
     const who = data.container || server.name;
-    const span = `last ${data.days} days`;
     const describe = (id, title, values, fmt) => {
       const el = document.getElementById(id);
-      if (el) el.setAttribute('aria-label', `${title} for ${who}, ${span}, hourly: now ${fmt(usageLast(values))}, peak ${fmt(usagePeak(values))}`);
+      if (el) el.setAttribute('aria-label', t('app.usage.describe', { title, who, days: data.days, now: fmt(usageLast(values)), peak: fmt(usagePeak(values)) }));
     };
-    describe('usage-cpu', 'CPU', m.cpu, usageCpu);
-    describe('usage-mem', 'Memory', m.mem, usageMem);
+    describe('usage-cpu', t('app.usage.cpu'), m.cpu, usageCpu);
+    describe('usage-mem', t('app.usage.memory'), m.mem, usageMem);
     const net = document.getElementById('usage-net');
     if (net) {
-      net.setAttribute('aria-label', `Network for ${who}, ${span}, hourly: down now ${usageRate(usageLast(m.rx))}, peak ${usageRate(usagePeak(m.rx))}; up now ${usageRate(usageLast(m.tx))}, peak ${usageRate(usagePeak(m.tx))}`);
+      net.setAttribute('aria-label', t('app.usage.describe_net', { who, days: data.days, down: usageRate(usageLast(m.rx)), downPeak: usageRate(usagePeak(m.rx)), up: usageRate(usageLast(m.tx)), upPeak: usageRate(usagePeak(m.tx)) }));
     }
     const now = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
     // The value and its "at least" mark come from the same point.
@@ -690,11 +717,11 @@ const CP = (() => {
     } catch (err) {
       if (seq !== usageLoadSeq) return;
       console.warn('Could not load resource use, keeping the previous graphs:', err);
-      if (meta) meta.textContent = 'Last refresh failed';
+      if (meta) meta.textContent = t('app.usage.refresh_failed');
       const empty = document.getElementById('usage-empty');
       if (empty && !usageCharts.cpu) {
         empty.hidden = false;
-        empty.innerHTML = `<div class="block-empty block-error"><span>Couldn't load resource use${err && err.message ? `: ${escapeHtml(err.message)}` : ''}. This is not a reading of zero.</span></div>`;
+        empty.innerHTML = `<div class="block-empty block-error"><span>${err && err.message ? t('app.usage.load_failed_detail', { error: escapeHtml(err.message) }) : t('app.usage.load_failed')}</span></div>`;
       }
     }
   }
@@ -753,14 +780,14 @@ const CP = (() => {
         : '';
       return `
         <div class="payout-queue-item attn-row attn-ask" data-payout-id="${escapeHtml(String(p.id))}">
-          <span class="attn-tag">Paid?</span>
+          <span class="attn-tag">${t('app.payq.tag')}</span>
           <span class="attn-what payout-queue-platform">${escapeHtml(p.platform || '')}</span>
-          <span class="attn-why payout-queue-detail">Balance dropped by ${escapeHtml(native)}${approx}${p.detected_at ? ` on ${escapeHtml(String(p.detected_at).slice(0, 10))}` : ''}</span>
+          <span class="attn-why payout-queue-detail">${p.detected_at ? t('app.payq.dropped_on', { amount: escapeHtml(native), approx, day: escapeHtml(String(p.detected_at).slice(0, 10)) }) : t('app.payq.dropped', { amount: escapeHtml(native), approx })}</span>
           <span class="attn-actions payout-queue-actions">
             ${_canWrite ? `
-            <button class="btn btn-primary btn-sm" data-action="confirmPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">Yes, I was paid</button>
-            <button class="btn btn-ghost btn-sm" data-action="rejectPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">Not a payout</button>
-            ` : `<span class="muted">Writer access required to answer this.</span>`}
+            <button class="btn btn-primary btn-sm" data-action="confirmPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">${t('app.payq.yes')}</button>
+            <button class="btn btn-ghost btn-sm" data-action="rejectPayout" data-a1="${escapeHtml(String(p.id))}" data-a2="${escapeHtml(p.platform || '')}">${t('app.payq.no')}</button>
+            ` : `<span class="muted">${t('app.payq.writer_needed')}</span>`}
           </span>
         </div>
       `;
@@ -772,7 +799,7 @@ const CP = (() => {
   // only goes through escapeHtml. Credential expiry is not repeated here: Needs
   // attention already shows it with its Renew button, and the push covers the
   // rest. A failed check reads "Could not check", never an all-clear.
-  const OBLIGATION_TAGS = { claim: 'Claim', withdraw: 'Withdraw', 'keep-active': 'Keep active' };
+  const OBLIGATION_TAGS = { claim: t('app.obl.tag.claim'), withdraw: t('app.obl.tag.withdraw'), 'keep-active': t('app.obl.tag.keep_active') };
 
   function obligationDate(iso) {
     // A due date is a calendar day, so it is drawn as that day, not shifted
@@ -783,19 +810,19 @@ const CP = (() => {
 
   function obligationWhen(item) {
     if (!item.due) return '';
-    const by = `by ${obligationDate(item.due)}${item.censored ? ' or earlier' : ''}`;
+    const by = item.censored ? t('app.obl.by_or_earlier', { date: obligationDate(item.due) }) : t('app.obl.by', { date: obligationDate(item.due) });
     const n = item.days_left;
-    if (n < 0) return `${by}, ${-n} day${n === -1 ? '' : 's'} ago`;
-    if (n === 0) return `${by}, today`;
-    return `${by}, ${n} day${n === 1 ? '' : 's'}`;
+    if (n < 0) return t('app.obl.days_ago', { by, n: -n });
+    if (n === 0) return t('app.obl.today', { by });
+    return t('app.obl.days_left', { by, n });
   }
 
   function obligationRow(item) {
     const cash = item.kind === 'cash-out';
-    let tag = OBLIGATION_TAGS[item.action] || 'Act';
-    if (cash) tag = 'Cash out';
-    if (item.stage === 'overdue') tag = 'Overdue';
-    if (item.stage === 'recheck') tag = 'Arrived?';
+    let tag = OBLIGATION_TAGS[item.action] || t('app.obl.tag.act');
+    if (cash) tag = t('app.obl.tag.cash_out');
+    if (item.stage === 'overdue') tag = t('app.obl.tag.overdue');
+    if (item.stage === 'recheck') tag = t('app.obl.tag.arrived');
     const level = item.stage === 'overdue' ? 'fail'
       : (item.days_left != null && item.days_left <= 7) || item.stage === 'recheck' ? 'warn' : 'ask';
     const slug = escapeHtml(item.slug);
@@ -810,31 +837,31 @@ const CP = (() => {
     const when = obligationWhen(item);
     const parts = [`<span class="mw-title">${what}</span>`];
     if (when) parts.push(`<span class="mw-when">${escapeHtml(when)}</span>`);
-    if (item.stage === 'recheck') parts.push('<span class="mw-loss">You marked this requested two weeks ago. Did the payout arrive?</span>');
-    else if (item.stage === 'overdue') parts.push('<span class="mw-loss">The provider may already have written this off.</span>');
+    if (item.stage === 'recheck') parts.push(`<span class="mw-loss">${t('app.obl.recheck')}</span>`);
+    else if (item.stage === 'overdue') parts.push(`<span class="mw-loss">${t('app.obl.overdue')}</span>`);
     parts.push(`<span class="mw-loss">${escapeHtml(item.loss)}</span>`);
-    if (item.how) parts.push(`<details class="mw-how"><summary>How</summary>${escapeHtml(item.how)}</details>`);
+    if (item.how) parts.push(`<details class="mw-how"><summary>${t('app.obl.how')}</summary>${escapeHtml(item.how)}</details>`);
 
     const actions = [];
     if (item.url) {
-      actions.push(`<a class="btn btn-primary btn-sm" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open ${escapeHtml(item.name)}</a>`);
+      actions.push(`<a class="btn btn-primary btn-sm" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${t('app.obl.open', { name: escapeHtml(item.name) })}</a>`);
     }
     if (_canWrite) {
       if (item.can_done) {
-        const label = item.stage === 'recheck' ? 'It arrived' : (cash || item.action === 'withdraw') ? 'Requested' : 'Done';
+        const label = item.stage === 'recheck' ? t('app.obl.arrived') : (cash || item.action === 'withdraw') ? t('app.obl.requested') : t('app.obl.done');
         actions.push(`<button class="btn btn-ghost btn-sm" data-action="obligationDone" data-a1="${slug}" data-a2="${rule}" data-a3="${escapeHtml(item.occurrence)}">${label}</button>`);
       }
       if (item.can_snooze) {
-        actions.push(`<button class="btn btn-ghost btn-sm" data-action="obligationSnooze" data-a1="${slug}" data-a2="${rule}" data-a3="1">Snooze a day</button>`);
+        actions.push(`<button class="btn btn-ghost btn-sm" data-action="obligationSnooze" data-a1="${slug}" data-a2="${rule}" data-a3="1">${t('app.obl.snooze_day')}</button>`);
       }
       const more = [];
-      if (item.can_snooze) more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationSnooze" data-a1="${slug}" data-a2="${rule}" data-a3="7">Snooze a week</button>`);
-      more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationMute" data-a1="${slug}" data-a2="${rule}">Not for me</button>`);
-      more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationMute" data-a1="${slug}" data-a2="*">Mute all ${escapeHtml(item.name)} reminders</button>`);
-      if (item.source) more.push(`<a class="btn btn-ghost btn-sm" href="${escapeHtml(item.source)}" target="_blank" rel="noopener noreferrer">Source, checked ${escapeHtml(item.checked)}</a>`);
-      actions.push(`<details class="mw-more"><summary class="btn btn-ghost btn-sm">More</summary><div class="mw-menu">${more.join('')}</div></details>`);
+      if (item.can_snooze) more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationSnooze" data-a1="${slug}" data-a2="${rule}" data-a3="7">${t('app.obl.snooze_week')}</button>`);
+      more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationMute" data-a1="${slug}" data-a2="${rule}">${t('app.obl.not_for_me')}</button>`);
+      more.push(`<button class="btn btn-ghost btn-sm" data-action="obligationMute" data-a1="${slug}" data-a2="*">${t('app.obl.mute_all', { name: escapeHtml(item.name) })}</button>`);
+      if (item.source) more.push(`<a class="btn btn-ghost btn-sm" href="${escapeHtml(item.source)}" target="_blank" rel="noopener noreferrer">${t('app.obl.source_checked', { date: escapeHtml(item.checked) })}</a>`);
+      actions.push(`<details class="mw-more"><summary class="btn btn-ghost btn-sm">${t('app.obl.more')}</summary><div class="mw-menu">${more.join('')}</div></details>`);
     } else if (item.source) {
-      actions.push(`<a class="btn btn-ghost btn-sm" href="${escapeHtml(item.source)}" target="_blank" rel="noopener noreferrer">Source</a>`);
+      actions.push(`<a class="btn btn-ghost btn-sm" href="${escapeHtml(item.source)}" target="_blank" rel="noopener noreferrer">${t('app.obl.source')}</a>`);
     }
     return `
       <div class="attn-row attn-${level} mw-row" data-obligation="${slug}:${rule}">
@@ -858,7 +885,7 @@ const CP = (() => {
       console.warn('Could not check the reminders:', err);
       section.hidden = false;
       if (count) count.textContent = '';
-      list.innerHTML = '<div class="attn-row attn-unknown"><span class="attn-tag">Unknown</span><span class="attn-what">Money waiting</span><span class="attn-why">Could not check. Reload the page to try again.</span><span class="attn-actions"></span></div>';
+      list.innerHTML = `<div class="attn-row attn-unknown"><span class="attn-tag">${t('app.obl.unknown_tag')}</span><span class="attn-what">${t('app.obl.money_waiting')}</span><span class="attn-why">${t('app.obl.check_failed')}</span><span class="attn-actions"></span></div>`;
       if (foot) foot.hidden = true;
       return;
     }
@@ -868,8 +895,8 @@ const CP = (() => {
     if (count) count.textContent = items.length ? String(items.length) : '';
     if (foot) {
       foot.hidden = !muted.length;
-      foot.innerHTML = muted.length ? 'Not for me: ' + muted.map(m => `${escapeHtml(m.name)}, ${escapeHtml(m.title)}${_canWrite
-        ? ` <button class="btn btn-link btn-sm" data-action="obligationUnmute" data-a1="${escapeHtml(m.slug)}" data-a2="${escapeHtml(m.rule)}">Unmute</button>` : ''}`).join(' · ') : '';
+      foot.innerHTML = muted.length ? t('app.obl.muted_list', { list: muted.map(m => `${escapeHtml(m.name)}, ${escapeHtml(m.title)}${_canWrite
+        ? ` <button class="btn btn-link btn-sm" data-action="obligationUnmute" data-a1="${escapeHtml(m.slug)}" data-a2="${escapeHtml(m.rule)}">${t('app.obl.unmute')}</button>` : ''}`).join(' · ') }) : '';
     }
     // Hidden while there is nothing to do, like the payout card: an empty
     // panel every day teaches people to skip the one day it matters.
@@ -887,20 +914,20 @@ const CP = (() => {
   }
 
   function obligationDone(slug, rule, occurrence) {
-    return obligationPost(slug, rule, { action: 'done', occurrence }, 'Marked done.');
+    return obligationPost(slug, rule, { action: 'done', occurrence }, t('app.obl.marked_done'));
   }
 
   function obligationSnooze(slug, rule, days) {
     const n = Number(days);
-    return obligationPost(slug, rule, { action: 'snooze', days: n }, n === 1 ? 'Snoozed for a day.' : 'Snoozed for a week.');
+    return obligationPost(slug, rule, { action: 'snooze', days: n }, n === 1 ? t('app.obl.snoozed_day') : t('app.obl.snoozed_week'));
   }
 
   function obligationMute(slug, rule) {
-    return obligationPost(slug, rule, { action: 'mute' }, 'Muted. Unmute it at the foot of Money waiting.');
+    return obligationPost(slug, rule, { action: 'mute' }, t('app.obl.muted'));
   }
 
   function obligationUnmute(slug, rule) {
-    return obligationPost(slug, rule, { action: 'unmute' }, 'Unmuted.');
+    return obligationPost(slug, rule, { action: 'unmute' }, t('app.obl.unmuted'));
   }
 
   // How far off is the next payout for this one service.
@@ -943,7 +970,7 @@ const CP = (() => {
       const pct = threshold > 0 ? Math.max(0, Math.min(100, (balance / threshold) * 100)) : 100;
       bar = `
         <div class="payout-progress-track" role="img"
-             aria-label="${escapeHtml(pct.toFixed(0))}% of the ${escapeHtml(formatAmount(threshold, data.balance_currency || card.dataset.currency))} minimum">
+             aria-label="${escapeHtml(t('app.progress.bar_aria', { pct: pct.toFixed(0), min: formatAmount(threshold, data.balance_currency || card.dataset.currency) }))}">
           <div class="payout-progress-fill" style="width:${pct.toFixed(1)}%;"></div>
         </div>`;
     }
@@ -985,21 +1012,21 @@ const CP = (() => {
     const payoutRows = (confirmed || []).map(p => `
         <li class="payout-row">
           <span class="num">${escapeHtml(String(p.detected_at || '').slice(0, 10))} · ${escapeHtml(formatAmount(p.amount, p.currency))} ${escapeHtml(p.currency || '')}${p.method ? ` · ${escapeHtml(p.method)}` : ''}</span>
-          ${_canWrite ? `<button type="button" class="btn btn-ghost btn-sm" data-remove-payout="${escapeHtml(String(p.id))}" title="Remove this cash-out">Remove</button>` : ''}
+          ${_canWrite ? `<button type="button" class="btn btn-ghost btn-sm" data-remove-payout="${escapeHtml(String(p.id))}" title="${t('app.cashout.remove_tip')}">${t('app.cashout.remove')}</button>` : ''}
         </li>`).join('');
     const payoutList = confirmed === null
-      ? '<p class="form-hint text-warn">Cash-outs could not be loaded.</p>'
+      ? `<p class="form-hint text-warn">${t('app.cashout.load_failed')}</p>`
       : (payoutRows ? `<ul class="payout-list">${payoutRows}</ul>` : '');
     const recordForm = (_canWrite ? `
       <details class="payout-record">
-        <summary>Record a cash-out</summary>
+        <summary>${t('app.cashout.record')}</summary>
         <form id="record-payout-form" class="payout-record-form">
-          <input class="form-input form-input-price" name="amount" type="number" step="any" min="0" required placeholder="Amount${unit ? ` (${escapeHtml(unit)})` : ''}">
-          <input class="form-input" name="method" type="text" maxlength="40" placeholder="Method, e.g. PayPal">
+          <input class="form-input form-input-price" name="amount" type="number" step="any" min="0" required placeholder="${unit ? escapeHtml(t('app.cashout.amount_unit', { unit })) : t('app.cashout.amount')}">
+          <input class="form-input" name="method" type="text" maxlength="40" placeholder="${t('app.cashout.method')}">
           <input class="form-input" name="date" type="date">
-          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+          <button type="submit" class="btn btn-primary btn-sm">${t('app.save')}</button>
         </form>
-        <p class="form-hint">For a cash-out CashPilot did not catch, such as one made before it was installed. It counts toward the total earned.</p>
+        <p class="form-hint">${t('app.cashout.hint')}</p>
       </details>` : '') + payoutList;
     if (!data.balance_known && !paid) {
       body.innerHTML = recordForm;
@@ -1009,13 +1036,13 @@ const CP = (() => {
     body.innerHTML = `
       <div class="detail-grid">
         <div class="detail-item">
-          <div class="detail-label">Balance now</div>
-          <div class="detail-value">${data.balance_known ? escapeHtml(money(balance)) : '<span class="muted">not collected yet</span>'}</div>
+          <div class="detail-label">${t('app.progress.balance_now')}</div>
+          <div class="detail-value">${data.balance_known ? escapeHtml(money(balance)) : `<span class="muted">${t('app.progress.not_collected')}</span>`}</div>
         </div>
         <div class="detail-item">
-          <div class="detail-label">Earned in total</div>
-          <div class="detail-value">${data.balance_known || paid ? escapeHtml(money(data.lifetime_earned || 0)) : '<span class="muted">not collected yet</span>'}</div>
-          ${paid ? `<div class="detail-sub">includes ${escapeHtml(String(paid))} confirmed payout${paid === 1 ? '' : 's'}</div>` : ''}
+          <div class="detail-label">${t('app.progress.earned_total')}</div>
+          <div class="detail-value">${data.balance_known || paid ? escapeHtml(money(data.lifetime_earned || 0)) : `<span class="muted">${t('app.progress.not_collected')}</span>`}</div>
+          ${paid ? `<div class="detail-sub">${t('app.progress.includes_paid', { n: paid })}</div>` : ''}
         </div>
       </div>
       ${bar}
@@ -1036,21 +1063,21 @@ const CP = (() => {
             method: 'POST',
             body: { platform: slug, amount: Number(fd.get('amount')), method: String(fd.get('method') || ''), date: String(fd.get('date') || '') || null },
           });
-          toast(out.priced === false ? 'Cash-out recorded; no exchange rate for that date, so it is left out of the USD total' : 'Cash-out recorded', 'success');
+          toast(out.priced === false ? t('app.cashout.recorded_unpriced') : t('app.cashout.recorded'), 'success');
           await Promise.all([loadPayoutProgress(), loadDashboardStats()]);
         } catch (err) {
-          toast(err.message || 'Could not record the cash-out', 'error');
+          toast(err.message || t('app.cashout.record_failed'), 'error');
         }
       });
     }
     card.querySelectorAll('[data-remove-payout]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!window.confirm('Remove this cash-out? It will no longer count toward the total earned.')) return;
+        if (!window.confirm(t('app.cashout.remove_confirm'))) return;
         try {
           await api(`/api/earnings/payouts/${encodeURIComponent(btn.dataset.removePayout)}`, { method: 'DELETE' });
           await Promise.all([loadPayoutProgress(), loadDashboardStats()]);
         } catch (err) {
-          toast(err.message || 'Could not remove the cash-out', 'error');
+          toast(err.message || t('app.cashout.remove_failed'), 'error');
         }
       });
     });
@@ -1102,25 +1129,25 @@ const CP = (() => {
           <div class="deploy-risk-headline">${escapeHtml(attribution.headline || '')}</div>
           <div class="deploy-risk-body-text">${escapeHtml(attribution.body || '')}</div>
           ${attribution.lateral_note ? `<div class="deploy-risk-body-text">${escapeHtml(attribution.lateral_note)}</div>` : ''}
-          ${attribution.source ? `<div class="deploy-risk-source">Source: ${escapeHtml(attribution.source)}</div>` : ''}
+          ${attribution.source ? `<div class="deploy-risk-source">${t('app.risk.source', { source: escapeHtml(attribution.source) })}</div>` : ''}
         </div>`;
     }
     if (isolation.summary) {
       html += `
         <div class="deploy-risk-block deploy-risk-info">
-          <div class="deploy-risk-headline">Keeping it off your LAN</div>
+          <div class="deploy-risk-headline">${t('app.risk.lan')}</div>
           <div class="deploy-risk-body-text">${escapeHtml(isolation.summary)}</div>
         </div>`;
     }
     if (mining) {
       html += `
         <div class="deploy-risk-block deploy-risk-info">
-          <div class="deploy-risk-headline">Miner fee: ${escapeHtml(String(mining.dev_fee_percent))}% of hashing time</div>
+          <div class="deploy-risk-headline">${t('app.risk.miner_fee', { pct: escapeHtml(String(mining.dev_fee_percent)) })}</div>
           ${mining.pool_fee_note ? `<div class="deploy-risk-body-text">${escapeHtml(mining.pool_fee_note)}</div>` : ''}
           <div class="deploy-risk-body-text">${mining.payout_model === 'internal'
-            ? 'The pool keeps your balance in its account until you request a withdrawal. Check the balance on the pool dashboard.'
-            : 'The pool holds rewards until its payout threshold. CashPilot lists tracked pool balances as accrued. Payouts arrive in your wallet.'}</div>
-          <div class="deploy-risk-source"><a href="${escapeHtml(mining.dev_fee_source)}" target="_blank" rel="noopener noreferrer">Miner fee source</a></div>
+            ? t('app.risk.pool_internal')
+            : t('app.risk.pool_external')}</div>
+          <div class="deploy-risk-source"><a href="${escapeHtml(mining.dev_fee_source)}" target="_blank" rel="noopener noreferrer">${t('app.risk.fee_source')}</a></div>
         </div>`;
     }
     card.style.display = '';
@@ -1130,7 +1157,7 @@ const CP = (() => {
   async function confirmPayout(payoutId, platform) {
     try {
       await api(`/api/earnings/payouts/${encodeURIComponent(payoutId)}/confirm`, { method: 'POST' });
-      toast(`Recorded the ${platform || 'payout'} as paid.`, 'success');
+      toast(platform ? t('app.payq.confirmed', { platform }) : t('app.payq.confirmed_generic'), 'success');
       // The totals move as a direct result, so refresh them alongside the queue
       // rather than leaving the user to wonder whether it took effect.
       await Promise.all([loadPayoutQueue(), loadDashboardStats(), loadCollectorAlerts()]);
@@ -1141,10 +1168,10 @@ const CP = (() => {
 
   async function rejectPayout(payoutId, platform) {
     // Rejection DELETES the row, and there is no undo, so it asks first.
-    if (!window.confirm(`Discard the detected ${platform || ''} payout? This cannot be undone.`)) return;
+    if (!window.confirm(t('app.payq.reject_confirm', { platform: platform || '' }))) return;
     try {
       await api(`/api/earnings/payouts/${encodeURIComponent(payoutId)}/reject`, { method: 'POST' });
-      toast('Discarded — it will not count as earnings.', 'success');
+      toast(t('app.payq.rejected'), 'success');
       await Promise.all([loadPayoutQueue(), loadCollectorAlerts()]);
     } catch (err) {
       toast(err.message, 'error');
@@ -1177,7 +1204,7 @@ const CP = (() => {
       const bonusNote = document.getElementById('total-bonus-note');
       if (bonusNote) {
         if (totalBonus > 0) {
-          bonusNote.textContent = `\u2212${formatCurrency(totalBonus)} promo`;
+          bonusNote.textContent = t('app.stats.promo', { amount: `\u2212${formatCurrency(totalBonus)}` });
           bonusNote.style.display = '';
         } else {
           bonusNote.style.display = 'none';
@@ -1187,12 +1214,12 @@ const CP = (() => {
       const allTime = document.getElementById('all-time-note');
       if (allTime) {
         const unpriced = data.unpriced_payouts || 0;
-        const unpricedNote = unpriced > 0 ? `, plus ${unpriced} cash-out${unpriced === 1 ? '' : 's'} with no USD rate` : '';
+        const unpricedNote = unpriced > 0 ? t('app.stats.unpriced', { n: unpriced }) : '';
         if (data.paid_out === null) {
-          allTime.textContent = 'Earned all time: cash-outs could not be read';
+          allTime.textContent = t('app.stats.all_time_unread');
           allTime.style.display = '';
         } else if ((data.paid_out || 0) > 0 || unpriced > 0) {
-          allTime.textContent = `Earned all time ${formatCurrency(data.earned_all_time || 0)} (${formatCurrency(data.paid_out)} cashed out${unpricedNote})`;
+          allTime.textContent = t('app.stats.all_time', { earned: formatCurrency(data.earned_all_time || 0), paid: formatCurrency(data.paid_out), unpriced: unpricedNote });
           allTime.style.display = '';
         } else {
           allTime.style.display = 'none';
@@ -1212,7 +1239,7 @@ const CP = (() => {
     } catch (err) {
       // Keep whatever was already displayed — a transient fetch failure
       // must not look like the dashboard's earnings dropped to zero.
-      toast(err.message || 'Could not refresh dashboard', 'error');
+      toast(err.message || t('app.stats.refresh_failed'), 'error');
     }
   }
 
@@ -1401,17 +1428,17 @@ const CP = (() => {
   }
 
   function diskCellForHosts(hosts) {
-    if (!_hostResources) return UNKNOWN_CELL('CashPilot could not read the worker list, so it does not know this host');
-    if (!hosts) return UNKNOWN_CELL('CashPilot does not know which host runs this service');
+    if (!_hostResources) return UNKNOWN_CELL(t('app.host.no_list'));
+    if (!hosts) return UNKNOWN_CELL(t('app.host.unknown_host'));
     const known = hosts.filter(h => h.disk && typeof h.disk.free_bytes === 'number' && h.disk.total_bytes > 0);
     if (!known.length) {
       if (hosts.every(h => h.android)) {
-        return UNKNOWN_CELL('The Android client does not report host disk usage');
+        return UNKNOWN_CELL(t('app.host.android_disk'));
       }
       const offline = hosts.every(h => !h.online);
       return UNKNOWN_CELL(offline
-        ? 'This host is not reporting right now, so its free space is unknown'
-        : 'This worker did not report disk usage; it may predate the feature');
+        ? t('app.host.disk_offline')
+        : t('app.host.disk_unreported'));
     }
     // The tightest host is the one that decides whether the service can keep
     // growing, so a fleet-wide average would hide exactly the case that matters.
@@ -1421,10 +1448,10 @@ const CP = (() => {
     const usedPct = Math.round(((total - free) / total) * 100);
     const unreported = hosts.length - known.length;
     const detail = [
-      `${tightest.name}: ${fmtBytes(free)} free of ${fmtBytes(total)} (${usedPct}% used)`,
-      `Free space on the host filesystem, not this service's own volume.`,
-      known.length > 1 ? `Showing the tightest of ${known.length} hosts running this service.` : '',
-      unreported > 0 ? `${unreported} host${unreported > 1 ? 's' : ''} did not report.` : '',
+      t('app.host.disk_line', { name: tightest.name, free: fmtBytes(free), total: fmtBytes(total), pct: usedPct }),
+      t('app.host.disk_note'),
+      known.length > 1 ? t('app.host.disk_tightest', { n: known.length }) : '',
+      unreported > 0 ? t('app.host.unreported', { n: unreported }) : '',
     ].filter(Boolean).join(' ');
     const warn = usedPct >= 90 ? ' style="color:var(--error);"' : usedPct >= 80 ? ' style="color:var(--warning);"' : '';
     return `<span${warn} title="${escapeHtml(detail)}">${fmtBytes(free)}</span>`;
@@ -1440,8 +1467,8 @@ const CP = (() => {
   }
 
   function gpuCellForHosts(hosts) {
-    if (!_hostResources) return UNKNOWN_CELL('CashPilot could not read the worker list, so it does not know this host');
-    if (!hosts) return UNKNOWN_CELL('CashPilot does not know which host runs this service');
+    if (!_hostResources) return UNKNOWN_CELL(t('app.host.no_list'));
+    if (!hosts) return UNKNOWN_CELL(t('app.host.unknown_host'));
     const withGpu = hosts.filter(h => h.gpu && h.gpu.available === true);
     if (withGpu.length) {
       // A worker that read sysfs names the vendors (app/gpu.py); an older one sends devices only.
@@ -1450,26 +1477,26 @@ const CP = (() => {
         .map(v => GPU_VENDORS[v]).filter(Boolean));
       if (vendorNames.size) {
         const names = [...vendorNames];
-        const detail = withGpu.map(h => `${h.name}: ${(h.gpu.devices || ['present']).join(', ')}`).join(' | ');
+        const detail = withGpu.map(h => `${h.name}: ${(h.gpu.devices || [t('app.gpu.present')]).join(', ')}`).join(' | ');
         return `<span title="${escapeHtml(detail)}">${escapeHtml(names.join(', '))}</span>`;
       }
       const devices = withGpu.flatMap(h => h.gpu.devices || []);
-      const label = devices.length ? devices[0] : 'Yes';
-      const detail = withGpu.map(h => `${h.name}: ${(h.gpu.devices || ['present']).join(', ')}`).join(' | ');
+      const label = devices.length ? devices[0] : t('app.gpu.yes');
+      const detail = withGpu.map(h => `${h.name}: ${(h.gpu.devices || [t('app.gpu.present')]).join(', ')}`).join(' | ');
       const more = devices.length > 1 ? ` +${devices.length - 1}` : '';
       return `<span title="${escapeHtml(detail)}">${escapeHtml(String(label))}${more}</span>`;
     }
     // No host says yes. Only call it "None" when every host actually SAID no.
     if (hosts.every(h => h.gpu && h.gpu.available === false)) {
-      return `<span class="muted" title="No GPU is visible on the host${hosts.length > 1 ? 's' : ''} running this service">None</span>`;
+      return `<span class="muted" title="${t('app.gpu.none_tip', { n: hosts.length })}">${t('app.gpu.none')}</span>`;
     }
     if (hosts.every(h => h.android)) {
-      return UNKNOWN_CELL('The Android client does not report GPU information');
+      return UNKNOWN_CELL(t('app.gpu.android'));
     }
     const reason = hosts.map(h => h.gpu && h.gpu.reason).find(Boolean);
     return UNKNOWN_CELL(reason
-      ? `Unknown — ${reason}`
-      : 'This worker did not report GPU information; it may predate the feature');
+      ? t('app.gpu.unknown_reason', { reason })
+      : t('app.gpu.unreported'));
   }
 
   // A refresh that started later wins: an older one whose requests answer
@@ -1482,7 +1509,7 @@ const CP = (() => {
 
     // Show spinner while loading (only on first load, not refresh)
     if (!container.querySelector('.breakdown-table')) {
-      container.innerHTML = `<div class="loading-line"><div class="spinner"></div> Loading services</div>`;
+      container.innerHTML = `<div class="loading-line"><div class="spinner"></div> ${t('app.services.loading')}</div>`;
     }
 
     try {
@@ -1533,15 +1560,15 @@ const CP = (() => {
         container.innerHTML = unreachable === 0
           ? `
           <div class="empty-state empty-state-first">
-            <div class="empty-state-title">No services deployed yet</div>
-            <div class="empty-state-text">Pick the services you want to run and the boxes to run them on. Their balances, status and payouts show up here.</div>
-            <a href="/setup" class="btn btn-primary">Add services</a>
+            <div class="empty-state-title">${t('app.services.empty_title')}</div>
+            <div class="empty-state-text">${t('app.services.empty_text')}</div>
+            <a href="/setup" class="btn btn-primary">${t('app.services.add')}</a>
           </div>`
           : `
           <div class="empty-state">
-            <div class="empty-state-title">Can't reach ${unreachable > 0 ? escapeHtml(String(unreachable)) + ' worker' + (unreachable === 1 ? '' : 's') : 'the workers'}</div>
-            <div class="empty-state-text">Services running on ${unreachable === 1 ? 'it' : 'them'} are not shown here — this does not mean they stopped. Containers keep running and earning while a worker is offline.</div>
-            <a href="/fleet" class="btn btn-ghost">Check the fleet</a>
+            <div class="empty-state-title">${unreachable > 0 ? t('app.services.unreachable_n', { n: unreachable }) : t('app.services.unreachable_all')}</div>
+            <div class="empty-state-text">${t('app.services.unreachable_text', { n: unreachable === 1 ? 1 : 2 })}</div>
+            <a href="/fleet" class="btn btn-ghost">${t('app.services.check_fleet')}</a>
           </div>`;
         return;
       }
@@ -1573,17 +1600,17 @@ const CP = (() => {
         <table class="breakdown-table">
           <thead>
             <tr>
-              ${sortTh('name', 'Service', 'c-name')}
-              ${sortTh('status', 'Status', 'c-status')}
-              ${sortTh('health', 'Health', 'c-health c-num')}
-              ${sortTh('balance', 'Balance', 'c-bal c-num')}
-              ${sortTh('change', 'Change', 'c-chg c-num')}
-              ${sortTh('cpu', 'CPU', 'c-cpu c-num')}
-              ${sortTh('memory', 'Memory', 'c-mem c-num')}
-              ${sortTh('disk', 'Host disk', 'c-disk c-num')}
-              ${sortTh('gpu', 'GPU', 'c-gpu')}
-              ${sortTh('payout', 'Payout', 'c-pay')}
-              <th class="c-act">Actions</th>
+              ${sortTh('name', t('app.col.service'), 'c-name')}
+              ${sortTh('status', t('app.col.status'), 'c-status')}
+              ${sortTh('health', t('app.col.health'), 'c-health c-num')}
+              ${sortTh('balance', t('app.col.balance'), 'c-bal c-num')}
+              ${sortTh('change', t('app.col.change'), 'c-chg c-num')}
+              ${sortTh('cpu', t('app.usage.cpu'), 'c-cpu c-num')}
+              ${sortTh('memory', t('app.usage.memory'), 'c-mem c-num')}
+              ${sortTh('disk', t('app.col.disk'), 'c-disk c-num')}
+              ${sortTh('gpu', t('app.col.gpu'), 'c-gpu')}
+              ${sortTh('payout', t('app.col.payout'), 'c-pay')}
+              <th class="c-act">${t('app.col.actions')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -1618,8 +1645,8 @@ const CP = (() => {
       if (!container.querySelector('.breakdown-table')) {
         container.innerHTML = `
           <div class="block-empty block-error">
-            <span>Couldn't load services${err && err.message ? `: ${escapeHtml(err.message)}` : ''}.</span>
-            <button class="btn btn-ghost btn-sm" data-action="loadServicesTable">Retry</button>
+            <span>${err && err.message ? t('app.services.load_failed_detail', { error: escapeHtml(err.message) }) : t('app.services.load_failed')}</span>
+            <button class="btn btn-ghost btn-sm" data-action="loadServicesTable">${t('app.retry')}</button>
           </div>`;
       }
     }
@@ -1648,23 +1675,23 @@ const CP = (() => {
   }
 
   function copyWords(inst) {
-    if (!inst || !inst.is_android) return inst && inst.status || 'unknown';
+    if (!inst || !inst.is_android) return inst && inst.status || t('app.place.status_unknown');
     const st = copyState(inst);
-    if (st === 'ok') return 'app running on the phone';
-    if (st === 'unknown') return 'the phone cannot tell whether this app is running';
-    return 'app not running on the phone';
+    if (st === 'ok') return t('app.place.phone_running');
+    if (st === 'unknown') return t('app.place.phone_unknown');
+    return t('app.place.phone_stopped');
   }
 
   function renderPlacement(services, workers) {
     const holder = document.getElementById('placement-grid');
     if (!holder) return;
     if (workers === null) {
-      holder.innerHTML = '<p class="block-empty">Could not read the workers, so placement is unknown.</p>';
+      holder.innerHTML = `<p class="block-empty">${t('app.place.no_workers')}</p>`;
       return;
     }
     const boxes = (workers || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
     if (!services.length || !boxes.length) {
-      holder.innerHTML = '<p class="block-empty">Nothing placed yet. Deploy a service to a worker and it shows up here.</p>';
+      holder.innerHTML = `<p class="block-empty">${t('app.place.empty')}</p>`;
       return;
     }
     const rank = { fail: 0, warn: 1, unknown: 2, ok: 3 };
@@ -1692,21 +1719,21 @@ const CP = (() => {
     const shortBox = (n) => { const s = String(n); return s.length > 14 ? `${s.slice(0, 13).trimEnd()}\u2026` : s; };
     const head = boxes.map((w) => {
       const online = w.status === 'online';
-      return `<th class="pg-box${online ? '' : ' pg-box-off'}" scope="col" title="${escapeHtml(w.name)}: ${online ? 'online' : 'not reporting'}"><span class="pg-box-name">${escapeHtml(shortBox(w.name))}</span></th>`;
+      return `<th class="pg-box${online ? '' : ' pg-box-off'}" scope="col" title="${escapeHtml(w.name)}: ${online ? t('app.place.online') : t('app.place.not_reporting')}"><span class="pg-box-name">${escapeHtml(shortBox(w.name))}</span></th>`;
     }).join('');
 
     const body = rows.map((r) => {
       const name = `<th scope="row" class="pg-svc">${escapeHtml(r.svc.name)}</th>`;
       if (r.external) {
-        return `<tr class="pg-row pg-ext">${name}<td class="pg-ext-note" colspan="${boxes.length}">runs outside the fleet (app or browser)</td><td class="pg-count">ext</td></tr>`;
+        return `<tr class="pg-row pg-ext">${name}<td class="pg-ext-note" colspan="${boxes.length}">${t('app.place.external')}</td><td class="pg-count">${t('app.place.ext')}</td></tr>`;
       }
       const cells = boxes.map((w) => {
         const insts = r.byBox[String(w.id)] || r.byBox[String(w.name)] || [];
-        if (!insts.length) return '<td><span class="cell cell-none" aria-label="not placed"></span></td>';
+        if (!insts.length) return `<td><span class="cell cell-none" aria-label="${t('app.place.not_placed')}"></span></td>`;
         const st = insts.map(copyState).reduce((x, y) => (rank[y] < rank[x] ? y : x), 'ok');
         const words = insts.map(copyWords).join(', ');
         const n = insts.length > 1 ? `<span class="cell-n">${insts.length}</span>` : '';
-        return `<td><span class="cell cell-${st}" title="${escapeHtml(r.svc.name)} on ${escapeHtml(w.name)}: ${escapeHtml(words)}" aria-label="${escapeHtml(words)}">${n}</span></td>`;
+        return `<td><span class="cell cell-${st}" title="${escapeHtml(t('app.place.cell_tip', { service: r.svc.name, box: w.name, words }))}" aria-label="${escapeHtml(words)}">${n}</span></td>`;
       }).join('');
       const countCls = r.up < r.total ? ` pg-count-${r.worst}` : '';
       return `<tr class="pg-row">${name}${cells}<td class="pg-count${countCls}">${r.up}/${r.total}</td></tr>`;
@@ -1715,7 +1742,7 @@ const CP = (() => {
     holder.innerHTML = `
       <div class="table-scroll">
         <table class="placement-table">
-          <thead><tr><th scope="col" class="pg-svc">Service</th>${head}<th scope="col" class="pg-count">Up</th></tr></thead>
+          <thead><tr><th scope="col" class="pg-svc">${t('app.col.service')}</th>${head}<th scope="col" class="pg-count">${t('app.place.up')}</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>`;
@@ -1729,7 +1756,7 @@ const CP = (() => {
     let alertsRead = null;
     const items = [];
     if (workers === null) {
-      items.push({ level: 'warn', tag: 'Unknown', what: 'Boxes', why: 'CashPilot could not load the worker list, so it cannot tell which boxes are reporting.' });
+      items.push({ level: 'warn', tag: t('app.attn.tag.unknown'), what: t('app.attn.boxes'), why: t('app.attn.no_workers') });
     }
     const boxName = {};
     for (const w of (workers || [])) boxName[String(w.id)] = w.name;
@@ -1738,7 +1765,7 @@ const CP = (() => {
       if (w.status !== 'online') {
         const info = w.system_info || {};
         const phone = info.device_type === 'android' || String(info.os || '').trim().toLowerCase() === 'android';
-        items.push({ level: 'fail', tag: 'Offline', what: w.name, why: `has not reported since ${fmtTimestamp(w.last_heartbeat).text}. Its ${phone ? 'apps' : 'containers'} may still be running, but CashPilot cannot see them.`, actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+        items.push({ level: 'fail', tag: t('app.attn.tag.offline'), what: w.name, why: phone ? t('app.attn.offline_phone', { when: fmtTimestamp(w.last_heartbeat).text }) : t('app.attn.offline_box', { when: fmtTimestamp(w.last_heartbeat).text }), actions: `<a class="btn btn-ghost btn-sm" href="/fleet">${t('app.attn.open_fleet')}</a>` });
       }
     }
     for (const svc of services) {
@@ -1752,12 +1779,12 @@ const CP = (() => {
       for (const inst of (svc.instance_details || [])) {
         const st = copyState(inst);
         if (st === 'ok') continue;
-        const where = inst.node === 'local' ? 'local' : (boxName[String(inst.worker_id)] || inst.node);
+        const where = inst.node === 'local' ? t('app.attn.local') : (boxName[String(inst.worker_id)] || inst.node);
         if (inst.is_android) {
           // An app on a phone: CashPilot cannot start it, only the phone can.
           items.push(st === 'unknown'
-            ? { level: 'unknown', tag: 'Unknown', what: svc.name, where, why: 'the phone cannot tell whether this app is running. Give the CashPilot app notification access and usage access on the phone so it can look.' }
-            : { level: 'fail', tag: 'Not running', what: svc.name, where, why: 'app is not running on the phone. Open it on the phone to start it again.' });
+            ? { level: 'unknown', tag: t('app.attn.tag.unknown'), what: svc.name, where, why: t('app.attn.phone_unknown') }
+            : { level: 'fail', tag: t('app.attn.tag.not_running'), what: svc.name, where, why: t('app.attn.phone_stopped') });
           continue;
         }
         // The copy number rides along, or Start and Logs act on copy one.
@@ -1770,50 +1797,52 @@ const CP = (() => {
           // is refused for the same reason, so the card says why and offers what works.
           items.push({
             level: 'fail',
-            tag: 'Held stopped',
+            tag: t('app.attn.tag.held'),
             what: svc.name,
             where,
-            why: `the worker keeps it stopped: ${escapeHtml(inst.held)}.`,
+            why: t('app.attn.held', { reason: escapeHtml(inst.held) }),
             actions: _isOwner && !inst.unmanaged && inst.worker_id != null
-              ? `<button class="btn btn-ghost btn-sm" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wid}>Logs</button>
-               <button class="btn btn-primary btn-sm" data-action="redeployOnWorker" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Redeploy</button>`
+              ? `<button class="btn btn-ghost btn-sm" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wid}>${t('app.logs')}</button>
+               <button class="btn btn-primary btn-sm" data-action="redeployOnWorker" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">${t('app.redeploy')}</button>`
               : '',
           });
           continue;
         }
         items.push({
           level: st,
-          tag: st === 'fail' ? 'Down' : 'Degraded',
+          tag: st === 'fail' ? t('app.attn.tag.down') : t('app.attn.tag.degraded'),
           what: svc.name,
           where,
-          why: `container is ${escapeHtml(inst.status || 'unknown')}${inst.container_name ? ` (<code>${escapeHtml(inst.container_name)}</code>)` : ''}`,
+          why: inst.container_name
+            ? t('app.attn.container_is_named_html', { status: escapeHtml(inst.status || t('app.place.status_unknown')), name: escapeHtml(inst.container_name) })
+            : t('app.attn.container_is', { status: escapeHtml(inst.status || t('app.place.status_unknown')) }),
           actions: controllable
-            ? `<button class="btn btn-ghost btn-sm" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wid}>Logs</button>
-               <button class="btn btn-primary btn-sm" data-action="startService" data-a1="${escapeHtml(svc.slug)}"${wid}>Start</button>`
+            ? `<button class="btn btn-ghost btn-sm" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wid}>${t('app.logs')}</button>
+               <button class="btn btn-primary btn-sm" data-action="startService" data-a1="${escapeHtml(svc.slug)}"${wid}>${t('app.start')}</button>`
             : '',
         });
       }
       for (const inst of (svc.instance_details || [])) {
-        const where = inst.node === 'local' ? 'local' : (boxName[String(inst.worker_id)] || inst.node);
+        const where = inst.node === 'local' ? t('app.attn.local') : (boxName[String(inst.worker_id)] || inst.node);
         for (const hint of (inst.hints || [])) {
-          items.push({ level: 'fail', tag: 'Needs fixing', what: svc.name, where, why: escapeHtml(hint) });
+          items.push({ level: 'fail', tag: t('app.attn.tag.needs_fixing'), what: svc.name, where, why: escapeHtml(hint) });
         }
       }
       if (svc.unstable === true) {
-        items.push({ level: 'warn', tag: 'Unstable', what: svc.name, why: `${svc.crashes_7d || 0} crashes in the last 7 days` });
+        items.push({ level: 'warn', tag: t('app.attn.tag.unstable'), what: svc.name, why: t('app.attn.crashes', { n: svc.crashes_7d || 0 }) });
       }
       if (svc.collector_disconnected) {
         items.push({
-          level: 'warn', tag: 'No reading', what: svc.name,
-          why: 'CashPilot could not read this balance. The figure shown is the last one it read.',
-          actions: _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(svc.slug)}">Fix credentials</button>` : '',
+          level: 'warn', tag: t('app.attn.tag.no_reading'), what: svc.name,
+          why: t('app.attn.no_reading'),
+          actions: _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(svc.slug)}">${t('app.attn.fix_credentials')}</button>` : '',
         });
       }
       if (svc.image_outdated === true) {
         const outdatedWhy = svc.custom
-          ? 'runs an older image than its custom service definition. Redeploy it to update.'
-          : 'runs an image that no longer matches the catalog. Re-deploy it to update.';
-        items.push({ level: 'warn', tag: 'Outdated', what: svc.name, why: outdatedWhy, actions: `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>` });
+          ? t('app.attn.outdated_custom')
+          : t('app.attn.outdated');
+        items.push({ level: 'warn', tag: t('app.attn.tag.outdated'), what: svc.name, why: outdatedWhy, actions: `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">${t('app.open')}</button>` });
       }
       // A container made before a catalog fix (app/drift.py). One row per box:
       // a redeploy there rebuilds every copy on it.
@@ -1823,28 +1852,28 @@ const CP = (() => {
         driftByBox.set(String(inst.worker_id), inst);
       }
       for (const inst of driftByBox.values()) {
-        const where = inst.node === 'local' ? 'local' : (boxName[String(inst.worker_id)] || inst.node);
+        const where = inst.node === 'local' ? t('app.attn.local') : (boxName[String(inst.worker_id)] || inst.node);
         const what = inst.drift.map(d => escapeHtml(d)).join('; ');
         const fix = inst.drift_has_record
-          ? 'Redeploy it here: CashPilot keeps the settings it was deployed with.'
-          : 'CashPilot has no record of how it was deployed, so it cannot rebuild it without losing its settings. Recreate it with the setting above, or remove it and deploy it again from the service page.';
+          ? t('app.attn.drift_fix')
+          : t('app.attn.drift_no_record');
         // A fence-gated node still on the host's network (app/drift.py move_advice):
         // the one action for this worker's isolation mode first, then what to fix
         // before it, then the reasons.
         const move = inst.drift_move;
         const why = move
           ? `${escapeHtml(move.action)}${move.warning ? ` ${escapeHtml(move.warning)}` : ''}${inst.drift_has_record ? '' : ` ${fix}`}${inst.drift.map(d => `<br>· ${escapeHtml(d)}`).join('')}`
-          : `container does not match the catalog: ${what}. ${fix}`;
+          : t('app.attn.drift', { what, fix });
         let actions = '';
         if (_isOwner && !inst.unmanaged) {
           actions = inst.drift_has_record && inst.worker_id != null && !(move && move.redeploy === false)
-            ? `<button class="btn btn-primary btn-sm" data-action="redeployOnWorker" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Redeploy</button>`
-            : `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Open</button>`;
+            ? `<button class="btn btn-primary btn-sm" data-action="redeployOnWorker" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">${t('app.redeploy')}</button>`
+            : `<button class="btn btn-ghost btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">${t('app.open')}</button>`;
           if (inst.worker_id != null) {
-            actions += `<button class="btn btn-ghost btn-sm" data-action="ignoreDrift" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">Ignore</button>`;
+            actions += `<button class="btn btn-ghost btn-sm" data-action="ignoreDrift" data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(String(inst.worker_id))}">${t('app.attn.ignore')}</button>`;
           }
         }
-        items.push({ level: 'fail', tag: 'Needs fixing', what: svc.name, where, why, actions });
+        items.push({ level: 'fail', tag: t('app.attn.tag.needs_fixing'), what: svc.name, where, why, actions });
       }
     }
 
@@ -1861,18 +1890,18 @@ const CP = (() => {
         // A proxied copy or its tunnel gone or down: the per-service rows
         // never list proxied copies, so without this the list says nothing is wrong.
         if (a.kind === 'proxied') {
-          items.push({ level: 'fail', tag: 'Proxied copy down', what: a.platform, why: escapeHtml(a.error), actions: '<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a>' });
+          items.push({ level: 'fail', tag: t('app.attn.tag.proxied_down'), what: a.platform, why: escapeHtml(a.error), actions: `<a class="btn btn-ghost btn-sm" href="/fleet">${t('app.attn.open_fleet')}</a>` });
           continue;
         }
         // A box that reports in but cannot reach Docker: it looks online and manages nothing.
         // The message is cut at 200 characters, so the doc link is a button of its own.
         if (a.kind === 'docker') {
-          items.push({ level: 'fail', tag: 'Docker unreachable', what: a.platform, why: escapeHtml(a.error), actions: `<a class="btn btn-ghost btn-sm" href="/fleet">Open fleet</a> <a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>` });
+          items.push({ level: 'fail', tag: t('app.attn.tag.docker_lost'), what: a.platform, why: escapeHtml(a.error), actions: `<a class="btn btn-ghost btn-sm" href="/fleet">${t('app.attn.open_fleet')}</a> <a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">${t('app.how_to_fix')}</a>` });
           continue;
         }
         // A running copy that carries almost no traffic: its own row says it runs, so only this says it idles.
         if (a.kind === 'stall') {
-          items.push({ level: 'warn', tag: 'Almost no traffic', what: a.platform, why: escapeHtml(a.error) });
+          items.push({ level: 'warn', tag: t('app.attn.tag.stall'), what: a.platform, why: escapeHtml(a.error) });
           continue;
         }
         if (a.kind !== 'missing') continue;
@@ -1880,13 +1909,13 @@ const CP = (() => {
         let actions = '';
         if (_canWrite) {
           const targets = a.everywhere ? [{ worker_id: null, name: '' }] : (a.boxes || []);
-          actions = targets.map(target => `<button class="btn btn-ghost btn-sm" data-action="forgetDeployment" data-a1="${escapeHtml(a.platform)}"${target.worker_id != null ? ` data-a2="${escapeHtml(String(target.worker_id))}"` : ''}>${target.name ? `Forget on ${escapeHtml(target.name)}` : 'Forget'}</button>`).join(' ');
+          actions = targets.map(target => `<button class="btn btn-ghost btn-sm" data-action="forgetDeployment" data-a1="${escapeHtml(a.platform)}"${target.worker_id != null ? ` data-a2="${escapeHtml(String(target.worker_id))}"` : ''}>${target.name ? t('app.attn.forget_on', { name: escapeHtml(target.name) }) : t('app.attn.forget')}</button>`).join(' ');
         }
-        items.push({ level: 'fail', tag: a.everywhere === false ? 'Gone from a box' : a.everywhere ? 'Runs nowhere' : 'Missing', what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
+        items.push({ level: 'fail', tag: a.everywhere === false ? t('app.attn.tag.gone_from_box') : a.everywhere ? t('app.attn.tag.runs_nowhere') : t('app.attn.tag.missing'), what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
       }
     } catch (err) {
       console.warn('Could not load the missing-deployment alerts:', err);
-      items.push({ level: 'warn', tag: 'Unknown', what: 'Deployments', why: 'CashPilot could not check whether every recorded deployment still runs. Reload the page to try again.' });
+      items.push({ level: 'warn', tag: t('app.attn.tag.unknown'), what: t('app.attn.deployments'), why: t('app.attn.no_missing_check') });
     }
 
     if (_isOwner) {
@@ -1895,18 +1924,18 @@ const CP = (() => {
         health = await api('/api/credentials/health');
       } catch (err) {
         console.warn('Could not load credential health:', err);
-        items.push({ level: 'warn', tag: 'Unknown', what: 'Credentials', why: 'CashPilot could not check credential expiry. Reload the page to try again.' });
+        items.push({ level: 'warn', tag: t('app.attn.tag.unknown'), what: t('app.attn.credentials'), why: t('app.attn.no_cred_check') });
       }
       for (const row of (Array.isArray(health) ? health : [])) {
         if (row.status !== 'expiring_soon' && row.status !== 'likely_expired') continue;
-        if (items.some(i => i.tag === 'No reading' && String(i.what).toLowerCase() === String(row.service).toLowerCase())) continue;
+        if (items.some(i => i.tag === t('app.attn.tag.no_reading') && String(i.what).toLowerCase() === String(row.service).toLowerCase())) continue;
         // The credential is fine; the provider disabled the account.
         if (services.some(s => s.account_disabled && s.slug === row.service)) continue;
         items.push({
-          level: 'warn', tag: row.status === 'likely_expired' ? 'Expired' : 'Expiring',
+          level: 'warn', tag: row.status === 'likely_expired' ? t('app.attn.tag.expired') : t('app.attn.tag.expiring'),
           what: row.name || row.service,
-          why: row.status === 'likely_expired' ? 'credential is past its usual lifetime. Renew it before collection stops.' : 'credential is close to its usual lifetime.',
-          actions: `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(row.service)}">Renew</button>`,
+          why: row.status === 'likely_expired' ? t('app.attn.cred_expired') : t('app.attn.cred_expiring'),
+          actions: `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(row.service)}">${t('app.attn.renew')}</button>`,
         });
       }
     }
@@ -1948,21 +1977,20 @@ const CP = (() => {
     const name = escapeHtml(svc.name);
     let actions = '';
     if (_canWrite && !svc.unmanaged && stoppableCopies(svc).length) {
-      actions += `<button class="btn btn-ghost btn-sm" data-action="stopEverywhere" data-a1="${escapeHtml(svc.slug)}">Stop on all servers</button>`;
+      actions += `<button class="btn btn-ghost btn-sm" data-action="stopEverywhere" data-a1="${escapeHtml(svc.slug)}">${t('app.attn.stop_everywhere')}</button>`;
     }
     if (/^https:\/\//.test(String(svc.support_url || ''))) {
-      actions += ` <a class="btn btn-ghost btn-sm" href="${escapeHtml(svc.support_url)}" target="_blank" rel="noopener noreferrer">Contact ${name}</a>`;
+      actions += ` <a class="btn btn-ghost btn-sm" href="${escapeHtml(svc.support_url)}" target="_blank" rel="noopener noreferrer">${t('app.attn.contact', { name })}</a>`;
     }
     // The Services table keeps showing the last balance read, so say that
     // figure here too: "no balance can be read" next to "$7.62" read as a
     // contradiction.
     const known = svc.balance_known !== false && svc.balance != null;
-    const balance = known
-      ? `its balance cannot update: ${escapeHtml(formatCurrency(svc.balance, svc.currency || 'USD'))} is the last reading`
-      : 'CashPilot cannot read its balance';
     return {
-      level: 'fail', tag: 'Account disabled', what: `by ${svc.name}`,
-      why: `${name} turned this account off, so it earns nothing and ${balance}. Restarting will not help: contact ${name} to get it back. CashPilot leaves its containers as they are.`,
+      level: 'fail', tag: t('app.attn.tag.account_disabled'), what: t('app.attn.disabled_by', { name: svc.name }),
+      why: known
+        ? t('app.attn.disabled_why_balance', { name, amount: escapeHtml(formatCurrency(svc.balance, svc.currency || 'USD')) })
+        : t('app.attn.disabled_why', { name }),
       actions,
     };
   }
@@ -1983,10 +2011,10 @@ const CP = (() => {
     if (total) { clear.hidden = true; return; }
     const online = (workers || []).filter(w => w.status === 'online').length;
     clear.textContent = _attentionCount.payoutsUnknown
-      ? 'CashPilot could not check for payouts waiting on an answer. Reload the page to try again.'
+      ? t('app.attn.no_payout_check')
       : services
-      ? `Nothing needs you. ${online} of ${(workers || []).length} boxes reporting.`
-      : 'Nothing needs you.';
+      ? t('app.attn.clear_boxes', { online, total: (workers || []).length })
+      : t('app.attn.clear');
     clear.hidden = false;
   }
 
@@ -2091,7 +2119,7 @@ const CP = (() => {
   function identityPickButton(svc, env) {
     if (!_isOwner || !isIdentityField(env)) return '';
     return ` <button type="button" class="btn btn-link btn-sm" data-action="pickPreviousIdentity"
-      data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(env.key)}">Use one this service had before</button>`;
+      data-a1="${escapeHtml(svc.slug)}" data-a2="${escapeHtml(env.key)}">${t('app.dep.pick_identity')}</button>`;
   }
 
   // The class is a parameter rather than unified, deliberately: the setup wizard
@@ -2126,7 +2154,7 @@ const CP = (() => {
     const r = container && container.route;
     if (!r) return '';
     const where = [r.exit_ip, r.exit_country ? `(${r.exit_country})` : ''].filter(Boolean).join(' ');
-    return `<span class="badge badge-routed" title="Runs through one of your proxies, never from this box's own IP">via proxy${where ? ` ${escapeHtml(where)}` : ''}</span>`;
+    return `<span class="badge badge-routed" title="${t('app.route.badge_title')}">${where ? t('app.route.via_proxy_at', { where: escapeHtml(where) }) : t('app.route.via_proxy')}</span>`;
   }
 
   // The deploy form's Route box: the box's own IP, or one of the owner's
@@ -2138,22 +2166,20 @@ const CP = (() => {
   function routeChoiceSection(svc) {
     const slug = escapeHtml(svc.slug);
     if (svc.route_refusal) {
-      return `<div class="form-hint route-hint">Route: this box's own IP. ${escapeHtml(svc.route_refusal)}</div>`;
+      return `<div class="form-hint route-hint">${t('app.route.refused', { reason: escapeHtml(svc.route_refusal) })}</div>`;
     }
     const routed = Object.values(svc.routes || {}).some(Boolean);
     const choices = routed
-      ? `<option value="">Keep the route each box has (a new box: its own IP)</option>
-          <option value="0">Direct: the box's own IP</option>`
-      : '<option value="">Direct: the box\'s own IP</option>';
+      ? `<option value="">${t('app.route.keep')}</option>
+          <option value="0">${t('app.route.direct')}</option>`
+      : `<option value="">${t('app.route.direct')}</option>`;
     return `
       <div class="form-group route-choice">
-        <label class="form-label" for="route-select-${slug}">Route</label>
+        <label class="form-label" for="route-select-${slug}">${t('app.route.label')}</label>
         <select class="form-input" id="route-select-${slug}" data-slug="${slug}">
           ${choices}
         </select>
-        <div class="form-hint">A route through one of your proxies applies from the first start, so the service never
-          runs from the box's own IP. It hides that IP from the service's traffic, not from the provider's website or
-          your earnings login. One box per route.</div>
+        <div class="form-hint">${t('app.route.hint')}</div>
       </div>`;
   }
 
@@ -2175,11 +2201,12 @@ const CP = (() => {
         const opt = document.createElement('option');
         opt.value = String(p.id);
         const exit = [p.last_exit_ip, p.last_country ? `(${p.last_country})` : ''].filter(Boolean).join(' ');
-        opt.textContent = `Through ${p.name || `proxy ${p.id}`}${exit ? `, exit ${exit}` : ''}`;
+        const pname = p.name || t('app.route.proxy_n', { id: p.id });
+        opt.textContent = exit ? t('app.route.through_exit', { name: pname, exit }) : t('app.route.through', { name: pname });
         select.appendChild(opt);
       }
     } catch (err) {
-      select.title = `Could not load your proxies: ${err.message}`;
+      select.title = t('app.route.load_failed', { error: err.message });
     }
   }
 
@@ -2237,10 +2264,10 @@ const CP = (() => {
         const capable = ((w.system_info || {}).features || []).includes('instances');
         const locked = maxInstances <= 1 || !capable;
         const why = maxInstances <= 1 ? ''
-          : (isDesktopWorker(w) ? ' title="CashPilot Desktop runs one copy of each service from here"'
-            : (capable ? '' : ' title="Update this worker to run more than one copy"'));
+          : (isDesktopWorker(w) ? ` title="${t('app.dep.desktop_one_copy')}"`
+            : (capable ? '' : ` title="${t('app.dep.update_for_copies')}"`));
         instancesBox = `
-        <span class="instances-box"${why}>Instances
+        <span class="instances-box"${why}>${t('app.dep.instances')}
           <input class="form-input instances-input" type="number" min="1" max="${maxInstances}" step="1"
                  data-slug="${escapeHtml(svc.slug)}" data-wid="${w.id}" data-current="${copies}" value="${copies || 1}"${locked ? ' disabled' : ''}>
         </span>`;
@@ -2249,11 +2276,11 @@ const CP = (() => {
       <label class="worker-pick">
         <input type="checkbox" class="${checkboxClass}" data-slug="${svc.slug}" data-wid="${w.id}"${routed ? ' data-routed="1"' : ''} ${deployed ? 'disabled checked' : (onlyChoice ? 'checked' : '')}>
         <span class="worker-pick-name${deployed ? ' is-deployed' : ''}">${escapeHtml(w.name)}</span>
-        ${isDesktopWorker(w) ? '<span class="badge" title="CashPilot Desktop: it runs the image its own catalog pins, one copy per service">Desktop</span>' : ''}
-        ${proxiedOnly ? '<span class="badge" title="This box runs services only through a proxy">proxy only</span>' : ''}
+        ${isDesktopWorker(w) ? `<span class="badge" title="${t('app.dep.desktop_title')}">Desktop</span>` : ''}
+        ${proxiedOnly ? `<span class="badge" title="${t('app.dep.proxy_only_title')}">${t('app.dep.proxy_only')}</span>` : ''}
         ${deployed
-          ? '<span class="badge badge-deployed">Deployed</span>'
-          : '<span class="badge badge-available">Available</span>'}
+          ? `<span class="badge badge-deployed">${t('app.dep.deployed')}</span>`
+          : `<span class="badge badge-available">${t('app.dep.available')}</span>`}
         ${instancesBox}
       </label>`;
     }
@@ -2266,14 +2293,14 @@ const CP = (() => {
     const name = escapeHtml(svc.name);
     if (svc.max_instances <= 1) {
       return svc.max_instances_reason
-        ? `<div class="form-hint instances-hint">${escapeHtml(svc.max_instances_reason)} To run more, add workers on other connections.</div>`
+        ? `<div class="form-hint instances-hint">${t('app.dep.instances_capped', { reason: escapeHtml(svc.max_instances_reason) })}</div>`
         : '';
     }
     const perIp = (svc.requirements || {}).devices_per_ip;
     if (perIp === 0) {
-      return `<div class="form-hint instances-hint">${name} allows several devices per IP, so each extra instance registers as its own device (<code>cashpilot-&lt;host&gt;-2</code>). They share the machine's connection: more instances add devices, not bandwidth.</div>`;
+      return `<div class="form-hint instances-hint">${t('app.dep.instances_per_ip_html', { name })}</div>`;
     }
-    return `<div class="form-hint instances-hint">${name} does not document how many devices it allows per IP. Extra instances share this machine's connection and may earn nothing.</div>`;
+    return `<div class="form-hint instances-hint">${t('app.dep.instances_unknown', { name })}</div>`;
   }
 
   // Workers whose Instances box was changed. A deployed worker cannot be
@@ -2295,7 +2322,7 @@ const CP = (() => {
   function renderServiceRow(svc, bk) {
     const isExternal = svc.container_status === 'external';
     const statusClass = isExternal ? 'external' : (svc.container_status || 'stopped').toLowerCase();
-    const statusLabel = isExternal ? 'External' : statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+    const statusLabel = isExternal ? t('app.status.external') : statusLabelOf(statusClass);
     const instances = svc.instances || 0;
     const details = svc.instance_details || [];
     const isMulti = details.length > 1;
@@ -2306,7 +2333,7 @@ const CP = (() => {
     const name = escapeHtml(svc.name);
     const dashUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
     const nameLink = dashUrl;
-    const nameTitle = 'Open dashboard';
+    const nameTitle = t('app.row.open_dashboard');
     const nameHtml = nameLink
       ? `<a href="${escapeHtml(nameLink)}" target="_blank" rel="noopener" title="${nameTitle}" class="svc-name">${name}</a>`
       : `<span class="svc-name">${name}</span>`;
@@ -2314,7 +2341,7 @@ const CP = (() => {
     // Subtitle: image for Docker, empty for external
     const subtitle = svc.image
       ? brk(svc.image)
-      : (isExternal ? 'App / Browser' : '');
+      : (isExternal ? t('app.row.app_browser') : '');
 
     // Health badge — external services always show a muted dash
     let healthBadge = '<span class="muted">&mdash;</span>';
@@ -2326,9 +2353,10 @@ const CP = (() => {
       // Unstable (repeated crashes in the 7-day window) takes the worst tone + an explicit
       // label so a crash-looping service is legible at a glance, not just via a low number.
       const hClass = (unstable || score < 50) ? 'badge-stopped' : score >= 80 ? 'badge-running' : 'badge-error';
-      const uptime = (svc.uptime_pct !== null && svc.uptime_pct !== undefined) ? `${svc.uptime_pct}% uptime · ` : '';
-      const title = `Health ${score}/100 · ${uptime}${restarts} restarts · ${crashes} crashes (7d)`;
-      const label = unstable ? `unstable · ${crashes} crashes` : String(score);
+      const title = (svc.uptime_pct !== null && svc.uptime_pct !== undefined)
+        ? t('app.row.health_title_uptime', { score, uptime: svc.uptime_pct, restarts, crashes })
+        : t('app.row.health_title', { score, restarts, crashes });
+      const label = unstable ? t('app.row.unstable', { crashes }) : String(score);
       healthBadge = `<span class="badge ${hClass}" title="${title}">${label}</span>`;
     }
 
@@ -2348,19 +2376,19 @@ const CP = (() => {
     const displayBalance = signupBonus > 0 ? balanceAdj : balance;
     const nativeLabel = formatNative(displayBalance, currency);
     const bonusLabel = signupBonus > 0
-      ? `<div class="cell-sub">\u2212${formatCurrency(signupBonus, currency)} promo</div>`
+      ? `<div class="cell-sub">${t('app.row.promo', { amount: `\u2212${formatCurrency(signupBonus, currency)}` })}</div>`
       : '';
     // Image drift: the running container no longer matches the catalog image
     // (provider migrated or re-pinned). Prompt a re-deploy — otherwise a retired
     // image keeps looking healthy while it silently stops earning.
     const outdatedBadge = svc.image_outdated === true
       ? (svc.custom
-        ? ` <span class="badge badge-stopped" title="This container runs an older image than the one in its custom service definition. Redeploy it to update.">update available</span>`
-        : ` <span class="badge badge-stopped" title="This service is running an image that no longer matches the catalog (the provider changed or re-pinned it). Re-deploy it from the catalog to update.">update available</span>`)
+        ? ` <span class="badge badge-stopped" title="${t('app.row.outdated_custom_title')}">${t('app.row.update_available')}</span>`
+        : ` <span class="badge badge-stopped" title="${t('app.row.outdated_title')}">${t('app.row.update_available')}</span>`)
       : '';
     // A service the user added from an image reference: not reviewed, no collector.
     const customLabel = svc.custom
-      ? ` <span class="badge badge-category" title="${CUSTOM_SERVICE_TITLE}">Custom</span>`
+      ? ` <span class="badge badge-category" title="${CUSTOM_SERVICE_TITLE}">${t('app.row.custom')}</span>`
       : '';
 
     // Earnings-collector state. "disconnected" = collector ran and failed
@@ -2368,26 +2396,26 @@ const CP = (() => {
     // earning, but its (separate) earnings-tracking credentials aren't set yet.
     let disconnectedLabel = '';
     if (svc.account_disabled) {
-      disconnectedLabel = `<div title="${escapeHtml(svc.name)} disabled this account, so the balance shown is the last one read and cannot update. The credentials are fine; only ${escapeHtml(svc.name)} can turn it back on." class="cell-sub cell-sub-warn">account disabled</div>`;
+      disconnectedLabel = `<div title="${t('app.row.disabled_title', { name: escapeHtml(svc.name) })}" class="cell-sub cell-sub-warn">${t('app.row.account_disabled')}</div>`;
     } else if (svc.collector_disconnected) {
-      disconnectedLabel = `<div title="CashPilot couldn't read this balance — check the earnings-tracking credentials" class="cell-sub cell-sub-warn">no reading${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">fix</button>` : ''}</div>`;
+      disconnectedLabel = `<div title="${t('app.row.no_reading_title')}" class="cell-sub cell-sub-warn">${t('app.row.no_reading')}${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">${t('app.row.fix')}</button>` : ''}</div>`;
     } else if (svc.collector_notice) {
-      disconnectedLabel = `<div title="${escapeHtml(svc.collector_notice)}" class="cell-sub">see note</div>`;
+      disconnectedLabel = `<div title="${escapeHtml(svc.collector_notice)}" class="cell-sub">${t('app.row.see_note')}</div>`;
     } else if (svc.collector_needs_setup) {
-      disconnectedLabel = `<div title="This service is running and earning. To show its balance here, add its earnings-tracking credentials." class="cell-sub">not tracked${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">set up</button>` : ''}</div>`;
+      disconnectedLabel = `<div title="${t('app.row.not_tracked_title')}" class="cell-sub">${t('app.row.not_tracked')}${_isOwner ? ` <button class="btn btn-link" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}">${t('app.row.set_up')}</button>` : ''}</div>`;
     }
     let balanceHtml;
     if (!balanceKnown) {
       // Never read. An em dash, not a number — the user must be able to tell
       // "nothing has looked at this" from "this earned nothing".
       const why = svc.custom
-        ? 'CashPilot cannot read the earnings of a custom service. Check them on the provider\'s own dashboard.'
-        : 'CashPilot has not read a balance for this service yet';
+        ? t('app.row.custom_no_balance')
+        : t('app.row.never_read');
       balanceHtml = `<span class="muted" title="${why}">&mdash;</span>${disconnectedLabel}`;
     } else if (nativeLabel && formatCurrency(displayBalance, currency).includes(currency)) {
       // No price for this unit, so the "converted" figure already IS the
       // native one. Printing it twice read as two different numbers.
-      balanceHtml = `${formatCurrency(displayBalance, currency)}<div class="cell-sub">no price, shown as is</div>${bonusLabel}${disconnectedLabel}`;
+      balanceHtml = `${formatCurrency(displayBalance, currency)}<div class="cell-sub">${t('app.row.no_price')}</div>${bonusLabel}${disconnectedLabel}`;
     } else if (nativeLabel) {
       balanceHtml = `${formatCurrency(displayBalance, currency)}<div class="cell-sub">${nativeLabel}</div>${bonusLabel}${disconnectedLabel}`;
     } else {
@@ -2403,7 +2431,7 @@ const CP = (() => {
       // Nothing could be measured: every instance's Docker stats call failed.
       // `|| '0'` used to render that as a confident 0%, which reads as idle for
       // a container that may be working hard (CashPilot-zdi).
-      const why = 'Docker could not report stats for this service';
+      const why = t('app.row.no_stats');
       cpuStr = `<span title="${why}">—</span>`;
       memStr = `<span title="${why}">—</span>`;
     } else if (isMulti && instances > 0) {
@@ -2413,11 +2441,11 @@ const CP = (() => {
       const measured = Math.max(1, instances - (svc.stats_unknown || 0));
       const avgCpu = (parseFloat(svc.cpu) / measured).toFixed(2);
       const avgMem = (parseFloat(svc.memory) / measured).toFixed(1);
-      const note = (svc.stats_unknown || 0) > 0
-        ? ` (${svc.stats_unknown} instance${svc.stats_unknown > 1 ? 's' : ''} could not be measured)`
-        : '';
-      cpuStr = `<span title="Average across ${measured} instance${measured > 1 ? 's' : ''}${note}">~${avgCpu}%</span>`;
-      memStr = `<span title="Average across ${measured} instance${measured > 1 ? 's' : ''}${note}">~${avgMem} MB</span>`;
+      const avgTitle = (svc.stats_unknown || 0) > 0
+        ? t('app.row.avg_title_unmeasured', { n: measured, m: svc.stats_unknown })
+        : t('app.row.avg_title', { n: measured });
+      cpuStr = `<span title="${avgTitle}">~${avgCpu}%</span>`;
+      memStr = `<span title="${avgTitle}">~${avgMem} MB</span>`;
     } else {
       cpuStr = `${svc.cpu}%`;
       memStr = svc.memory;
@@ -2450,8 +2478,8 @@ const CP = (() => {
 
     // Payout (claim) button — always visible in main row
     const claimTitle = co.dashboard_url
-      ? (eligible ? 'Cash out earnings' : 'View payout details')
-      : 'No payout info available';
+      ? (eligible ? t('app.row.cash_out') : t('app.row.payout_details'))
+      : t('app.row.no_payout_info');
     const claimDisabled = !co.dashboard_url;
     const claimBtn = `<button class="btn btn-icon ${eligible ? 'btn-success' : ''}" data-action="openClaimModal" data-a1="${escapeHtml(svc.slug)}" title="${claimTitle}"${claimDisabled ? ' disabled' : ''}>
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
@@ -2464,17 +2492,17 @@ const CP = (() => {
 
     // Instance badge (shown next to status)
     const instanceLabel = !isExternal && instances > 0
-      ? ` <span class="badge badge-instances" title="${instances} instance${instances > 1 ? 's' : ''}">${instances}x</span>`
+      ? ` <span class="badge badge-instances" title="${t('app.row.instances', { n: instances })}">${instances}x</span>`
       : '';
 
     // Say why the buttons are dead rather than leaving the user to click one.
     const unmanagedLabel = svc.unmanaged
-      ? ` <span class="badge badge-category" title="This container was started outside CashPilot, so CashPilot cannot stop, restart or read the logs of it.">Unmanaged</span>`
+      ? ` <span class="badge badge-category" title="${t('app.row.unmanaged_title')}">${t('app.row.unmanaged')}</span>`
       : '';
 
     // Settings gear (owner-only) — opens credential + bonus modal
     const settingsBtn = _isOwner && !svc.custom
-      ? `<button class="btn btn-icon" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="Credentials &amp; settings">
+      ? `<button class="btn btn-icon" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="${t('app.row.settings')}">
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
          </button>` : '';
 
@@ -2482,7 +2510,7 @@ const CP = (() => {
     // For single instance: show action buttons directly
     let actionBtns;
     if (isMulti) {
-      const chevron = `<button class="btn btn-icon expand-toggle" data-action="toggleInstances" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="Expand instances">
+      const chevron = `<button class="btn btn-icon expand-toggle" data-action="toggleInstances" data-stop="1" data-a1="${escapeHtml(svc.slug)}" title="${t('app.row.expand')}">
         <svg class="expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </button>`;
       actionBtns = `<div class="action-btns">${claimBtn}${settingsBtn}${chevron}</div>`;
@@ -2500,19 +2528,19 @@ const CP = (() => {
       // why rather than leaving it looking broken.
       const unmanaged = inst.unmanaged || svc.unmanaged;
       const disabledAttr = unmanaged
-        ? ' disabled title="Started outside CashPilot — manage it where you started it"'
-        : (noDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it: it sent no address to take commands at. On its own dashboard, turn on its switch and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address."' : ' disabled title="No Docker access"') : '');
+        ? ` disabled title="${t('app.row.outside_title')}"`
+        : (noDocker ? (inst.desktop_report_only ? ` disabled title="${t('app.row.report_only_title')}"` : ` disabled title="${t('app.row.no_docker')}"`) : '');
       actionBtns = `<div class="action-btns">
           ${claimBtn}
           ${settingsBtn}
           ${_canWrite ? `
-          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Restart">
+          <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="${t('app.row.restart')}">
             ${ICON_RESTART}
           </button>
-          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Stop">
+          <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="${t('app.row.stop')}">
             ${ICON_STOP}
           </button>
-          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Logs">
+          <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="${t('app.logs')}">
             ${ICON_LOGS}
           </button>` : ''}
         </div>`;
@@ -2523,15 +2551,15 @@ const CP = (() => {
     <tr class="breakdown-row${isMulti ? ' expandable' : ''}" data-slug="${escapeHtml(svc.slug)}"${isMulti ? ` data-action="toggleInstances" data-a1="${escapeHtml(svc.slug)}" data-a2="event"` : ''}>
       <td class="c-name">${nameHtml}<div class="cell-sub cell-mono c-name-image">${subtitle}</div></td>
       <td class="c-status">${partialDown
-        ? `<span class="badge badge-stopped" title="${downCount} of ${details.length} instances are not running"><span class="status-dot stopped"></span> ${details.length - downCount} of ${details.length} up</span>`
+        ? `<span class="badge badge-stopped" title="${t('app.row.down_title', { down: downCount, total: details.length })}"><span class="status-dot stopped"></span> ${t('app.row.n_up', { up: details.length - downCount, total: details.length })}</span>`
         : `<span class="badge badge-${statusClass}"><span class="status-dot ${statusClass}"></span> ${statusLabel}</span>${instanceLabel}`}${unmanagedLabel}${customLabel}${outdatedBadge}${!isMulti && details[0] ? ` ${routeBadge(details[0])}` : ''}</td>
-      <td class="c-health c-num" data-label="Health">${healthBadge}</td>
+      <td class="c-health c-num" data-label="${t('app.label.health')}">${healthBadge}</td>
       <td class="c-bal c-num">${balanceHtml}</td>
       <td class="c-chg c-num"><span class="delta">${deltaStr}</span></td>
-      <td class="c-cpu c-num" data-label="CPU">${cpuStr}</td>
-      <td class="c-mem c-num" data-label="Memory">${memStr}</td>
-      <td class="c-disk c-num" data-label="Host disk">${diskCell(svc)}</td>
-      <td class="c-gpu" data-label="GPU">${gpuCell(svc)}</td>
+      <td class="c-cpu c-num" data-label="${t('app.label.cpu')}">${cpuStr}</td>
+      <td class="c-mem c-num" data-label="${t('app.label.memory')}">${memStr}</td>
+      <td class="c-disk c-num" data-label="${t('app.label.host_disk')}">${diskCell(svc)}</td>
+      <td class="c-gpu" data-label="${t('app.label.gpu')}">${gpuCell(svc)}</td>
       <td class="c-pay">${progressBar}</td>
       <td class="c-act">${actionBtns}</td>
     </tr>`;
@@ -2540,10 +2568,10 @@ const CP = (() => {
     if (isMulti) {
       for (const inst of details) {
         const iStatus = (inst.status || 'unknown').toLowerCase();
-        const iStatusLabel = iStatus.charAt(0).toUpperCase() + iStatus.slice(1);
+        const iStatusLabel = statusLabelOf(iStatus);
         const copyLabel = (inst.instance || 1) > 1 || details.some(d => d !== inst && d.worker_id === inst.worker_id)
           ? ` #${inst.instance || 1}` : '';
-        const nodeLabel = (inst.node === 'local' ? 'Local' : escapeHtml(inst.node)) + copyLabel;
+        const nodeLabel = (inst.node === 'local' ? t('app.row.local') : escapeHtml(inst.node)) + copyLabel;
         const wParam = inst.worker_id != null
           ? ` data-a2="${inst.worker_id}"${(inst.instance || 1) > 1 ? ` data-a3="${inst.instance}"` : ''}`
           : '';
@@ -2557,18 +2585,18 @@ const CP = (() => {
         // (CodeRabbit, PR #212.)
         const iUnmanaged = inst.unmanaged || svc.unmanaged;
         const disabledAttr = iUnmanaged
-          ? ' disabled title="Started outside CashPilot — manage it where you started it"'
-          : (iNoDocker ? (inst.desktop_report_only ? ' disabled title="This Desktop only reports what runs on it: it sent no address to take commands at. On its own dashboard, turn on its switch and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address."' : ' disabled title="No Docker access"') : '');
+          ? ` disabled title="${t('app.row.outside_title')}"`
+          : (iNoDocker ? (inst.desktop_report_only ? ` disabled title="${t('app.row.report_only_title')}"` : ` disabled title="${t('app.row.no_docker')}"`) : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
         // `|| '0'` would render an unmeasurable container as a confident 0%.
         // The endpoint sends null when the Docker stats call failed, and an em
         // dash is the only honest rendering of that (CashPilot-zdi).
         const cpuCell = inst.is_android
           ? `↑ ${fmtNetBytes(inst.net_tx_24h)}`
-          : (inst.cpu == null ? '<span title="Docker could not report this container\'s stats">—</span>' : `${inst.cpu}%`);
+          : (inst.cpu == null ? `<span title="${t('app.row.no_container_stats')}">—</span>` : `${inst.cpu}%`);
         const memCell = inst.is_android
           ? `↓ ${fmtNetBytes(inst.net_rx_24h)}`
-          : (inst.memory == null ? '<span title="Docker could not report this container\'s stats">—</span>' : inst.memory);
+          : (inst.memory == null ? `<span title="${t('app.row.no_container_stats')}">—</span>` : inst.memory);
         html += `
         <tr class="instance-row" data-parent="${escapeHtml(svc.slug)}" style="display:none;">
           <td class="c-name">
@@ -2579,21 +2607,21 @@ const CP = (() => {
           <td class="c-health c-empty"></td>
           <td class="c-bal c-empty"></td>
           <td class="c-chg c-empty"></td>
-          <td class="c-cpu c-num" data-label="${inst.is_android ? 'Upload 24h' : 'CPU'}">${cpuCell}</td>
-          <td class="c-mem c-num" data-label="${inst.is_android ? 'Download 24h' : 'Memory'}">${memCell}</td>
-          <td class="c-disk c-num" data-label="Host disk">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
-          <td class="c-gpu" data-label="GPU">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td class="c-cpu c-num" data-label="${inst.is_android ? t('app.label.upload_24h') : t('app.label.cpu')}">${cpuCell}</td>
+          <td class="c-mem c-num" data-label="${inst.is_android ? t('app.label.download_24h') : t('app.label.memory')}">${memCell}</td>
+          <td class="c-disk c-num" data-label="${t('app.label.host_disk')}">${diskCellForHosts(hostForWorker(inst.worker_id))}</td>
+          <td class="c-gpu" data-label="${t('app.label.gpu')}">${gpuCellForHosts(hostForWorker(inst.worker_id))}</td>
           <td class="c-pay c-empty"></td>
           <td class="c-act">
             <div class="action-btns">
               ${_canWrite ? `
-              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Restart on ${nodeLabel}">
+              <button class="btn btn-icon" data-action="restartService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="${t('app.row.restart_on', { node: nodeLabel })}">
                 ${ICON_RESTART}
               </button>
-              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Stop on ${nodeLabel}">
+              <button class="btn btn-icon" data-action="stopService" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="${t('app.row.stop_on', { node: nodeLabel })}">
                 ${ICON_STOP}
               </button>
-              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="Logs on ${nodeLabel}">
+              <button class="btn btn-icon" data-action="viewLogs" data-a1="${escapeHtml(svc.slug)}"${wParam}${disabledAttr} title="${t('app.logs_on', { node: nodeLabel })}">
                 ${ICON_LOGS}
               </button>` : ''}
             </div>
@@ -2620,7 +2648,7 @@ const CP = (() => {
 
   function refreshServices() {
     loadServicesTable();
-    toast('Services refreshed', 'info');
+    toast(t('app.services.refreshed'), 'info');
   }
 
   async function _waitForChart() {
@@ -2667,10 +2695,9 @@ const CP = (() => {
         if (holder) {
           holder.innerHTML =
             '<div class="empty-state">'
-            + '<div class="empty-state-text">Could not load earnings. This is not a reading of zero — '
-            + 'the figures could not be fetched.</div>'
+            + `<div class="empty-state-text">${t('app.chart.load_failed')}</div>`
             + '<button class="btn btn-ghost btn-sm" data-action="loadEarningsChart" data-a1="'
-            + escapeHtml(String(days)) + '">Retry</button>'
+            + escapeHtml(String(days)) + `">${t('app.retry')}</button>`
             + '</div>';
         }
       }
@@ -2704,7 +2731,7 @@ const CP = (() => {
       data: {
         labels,
         datasets: [{
-          label: 'Daily Earnings',
+          label: t('app.chart.daily'),
           data: values,
           backgroundColor: accent,
           borderWidth: 0,
@@ -2766,7 +2793,7 @@ const CP = (() => {
     openModal('cred-modal');
     const title = document.getElementById('cred-modal-title');
     const body = document.getElementById('cred-modal-body');
-    if (title) title.textContent = 'Update Credentials';
+    if (title) title.textContent = t('app.cred.title');
     if (body) body.innerHTML = '<div class="spinner spinner-block"></div>';
 
     try {
@@ -2776,10 +2803,10 @@ const CP = (() => {
       const config = await api('/api/config');
       const col = _collectorMetaCache.find(c => c.slug === slug);
       if (!col || !col.fields.length) {
-        if (body) body.innerHTML = '<p class="muted">No credentials needed for this service.</p>';
+        if (body) body.innerHTML = `<p class="muted">${t('app.cred.none_needed')}</p>`;
         return;
       }
-      if (title) title.textContent = `${col.name} — Credentials`;
+      if (title) title.textContent = t('app.cred.title_for', { name: col.name });
 
       const secrets = config._secrets || {};
       // EVERY field, not just the required ones.
@@ -2795,12 +2822,12 @@ const CP = (() => {
       // inputs at all.
       const fieldsHtml = col.fields.map(f => {
         const inputType = f.secret ? 'password' : 'text';
-        const optionalSuffix = f.required ? '' : ' <span class="optional">(optional)</span>';
+        const optionalSuffix = f.required ? '' : ` <span class="optional">${t('app.cred.optional')}</span>`;
         // Secret inputs are write-only: empty, with a placeholder that reflects
         // whether a value is already stored (per _secrets). Non-secret fields keep
         // their plain placeholder.
         const placeholder = f.secret
-          ? (secrets[f.key] ? '•••••••• (set — leave blank to keep)' : escapeHtml(f.label))
+          ? (secrets[f.key] ? t('app.cred.set_keep') : escapeHtml(f.label))
           : escapeHtml(f.label);
         return `
         <div class="form-group">
@@ -2821,13 +2848,13 @@ const CP = (() => {
       const currencyLabel = payCurrency === 'USD' ? '$' : payCurrency;
       const bonusHtml = `
         <div class="modal-section">
-          <label class="form-label">Signup bonus offset (${escapeHtml(currencyLabel)})</label>
+          <label class="form-label">${t('app.cred.bonus', { currency: escapeHtml(currencyLabel) })}</label>
           <div class="inline-field">
             <input class="form-input form-input-num cred-modal-input" type="number" step="0.01" min="0"
                    data-config="${escapeHtml(bonusKey)}"
                    value="${escapeHtml(currentBonus)}"
                    placeholder="0.00">
-            <span class="form-hint">Subtracted from the balance shown, for promotional credit you cannot cash out.</span>
+            <span class="form-hint">${t('app.cred.bonus_hint')}</span>
           </div>
         </div>`;
 
@@ -2836,12 +2863,12 @@ const CP = (() => {
         ${fieldsHtml}
         ${bonusHtml}
         <div class="modal-actions">
-          <button class="btn btn-primary" data-action="saveCredentialModal" data-a1="${escapeHtml(slug)}">Save</button>
-          <button class="btn btn-ghost" data-action="closeModal" data-a1="cred-modal">Cancel</button>
-          <button class="btn btn-danger push-right" data-action="clearServiceCredentials" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(col.name)}">Clear</button>
+          <button class="btn btn-primary" data-action="saveCredentialModal" data-a1="${escapeHtml(slug)}">${t('app.save')}</button>
+          <button class="btn btn-ghost" data-action="closeModal" data-a1="cred-modal">${t('app.cancel')}</button>
+          <button class="btn btn-danger push-right" data-action="clearServiceCredentials" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(col.name)}">${t('app.cred.clear')}</button>
         </div>`;
     } catch (err) {
-      if (body) body.innerHTML = `<p class="text-fail">Failed to load: ${escapeHtml(err.message)}</p>`;
+      if (body) body.innerHTML = `<p class="text-fail">${t('app.load_failed', { error: escapeHtml(err.message) })}</p>`;
     }
   }
 
@@ -2854,7 +2881,7 @@ const CP = (() => {
       if (val) data[key] = val;
     });
     if (!Object.keys(data).length) {
-      toast('Enter at least one credential', 'warning');
+      toast(t('app.cred.enter_one'), 'warning');
       return;
     }
     try {
@@ -2874,19 +2901,19 @@ const CP = (() => {
       // The endpoint deliberately returns no field that could carry a secret,
       // so its message is safe to show as-is.
       if (slug) {
-        toast('Credentials saved — checking them\u2026', 'success');
+        toast(t('app.cred.saved_checking'), 'success');
         try {
           const verdict = await api(`/api/services/${encodeURIComponent(slug)}/test-credentials`, { method: 'POST' });
-          toast(verdict.message || (verdict.ok ? 'Credentials work.' : 'Could not verify these credentials.'),
+          toast(verdict.message || (verdict.ok ? t('app.cred.work') : t('app.cred.unverified')),
                 verdict.ok ? 'success' : 'error');
         } catch (err) {
           // The CHECK failed, which is not the same as the credentials failing.
           // Saying "rejected" here would send someone to re-copy a token that
           // was fine.
-          toast(`Saved, but could not check them right now: ${err.message}`, 'warning');
+          toast(t('app.cred.check_failed', { error: err.message }), 'warning');
         }
       } else {
-        toast('Credentials saved — collecting now\u2026', 'success');
+        toast(t('app.cred.saved_collecting'), 'success');
       }
 
       // Trigger a collection so it picks up new creds immediately
@@ -2894,7 +2921,7 @@ const CP = (() => {
       // Silently refresh the dashboard after collection has time to finish
       setTimeout(() => loadServicesTable(), 8000);
     } catch (err) {
-      toast(`Save failed: ${err.message}`, 'error');
+      toast(t('app.save_failed', { error: err.message }), 'error');
     }
   }
 
@@ -2937,29 +2964,29 @@ const CP = (() => {
 
     // Client-side validation mirrors the backend rules for instant feedback.
     if (!current_password) {
-      _setPwdError('Enter your current password.');
+      _setPwdError(t('app.pwd.enter_current'));
       currentEl.focus();
       return;
     }
     if (new_password.length < 10) {
-      _setPwdError('New password must be at least 10 characters.');
+      _setPwdError(t('app.pwd.too_short'));
       newEl.focus();
       return;
     }
     if (new_password !== confirm) {
-      _setPwdError('New password and confirmation do not match.');
+      _setPwdError(t('app.pwd.mismatch'));
       confirmEl.focus();
       return;
     }
     if (new_password === current_password) {
-      _setPwdError('New password must be different from the current one.');
+      _setPwdError(t('app.pwd.same'));
       newEl.focus();
       return;
     }
 
     _setPwdError('');
     const btn = document.getElementById('pwd-submit');
-    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = 'Saving…'; }
+    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = t('app.pwd.saving'); }
 
     try {
       await api('/api/users/me/password', {
@@ -2967,12 +2994,12 @@ const CP = (() => {
         body: { current_password, new_password },
       });
       // Cookie is re-minted server-side, so the session stays valid.
-      toast('Password changed', 'success');
+      toast(t('app.pwd.changed'), 'success');
       closeModal('password-modal');
     } catch (err) {
       _setPwdError(err.message);
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || 'Change Password'; }
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || t('app.pwd.submit'); }
     }
   }
 
@@ -2988,30 +3015,28 @@ const CP = (() => {
       service = (available || []).find(s => s.slug === platform) || null;
     } catch (err) {
       // Could not check. Say that, rather than guessing at either answer.
-      if (title) title.textContent = 'Cashout';
+      if (title) title.textContent = t('app.claim.title');
       if (body) {
-        body.innerHTML = `<p>Could not check this service right now: ${escapeHtml(err.message || 'request failed')}.</p>`;
+        body.innerHTML = `<p>${t('app.claim.check_failed', { error: escapeHtml(err.message || t('app.claim.request_failed')) })}</p>`;
       }
       return;
     }
 
     const name = service ? (service.name || platform) : platform;
-    if (title) title.textContent = `Cashout \u2014 ${name}`;
+    if (title) title.textContent = t('app.claim.title_for', { name });
     if (!body) return;
 
     if (!service) {
       // The only case that genuinely deserves the old wording.
-      body.innerHTML = `<p>${escapeHtml(name)} is not in the service catalog, so CashPilot knows nothing about its cashout.</p>`;
+      body.innerHTML = `<p>${t('app.claim.not_in_catalog', { name: escapeHtml(name) })}</p>`;
       return;
     }
 
     // Deployed and running, but nothing has been read yet. Name the likely
     // cause, because "no data" without a reason reads as a broken page.
     const reason = service.has_collector
-      ? 'No earnings have been read for this service yet. Add its credentials in '
-        + 'Settings \u2192 Earnings collection, or wait for the next hourly collection if you already have.'
-      : 'CashPilot has no earnings collector for this service yet, so it cannot read a balance. '
-        + 'It may still be running and earning \u2014 check the provider\'s own dashboard.';
+      ? t('app.claim.none_read')
+      : t('app.claim.no_collector');
     body.innerHTML = `<p>${escapeHtml(reason)}</p>`;
   }
 
@@ -3020,7 +3045,7 @@ const CP = (() => {
     const title = document.getElementById('claim-modal-title');
     const body = document.getElementById('claim-modal-body');
 
-    if (title) title.textContent = 'Checking eligibility...';
+    if (title) title.textContent = t('app.claim.checking');
     if (body) body.innerHTML = '<div class="spinner spinner-block"></div>';
 
     try {
@@ -3050,21 +3075,19 @@ const CP = (() => {
       const comparable = typeof minAmount === 'number';
       const currency = svc.currency || 'USD';
 
-      if (title) title.textContent = `${svc.name} payout`;
+      if (title) title.textContent = t('app.claim.payout_for', { name: svc.name });
 
       // One state line in the Console's colour-only-for-state language: a
       // square and a word, then the reason. No hero icon.
       const stateClass = eligibilityUnknown ? 'claim-unknown' : eligible ? 'claim-ok' : 'claim-warn';
       const statusText = eligibilityUnknown
-        ? `<span class="claim-state ${stateClass}">Cannot tell yet</span>
+        ? `<span class="claim-state ${stateClass}">${t('app.claim.cannot_tell')}</span>
            <p class="claim-why">
-             This provider's minimum is set in ${escapeHtml(String(co.min_amount_currency || 'another currency'))} and the balance is
-             recorded in ${escapeHtml(String(currency))}. Without an exchange rate the two cannot be compared, so
-             CashPilot will not guess. Check the provider's own dashboard.
+             ${t('app.claim.cannot_compare', { min: escapeHtml(String(co.min_amount_currency || t('app.claim.another_currency'))), currency: escapeHtml(String(currency)) })}
            </p>`
         : eligible
-        ? `<span class="claim-state ${stateClass}">Eligible for payout</span>`
-        : `<span class="claim-state ${stateClass}">Below minimum payout</span>`;
+        ? `<span class="claim-state ${stateClass}">${t('app.claim.eligible')}</span>`
+        : `<span class="claim-state ${stateClass}">${t('app.claim.below')}</span>`;
 
       const pctToMin = comparable && minAmount > 0 ? Math.min(100, (svc.balance / minAmount) * 100) : 0;
       const remaining = comparable ? Math.max(0, minAmount - svc.balance) : 0;
@@ -3072,24 +3095,24 @@ const CP = (() => {
       const progressSection = comparable && minAmount > 0 ? `
         <div class="claim-progress">
           <div class="claim-figures">
-            <span>Balance <strong>${formatCurrency(svc.balance, currency)}</strong></span>
-            <span>Minimum <strong>${formatCurrency(minAmount, currency)}</strong></span>
+            <span>${t('app.claim.balance_html', { amount: formatCurrency(svc.balance, currency) })}</span>
+            <span>${t('app.claim.minimum_html', { amount: formatCurrency(minAmount, currency) })}</span>
           </div>
           <div class="payout-progress payout-progress-lg">
             <div class="payout-progress-bar ${eligible ? 'eligible' : ''}" style="width:${pctToMin.toFixed(0)}%"></div>
           </div>
-          ${!eligible ? `<p class="claim-why">${formatCurrency(remaining, currency)} more to reach the minimum.</p>` : ''}
+          ${!eligible ? `<p class="claim-why">${t('app.claim.remaining', { amount: formatCurrency(remaining, currency) })}</p>` : ''}
         </div>` : '';
 
       const notesSection = co.notes
-        ? `<p class="claim-notes"><strong>Notes</strong> ${escapeHtml(co.notes)}</p>`
+        ? `<p class="claim-notes">${t('app.claim.notes_html', { notes: escapeHtml(co.notes) })}</p>`
         : '';
 
       const methodLabel = {
-        redirect: 'You will be redirected to the service dashboard to complete the payout.',
-        api: 'Payout will be triggered via the service API.',
-        manual: 'Follow the instructions below to claim your earnings.',
-        auto: 'The provider sends payouts automatically. Check its payout terms for the threshold.',
+        redirect: t('app.claim.method.redirect'),
+        api: t('app.claim.method.api'),
+        manual: t('app.claim.method.manual'),
+        auto: t('app.claim.method.auto'),
       };
       const extIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
 
@@ -3098,19 +3121,19 @@ const CP = (() => {
         // Auto-settle services — always show the dashboard link (e.g. rewards page)
         actionSection = `<div class="claim-action">
              <p class="claim-why">${methodLabel.auto}</p>
-             ${co.dashboard_url ? `<a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary">${extIcon} Open the rewards page</a>` : ''}
+             ${co.dashboard_url ? `<a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary">${extIcon} ${t('app.claim.open_rewards')}</a>` : ''}
            </div>`;
       } else if (eligible && co.dashboard_url) {
         actionSection = `<div class="claim-action">
              <p class="claim-why">${methodLabel[co.method] || methodLabel.redirect}</p>
-             <a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary">${extIcon} Open the provider dashboard</a>
+             <a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-primary">${extIcon} ${t('app.claim.open_dashboard')}</a>
            </div>`;
       } else if (eligibilityUnknown) {
         actionSection = co.dashboard_url
-          ? `<div class="claim-action"><a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-ghost">${extIcon} Open the provider dashboard</a></div>`
+          ? `<div class="claim-action"><a href="${escapeHtml(co.dashboard_url)}" target="_blank" rel="noopener" class="btn btn-ghost">${extIcon} ${t('app.claim.open_dashboard')}</a></div>`
           : '';
       } else if (!eligible) {
-        actionSection = `<p class="claim-why">Keep the service running to build up the balance.</p>`;
+        actionSection = `<p class="claim-why">${t('app.claim.keep_running')}</p>`;
       }
 
       if (body) body.innerHTML = `
@@ -3120,7 +3143,7 @@ const CP = (() => {
         ${actionSection}
       `;
     } catch (err) {
-      if (body) body.innerHTML = `<p class="text-fail">Error: ${escapeHtml(err.message)}</p>`;
+      if (body) body.innerHTML = `<p class="text-fail">${t('app.error', { error: escapeHtml(err.message) })}</p>`;
     }
   }
 
@@ -3131,7 +3154,7 @@ const CP = (() => {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
       const out = await api(`/api/services/${slug}/restart${q}`, { method: 'POST' });
-      toast(`${slug} restarting...`, 'success');
+      toast(t('app.svc.restarting', { slug }), 'success');
       // A routed copy the worker started, but could not make that last through a power cut.
       if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
@@ -3144,7 +3167,7 @@ const CP = (() => {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
       const out = await api(`/api/services/${slug}/stop${q}`, { method: 'POST' });
-      toast(`${slug} stopped`, 'success');
+      toast(t('app.svc.stopped', { slug }), 'success');
       // A routed copy the worker stopped, but could not make that last through a power cut.
       if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
@@ -3164,8 +3187,8 @@ const CP = (() => {
       return;
     }
     const copies = svc ? stoppableCopies(svc) : [];
-    if (!copies.length) { toast(`${slug} is not running anywhere`, 'success'); return; }
-    if (!confirm(`Stop ${svc.name} on ${copies.length} container${copies.length > 1 ? 's' : ''}? Nothing is removed; you can start them again later.`)) return;
+    if (!copies.length) { toast(t('app.svc.not_running', { slug }), 'success'); return; }
+    if (!confirm(t('app.svc.stop_all_confirm', { name: svc.name, n: copies.length }))) return;
     const failed = [];
     const warnings = [];
     for (const inst of copies) {
@@ -3177,8 +3200,8 @@ const CP = (() => {
         failed.push(`${inst.node}: ${err.message}`);
       }
     }
-    if (failed.length) toast(`Could not stop ${slug} on ${failed.join('; ')}`, 'error');
-    else toast(`${slug} stopped on ${copies.length} container${copies.length > 1 ? 's' : ''}`, 'success');
+    if (failed.length) toast(t('app.svc.stop_failed', { slug, where: failed.join('; ') }), 'error');
+    else toast(t('app.svc.stopped_n', { slug, n: copies.length }), 'success');
     if (warnings.length) toast(warnings.join('; '), 'warning');
     loadServicesTable();
   }
@@ -3187,7 +3210,7 @@ const CP = (() => {
     const q = workerId != null ? `?worker_id=${workerId}${_instanceQuery(instance)}` : '';
     try {
       const out = await api(`/api/services/${slug}/start${q}`, { method: 'POST' });
-      toast(`${slug} starting...`, 'success');
+      toast(t('app.svc.starting', { slug }), 'success');
       // A routed copy the worker started, but could not make that last through a power cut.
       if (out && out.warning) toast(out.warning, 'warning');
       loadServicesTable();
@@ -3197,12 +3220,11 @@ const CP = (() => {
   }
 
   async function forgetDeployment(slug, workerId) {
-    const where = workerId != null ? ' on that box' : '';
-    if (!confirm(`Forget the ${slug} deployment${where}? This only drops CashPilot's record; no container is touched.`)) return;
+    if (!confirm(workerId != null ? t('app.svc.forget_box_confirm', { slug }) : t('app.svc.forget_confirm', { slug }))) return;
     const q = workerId != null ? `?worker_id=${encodeURIComponent(workerId)}` : '';
     try {
       await api(`/api/deployments/${encodeURIComponent(slug)}${q}`, { method: 'DELETE' });
-      toast(`${slug} deployment forgotten`, 'success');
+      toast(t('app.svc.forgotten', { slug }), 'success');
       loadServicesTable();
       loadCollectorAlerts();
     } catch (err) {
@@ -3221,10 +3243,10 @@ const CP = (() => {
       const at = entry.lastIndexOf('@');
       return at < 0 ? [entry, ''] : [entry.slice(0, at), entry.slice(at + 1)];
     }));
-    const when = (at) => (at === '' ? 'not on the box now' : at === '?' || at == null ? 'made at a time Docker did not give' : `made ${at}`);
+    const when = (at) => (at === '' ? t('app.vol.gone') : at === '?' || at == null ? t('app.vol.no_time') : t('app.vol.made', { at }));
     const lines = (Array.isArray(refusal?.blocked) ? refusal.blocked : []).map((b) =>
-      `- ${b.volume}, ${when(made.get(b.volume))}: ${b.holds}`);
-    if (!confirm(`These volumes of ${slug} on ${place} hold data that cannot be made again: a node identity, a wallet or a partial restore.\n\n${lines.join('\n')}\n\nDelete exactly these? This cannot be undone.`)) return null;
+      t('app.vol.line', { volume: b.volume, when: when(made.get(b.volume)), holds: b.holds }));
+    if (!confirm(t('app.vol.confirm', { slug, place, lines: lines.join('\n') }))) return null;
     return `critical_set=${encodeURIComponent(reviewed)}`;
   }
 
@@ -3237,12 +3259,8 @@ const CP = (() => {
     const worker = (_detailWorkers || []).find((w) => String(w.id) === String(workerId));
     if (!isDesktopWorker(worker)) return false;
     toast(partialRestore
-      ? `Nothing was removed from ${boxName}. The data of ${slug} there holds a partial restore, `
-        + 'and CashPilot Desktop deletes that only on that computer. Remove cannot finish while it stays: '
-        + 'delete it in CashPilot Desktop on that computer.'
-      : `Nothing was removed from ${boxName}. The data of ${slug} there holds a node identity or wallet, `
-        + 'and CashPilot Desktop deletes that only on that computer. To remove only the container, '
-        + 'press Remove again and keep the data.', 'error');
+      ? t('app.vol.desktop_partial', { box: boxName, slug })
+      : t('app.vol.desktop_critical', { box: boxName, slug }), 'error');
     return true;
   }
 
@@ -3268,11 +3286,15 @@ const CP = (() => {
     const unread = list(result?.unread_volumes);
     const kept = list(result?.failed_volumes).filter((v) => !replaced.includes(v) && !unverified.includes(v) && !unread.includes(v));
     const notes = [];
-    if (kept.length) notes.push(`its volume ${kept.join(', ')} could not be deleted and stays. ${byHandOn ? `Delete it on ${byHandOn} by hand.` : 'Try Remove again.'}`);
-    if (replaced.length) notes.push(`another client replaced its volume ${replaced.join(', ')}, so the box kept that volume. Check it yourself.`);
-    if (unverified.length) notes.push(`the box cannot tell whether its volume ${unverified.join(', ')} holds the partial restore, so it kept that volume, and the service stays held until that volume is gone. No Remove deletes it: check it yourself, copy out anything you want to keep, delete it, then Remove again.`);
-    if (unread.length) notes.push(`the box could not read its volume ${unread.join(', ')} just now, so the service stays held. Try Remove again.`);
-    if (notes.length) toast(`${done}, but ${notes.join(' And ')}`, 'error');
+    if (kept.length) {
+      notes.push(byHandOn
+        ? t('app.vol.kept_by_hand', { volumes: kept.join(', '), box: byHandOn })
+        : t('app.vol.kept', { volumes: kept.join(', ') }));
+    }
+    if (replaced.length) notes.push(t('app.vol.replaced', { volumes: replaced.join(', ') }));
+    if (unverified.length) notes.push(t('app.vol.unverified', { volumes: unverified.join(', ') }));
+    if (unread.length) notes.push(t('app.vol.unread', { volumes: unread.join(', ') }));
+    if (notes.length) toast(t('app.vol.done_but', { done, notes: notes.join(t('app.vol.and')) }), 'error');
     else toast(done, 'success');
   }
 
@@ -3286,8 +3308,8 @@ const CP = (() => {
   // step_up_required and api() asks, as for a restore.
   async function removeService(slug, workerId, boxName, leftover) {
     const pinned = workerId != null && workerId !== '';
-    const where = pinned ? ` from ${boxName || `worker #${workerId}`}` : '';
-    if (!confirm(`Remove ${slug}${where}? This will stop and delete the container.`)) return;
+    const fromBox = boxName || t('app.svc.worker_n', { id: workerId });
+    if (!confirm(pinned ? t('app.svc.remove_from_confirm', { slug, box: fromBox }) : t('app.svc.remove_confirm', { slug }))) return;
     const box = (id) => `?worker_id=${encodeURIComponent(id)}`;
     // Its data goes only when the owner says so, never by default: the same
     // owner-only, audited delete a custom service's Remove offers. It is the
@@ -3295,7 +3317,7 @@ const CP = (() => {
     // row: the service page names no box, and the server would pick the one
     // online box, which may not be the one the owner means.
     const params = pinned ? [`worker_id=${encodeURIComponent(workerId)}`] : [];
-    const withData = pinned && _isOwner && confirm(`Also delete the data of ${slug} on ${boxName || `worker #${workerId}`}? A node identity or wallet in it is gone for good unless you have its backup file. Cancel keeps the data for a later deploy.`);
+    const withData = pinned && _isOwner && confirm(t('app.svc.remove_data_confirm', { slug, box: fromBox }));
     if (withData) params.push('delete_volumes=true');
     // That row was drawn for a partial restore: a restore that finished since,
     // in another tab, is not what was meant, with its data or without, by the
@@ -3313,8 +3335,8 @@ const CP = (() => {
         // refusal reported, and the approval binds them: the box deletes
         // those or nothing, never one mounted since.
         if (withData && err.code === 'critical_volume') {
-          if (_desktopKeepsCriticalData(slug, workerId, boxName || `worker #${workerId}`, leftover === 'leftover')) return;
-          const reviewed = confirmCriticalVolumes(slug, boxName || `worker #${workerId}`, err.refusal);
+          if (_desktopKeepsCriticalData(slug, workerId, fromBox, leftover === 'leftover')) return;
+          const reviewed = confirmCriticalVolumes(slug, fromBox, err.refusal);
           if (!reviewed) return;
           return removed(await api(path([...params, 'allow_delete_critical=true', reviewed]), { method: 'DELETE', body: {} }));
         }
@@ -3322,13 +3344,13 @@ const CP = (() => {
         // the worker keeps it marked until it goes. The way out is the same
         // owner-only, audited critical delete a custom service's Remove uses.
         if (err.code !== 'restore_unfinished') throw err;
-        if (!_isOwner) throw new Error(`${err.message} Only the owner can delete that data.`);
+        if (!_isOwner) throw new Error(t('app.svc.owner_only_delete', { error: err.message }));
         // The delete goes to the box that refused and to no other, even if
         // the online boxes changed while the owner read the question.
         const refused = pinned ? workerId : err.refusal.worker_id;
         if (refused == null) throw err;
-        const name = err.refusal.worker_name || boxName || `worker #${refused}`;
-        if (!confirm(`A restore of ${slug} on ${name} did not finish, so its data volume there holds a partial restore. Remove now deletes that volume on ${name}, with the container and the service's other volumes. This cannot be undone. Delete them?`)) return;
+        const name = err.refusal.worker_name || boxName || t('app.svc.worker_n', { id: refused });
+        if (!confirm(t('app.svc.partial_confirm', { slug, name }))) return;
         // Only while that partial restore is still there: one restored since,
         // in another tab, is not what the owner agreed to delete. The box first
         // names the volumes it finds critical (the partial restore's always),
@@ -3350,7 +3372,7 @@ const CP = (() => {
     }
 
     function removed(result) {
-      _removeToast(`${slug} removed${where}`, result);
+      _removeToast(pinned ? t('app.svc.removed_from', { slug, box: fromBox }) : t('app.svc.removed', { slug }), result);
       loadServicesTable();
       if (pinned) openServiceDetail(slug);
     }
@@ -3539,7 +3561,7 @@ const CP = (() => {
       try { services = await api('/api/services/available'); } catch (err) { /* handled below */ }
       const pre = services && wizardPreselect(wanted, services, wizardState.categories);
       if (!services) {
-        toast('Could not load the catalog, so the wizard starts at the first step', 'error');
+        toast(t('app.wiz.no_catalog'), 'error');
       } else if (pre) {
         Object.assign(wizardState, pre);
         document.querySelectorAll('.category-card').forEach(card => {
@@ -3553,7 +3575,7 @@ const CP = (() => {
         loadWizardServices();
         loadWizardSetupForms();
       } else {
-        toast(`No service called "${wanted}" in the catalog`, 'warning');
+        toast(t('app.wiz.no_such_service', { slug: wanted }), 'warning');
       }
     }
 
@@ -3603,11 +3625,11 @@ const CP = (() => {
 
   function wizardNext() {
     if (wizardState.step === 1 && wizardState.categories.length === 0) {
-      toast('Select at least one category', 'warning');
+      toast(t('app.wiz.pick_category'), 'warning');
       return;
     }
     if (wizardState.step === 2 && wizardState.selectedServices.length === 0) {
-      toast('Select at least one service to deploy', 'warning');
+      toast(t('app.wiz.pick_service'), 'warning');
       return;
     }
     if (wizardState.step < 4) {
@@ -3643,23 +3665,22 @@ const CP = (() => {
       // failed when none were tried sends them hunting a problem that is not
       // there.
       if (!wizardState.deployAttempted) {
-        title.textContent = 'Setup saved';
+        title.textContent = t('app.wiz.saved_title');
         text.textContent = wanted.length
-          ? 'Your choices are saved. Nothing was deployed yet — deploy them from the catalog whenever you are ready.'
-          : 'Your preferences are saved. Nothing was deployed, because no services were selected.';
+          ? t('app.wiz.saved_choices')
+          : t('app.wiz.saved_none');
         return;
       }
-      title.textContent = 'Nothing was deployed';
-      text.textContent =
-        'None of the selected services could be deployed. Your choices are saved — check the Fleet page for a worker that is online, then deploy from the catalog.';
+      title.textContent = t('app.wiz.nothing_title');
+      text.textContent = t('app.wiz.nothing_text');
       return;
     }
     const missed = wanted.filter(s => !done.includes(s));
-    title.textContent = missed.length ? 'Partly deployed' : "You're all set!";
+    title.textContent = missed.length ? t('app.wiz.partly_title') : t('app.wiz.done_title');
     const names = done.map(escapeHtml).join(', ');
     text.textContent = missed.length
-      ? `Deployed: ${names}. ${missed.length} service${missed.length === 1 ? '' : 's'} could not be deployed — check the Fleet page.`
-      : `Deployed: ${names}. Head to the dashboard to monitor status and earnings.`;
+      ? t('app.wiz.partly_text', { names, n: missed.length })
+      : t('app.wiz.done_text', { names });
   }
 
   function wizardPrev() {
@@ -3696,10 +3717,10 @@ const CP = (() => {
       if (wizardState.step === 4) {
         nextBtn.style.display = 'none';
       } else if (wizardState.step === 3) {
-        nextBtn.textContent = 'Skip to Summary';
+        nextBtn.textContent = t('app.wiz.skip');
         nextBtn.style.display = '';
       } else {
-        nextBtn.textContent = 'Next';
+        nextBtn.textContent = t('app.wiz.next');
         nextBtn.style.display = '';
       }
     }
@@ -3734,12 +3755,12 @@ const CP = (() => {
         wizardState.categories.includes(s.category)
       );
       if (filtered.length === 0) {
-        container.innerHTML = '<p class="empty-state-text">No services found for the selected categories.</p>';
+        container.innerHTML = `<p class="empty-state-text">${t('app.wiz.no_services')}</p>`;
         return;
       }
       container.innerHTML = filtered.map(renderWizardServiceCard).join('');
     } catch (err) {
-      container.innerHTML = '<p class="empty-state-text">Could not load services. Is the API running?</p>';
+      container.innerHTML = `<p class="empty-state-text">${t('app.wiz.load_failed')}</p>`;
     }
   }
 
@@ -3756,7 +3777,7 @@ const CP = (() => {
 
     let deployedBadge = '';
     if (totalNodes > 0) {
-      const label = totalNodes === 1 ? 'Deployed on 1 node' : `Deployed on ${totalNodes} nodes`;
+      const label = t('app.wiz.deployed_nodes', { n: totalNodes });
       deployedBadge = `<span class="deployed-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> ${label}</span>`;
     }
 
@@ -3764,10 +3785,10 @@ const CP = (() => {
     let manualNotice = '';
     if (isManual && svc.category === 'mining') {
       // A pool tracked by payout address: there is no app to install.
-      manualNotice = '<div class="manual-notice">Tracked pool — your miner, your payout address</div>';
+      manualNotice = `<div class="manual-notice">${t('app.wiz.pool_notice')}</div>`;
     } else if (isManual) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('/');
-      manualNotice = `<div class="manual-notice">${platforms || 'Desktop'} only — earnings tracking available</div>`;
+      manualNotice = `<div class="manual-notice">${t('app.wiz.platform_only', { platforms: platforms || 'Desktop' })}</div>`;
     }
 
     return `
@@ -3776,13 +3797,13 @@ const CP = (() => {
         <div class="service-icon">${(svc.name || '?')[0]}</div>
         <div>
           <div class="service-name">${escapeHtml(svc.name)}</div>
-          <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
+          <span class="badge badge-category">${escapeHtml(categoryLabel(svc.category))}</span>
         </div>
       </div>
       <div class="service-desc">${escapeHtml(svc.short_description || '')}</div>
       ${manualNotice}
       <div class="service-meta">
-        ${svc.requirements && svc.requirements.residential_ip ? '<span class="badge badge-residential">Residential IP</span>' : ''}
+        ${svc.requirements && svc.requirements.residential_ip ? `<span class="badge badge-residential">${t('app.wiz.residential')}</span>` : ''}
         ${deployedBadge}
       </div>
     </div>`;
@@ -3829,7 +3850,7 @@ const CP = (() => {
       loadDeployRisk();
       for (const svc of selected) loadRouteChoices(svc.slug, container);
     } catch (err) {
-      container.innerHTML = '<p class="empty-state-text">Could not load service details.</p>';
+      container.innerHTML = `<p class="empty-state-text">${t('app.wiz.details_failed')}</p>`;
     }
   }
 
@@ -3864,11 +3885,13 @@ const CP = (() => {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url) return '';
     const referee = ref.bonus && ref.bonus.referee;
-    const bonus = referee ? `<strong>New-user bonus with this link:</strong> ${escapeHtml(referee)}. ` : '';
     const typed = ref.code_entry
-      ? `<p class="referral-code">When ${escapeHtml(svc.name)} asks for a referral code, type <code>${escapeHtml(ref.code_entry)}</code>. The link does not fill it in. ${codeEntryCopy(svc, 'Copy')}</p>`
+      ? `<p class="referral-code">${t('app.ref.type_code_html', { name: escapeHtml(svc.name), code: escapeHtml(ref.code_entry) })} ${codeEntryCopy(svc, t('app.ref.copy'))}</p>`
       : '';
-    return `${typed}<p class="referral-note">${bonus}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>`;
+    const note = referee
+      ? t('app.ref.note_bonus_html', { bonus: escapeHtml(referee) })
+      : t('app.ref.note');
+    return `${typed}<p class="referral-note">${note}</p>`;
   }
 
   // The Copy button for a code typed by hand (referral.code_entry), or '' when the
@@ -3877,17 +3900,14 @@ const CP = (() => {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url || !ref.code_entry) return '';
     const code = escapeHtml(ref.code_entry);
-    const name = escapeHtml(`Copy ${svc.name}'s referral code ${ref.code_entry}`);
+    const name = escapeHtml(t('app.ref.copy_label', { name: svc.name, code: ref.code_entry }));
     return `<button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="${code}" aria-label="${name}" title="${name}">${label}</button>`;
   }
 
   function collectorCredentialsNotice(slug) {
     return `
         <div class="inline-note">
-          The credentials above run the service. To also see its <strong>balance</strong> on the dashboard,
-          add earnings-tracking credentials under
-          <a href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}">Settings → Earnings collection</a>
-          after deploying. This is optional — the service earns either way.
+          ${t('app.wiz.collector_notice_html', { attrs: `href="#" data-action="openCredentialModal" data-prevent="1" data-a1="${escapeHtml(slug)}"` })}
         </div>`;
   }
 
@@ -3902,7 +3922,7 @@ const CP = (() => {
     // (a MystNodes node runs before anyone signs up), and the referral only
     // counts through this link. The dashboard sits beside it.
     const dashboardLink = isDeployed && dashboardUrl
-      ? `<a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Dashboard</a>`
+      ? `<a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">${t('app.wiz.dashboard')}</a>`
       : '';
 
     // A mining pool with no image is tracked by its payout address: CashPilot
@@ -3912,21 +3932,20 @@ const CP = (() => {
       <div class="card setup-card" id="setup-${svc.slug}">
         <div class="card-header">
           <h3 class="section-title">${escapeHtml(svc.name)}</h3>
-          <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
+          <span class="badge badge-category">${escapeHtml(categoryLabel(svc.category))}</span>
         </div>
         <div class="setup-body">
           <p class="setup-line">
-            <strong>Tracked pool.</strong> CashPilot runs no miner for it. Point your own miner at the pool, then save
-            your payout address and CashPilot reads the balance the pool holds for you.
+            ${t('app.wiz.pool_html')}
           </p>
-          <a href="/settings#collector-${escapeHtml(svc.slug)}" class="btn btn-primary btn-sm">Add your payout address</a>
+          <a href="/settings#collector-${escapeHtml(svc.slug)}" class="btn btn-primary btn-sm">${t('app.wiz.add_payout_address')}</a>
           <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-            Start mining on ${escapeHtml(svc.name)}
+            ${t('app.wiz.start_mining', { name: escapeHtml(svc.name) })}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
           ${dashboardLink}
           <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-            Setup guide
+            ${t('app.wiz.setup_guide')}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
           ${referralNote(svc)}
@@ -3938,19 +3957,19 @@ const CP = (() => {
     if (svc.manual_only) {
       const platforms = (svc.platforms || []).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
       const manualEnvFields = envInputFields(svc, svc.docker && svc.docker.env);
-      const manualBtnLabel = `${accountRequired ? 'Sign Up for' : 'Visit'} ${escapeHtml(svc.name)}`;
+      const manualBtnLabel = accountRequired ? t('app.wiz.sign_up_for', { name: escapeHtml(svc.name) }) : t('app.wiz.visit_name', { name: escapeHtml(svc.name) });
       return `
       <div class="card setup-card" id="setup-${svc.slug}">
         <div class="card-header">
           <h3 class="section-title">${escapeHtml(svc.name)}</h3>
-          <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
+          <span class="badge badge-category">${escapeHtml(categoryLabel(svc.category))}</span>
         </div>
         <div class="setup-body">
           <p class="setup-line text-warn">
-            <strong>${platforms || 'Desktop'} only.</strong> There is no Docker image, so CashPilot cannot deploy it.
+            ${t('app.wiz.no_image_html', { platforms: platforms || 'Desktop' })}
           </p>
           <p class="setup-line">
-            Install the app on your device, then CashPilot will track your earnings automatically.
+            ${t('app.wiz.install_app')}
           </p>
           <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
             ${manualBtnLabel}
@@ -3958,7 +3977,7 @@ const CP = (() => {
           </a>
           ${dashboardLink}
           <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-            Setup guide
+            ${t('app.wiz.setup_guide')}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
           ${referralNote(svc)}
@@ -3973,24 +3992,24 @@ const CP = (() => {
     <div class="card setup-card" id="setup-${svc.slug}">
       <div class="card-header">
         <h3 class="section-title">${escapeHtml(svc.name)}</h3>
-        <span class="badge badge-category">${escapeHtml(capFirst(svc.category))}</span>
+        <span class="badge badge-category">${escapeHtml(categoryLabel(svc.category))}</span>
       </div>
 
       <div class="setup-body">
         <p class="setup-line setup-links">
-          <span>New to ${escapeHtml(svc.name)}?</span>
+          <span>${t('app.wiz.new_to', { name: escapeHtml(svc.name) })}</span>
           <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-            ${accountRequired ? 'Sign Up' : 'Visit'}
+            ${accountRequired ? t('app.wiz.sign_up') : t('app.wiz.visit')}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
           ${dashboardLink}
           <a href="https://geiserx.github.io/CashPilot/guides/${svc.slug}/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-            Setup guide
+            ${t('app.wiz.setup_guide')}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
           </a>
         </p>
         ${referralNote(svc)}
-        ${accountRequired ? '<p class="setup-line muted">Already have an account? Enter your credentials below.</p>' : ''}
+        ${accountRequired ? `<p class="setup-line muted">${t('app.wiz.have_account')}</p>` : ''}
       </div>
 
       <!-- IP attribution and LAN isolation, before the Deploy button. Filled
@@ -4008,22 +4027,22 @@ const CP = (() => {
         const { rows: workerRows, allDeployed } = workerCheckboxList(svc, onlineWorkers, 'setup-deploy-worker-cb');
 
         if (onlineWorkers.length === 0) {
-          return `<p class="setup-line muted">No online workers can receive deploys.</p>`;
+          return `<p class="setup-line muted">${t('app.wiz.no_workers')}</p>`;
         }
 
         if (allDeployed) {
-          return `<p class="setup-line"><span class="status-dot running"></span> Deployed on every available worker.</p>`;
+          return `<p class="setup-line"><span class="status-dot running"></span> ${t('app.wiz.deployed_everywhere')}</p>`;
         }
 
         return `
         <div class="setup-workers">
-          <div class="form-label">Deploy to</div>
+          <div class="form-label">${t('app.wiz.deploy_to')}</div>
           <div id="setup-worker-list-${svc.slug}">${workerRows}</div>
           ${svc.custom ? '' : routeChoiceSection(svc)}
         </div>
         <div class="setup-deploy">
-          <button class="btn btn-primary" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>
-            Deploy ${escapeHtml(svc.name)}
+          <button class="btn btn-primary" data-action="deployService" data-a1="${svc.slug}"${_isOwner ? '' : ` disabled title="${t('app.owner_required')}"`}>
+            ${t('app.wiz.deploy_name', { name: escapeHtml(svc.name) })}
           </button>
           <span class="deploy-status" id="deploy-status-${svc.slug}"></span>
         </div>`;
@@ -4079,7 +4098,7 @@ const CP = (() => {
 
     const lines = serious.map(s => `• ${s.message}`).join('\n\n');
     return window.confirm(
-      `${slug}: this may not work as expected.\n\n${lines}\n\nDeploy anyway?`
+      t('app.dep.preflight_confirm', { slug, lines })
     );
   }
 
@@ -4096,18 +4115,18 @@ const CP = (() => {
     ));
     const lines = [], skipped = [], skippedIds = [], ids = [], copyLines = [], copyIds = [];
     answers.forEach((a, i) => {
-      const box = (a && a.worker) || `node ${workerIds[i]}`;
+      const box = (a && a.worker) || t('app.dep.node_n', { id: workerIds[i] });
       const renames = (a && a.renames) || [];
       const copies = (a && a.copies) || [];
       if (!renames.length && copies.length) {
         copyIds.push(workerIds[i]);
-        copies.forEach(c => copyLines.push(`• ${box}: ${c} still has the old device name or id`));
+        copies.forEach(c => copyLines.push(t('app.dep.copy_old_name', { box, copy: c })));
         return;
       }
       if (!renames.length) return;
       const missing = (a && a.missing) || [];
       if (missing.length) {
-        skipped.push(`• ${box}: needs ${missing.join(', ')}, which it has no record of. Deploy it again with them filled in to rename it.`);
+        skipped.push(t('app.dep.rename_missing', { box, missing: missing.join(', ') }));
         skippedIds.push(workerIds[i]);
         return;
       }
@@ -4131,13 +4150,9 @@ const CP = (() => {
       return false;
     }
     if (!lines.length) return false;
-    return window.confirm(
-      `${slug}: these nodes still use the device name every box got before CashPilot gave each box its own.\n\n` +
-      `${lines.join('\n')}\n\n` +
-      (skipped.length ? `Not renamed:\n${skipped.join('\n')}\n\n` : '') +
-      'OK renames them, so the provider counts each box apart. It may list them as new devices. ' +
-      'Cancel keeps the current names.'
-    );
+    return window.confirm(skipped.length
+      ? t('app.dep.rename_confirm_skipped', { slug, lines: lines.join('\n'), skipped: skipped.join('\n') })
+      : t('app.dep.rename_confirm', { slug, lines: lines.join('\n') }));
   }
 
   // -----------------------------------------------------------
@@ -4153,16 +4168,14 @@ const CP = (() => {
     const name = `wallet-${svc.slug}-${n}`;
     return `
       <div class="form-group wallet-seed" data-wallet-slug="${escapeHtml(svc.slug)}">
-        <div class="form-label">${escapeHtml(env.label || 'Wallet')}</div>
+        <div class="form-label">${escapeHtml(env.label || t('app.wallet.label'))}</div>
         <label class="wallet-choice"><input type="radio" name="${name}" value="generate" checked
-          data-action="walletChoice" data-a1="event"> Create a new wallet</label>
+          data-action="walletChoice" data-a1="event"> ${t('app.wallet.create')}</label>
         <label class="wallet-choice"><input type="radio" name="${name}" value="import"
-          data-action="walletChoice" data-a1="event"> Use a wallet I already have</label>
+          data-action="walletChoice" data-a1="event"> ${t('app.wallet.import')}</label>
         <textarea class="form-input wallet-phrase" rows="2" autocomplete="off" autocapitalize="off"
-          spellcheck="false" placeholder="The 12 words of your seed phrase, separated by spaces" hidden></textarea>
-        <div class="form-hint">CashPilot never stores the seed phrase. It lives only in the node's own data
-          volume, on the machine that runs it. A new wallet's phrase is shown once, right after the deploy:
-          write it down. A redeploy keeps the wallet the node already has.</div>
+          spellcheck="false" placeholder="${t('app.wallet.phrase_placeholder')}" hidden></textarea>
+        <div class="form-hint">${t('app.wallet.hint')}</div>
       </div>`;
   }
 
@@ -4193,11 +4206,11 @@ const CP = (() => {
     const phrase = (area && area.value || '').trim().toLowerCase().split(/\s+/).filter(Boolean).join(' ');
     if (!phrase) {
       if (area) area.style.borderColor = 'var(--error)';
-      toast('Paste the seed phrase of your wallet', 'warning');
+      toast(t('app.wallet.paste'), 'warning');
       return null;
     }
     if (workerIds.length > 1) {
-      toast('One wallet runs one node. Pick a single node when you use your own seed phrase.', 'warning');
+      toast(t('app.wallet.one_node'), 'warning');
       return null;
     }
     if (area) area.style.borderColor = '';
@@ -4225,7 +4238,7 @@ const CP = (() => {
     const body = document.getElementById('wallet-modal-body');
     if (!overlay || !body) return Promise.resolve(false);
     let words = String(phrase || '').split(' ');
-    document.getElementById('wallet-modal-title').textContent = title || 'Your new wallet';
+    document.getElementById('wallet-modal-title').textContent = title || t('app.wallet.new_title');
     return new Promise((resolve) => {
       let done = false;
       let proved = false;
@@ -4238,7 +4251,7 @@ const CP = (() => {
         words = [];
         overlay.classList.remove('open');
         if (!reveal && !proved) {
-          toast('You closed the seed phrase before confirming it. You can see it again from the service page, with your password.', 'warning');
+          toast(t('app.wallet.closed_early'), 'warning');
         }
         resolve(proved);
       };
@@ -4247,13 +4260,12 @@ const CP = (() => {
         body.innerHTML = `
           <p>${escapeHtml(intro || '')}</p>
           <ol class="seed-words">${words.map(w => `<li><span class="seed-word">${escapeHtml(w)}</span></li>`).join('')}</ol>
-          ${address ? `<p class="form-hint">Wallet address (public, safe to share): <code class="seed-address">${escapeHtml(address)}</code></p>` : ''}
-          <p class="inline-note inline-note-warn">Whoever has these words can spend this wallet. Write them on paper,
-            in order, and keep them offline. They are the only way to recover the funds if this machine or its disk is lost.</p>
+          ${address ? `<p class="form-hint">${t('app.wallet.address_html', { address: escapeHtml(address) })}</p>` : ''}
+          <p class="inline-note inline-note-warn">${t('app.wallet.warning')}</p>
           <div class="modal-actions modal-actions-end">
             ${reveal
-              ? '<button class="btn btn-primary" id="wallet-close-btn">Close</button>'
-              : '<button class="btn btn-primary" id="wallet-next-btn">I wrote them down</button>'}
+              ? `<button class="btn btn-primary" id="wallet-close-btn">${t('app.close')}</button>`
+              : `<button class="btn btn-primary" id="wallet-next-btn">${t('app.wallet.wrote_down')}</button>`}
           </div>`;
         const next = document.getElementById('wallet-next-btn');
         if (next) next.onclick = showQuiz;
@@ -4263,16 +4275,16 @@ const CP = (() => {
       const showQuiz = () => {
         const asked = _quizPositions(words.length);
         body.innerHTML = `
-          <p>To check you wrote them down, type these words from your copy.</p>
+          <p>${t('app.wallet.quiz_intro')}</p>
           ${asked.map(n => `
             <div class="form-group">
-              <label class="form-label" for="wallet-quiz-${n}">Word ${n}</label>
+              <label class="form-label" for="wallet-quiz-${n}">${t('app.wallet.word_n', { n })}</label>
               <input class="form-input wallet-quiz" id="wallet-quiz-${n}" data-pos="${n}" autocomplete="off" autocapitalize="off" spellcheck="false">
             </div>`).join('')}
           <div id="wallet-quiz-error" class="form-error" style="display:none;"></div>
           <div class="modal-actions modal-actions-end">
-            <button class="btn btn-ghost" id="wallet-back-btn">Show the words again</button>
-            <button class="btn btn-primary" id="wallet-check-btn">Check</button>
+            <button class="btn btn-ghost" id="wallet-back-btn">${t('app.wallet.show_again')}</button>
+            <button class="btn btn-primary" id="wallet-check-btn">${t('app.wallet.check')}</button>
           </div>`;
         document.getElementById('wallet-back-btn').onclick = showWords;
         document.getElementById('wallet-check-btn').onclick = () => {
@@ -4280,13 +4292,12 @@ const CP = (() => {
             .filter(i => i.value.trim().toLowerCase() !== words[Number(i.dataset.pos) - 1]);
           if (wrong.length) {
             const err = document.getElementById('wallet-quiz-error');
-            const many = wrong.length > 1;
-            err.textContent = `${many ? 'Words' : 'Word'} ${wrong.map(i => i.dataset.pos).join(', ')} ${many ? 'do' : 'does'} not match. Check your copy.`;
+            err.textContent = t('app.wallet.mismatch', { n: wrong.length, list: wrong.map(i => i.dataset.pos).join(', ') });
             err.style.display = '';
             return;
           }
           proved = true;
-          toast('Seed phrase confirmed', 'success');
+          toast(t('app.wallet.confirmed'), 'success');
           finish();
         };
         const first = body.querySelector('.wallet-quiz');
@@ -4303,12 +4314,12 @@ const CP = (() => {
       const res = await api(`/api/services/${encodeURIComponent(slug)}/wallet-seed/reveal?worker_id=${encodeURIComponent(workerId)}`,
         { method: 'POST', body: {} });
       await showWalletPhrase(res.phrase, {
-        title: 'Wallet seed phrase',
-        intro: `The seed phrase of the wallet ${slug} uses on ${workerName}, read from the node's own file.`,
+        title: t('app.wallet.reveal_title'),
+        intro: t('app.wallet.reveal_intro', { slug, box: workerName }),
         reveal: true,
       });
     } catch (err) {
-      toast(`Could not show the seed phrase: ${err.message}`, 'error');
+      toast(t('app.wallet.reveal_failed', { error: err.message }), 'error');
     }
   }
 
@@ -4318,8 +4329,8 @@ const CP = (() => {
     // box deploys must not send another route (or none) to the next one.
     const route = _routeChoice(routeRoot, slug);
     if (workerIds.length === 0) {
-      toast('Select at least one worker node', 'warning');
-      if (statusEl) statusEl.textContent = 'Select at least one node.';
+      toast(t('app.dep.pick_worker'), 'warning');
+      if (statusEl) statusEl.textContent = t('app.dep.pick_node');
       return;
     }
 
@@ -4344,12 +4355,12 @@ const CP = (() => {
 
     if (invalidInput) {
       invalidInput.reportValidity();
-      if (statusEl) statusEl.textContent = 'Enter a valid value for the highlighted field.';
+      if (statusEl) statusEl.textContent = t('app.dep.invalid_field');
       return;
     }
 
     if (missingRequired) {
-      toast('Fill in all required fields', 'warning');
+      toast(t('app.dep.fill_required'), 'warning');
       if (statusEl) statusEl.textContent = '';
       return;
     }
@@ -4378,7 +4389,7 @@ const CP = (() => {
     const renameDevices = await _confirmDeviceRenames(slug, workerIds, env);
 
     if (statusEl) {
-      statusEl.innerHTML = '<span class="spinner spinner-inline"></span> Deploying';
+      statusEl.innerHTML = `<span class="spinner spinner-inline"></span> ${t('app.dep.deploying')}`;
     }
 
     let ok = 0, fail = 0;
@@ -4405,16 +4416,16 @@ const CP = (() => {
         // typed-in catalog values were quietly superseded (CashPilot-23yb).
         const kept = res && res.kept_from_previous_deployment;
         if (Array.isArray(kept) && kept.length) {
-          toast(`${slug}: redeploy notes — ${kept.join('; ')}`, 'warning');
+          toast(t('app.dep.redeploy_notes', { slug, notes: kept.join('; ') }), 'warning');
         }
       } catch (err) {
         fail++;
-        toast(`Deploy to worker ${wid} failed: ${err.message}`, 'error');
+        toast(t('app.dep.worker_failed', { id: wid, error: err.message }), 'error');
       }
     }
 
     if (statusEl) {
-      statusEl.textContent = fail === 0 ? `Deployed to ${ok} node(s)` : `${ok} ok, ${fail} failed`;
+      statusEl.textContent = fail === 0 ? t('app.dep.deployed_to', { n: ok }) : t('app.dep.ok_failed', { ok, fail });
       statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
     }
     _showDeviceLink(slug, statusEl, [...links.values()]);
@@ -4425,14 +4436,14 @@ const CP = (() => {
     }
     for (const { wid, wallet: made } of newWallets.splice(0)) {
       const label = document.querySelector(`[data-wid="${CSS.escape(String(wid))}"]`)?.closest('label');
-      const where = (label && label.textContent.trim().split('\n')[0].trim()) || `worker ${wid}`;
+      const where = (label && label.textContent.trim().split('\n')[0].trim()) || t('app.dep.worker_id', { id: wid });
       await showWalletPhrase(made.phrase, {
-        intro: `CashPilot created a new wallet for ${slug} on ${where}. These 12 words are its seed phrase. CashPilot did not keep them.`,
+        intro: t('app.wallet.created_intro', { slug, box: where }),
         address: made.address,
       });
     }
     if (ok > 0) {
-      toast(`${slug} deployed to ${ok} node(s)`, 'success');
+      toast(t('app.dep.deployed_toast', { slug, n: ok }), 'success');
       if (!wizardState.deployed.includes(slug)) {
         wizardState.deployed.push(slug);
       }
@@ -4456,19 +4467,19 @@ const CP = (() => {
     const item = (l, linkBtn) => `
       <div class="device-link-item">
         <code class="device-link-id">${escapeHtml(l.id)}</code>
-        <button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="${escapeHtml(l.id)}">Copy</button>
-        ${linkBtn && l.url ? `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Open link</a>` : ''}
+        <button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="${escapeHtml(l.id)}">${t('app.ref.copy')}</button>
+        ${linkBtn && l.url ? `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">${t('app.link.open')}</a>` : ''}
       </div>`;
     row.insertAdjacentHTML('afterend', `
       <div class="device-link${todo.length ? '' : ' device-link-done'}" id="${id}">
         ${todo.length ? `
-        <div class="device-link-title">Link this device to your account</div>
+        <div class="device-link-title">${t('app.link.title')}</div>
         <p class="device-link-text">${escapeHtml(todo[0].steps)}</p>
-        ${todo.some(l => l.retrying) ? `<p class="device-link-text">The provider does not know this new device yet. CashPilot keeps trying to add it for a day and tells you if it cannot.</p>` : ''}
+        ${todo.some(l => l.retrying) ? `<p class="device-link-text">${t('app.link.retrying')}</p>` : ''}
         ${todo.map(l => item(l, true)).join('')}` : ''}
         ${done.length ? `
-        <div class="device-link-title">Added to your account</div>
-        <p class="device-link-text">CashPilot added this device with the credentials saved under Settings → Earnings collection.</p>
+        <div class="device-link-title">${t('app.link.added')}</div>
+        <p class="device-link-text">${t('app.link.added_text')}</p>
         ${done.map(l => item(l, false)).join('')}` : ''}
       </div>`);
   }
@@ -4476,10 +4487,10 @@ const CP = (() => {
   async function copyText(text) {
     try {
       await navigator.clipboard.writeText(text);
-      toast('Copied', 'success');
+      toast(t('app.copied'), 'success');
     } catch (err) {
       // No clipboard outside a secure context (plain http on a LAN address).
-      window.prompt('Copy this:', text);
+      window.prompt(t('app.copy_this'), text);
     }
   }
 
@@ -4545,7 +4556,7 @@ const CP = (() => {
     if (!container) return;
 
     if (filtered.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-text">No services match your filters.</div></div>';
+      container.innerHTML = `<div class="empty-state"><div class="empty-state-text">${t('app.cat.no_match')}</div></div>`;
       return;
     }
 
@@ -4566,17 +4577,17 @@ const CP = (() => {
     container.innerHTML = `
       <table class="catalog-table">
         <thead><tr>
-          <th scope="col">Service</th><th scope="col" class="cat-col-kind">Kind</th><th scope="col" class="cat-col-plat">Runs on</th>
-          <th scope="col" class="num">Est. per month</th><th scope="col" class="cat-col-grade">Grade</th><th scope="col" class="cat-col-needs">Needs</th><th scope="col"><span class="sr-only">Action</span></th>
+          <th scope="col">${t('app.cat.col.service')}</th><th scope="col" class="cat-col-kind">${t('app.cat.col.kind')}</th><th scope="col" class="cat-col-plat">${t('app.cat.col.runs_on')}</th>
+          <th scope="col" class="num">${t('app.cat.col.estimate')}</th><th scope="col" class="cat-col-grade">${t('app.cat.col.grade')}</th><th scope="col" class="cat-col-needs">${t('app.cat.col.needs')}</th><th scope="col"><span class="sr-only">${t('app.cat.col.action')}</span></th>
         </tr></thead>
-        ${group('Running in your fleet', running)}${group('Not running', rest)}
+        ${group(t('app.cat.running'), running)}${group(t('app.cat.not_running'), rest)}
       </table>`;
   }
 
   function renderCatalogCard(svc) {
     const earning = svc.earnings
-      ? `$${svc.earnings.monthly_low}-${svc.earnings.monthly_high} / ${escapeHtml(svc.earnings.per || 'month')}`
-      : 'varies';
+      ? t('app.cat.estimate', { low: svc.earnings.monthly_low, high: svc.earnings.monthly_high, per: escapeHtml(svc.earnings.per || t('app.cat.month')) })
+      : t('app.cat.varies');
     const isDeployed = svc.deployed || false;
     const broken = svc.status === 'broken';
 
@@ -4586,20 +4597,20 @@ const CP = (() => {
     // deploy, so only the owner gets it. Details opens the modal (description,
     // payouts, deploy risk, custom image, instances), as Deploy used to.
     const addLink = (title) => _isOwner
-      ? `<a href="/setup?service=${encodeURIComponent(svc.slug)}" class="btn btn-ghost btn-sm" title="${escapeHtml(title)}">Add</a>`
+      ? `<a href="/setup?service=${encodeURIComponent(svc.slug)}" class="btn btn-ghost btn-sm" title="${escapeHtml(title)}">${t('app.cat.add')}</a>`
       : '';
-    const detailsBtn = `<button class="btn btn-link btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Details</button>`;
+    const detailsBtn = `<button class="btn btn-link btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">${t('app.cat.details')}</button>`;
     if (isDeployed) {
       // The wizard can only add boxes that do not run it yet. On every online
       // target already, Add would only open a form with nothing to deploy.
       const everywhere = catalogOnlineWorkers && catalogOnlineWorkers.length > 0
         && catalogOnlineWorkers.every(w => runsOn(w, svc.slug));
       actionBtn = [
-        `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">Manage</button>`,
-        hasDocker && !everywhere ? addLink(`Run ${svc.name} on another box`) : '',
+        `<button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${svc.slug}">${t('app.cat.manage')}</button>`,
+        hasDocker && !everywhere ? addLink(t('app.cat.run_another', { name: svc.name })) : '',
       ].filter(Boolean).join(' ');
     } else if (hasDocker) {
-      actionBtn = [addLink(`Add ${svc.name}`), detailsBtn].filter(Boolean).join(' ');
+      actionBtn = [addLink(t('app.cat.add_name', { name: svc.name })), detailsBtn].filter(Boolean).join(' ');
     } else {
       const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
       // Visit opens the signup page. Where the signup never reads the code from
@@ -4607,10 +4618,10 @@ const CP = (() => {
       // who signs up from this row credits nobody.
       const code = svc.referral && svc.referral.code_entry;
       actionBtn = [
-        `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`,
+        `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">${t('app.wiz.visit')}</a>`,
         // On its own line: the action cell does not wrap, and both buttons on one
         // line push a phone-width table past the screen edge.
-        code ? `<span class="cat-act-code">${codeEntryCopy(svc, `Code ${escapeHtml(code)}`)}</span>` : '',
+        code ? `<span class="cat-act-code">${codeEntryCopy(svc, t('app.cat.code', { code: escapeHtml(code) }))}</span>` : '',
       ].filter(Boolean).join(' ');
     }
 
@@ -4620,10 +4631,10 @@ const CP = (() => {
     const platforms = allPlatforms.map(p => escapeHtml(p)).join(', ');
 
     const needs = [];
-    if (svc.requirements && svc.requirements.residential_ip) needs.push('residential IP');
+    if (svc.requirements && svc.requirements.residential_ip) needs.push(t('app.cat.needs_residential'));
     if (svc.requirements && svc.requirements.gpu) needs.push('GPU');
     const state = broken
-      ? '<span class="state state-fail">broken upstream</span>'
+      ? `<span class="state state-fail">${t('app.cat.broken')}</span>`
       : '';
 
     return `
@@ -4632,13 +4643,13 @@ const CP = (() => {
         <span class="service-name">${escapeHtml(svc.name)}</span>${state}
         <span class="service-desc">${escapeHtml(svc.short_description || '')}</span>
       </td>
-      <td class="cat-kind">${escapeHtml(svc.category === 'depin' ? 'DePIN' : capFirst(svc.category))}</td>
-      <td class="cat-plat">${platforms || '<span class="muted">none listed</span>'}</td>
+      <td class="cat-kind">${escapeHtml(categoryLabel(svc.category, true))}</td>
+      <td class="cat-plat">${platforms || `<span class="muted">${t('app.cat.none_listed')}</span>`}</td>
       <td class="num cat-est">${escapeHtml(earning)}</td>
       <td class="cat-grade">${(svc.rating_result && svc.rating_result.rated)
-        ? `<a class="grade-link" href="https://geiserx.github.io/CashPilot/ratings/#${encodeURIComponent(svc.slug || '')}" target="_blank" rel="noopener" aria-label="${escapeHtml(`${svc.name}: grade ${svc.rating_result.grade}, its cons and sources`)}">${gradeBadge(svc.rating_result)}</a>`
+        ? `<a class="grade-link" href="https://geiserx.github.io/CashPilot/ratings/#${encodeURIComponent(svc.slug || '')}" target="_blank" rel="noopener" aria-label="${escapeHtml(t('app.cat.grade_label', { name: svc.name, grade: svc.rating_result.grade }))}">${gradeBadge(svc.rating_result)}</a>`
         : gradeBadge(svc.rating_result)}</td>
-      <td class="cat-needs">${needs.length ? escapeHtml(needs.join(', ')) : '<span class="muted">nothing special</span>'}</td>
+      <td class="cat-needs">${needs.length ? escapeHtml(needs.join(', ')) : `<span class="muted">${t('app.cat.nothing_special')}</span>`}</td>
       <td class="cat-act">${actionBtn}</td>
     </tr>`;
   }
@@ -4646,8 +4657,8 @@ const CP = (() => {
   // The provider's grade, computed server-side from the published criteria
   // (app/ratings.py). The badge's tooltip is the worst con.
   function gradeBadge(r) {
-    if (!r || !r.rated) return '<span class="muted">not rated</span>';
-    const top = [r.thin_evidence ? `Thin evidence: ${r.unknown_count} criteria unchecked.` : '',
+    if (!r || !r.rated) return `<span class="muted">${t('app.rating.not_rated')}</span>`;
+    const top = [r.thin_evidence ? t('app.rating.thin', { n: r.unknown_count }) : '',
       (r.top_cons && r.top_cons[0]) ? r.top_cons[0].text : ''].filter(Boolean).join(' ');
     const g = escapeHtml(r.grade);
     return `<span class="grade-badge grade-${g.toLowerCase()}" title="${escapeHtml(top)}">${g}</span>`;
@@ -4657,23 +4668,23 @@ const CP = (() => {
     const r = svc.rating_result;
     const how = `https://geiserx.github.io/CashPilot/ratings/#${encodeURIComponent(svc.slug || '')}`;
     if (!r || !r.rated) {
-      return `<div class="sd-block sd-rating"><h4 class="sd-h">Rating</h4>
-        <p class="muted">Not rated yet. <a href="https://geiserx.github.io/CashPilot/ratings/" target="_blank" rel="noopener">How we grade</a></p></div>`;
+      return `<div class="sd-block sd-rating"><h4 class="sd-h">${t('app.rating.title')}</h4>
+        <p class="muted">${t('app.rating.not_yet')} <a href="https://geiserx.github.io/CashPilot/ratings/" target="_blank" rel="noopener">${t('app.rating.how')}</a></p></div>`;
     }
     const cited = (item) => `<li>${escapeHtml(item.text)}
-        <span class="sd-rating-src"><a href="${escapeHtml(item.source)}" target="_blank" rel="noopener noreferrer">source</a>, checked ${escapeHtml(item.checked_on)}</span></li>`;
+        <span class="sd-rating-src">${t('app.rating.cited_html', { url: escapeHtml(item.source), date: escapeHtml(item.checked_on) })}</span></li>`;
     const caps = (r.caps || []).map(c => `<li>${escapeHtml(c.reason)}</li>`).join('');
     const cons = (r.top_cons || []).map(cited).join('');
     const pros = (r.pros || []).map(cited).join('');
     return `
     <div class="sd-block sd-rating">
-      <h4 class="sd-h">Rating</h4>
+      <h4 class="sd-h">${t('app.rating.title')}</h4>
       <div class="sd-rating-head">${gradeBadge(r)}
         <span class="sd-rating-score">${escapeHtml(r.summary || '')}</span>
-        <a href="${how}" target="_blank" rel="noopener">How we grade</a></div>
+        <a href="${how}" target="_blank" rel="noopener">${t('app.rating.how')}</a></div>
       ${caps ? `<ul class="sd-rating-caps">${caps}</ul>` : ''}
-      ${cons ? `<div class="detail-label">Top cons</div><ul class="sd-rating-list">${cons}</ul>` : ''}
-      ${pros ? `<details class="sd-rating-pros"><summary>Pros (${(r.pros || []).length})</summary><ul class="sd-rating-list">${pros}</ul></details>` : ''}
+      ${cons ? `<div class="detail-label">${t('app.rating.top_cons')}</div><ul class="sd-rating-list">${cons}</ul>` : ''}
+      ${pros ? `<details class="sd-rating-pros"><summary>${t('app.rating.pros', { n: (r.pros || []).length })}</summary><ul class="sd-rating-list">${pros}</ul></details>` : ''}
     </div>`;
   }
 
@@ -4721,7 +4732,7 @@ const CP = (() => {
       loadRouteChoices(svc.slug, body);
       loadDeviceRenames(slug);
     } catch (err) {
-      if (body) body.innerHTML = `<p class="empty-state-text">Could not load service: ${escapeHtml(err.message)}</p>`;
+      if (body) body.innerHTML = `<p class="empty-state-text">${t('app.detail.load_failed', { error: escapeHtml(err.message) })}</p>`;
     }
   }
 
@@ -4738,17 +4749,17 @@ const CP = (() => {
     const name = escapeHtml(svc.name);
     return `
       <details class="image-choice"${chosen.length ? ' open' : ''}>
-        <summary>Advanced</summary>
+        <summary>${t('app.image.advanced')}</summary>
         <div class="form-group">
-          <label class="form-label" for="image-input-${escapeHtml(svc.slug)}">Image</label>
+          <label class="form-label" for="image-input-${escapeHtml(svc.slug)}">${t('app.image.label')}</label>
           <input class="form-input" type="text" id="image-input-${escapeHtml(svc.slug)}" data-initial="${escapeHtml(common)}"
                  placeholder="${escapeHtml(catalogImage)}" value="${escapeHtml(common)}" spellcheck="false" autocomplete="off">
-          <div class="form-hint">Leave blank to use the catalog image${catalogImage ? ` (<code>${escapeHtml(catalogImage)}</code>)` : ''}.
-            A custom image receives your ${name} credentials and runs with exactly what the catalog grants ${name}:
-            no extra capabilities, devices or ports. CashPilot keeps it on every redeploy until you clear this box.</div>
-          ${chosen.length > 1 && !common ? '<div class="form-hint">Your nodes use different images; see Running Instances. Type one here to set it on the nodes you deploy.</div>' : ''}
+          <div class="form-hint">${catalogImage
+            ? t('app.image.hint_catalog_html', { image: escapeHtml(catalogImage), name })
+            : t('app.image.hint', { name })}</div>
+          ${chosen.length > 1 && !common ? `<div class="form-hint">${t('app.image.mixed')}</div>` : ''}
         </div>
-        ${running.length && _isOwner ? `<button class="btn btn-secondary btn-sm" data-action="redeployWithImage" data-a1="${escapeHtml(svc.slug)}">Redeploy running instances with this image</button>
+        ${running.length && _isOwner ? `<button class="btn btn-secondary btn-sm" data-action="redeployWithImage" data-a1="${escapeHtml(svc.slug)}">${t('app.image.redeploy_running')}</button>
           <span id="image-status-${escapeHtml(svc.slug)}" class="form-hint"></span>` : ''}
       </details>`;
   }
@@ -4768,13 +4779,13 @@ const CP = (() => {
   // For a container changed on purpose. The server ties the mute to the
   // catalog as it is now, so a later catalog fix to this service shows again.
   async function ignoreDrift(slug, workerId) {
-    if (!window.confirm(`Ignore this for ${slug} on this box? It shows again if the catalog changes how this service runs; an edit to its notes or description does not bring it back.`)) return;
+    if (!window.confirm(t('app.drift.ignore_confirm', { slug }))) return;
     try {
       await api(`/api/services/${slug}/drift/ignore?worker_id=${workerId}`, { method: 'POST' });
-      toast(`${slug}: ignored until the catalog changes it`, 'success');
+      toast(t('app.drift.ignored', { slug }), 'success');
       loadServicesTable();
     } catch (err) {
-      toast(`Could not ignore: ${err.message}`, 'error');
+      toast(t('app.drift.ignore_failed', { error: err.message }), 'error');
     }
   }
 
@@ -4811,13 +4822,12 @@ const CP = (() => {
     // rename, or Change in Settings > Device ids), not the old shared name.
     const onlyCopies = !lines.length && !skipped.length;
     el.innerHTML = onlyCopies
-      ? `Some proxied copies of ${escapeHtml(slug)} still use the device name or id made from their box's old one.
-        <button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Rebuild the running proxied copies</button>`
-      : `${lines.length + skipped.length + copyLines.length === 1 ? 'One box still uses' : 'Some boxes still use'} the device name every box got
-      before CashPilot gave each box its own, so ${escapeHtml(slug)} may count them as one device.
-      ${lines.length || copyLines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">Give each box its own device name</button>` : ''}
+      ? `${t('app.rename.copies_note', { slug: escapeHtml(slug) })}
+        <button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">${t('app.rename.rebuild_copies')}</button>`
+      : `${t('app.rename.shared_note', { n: lines.length + skipped.length + copyLines.length, slug: escapeHtml(slug) })}
+      ${lines.length || copyLines.length ? `<button class="btn btn-secondary btn-sm" data-action="renameDevices" data-a1="${escapeHtml(slug)}">${t('app.rename.give_own')}</button>` : ''}
       ${skipped.map((line, i) => `<br>${escapeHtml(line)}
-        <button class="btn btn-secondary btn-sm" data-action="redeployWithValues" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(String(skippedIds[i]))}">Redeploy it with the values in the deploy form</button>`).join('')}`;
+        <button class="btn btn-secondary btn-sm" data-action="redeployWithValues" data-a1="${escapeHtml(slug)}" data-a2="${escapeHtml(String(skippedIds[i]))}">${t('app.rename.redeploy_values')}</button>`).join('')}`;
     el.style.display = '';
   }
 
@@ -4826,14 +4836,11 @@ const CP = (() => {
     try {
       ({ ids, copyIds, copyLines } = await _deviceRenameLines(slug, _runningWorkerIds(slug), {}));
     } catch (err) {
-      toast(`Could not check device names: ${err.message}`, 'error');
+      toast(t('app.rename.check_failed', { error: err.message }), 'error');
       return;
     }
     const base = ids.length && await _confirmDeviceRenames(slug, ids, {});
-    const copies = copyIds.length && window.confirm(
-      `${slug}: these proxied copies still use the device name or id made from their box's old one.\n\n${copyLines.join('\n')}\n\n` +
-      'OK rebuilds each running copy under its own name; a stopped copy stays as it is. Cancel keeps them.'
-    );
+    const copies = copyIds.length && window.confirm(t('app.rename.copies_confirm', { slug, lines: copyLines.join('\n') }));
     if (!base && !copies) return;
     let ok = 0;
     // A box with only copies left: rebuild those, never its renamed original.
@@ -4847,14 +4854,14 @@ const CP = (() => {
         const res = await api(url, opts);
         // A proxied copy that kept its old name says so here.
         const kept = res && res.kept_from_previous_deployment;
-        if (Array.isArray(kept) && kept.length) toast(`${slug}: redeploy notes: ${kept.join('; ')}`, 'warning');
+        if (Array.isArray(kept) && kept.length) toast(t('app.dep.redeploy_notes_colon', { slug, notes: kept.join('; ') }), 'warning');
         ok++;
       } catch (err) {
-        const box = ((_detailWorkers || []).find(w => w.id === id) || {}).name || `node ${id}`;
-        toast(`Rename on ${box} failed: ${err.message}`, 'error');
+        const box = ((_detailWorkers || []).find(w => w.id === id) || {}).name || t('app.dep.node_n', { id });
+        toast(t('app.rename.failed', { box, error: err.message }), 'error');
       }
     }
-    if (ok) toast(`${slug}: device names updated on ${ok} box(es)`, 'success');
+    if (ok) toast(t('app.rename.done', { slug, n: ok }), 'success');
     openServiceDetail(slug);
   }
 
@@ -4873,7 +4880,7 @@ const CP = (() => {
   }
 
   async function redeployOnWorker(slug, workerId) {
-    if (!window.confirm(`Redeploy ${slug} on this box? It keeps the settings it was deployed with.`)) return;
+    if (!window.confirm(t('app.redeploy.confirm', { slug }))) return;
     const body = { env: {}, replace_existing: true };
     if (await _confirmDeviceRenames(slug, [workerId], {})) body.rename_devices = true;
     try {
@@ -4881,13 +4888,13 @@ const CP = (() => {
       // The same notes the deploy form shows: what the redeploy kept, and a
       // device the provider still needs linked, or it earns for nobody.
       const kept = res && res.kept_from_previous_deployment;
-      if (Array.isArray(kept) && kept.length) toast(`${slug}: redeploy notes: ${kept.join('; ')}`, 'warning');
+      if (Array.isArray(kept) && kept.length) toast(t('app.dep.redeploy_notes_colon', { slug, notes: kept.join('; ') }), 'warning');
       const link = res && res.device_link;
-      if (link && link.id && !link.registered) toast(`${slug}: link device ${link.id} to your account. ${link.steps || ''}`, 'warning');
-      toast(`${slug} redeployed`, 'success');
+      if (link && link.id && !link.registered) toast(t('app.redeploy.link_device', { slug, id: link.id, steps: link.steps || '' }), 'warning');
+      toast(t('app.redeploy.done', { slug }), 'success');
       loadServicesTable();
     } catch (err) {
-      toast(`Redeploy failed: ${err.message}`, 'error');
+      toast(t('app.redeploy.failed', { error: err.message }), 'error');
     }
   }
 
@@ -4897,11 +4904,11 @@ const CP = (() => {
     if (!input) return;
     const image = input.value.trim();
     const workers = (await api('/api/workers')).filter(w => w.status === 'online' && runsOn(w, slug));
-    if (!workers.length) { toast('No running instances to redeploy', 'warning'); return; }
-    const what = image || 'the catalog image';
-    if (!window.confirm(`Redeploy ${slug} on ${workers.map(w => w.name).join(', ')} with ${what}?`)) return;
+    if (!workers.length) { toast(t('app.image.none_running'), 'warning'); return; }
+    const what = image || t('app.image.catalog');
+    if (!window.confirm(t('app.image.confirm', { slug, boxes: workers.map(w => w.name).join(', '), image: what }))) return;
     const renameDevices = await _confirmDeviceRenames(slug, workers.map(w => w.id), {});
-    if (statusEl) statusEl.textContent = 'Redeploying...';
+    if (statusEl) statusEl.textContent = t('app.image.redeploying');
     let ok = 0, fail = 0;
     for (const w of workers) {
       try {
@@ -4911,7 +4918,7 @@ const CP = (() => {
         const res = await api(`/api/deploy/${slug}?worker_id=${w.id}`, { method: 'POST', body });
         // A proxied copy that kept its old name says so here.
         const kept = res && res.kept_from_previous_deployment;
-        if (Array.isArray(kept) && kept.length) toast(`${slug} on ${w.name}: redeploy notes: ${kept.join('; ')}`, 'warning');
+        if (Array.isArray(kept) && kept.length) toast(t('app.dep.redeploy_notes_on', { slug, box: w.name, notes: kept.join('; ') }), 'warning');
         ok++;
       } catch (err) {
         fail++;
@@ -4958,7 +4965,7 @@ const CP = (() => {
     <div class="detail-grid sd-facts">
       <div class="detail-item">
         <div class="detail-label">Category</div>
-        <div class="detail-value">${escapeHtml(capFirst(svc.category))}</div>
+        <div class="detail-value">${escapeHtml(categoryLabel(svc.category))}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">Estimated earnings</div>
