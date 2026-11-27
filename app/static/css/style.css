@@ -834,7 +834,8 @@ img { max-width: 100%; }
 /* One entry per line: long lines scroll sideways instead of wrapping, and every
    other entry gets a faint band so the eye can follow a line across. */
 .log-lines { width: max-content; min-width: 100%; }
-.log-line { white-space: pre; padding: 0 6px; }
+/* min-height keeps an empty line as tall as the others. */
+.log-line { white-space: pre; padding: 0 6px; min-height: 1lh; }
 .log-line:nth-child(even) { background: color-mix(in srgb, var(--text-log) 6%, transparent); }
 .log-ts { display: inline-block; min-width: var(--log-ts); margin-right: 1.5ch; color: var(--text-muted); }
 /* Wrapped: a long entry continues under its message, not under its time. */
