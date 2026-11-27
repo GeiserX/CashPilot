@@ -25,6 +25,7 @@ import re
 from typing import Any
 
 from app import gpu
+from app.i18n import t
 
 #: Every custom slug starts with this, and no catalog slug may (catalog._validate).
 SLUG_PREFIX = "custom-"
@@ -111,14 +112,14 @@ def _printable(value: str) -> bool:
 def _validate_name(raw: Any) -> str:
     name = str(raw or "").strip()
     if not 1 <= len(name) <= MAX_NAME_LEN or not _printable(name):
-        raise ValueError(f"Name must be 1 to {MAX_NAME_LEN} printable characters")
+        raise ValueError(t("err.custom_services.name_must_1_printable_characters", max_name_len=MAX_NAME_LEN))
     return name
 
 
 def _validate_image(raw: Any) -> str:
     image = str(raw or "").strip()
     if not image or len(image) > IMAGE_MAX_LEN or not IMAGE_REF.fullmatch(image):
-        raise ValueError("Image is not a valid image reference (repository[:tag][@digest])")
+        raise ValueError(t("err.custom_services.image_not_valid_image_reference"))
     return image
 
 
@@ -126,9 +127,9 @@ def _validate_env(raw: Any, previous: dict[str, Any] | None) -> list[dict[str, A
     if raw is None:
         raw = []
     if not isinstance(raw, list):
-        raise ValueError("Environment variables must be a list")
+        raise ValueError(t("err.custom_services.environment_variables_must_list"))
     if len(raw) > MAX_ENV:
-        raise ValueError(f"At most {MAX_ENV} environment variables")
+        raise ValueError(t("err.custom_services.most_environment_variables", max_env=MAX_ENV))
     stored = {
         e["key"]: e["value"] for e in (previous or {}).get("env") or [] if isinstance(e, dict) and e.get("secret")
     }
@@ -136,18 +137,18 @@ def _validate_env(raw: Any, previous: dict[str, Any] | None) -> list[dict[str, A
     seen: set[str] = set()
     for item in raw:
         if not isinstance(item, dict):
-            raise ValueError("Each environment variable needs a key and a value")
+            raise ValueError(t("err.custom_services.each_environment_variable_needs_key"))
         key = str(item.get("key") or "").strip()
         if not _ENV_KEY.fullmatch(key):
-            raise ValueError(
-                "Variable names start with a letter or _, then letters, digits or _ (at most 128 characters)"
-            )
+            raise ValueError(t("err.custom_services.variable_names_start_letter_then"))
         if key in seen:
-            raise ValueError(f"{key} is set twice")
+            raise ValueError(t("err.custom_services.set_twice", key=key))
         if key.upper().startswith(gpu.ENV_PREFIX):
             # The worker refuses these at deploy (it sets them itself), so a
             # definition that holds one could be saved but never deployed.
-            raise ValueError(f"CashPilot sets the {gpu.ENV_PREFIX} variables itself, so the worker refuses {key}")
+            raise ValueError(
+                t("err.custom_services.cashpilot_sets_variables_itself_worker", env_prefix=gpu.ENV_PREFIX, key=key)
+            )
         seen.add(key)
         secret = bool(item.get("secret"))
         value = item.get("value")
@@ -159,7 +160,7 @@ def _validate_env(raw: Any, previous: dict[str, Any] | None) -> list[dict[str, A
             # was hidden, not because the user emptied it.
             value = stored[key]
         if len(value) > MAX_ENV_VALUE or "\x00" in value:
-            raise ValueError(f"The value of {key} is too long or holds a NUL character")
+            raise ValueError(t("err.custom_services.value_too_long_holds_nul", key=key))
         out.append({"key": key, "value": value, "secret": secret})
     return out
 
@@ -167,7 +168,7 @@ def _validate_env(raw: Any, previous: dict[str, Any] | None) -> list[dict[str, A
 def _validate_command(raw: Any) -> str:
     command = str(raw or "").strip()
     if len(command) > MAX_COMMAND or any(ch in command for ch in "\x00\n\r"):
-        raise ValueError(f"Command must be one line of at most {MAX_COMMAND} characters")
+        raise ValueError(t("err.custom_services.command_must_one_line_most", max_command=MAX_COMMAND))
     return command
 
 
@@ -176,7 +177,7 @@ def _validate_data_path(raw: Any) -> str:
     if not path:
         return ""
     if not _DATA_PATH.fullmatch(path) or posixpath.normpath(path) != path or ".." in path.split("/") or path == "/":
-        raise ValueError("Data path must be an absolute path inside the container, like /data, with no '..'")
+        raise ValueError(t("err.custom_services.data_path_must_absolute_path"))
     return path
 
 
@@ -184,10 +185,10 @@ def _validate_mem_limit(raw: Any) -> str:
     value = str(raw or "").strip().lower() or DEFAULT_MEM_LIMIT
     match = _MEM_LIMIT.fullmatch(value)
     if not match:
-        raise ValueError("Memory limit must look like 512m or 2g")
+        raise ValueError(t("err.custom_services.memory_limit_must_look_like"))
     mb = int(match[1]) * (1024 if match[2] == "g" else 1)
     if not _MEM_MIN_MB <= mb <= _MEM_MAX_MB:
-        raise ValueError("Memory limit must be between 32m and 16g")
+        raise ValueError(t("err.custom_services.memory_limit_must_between_32m"))
     return value
 
 
@@ -205,7 +206,7 @@ def validate(payload: dict[str, Any], previous: dict[str, Any] | None = None) ->
     stored definition on an edit, so a secret left blank keeps its value.
     """
     if not isinstance(payload, dict):
-        raise ValueError("Expected an object")
+        raise ValueError(t("err.custom_services.expected_object"))
     image = _validate_image(payload.get("image"))
     definition = {
         "name": _validate_name(payload.get("name")),

@@ -25,7 +25,7 @@ TIMEOUT = HTTPException(status_code=504, detail="The worker did not answer withi
 UNREACHABLE = HTTPException(status_code=503, detail="Worker communication failed")
 REFUSED = HTTPException(status_code=409, detail="Docker did not remove cashpilot-proxyrack-p1")
 # _proxy_to_worker turns the worker's 401 into this 503; the worker did nothing.
-KEY_REFUSED = HTTPException(status_code=503, detail=main._WORKER_REFUSED_OUR_KEY)
+KEY_REFUSED = HTTPException(status_code=503, detail=main._worker_refused_our_key())
 REMOVED = {"status": "removed", "containers": ["cashpilot-proxyrack-p1", "cashpilot-tunnel-proxyrack-p1"]}
 
 
@@ -136,7 +136,7 @@ class TestAKeyRefusalWithALoginThatIsAWordOfIt:
             return err.value.detail, await _copies()
 
         detail, copies = _run(go)
-        assert detail == main._WORKER_REFUSED_OUR_KEY and copies == [(7, "proxyrack", False)]
+        assert detail == main._worker_refused_our_key() and copies == [(7, "proxyrack", False)]
 
     def test_a_retry_the_worker_refuses_lists_the_copy_again(self, db):
         spawned: list = []

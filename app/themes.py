@@ -11,19 +11,23 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.i18n import t
+
 _SPEC = json.loads(Path(__file__).with_name("themes.json").read_text(encoding="utf-8"))
 
 #: (id, label) in picker order.
-THEME_LIST: tuple[dict[str, str], ...] = tuple({"id": t["id"], "label": t["label"]} for t in _SPEC["themes"])
+THEME_LIST: tuple[dict[str, str], ...] = tuple(
+    {"id": spec_theme["id"], "label": spec_theme["label"]} for spec_theme in _SPEC["themes"]
+)
 #: The ids user_preferences.theme accepts.
-THEMES: tuple[str, ...] = tuple(t["id"] for t in THEME_LIST)
+THEMES: tuple[str, ...] = tuple(spec_theme["id"] for spec_theme in THEME_LIST)
 #: What a user who never chose, or whose saved value is no longer a theme, sees.
 DEFAULT_THEME: str = _SPEC["default"]
 #: What the pre-paint script needs, rendered into every page.
 CONFIG: dict = {"default": DEFAULT_THEME, "ids": list(THEMES)}
 
 if DEFAULT_THEME not in THEMES or len(set(THEMES)) != len(THEMES):
-    raise RuntimeError("app/themes.json: the default must be one of the themes, and ids must be unique")
+    raise RuntimeError(t("err.themes.app_themes_json_default_must"))
 
 
 def resolve(theme: str | None) -> str:
