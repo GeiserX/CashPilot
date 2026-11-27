@@ -2479,6 +2479,15 @@ _copy_removals: dict[tuple[str, int], int] = {}
 async def api_proxied_deploy(request: Request, slug: str, proxy_id: int, spec: ProxiedDeploySpec) -> dict[str, Any]:
     """Run a copy of ``slug`` whose only way out is the given proxy (docs/proxies.md)."""
     _verify_api_key(request)
+    if spec.earner.runtime_choice is not None:
+        # A copy routed through a proxy shares its tunnel's network and runs under
+        # Docker's default runtime. Refused, not dropped: the owner would see a
+        # layer the copy does not have.
+        raise HTTPException(
+            status_code=400,
+            detail="A copy routed through a proxy runs under Docker's default runtime. "
+            "Choosing gVisor for it is not supported yet; deploy it without a runtime choice.",
+        )
     # Counted from now, as a direct deploy's is (api_deploy_container): the UI
     # holds the ids of a copy deploy it got no answer for, and the hold must
     # outlast it, however long this one waits for locks or a tunnel pull.
