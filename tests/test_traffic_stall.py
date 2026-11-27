@@ -25,6 +25,7 @@ import yaml
 
 from app import catalog, main, traffic_stall
 from app.traffic_stall import MB, Spec, Stall
+from tests.i18n_source import NODE_T, english_source
 
 ROOT = Path(__file__).resolve().parent.parent
 SPEC = Spec(share=0.05, peer_min_bytes=10 * MB, hours=12)
@@ -389,7 +390,7 @@ class TestTheDashboardSaysSo:
         bell = {"alerts": [{"kind": "stall", "platform": "cashpilot-honeygain", "error": "Honeygain on charlie"}]}
         svc = {"slug": "honeygain", "name": "Honeygain", "instance_details": []}
         out = subprocess.run(
-            [node, "-e", harness, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
+            [node, *NODE_T, "-e", harness, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
             capture_output=True,
             text=True,
             check=True,
@@ -401,7 +402,7 @@ class TestTheDashboardSaysSo:
         assert "Honeygain on charlie" in result["html"]
 
     def test_the_bell_offers_no_credential_fix_and_a_change_redraws_the_list(self):
-        js = (ROOT / "app/static/js/app.js").read_text()
+        js = english_source("app/static/js/app.js")
         assert "isStall ? ' — almost no traffic'" in js
         assert "&& !isStall &&" in js.split("const showFix = ", 1)[1].split("\n", 1)[0]
         assert "|| a.kind === 'stall' ||" in js.split("function attentionAlertsKey", 1)[1].split("}", 1)[0]

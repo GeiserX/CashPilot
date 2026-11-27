@@ -2,6 +2,7 @@
 // deploy request, in both forms that build env fields (the wizard and the
 // service detail page). Browser-free: the functions are lifted out of app.js
 // and run against stand-ins, the way currency_check.mjs does it.
+import './i18n_stub.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

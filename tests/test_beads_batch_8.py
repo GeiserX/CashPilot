@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
@@ -88,7 +90,7 @@ class TestTheEmptyDashboardSaysWhichEmptyItIs:
     """
 
     def _empty_state(self) -> str:
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         start = source.index("if (!services || services.length === 0)")
         return source[start : start + 2000]
 

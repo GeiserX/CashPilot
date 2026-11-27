@@ -21,12 +21,14 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
 
 def js() -> str:
-    text = APP_JS.read_text(encoding="utf-8")
+    text = english_source(APP_JS)
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     return "\n".join(re.sub(r"(^|\s)//.*$", "", line) for line in text.splitlines())
 

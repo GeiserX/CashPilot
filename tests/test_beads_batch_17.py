@@ -27,6 +27,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
@@ -210,19 +212,19 @@ class TestEligibilityUsesTheReconciledThreshold:
 
 class TestTheCardsRenderTheUnitTheyAreIn:
     def test_the_progress_card_labels_with_the_balances_currency(self):
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert "data.balance_currency" in source, "the card still assumes the cashout unit"
 
     @pytest.mark.parametrize("count", [3])
     def test_every_comparison_site_uses_the_reconciled_minimum(self, count):
         """Service row, claim modal, and the closest-to-payout sort."""
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert source.count("min_amount_comparable") >= count, (
             "a comparison site still divides a balance by the catalog's declared minimum"
         )
 
     def test_no_site_still_divides_by_the_raw_declared_minimum(self):
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert "/ coA.min_amount)" not in source
         # The row no longer recomputes eligibility at all — it reads the
         # endpoint's three-valued answer, which is the only side that knows
@@ -325,7 +327,7 @@ class TestUnknownEligibilityStaysUnknownInTheUI:
     """
 
     def _js(self):
-        return without_comments(APP_JS.read_text(encoding="utf-8"))
+        return without_comments(english_source(APP_JS))
 
     def test_the_row_does_not_coerce_a_null_threshold_to_zero(self):
         assert "co.min_amount_comparable ?? 0" not in self._js()

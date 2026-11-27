@@ -5,6 +5,7 @@
 // window.location.search, so the link and the wizard are tested together.
 //
 //   node scripts/setup_preselect_check.mjs
+import './i18n_stub.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
@@ -32,7 +33,7 @@ const box = (id, slugs, status = 'online') => ({ id, name: `box${id}`, status, c
 // ---- The catalog row --------------------------------------------------------
 const renderAs = (isOwner, onlineWorkers) => new Function(
   'escapeHtml', 'capFirst', '_isOwner', 'catalogOnlineWorkers',
-  `${grab('runsOn')}\n${grab('workerCopies')}\n${grab('gradeBadge')}\n${grab('renderCatalogCard')}\nreturn renderCatalogCard;`,
+  `${grab('categoryLabel')}\n${grab('runsOn')}\n${grab('workerCopies')}\n${grab('gradeBadge')}\n${grab('renderCatalogCard')}\nreturn renderCatalogCard;`,
 )(escapeHtml, capFirst, isOwner, onlineWorkers);
 const row = (slug, { owner = true, workers = null } = {}) => renderAs(owner, workers)(services.find(s => s.slug === slug));
 const addHref = html => (html.match(/<a href="(\/setup\?[^"]*)"/) || [])[1];
@@ -169,7 +170,7 @@ console.log('/setup?service=<slug> starts the wizard at the setup step with that
   const app = { manual_only: true, slug: 'grass', name: 'Grass', category: 'depin', platforms: ['desktop'], docker: { image: '' } };
   const referralNote = () => '';
   const form = new Function('escapeHtml', 'capFirst', 'referralNote', 'envInputFields',
-    `${grab('hasAccount')}\n${grab('renderServiceSetupForm')}\nreturn renderServiceSetupForm;`)(escapeHtml, capFirst, referralNote, () => '');
+    `${grab('categoryLabel')}\n${grab('hasAccount')}\n${grab('renderServiceSetupForm')}\nreturn renderServiceSetupForm;`)(escapeHtml, capFirst, referralNote, () => '');
   const html = form(pool, []);
   assert.match(html, /<a href="\/settings#collector-ocean"[^>]*>Add your payout address<\/a>/, 'the pool step links to its Settings field');
   assert.match(html, /CashPilot runs no miner for it/);

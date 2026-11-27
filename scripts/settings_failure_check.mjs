@@ -14,6 +14,7 @@
 //   node scripts/settings_failure_check.mjs
 //
 // Exits non-zero on any mismatch.
+import './i18n_stub.mjs';
 import {readFileSync} from 'node:fs';
 
 const src = readFileSync('app/static/js/app.js', 'utf8');

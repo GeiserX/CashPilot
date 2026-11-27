@@ -18,6 +18,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
@@ -209,11 +211,11 @@ class TestTheDeployButtonMatchesTheServerGate:
     """
 
     def test_both_deploy_buttons_gate_on_owner(self):
-        source = APP_JS.read_text(encoding="utf-8")
+        source = english_source(APP_JS)
         assert """_canWrite ? '' : ' disabled title="Writer access required"'""" not in source
 
     def test_the_tooltip_says_owner(self):
-        source = APP_JS.read_text(encoding="utf-8")
+        source = english_source(APP_JS)
         assert "Owner access required" in source
 
     def test_the_server_really_does_require_owner(self):

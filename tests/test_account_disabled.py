@@ -31,6 +31,7 @@ import yaml
 
 from app import catalog, main, orchestrator
 from app.collectors.base import EarningsResult
+from tests.i18n_source import NODE_T, english_source
 
 ROOT = Path(__file__).resolve().parent.parent
 PAWNS_LOG = b"user is disabled" * 40  # what `docker logs` returns: no newline anywhere
@@ -563,7 +564,7 @@ def _attention(svc: dict) -> dict:
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
+        [node, *NODE_T, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps(svc)],
         capture_output=True,
         text=True,
         check=True,
@@ -623,7 +624,7 @@ class TestAttentionList:
         assert "Account disabled" in html
 
     def test_stop_everywhere_is_wired(self):
-        src = (ROOT / "app/static/js/app.js").read_text()
+        src = english_source("app/static/js/app.js")
         assert "    stopEverywhere,\n" in src
 
 

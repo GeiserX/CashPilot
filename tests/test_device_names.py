@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 
 from app import main, proxies
 from app.main import app
+from tests.i18n_source import NODE_T, english_source
 
 ROOT = Path(__file__).resolve().parents[1]
 SAFE = re.compile(r"[a-z0-9-]+")
@@ -647,7 +648,7 @@ def _run_form(**scenario) -> dict:
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps(scenario)],
+        [node, *NODE_T, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps(scenario)],
         capture_output=True,
         text=True,
         check=True,
@@ -841,7 +842,7 @@ class TestRunningBoxesCanBeRenamed:
         assert resp.json()["detail"] == "Missing required fields: Email", "the stored password is not missing"
 
     def test_the_page_has_the_note_and_the_button_is_wired(self):
-        js = (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")
+        js = english_source("app/static/js/app.js")
         assert 'id="device-rename-${escapeHtml(svc.slug)}"' in js
         assert "loadDeviceRenames(slug);" in js
         assert "\n    renameDevices,\n" in js

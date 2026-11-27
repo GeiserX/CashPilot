@@ -10,6 +10,7 @@
 // Requires a headless Chrome on port 9222 (see scripts/ui_check.sh).
 //   node scripts/hint_sanitizer_check.mjs
 // Exits non-zero on any mismatch.
+import './i18n_stub.mjs';
 import {readFileSync} from 'node:fs';
 const src = readFileSync('app/static/js/app.js', 'utf8');
 const fn = src.slice(src.indexOf('function sanitizeHint('), src.indexOf('  function capFirst'));

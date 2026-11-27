@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app import catalog, drift, main, orchestrator
+from tests.i18n_source import english_source
 
 ROOT = Path(__file__).resolve().parents[1]
 BITPING = catalog.get_service("bitping")
@@ -250,7 +251,7 @@ class TestTheRedeployClearsIt:
 
 class TestTheDashboard:
     def test_the_row_has_a_redeploy_handler(self):
-        js = (ROOT / "app" / "static" / "js" / "app.js").read_text()
+        js = english_source("app/static/js/app.js")
         assert 'data-action="redeployOnWorker"' in js
         assert "\n    redeployOnWorker,\n" in js
         assert "tag: 'Needs fixing'" in js
@@ -394,7 +395,7 @@ class TestIgnore:
         }
 
     def test_the_row_has_an_ignore_handler(self):
-        js = (ROOT / "app" / "static" / "js" / "app.js").read_text()
+        js = english_source("app/static/js/app.js")
         assert 'data-action="ignoreDrift"' in js
         assert "\n    ignoreDrift,\n" in js
 

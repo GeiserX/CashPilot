@@ -28,6 +28,8 @@ from pathlib import Path
 
 import yaml
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 HARNESS = ROOT / "scripts" / "claim_modal_check.mjs"
@@ -35,7 +37,7 @@ HARNESS = ROOT / "scripts" / "claim_modal_check.mjs"
 
 class TestTheModalNoLongerLies:
     def _open_claim_body(self):
-        js = APP_JS.read_text(encoding="utf-8")
+        js = english_source(APP_JS)
         start = js.index("async function openClaimModal(")
         return js[start : start + 1400]
 
@@ -46,11 +48,11 @@ class TestTheModalNoLongerLies:
         assert "renderNoEarningsYet(platform, title, body)" in self._open_claim_body()
 
     def test_the_helper_exists_and_is_async(self):
-        js = APP_JS.read_text(encoding="utf-8")
+        js = english_source(APP_JS)
         assert "async function renderNoEarningsYet(" in js
 
     def test_it_consults_the_catalog_rather_than_guessing(self):
-        js = APP_JS.read_text(encoding="utf-8")
+        js = english_source(APP_JS)
         start = js.index("async function renderNoEarningsYet(")
         body = js[start : start + 1800]
         assert "/api/services/available" in body
@@ -58,13 +60,13 @@ class TestTheModalNoLongerLies:
 
     def test_a_failed_lookup_is_not_reported_as_a_missing_service(self):
         """Three answers, plus "I could not check" — which is a fourth."""
-        js = APP_JS.read_text(encoding="utf-8")
+        js = english_source(APP_JS)
         start = js.index("async function renderNoEarningsYet(")
         body = js[start : start + 1800]
         assert "Could not check this service" in body
 
     def test_the_error_detail_is_escaped(self):
-        js = APP_JS.read_text(encoding="utf-8")
+        js = english_source(APP_JS)
         start = js.index("async function renderNoEarningsYet(")
         body = js[start : start + 1800]
         assert "escapeHtml(err.message" in body

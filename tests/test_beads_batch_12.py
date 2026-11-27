@@ -141,15 +141,15 @@ class TestTheSettingsPageDoesNotClaimStoredValuesApply:
     """
 
     def test_the_db_badge_no_longer_asserts_the_value_is_in_use(self):
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert 'badge-category" style="font-size:0.7rem;margin-left:8px;">DB<' not in source
 
     def test_a_stored_value_is_labelled_as_not_applied(self):
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert "Stored, not applied" in source
 
     def test_the_page_says_a_restart_is_required(self):
-        source = without_comments(APP_JS.read_text(encoding="utf-8"))
+        source = without_comments(english_source(APP_JS))
         assert "does not take effect" in source
         assert "restart the container" in source
 

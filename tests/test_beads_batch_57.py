@@ -28,13 +28,15 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 HARNESS = ROOT / "scripts" / "host_resources_check.mjs"
 
 
 def _js() -> str:
-    return APP_JS.read_text(encoding="utf-8")
+    return english_source(APP_JS)
 
 
 class TestTheTableStillLinesUp:

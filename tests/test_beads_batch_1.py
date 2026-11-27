@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
@@ -167,19 +169,19 @@ class TestAPartiallyConfiguredCollectorSaysSo:
     """
 
     def test_the_badge_requires_every_required_field(self):
-        source = APP_JS.read_text(encoding="utf-8")
+        source = english_source(APP_JS)
         assert "setCount === required.length" in source
         assert "const configured = col.fields.some(" not in source
 
     def test_there_is_a_distinct_incomplete_state(self):
         """Configured and untouched are not the only two possibilities."""
-        source = APP_JS.read_text(encoding="utf-8")
+        source = english_source(APP_JS)
         assert "Incomplete" in source
         assert "const partial =" in source
 
     def test_optional_fields_do_not_block_it(self):
         """Bytelixir's durable cookies are optional; requiring them would lie the other way."""
-        source = APP_JS.read_text(encoding="utf-8")
+        source = english_source(APP_JS)
         assert "col.fields.filter(f => f.required)" in source
 
 
@@ -191,13 +193,13 @@ class TestTheCredentialHintReachesSettings:
     """
 
     def test_the_collector_body_renders_it(self):
-        source = APP_JS.read_text(encoding="utf-8")
+        source = english_source(APP_JS)
         body = source[source.index('<div class="collector-body">') :][:400]
         assert "col.hint" in body
 
     def test_it_goes_through_the_sanitiser(self):
         """The hints contain anchors, so raw insertion would be an XSS sink."""
-        source = APP_JS.read_text(encoding="utf-8")
+        source = english_source(APP_JS)
         body = source[source.index('<div class="collector-body">') :][:400]
         assert "sanitizeHint(col.hint)" in body
 

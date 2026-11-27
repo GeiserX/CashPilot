@@ -38,7 +38,7 @@ def js_function(name: str) -> str:
     for confirmation — it had run on into `rejectPayout`, which does. Bounded
     on the next top-level function instead.
     """
-    app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    app_js = english_source("app/static/js/app.js")
     start = app_js.index(f"function {name}(")
     rest = app_js[start:]
     following = [
@@ -104,13 +104,13 @@ class TestThePayoutQueueIsReachable:
     @pytest.mark.parametrize("handler", ["loadPayoutQueue", "confirmPayout", "rejectPayout"])
     def test_the_handler_is_exported_from_cp(self, handler):
         """delegate.js resolves data-action against CP; unexported means a dead button."""
-        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        app_js = english_source("app/static/js/app.js")
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert handler in exported, f"{handler} is not in the CP return block, so its button does nothing"
 
     def test_the_queue_loads_with_the_rest_of_the_dashboard(self):
         """Defined but never called is the same as not built."""
-        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        app_js = english_source("app/static/js/app.js")
         load_dashboard = app_js[app_js.index("async function loadDashboard()") :][:900]
         assert "loadPayoutQueue()" in load_dashboard
 
@@ -234,7 +234,7 @@ class TestPayoutProgressIsShownWhereTheUserLooks:
         assert detail.index("renderServiceDetail") < detail.index("loadPayoutProgress()")
 
     def test_it_is_exported_so_the_modal_can_reach_it(self):
-        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        app_js = english_source("app/static/js/app.js")
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert "loadPayoutProgress" in exported
 
@@ -381,7 +381,7 @@ class TestCredentialHealthWarnsBeforeCollectionStops:
         assert "loadCredentialHealth()" in js_function("loadSettings")
 
     def test_it_is_exported(self):
-        app_js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        app_js = english_source("app/static/js/app.js")
         exported = set(re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*),\s*$", app_js, re.M))
         assert "loadCredentialHealth" in exported
 
@@ -625,7 +625,7 @@ class TestTheRowActionsPassAnArgumentNotASyntaxFragment:
             )
 
     def test_the_worker_id_travels_as_its_own_attribute(self):
-        app_js = without_comments((ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8"))
+        app_js = without_comments(english_source("app/static/js/app.js"))
         assert 'data-a2="${inst.worker_id}"' in app_js
 
     def test_an_absent_worker_emits_no_second_argument(self):
@@ -635,7 +635,7 @@ class TestTheRowActionsPassAnArgumentNotASyntaxFragment:
         single-worker case has to omit the attribute entirely rather than
         render it empty — an empty string is not None to `workerId != null`.
         """
-        app_js = without_comments((ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8"))
+        app_js = without_comments(english_source("app/static/js/app.js"))
         assert 'data-a2=""' not in app_js
 
 
@@ -662,7 +662,7 @@ class TestTheWizardSelectionIsVisible:
         )
 
     def test_the_markup_no_longer_pretends_to_pass_one(self):
-        app_js = without_comments((ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8"))
+        app_js = without_comments(english_source("app/static/js/app.js"))
         assert 'data-a2="this"' not in app_js
 
     def test_no_data_action_anywhere_tries_to_pass_this(self):
