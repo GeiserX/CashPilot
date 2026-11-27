@@ -27,6 +27,7 @@ on:
       - 'zensical.toml'
       - '.github/workflows/docs.yml'
       - '.github/scripts/site-check.py'
+      - '.github/scripts/docs-i18n.py'
       # getting-started.md includes docker-compose.yml word for word
       # with pymdownx.snippets: a change to it must rebuild the site.
       - 'docker-compose.yml'
@@ -107,6 +108,17 @@ jobs:
             sleep 20
           done
           exit 1
+
+      # Every other language is one more build of the same docs into site/<lang>/,
+      # with the translated pages of docs/i18n/<lang>/ swapped in (docs-i18n.py says
+      # why: Zensical gives a project one language). The check fails on a translation
+      # that changed a code block, inline code or a link target, and lists the pages
+      # whose English source moved on; the build fails on changed heading ids.
+      - name: Check the translations
+        run: python -I .github/scripts/docs-i18n.py check
+
+      - name: Build the translations
+        run: python -I .github/scripts/docs-i18n.py build
 
       # What the strict build does not check: a page in no nav entry, a nav
       # entry for a missing file, a missing image, a /rooted link, a raw <title>

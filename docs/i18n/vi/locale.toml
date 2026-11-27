@@ -1,0 +1,13 @@
+# Site strings for the vi docs build (.github/scripts/docs-i18n.py).
+
+[notices]
+# On an English page shown in this locale because it has no translation yet.
+untranslated = "Trang này chưa được dịch. Bạn đang đọc bản tiếng Anh."
+# On a page that stays English on purpose (docs/i18n/config.toml).
+english_only = "Trang này chỉ có bằng tiếng Anh."
+# On a translation made from an older English page. {url} is the English page.
+stale = "Bản tiếng Anh của trang này mới hơn. [Đọc bản tiếng Anh]({url})."
+
+# Navigation labels: English label = label in this language. A label not listed
+# here stays in English (provider names do).
+[nav]

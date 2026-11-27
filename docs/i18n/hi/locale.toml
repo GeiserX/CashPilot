@@ -1,0 +1,13 @@
+# Site strings for the hi docs build (.github/scripts/docs-i18n.py).
+
+[notices]
+# On an English page shown in this locale because it has no translation yet.
+untranslated = "इस पेज का अभी अनुवाद नहीं हुआ है। आप अंग्रेज़ी संस्करण पढ़ रहे हैं।"
+# On a page that stays English on purpose (docs/i18n/config.toml).
+english_only = "यह पेज केवल अंग्रेज़ी में उपलब्ध है।"
+# On a translation made from an older English page. {url} is the English page.
+stale = "इस पेज का अंग्रेज़ी संस्करण नया है। [अंग्रेज़ी संस्करण पढ़ें]({url})।"
+
+# Navigation labels: English label = label in this language. A label not listed
+# here stays in English (provider names do).
+[nav]
