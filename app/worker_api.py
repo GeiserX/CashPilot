@@ -746,17 +746,6 @@ async def _send_heartbeat() -> None:
     global _consecutive_heartbeat_failures, _link_hint_logged, _last_heartbeat_ok
     global _ui_url_refusal_logged
 
-    refusal = _ui_url_refusal()
-    if refusal:
-        # Nothing is built or sent. The status page and /api/health show why.
-        _ui_connected = False
-        _last_error = refusal
-        _consecutive_heartbeat_failures += 1
-        if not _ui_url_refusal_logged:
-            logger.error(refusal)
-            _ui_url_refusal_logged = True
-        return
-
     containers = []
     listed = False
     try:
@@ -778,6 +767,17 @@ async def _send_heartbeat() -> None:
     # not at the next five-minute check.
     if lan_fence.set_egress_ip(egress_ip) and docker_ok:
         await _check_fence()
+    # After the egress lookup on purpose: the fence must follow a new public IP
+    # even while the heartbeat itself is refused.
+    if refusal := _ui_url_refusal():
+        # Nothing is sent. The status page and /api/health show why.
+        _ui_connected = False
+        _last_error = refusal
+        _consecutive_heartbeat_failures += 1
+        if not _ui_url_refusal_logged:
+            logger.error(refusal)
+            _ui_url_refusal_logged = True
+        return
     features = (
         ["instances", "isolation_check", "state_backup", "activity", "proxy_tunnel"] if docker_ok else ["instances"]
     )

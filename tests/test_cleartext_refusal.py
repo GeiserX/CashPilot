@@ -137,10 +137,16 @@ def test_worker_sends_no_heartbeat_to_a_public_http_ui(worker_state, caplog):
     with (
         patch.object(worker_api, "UI_URL", "http://cashpilot.example.com:8080"),
         patch.object(worker_api.httpx, "AsyncClient", return_value=client) as made,
+        patch.object(worker_api.orchestrator, "get_status", return_value=[]),
+        patch.object(worker_api.orchestrator, "docker_available", return_value=False),
+        patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value="198.51.100.7")),
+        patch.object(worker_api.lan_fence, "set_egress_ip", return_value=False) as fenced,
     ):
         asyncio.run(worker_api._send_heartbeat())
         asyncio.run(worker_api._send_heartbeat())
     made.assert_not_called()
+    # The fence still follows the public IP while the heartbeat is refused.
+    fenced.assert_called_with("198.51.100.7")
     assert worker_api._ui_connected is False
     assert "CASHPILOT_UI_URL is plain http:// to cashpilot.example.com" in worker_api._last_error
     assert "https://" in worker_api._last_error
@@ -244,3 +250,8 @@ def test_plain_http_refusal_names_no_userinfo():
     assert text and "hunter2" not in text and "worker.example.com" in text
     assert worker_proxy.plain_http_refusal("https://worker.example.com") is None
     assert worker_proxy.plain_http_refusal("http://10.1.1.1:8081") is None
+
+
+def test_an_unparseable_worker_url_does_not_break_the_fleet_list():
+    text = worker_proxy.plain_http_refusal("http://[")
+    assert text and "cannot be parsed" in text

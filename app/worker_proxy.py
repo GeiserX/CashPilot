@@ -111,7 +111,11 @@ def plain_http_refusal(raw_url: str) -> str | None:
     rule the worker, Desktop and Android apply to the UI's URL. Every policy,
     strict included: an allow-listed public host still gets https or nothing.
     """
-    if urlparse(raw_url).scheme.lower() != "http" or cleartext.bearer_allowed(raw_url):
+    try:
+        scheme = urlparse(raw_url).scheme.lower()
+    except ValueError:
+        return "This worker's address cannot be parsed, so CashPilot sends it nothing."
+    if scheme != "http" or cleartext.bearer_allowed(raw_url):
         return None
     return (
         f"This worker's address is plain http:// to {cleartext.host_of(raw_url)}, which is not a private "
