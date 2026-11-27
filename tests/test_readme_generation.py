@@ -92,13 +92,15 @@ class TestGenerationNeverDestroysRevenue:
             pytest.skip("README not committed yet")
         current = README.read_text(encoding="utf-8")
         lost = _referral_urls(committed) - _referral_urls(current)
-        lost -= {old for old, new in REPLACED_REFERRAL_URLS.items() if new in current}
+        present = _referral_urls(current)
+        lost -= {old for old, new in REPLACED_REFERRAL_URLS.items() if new in present}
         assert not lost, f"generation dropped referral URLs: {lost}"
 
     def test_every_replaced_referral_url_has_its_replacement_in_the_readme(self):
         """A replacement entry forgives one URL, and only for its successor."""
         current = README.read_text(encoding="utf-8")
-        missing = {old: new for old, new in REPLACED_REFERRAL_URLS.items() if new not in current}
+        present = _referral_urls(current)
+        missing = {old: new for old, new in REPLACED_REFERRAL_URLS.items() if new not in present}
         assert not missing, f"replacement referral URLs missing from the README: {missing}"
 
     def test_the_generator_prefers_the_referral_url_over_the_bare_website(self):

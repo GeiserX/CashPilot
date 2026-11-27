@@ -27,7 +27,7 @@ Teneo Protocol gives AI agents access to the live web through a network of Beaco
 | Who | What they get |
 |-----|---------------|
 | You, when you sign up with the link or the code | +100 Fragments at signup, then +150 Fragments once you reach 480 Fragments |
-| The person who referred you | 8% of your Fragments, and 2% of the Fragments of the people you refer |
+| The person who referred you | 8% of your Fragments, and 2% of the Fragments of the people you refer. Teneo starts this reward once you sign up within 7 days and earn 480 Fragments. |
 
 The bonus never reduces your own earnings. Datacentre machines get no referral bonus. Sources: [Teneo Beacon](https://teneo-protocol.ai/beacon) and the referral page of the [Expedition Hub](https://hub.teneo.pro/quests/referral).
 
@@ -35,7 +35,7 @@ The bonus never reduces your own earnings. Datacentre machines get no referral b
 
 | Requirement | Value |
 |-------------|-------|
-| Residential IP | Yes |
+| Residential IP | Yes, except on hosting providers Teneo has enabled (see below) |
 | Devices per connection | One earns, the others stand by |
 | Minimum bandwidth | None |
 | GPU required | No |

@@ -19,7 +19,7 @@ referral:
   signup_url: "https://hub.teneo.pro/signup?ref=PSA3BHPJ"
   code: "PSA3BHPJ"
   bonus:
-    referrer: "8% of each referred friend's Fragments and 2% of their referrals' Fragments"
+    referrer: "8% of each referred friend's Fragments and 2% of their referrals' Fragments, once the friend signs up within 7 days and earns 480 Fragments"
     referee: "+100 Fragments at signup, and +150 more once you reach 480 Fragments"
 
 docker:

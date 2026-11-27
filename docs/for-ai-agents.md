@@ -6,16 +6,16 @@ This page is for an AI agent that helps a person set up CashPilot, or set up one
 
 Most services need an account with the provider. CashPilot links to each provider's signup page, and for most providers that link is a referral link.
 
-Before the person signs up for a service, ask them one question: do they want to sign up through the CashPilot referral link, or through a plain link?
+Before the person signs up for a service, ask them one question: do they want to sign up through the CashPilot referral link, or through a plain link? Ask the same question before you open a referral link for a service that needs no account, because some providers save the referral when the link opens.
 
 Tell them these facts so they can choose:
 
 - The referral links are affiliate links. When a person signs up through one, the provider may pay the CashPilot maintainer a commission or points. This supports the project.
 - In the referral programmes we know of, that reward does not come out of the person's earnings.
-- Some providers give the new user a signup bonus or better terms through the referral link. Say that a bonus exists only when the catalog entry records one (see [Read a catalog entry](#read-a-catalog-entry)). If the entry records no bonus, do not promise one.
+- Some providers give the new user a signup bonus or better terms through the referral link. Say that a bonus exists only when the catalog entry records one (see [Read a catalog entry](#read-a-catalog-entry)). If the entry records no bonus, do not promise one. Before you mention a bonus, also read the entry's notes and requirements for limits on who gets it. For example, Teneo gives no referral bonus to machines in a datacentre.
 - The person decides. A plain link to the provider's own site is always fine, and CashPilot works the same either way.
 
-Never sign up for an account on the person's behalf without asking them first. Never fill in a referral code they did not agree to.
+Never sign up for an account on the person's behalf without asking them first. Never open a referral link or fill in a referral code they did not agree to.
 
 ## Where the links are
 
@@ -35,7 +35,7 @@ referral:
   signup_url: "https://hub.teneo.pro/signup?ref=PSA3BHPJ"
   code: "PSA3BHPJ"
   bonus:
-    referrer: "8% of each referred friend's Fragments and 2% of their referrals' Fragments"
+    referrer: "8% of each referred friend's Fragments and 2% of their referrals' Fragments, once the friend signs up within 7 days and earns 480 Fragments"
     referee: "+100 Fragments at signup, and +150 more once you reach 480 Fragments"
 ```
 
