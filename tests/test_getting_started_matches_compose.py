@@ -15,6 +15,8 @@ from pathlib import Path
 
 import yaml
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "docs" / "getting-started.md"
 COMPOSE = ROOT / "docker-compose.yml"
@@ -79,7 +81,7 @@ def test_every_place_that_says_edit_the_tags_gives_the_order():
         "app/templates/settings.html": "editing the",
     }
     for name, phrase in places.items():
-        text = (ROOT / name).read_text(encoding="utf-8")
+        text = english_source(ROOT / name)
         at = text.index(phrase)
         nearby = " ".join(text[at - 300 : at + 300].split())
         assert "UPGRADING.md" in nearby, name

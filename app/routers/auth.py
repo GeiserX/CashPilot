@@ -23,7 +23,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 # setup_token is aliased because it is ALSO a Form parameter name inside
 # do_register, so importing it bare would be shadowed exactly where it is used.
 from app import auth as auth_module
-from app import captcha, database, deps, login_rate_limit, metrics
+from app import captcha, database, deps, i18n, login_rate_limit, metrics
 from app import setup_token as setup_token_module
 from app.users import USERNAME_PATTERN
 
@@ -65,18 +65,19 @@ async def _rearm_setup_token() -> None:
     if owner_exists:
         setup_token_module.clear()
         await database.delete_config_keys(["_setup_token"])
-        raise HTTPException(status_code=409, detail="An account already exists on this instance. Please log in.")
+        raise HTTPException(status_code=409, detail=i18n.t("auth.error.exists_api"))
     logger.warning(
         "FIRST-RUN SETUP: no account exists. Open /register and enter this one-time setup token to create the owner account: %s",
         tok,
     )
-    raise HTTPException(status_code=403, detail="A setup token was just written to the container log.")
+    raise HTTPException(status_code=403, detail=i18n.t("auth.setup_token.written"))
 
 
+# Message keys, looked up per request so the page's language applies.
 _CAPTCHA_ERRORS = {
-    "missing": "Complete the CAPTCHA check and try again.",
-    "rejected": "Complete the CAPTCHA check and try again.",
-    "unavailable": "The CAPTCHA check could not be completed. Try again in a moment.",
+    "missing": "auth.captcha.retry",
+    "rejected": "auth.captcha.retry",
+    "unavailable": "auth.captcha.unavailable",
 }
 
 
@@ -93,11 +94,11 @@ def _login_page(request: Request, error: str = "", status_code: int = 200):
         request,
         "auth.html",
         {
-            "title": "Sign In",
-            "subtitle": "Sign in to your CashPilot instance",
+            "title": i18n.t("auth.login.title"),
+            "subtitle": i18n.t("auth.login.subtitle"),
             "mode": "login",
             "action": "/login",
-            "button_text": "Sign In",
+            "button_text": i18n.t("auth.login.title"),
             "error": error,
             "is_first": False,
             "captcha": cfg,
@@ -148,7 +149,9 @@ async def do_login(
         if not result.ok:
             metrics.record_login(success=False)
             metrics.record_captcha_failure(result.reason)
-            return _login_page(request, error=_CAPTCHA_ERRORS[result.reason], status_code=400)
+            return _login_page(
+                request, error=i18n.t(_CAPTCHA_ERRORS[result.reason]), status_code=400
+            )  # i18n-keys: auth.captcha.retry, auth.captcha.unavailable
     user = await database.get_user_by_username(username)
     if user:
         ok = await auth_module.verify_password_async(password, user["password"])
@@ -157,7 +160,7 @@ async def do_login(
         ok = False
     if not ok:
         metrics.record_login(success=False)
-        return _login_page(request, error="Invalid username or password", status_code=401)
+        return _login_page(request, error=i18n.t("auth.error.login"), status_code=401)
 
     login_rate_limit.clear(rate_key)
     metrics.record_login(success=True)
@@ -184,11 +187,11 @@ async def page_register(request: Request):
         request,
         "auth.html",
         {
-            "title": "Create Account" if is_first else "Add User",
-            "subtitle": "Create the first admin account" if is_first else "Add a new user to this instance",
+            "title": i18n.t("auth.register.first.title") if is_first else i18n.t("auth.register.add.title"),
+            "subtitle": i18n.t("auth.register.first.subtitle") if is_first else i18n.t("auth.register.add.subtitle"),
             "mode": "register",
             "action": "/register",
-            "button_text": "Create Account",
+            "button_text": i18n.t("auth.register.button"),
             "error": "",
             "is_first": is_first,
         },
@@ -209,7 +212,7 @@ async def do_register(
     if not is_first:
         user = auth_module.get_current_user(request)
         if not user or user.get("r") != "owner":
-            raise HTTPException(status_code=403, detail="Only owners can add users")
+            raise HTTPException(status_code=403, detail=i18n.t("auth.error.owner_only"))
 
     if is_first:
         deps._require_private_network(request)
@@ -221,12 +224,14 @@ async def do_register(
             request,
             "auth.html",
             {
-                "title": "Create Account" if is_first else "Add User",
-                "subtitle": "Create the first admin account" if is_first else "Add a new user",
+                "title": i18n.t("auth.register.first.title") if is_first else i18n.t("auth.register.add.title"),
+                "subtitle": i18n.t("auth.register.first.subtitle")
+                if is_first
+                else i18n.t("auth.register.add.subtitle_short"),
                 "mode": "register",
                 "action": "/register",
-                "button_text": "Create Account",
-                "error": "Username must be 3-32 alphanumeric characters (a-z, 0-9, _ -)",
+                "button_text": i18n.t("auth.register.button"),
+                "error": i18n.t("auth.error.username"),
                 "is_first": is_first,
                 "setup_token": setup_token if is_first else "",
             },
@@ -238,12 +243,14 @@ async def do_register(
             request,
             "auth.html",
             {
-                "title": "Create Account" if is_first else "Add User",
-                "subtitle": "Create the first admin account" if is_first else "Add a new user",
+                "title": i18n.t("auth.register.first.title") if is_first else i18n.t("auth.register.add.title"),
+                "subtitle": i18n.t("auth.register.first.subtitle")
+                if is_first
+                else i18n.t("auth.register.add.subtitle_short"),
                 "mode": "register",
                 "action": "/register",
-                "button_text": "Create Account",
-                "error": "Passwords do not match",
+                "button_text": i18n.t("auth.register.button"),
+                "error": i18n.t("auth.error.mismatch"),
                 "is_first": is_first,
                 "setup_token": setup_token if is_first else "",
             },
@@ -255,12 +262,14 @@ async def do_register(
             request,
             "auth.html",
             {
-                "title": "Create Account" if is_first else "Add User",
-                "subtitle": "Create the first admin account" if is_first else "Add a new user",
+                "title": i18n.t("auth.register.first.title") if is_first else i18n.t("auth.register.add.title"),
+                "subtitle": i18n.t("auth.register.first.subtitle")
+                if is_first
+                else i18n.t("auth.register.add.subtitle_short"),
                 "mode": "register",
                 "action": "/register",
-                "button_text": "Create Account",
-                "error": "Password must be at least 10 characters",
+                "button_text": i18n.t("auth.register.button"),
+                "error": i18n.t("auth.error.short"),
                 "is_first": is_first,
                 "setup_token": setup_token if is_first else "",
             },
@@ -273,12 +282,14 @@ async def do_register(
             request,
             "auth.html",
             {
-                "title": "Create Account" if is_first else "Add User",
-                "subtitle": "Create the first admin account" if is_first else "Add a new user",
+                "title": i18n.t("auth.register.first.title") if is_first else i18n.t("auth.register.add.title"),
+                "subtitle": i18n.t("auth.register.first.subtitle")
+                if is_first
+                else i18n.t("auth.register.add.subtitle_short"),
                 "mode": "register",
                 "action": "/register",
-                "button_text": "Create Account",
-                "error": "Username already taken",
+                "button_text": i18n.t("auth.register.button"),
+                "error": i18n.t("auth.error.taken"),
                 "is_first": is_first,
                 "setup_token": setup_token if is_first else "",
             },
@@ -297,12 +308,12 @@ async def do_register(
                 request,
                 "auth.html",
                 {
-                    "title": "Create Account",
-                    "subtitle": "Create the first admin account",
+                    "title": i18n.t("auth.register.first.title"),
+                    "subtitle": i18n.t("auth.register.first.subtitle"),
                     "mode": "register",
                     "action": "/register",
-                    "button_text": "Create Account",
-                    "error": "An account already exists on this instance — please log in.",
+                    "button_text": i18n.t("auth.register.button"),
+                    "error": i18n.t("auth.error.exists"),
                     "is_first": False,
                     "setup_token": "",
                 },

@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -144,16 +146,16 @@ class TestTheWorkerReportsItAndTheUISurfacesIt:
         assert 'w["ui_version"] = ui_version' in text
 
     def test_the_fleet_card_shows_it(self):
-        text = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        text = english_source("app/templates/fleet.html")
         assert "sysInfo.version" in text
         assert "version_skew" in text
 
     def test_an_unknown_version_says_so_rather_than_nothing(self):
         """Blank space would read as "no problem" for a worker too old to say."""
-        text = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        text = english_source("app/templates/fleet.html")
         assert "version unknown" in text
 
     def test_the_warning_says_what_to_do(self):
         """ "Different versions" without the Unraid detail is not actionable."""
-        text = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        text = english_source("app/templates/fleet.html")
         assert "two separate apps" in text

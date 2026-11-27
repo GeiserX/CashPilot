@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app import deps
+from tests.i18n_source import english_source
 
 FLEET = Path(__file__).resolve().parents[1] / "app" / "templates" / "fleet.html"
 
@@ -34,13 +35,13 @@ def test_a_dev_build_names_no_tag_as_if_it_were_published(monkeypatch):
 
 def test_the_key_note_says_where_the_key_comes_from():
     """The key is often generated in /fleet, with CASHPILOT_API_KEY empty."""
-    html = FLEET.read_text(encoding="utf-8")
+    html = english_source(FLEET)
     assert "The API key is set via" not in html
     assert "/fleet/.fleet_key" in html
 
 
 def test_a_loopback_origin_is_not_offered_as_the_ui_url():
-    html = FLEET.read_text(encoding="utf-8")
+    html = english_source(FLEET)
     assert "document.getElementById('env-ui-url').textContent = window.location.origin;" not in html
     assert "<this-server-address>" in html
     assert 'id="env-ui-url-loopback"' in html

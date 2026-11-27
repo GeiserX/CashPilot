@@ -33,6 +33,7 @@ from fastapi.testclient import TestClient
 
 from app import catalog, drift, isolation_check, lan_fence, orchestrator, socket_policy, worker_api
 from app.worker_api import DeploySpec, _validate_deploy_spec
+from tests.i18n_source import english_source
 
 #: The mode rule (lan_fence.mode_problem) is part of what these tests check.
 pytestmark = pytest.mark.real_gated_mode
@@ -1119,7 +1120,7 @@ class TestTheUpgrade:
 
 
 def test_the_fleet_page_offers_the_move_and_says_isolation_first():
-    fleet = (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+    fleet = english_source("app/templates/fleet.html")
     assert "iso.unfenced" in fleet
     assert "to move behind the fence</button>" in fleet
     assert "Switch isolation on first, then redeploy it once" in fleet

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import './i18n_stub.mjs';
 
 const source = readFileSync('app/templates/fleet.html', 'utf8');
 const from = source.indexOf("  document.getElementById('fleet-proxies').addEventListener('click'");
@@ -28,6 +29,7 @@ async function start(responses, decisions = []) {
   const toasts = [];
   let click;
   vm.runInNewContext(source.slice(from, to), {
+    t: globalThis.t,
     document: {getElementById: () => ({addEventListener: (_type, listener) => { click = listener; }})},
     CP: {
       api: async (path, opts) => {

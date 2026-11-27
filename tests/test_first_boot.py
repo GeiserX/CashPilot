@@ -22,29 +22,31 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 ONBOARDING = ROOT / "app" / "templates" / "onboarding.html"
 
 
 class TestTheOwnerAccountCanBeCreatedFromTheDefaultLandingPage:
     def test_the_form_asks_for_the_setup_token(self):
-        html = ONBOARDING.read_text(encoding="utf-8")
+        html = english_source(ONBOARDING)
         assert 'id="setup_token"' in html, "the page a fresh install lands on cannot create an account"
 
     def test_the_field_is_required(self):
         """Submitting without it is a guaranteed 403, so the browser should say so first."""
-        html = ONBOARDING.read_text(encoding="utf-8")
+        html = english_source(ONBOARDING)
         field = html[html.index('id="setup_token"') - 200 : html.index('id="setup_token"') + 200]
         assert "required" in field
 
     def test_the_token_is_actually_sent(self):
         """A field the submit handler ignores is decoration."""
-        html = ONBOARDING.read_text(encoding="utf-8")
+        html = english_source(ONBOARDING)
         assert "formData.append('setup_token'" in html
 
     def test_the_page_says_where_to_find_the_token(self):
         """It is printed once, to the container logs. Nobody guesses that."""
-        html = ONBOARDING.read_text(encoding="utf-8")
+        html = english_source(ONBOARDING)
         assert "docker logs" in html
 
     def test_a_403_explains_itself_rather_than_saying_try_again(self):
@@ -53,7 +55,7 @@ class TestTheOwnerAccountCanBeCreatedFromTheDefaultLandingPage:
         Retrying with the same empty token fails identically and forever, which
         is precisely what a new user experienced.
         """
-        html = ONBOARDING.read_text(encoding="utf-8")
+        html = english_source(ONBOARDING)
         assert "resp.status === 403" in html
         assert "setup token" in html.lower()
 

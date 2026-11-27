@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import './i18n_stub.mjs';
 
 const app = readFileSync('app/static/js/app.js', 'utf8');
 const fleet = readFileSync('app/templates/fleet.html', 'utf8');

@@ -1,37 +1,36 @@
 {% extends "base.html" %}
 
-{% block title %}Settings - CashPilot{% endblock %}
+{% block title %}{{ t('settings.title') }}{% endblock %}
 {% block page %}settings{% endblock %}
-{% block topbar_title %}Settings{% endblock %}
+{% block topbar_title %}{{ t('settings.heading') }}{% endblock %}
 
 {% block content %}
 <div class="settings-layout">
-<nav class="settings-index" aria-label="Settings sections">
-  <a href="#set-collection">Earnings collection</a>
-  <a href="#credential-health-card" id="credential-health-link" hidden>Credential health</a>
-  <a href="#set-identities">Device ids</a>
-  <a href="#set-restore">Restore</a>
-  <a href="#set-env">Environment</a>
-  <a href="#set-about">About and updates</a>
-  <a href="/import">Import from another tool</a>
+<nav class="settings-index" aria-label="{{ t('settings.index.aria') }}">
+  <a href="#set-collection">{{ t('settings.collection.title') }}</a>
+  <a href="#credential-health-card" id="credential-health-link" hidden>{{ t('settings.health.title') }}</a>
+  <a href="#set-identities">{{ t('settings.identities.title') }}</a>
+  <a href="#set-restore">{{ t('settings.index.restore') }}</a>
+  <a href="#set-env">{{ t('settings.env.title') }}</a>
+  <a href="#set-about">{{ t('settings.about.title') }}</a>
+  <a href="/import">{{ t('settings.index.import') }}</a>
 </nav>
 <div class="settings-body">
 
 <!-- Earnings Collection -->
 <div class="card settings-section" id="set-collection">
-  <h3 class="settings-section-title">Earnings collection</h3>
+  <h3 class="settings-section-title">{{ t('settings.collection.title') }}</h3>
   <p class="settings-section-desc">
-    Credentials for automated earnings tracking. Only services with a built-in collector are shown.
-    You don't need to deploy containers through CashPilot &mdash; just add your credentials.
+    {{ t('settings.collection.desc') }}
   </p>
 
   <div id="collectors-container">
-    <p class="loading-line">Loading...</p>
+    <p class="loading-line">{{ t('settings.loading') }}</p>
   </div>
 
   <div class="settings-actions">
-    <button class="btn btn-primary" data-action="saveCollectorCredentials">Save credentials</button>
-    <button class="btn btn-secondary" data-action="testCollectors">Collect now</button>
+    <button class="btn btn-primary" data-action="saveCollectorCredentials">{{ t('settings.collection.save') }}</button>
+    <button class="btn btn-secondary" data-action="testCollectors">{{ t('settings.collection.collect_now') }}</button>
     <span id="collector-save-status" class="muted"></span>
   </div>
 </div>
@@ -42,77 +41,60 @@
      dashboard keeps showing the last balance it managed to read. This is the
      warning that arrives before that happens rather than after. -->
 <div class="card settings-section" id="credential-health-card" style="display:none;">
-  <h3 class="settings-section-title">Credential health</h3>
+  <h3 class="settings-section-title">{{ t('settings.health.title') }}</h3>
   <p class="settings-section-desc">
-    How old each stored credential is, and when it is expected to stop working.
-    Credential values are never shown here &mdash; only which one it is and how it is doing.
+    {{ t('settings.health.desc') }}
   </p>
   <div id="credential-health-body"></div>
 </div>
 
 <!-- Device ids (issue #740). Owner only, like the whole page and its API. -->
 <div class="card settings-section" id="set-identities">
-  <h3 class="settings-section-title">Device ids</h3>
+  <h3 class="settings-section-title">{{ t('settings.identities.title') }}</h3>
   <p class="settings-section-desc">
-    The device names and ids CashPilot deployed each service with, per box. They stay here after you remove
-    a service, so you can find the device at the provider or give a new box the same id. Each value is hidden
-    until you show or copy it, and every show is written to the audit log. Passwords, keys and wallet seeds
-    are never kept here. You can change the id a box runs, add an id CashPilot did not deploy with, and
-    download the whole list after you enter your password.
+    {{ t('settings.identities.desc') }}
   </p>
   <div id="identities-container">
-    <p class="loading-line">Loading...</p>
+    <p class="loading-line">{{ t('settings.loading') }}</p>
   </div>
   <div class="settings-actions">
-    <button type="button" class="btn btn-secondary btn-sm" data-action="openIdentityForm">Add an id</button>
-    <button type="button" class="btn btn-ghost btn-sm" data-action="exportIdentities">Download all</button>
+    <button type="button" class="btn btn-secondary btn-sm" data-action="openIdentityForm">{{ t('settings.identities.add') }}</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-action="exportIdentities">{{ t('settings.identities.download') }}</button>
   </div>
   <div id="identity-add"></div>
 </div>
 
 <!-- Restore from a backup (issue #741, docs/backup.md). Owner only, like the whole page. -->
 <div class="card settings-section" id="set-restore">
-  <h3 class="settings-section-title">Restore from a backup</h3>
+  <h3 class="settings-section-title">{{ t('settings.restore.title') }}</h3>
   <p class="settings-section-desc">
-    Put a node identity or wallet back from a <code>.cpbackup</code> file made with a passphrase: Mysterium,
-    ProxyBase or Anyone. The restore only creates a new container on a box that does not run the service, and
-    never writes over a running one. To replace a running identity, download its backup first, then remove the
-    service from that box on the dashboard and say yes when it asks to delete its data. Then restore here. Files
-    sealed to a key, Storj and Sia use the
-    <a href="https://geiserx.github.io/CashPilot/backup/#restore-a-backup-from-the-command-line" target="_blank" rel="noopener noreferrer">command line steps</a>.
+    {{ t('settings.restore.desc_html') }}
   </p>
-  <label class="form-label" for="restore-file">Backup file</label>
+  <label class="form-label" for="restore-file">{{ t('settings.restore.file') }}</label>
   <input type="file" id="restore-file" accept=".cpbackup,application/octet-stream">
-  <button type="button" class="btn btn-ghost btn-sm" data-action="checkRestoreFile">Check file</button>
+  <button type="button" class="btn btn-ghost btn-sm" data-action="checkRestoreFile">{{ t('settings.restore.check') }}</button>
   <div id="restore-preview"></div>
 </div>
 
 <!-- Environment Variables -->
 <div class="card settings-section" id="set-env">
-  <h3 class="settings-section-title">Environment</h3>
+  <h3 class="settings-section-title">{{ t('settings.env.title') }}</h3>
   <p class="settings-section-desc">
-    These are read from the environment when CashPilot starts. Variables set via Docker <code>-e</code> flags are shown locked; the rest can be stored here, but <strong>a stored value does not take effect</strong> &mdash; set it in your compose file or Unraid template and restart. Several of them cannot change at runtime at all: the session key signs logins already in use, the data directory is where the open database lives, and the fleet key is what enrolled workers already hold.
+    {{ t('settings.env.desc_html') }}
   </p>
   <div id="env-vars-container">
-    <p class="loading-line">Loading...</p>
+    <p class="loading-line">{{ t('settings.loading') }}</p>
   </div>
 </div>
 
 <!-- About & Updates (issue #342) -->
 <div class="card settings-section" id="set-about">
-  <h3 class="settings-section-title">About and updates</h3>
+  <h3 class="settings-section-title">{{ t('settings.about.title') }}</h3>
   <p class="settings-section-desc">
-    CashPilot checks GitHub for the latest release. <strong>Update</strong> runs the
-    documented <code>docker compose pull &amp;&amp; docker compose up -d</code> for you,
-    from a one-shot helper container &mdash; it installs the newest patch of the image
-    series your compose file pins. Moving to a newer series still means editing the
-    image tags: read
-    <a href="https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md" target="_blank" rel="noopener noreferrer">UPGRADING.md</a>
-    first, then update the UI host first and every worker after it. Installs not
-    managed by Compose get the manual commands instead.
+    {{ t('settings.about.desc_html') }}
   </p>
   <div id="update-card-container">
-    <p class="loading-line">Loading...</p>
+    <p class="loading-line">{{ t('settings.loading') }}</p>
   </div>
 </div>
 </div>

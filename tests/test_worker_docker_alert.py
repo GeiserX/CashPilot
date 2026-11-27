@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app import main
+from tests.i18n_source import english_source
 
 
 @pytest.fixture(autouse=True)
@@ -393,21 +394,19 @@ class TestEveryScreenShowsIt:
         assert js.count('href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>') == 2, (
             "the attention card and the bell"
         )
-        html = (Path(main.__file__).parent / "templates" / "fleet.html").read_text()
+        html = english_source("app/templates/fleet.html")
         assert main.DOCKER_LOST_DOC in html, "the fleet flag names where the lasting fix is"
 
     def test_fleet_page_flags_the_worker_at_once(self):
-        from pathlib import Path
 
-        html = (Path(main.__file__).parent / "templates" / "fleet.html").read_text()
+        html = english_source("app/templates/fleet.html")
         assert "sysInfo.docker_available === false" in html
         assert "'Docker unreachable')" in html
 
     def test_the_fleet_flag_links_the_fix_for_keyboard_and_touch(self):
         """A title shows to a mouse only; the fix and the doc must be a visible, focusable link."""
-        from pathlib import Path
 
-        html = (Path(main.__file__).parent / "templates" / "fleet.html").read_text()
+        html = english_source("app/templates/fleet.html")
         branch = html[html.index("        dockerLost\n") : html.index("nameCounts[String(w.name")]
         assert (
             f'<a class="flag-link" href="{main.DOCKER_LOST_DOC}" target="_blank" rel="noopener noreferrer">How to fix</a>'
