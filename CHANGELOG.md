@@ -10,6 +10,64 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [3.0.0] - 2026-11-27
+
+### CI
+
+- Point every GitHub Release at UPGRADING.md so a major names its upgrade steps (#852)
+
+### Features
+
+- Release 3.0, because the UI and workers must upgrade together (#857)
+- Show referral codes users must type by hand next to Sign Up (#859)
+- Tell joined Desktops this server can command them safely (#854)
+- Show what your hashrate should earn next to what the pool actually credited (#848)
+- Mine on Kryptex Pool with KRig, zero miner fee, signup through our referral link (#841)
+- Read Bitcoin and Kaspa payout addresses without a key (#839)
+- Mine Pearl and other GPU coins with SRBMiner-Multi, fee and power stated (#843)
+- Credit the heat a miner gives off when it replaces your heating (#842)
+- Mine any coin through unMineable, with our referral code set on every worker (#844)
+- Deploy to joined Desktops from the Fleet page, with each Desktop's own key (#819)
+- Read hashrate, watts and temperature from your Bitaxe and cgminer miners on the LAN (#840)
+- Download a tax-ready income CSV in your currency (#832)
+- Deploy a Monero CPU miner with its fee and power cost stated (#834)
+- Track 2Miners ETC balances (#837)
+- Track HeroMiners Kaspa balances (#833)
+- Show the tariff below which each machine pays for itself (#823)
+- Track SupportXMR balances (#828)
+- Track a mining pool balance from your payout address, starting with OCEAN (#826)
+- Give a catalog miner the GPU it declares, and keep every other container off it (#825)
+
+### Fixes
+
+- Stop promising a Honeygain $5 and an open-ended Pawns bonus that the providers do not pay (#861)
+- Lead the Catalog page with the services that pay the project again (#858)
+- Show every referral bonus and keep our codes on every sign-in link (#860)
+- Stop listing accountless mining pools as unresearched referrals (#856)
+- Protect proxied copies from unintended replacement (#846)
+- Tell an older UI to update instead of a bare 409 (#855)
+- Hand each miner its own GPU and notice when a grant is gone (#849)
+- Keep a refused balance read temporary instead of blaming the address (#851)
+- Make the XMRig CPU setting hold on virtual machines too (#850)
+- Make the XMRig CPU setting cap the threads it starts (#847)
+- Prevent Desktop from replacing a container without approval (#831)
+- Stop charging fixed-price workers for electricity (#838)
+- Stop counting pool-tracked miners as free electricity (#836)
+- Use address-only setup for OCEAN (#827)
+- Stop offering Sign Up for providers that have no account, so nobody hunts for a form that does not exist (#821)
+- Keep every satoshi when a coin balance drops (#822)
+
+### Maintenance
+
+- Restore the #838 title without rewriting history (#853)
+- Publish a verified KRig startup image for Pearl mining (#835)
+- Publish a CashPilot-built SRBMiner-Multi image for GPU mining (#829)
+- Publish a CashPilot-built XMRig image from a verified upstream release
+
+### Testing
+
+- Fix the red main suite by loading renderMiners in the Desktop tag test (#845)
+
 ## [2.10.2] - 2026-11-25
 
 ### Fixes
