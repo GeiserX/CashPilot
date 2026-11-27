@@ -9,21 +9,27 @@ from app import deps
 FLEET = Path(__file__).resolve().parents[1] / "app" / "templates" / "fleet.html"
 
 
+def _add_box_text() -> str:
+    """The first paragraph of Add a box, rendered with the real template globals."""
+    html = FLEET.read_text(encoding="utf-8")
+    start = html.index('<p class="add-worker-text">', html.index('id="add-worker"'))
+    return deps.templates.env.from_string(html[start : html.index("</p>", start)]).render()
+
+
 def test_the_worker_image_carries_this_uis_series(monkeypatch):
     monkeypatch.setenv("CASHPILOT_VERSION", "3.0.1")
     assert deps.templates.env.globals["worker_image"]() == "drumsergio/cashpilot-worker:3.0"
+    assert "Deploy <code>drumsergio/cashpilot-worker:3.0</code> on each server" in _add_box_text()
 
 
-def test_a_dev_build_never_names_an_unpinned_image(monkeypatch):
+def test_a_dev_build_names_no_tag_as_if_it_were_published(monkeypatch):
+    """No release version means no published tag: the page says to pick one."""
     monkeypatch.delenv("CASHPILOT_VERSION", raising=False)
-    image = deps.templates.env.globals["worker_image"]()
-    assert ":" in image and not image.endswith(":latest")
-
-
-def test_the_page_names_the_pinned_image():
-    html = FLEET.read_text(encoding="utf-8")
-    assert "<code>{{ worker_image() }}</code>" in html
-    assert "<code>drumsergio/cashpilot-worker</code>" not in html
+    assert deps.templates.env.globals["worker_image"]() is None
+    text = _add_box_text()
+    assert "This build has no" in text and "replaced by a published release" in text
+    assert "<code>drumsergio/cashpilot-worker</code>" not in text
+    assert ":latest" not in text
 
 
 def test_the_key_note_says_where_the_key_comes_from():

@@ -129,7 +129,9 @@
   <summary>Add a box</summary>
   <div class="add-worker-body">
     <p class="add-worker-text">
-      Deploy <code>{{ worker_image() }}</code> on each server, or install the
+      {% if worker_image() %}Deploy <code>{{ worker_image() }}</code> on each server,{% else %}This build has no
+      release version. Deploy <code>drumsergio/cashpilot-worker:X.Y</code> on each server, with
+      <code>X.Y</code> replaced by a published release such as <code>3.0</code>,{% endif %} or install the
       <a href="https://github.com/GeiserX/CashPilot-android">Android app</a> on your phone.
     </p>
     <p class="add-worker-text">
