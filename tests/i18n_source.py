@@ -6,10 +6,13 @@ Since the strings moved into app/i18n/en.json, that copy is no longer in the
 file: the file holds ``t('settings.env.desc_html')`` and en.json holds the
 words. ``english_source(path)`` gives those tests the file as a reader of the
 English page sees it: each ``{{ t('key', ...) }}`` and each ``t('key', ...)``
-call is replaced by the English message for that key: a call in code as a quoted
-string literal, a ``{{ t() }}`` or a ``${t()}`` slot as the bare text. Placeholders stay as
-they are in the message (``{name}``), so an assertion on fixed words still
-works, and one on a filled-in value has to render the page instead.
+call is replaced by the English message for that key: a call in code as the string
+literal it replaced, a ``{{ t() }}`` or a ``${t()}`` slot as the bare text. A
+placeholder that a JS call fills reads back as the expression that fills it
+(``t('k', { name: escapeHtml(n) })`` with ``Hi {name}`` gives ``Hi ${escapeHtml(n)}``,
+in backticks when the call is in code), so the text is the source as it was
+written before the move. Other placeholders, and plural branches, stay as they
+are in the message.
 """
 
 from __future__ import annotations
@@ -55,6 +58,62 @@ def _call_end(text: str, start: int) -> int:
     return len(text)
 
 
+def _split_top(text: str) -> list[str]:
+    """``text`` split at the commas that are not inside brackets or strings."""
+    parts: list[str] = []
+    depth = 0
+    quote = None
+    start = 0
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "'\"`":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+        i += 1
+    parts.append(text[start:])
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _params(args: str) -> dict[str, str]:
+    """The ``{ name: expr, short }`` object of a JS t() call, as name -> expression."""
+    args = args.strip()
+    if not (args.startswith("{") and args.endswith("}")):
+        return {}
+    params: dict[str, str] = {}
+    for part in _split_top(args[1:-1]):
+        name, colon, expr = part.partition(":")
+        name = name.strip().strip("'\"")
+        params[name] = english(expr.strip()) if colon else name
+    return params
+
+
+def _fill(message: str, params: dict[str, str]) -> str:
+    """``message`` with each ``{name}`` that ``params`` fills put back as ``${expr}``.
+
+    Inside ``{name, plural, ...}`` the ``#`` that stands for the count gets the same treatment.
+    """
+    for m in re.finditer(r"\{(\w+), plural,", message):
+        if m.group(1) not in params:
+            continue
+        end = _call_end(message, m.start())
+        body = message[m.start() : end].replace("#", f"${{{params[m.group(1)]}}}")
+        return _fill(message[: m.start()], params) + body + _fill(message[end:], params)
+    return re.sub(r"\{(\w+)\}", lambda m: f"${{{params[m.group(1)]}}}" if m.group(1) in params else m.group(0), message)
+
+
 def english(text: str) -> str:
     """``text`` with every t() call replaced by its English message."""
     en = _english()
@@ -75,14 +134,21 @@ def english(text: str) -> str:
         if found is jinja:
             close = text.find("}}", end)
             end = close + 2 if close >= 0 else end
-        elif out[-1].endswith("${") and text[end : end + 1] == "}":
+            out.append(message)
+            pos = end
+            continue
+        args = text[text.index(found.group(1), paren + 1) + len(key) + 2 : end - 1].strip().lstrip(",").strip()
+        params = _params(args)
+        message = _fill(message, params)
+        if out[-1].endswith("${") and text[end : end + 1] == "}":
             # `${t('key')}` inside a template literal: the English stands in for the whole slot.
             out[-1] = out[-1][:-2]
             end += 1
+        elif params:
+            # A call in code that fills placeholders reads back as the template literal it replaced.
+            message = f"`{message}`"
         else:
-            # A call in code reads back as the string literal it replaced, `flag('warn', 'Docker unreachable')`,
-            # and keeps the code that fills its placeholders in a comment after it.
-            args = text[text.index(found.group(1), paren + 1) + len(key) + 2 : end - 1].strip().lstrip(",").strip()
+            # A call in code reads back as the string literal it replaced, `flag('warn', 'Docker unreachable')`.
             message = f"'{message}'" + (f" /* {args} */" if args else "")
         out.append(message)
         pos = end
