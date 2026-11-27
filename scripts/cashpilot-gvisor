@@ -78,10 +78,14 @@ docker_runtimes() {
   docker info --format '{{range $name, $_ := .Runtimes}}{{$name}} {{end}}' 2>/dev/null
 }
 
+NO_ANSWER="Docker did not answer when asked which runtimes it has, so this script cannot tell whether ours are registered. Run the same command again once 'docker info' answers."
+
 has_runtime() {
-  # $1: a runtime name. True when Docker reports it now.
-  local name
-  for name in $(docker_runtimes); do
+  # $1: a runtime name. True when Docker reports it now. Stops the script when
+  # Docker does not answer: no answer is not the same as no runtime.
+  local list name
+  list=$(docker_runtimes) || fail "$NO_ANSWER"
+  for name in $list; do
     [ "$name" = "$1" ] && return 0
   done
   return 1
@@ -129,15 +133,23 @@ reload_docker() {
 
 wait_for() {
   # $1: "present" or "absent". Waits up to 20 s for every runtime of ours.
-  local want="$1" name ok
+  # A moment without an answer (Docker restarting) is waited out; 20 s of it stops the script.
+  local want="$1" name ok list answered=0
   for _ in $(seq 1 20); do
-    ok=1
-    for name in "${RUNTIMES[@]}"; do
-      if [ "$want" = present ]; then has_runtime "$name" || ok=0; else ! has_runtime "$name" || ok=0; fi
-    done
-    [ "$ok" = 1 ] && return 0
+    if list=$(docker_runtimes); then
+      answered=1
+      ok=1
+      for name in "${RUNTIMES[@]}"; do
+        case " $list " in
+          *" $name "*) [ "$want" = present ] || ok=0 ;;
+          *) [ "$want" = absent ] || ok=0 ;;
+        esac
+      done
+      [ "$ok" = 1 ] && return 0
+    fi
     sleep 1
   done
+  [ "$answered" = 1 ] || fail "$NO_ANSWER"
   return 1
 }
 
@@ -153,16 +165,19 @@ restart_docker() {
 }
 
 our_containers() {
-  # Containers whose runtime is one of ours, running or not.
-  local ids
-  ids=$(docker ps -aq)
+  # Containers whose runtime is one of ours, running or not. It runs in a
+  # command substitution, where set -e does not apply, so each failure is checked.
+  local ids rows name runtime
+  ids=$(docker ps -aq) || fail "Docker did not list its containers, so undo cannot tell whether one still uses our runtimes. Nothing was changed."
   [ -n "$ids" ] || return 0
   # shellcheck disable=SC2086
-  docker inspect --format '{{.Name}} {{.HostConfig.Runtime}}' $ids | while read -r name runtime; do
+  rows=$(docker inspect --format '{{.Name}} {{.HostConfig.Runtime}}' $ids) ||
+    fail "Docker did not describe its containers (one may have just been removed), so undo cannot tell whether one still uses our runtimes. Nothing was changed; run undo again."
+  while read -r name runtime; do
     for ours in "${RUNTIMES[@]}"; do
       if [ "$runtime" = "$ours" ]; then printf '%s\n' "${name#/}"; fi
     done
-  done
+  done <<<"$rows"
 }
 
 cmd_install() {
@@ -249,8 +264,10 @@ cmd_install() {
 restorable() {
   # True when undo puts daemon.json back from the backup: the file is as the
   # install left it, or the install stopped halfway, before it could record
-  # what it left.
-  if [ -f "$STATE/installed" ]; then
+  # what it left. Never after someone edited it while an undo ran.
+  if [ -f "$STATE/edited" ]; then
+    return 1
+  elif [ -f "$STATE/installed" ]; then
     [ -f "$STATE/daemon.json.ours" ] && [ -f "$DAEMON_JSON" ] && [ "$(sha256_of "$DAEMON_JSON")" = "$(cat "$STATE/daemon.json.ours")" ]
   else
     [ -f "$STATE/daemon.json.orig" ] || [ -f "$STATE/daemon.json.absent" ]
@@ -264,7 +281,7 @@ cmd_undo() {
     exit 0
   }
   local users
-  users=$(our_containers)
+  users=$(our_containers) || exit 1
   if [ -n "$users" ]; then
     fail "these containers still use our gVisor runtimes: $(printf '%s' "$users" | tr '\n' ' '). Switch them to Standard in the CashPilot UI (it redeploys them), then run undo again. Nothing was changed."
   fi
@@ -288,19 +305,38 @@ cmd_undo() {
   # key keeps every runtime Docker has, so restoring the backup alone is not enough.
   if [ -f "$DAEMON_JSON" ]; then
     if [ -n "$runsc" ]; then
+      local out
       for name in "${RUNTIMES[@]}"; do
-        "$runsc" uninstall -config_file "$DAEMON_JSON" -runtime "$name" >/dev/null 2>&1 || true
+        # A runtime the file no longer has is fine; any other failure (a file
+        # that is not valid JSON) stops here, before Docker is reloaded.
+        if ! out=$("$runsc" uninstall -config_file "$DAEMON_JSON" -runtime "$name" 2>&1); then
+          case "$out" in
+            *"runtime \"$name\" not found"*) ;;
+            *) fail "could not take $name out of $DAEMON_JSON: ${out##*Uninstall failed: }. Docker was not reloaded and the backup is kept. Fix the file (Docker could not load it either), then run undo again." ;;
+          esac
+        fi
       done
     elif grep -q cashpilot-gvisor "$DAEMON_JSON"; then
       fail "the gVisor binary is gone, so it cannot edit $DAEMON_JSON; remove the entries ${RUNTIMES[*]} from it by hand, then run undo again."
     fi
   fi
+  # What step 1 left. The restore below goes ahead only if the file still is so.
+  local after=""
+  if [ -f "$DAEMON_JSON" ]; then after=$(sha256_of "$DAEMON_JSON"); fi
   reload_docker
   if ! wait_for absent; then
     restart_docker
     wait_for absent || fail "Docker still reports a runtime of ours after the restart; see 'journalctl -u docker'."
   fi
   # Step 2: put the file back as it was. Docker's runtimes already match it.
+  if [ "$untouched" = 1 ]; then
+    local now=""
+    if [ -f "$DAEMON_JSON" ]; then now=$(sha256_of "$DAEMON_JSON"); fi
+    if [ "$now" != "$after" ]; then
+      : >"$STATE/edited"
+      fail "$DAEMON_JSON changed while undo ran, so it was left as it is. Our runtimes are out of Docker; the backup is kept in $STATE. Run undo again: it keeps your edit."
+    fi
+  fi
   if [ "$untouched" = 1 ]; then
     if [ -f "$STATE/daemon.json.absent" ]; then
       rm -f "$DAEMON_JSON"
