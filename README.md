@@ -14,13 +14,6 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 
 ![The CashPilot dashboard: the balance first, a short list of what needs attention (an offline box, a stopped container, a balance it could not read, a payout to confirm), which service runs on which box, earnings per day, and the deployed services table](https://raw.githubusercontent.com/GeiserX/CashPilot/main/docs/images/screenshots/dashboard.png)
 
-## New in 3.0
-
-- **A redeploy replaces only the container you approved.** The UI shows the container IDs it will replace. The worker refuses if a container changed in the meantime, and proxied copies get the same check ([what's new in 3.0](https://geiserx.github.io/CashPilot/whats-new-3.0/)).
-- **Mining, in beta.** The catalog runs XMRig, unMineable, SRBMiner-Multi and KRig. CashPilot reads pool balances from your public payout address, and Fleet shows Bitaxe and cgminer devices on your LAN ([mining](https://geiserx.github.io/CashPilot/mining/)).
-- **GPU grants, in beta.** A catalog service that declares a GPU gets that one device, and every other container that CashPilot runs is kept off the GPU ([GPU services](https://geiserx.github.io/CashPilot/gpu/)).
-- Coming from 2.x? Upgrade the UI first, then every worker. Read [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) before you change the image tags.
-
 ## Features
 
 - Starts a Docker service with one click from the catalog; no compose file to write, no YAML to edit.
@@ -28,11 +21,14 @@ CashPilot is a self-hosted platform that runs passive income services on your ow
 - Keeps every balance as history: <!-- n:collectors -->20<!-- /n --> providers are read by built-in collectors every hour, so "running but not earning" shows as a flat line.
 - Treats a balance drop as a probable payout and asks you to confirm it; nothing is counted as income by guess.
 - Runs a fleet: one worker per server, one dashboard for all of them, every figure per server and per service.
+- Replaces only the container you approved. Before a redeploy, the UI shows the container IDs it will replace, and the worker refuses if a container changed in the meantime. Proxied copies get the same check.
 - Runs extra copies of a deployed service through a SOCKS5, HTTP CONNECT or Tailscale exit-node proxy, so one box earns on several IPs; a dead proxy stops the copy instead of leaking ([proxied copies](https://geiserx.github.io/CashPilot/proxies/)).
 - Fences earners off your LAN, the host, your tailnet and cloud metadata by default on new installs; an upgraded install whose earners sit on Docker's default bridge turns it on with one button, and a network you name in `CASHPILOT_CONTAINER_NETWORK` keeps your own rules ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
 - Grades every provider from A to F on the same ten questions, each answer backed by a source you can open ([provider ratings](https://geiserx.github.io/CashPilot/ratings/)).
 - Imports your service logins from money4band, CashFactory or InternetIncome, and shows them for review before saving ([moving from money4band](https://geiserx.github.io/CashPilot/migrate/money4band/)).
 - Checks before you deploy whether the machine fits (residential IP, GPU, disk), and warns when a stored credential is about to expire.
+- Mines, in beta. The catalog runs XMRig, unMineable, SRBMiner-Multi and KRig. CashPilot reads pool balances from your public payout address, and Fleet shows Bitaxe and cgminer devices on your LAN ([mining](https://geiserx.github.io/CashPilot/mining/)).
+- Gives a GPU, in beta, only to a catalog service that declares one. Every other container that CashPilot runs is kept off the GPU ([GPU services](https://geiserx.github.io/CashPilot/gpu/)).
 - Shows, when you switch it on, what each earner does on the network: connections, ports, networks and countries, and alerts for mail ports and attempts on your LAN. It reads socket tables only, never traffic, and keeps addresses for 24 hours.
 - Encrypts stored credentials at rest; the worker reaches Docker only through a pinned socket proxy that refuses privileged containers and binds of `/` or of the socket (it narrows what a compromised worker can do; it is not yet a full root boundary), and the dashboard listens on loopback until you say otherwise.
 - Runs on x86-64 and ARM: Raspberry Pi, Apple Silicon and ARM cloud boxes.

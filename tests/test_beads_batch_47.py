@@ -27,7 +27,7 @@ Two things matter as much as the bound itself:
   Otherwise a patch release would lock out every mid-enrollment worker the
   moment it landed.
 * **It is visible.** The fleet page marks such a worker "enrollment incomplete",
-  and docs/upgrade-v1.md no longer claims an old worker "can no longer
+  and the v1.0.0 section of UPGRADING.md no longer claims an old worker "can no longer
   heartbeat" — that claim is exactly why nobody went looking.
 """
 
@@ -38,6 +38,16 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+
+def _v1_upgrade_section() -> str:
+    """The v1.0.0 section of UPGRADING.md, where the v1.0.0 upgrade steps live."""
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "UPGRADING.md").read_text(encoding="utf-8")
+    start = text.index("\n## v1.0.0:")
+    end = text.find("\n## ", start + 1)
+    return text[start : end if end != -1 else None]
 
 
 def _stamp(**delta) -> str:
@@ -330,15 +340,13 @@ class TestItIsVisibleAndDocumented:
 
     def test_the_upgrade_doc_no_longer_claims_old_workers_cannot_heartbeat(self):
         """That claim is why nobody went looking for the worker still on the shared key."""
-        from pathlib import Path
 
-        doc = (Path(__file__).resolve().parents[1] / "docs" / "upgrade-v1.md").read_text(encoding="utf-8")
+        doc = _v1_upgrade_section()
         assert "can no\n   longer heartbeat" not in doc
         assert "no longer heartbeat" not in doc
 
     def test_the_upgrade_doc_describes_what_really_happens(self):
-        from pathlib import Path
 
-        doc = (Path(__file__).resolve().parents[1] / "docs" / "upgrade-v1.md").read_text(encoding="utf-8")
+        doc = _v1_upgrade_section()
         assert "enrollment incomplete" in doc
         assert "read-only" in doc
