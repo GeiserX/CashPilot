@@ -246,6 +246,20 @@ CashPilot, or ask for a catalog entry.
 **What to do.** Use cashpilot-mcp 0.4.0 or later: older versions cannot
 redeploy a running service. Add the confirmation step to your scripts.
 
+### The read-only key and metrics now work from `.env`
+
+**Affects you if** you set `CASHPILOT_READONLY_API_KEY`,
+`CASHPILOT_METRICS_ENABLED` or `CASHPILOT_METRICS_TOKEN` in `.env`. Up to
+3.0.1 the compose files did not pass these to the UI container. So the
+read-only key got HTTP 401 on every call, also from cashpilot-mcp in
+read-only mode, and `/metrics` answered 404. The fleet compose file did not
+pass `CASHPILOT_ADMIN_API_KEY` either.
+
+**What to do.** Take the current compose file. Or add the missing lines to the
+`environment` list of `cashpilot-ui`, in the form
+`- CASHPILOT_READONLY_API_KEY=${CASHPILOT_READONLY_API_KEY:-}`. Then run
+`docker compose up -d`.
+
 ### A proxied copy may ask you to approve its containers once
 
 **Affects you if** you run copies through a proxy (Proxies on the Fleet page).

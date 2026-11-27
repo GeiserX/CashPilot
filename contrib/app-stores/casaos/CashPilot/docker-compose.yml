@@ -23,6 +23,9 @@ services:
     environment:
       TZ: $TZ
       CASHPILOT_SECRET_KEY: ""
+      CASHPILOT_READONLY_API_KEY: ""
+      CASHPILOT_METRICS_ENABLED: "false"
+      CASHPILOT_METRICS_TOKEN: ""
     networks:
       - cashpilot_owned
     init: true
@@ -38,6 +41,15 @@ services:
         - container: CASHPILOT_SECRET_KEY
           description:
             en_US: Signs login sessions. Leave empty and CashPilot generates one on first start and keeps it in /data.
+        - container: CASHPILOT_READONLY_API_KEY
+          description:
+            en_US: Optional key for reporting only, for Home Assistant, Grafana or cashpilot-mcp in read-only mode. It reads earnings and cannot change anything. Leave empty for none.
+        - container: CASHPILOT_METRICS_ENABLED
+          description:
+            en_US: Set to true to serve Prometheus metrics at /metrics.
+        - container: CASHPILOT_METRICS_TOKEN
+          description:
+            en_US: Optional token for /metrics. When set, a scraper must send Authorization Bearer with it. Leave empty for none.
       ports:
         - container: "8080"
           description:

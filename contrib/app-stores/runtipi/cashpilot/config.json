@@ -14,7 +14,26 @@
   "author": "GeiserX",
   "source": "https://github.com/GeiserX/CashPilot",
   "website": "https://geiserx.github.io/CashPilot/",
-  "form_fields": [],
+  "form_fields": [
+    {
+      "type": "password",
+      "label": "Read-only API key (optional, for Home Assistant, Grafana or cashpilot-mcp)",
+      "required": false,
+      "env_variable": "CASHPILOT_READONLY_API_KEY"
+    },
+    {
+      "type": "boolean",
+      "label": "Serve Prometheus metrics at /metrics",
+      "required": false,
+      "env_variable": "CASHPILOT_METRICS_ENABLED"
+    },
+    {
+      "type": "password",
+      "label": "Metrics token (optional, required as a Bearer token on /metrics)",
+      "required": false,
+      "env_variable": "CASHPILOT_METRICS_TOKEN"
+    }
+  ],
   "supported_architectures": ["arm64", "amd64"],
   "created_at": 1793750400000,
   "updated_at": 1795707945625,

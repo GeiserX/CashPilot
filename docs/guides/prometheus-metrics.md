@@ -4,16 +4,29 @@ CashPilot exposes rich Prometheus metrics when enabled, allowing you to monitor 
 
 ## Enabling Metrics
 
-Set the environment variable on the UI container:
+Add this line to the `.env` file next to your compose file, then run
+`docker compose up -d`:
 
-```yaml
-environment:
-  CASHPILOT_METRICS_ENABLED: "true"
+```bash
+CASHPILOT_METRICS_ENABLED=true
 ```
 
-Metrics are exposed at `GET /metrics` (unauthenticated, per Prometheus convention).
+The shipped compose files pass the setting to the UI container, so you do not
+edit the compose file. A compose file from 3.0.1 or older does not pass it: take
+the current one, or add `- CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}`
+to the `environment` list of `cashpilot-ui`.
 
-> **Security:** The `/metrics` endpoint exposes operational data (earnings balances, worker hostnames, container status). Keep it accessible only from trusted networks (LAN, Tailscale, VPN) or protect it behind a reverse proxy with IP allowlist/authentication.
+Metrics are served at `GET /metrics`. Without a token, anyone who can reach the
+port can read them.
+
+To require a token, also add `CASHPILOT_METRICS_TOKEN` to `.env`. A scraper
+must then send `Authorization: Bearer <token>`, and any other request gets 401:
+
+```bash
+CASHPILOT_METRICS_TOKEN=a-long-random-string
+```
+
+> **Security:** The `/metrics` endpoint exposes operational data (earnings balances, worker hostnames, container status). Set a token, and keep the port reachable only from trusted networks (LAN, Tailscale, VPN) or behind a reverse proxy.
 
 ## Scrape Configuration
 
@@ -25,6 +38,9 @@ scrape_configs:
     scrape_interval: 60s
     static_configs:
       - targets: ["cashpilot-ui:8080"]
+    # Only if you set CASHPILOT_METRICS_TOKEN:
+    authorization:
+      credentials: a-long-random-string
 ```
 
 ## Available Metrics
