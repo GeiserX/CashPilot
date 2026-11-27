@@ -8334,7 +8334,7 @@ async def _proxy_or_404(proxy_id: int) -> dict[str, Any]:
     return proxy
 
 
-_NO_PROXIED_COPY = re.compile(r"No proxied copy of [a-z0-9][a-z0-9_-]* through proxy \d+ on this worker")
+_PROXIED_COPY_PATH = re.compile(r"/api/proxied/([^/?]+)/(\d+)(?:[/?]|$)")
 
 
 def _mask(text: Any, secrets_: list[str]) -> Any:
@@ -8366,9 +8366,11 @@ async def _proxy_worker_call(
         # refusal would stop reading as one (_copy_removal_pending).
         if not getattr(exc, "worker_text", False):
             raise
-        # The worker's answer for a copy that is gone names only our slug and
-        # proxy id. Masked, a short login such as "copy" would hide that it is gone.
-        if isinstance(exc.detail, str) and _NO_PROXIED_COPY.fullmatch(exc.detail):
+        # The worker's answer for a copy that is gone repeats the slug and proxy
+        # id this call asked about, our own words. Masked, a short login such as
+        # "copy" would hide that it is gone. Any other text is masked.
+        asked = _PROXIED_COPY_PATH.match(path)
+        if asked and exc.detail == "No proxied copy of {} through proxy {} on this worker".format(*asked.groups()):
             raise
         if _worker_error(exc) in ("deploy_target_changed", "confirm_proxy_start_targets", "proxied_copy_stopped"):
             raise  # _safe_worker_detail checked the fields and supplies the message.

@@ -3332,6 +3332,7 @@ const CP = (() => {
           result = await api(retry, { method: 'DELETE' });
         } catch (again) {
           if (again.code !== 'critical_volume') throw again;
+          if (_desktopKeepsCriticalData(slug, refused, name)) return;
           const reviewed = confirmCriticalVolumes(slug, name, again.refusal);
           if (!reviewed) return;
           result = await api(`${retry}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });

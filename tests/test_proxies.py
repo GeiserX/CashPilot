@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import re
+import urllib.parse
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1763,8 +1764,17 @@ class TestStorageAndRoutes:
     def test_a_url_encoded_secret_is_masked_too(self):
         # A password put into a proxy URL comes back quoted; the worker's own redact masks that form as well.
         definition = {"password": "p@ss!word99"}
-        answer = _worker_answer(409, {"detail": "refused socks5://u:p%40ss%21word99@h"})
+        quoted = urllib.parse.quote(definition["password"], safe="")
+        answer = _worker_answer(409, {"detail": f"refused socks5://u:{quoted}@h"})
         assert _proxy_call_error(definition, answer).detail == "refused socks5://u:***@h"
+
+    def test_a_no_copy_answer_about_another_copy_is_masked(self):
+        # Only the answer for the copy this call asked about is our own words.
+        definition = {"password": "p4ssword99"}
+        answer = _worker_answer(404, {"detail": "No proxied copy of p4ssword99 through proxy 1 on this worker"})
+        with _worker_replies(answer), pytest.raises(HTTPException) as err:
+            asyncio.run(main._proxy_worker_call(7, "POST", "/api/proxied/a/1/stop", definition))
+        assert err.value.detail == "No proxied copy of *** through proxy 1 on this worker"
 
     def test_a_secret_in_a_list_of_the_refusal_is_masked(self):
         body = {"detail": {"error": "critical_volume", "message": "m", "blocked": [{"volume": f"v-{PASSWORD}"}]}}

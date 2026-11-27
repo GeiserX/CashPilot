@@ -27,7 +27,7 @@ const cut = (head) => {
   if (from < 0) { console.log(JSON.stringify({ error: `${head} moved` })); process.exit(0); }
   return src.slice(from, src.indexOf('\n  }\n', from) + 4);
 };
-const { deviceType } = JSON.parse(process.argv[process.argv.length - 1]);
+const { deviceType, first } = JSON.parse(process.argv[process.argv.length - 1]);
 const calls = [];
 const toasts = [];
 const env = {
@@ -39,7 +39,10 @@ const env = {
   confirmCriticalVolumes: () => { calls.push('review'); return 'critical_set='; },
   api: async (path) => {
     calls.push(path);
-    const err = new Error('critical'); err.code = 'critical_volume'; err.refusal = { blocked: [], critical_set: '' };
+    // The first answer may be a partial restore's refusal; every other one is critical_volume.
+    const code = first && calls.length === 1 ? first : 'critical_volume';
+    const err = new Error(code); err.code = code;
+    err.refusal = code === 'restore_unfinished' ? { worker_id: 5, worker_name: 'mac' } : { blocked: [], critical_set: '' };
     throw err;
   },
 };
@@ -53,12 +56,12 @@ const removeService = new Function(...Object.keys(env), `${body}; return removeS
 """
 
 
-def _remove(device_type: str | None) -> dict:
+def _remove(device_type: str | None, first: str | None = None) -> dict:
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(APP_JS), json.dumps({"deviceType": device_type})],
+        [node, "-e", _HARNESS, str(APP_JS), json.dumps({"deviceType": device_type, "first": first})],
         capture_output=True,
         text=True,
         check=True,
@@ -79,5 +82,20 @@ def test_a_desktop_is_not_asked_for_a_delete_it_refuses():
 
 def test_a_server_box_still_reviews_the_volumes_and_asks():
     result = _remove(None)
+    assert "review" in result["calls"]
+    assert any("allow_delete_critical=true" in c for c in result["calls"])
+
+
+def test_a_desktop_is_not_asked_when_a_partial_restore_is_deleted_either():
+    result = _remove("desktop", first="restore_unfinished")
+    assert result["calls"][1].endswith("&delete_volumes=true&only_if_restore_unfinished=true")
+    assert "review" not in result["calls"]
+    assert not any("allow_delete_critical=true" in c for c in result["calls"])
+    [(message, kind)] = result["toasts"]
+    assert kind == "error" and "only on that computer" in message
+
+
+def test_a_server_box_still_reviews_the_partial_restore_delete():
+    result = _remove(None, first="restore_unfinished")
     assert "review" in result["calls"]
     assert any("allow_delete_critical=true" in c for c in result["calls"])
