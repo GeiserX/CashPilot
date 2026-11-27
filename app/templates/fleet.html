@@ -554,6 +554,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             // The fix as a link anyone can reach: a title shows to a mouse only.
             + ' <a class="flag-link" href="https://geiserx.github.io/CashPilot/faq/#worker-lost-docker" target="_blank" rel="noopener noreferrer">How to fix</a>'
           : '',
+        w.url_refused ? flag('warn', esc(w.url_refused), 'plain HTTP refused') : '',
         nameCounts[String(w.name || '')] > 1 ? flag('warn', 'More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.', 'duplicate name') : '',
         w.enrollment === 'incomplete'
           ? flag('warn', 'This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key: an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.', 'enrollment incomplete')
@@ -578,6 +579,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
             <span class="cell cell-${isOnline ? 'ok' : 'fail'}" aria-label="${isOnline ? 'online' : 'not reporting'}"></span>
             <strong class="w-name-text">${brk(w.name)}</strong>${flags}
             <div class="cell-sub"><code class="worker-id" title="This worker's client_id, the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${brk(w.client_id || ('#' + w.id))}</code></div>
+            ${w.url_refused ? `<div class="cell-sub text-warn">${esc(w.url_refused)}</div>` : ''}
           </td>
           <td class="w-sys" data-label="System">
             <span>${brk(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + brk(sysInfo.os_version) : ''}</span>

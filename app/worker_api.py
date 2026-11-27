@@ -44,6 +44,7 @@ from pydantic import BaseModel, SecretStr, StrictBool, ValidationError
 
 from app import (
     activity,
+    cleartext,
     egress,
     fleet_key,
     gpu,
@@ -169,6 +170,9 @@ _DOCKER_UNHEALTHY_AFTER = 10 * 60
 # The name-resolution hint is logged ONCE per outage, not every cycle. A warning
 # repeated every 60 seconds for 42 hours is precisely how the last one was missed.
 _link_hint_logged = False
+# The refusal of a plain-http CASHPILOT_UI_URL to a public host is logged once:
+# it is a setting, so it does not change until the container is recreated.
+_ui_url_refusal_logged = False
 
 # Per-worker fleet key. On first contact the UI enrolls this worker and hands back
 # a key unique to us, which we persist here (in our own private /data, never the
@@ -718,10 +722,40 @@ def _log_link_failure_hint(exc: BaseException) -> None:
     _link_hint_logged = True
 
 
+def _ui_url_refusal() -> str | None:
+    """Why this worker must not send its key to CASHPILOT_UI_URL, or None when it may.
+
+    The heartbeat carries the fleet key, or this worker's own key, as a bearer.
+    Over plain http to a public host anyone on the path reads it, and that key
+    deploys containers here. The rule is app/cleartext.py, the same one Desktop
+    and Android apply to their server URL.
+    """
+    if not UI_URL or cleartext.bearer_allowed(UI_URL):
+        return None
+    return (
+        f"CASHPILOT_UI_URL is plain http:// to {cleartext.host_of(UI_URL)}, which is not a private address, "
+        "so this worker sends the UI nothing: its key would cross the internet unencrypted. "
+        "Set CASHPILOT_UI_URL to an https:// address, or to an http:// address on your own network: "
+        f"{cleartext.PRIVATE_HOSTS_TEXT}. Then recreate this container."
+    )
+
+
 async def _send_heartbeat() -> None:
     """Send a single heartbeat to the UI."""
     global _ui_connected, _last_heartbeat, _last_error, _consecutive_auth_failures
     global _consecutive_heartbeat_failures, _link_hint_logged, _last_heartbeat_ok
+    global _ui_url_refusal_logged
+
+    refusal = _ui_url_refusal()
+    if refusal:
+        # Nothing is built or sent. The status page and /api/health show why.
+        _ui_connected = False
+        _last_error = refusal
+        _consecutive_heartbeat_failures += 1
+        if not _ui_url_refusal_logged:
+            logger.error(refusal)
+            _ui_url_refusal_logged = True
+        return
 
     containers = []
     listed = False
@@ -3590,7 +3624,11 @@ async def api_health(response: Response) -> dict[str, Any]:
     body: dict[str, Any] = {"status": "ok", "worker": WORKER_NAME}
     reasons: list[str] = []
     success_age = time.monotonic() - _last_heartbeat_ok
-    if UI_URL and (
+    if UI_URL and (refusal := _ui_url_refusal()):
+        # A setting, not an outage: degraded at once, with the fix.
+        reasons.append("not reporting to the UI")
+        body["error"] = refusal
+    elif UI_URL and (
         _consecutive_heartbeat_failures >= _HEARTBEAT_FAILURES_UNHEALTHY_AFTER or success_age > _HEARTBEAT_STALE_AFTER
     ):
         reasons.append("not reporting to the UI")

@@ -188,6 +188,29 @@ The fleet key is **never sent to the browser on page load**. The fleet dashboard
 !!! warning "Security"
     Keys grant container-management access: treat them as sensitive credentials, and never expose worker APIs (port 8081) to the public internet. See the [v1.0.0 upgrade steps](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#v100-per-worker-fleet-keys) if you are moving an existing fleet.
 
+### Plain HTTP only on your own network
+
+Every heartbeat carries the worker's key, and every command from the UI carries it too. That key deploys containers on the worker. So neither side sends it over plain `http://` to an address that could be on the public internet:
+
+- The worker sends nothing to a `CASHPILOT_UI_URL` that is `http://` to a public host.
+- The UI sends no command to a worker whose `CASHPILOT_WORKER_URL` is `http://` to a public host.
+
+`https://` works with any host. Plain `http://` works only with a host that cannot be on the public internet:
+
+- `localhost`, or an IP in `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` or `100.64.0.0/10` (Tailscale)
+- IPv6 `::1`, `fc00::/7` or `fe80::/10`
+- a single-label name, such as `cashpilot-ui` or `nas`
+- a name under `.local`, `.lan`, `.home.arpa`, `.internal` or `.ts.net`
+
+CashPilot Desktop and the Android app use the same list. The check reads the host as written in the URL and never asks DNS, so a public name such as `nas.example.com` counts as public even when your router resolves it to a LAN address. Use the box's IP or one of the names above instead.
+
+When a URL is refused, CashPilot says why and what to change:
+
+- **A refused `CASHPILOT_UI_URL`.** The worker logs an error once at start, its status page on port 8081 shows the reason, and `/api/health` answers `503` with the reason in `error`, so Docker marks the container unhealthy. The worker does not appear in the UI until you fix the URL and recreate the container.
+- **A refused worker URL.** The worker still reports in. On the Fleet page its row has a **plain HTTP refused** flag with the reason, and every deploy, start, stop or logs request to it fails with the same message.
+
+To fix it, give the box an `https://` address (a reverse proxy with a certificate in front of it), or reach it through its LAN or Tailscale address.
+
 ## Fleet Dashboard
 
 The **Fleet** page lists every box:
@@ -306,10 +329,10 @@ Notifications fire **only the first time** a particular failure appears: a colle
 
 | Variable | Required | Default | Description |
 |----------|:--------:|---------|-------------|
-| `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.1.10:8080`). A remote worker uses the UI's published host port, so `:8088` if the UI host sets `CASHPILOT_UI_PORT=8088`. A worker beside the UI keeps `http://cashpilot-ui:8080`, the container port on the compose network |
+| `CASHPILOT_UI_URL` | Yes | -- | URL of the CashPilot UI (e.g. `http://192.168.1.10:8080`). A remote worker uses the UI's published host port, so `:8088` if the UI host sets `CASHPILOT_UI_PORT=8088`. A worker beside the UI keeps `http://cashpilot-ui:8080`, the container port on the compose network. Plain `http://` works only to a private or Tailscale host; see [Plain HTTP only on your own network](#plain-http-only-on-your-own-network) |
 | `CASHPILOT_API_KEY` | Yes | -- | Must match the UI's API key |
 | `CASHPILOT_WORKER_NAME` | No | *(hostname)* | Display name for this worker. Recommended on Docker workers: without it the name is the container hostname, so it changes on every recreate and the dashboard label churns -- see [Worker identity](#worker-identity) |
-| `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address |
+| `CASHPILOT_WORKER_URL` | No | *(auto-detected)* | URL the UI uses to reach this worker. Set explicitly for remote/cross-host workers -- auto-detection can report an unreachable address. The UI sends no command to a plain `http://` URL on a public host; see [Plain HTTP only on your own network](#plain-http-only-on-your-own-network) |
 | `CASHPILOT_PORT` | No | `8081` | Port the worker **advertises** to the UI. It does *not* change the listen port, which is fixed by the image's `CMD`; see the [configuration reference](configuration.md) |
 | `CASHPILOT_ALLOWED_VOLUME_ROOTS` | No | *(none)* | Colon-separated host directories this worker may bind-mount despite sitting under a blocked system root -- see [Volume mounts](#volume-mounts) |
 | `CASHPILOT_PIDS_LIMIT` | No | `512` | Max processes a deployed service container may create. Raise only if a service legitimately needs more. An unparseable or non-positive value falls back to the default |
@@ -419,8 +442,10 @@ worker enrolled before `/data/.worker_id` existed a durable identity to migrate 
 
 The UI validates every worker URL before contacting it (the URL is fetched with the fleet bearer token attached, so an unchecked URL is an SSRF risk). Cloud-metadata addresses and loopback/link-local ranges are **always blocked**, and resolved hostnames are re-checked against the same rules to guard against DNS rebinding.
 
-- **`permissive`** (default): LAN (RFC1918) and Tailscale (CGNAT `100.64.0.0/10`) workers keep working with no configuration. Only the always-blocked ranges are rejected.
+- **`permissive`** (default): LAN (RFC1918) and Tailscale (CGNAT `100.64.0.0/10`) workers keep working with no configuration. Only the always-blocked ranges are rejected. A worker on a public address must use `https://`.
 - **`strict`**: workers must match `CASHPILOT_WORKER_ALLOWED_HOSTS`. Entries are either CIDRs (`192.168.1.0/24`) or hostname suffixes (`*.ts.net`).
 
 !!! important "Tailscale in strict mode"
     If you use Tailscale and enable `strict` mode, include `100.64.0.0/10` in `CASHPILOT_WORKER_ALLOWED_HOSTS` (and/or `*.ts.net` for MagicDNS names). Without it, Tailscale workers are rejected.
+
+Both policies refuse plain `http://` to a public host, even one on the allowlist ([Plain HTTP only on your own network](#plain-http-only-on-your-own-network)).
