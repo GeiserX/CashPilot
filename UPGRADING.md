@@ -1227,7 +1227,8 @@ enrolled.
    returns it to the worker **once**.
 3. The worker persists the key under its own private `/data/.worker_key` and
    uses it from then on. The UI addresses that worker with the same key.
-4. Once enrolled, the shared key **no longer works** for that worker.
+4. Once a heartbeat signed with its own key reaches the UI, the shared key
+   **no longer works** for that worker. The worker sends that heartbeat at once.
 
 You don't handle keys by hand: this all happens on the next heartbeat.
 
