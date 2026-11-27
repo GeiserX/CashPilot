@@ -3313,7 +3313,7 @@ const CP = (() => {
         // refusal reported, and the approval binds them: the box deletes
         // those or nothing, never one mounted since.
         if (withData && err.code === 'critical_volume') {
-          if (_desktopKeepsCriticalData(slug, workerId, boxName || `worker #${workerId}`)) return;
+          if (_desktopKeepsCriticalData(slug, workerId, boxName || `worker #${workerId}`, leftover === 'leftover')) return;
           const reviewed = confirmCriticalVolumes(slug, boxName || `worker #${workerId}`, err.refusal);
           if (!reviewed) return;
           return removed(await api(path([...params, 'allow_delete_critical=true', reviewed]), { method: 'DELETE', body: {} }));

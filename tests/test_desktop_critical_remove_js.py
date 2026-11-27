@@ -27,7 +27,7 @@ const cut = (head) => {
   if (from < 0) { console.log(JSON.stringify({ error: `${head} moved` })); process.exit(0); }
   return src.slice(from, src.indexOf('\n  }\n', from) + 4);
 };
-const { deviceType, first } = JSON.parse(process.argv[process.argv.length - 1]);
+const { deviceType, first, leftover } = JSON.parse(process.argv[process.argv.length - 1]);
 const calls = [];
 const toasts = [];
 const env = {
@@ -50,18 +50,24 @@ const body = [cut('  function isDesktopWorker('), cut('  function _desktopKeepsC
   cut('  async function removeService(')].join('\n');
 const removeService = new Function(...Object.keys(env), `${body}; return removeService;`)(...Object.values(env));
 (async () => {
-  await removeService('proxybase', '5', 'mac', undefined);
+  await removeService('proxybase', '5', 'mac', leftover);
   console.log(JSON.stringify({ calls, toasts }));
 })();
 """
 
 
-def _remove(device_type: str | None, first: str | None = None) -> dict:
+def _remove(device_type: str | None, first: str | None = None, leftover: str | None = None) -> dict:
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(APP_JS), json.dumps({"deviceType": device_type, "first": first})],
+        [
+            node,
+            "-e",
+            _HARNESS,
+            str(APP_JS),
+            json.dumps({"deviceType": device_type, "first": first, "leftover": leftover}),
+        ],
         capture_output=True,
         text=True,
         check=True,
@@ -101,3 +107,14 @@ def test_a_server_box_still_reviews_the_partial_restore_delete():
     result = _remove(None, first="restore_unfinished")
     assert "review" in result["calls"]
     assert any("allow_delete_critical=true" in c for c in result["calls"])
+
+
+def test_a_desktop_partial_restore_row_gets_the_partial_restore_message():
+    # The row of a partial restore sends only_if_restore_unfinished at once, so
+    # its first critical_volume refusal is the partial restore's.
+    result = _remove("desktop", leftover="leftover")
+    assert result["calls"] == [
+        "/api/services/proxybase?worker_id=5&delete_volumes=true&only_if_restore_unfinished=true"
+    ]
+    [(message, kind)] = result["toasts"]
+    assert kind == "error" and "partial restore" in message and "press Remove again" not in message
