@@ -1851,13 +1851,10 @@ const CP = (() => {
     // Deployments CashPilot records that no box runs (the server's "missing"
     // check, past its grace period). Forget drops only CashPilot's record, so it
     // is the way out when the container was removed on purpose.
-    try {
-      // The bell poll passes the alerts it just read, so its redraw cannot fail on a second fetch.
-      const read = knownAlerts ? _attentionLatestRead : ++_attentionReads;
-      const bell = knownAlerts ? { alerts: knownAlerts } : await api('/api/collector-alerts');
-      alertsUsed = attentionAlertsKey(bell.alerts);
-      alertsRead = read;
-      for (const a of (bell.alerts || [])) {
+    // A function, so the write below can swap in newer alerts the bell read.
+    const alertsAt = items.length;
+    function pushAlertRows(alerts) {
+      for (const a of (alerts || [])) {
         // A proxied copy or its tunnel gone or down: the per-service rows
         // never list proxied copies, so without this the list says nothing is wrong.
         if (a.kind === 'proxied') {
@@ -1884,10 +1881,19 @@ const CP = (() => {
         }
         items.push({ level: 'fail', tag: a.everywhere === false ? 'Gone from a box' : a.everywhere ? 'Runs nowhere' : 'Missing', what: a.name || (svc && svc.name) || a.platform, why: escapeHtml(a.error), actions });
       }
+    }
+    try {
+      // The bell poll passes the alerts it just read, so its redraw cannot fail on a second fetch.
+      const read = knownAlerts ? _attentionLatestRead : ++_attentionReads;
+      const bell = knownAlerts ? { alerts: knownAlerts } : await api('/api/collector-alerts');
+      alertsUsed = attentionAlertsKey(bell.alerts);
+      alertsRead = read;
+      pushAlertRows(bell.alerts);
     } catch (err) {
       console.warn('Could not load the missing-deployment alerts:', err);
       items.push({ level: 'warn', tag: 'Unknown', what: 'Deployments', why: 'CashPilot could not check whether every recorded deployment still runs. Reload the page to try again.' });
     }
+    const alertsEnd = items.length;
 
     if (_isOwner) {
       let health = [];
@@ -1916,6 +1922,16 @@ const CP = (() => {
       if (seq !== _attentionSeq) return;
       _attentionDrawSeq++;
     }
+    // The bell read newer alerts while this draw waited (or this draw could not
+    // read them): write those with this draw's services, so the list never goes
+    // back to older alerts, not even until a second draw answers.
+    if (_attentionLatestAlerts && _attentionLatestRead > (alertsRead || 0)) {
+      const rest = items.splice(alertsAt).slice(alertsEnd - alertsAt);
+      pushAlertRows(_attentionLatestAlerts);
+      items.push(...rest);
+      alertsUsed = attentionAlertsKey(_attentionLatestAlerts);
+      alertsRead = _attentionLatestRead;
+    }
     _attentionDrawnKey = alertsUsed;
     _attentionDrawnRead = alertsRead || 0;
     const order = { fail: 0, warn: 1, unknown: 2 };
@@ -1931,10 +1947,6 @@ const CP = (() => {
     // problem to count: nothing is known to be wrong.
     _attentionCount.problems = items.filter(i => i.level !== 'unknown').length;
     updateAttentionSummary(services, workers);
-    // The bell saw other alerts than the ones this services response read
-    // (it polled while this one waited, or a redraw it ended had newer ones):
-    // draw again with what the bell saw last, unless this read is the newer.
-    if (seq !== undefined && _attentionLatestAlerts) refreshAttentionOnAlertChange(_attentionLatestAlerts, _attentionLatestRead);
   }
 
   // The copies "Stop on all servers" would act on: CashPilot's own containers
