@@ -26,12 +26,18 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 FLEET = ROOT / "app" / "templates" / "fleet.html"
 
 
-def fleet_html() -> str:
+def fleet_html_raw() -> str:
     return FLEET.read_text(encoding="utf-8")
+
+
+def fleet_html() -> str:
+    return english_source(FLEET)
 
 
 def without_comments(text: str) -> str:
@@ -121,7 +127,7 @@ class TestTheRemovalPromptNamesWhichOne:
 
     def test_the_prompt_shows_it(self):
         source = without_comments(fleet_html())
-        assert "Id: ${clientId}" in source
+        assert "t('fleet.remove.id', { id: clientId })" in fleet_html_raw() and "Id: {id}" in source
 
     def test_the_existing_warning_survives(self):
         """The control: the re-enrolment explanation must not be lost."""

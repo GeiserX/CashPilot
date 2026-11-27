@@ -22,12 +22,14 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 FLEET = ROOT / "app" / "templates" / "fleet.html"
 
 
 def fleet_html() -> str:
-    return FLEET.read_text(encoding="utf-8")
+    return english_source(FLEET)
 
 
 def without_comments(text: str) -> str:

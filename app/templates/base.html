@@ -44,7 +44,7 @@
   <!-- One bar, no sidebar: the page is the fleet, the chrome stays out of its way. -->
   <div class="main-content">
     <header class="topbar">
-      <a href="/" class="topbar-brand" aria-label="CashPilot home">
+      <a href="/" class="topbar-brand" aria-label="{{ t('base.home') }}">
       <svg width="20" height="20" viewBox="0 0 256 256" role="img" aria-label="CashPilot">
         <defs>
           <linearGradient id="cpSun" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -73,59 +73,59 @@
       </svg>
         <span>CashPilot</span>
       </a>
-      <nav class="topnav" aria-label="Main">
-        <a href="/" class="sidebar-link {% if active_page == 'dashboard' %}active{% endif %}" data-key="d">Dashboard</a>
-        <a href="/fleet" class="sidebar-link {% if active_page == 'fleet' %}active{% endif %}" data-key="f">Fleet</a>
-        <a href="/catalog" class="sidebar-link {% if active_page == 'catalog' %}active{% endif %}" data-key="c">Catalog</a>
+      <nav class="topnav" aria-label="{{ t('base.nav.aria') }}">
+        <a href="/" class="sidebar-link {% if active_page == 'dashboard' %}active{% endif %}" data-key="d">{{ t('base.nav.dashboard') }}</a>
+        <a href="/fleet" class="sidebar-link {% if active_page == 'fleet' %}active{% endif %}" data-key="f">{{ t('base.nav.fleet') }}</a>
+        <a href="/catalog" class="sidebar-link {% if active_page == 'catalog' %}active{% endif %}" data-key="c">{{ t('base.nav.catalog') }}</a>
         {% if user and user.r == 'owner' %}
         <!-- Owner-only, matching /payouts and /api/payout-registry. This view maps
              one person to all of their wallets at once. -->
-        <a href="/payouts" class="sidebar-link {% if active_page == 'payouts' %}active{% endif %}" data-key="p">Payouts</a>
-        <a href="/activity" class="sidebar-link {% if active_page == 'activity' %}active{% endif %}" data-key="n">Activity</a>
-        <a href="/settings" class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" data-key="s">Settings</a>
+        <a href="/payouts" class="sidebar-link {% if active_page == 'payouts' %}active{% endif %}" data-key="p">{{ t('base.nav.payouts') }}</a>
+        <a href="/activity" class="sidebar-link {% if active_page == 'activity' %}active{% endif %}" data-key="n">{{ t('base.nav.activity') }}</a>
+        <a href="/settings" class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" data-key="s">{{ t('base.nav.settings') }}</a>
         {% elif user %}
         <!-- Only the owner can deploy (/api/deploy), so the others get no Add
              button. They still reach the wizard's categories and sign-up links. -->
-        <a href="/setup" class="sidebar-link {% if active_page == 'setup' %}active{% endif %}" data-key="a">Setup</a>
+        <a href="/setup" class="sidebar-link {% if active_page == 'setup' %}active{% endif %}" data-key="a">{{ t('base.nav.setup') }}</a>
         {% endif %}
       </nav>
       <div class="topbar-right">
         {% if user and user.r == 'owner' %}
         <!-- The one thing in the bar you DO rather than look at, so it is a
              button, not the last tab. -->
-        <a href="/setup" class="btn btn-primary btn-sm topbar-add{% if active_page == 'setup' %} active{% endif %}" data-key="a" aria-label="Add service"{% if active_page == 'setup' %} aria-current="page"{% endif %}><span aria-hidden="true">+</span><span class="topbar-add-label" aria-hidden="true"> Add service</span></a>
+        <a href="/setup" class="btn btn-primary btn-sm topbar-add{% if active_page == 'setup' %} active{% endif %}" data-key="a" aria-label="{{ t('base.add_service') }}"{% if active_page == 'setup' %} aria-current="page"{% endif %}><span aria-hidden="true">+</span><span class="topbar-add-label" aria-hidden="true"> {{ t('base.add_service') }}</span></a>
         {% endif %}
-        <div class="topbar-earnings" title="Total balance across every service">
+        <div class="topbar-earnings" title="{{ t('base.total.title') }}">
           <span id="topbar-total">&mdash;</span>
-          <select id="topbar-currency" class="topbar-currency-select" title="Display currency"></select>
+          <select id="topbar-currency" class="topbar-currency-select" title="{{ t('base.currency.title') }}"></select>
         </div>
         <div class="topbar-notifications" id="topbar-notifications">
-          <button class="topbar-icon-btn topbar-notify-btn" id="notify-toggle" title="Collector alerts" aria-label="Collector alerts">
+          <button class="topbar-icon-btn topbar-notify-btn" id="notify-toggle" title="{{ t('base.alerts') }}" aria-label="{{ t('base.alerts') }}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
             </svg>
             <span class="notify-badge" id="notify-badge" style="display:none;">0</span>
           </button>
           <div class="notify-dropdown" id="notify-dropdown">
-            <div class="notify-header">Collector Alerts</div>
+            <div class="notify-header">{{ t('base.alerts.header') }}</div>
             <div class="notify-list" id="notify-list"></div>
           </div>
         </div>
         {% if user %}
         <div class="topbar-avatar-wrap" id="avatar-wrap">
-          <button class="topbar-avatar" id="avatar-toggle" aria-label="User menu">{{ user.u[0] | upper }}</button>
+          <button class="topbar-avatar" id="avatar-toggle" aria-label="{{ t('base.user_menu') }}">{{ user.u[0] | upper }}</button>
           <div class="avatar-dropdown" id="avatar-dropdown">
             <div class="avatar-dropdown-header">
               <span class="avatar-dropdown-name">{{ user.u }}</span>
-              <span class="badge badge-{{ user.r }}">{{ user.r }}</span>
+              <span class="badge badge-{{ user.r }}">{{ t('base.role.' ~ user.r) }}</span>{# i18n-keys: base.role.owner, base.role.writer, base.role.viewer, base.role.reader #}
             </div>
             <div class="avatar-dropdown-divider"></div>
             <!-- Every signed-in role picks its own theme, saved to its account. -->
-            <div class="avatar-theme" role="group" aria-label="Theme">
-              <span class="avatar-theme-title">Theme</span>
+            <div class="avatar-theme" role="group" aria-label="{{ t('base.theme') }}">
+              <span class="avatar-theme-title">{{ t('base.theme') }}</span>
               <div class="avatar-theme-options">
                 {%- for theme in themes %}
-                <button type="button" data-theme-choice="{{ theme.id }}" aria-pressed="false"><span class="theme-swatch" data-swatch="{{ theme.id }}" aria-hidden="true"></span>{{ theme.label }}{% if theme.id == theme_default %} <span class="avatar-theme-default">(default)</span>{% endif %}</button>
+                <button type="button" data-theme-choice="{{ theme.id }}" aria-pressed="false"><span class="theme-swatch" data-swatch="{{ theme.id }}" aria-hidden="true"></span>{{ theme.label }}{% if theme.id == theme_default %} <span class="avatar-theme-default">{{ t('base.theme.default') }}</span>{% endif %}</button>
                 {%- endfor %}
               </div>
             </div>
@@ -136,13 +136,13 @@
             <div class="avatar-dropdown-divider"></div>
             <button class="avatar-dropdown-item" id="change-password-btn" data-action="openChangePasswordModal">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-              Change password
+              {{ t('base.change_password') }}
             </button>
             <div class="avatar-dropdown-divider"></div>
             <form method="post" action="/logout" style="display:contents">
               <button type="submit" class="avatar-dropdown-item avatar-dropdown-logout">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Sign out
+                {{ t('base.sign_out') }}
               </button>
             </form>
           </div>
@@ -157,23 +157,23 @@
          never "up to date". -->
     <div class="update-banner" id="update-banner" hidden>
       <span id="update-banner-text"></span>
-      <a id="update-banner-link" href="#" target="_blank" rel="noopener noreferrer">Release notes</a>
-      <button type="button" id="update-banner-dismiss" aria-label="Dismiss">&times;</button>
+      <a id="update-banner-link" href="#" target="_blank" rel="noopener noreferrer">{{ t('base.update.notes') }}</a>
+      <button type="button" id="update-banner-dismiss" aria-label="{{ t('base.update.dismiss') }}">&times;</button>
     </div>
 
     <!-- Page content -->
     <main class="page-content">
       <div class="page-head">
-        <h1 class="page-title">{% block topbar_title %}Dashboard{% endblock %}</h1>
+        <h1 class="page-title">{% block topbar_title %}{{ t('base.nav.dashboard') }}{% endblock %}</h1>
         <div class="page-actions">{% block page_actions %}{% endblock %}</div>
       </div>
       {% block content %}{% endblock %}
     </main>
     <footer class="page-foot">
       <span class="sidebar-footer-version">CashPilot {{ app_version() }}</span>
-      <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">Source</a>
-      <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
-      <a href="https://github.com/sponsors/GeiserX" target="_blank" rel="noopener">Sponsor</a>
+      <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">{{ t('base.foot.source') }}</a>
+      <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">{{ t('base.foot.report') }}</a>
+      <a href="https://github.com/sponsors/GeiserX" target="_blank" rel="noopener">{{ t('base.foot.sponsor') }}</a>
     </footer>
   </div>
 
@@ -196,8 +196,8 @@
   <div class="modal-overlay" id="service-detail-modal">
     <div class="modal modal-md">
       <div class="modal-header">
-        <h3 class="modal-title" id="service-detail-title">Service</h3>
-        <button class="modal-close" data-action="closeModal" data-a1="service-detail-modal" aria-label="Close">
+        <h3 class="modal-title" id="service-detail-title">{{ t('base.detail.title') }}</h3>
+        <button class="modal-close" data-action="closeModal" data-a1="service-detail-modal" aria-label="{{ t('base.close') }}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -210,8 +210,8 @@
   <div class="modal-overlay" id="custom-service-modal">
     <div class="modal modal-md">
       <div class="modal-header">
-        <h3 class="modal-title" id="custom-service-title">Custom service</h3>
-        <button class="modal-close" data-action="closeModal" data-a1="custom-service-modal" aria-label="Close">
+        <h3 class="modal-title" id="custom-service-title">{{ t('base.custom.title') }}</h3>
+        <button class="modal-close" data-action="closeModal" data-a1="custom-service-modal" aria-label="{{ t('base.close') }}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -225,29 +225,29 @@
   <div class="modal-overlay" id="password-modal">
     <div class="modal modal-sm">
       <div class="modal-header">
-        <h3 class="modal-title">Change password</h3>
-        <button class="modal-close" data-action="closeModal" data-a1="password-modal" aria-label="Close">
+        <h3 class="modal-title">{{ t('base.change_password') }}</h3>
+        <button class="modal-close" data-action="closeModal" data-a1="password-modal" aria-label="{{ t('base.close') }}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label" for="chpw-current">Current password</label>
-          <input class="form-input" type="password" id="chpw-current" autocomplete="current-password" placeholder="Enter current password">
+          <label class="form-label" for="chpw-current">{{ t('base.pw.current') }}</label>
+          <input class="form-input" type="password" id="chpw-current" autocomplete="current-password" placeholder="{{ t('base.pw.current_ph') }}">
         </div>
         <div class="form-group">
-          <label class="form-label" for="chpw-new">New password</label>
-          <input class="form-input" type="password" id="chpw-new" autocomplete="new-password" placeholder="At least 10 characters">
-          <div class="form-hint">Use at least 10 characters.</div>
+          <label class="form-label" for="chpw-new">{{ t('base.pw.new') }}</label>
+          <input class="form-input" type="password" id="chpw-new" autocomplete="new-password" placeholder="{{ t('base.pw.new_ph') }}">
+          <div class="form-hint">{{ t('base.pw.hint') }}</div>
         </div>
         <div class="form-group">
-          <label class="form-label" for="chpw-confirm">Confirm new password</label>
-          <input class="form-input" type="password" id="chpw-confirm" autocomplete="new-password" placeholder="Re-enter new password">
+          <label class="form-label" for="chpw-confirm">{{ t('base.pw.confirm') }}</label>
+          <input class="form-input" type="password" id="chpw-confirm" autocomplete="new-password" placeholder="{{ t('base.pw.confirm_ph') }}">
         </div>
         <div id="chpw-error" class="form-error" style="display:none;"></div>
         <div class="modal-actions modal-actions-end">
-          <button class="btn btn-ghost" data-action="closeModal" data-a1="password-modal">Cancel</button>
-          <button class="btn btn-primary" id="pwd-submit" data-action="submitPasswordChange">Change password</button>
+          <button class="btn btn-ghost" data-action="closeModal" data-a1="password-modal">{{ t('base.cancel') }}</button>
+          <button class="btn btn-primary" id="pwd-submit" data-action="submitPasswordChange">{{ t('base.change_password') }}</button>
         </div>
       </div>
     </div>
@@ -257,8 +257,8 @@
   <div class="modal-overlay" id="wallet-modal">
     <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="wallet-modal-title">
       <div class="modal-header">
-        <h3 class="modal-title" id="wallet-modal-title">Your new wallet</h3>
-        <button class="modal-close" data-action="closeModal" data-a1="wallet-modal" aria-label="Close">
+        <h3 class="modal-title" id="wallet-modal-title">{{ t('base.wallet.title') }}</h3>
+        <button class="modal-close" data-action="closeModal" data-a1="wallet-modal" aria-label="{{ t('base.close') }}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -270,20 +270,20 @@
   <div class="modal-overlay" id="stepup-modal">
     <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="stepup-title">
       <div class="modal-header">
-        <h3 class="modal-title" id="stepup-title">Confirm with your password</h3>
-        <button class="modal-close" id="stepup-close" aria-label="Close">
+        <h3 class="modal-title" id="stepup-title">{{ t('base.stepup.title') }}</h3>
+        <button class="modal-close" id="stepup-close" aria-label="{{ t('base.close') }}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="modal-body">
         <p id="stepup-message"></p>
         <div class="form-group">
-          <label class="form-label" for="stepup-password">Password</label>
+          <label class="form-label" for="stepup-password">{{ t('base.stepup.password') }}</label>
           <input class="form-input" type="password" id="stepup-password" autocomplete="current-password">
         </div>
         <div class="modal-actions modal-actions-end">
-          <button class="btn btn-ghost" id="stepup-cancel">Cancel</button>
-          <button class="btn btn-primary" id="stepup-submit">Confirm</button>
+          <button class="btn btn-ghost" id="stepup-cancel">{{ t('base.cancel') }}</button>
+          <button class="btn btn-primary" id="stepup-submit">{{ t('base.stepup.confirm') }}</button>
         </div>
       </div>
     </div>

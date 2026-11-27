@@ -34,6 +34,7 @@ from fastapi.testclient import TestClient
 
 from app import isolation_check, lan_fence, orchestrator, worker_api
 from app.main import app as ui_app
+from tests.i18n_source import NODE_T
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures" / "lan_fence"
@@ -1790,7 +1791,7 @@ class TestTheFleetPage:
         if node is None:
             pytest.skip("node is not installed")
         out = subprocess.run(
-            [node, "--input-type=module", "-e", FENCE_HARNESS, fail_on],
+            [node, *NODE_T, "--input-type=module", "-e", FENCE_HARNESS, fail_on],
             cwd=ROOT,
             capture_output=True,
             text=True,

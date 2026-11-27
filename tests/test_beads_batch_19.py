@@ -24,6 +24,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 DASHBOARD = ROOT / "app" / "templates" / "dashboard.html"
@@ -86,12 +88,12 @@ class TestThePayloadSaysWhetherAnythingHasBeenRead:
 class TestTheCardsDoNotStateMoneyTheyDoNotHave:
     def test_the_static_page_no_longer_ships_hardcoded_zeroes(self):
         """These render before any request is made, so they are an assertion."""
-        html = DASHBOARD.read_text(encoding="utf-8")
+        html = english_source(DASHBOARD)
         for element in ("total-earnings", "today-earnings", "month-earnings"):
             assert f'id="{element}">$0.00<' not in html, f"{element} still ships a hardcoded balance"
 
     def test_the_static_page_uses_a_neutral_placeholder(self):
-        html = DASHBOARD.read_text(encoding="utf-8")
+        html = english_source(DASHBOARD)
         assert html.count('">—<') >= 3
 
     def test_the_renderer_checks_has_readings(self):
@@ -121,7 +123,7 @@ class TestTheCardsDoNotStateMoneyTheyDoNotHave:
     def test_there_is_a_note_saying_which_case_it_is(self):
         """An em dash alone is ambiguous — it needs a word."""
         source = without_comments(APP_JS.read_text(encoding="utf-8"))
-        html = DASHBOARD.read_text(encoding="utf-8")
+        html = english_source(DASHBOARD)
         assert "no-readings-note" in source
         assert "Nothing collected yet" in html
 

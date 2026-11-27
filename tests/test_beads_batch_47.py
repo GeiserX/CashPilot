@@ -39,6 +39,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.i18n_source import english_source
+
 
 def _v1_upgrade_section() -> str:
     """The v1.0.0 section of UPGRADING.md, where the v1.0.0 upgrade steps live."""
@@ -322,17 +324,15 @@ class TestItIsVisibleAndDocumented:
         assert "enrollment_state" in calls, "the fleet page and the auth guard would judge this separately"
 
     def test_the_fleet_page_shows_it(self):
-        from pathlib import Path
 
-        html = (Path(__file__).resolve().parents[1] / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        html = english_source("app/templates/fleet.html")
         assert "w.enrollment === 'incomplete'" in html
         assert "enrollment incomplete" in html
 
     def test_the_badge_explains_the_cause_and_the_cure(self):
         """ "enrollment incomplete" alone tells an operator nothing to do."""
-        from pathlib import Path
 
-        html = (Path(__file__).resolve().parents[1] / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        html = english_source("app/templates/fleet.html")
         marker = html.index("enrollment incomplete")
         tooltip = html[max(0, marker - 900) : marker]
         assert "/data/.worker_key" in tooltip

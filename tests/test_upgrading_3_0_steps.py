@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -66,7 +68,7 @@ def test_every_compose_file_is_kept_and_restored_under_its_own_name():
 def test_the_rollback_names_where_the_proxy_policy_command_is():
     assert "status page" not in ROLLBACK
     assert "**Settings**, **About and updates**" in ROLLBACK
-    page = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+    page = english_source("app/templates/settings.html")
     assert "About and updates" in page
 
 

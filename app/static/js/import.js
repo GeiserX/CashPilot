@@ -17,18 +17,18 @@
   ));
 
   const FIELD_STATE = {
-    imported: 'imported',
-    missing: 'missing',
-    placeholder: 'still the example value',
-    retype: 'needs retyping (uses $ or quotes a shell would change)',
-    invalid: 'not in the format this service needs',
+    imported: t('import.field.imported'),
+    missing: t('import.field.missing'),
+    placeholder: t('import.field.placeholder'),
+    retype: t('import.field.retype'),
+    invalid: t('import.field.invalid'),
   };
   const ROW_STATE = {
-    ready: 'Ready',
-    missing_fields: 'Needs a value',
-    invalid: 'Check a value',
-    unusable: 'Cannot bring over',
-    not_deployable: 'Nothing to deploy',
+    ready: t('import.row.ready'),
+    missing_fields: t('import.row.missing_fields'),
+    invalid: t('import.row.invalid'),
+    unusable: t('import.row.unusable'),
+    not_deployable: t('import.row.not_deployable'),
   };
 
   function setStatus(id, text) {
@@ -40,19 +40,19 @@
     const files = [];
     const picked = Array.from(document.getElementById('import-files').files || []);
     // Refuse by size before reading, so a huge file is never loaded into the page.
-    if (picked.length > MAX_FILES) throw new Error(`At most ${MAX_FILES} files at a time.`);
+    if (picked.length > MAX_FILES) throw new Error(t('import.err.too_many', { max: MAX_FILES }));
     if (picked.reduce((n, f) => n + f.size, 0) > MAX_TOTAL) {
-      throw new Error(`The files add up to more than ${MAX_TOTAL / 1024} KiB.`);
+      throw new Error(t('import.err.too_big', { kib: MAX_TOTAL / 1024 }));
     }
     for (const file of picked) {
       files.push({ name: file.name, content: await file.text() });
     }
     const pasted = document.getElementById('import-paste').value;
     if (pasted.trim()) files.push({ name: 'pasted text', content: pasted });
-    if (!files.length) throw new Error('Add a file or paste one.');
-    if (files.length > MAX_FILES) throw new Error(`At most ${MAX_FILES} files at a time.`);
+    if (!files.length) throw new Error(t('import.err.none'));
+    if (files.length > MAX_FILES) throw new Error(t('import.err.too_many', { max: MAX_FILES }));
     const total = files.reduce((n, f) => n + new TextEncoder().encode(f.content).length, 0);
-    if (total > MAX_TOTAL) throw new Error(`The files add up to more than ${MAX_TOTAL / 1024} KiB.`);
+    if (total > MAX_TOTAL) throw new Error(t('import.err.too_big', { kib: MAX_TOTAL / 1024 }));
     return files;
   }
 
@@ -60,7 +60,7 @@
     const state = FIELD_STATE[field.state] || field.state;
     let shown = '';
     if (field.state === 'imported') {
-      shown = field.secret ? 'set' : `<code>${esc(field.value)}</code>`;
+      shown = field.secret ? t('import.field.set') : `<code>${esc(field.value)}</code>`;
     } else if (field.state === 'invalid' && !field.secret && field.value !== undefined) {
       shown = `<code>${esc(field.value)}</code>`;
     }
@@ -70,7 +70,7 @@
       const pattern = field.pattern ? ` pattern="${esc(field.pattern)}"` : '';
       input = `<input class="form-input import-extra" type="${type}" autocomplete="off"${pattern}
         data-import-slug="${esc(slug)}" data-import-key="${esc(field.key)}"
-        placeholder="${esc(field.label)}${field.required ? '' : ' (optional)'}">`;
+        placeholder="${esc(field.label)}${field.required ? '' : ` ${t('import.field.optional')}`}">`;
     }
     return `<div class="import-field"><strong>${esc(field.label)}</strong>: ${shown} <span class="muted">${esc(state)}</span>${input}</div>`;
   }
@@ -78,7 +78,7 @@
   function renderPreview(preview) {
     const notices = (preview.notices || []).map((n) => `<p class="setup-line">${esc(n)}</p>`).join('');
     document.getElementById('import-notices').innerHTML =
-      `<p class="setup-line">Read as <strong>${esc(preview.source_name)}</strong>.</p>${notices}`;
+      `<p class="setup-line">${t('import.read_as_html', { tool: esc(preview.source_name) })}</p>${notices}`;
 
     const rows = preview.rows || [];
     const body = rows.map((row) => {
@@ -87,11 +87,11 @@
         ? `<input type="checkbox" class="import-pick" data-import-slug="${esc(row.slug)}"${row.selected ? ' checked' : ''}>`
         : '';
       const extras = [];
-      if (row.existing && row.existing.deployed) extras.push('already deployed by CashPilot');
-      if (row.existing && row.existing.draft) extras.push('an earlier import is saved; saving replaces it');
-      if (row.collector === 'will_set') extras.push('earnings tracking will use this login too');
-      if (row.collector === 'already_set') extras.push('earnings login already set; left as it is');
-      if (row.collector === 'partly_set') extras.push('part of the earnings login is already in Settings; left as it is, finish it there');
+      if (row.existing && row.existing.deployed) extras.push(t('import.extra.deployed'));
+      if (row.existing && row.existing.draft) extras.push(t('import.extra.draft'));
+      if (row.collector === 'will_set') extras.push(t('import.extra.will_set'));
+      if (row.collector === 'already_set') extras.push(t('import.extra.already_set'));
+      if (row.collector === 'partly_set') extras.push(t('import.extra.partly_set'));
       return `<tr>
         <td>${tick}</td>
         <td><strong>${esc(row.name)}</strong><div class="muted">${esc(ROW_STATE[row.state] || row.state)}</div></td>
@@ -101,12 +101,12 @@
       </tr>`;
     }).join('');
     document.getElementById('import-rows').innerHTML = rows.length
-      ? `<table class="breakdown-table"><thead><tr><th></th><th>Service</th><th>Settings</th></tr></thead><tbody>${body}</tbody></table>`
-      : '<p class="setup-line">These files set up no service CashPilot can bring over.</p>';
+      ? `<table class="breakdown-table"><thead><tr><th></th><th>${t('import.col.service')}</th><th>${t('import.col.settings')}</th></tr></thead><tbody>${body}</tbody></table>`
+      : `<p class="setup-line">${t('import.none')}</p>`;
 
     const skipped = preview.not_imported || [];
     document.getElementById('import-skipped').innerHTML = skipped.length
-      ? `<h4>Not imported</h4><ul>${skipped.map((s) => `<li><code>${esc(s.key)}</code>: ${esc(s.reason)}</li>`).join('')}</ul>`
+      ? `<h4>${t('import.not_imported')}</h4><ul>${skipped.map((s) => `<li><code>${esc(s.key)}</code>: ${esc(s.reason)}</li>`).join('')}</ul>`
       : '';
     document.getElementById('import-preview').hidden = false;
   }
@@ -135,12 +135,12 @@
 
   window.importApply = async function importApply() {
     if (!lastRequest) {
-      setStatus('import-apply-status', 'Check the files before saving.');
+      setStatus('import-apply-status', t('import.apply.check_first'));
       return;
     }
     const slugs = Array.from(document.querySelectorAll('.import-pick:checked')).map((el) => el.dataset.importSlug);
     if (!slugs.length) {
-      setStatus('import-apply-status', 'Tick at least one service.');
+      setStatus('import-apply-status', t('import.apply.tick'));
       return;
     }
     const extra = {};
@@ -155,8 +155,8 @@
     }
     try {
       const res = await CP.api('/api/import/apply', { method: 'POST', body: { ...lastRequest, slugs, extra } });
-      setStatus('import-apply-status', `Saved ${res.saved.length} service(s).`);
-      CP.toast(`Imported ${res.saved.length} service(s)`, 'success');
+      setStatus('import-apply-status', t('import.apply.saved', { n: res.saved.length }));
+      CP.toast(t('import.apply.imported', { n: res.saved.length }), 'success');
       await loadDrafts();
     } catch (err) {
       setStatus('import-apply-status', err.message);
@@ -170,7 +170,7 @@
   async function deploySlug(slug) {
     const ids = chosenWorkers();
     if (!ids.length) {
-      CP.toast('Tick at least one worker', 'warning');
+      CP.toast(t('import.deploy.tick'), 'warning');
       return false;
     }
     if (!await CP.confirmPreflight(slug, ids)) return false;
@@ -183,14 +183,14 @@
         const link = res && res.device_link;
         // Registered means CashPilot already added the device to the account.
         if (link && link.url && !link.registered) {
-          const id = link.id ? ` Device id: ${link.id}.` : '';
+          const id = link.id ? ` ${t('import.deploy.device_id', { id: link.id })}` : '';
           CP.toast(`${slug}: ${link.steps}${id} ${link.url}`, 'warning');
         }
       } catch (err) {
-        CP.toast(`${slug} on worker ${wid}: ${err.message}`, 'error');
+        CP.toast(t('import.deploy.failed', { slug, worker: wid, error: err.message }), 'error');
       }
     }
-    if (ok) CP.toast(`${slug} deployed to ${ok} worker(s)`, 'success');
+    if (ok) CP.toast(t('import.deploy.done', { slug, n: ok }), 'success');
     return ok > 0;
   }
 
@@ -203,7 +203,7 @@
   };
 
   window.importForget = async function importForget(slug) {
-    if (!window.confirm(`Forget the imported settings for ${slug}? Running containers are not touched.`)) return;
+    if (!window.confirm(t('import.forget.confirm', { slug }))) return;
     try {
       await CP.api(`/api/import/drafts/${encodeURIComponent(slug)}`, { method: 'DELETE' });
       await loadDrafts();
@@ -222,21 +222,21 @@
       return;
     }
     if (!drafts.length) {
-      box.innerHTML = '<p class="setup-line muted">Nothing imported yet.</p>';
+      box.innerHTML = `<p class="setup-line muted">${t('import.drafts.none')}</p>`;
       return;
     }
     const online = (workers || []).filter((w) => w.status === 'online');
     const picker = online.length
       ? online.map((w) => `<label class="checkbox-label"><input type="checkbox" class="import-worker" data-wid="${esc(w.id)}"> ${esc(w.name)}</label>`).join(' ')
-      : '<span class="muted">No workers online.</span>';
+      : `<span class="muted">${t('import.drafts.no_workers')}</span>`;
     const list = drafts.map((d) => `<li data-import-draft="${esc(d.slug)}">
-        <strong>${esc(d.name)}</strong> <span class="muted">from ${esc(d.source)}, ${esc(d.imported_at)} UTC; ${esc(d.keys.join(', '))}</span>
-        <button class="btn btn-secondary btn-sm" data-action="importDeploy" data-a1="${esc(d.slug)}">Deploy</button>
-        <button class="btn btn-secondary btn-sm" data-action="importForget" data-a1="${esc(d.slug)}">Forget</button>
+        <strong>${esc(d.name)}</strong> <span class="muted">${t('import.drafts.meta', { source: esc(d.source), at: esc(d.imported_at), keys: esc(d.keys.join(', ')) })}</span>
+        <button class="btn btn-secondary btn-sm" data-action="importDeploy" data-a1="${esc(d.slug)}">${t('import.drafts.deploy')}</button>
+        <button class="btn btn-secondary btn-sm" data-action="importForget" data-a1="${esc(d.slug)}">${t('import.drafts.forget')}</button>
       </li>`).join('');
-    box.innerHTML = `<div class="form-group"><div class="form-label">Deploy to</div>${picker}</div>
+    box.innerHTML = `<div class="form-group"><div class="form-label">${t('import.drafts.deploy_to')}</div>${picker}</div>
       <ul class="import-drafts">${list}</ul>
-      <div class="settings-actions"><button class="btn btn-primary" data-action="importDeployAll">Deploy all</button></div>`;
+      <div class="settings-actions"><button class="btn btn-primary" data-action="importDeployAll">${t('import.drafts.deploy_all')}</button></div>`;
   }
 
   document.addEventListener('DOMContentLoaded', loadDrafts);

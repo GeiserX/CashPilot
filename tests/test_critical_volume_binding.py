@@ -24,6 +24,7 @@ from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import auth, catalog, database, deps, main, orchestrator, step_up, worker_api  # noqa: E402
+from tests.i18n_source import english_source
 
 WORKER_KEY = "per-worker-key-abc"
 WALLET = "ghcr.io/proxybasehq/proxybase-cli"
@@ -776,8 +777,7 @@ class TestTheAuditTable:
 
 def test_the_step_up_prompt_is_a_named_modal_dialog():
     """A screen reader announces the prompt by its title, not just a bare password field."""
-    with open(os.path.join(os.path.dirname(main.__file__), "templates", "base.html"), encoding="utf-8") as fh:
-        html = fh.read()
+    html = english_source("app/templates/base.html")
     block = html[html.index('id="stepup-modal"') :]
     block = block[: block.index('id="stepup-password"')]
     dialog = re.search(r'<div class="modal[^"]*"([^>]*)>', block)

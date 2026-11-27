@@ -16,6 +16,7 @@
 //   node scripts/fleet_staleness_check.mjs
 // Exits non-zero on any mismatch.
 import {readFileSync} from 'node:fs';
+import './i18n_stub.mjs';
 
 const html = readFileSync('app/templates/fleet.html', 'utf8');
 

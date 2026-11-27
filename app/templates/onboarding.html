@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
-  <title>Welcome - CashPilot</title>
+  <title>{{ t('onboarding.title') }}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -58,40 +58,40 @@
     <div class="gate-panel">
       <!-- Step 1: Welcome -->
       <div class="step active" id="step-1">
-        <ol class="gate-steps" aria-label="Step 1 of 3">
-        <li class="gate-step active"><span class="wizard-step-number">1</span>Welcome</li>
-        <li class="gate-step"><span class="wizard-step-number">2</span>Owner account</li>
-        <li class="gate-step"><span class="wizard-step-number">3</span>Done</li>
+        <ol class="gate-steps" aria-label="{{ t('onboarding.step1.aria') }}">
+        <li class="gate-step active"><span class="wizard-step-number">1</span>{{ t('onboarding.step.welcome') }}</li>
+        <li class="gate-step"><span class="wizard-step-number">2</span>{{ t('onboarding.step.owner') }}</li>
+        <li class="gate-step"><span class="wizard-step-number">3</span>{{ t('onboarding.step.done') }}</li>
         </ol>
-        <h1 class="gate-title">Welcome to CashPilot</h1>
-        <p class="gate-lede">Run bandwidth, storage and compute services on your own machines, and see what each one earns in one place.</p>
-        <p class="gate-lede">First, create the owner account. You need the setup token from the server logs.</p>
+        <h1 class="gate-title">{{ t('onboarding.welcome.title') }}</h1>
+        <p class="gate-lede">{{ t('onboarding.welcome.lede') }}</p>
+        <p class="gate-lede">{{ t('onboarding.welcome.next') }}</p>
         <div class="gate-actions">
-          <button class="btn btn-primary btn-lg" data-action="goToStep" data-a1="2">Create the owner account</button>
+          <button class="btn btn-primary btn-lg" data-action="goToStep" data-a1="2">{{ t('onboarding.welcome.button') }}</button>
         </div>
       </div>
 
       <!-- Step 2: Create Account -->
       <div class="step" id="step-2">
-        <ol class="gate-steps" aria-label="Step 2 of 3">
-        <li class="gate-step completed"><span class="wizard-step-number">1</span>Welcome</li>
-        <li class="gate-step active"><span class="wizard-step-number">2</span>Owner account</li>
-        <li class="gate-step"><span class="wizard-step-number">3</span>Done</li>
+        <ol class="gate-steps" aria-label="{{ t('onboarding.step2.aria') }}">
+        <li class="gate-step completed"><span class="wizard-step-number">1</span>{{ t('onboarding.step.welcome') }}</li>
+        <li class="gate-step active"><span class="wizard-step-number">2</span>{{ t('onboarding.step.owner') }}</li>
+        <li class="gate-step"><span class="wizard-step-number">3</span>{{ t('onboarding.step.done') }}</li>
         </ol>
-        <h1 class="gate-title">Owner account</h1>
-        <p class="gate-lede">This account has full access: it adds services, workers and other users.</p>
+        <h1 class="gate-title">{{ t('onboarding.step.owner') }}</h1>
+        <p class="gate-lede">{{ t('onboarding.owner.lede') }}</p>
         <div class="auth-error error-msg" id="reg-error"></div>
       <form id="register-form">
         <div class="form-group">
-          <label class="form-label" for="username">Username</label>
+          <label class="form-label" for="username">{{ t('auth.username') }}</label>
           <input class="form-input" type="text" id="username" name="username" required autocomplete="username" autofocus>
         </div>
         <div class="form-group">
-          <label class="form-label" for="password">Password</label>
+          <label class="form-label" for="password">{{ t('auth.password') }}</label>
           <input class="form-input" type="password" id="password" name="password" required autocomplete="new-password">
         </div>
         <div class="form-group">
-          <label class="form-label" for="password_confirm">Confirm password</label>
+          <label class="form-label" for="password_confirm">{{ t('auth.password_confirm') }}</label>
           <input class="form-input" type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
         </div>
         <!-- Without this the owner account cannot be created AT ALL.
@@ -100,42 +100,39 @@
              not ask for it, so every new installation answered the form
              with a 403 and a message that did not say why. -->
         <div class="form-group">
-          <label class="form-label" for="setup_token">Setup token</label>
+          <label class="form-label" for="setup_token">{{ t('auth.setup_token') }}</label>
           <input class="form-input" type="text" id="setup_token" name="setup_token" required autocomplete="off"
-                 spellcheck="false" placeholder="Printed in the server logs on first start">
+                 spellcheck="false" placeholder="{{ t('onboarding.token.ph') }}">
           <div class="form-hint">
-            Shown once in the container logs when CashPilot first started, on a line beginning
-            &ldquo;Setup token to create the owner account&rdquo;. Run
-            <code>docker logs cashpilot-ui</code> to see it. It proves you are the person who
-            installed this, so nobody else can claim the owner account first.
+            {{ t('onboarding.token.hint_html') }}
           </div>
         </div>
         <div class="gate-actions">
-          <button type="button" class="btn btn-ghost btn-lg" data-action="goToStep" data-a1="1">Back</button>
-          <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">Create account</button>
+          <button type="button" class="btn btn-ghost btn-lg" data-action="goToStep" data-a1="1">{{ t('onboarding.back') }}</button>
+          <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">{{ t('onboarding.create') }}</button>
         </div>
       </form>
       </div>
 
       <!-- Step 3: Done -->
       <div class="step" id="step-3">
-        <ol class="gate-steps" aria-label="Step 3 of 3">
-        <li class="gate-step completed"><span class="wizard-step-number">1</span>Welcome</li>
-        <li class="gate-step completed"><span class="wizard-step-number">2</span>Owner account</li>
-        <li class="gate-step active"><span class="wizard-step-number">3</span>Done</li>
+        <ol class="gate-steps" aria-label="{{ t('onboarding.step3.aria') }}">
+        <li class="gate-step completed"><span class="wizard-step-number">1</span>{{ t('onboarding.step.welcome') }}</li>
+        <li class="gate-step completed"><span class="wizard-step-number">2</span>{{ t('onboarding.step.owner') }}</li>
+        <li class="gate-step active"><span class="wizard-step-number">3</span>{{ t('onboarding.step.done') }}</li>
         </ol>
-        <h1 class="gate-title">The owner account is ready</h1>
-        <p class="gate-lede">Next, pick the services you want to run and the machines to run them on.</p>
+        <h1 class="gate-title">{{ t('onboarding.done.title') }}</h1>
+        <p class="gate-lede">{{ t('onboarding.done.lede') }}</p>
         <div class="gate-actions">
-          <a href="/setup" class="btn btn-primary btn-lg">Add services</a>
+          <a href="/setup" class="btn btn-primary btn-lg">{{ t('onboarding.done.add') }}</a>
         </div>
       </div>
     </div>
   </main>
 
   <footer class="gate-foot">
-    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">Source</a>
-    <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">{{ t('base.foot.source') }}</a>
+    <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">{{ t('base.foot.report') }}</a>
   </footer>
 
   <script nonce="{{ csp_nonce(request) }}">
@@ -161,18 +158,18 @@
       const setupToken = (document.getElementById('setup_token')?.value || '').trim();
 
       if (password !== passwordConfirm) {
-        errEl.textContent = 'Passwords do not match';
+        errEl.textContent = t('auth.error.mismatch');
         errEl.classList.add('visible');
         return false;
       }
       if (password.length < 10) {
-        errEl.textContent = 'Password must be at least 10 characters';
+        errEl.textContent = t('auth.error.short');
         errEl.classList.add('visible');
         return false;
       }
 
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>Creating...';
+      btn.innerHTML = `<span class="spinner"></span>${t('onboarding.creating')}`;
 
       try {
         const formData = new URLSearchParams();
@@ -200,21 +197,21 @@
           // "Please try again" is the worst possible message here: trying again
           // with the same empty token fails identically, forever.
           errEl.textContent = setupToken
-            ? 'That setup token was not accepted. Copy it from the server logs (docker logs cashpilot-ui) — the line beginning "Setup token to create the owner account".'
-            : 'The setup token is required. Find it in the server logs (docker logs cashpilot-ui) on the line beginning "Setup token to create the owner account".';
+            ? t('onboarding.token.rejected')
+            : t('onboarding.token.missing');
         } else if (match) {
           errEl.textContent = match[1];
         } else {
-          errEl.textContent = 'Registration failed. Please try again.';
+          errEl.textContent = t('onboarding.error.failed');
         }
         errEl.classList.add('visible');
       } catch (err) {
-        errEl.textContent = 'Network error. Please try again.';
+        errEl.textContent = t('onboarding.error.network');
         errEl.classList.add('visible');
       }
 
       btn.disabled = false;
-      btn.textContent = 'Create account';
+      btn.textContent = t('onboarding.create');
       return false;
     }
   </script>
