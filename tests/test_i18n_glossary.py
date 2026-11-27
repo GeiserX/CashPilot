@@ -65,3 +65,8 @@ def test_core_terms_of_the_plan_are_there():
         "fence",
     ):
         assert tid in GLOSSARY["terms"], tid
+
+
+def test_every_locale_has_a_register():
+    assert set(GLOSSARY["register"]) == set(LOCALES)
+    assert all(isinstance(v, str) and v.strip() for v in GLOSSARY["register"].values())
