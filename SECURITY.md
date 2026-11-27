@@ -137,7 +137,7 @@ These variables only matter when CashPilot sits behind a reverse proxy; a direct
 Worker URLs arrive in the fleet-key-authenticated heartbeat and are later fetched with the fleet bearer token attached, so the UI validates every worker URL before contacting it:
 
 - **Cloud-metadata addresses** (IPv4 `169.254.169.254`, IPv6 `fd00:ec2::254`) and loopback/link-local ranges are **always blocked**, regardless of policy.
-- **DNS-rebinding guard**: hostnames are resolved and the resolved IP is re-validated before each request, so a name that points at a metadata or loopback address is rejected. IPv4-mapped IPv6 bypasses are normalized and caught.
+- **DNS-rebinding guard**: hostnames are resolved and the resolved IP is re-validated before each request, so a name that points at a metadata or loopback address is rejected. The request then goes to that checked IP, so the name is not resolved a second time. A name that does not resolve gets no request at all, in every policy. IPv4-mapped IPv6 bypasses are normalized and caught.
 - **Default policy is permissive**: LAN (RFC1918) and Tailscale (CGNAT `100.64.0.0/10`) workers keep working out of the box with no configuration.
 - **Opt-in `strict` mode** restricts workers to an explicit allowlist of CIDRs and hostname suffixes. See [Fleet Management](docs/fleet.md) for `CASHPILOT_WORKER_URL_POLICY`, `CASHPILOT_WORKER_ALLOWED_HOSTS`, and `CASHPILOT_WORKER_ALLOW_METADATA`.
 

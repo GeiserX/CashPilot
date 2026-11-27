@@ -13,6 +13,7 @@ import datetime
 import functools
 import json
 import os
+import socket
 import ssl
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -62,6 +63,70 @@ def test_lan_worker_still_accepted():
     from app.worker_proxy import _validate_worker_url
 
     assert _validate_worker_url("http://192.168.1.50:8081") == ("http://192.168.1.50:8081", None)
+
+
+# ---------------------------------------------------------------------------
+# A name that does not resolve gets no request (GHSA-99pg-2293-j8qq)
+# ---------------------------------------------------------------------------
+#
+# The validator used to hand back an unresolvable name unpinned, and httpx then
+# resolved it again: a name that failed the check (EAI_AGAIN) could answer
+# loopback or metadata for the request itself.
+
+_AGAIN = socket.gaierror(socket.EAI_AGAIN, "temporary failure in name resolution")
+
+
+def test_unresolvable_worker_name_is_refused_in_permissive_mode():
+    from app.worker_proxy import _validate_worker_url
+
+    with (
+        patch("app.worker_proxy.socket.getaddrinfo", side_effect=_AGAIN),
+        pytest.raises(HTTPException) as exc,
+    ):
+        _validate_worker_url("http://flip.example:8081")
+    assert exc.value.status_code == 503
+
+
+def test_strict_allowlisted_name_still_needs_to_resolve():
+    """The allowlist waives the CIDR check, not the resolution."""
+    import app.worker_proxy as wp
+
+    with (
+        patch.object(wp, "_WORKER_URL_POLICY", "strict"),
+        patch.object(wp, "_WORKER_ALLOWED_SUFFIXES", ["ts.net"]),
+        patch("app.worker_proxy.socket.getaddrinfo", side_effect=_AGAIN),
+        pytest.raises(HTTPException) as exc,
+    ):
+        wp._validate_worker_url("http://box.mango.ts.net:8081")
+    assert exc.value.status_code == 503
+
+
+def test_failed_lookup_sends_nothing_even_if_the_next_lookup_answers_loopback():
+    """End to end through the proxy: the first lookup fails, any later one would
+    answer 127.0.0.1. No request may leave."""
+    import app.main as main
+
+    worker = {"id": 9, "status": "online", "url": "http://flip.example:8081", "client_id": ""}
+    answers = iter([_AGAIN])
+
+    def lookup(*args, **kwargs):
+        nxt = next(answers, None)
+        if nxt is not None:
+            raise nxt
+        return [(2, 1, 6, "", ("127.0.0.1", 8081))]
+
+    sent = []
+    transport = httpx.MockTransport(lambda req: sent.append(req) or httpx.Response(200, json={"ok": True}))
+    with (
+        patch("app.worker_proxy.socket.getaddrinfo", side_effect=lookup),
+        patch.object(main.database, "get_worker", AsyncMock(return_value=worker)),
+        patch.object(main.database, "get_worker_key_state", AsyncMock(return_value=(None, False))),
+        patch.object(main.httpx, "AsyncClient", functools.partial(httpx.AsyncClient, transport=transport)),
+        pytest.raises(HTTPException) as exc,
+    ):
+        asyncio.run(main._proxy_to_worker(9, "GET", "/api/containers"))
+    assert exc.value.status_code == 503
+    assert sent == []
 
 
 # ---------------------------------------------------------------------------
