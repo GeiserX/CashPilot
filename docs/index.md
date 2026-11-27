@@ -18,7 +18,7 @@ hide:
 
 ---
 
-**Every earner, every box, one view.** CashPilot is a self-hosted dashboard for the software that earns from your spare bandwidth, compute and disk: bandwidth sharing, DePIN nodes, crypto mining, GPU compute and storage. A worker on each server starts the earners in Docker, through a socket proxy, and on a new install fences them off your LAN and the host. The dashboard holds the catalog, the credentials and the earnings history, and shows every box: Docker workers, [CashPilot Desktop](https://github.com/GeiserX/CashPilot-Desktop) and [Android phones](https://github.com/GeiserX/CashPilot-android). Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
+**Every earner, every box, one view.** CashPilot is a self-hosted dashboard for the software that earns from your spare bandwidth, compute and disk: bandwidth sharing, DePIN nodes, crypto mining, GPU compute and storage. A worker on each server starts the earners in Docker (through a socket proxy with the shipped compose files) and on a new install fences them off your LAN and the host. The dashboard holds the catalog, the credentials and the earnings history, and shows every box: Docker workers, [CashPilot Desktop](https://github.com/GeiserX/CashPilot-Desktop) and [Android phones](https://github.com/GeiserX/CashPilot-android). Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
 
 Upgrading from 2.x? Upgrade the UI first, then every worker: [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) has the steps.
 
