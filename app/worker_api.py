@@ -781,17 +781,6 @@ async def _send_heartbeat() -> None:
     # not at the next five-minute check.
     if lan_fence.set_egress_ip(egress_ip) and docker_ok:
         await _check_fence()
-    # After the egress lookup on purpose: the fence must follow a new public IP
-    # even while the heartbeat itself is refused.
-    if refusal := _ui_url_refusal():
-        # Nothing is sent. The status page and /api/health show why.
-        _ui_connected = False
-        _last_error = refusal
-        _consecutive_heartbeat_failures += 1
-        if not _ui_url_refusal_logged:
-            logger.error(refusal)
-            _ui_url_refusal_logged = True
-        return
     features = (
         ["instances", "isolation_check", "state_backup", "activity", "proxy_tunnel"] if docker_ok else ["instances"]
     )
@@ -812,6 +801,18 @@ async def _send_heartbeat() -> None:
             logger.warning("Failed to read proxied copies for heartbeat: %s", exc)
             proxied = None
     routes_read = _mark_routed(proxied) if proxied else True
+    # Only the POST below is refused. Everything above is this box's own upkeep
+    # and keeps running: the fence follows a new public IP, and the proxied-copy
+    # read retries a half-done move (proxy_tunnel.recover_moves).
+    if refusal := _ui_url_refusal():
+        # Nothing is sent. The status page and /api/health show why.
+        _ui_connected = False
+        _last_error = refusal
+        _consecutive_heartbeat_failures += 1
+        if not _ui_url_refusal_logged:
+            logger.error(refusal)
+            _ui_url_refusal_logged = True
+        return
     payload = {
         "name": WORKER_NAME,
         "client_id": CLIENT_ID,

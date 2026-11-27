@@ -157,6 +157,27 @@ def test_worker_sends_no_heartbeat_to_a_public_http_ui(worker_state, caplog):
     assert refusals[0].levelname == "ERROR"
 
 
+def test_a_refused_worker_still_reads_its_proxied_copies(worker_state):
+    """That read is the only retry of a half-done proxied-copy move after start.
+
+    The refusal blocks the POST to the UI, never this box's own upkeep.
+    """
+    with (
+        patch.object(worker_api, "UI_URL", "http://cashpilot.example.com:8080"),
+        patch.object(worker_api.httpx, "AsyncClient") as made,
+        patch.object(worker_api.orchestrator, "get_status", return_value=[]),
+        patch.object(worker_api.orchestrator, "docker_available", return_value=True),
+        patch.object(worker_api.orchestrator, "docker_unreachable_for", return_value=None),
+        patch.object(worker_api, "_detect_egress_ip", AsyncMock(return_value=None)),
+        patch.object(worker_api.lan_fence, "set_egress_ip", return_value=False),
+        patch.object(worker_api.proxy_tunnel, "status", return_value=[]) as proxied,
+    ):
+        asyncio.run(worker_api._send_heartbeat())
+    proxied.assert_called_once()
+    made.assert_not_called()
+    assert "CASHPILOT_UI_URL is plain http://" in worker_api._last_error
+
+
 @pytest.mark.parametrize("url", ["http://cashpilot-ui:8080", "http://100.64.0.9:8080", "https://ui.example.com"])
 def test_worker_heartbeats_to_a_private_or_https_ui(worker_state, url):
     resp = httpx.Response(200, request=httpx.Request("POST", url), json={})
