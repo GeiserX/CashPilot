@@ -7,6 +7,7 @@ Reload on SIGHUP.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import hmac
 import ipaddress
@@ -709,6 +710,19 @@ def priority_key(service: dict[str, Any]) -> tuple[bool, int]:
     return (priority is None, priority if isinstance(priority, int) else 0)
 
 
+def is_service_file(path: Path, root: Path | None = None) -> bool:
+    """Whether a file under services/ is a service entry.
+
+    Files and folders whose name starts with "_" are not: _schema.yml,
+    _ratings.yml and the translations in _i18n/.
+    """
+    try:
+        parts = path.relative_to(root or SERVICES_DIR).parts
+    except ValueError:
+        parts = (path.name,)
+    return not any(part.startswith("_") for part in parts)
+
+
 def _load_from_disk() -> list[dict[str, Any]]:
     """Walk services/ recursively and parse all .yml/.yaml files."""
     services: list[dict[str, Any]] = []
@@ -717,8 +731,8 @@ def _load_from_disk() -> list[dict[str, Any]]:
         return services
 
     for path in sorted(SERVICES_DIR.rglob("*.yml")):
-        # Skip the schema reference file
-        if path.name.startswith("_"):
+        # Skip the schema reference files and the translations in _i18n/.
+        if not is_service_file(path):
             continue
         try:
             data = yaml.safe_load(path.read_text())
@@ -739,7 +753,7 @@ def _load_from_disk() -> list[dict[str, Any]]:
 
     # Also pick up .yaml extension
     for path in sorted(SERVICES_DIR.rglob("*.yaml")):
-        if path.name.startswith("_"):
+        if not is_service_file(path):
             continue
         try:
             data = yaml.safe_load(path.read_text())
@@ -763,6 +777,7 @@ def load_services() -> list[dict[str, Any]]:
     global _services, _by_slug
     _services = _load_from_disk()
     _by_slug = {s["slug"]: s for s in _services}
+    _i18n_tables.clear()
     logger.info("Loaded %d service(s) from %s", len(_services), SERVICES_DIR)
     return _services
 
@@ -983,3 +998,217 @@ def vps_allowed(requirements: dict[str, Any] | None) -> bool | None:
         return bool(reqs["vps_ip"])
     residential = reqs.get("residential_ip")
     return None if residential is None else not residential
+
+
+# ---------------------------------------------------------------------------
+# Translations of the catalog (services/_i18n/<locale>.yml)
+#
+# The service files stay English. Each user-visible string has a key,
+# "<slug>.<path>", for example "iproyal.description" or
+# "iproyal.docker.env.IPROYAL_EMAIL.description": list items are addressed by
+# their own key (env items by "key", obligations by "id") or else by their
+# index ("rating.cons.0.text"). services/_i18n/en.yml lists every key with its
+# English text; scripts/catalog_i18n.py writes it and CI checks it. Each other
+# locale file holds, per key, {text, source}: source is the first 12 hex
+# characters of the SHA-256 of the English text it translates. A key that is
+# missing, empty or stale (source no longer matches) shows the English.
+
+I18N_DIR = SERVICES_DIR / "_i18n"
+SOURCE_LOCALE = "en"
+#: The 20 locales, BCP 47. English first: it is the source and the fallback.
+LOCALES = (
+    "en", "es", "pt-BR", "fr", "de", "it", "nl", "pl", "ru", "uk",
+    "tr", "ar", "hi", "id", "vi", "th", "fil", "zh-Hans", "ja", "ko",
+)  # fmt: skip
+#: A language whose only supported variant has a region or script, and the
+#: legacy codes some systems still send.
+_LANGUAGE_DEFAULTS = {"pt": "pt-BR", "zh": "zh-Hans", "tl": "fil", "in": "id"}
+#: Entries the UI hides, so their text is not translated.
+_HIDDEN_STATUSES = frozenset({"broken", "dead", "dropped"})
+
+#: The fields the web UI and Desktop show, as paths. "name[key]" walks a list
+#: and names each item by its "key" value, "name[]" by its index, and "*" takes
+#: every string in a mapping. Fields only the backend reads (commands,
+#: patterns, collector and docker notes, rating notes) are not here.
+I18N_FIELDS = (
+    "description",
+    "short_description",
+    "docker.env[key].label",
+    "docker.env[key].description",
+    "docker.setup",
+    "docker.critical_volumes[].holds",
+    "docker.health_signals[].means",
+    "docker.health_probe.checks[].means",
+    "device_link.steps",
+    "earnings.notes",
+    "payment.minimum_payout",
+    "payment.frequency",
+    "cashout.notes",
+    "payout.notes",
+    "collector.credential_hint",
+    "referral.bonus.referrer",
+    "referral.bonus.referee",
+    "requirements.note",
+    "requirements.hosting_note",
+    "requirements.min_bandwidth",
+    "requirements.min_storage",
+    "mining.pool_fee_note",
+    "obligations[id].title",
+    "obligations[id].loss",
+    "obligations[id].how",
+    "disclosure.*",
+    "rating.cons[].text",
+    "rating.pros[].text",
+)
+
+_HAS_LETTER = re.compile(r"[^\W\d_]")
+_i18n_tables: dict[str, dict[str, tuple[str, str]]] = {}
+
+
+def i18n_source_hash(text: str) -> str:
+    """The freshness hash stored beside a translation (same as scripts/i18n_check.py)."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def match_locale(tag: str | None) -> str:
+    """The supported locale for a BCP 47 tag: exact, then by language, else English.
+
+    es-MX gives es, pt-PT gives pt-BR, zh-TW gives zh-Hans, xx gives en.
+    """
+    tag = (tag or "").strip().replace("_", "-").lower()
+    if not tag:
+        return SOURCE_LOCALE
+    for loc in LOCALES:
+        if loc.lower() == tag:
+            return loc
+    lang = tag.split("-", 1)[0]
+    if lang in _LANGUAGE_DEFAULTS:
+        return _LANGUAGE_DEFAULTS[lang]
+    return next((loc for loc in LOCALES if loc.lower() == lang), SOURCE_LOCALE)
+
+
+def negotiate_locale(accept_language: str | None) -> str:
+    """The best supported locale for an Accept-Language header, English if none fits."""
+    ranked: list[tuple[float, int, str]] = []
+    for pos, part in enumerate((accept_language or "").split(",")):
+        tag, _, params = part.strip().partition(";")
+        q = 1.0
+        for param in params.split(";"):
+            name, _, value = param.strip().partition("=")
+            if name == "q":
+                try:
+                    q = float(value)
+                except ValueError:
+                    q = 0.0
+        if tag and tag != "*" and q > 0:
+            ranked.append((-q, pos, tag))
+    for _, _, tag in sorted(ranked):
+        loc = match_locale(tag)
+        if loc != SOURCE_LOCALE or tag.lower().split("-", 1)[0] == "en":
+            return loc
+    return SOURCE_LOCALE
+
+
+def _i18n_slots(node: Any, segments: list[str], path: list[str]):
+    """Yield (path, container, key) for each string a field path names."""
+    if not segments or not isinstance(node, dict):
+        return
+    head, rest = segments[0], segments[1:]
+    if head == "*":
+        if not rest:
+            for key, value in node.items():
+                if isinstance(value, str) and _HAS_LETTER.search(value):
+                    yield [*path, str(key)], node, key
+        return
+    if head.endswith("]"):
+        name, _, ident = head[:-1].partition("[")
+        items = node.get(name)
+        if not isinstance(items, list):
+            return
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            label = item.get(ident) if ident else index
+            if isinstance(label, (str, int)) and str(label) and "." not in str(label):
+                yield from _i18n_slots(item, rest, [*path, name, str(label)])
+        return
+    if rest:
+        yield from _i18n_slots(node.get(head), rest, [*path, head])
+        return
+    value = node.get(head)
+    if isinstance(value, str) and _HAS_LETTER.search(value):
+        yield [*path, head], node, head
+
+
+def _service_slots(service: dict[str, Any]):
+    slug = service.get("slug")
+    for field in I18N_FIELDS:
+        for path, container, key in _i18n_slots(service, field.split("."), []):
+            yield f"{slug}.{'.'.join(path)}", container, key
+
+
+def translatable_strings(service: dict[str, Any]) -> dict[str, str]:
+    """Every user-visible English string of one service, keyed "<slug>.<path>"."""
+    return {key: container[k] for key, container, k in _service_slots(service)}
+
+
+def catalog_strings(services: list[dict[str, Any]] | None = None) -> dict[str, str]:
+    """The English source of services/_i18n/en.yml: every shown service, by slug."""
+    out: dict[str, str] = {}
+    for svc in sorted(services if services is not None else get_services(), key=lambda s: s["slug"]):
+        if svc.get("status") not in _HIDDEN_STATUSES:
+            out.update(translatable_strings(svc))
+    return out
+
+
+def _i18n_table(locale: str) -> dict[str, tuple[str, str]]:
+    """{key: (text, source hash)} of one locale file, read once per catalog load."""
+    if locale not in _i18n_tables:
+        table: dict[str, tuple[str, str]] = {}
+        path = I18N_DIR / f"{locale}.yml"
+        if locale != SOURCE_LOCALE and path.is_file():
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError as exc:
+                logger.error("Failed to parse %s: %s", path, exc)
+                data = {}
+            for key, entry in data.items() if isinstance(data, dict) else ():
+                if isinstance(entry, dict) and isinstance(entry.get("text"), str):
+                    table[str(key)] = (entry["text"], str(entry.get("source") or ""))
+        _i18n_tables[locale] = table
+    return _i18n_tables[locale]
+
+
+def translate(key: str, english: str, locale: str | None) -> str:
+    """One catalog string in a locale: the translation when it is fresh, else the English."""
+    loc = match_locale(locale)
+    if loc == SOURCE_LOCALE:
+        return english
+    entry = _i18n_table(loc).get(key)
+    if entry and entry[0].strip() and entry[1] == i18n_source_hash(english):
+        return entry[0]
+    return english
+
+
+def service_strings(slug: str, locale: str | None) -> dict[str, str]:
+    """One service's user-visible strings in a locale, keyed by path ("description",
+    "docker.env.IPROYAL_EMAIL.label"...), each falling back to English."""
+    svc = get_service(slug)
+    if not svc:
+        return {}
+    prefix = f"{slug}."
+    return {key[len(prefix) :]: translate(key, text, locale) for key, text in translatable_strings(svc).items()}
+
+
+def localized_service(service: dict[str, Any], locale: str | None) -> dict[str, Any]:
+    """A deep copy of a service with every user-visible string in the locale.
+
+    Anything without a fresh translation keeps its English text, and every
+    other field is untouched, so the copy works wherever the original does.
+    """
+    out = copy.deepcopy(service)
+    if match_locale(locale) == SOURCE_LOCALE:
+        return out
+    for key, container, k in list(_service_slots(out)):
+        container[k] = translate(key, container[k], locale)
+    return out
