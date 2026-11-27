@@ -209,7 +209,10 @@ def test_worker_health_and_status_page_say_why(worker_state):
             page = client.get("/", headers={"Authorization": f"Bearer {worker_api._active_key()}"})
     assert health.status_code == 503
     assert health.json()["status"] == "degraded"
-    assert "plain http:// to 203.0.113.7" in health.json()["error"]
+    assert "CASHPILOT_UI_URL is plain http:// to a host" in health.json()["error"]
+    assert "https://" in health.json()["error"]
+    # /api/health answers without a key, so it does not say where the UI is.
+    assert "203.0.113.7" not in health.text
     assert page.status_code == 200
     assert "plain http:// to 203.0.113.7" in page.text
 
