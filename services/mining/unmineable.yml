@@ -21,8 +21,9 @@ referral:
   code: "awk6-j1z0"
   program: true
   account: false
-  referrer: "0.25% of each referred miner's mining rewards"
-  referee: "Platform fee lowered from 1% to 0.75%"
+  bonus:
+    referrer: "0.25% of each referred miner's mining rewards"
+    referee: "Platform fee lowered from 1% to 0.75%"
 
 docker:
   image: drumsergio/cashpilot-xmrig:6.27.0-r1@sha256:34d09420653187fe3fb3c206a0bc67e98de6c2e85320c12b8c544b6c8100174d
