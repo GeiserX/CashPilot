@@ -725,3 +725,27 @@ def test_a_failed_write_keeps_the_old_file(tmp_path, monkeypatch):
         ic.write_catalog(out, {"a": "Adiós"}, {})
     assert out.read_text() == 'a:\n  text: "Hola"\n'
     assert list(tmp_path.iterdir()) == [out]
+
+
+def test_a_link_in_every_plural_branch_is_fine(tmp_path):
+    link = "<a href='/help'>help</a>"
+    en = write(
+        tmp_path / "en.json", json.dumps({"x": f"{{n, plural, one {{# box, {link}}} other {{# boxes, {link}}}}}"})
+    )
+    pl = write(
+        tmp_path / "pl.json",
+        json.dumps(
+            {
+                "x": f"{{n, plural, one {{# pudło, {link}}} few {{# pudła, {link}}} many {{# pudeł, {link}}} other {{# pudła, {link}}}}}"
+            }
+        ),
+    )
+    assert run(en, pl)[0] == 0
+
+
+def test_the_temporary_file_never_overwrites_another_file(tmp_path):
+    out = write(tmp_path / "es.yml", 'a:\n  text: "Hola"\n')
+    other = write(tmp_path / ".es.yml.tmp", "keep me\n")
+    ic.write_catalog(out, {"a": "Adiós"}, {})
+    assert other.read_text() == "keep me\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [".es.yml.tmp", "es.yml"]

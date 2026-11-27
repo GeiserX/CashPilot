@@ -123,6 +123,7 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 
 PLURAL_CATEGORIES = ("zero", "one", "two", "few", "many", "other")
@@ -501,9 +502,11 @@ def load_catalog(path: pathlib.Path) -> tuple[dict, dict]:
 
 def _write_atomic(path: pathlib.Path, text: str) -> None:
     """Replace path with text in one step, so a failed write leaves the old file."""
-    tmp = path.with_name(f".{path.name}.tmp")
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    tmp = pathlib.Path(name)
     try:
-        tmp.write_text(text, encoding="utf-8")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -749,12 +752,15 @@ def placeholders(text: str) -> frozenset:
     out: set = set()
 
     links: dict = {}
+    # In an ICU plural or select each branch may repeat a link, and other
+    # languages have more branches, so links are counted in plain strings only.
+    count_links = not _ICU_COMPLEX.search(text)
 
     def tag(m: re.Match) -> str:
         href = _HREF.search(m.group(3))
         dest = (href.group(1) or href.group(2)) if href else ""
         out.add(("tag", m.group(1) + m.group(2).lower(), dest))
-        if href:  # links to A, A, B differ from links to A, B, B
+        if href and count_links:  # links to A, A, B differ from links to A, B, B
             links[dest] = links.get(dest, 0) + 1
             out.add(("link", dest, links[dest]))
         # A placeholder in another attribute (title="{name}") still counts: the
