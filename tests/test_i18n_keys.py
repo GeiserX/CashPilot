@@ -25,8 +25,9 @@ EN = json.loads((ROOT / "app/i18n/en.json").read_text(encoding="utf-8"))
 
 # t('key', ...) or t("key", ...): the Jinja global, the browser global and
 # app.i18n.t. A preceding letter, digit, _ or $ means another identifier.
-CALL = re.compile(r"""(?<![\w$])t\(\s*(['"])([^'"]+)\1""")
-ANY_CALL = re.compile(r"""(?<![\w$])t\(\s*(?=\S)(?![)'"])""")
+CALL = re.compile(r"""(?<![\w$])t\(\s*(['"])([^'"]+)\1\s*(?=[,)])""")
+# Any t( that is not a lone literal key: t(key), t(`a.${b}`), t('a.' ~ b), t('a' + b).
+ANY_CALL = re.compile(r"""(?<![\w$])t\((?!\s*\))(?!\s*(['"])[^'"]+\1\s*[,)])""")
 LISTED = re.compile(r"i18n-keys:\s*([\w.\-]+(?:\s*,\s*[\w.\-]+)*)")
 # A local named t: `const t =`, `let t,`, `(t) =>`, `t =>`, `function f(a, t)`, `for (const t of`.
 SHADOW = re.compile(
@@ -95,7 +96,12 @@ def test_en_json_is_sorted_so_parallel_edits_merge():
 
 def test_the_scan_sees_a_call_a_built_key_and_a_shadow():
     """The scan itself can fail: each pattern matches what it is meant to."""
-    assert [m.group(2) for m in CALL.finditer("""{{ t('a.b') }} x t("c.d", {n}) CPI18N.t('e')""")] == ["a.b", "c.d", "e"]
+    assert [m.group(2) for m in CALL.finditer("""{{ t('a.b') }} x t("c.d", {n}) CPI18N.t('e')""")] == [
+        "a.b",
+        "c.d",
+        "e",
+    ]
+    assert not CALL.search("t('a.' ~ b)") and ANY_CALL.search("t('a.' ~ b)") and ANY_CALL.search("t('a' + b)")
     assert not CALL.search("const at('x'); format('y')")
     assert ANY_CALL.search("t(`status.${x}`)") and ANY_CALL.search("t(key)")
     assert not ANY_CALL.search("t('a')") and not ANY_CALL.search("calls t() first")

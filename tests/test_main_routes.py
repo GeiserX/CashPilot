@@ -21,6 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.i18n_source import NODE_T
 
 
 # Replace the real lifespan with a no-op for tests
@@ -247,7 +248,7 @@ renderWorkers([{id: 1, name: 'Desk', status: 'offline', system_info: {device_typ
 process.stdout.write(rows.innerHTML);
 """
         rendered = subprocess.run(
-            [node, "-e", script, str(fleet)], capture_output=True, text=True, check=True, timeout=30
+            [node, *NODE_T, "-e", script, str(fleet)], capture_output=True, text=True, check=True, timeout=30
         )
 
         titles = []

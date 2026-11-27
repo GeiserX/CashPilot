@@ -30,6 +30,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD = ROOT / "app" / "templates" / "dashboard.html"
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
@@ -39,7 +41,7 @@ class TestNoStatCardClaimsAMeasurementItDoesNotHave:
     """The template's initial text is what a failed first load leaves on screen."""
 
     def _cards(self):
-        html = DASHBOARD.read_text(encoding="utf-8")
+        html = english_source(DASHBOARD)
         # (id, initial text) for every stat-value element.
         return re.findall(r'<div class="stat-value[^"]*" id="([^"]+)">([^<]*)</div>', html)
 
@@ -114,7 +116,7 @@ class TestTheSettingsPanelsSayWhyTheyAreEmpty:
 
     def test_the_templates_still_ship_a_loading_placeholder(self):
         """The premise: without it there would be nothing to get stuck on."""
-        settings = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+        settings = english_source("app/templates/settings.html")
         assert settings.count("Loading...") >= 2
 
 

@@ -63,6 +63,7 @@ from app import (  # noqa: E402
     step_up,
     worker_api,
 )
+from tests.i18n_source import english_source  # noqa: E402
 
 PASSPHRASE = "correct horse battery staple"
 #: The real proxy, before the ui fixture swaps it out.
@@ -3010,7 +3011,7 @@ class TestARestoreOnTheIdentityLedger:
 
 def test_the_backup_file_selector_has_a_label():
     """A screen reader names the file input by its label, not by the paragraph above it."""
-    html = (Path(__file__).resolve().parent.parent / "app" / "templates" / "settings.html").read_text()
+    html = english_source("app/templates/settings.html")
     assert re.search(r'<label[^>]*\bfor="restore-file"[^>]*>\s*Backup file\s*</label>', html)
 
 

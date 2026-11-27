@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}Fleet - CashPilot{% endblock %}
+{% block title %}{{ t('fleet.title') }}{% endblock %}
 {% block page %}fleet{% endblock %}
-{% block topbar_title %}Fleet{% endblock %}
+{% block topbar_title %}{{ t('fleet.heading') }}{% endblock %}
 
 {% block content %}
 <!-- Fleet Stats -->
 <div class="stats-grid">
   <div class="stat-card">
-    <div class="stat-label">Boxes</div>
+    <div class="stat-label">{{ t('fleet.stat.boxes') }}</div>
     <div class="stat-value highlight" id="fleet-total-workers">-</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Reporting</div>
+    <div class="stat-label">{{ t('fleet.stat.reporting') }}</div>
     <div class="stat-value" id="fleet-online-workers">-</div>
   </div>
   {# "Workers" and "Online" are fleet-wide; these two count ONLY online workers
@@ -22,11 +22,11 @@
      "Containers keep running and earning while a worker is offline."
      (CashPilot-wij) #}
   <div class="stat-card">
-    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Containers <span class="stat-qual">(online)</span></div>
+    <div class="stat-label" title="{{ t('fleet.stat.online_tip') }}">{{ t('fleet.stat.containers') }} <span class="stat-qual">{{ t('fleet.stat.online') }}</span></div>
     <div class="stat-value" id="fleet-total-containers">-</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label" title="Counted across workers that are currently online. Containers on an offline worker keep running and earning; they are not included here.">Running <span class="stat-qual">(online)</span></div>
+    <div class="stat-label" title="{{ t('fleet.stat.online_tip') }}">{{ t('fleet.stat.running') }} <span class="stat-qual">{{ t('fleet.stat.online') }}</span></div>
     <div class="stat-value" id="fleet-running-containers">-</div>
   </div>
 </div>
@@ -35,11 +35,11 @@
 
 <section class="fleet-boxes" aria-labelledby="boxes-title">
   <div class="block-head">
-    <h2 class="block-title" id="boxes-title">Boxes</h2>
-    <span class="block-meta">Each box runs one CashPilot worker. Containers list in the order the worker reported them.</span>
+    <h2 class="block-title" id="boxes-title">{{ t('fleet.boxes.title') }}</h2>
+    <span class="block-meta">{{ t('fleet.boxes.meta') }}</span>
   </div>
   <div id="fleet-workers" class="table-scroll">
-    <div class="loading-line"><div class="spinner"></div> Loading fleet</div>
+    <div class="loading-line"><div class="spinner"></div> {{ t('fleet.boxes.loading') }}</div>
   </div>
 </section>
 
@@ -51,23 +51,23 @@
      route. The verdict area stays hidden until there is something to say. -->
 <section class="fleet-economics" style="display:none;" id="fleet-economics-card">
   <div class="block-head">
-    <h2 class="block-title">Running costs</h2>
+    <h2 class="block-title">{{ t('fleet.costs.title') }}</h2>
     <span class="block-meta" id="fleet-economics-quality"></span>
   </div>
 
   <div id="power-settings" class="power-settings">
     <div>
-      <label for="power-price" class="form-label">Electricity price per kWh</label>
+      <label for="power-price" class="form-label">{{ t('fleet.costs.price') }}</label>
       <input id="power-price" class="form-input form-input-price" type="number" step="0.001" min="0"
              placeholder="0.30" aria-describedby="power-help">
     </div>
     <div>
-      <label for="power-currency" class="form-label">Currency</label>
+      <label for="power-currency" class="form-label">{{ t('fleet.costs.currency') }}</label>
       <input id="power-currency" class="form-input form-input-code" type="text" maxlength="4" placeholder="EUR">
     </div>
-    <button class="btn btn-primary btn-sm" id="power-save">Save</button>
+    <button class="btn btn-primary btn-sm" id="power-save">{{ t('fleet.save') }}</button>
     <span id="power-help" class="muted">
-      Your tariff, as it appears on your bill. Figures below are converted to USD.
+      {{ t('fleet.costs.help') }}
     </span>
   </div>
 
@@ -80,77 +80,72 @@
      never the value, so the form leaves those boxes empty on edit. -->
 <section class="fleet-proxies" id="fleet-proxies" aria-labelledby="proxies-title">
   <div class="block-head">
-    <h2 class="block-title" id="proxies-title">Proxies</h2>
-    <span class="block-meta">Copies of a service that leave through a proxy instead of the box's own connection. <a href="https://geiserx.github.io/CashPilot/proxies/">How it works</a></span>
+    <h2 class="block-title" id="proxies-title">{{ t('fleet.proxies.title') }}</h2>
+    <span class="block-meta">{{ t('fleet.proxies.meta_html') }}</span>
   </div>
-  <div id="proxy-list" class="table-scroll"><div class="loading-line"><div class="spinner"></div> Loading proxies</div></div>
+  <div id="proxy-list" class="table-scroll"><div class="loading-line"><div class="spinner"></div> {{ t('fleet.proxies.loading') }}</div></div>
   <div id="proxy-exits"></div>
 
   <details class="add-worker" id="proxy-form-box">
-    <summary id="proxy-form-title">Add a proxy</summary>
+    <summary id="proxy-form-title">{{ t('fleet.proxy.add') }}</summary>
     <form id="proxy-form" class="add-worker-body power-settings" autocomplete="off">
       <input type="hidden" id="proxy-id">
-      <div><label class="form-label" for="proxy-name">Name</label><input class="form-input" id="proxy-name" required maxlength="80"></div>
-      <div><label class="form-label" for="proxy-kind">Type</label>
+      <div><label class="form-label" for="proxy-name">{{ t('fleet.proxy.name') }}</label><input class="form-input" id="proxy-name" required maxlength="80"></div>
+      <div><label class="form-label" for="proxy-kind">{{ t('fleet.proxy.kind') }}</label>
         <select class="form-input" id="proxy-kind">
-          <option value="socks5">SOCKS5</option><option value="http">HTTP CONNECT</option><option value="tailscale">Tailscale exit node</option>
+          <option value="socks5">SOCKS5</option><option value="http">HTTP CONNECT</option><option value="tailscale">{{ t('fleet.proxy.kind_tailscale') }}</option>
         </select></div>
-      <div class="proxy-net"><label class="form-label" for="proxy-host">Host</label><input class="form-input" id="proxy-host"></div>
-      <div class="proxy-net"><label class="form-label" for="proxy-port">Port</label><input class="form-input form-input-code" id="proxy-port" type="number" min="1" max="65535"></div>
-      <div class="proxy-net"><label class="form-label" for="proxy-username">User</label><input class="form-input" id="proxy-username" placeholder="kept if empty, unless the host or port changes">
-        <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-username"> Remove the stored user</label></div>
-      <div class="proxy-net"><label class="form-label" for="proxy-password">Password</label><input class="form-input" id="proxy-password" type="password" placeholder="kept if empty, unless the host or port changes">
-        <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-password"> Remove the stored password</label></div>
-      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-authkey">Auth key (reusable, ephemeral, tagged)</label><input class="form-input" id="proxy-authkey" type="password" placeholder="kept if empty, unless the login server changes"></div>
-      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-exitnode">Exit node</label><input class="form-input" id="proxy-exitnode" placeholder="100.x address, not the name"></div>
-      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-login">Login server</label><input class="form-input" id="proxy-login" placeholder="empty for Tailscale's own"></div>
-      <div><label class="form-label" for="proxy-cap">Traffic cap (GB)</label><input class="form-input form-input-code" id="proxy-cap" type="number" min="0" step="0.1" placeholder="none"></div>
-      <div><label class="form-label" for="proxy-pct">Stop at (%)</label><input class="form-input form-input-code" id="proxy-pct" type="number" min="10" max="100" value="90"></div>
-      <div><label class="form-label" for="proxy-reset">Resets on day</label><input class="form-input form-input-code" id="proxy-reset" type="number" min="1" max="28" placeholder="by hand"></div>
-      <div><label class="form-label" for="proxy-rotating"><input type="checkbox" id="proxy-rotating"> Rotating exit IP</label></div>
-      <button class="btn btn-primary btn-sm" type="submit">Save</button>
+      <div class="proxy-net"><label class="form-label" for="proxy-host">{{ t('fleet.proxy.host') }}</label><input class="form-input" id="proxy-host"></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-port">{{ t('fleet.proxy.port') }}</label><input class="form-input form-input-code" id="proxy-port" type="number" min="1" max="65535"></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-username">{{ t('fleet.proxy.user') }}</label><input class="form-input" id="proxy-username" placeholder="{{ t('fleet.proxy.kept_host') }}">
+        <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-username"> {{ t('fleet.proxy.clear_user') }}</label></div>
+      <div class="proxy-net"><label class="form-label" for="proxy-password">{{ t('fleet.proxy.password') }}</label><input class="form-input" id="proxy-password" type="password" placeholder="{{ t('fleet.proxy.kept_host') }}">
+        <label class="muted proxy-clear"><input type="checkbox" id="proxy-clear-password"> {{ t('fleet.proxy.clear_password') }}</label></div>
+      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-authkey">{{ t('fleet.proxy.authkey') }}</label><input class="form-input" id="proxy-authkey" type="password" placeholder="{{ t('fleet.proxy.kept_login') }}"></div>
+      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-exitnode">{{ t('fleet.proxy.exitnode') }}</label><input class="form-input" id="proxy-exitnode" placeholder="{{ t('fleet.proxy.exitnode_hint') }}"></div>
+      <div class="proxy-ts" style="display:none;"><label class="form-label" for="proxy-login">{{ t('fleet.proxy.login') }}</label><input class="form-input" id="proxy-login" placeholder="{{ t('fleet.proxy.login_hint') }}"></div>
+      <div><label class="form-label" for="proxy-cap">{{ t('fleet.proxy.cap') }}</label><input class="form-input form-input-code" id="proxy-cap" type="number" min="0" step="0.1" placeholder="{{ t('fleet.proxy.cap_none') }}"></div>
+      <div><label class="form-label" for="proxy-pct">{{ t('fleet.proxy.pct') }}</label><input class="form-input form-input-code" id="proxy-pct" type="number" min="10" max="100" value="90"></div>
+      <div><label class="form-label" for="proxy-reset">{{ t('fleet.proxy.reset') }}</label><input class="form-input form-input-code" id="proxy-reset" type="number" min="1" max="28" placeholder="{{ t('fleet.proxy.reset_hand') }}"></div>
+      <div><label class="form-label" for="proxy-rotating"><input type="checkbox" id="proxy-rotating"> {{ t('fleet.proxy.rotating') }}</label></div>
+      <button class="btn btn-primary btn-sm" type="submit">{{ t('fleet.save') }}</button>
     </form>
   </details>
 
   <details class="add-worker" id="proxy-copy-box">
-    <summary>Run a copy through a proxy</summary>
+    <summary>{{ t('fleet.copy.title') }}</summary>
     <form id="proxy-copy-form" class="add-worker-body power-settings">
-      <div><label class="form-label" for="copy-worker">Box</label><select class="form-input" id="copy-worker"></select></div>
-      <div><label class="form-label" for="copy-slug">Service deployed there</label><select class="form-input" id="copy-slug"></select></div>
-      <div><label class="form-label" for="copy-proxy">Proxy</label><select class="form-input" id="copy-proxy"></select></div>
-      <button class="btn btn-primary btn-sm" type="submit">Run the copy</button>
-      <span class="muted">Only services without host networking, ports, volumes or devices can run through a proxy.</span>
+      <div><label class="form-label" for="copy-worker">{{ t('fleet.copy.box') }}</label><select class="form-input" id="copy-worker"></select></div>
+      <div><label class="form-label" for="copy-slug">{{ t('fleet.copy.service') }}</label><select class="form-input" id="copy-slug"></select></div>
+      <div><label class="form-label" for="copy-proxy">{{ t('fleet.copy.proxy') }}</label><select class="form-input" id="copy-proxy"></select></div>
+      <button class="btn btn-primary btn-sm" type="submit">{{ t('fleet.copy.run') }}</button>
+      <span class="muted">{{ t('fleet.copy.limits') }}</span>
     </form>
   </details>
 </section>
 {% endif %}
 
 <details class="add-worker" id="add-worker">
-  <summary>Add a box</summary>
+  <summary>{{ t('fleet.add.title') }}</summary>
   <div class="add-worker-body">
     <p class="add-worker-text">
-      {% if worker_image() %}Deploy <code>{{ worker_image() }}</code> on each server,{% else %}This build has no
-      release version. Deploy <code>drumsergio/cashpilot-worker:X.Y</code> on each server, with
-      <code>X.Y</code> replaced by a published release,{% endif %} or install the
-      <a href="https://github.com/GeiserX/CashPilot-android">Android app</a> on your phone.
+      {% if worker_image() %}{{ t('fleet.add.deploy_image_html', image=worker_image()) }}{% else %}{{ t('fleet.add.deploy_unversioned_html') }}{% endif %}
     </p>
     <p class="add-worker-text">
-      On a computer with <a href="https://github.com/GeiserX/CashPilot-Desktop">CashPilot Desktop</a>, pick
-      <strong>Join my CashPilot</strong> (on first run, or in Settings under <strong>How this computer runs</strong>).
-      Press <strong>Copy</strong> below and paste the block into <strong>Paste from Add a box</strong>.
+      {{ t('fleet.add.desktop_html') }}
     </p>
     <p class="add-worker-text">
-      For Docker workers, set these environment variables:
+      {{ t('fleet.add.docker_env') }}
     </p>
     <div class="env-block">
       <code id="worker-env">CASHPILOT_UI_URL=<span id="env-ui-url"></span>
 CASHPILOT_API_KEY=<span id="env-api-key">••••••••</span>
 CASHPILOT_WORKER_NAME=server-name</code>
       <div class="env-actions">
-        <span id="api-key-status" class="badge badge-category">Checking…</span>
+        <span id="api-key-status" class="badge badge-category">{{ t('fleet.add.key_checking') }}</span>
         {% if user.r == 'owner' %}
-        <button class="btn btn-ghost btn-sm" data-action="toggleApiKey" id="reveal-btn">Reveal API Key</button>
-        <button class="btn btn-ghost btn-sm" data-action="copyWorkerEnv">Copy</button>
+        <button class="btn btn-ghost btn-sm" data-action="toggleApiKey" id="reveal-btn">{{ t('fleet.add.reveal') }}</button>
+        <button class="btn btn-ghost btn-sm" data-action="copyWorkerEnv">{{ t('fleet.add.copy') }}</button>
         {% endif %}
       </div>
       {# Shown only when the clipboard API is unreachable — which is the normal
@@ -161,15 +156,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
       </div>
     </div>
     <p class="muted add-worker-text" id="env-ui-url-loopback" style="display:none;">
-      This page is open on a loopback address, which another server cannot reach.
-      Put this server's LAN or Tailscale address in <code>CASHPILOT_UI_URL</code>.
-      The default install listens only on 127.0.0.1, so set <code>CASHPILOT_BIND_ADDR</code> first
-      (<a href="https://github.com/GeiserX/CashPilot/blob/main/docs/fleet.md#adding-remote-workers">how</a>).
+      {{ t('fleet.add.loopback_html') }}
     </p>
     <p class="muted add-worker-text">
-      This is the enrolment key. It is <code>CASHPILOT_API_KEY</code> on the UI container when that is set.
-      Otherwise CashPilot generates it in <code>/fleet/.fleet_key</code>.
-      Use the same key on all workers. Each worker uses it only to join, then gets its own key.
+      {{ t('fleet.add.key_note_html') }}
     </p>
   </div>
 </details>
@@ -203,18 +193,18 @@ CASHPILOT_WORKER_NAME=server-name</code>
       _apiKeySet = !!data.is_set;
       if (statusEl) {
         if (_apiKeySet) {
-          statusEl.textContent = data.source === 'file' ? 'Generated in /fleet/.fleet_key'
-            : data.source === 'env' ? 'From CASHPILOT_API_KEY' : 'Configured';
+          statusEl.textContent = data.source === 'file' ? t('fleet.key.generated')
+            : data.source === 'env' ? t('fleet.key.from_env') : t('fleet.key.configured');
           statusEl.className = 'badge badge-deployed';
           statusEl.style.fontSize = '0.72rem';
         } else {
-          statusEl.textContent = 'Not set';
+          statusEl.textContent = t('fleet.key.not_set');
           statusEl.className = 'badge badge-category';
           statusEl.style.fontSize = '0.72rem';
         }
       }
     } catch {
-      if (statusEl) { statusEl.textContent = 'Unknown'; statusEl.style.fontSize = '0.72rem'; }
+      if (statusEl) { statusEl.textContent = t('fleet.key.unknown'); statusEl.style.fontSize = '0.72rem'; }
     }
   }
 
@@ -223,10 +213,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
     if (_apiKey) return _apiKey;
     try {
       const data = await CP.api('/api/fleet/api-key/reveal', { method: 'POST' });
-      _apiKey = data.api_key || '(not configured)';
+      _apiKey = data.api_key || t('fleet.key.not_configured');
     } catch (err) {
-      _apiKey = '(error)';
-      CP.toast('Could not reveal API key: ' + (err.message || 'error'), 'error');
+      _apiKey = t('fleet.key.error');
+      CP.toast(t('fleet.key.reveal_failed', { error: err.message || t('fleet.error_word') }), 'error');
     }
     return _apiKey;
   }
@@ -254,9 +244,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       if (note) {
         if (hidden > 0) {
           const w = summary.unreachable_workers || 0;
-          note.textContent = `${hidden} container${hidden === 1 ? '' : 's'} on `
-            + `${w} unreachable worker${w === 1 ? '' : 's'} ${hidden === 1 ? 'is' : 'are'} not counted above. `
-            + `They keep running and earning while their worker is offline. CashPilot just cannot see them right now.`;
+          note.textContent = t('fleet.unreachable_note', { hidden, w });
           note.style.display = '';
         } else {
           note.style.display = 'none';
@@ -270,7 +258,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       if (request !== fleetRequest || pendingWorkerPowerSaves) return;
       const msg = (err.message || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
       document.getElementById('fleet-workers').innerHTML =
-        `<div class="empty-state"><div class="empty-state-text">Failed to load fleet data: ${msg}</div></div>`;
+        `<div class="empty-state"><div class="empty-state-text">${t('fleet.load_failed', { error: msg })}</div></div>`;
     }
   }
 
@@ -340,29 +328,38 @@ CASHPILOT_WORKER_NAME=server-name</code>
       if (!be || be.price_per_kwh == null) return '';
       const paid = economics.tariff_price_per_kwh;
       const yours = paid != null && economics.tariff_currency === be.currency
-        ? ` (you pay ${Number(paid).toFixed(3)})` : '';
+        ? t('fleet.econ.you_pay', { price: Number(paid).toFixed(3) }) : '';
       const bh = m.break_even_tariff_heating;
       const heating = m.heat_covers_all_in_season
-        ? '; in your heating months its heat covers its whole electricity cost'
+        ? t('fleet.econ.heat_covers_all')
         : bh && bh.price_per_kwh != null
-          ? `; in your heating months below <strong>${Number(bh.price_per_kwh).toFixed(3)} ${esc(bh.currency)}/kWh</strong>`
+          ? t('fleet.econ.heat_below_html', { price: Number(bh.price_per_kwh).toFixed(3), currency: esc(bh.currency) })
           : '';
-      return `<div class="economics-summary econ-break-even">Earns more than its electricity below <strong>${Number(be.price_per_kwh).toFixed(3)} ${esc(be.currency)}/kWh</strong>${yours}${heating}</div>`;
+      return `<div class="economics-summary econ-break-even">${t('fleet.econ.break_even_html', { price: Number(be.price_per_kwh).toFixed(3), currency: esc(be.currency), yours, heating })}</div>`;
     };
 
     // Heat credit. Months are never prefilled: users are worldwide, and the
     // southern hemisphere heats in June. A source with no months is refused.
-    const HEAT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const HEAT_MONTHS = [t('fleet.month.jan'), t('fleet.month.feb'), t('fleet.month.mar'), t('fleet.month.apr'),
+      t('fleet.month.may'), t('fleet.month.jun'), t('fleet.month.jul'), t('fleet.month.aug'),
+      t('fleet.month.sep'), t('fleet.month.oct'), t('fleet.month.nov'), t('fleet.month.dec')];
     const HEAT_SOURCES = {
-      none: 'Nothing (no heat credit)',
-      resistive: 'Electric resistive heating',
-      heat_pump: 'A heat pump',
-      fuel: 'Gas, oil or another fuel',
+      none: t('fleet.heat.source.none'),
+      resistive: t('fleet.heat.source.resistive'),
+      heat_pump: t('fleet.heat.source.heat_pump'),
+      fuel: t('fleet.heat.source.fuel'),
+    };
+    // The same sources inside a sentence ("its heat replaces a heat pump").
+    const HEAT_SOURCES_INLINE = {
+      none: t('fleet.heat.inline.none'),
+      resistive: t('fleet.heat.inline.resistive'),
+      heat_pump: t('fleet.heat.inline.heat_pump'),
+      fuel: t('fleet.heat.inline.fuel'),
     };
     const heatLine = m => {
       if (!m.heat || m.heat_credit == null || m.monthly_cost == null) return '';
       const months = m.heat.months.map(n => HEAT_MONTHS[n - 1]).join(', ');
-      return `<div class="economics-summary econ-heat-line">Heat credit ${money(m.heat_credit)} a month: its heat replaces ${esc(HEAT_SOURCES[m.heat.source].toLowerCase())} in ${esc(months)}</div>`;
+      return `<div class="economics-summary econ-heat-line">${t('fleet.heat.credit_line', { money: money(m.heat_credit), source: esc(HEAT_SOURCES_INLINE[m.heat.source]), months: esc(months) })}</div>`;
     };
     const heatForm = m => {
       // A fixed-price box has no per-kWh cost, so its heat credit is always 0.
@@ -370,21 +367,21 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const hs = m.heat_settings || {};
       const source = Object.hasOwn(HEAT_SOURCES, hs.heat) ? hs.heat : 'none';
       const ticked = new Set(String(hs.heat_months || '').split(',').map(m => m.trim()));
-      return `<details class="econ-heat"><summary>Heat</summary>
+      return `<details class="econ-heat"><summary>${t('fleet.heat.title')}</summary>
         <form class="heat-form" data-prefix="${esc(m.heat_prefix)}">
-          <label>Its heat replaces
+          <label>${t('fleet.heat.replaces')}
             <select class="form-input heat-source">${Object.entries(HEAT_SOURCES).map(([value, label]) =>
               `<option value="${value}"${value === source ? ' selected' : ''}>${label}</option>`).join('')}</select>
           </label>
-          <label class="heat-cop-field"${source === 'heat_pump' ? '' : ' hidden'}>Heat pump COP
+          <label class="heat-cop-field"${source === 'heat_pump' ? '' : ' hidden'}>${t('fleet.heat.cop')}
             <input type="number" min="1" max="10" step="any" class="form-input heat-cop" value="${esc(hs.heat_cop)}">
           </label>
-          <label class="heat-price-field"${source === 'fuel' ? '' : ' hidden'}>Fuel cost per kWh of heat (${esc(economics.tariff_currency || '')})
+          <label class="heat-price-field"${source === 'fuel' ? '' : ' hidden'}>${t('fleet.heat.fuel_price', { currency: esc(economics.tariff_currency || '') })}
             <input type="number" min="0" step="any" class="form-input heat-price" value="${esc(hs.heat_price)}">
           </label>
-          <fieldset class="heat-months"><legend>Months you heat</legend>${HEAT_MONTHS.map((label, i) =>
+          <fieldset class="heat-months"><legend>${t('fleet.heat.months')}</legend>${HEAT_MONTHS.map((label, i) =>
             `<label><input type="checkbox" class="heat-month" value="${i + 1}"${ticked.has(String(i + 1)) ? ' checked' : ''}> ${label}</label>`).join('')}</fieldset>
-          <button class="btn btn-link" type="submit">Save</button>
+          <button class="btn btn-link" type="submit">${t('fleet.save')}</button>
         </form>
       </details>`;
     };
@@ -402,9 +399,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const ex = m.expected;
       if (!ex) return '';
       if (ex.state !== 'known') {
-        return `<div class="economics-summary econ-expected">No expected figure for ${hashrate(ex.hashrate_hs)}: ${esc(ex.detail || 'the network stats could not be read.')}</div>`;
+        return `<div class="economics-summary econ-expected">${t('fleet.expected.none', { rate: hashrate(ex.hashrate_hs), detail: esc(ex.detail || t('fleet.expected.no_stats')) })}</div>`;
       }
-      const usd = ex.monthly_usd == null ? '' : ` (about ${money(ex.monthly_usd)})`;
+      const usd = ex.monthly_usd == null ? '' : t('fleet.expected.about', { money: money(ex.monthly_usd) });
       // The credit covers only the days with readings, so it is compared with
       // the estimate for those same days, never with the 30-day figure.
       const days = Number(ex.credited_days);
@@ -412,43 +409,43 @@ CASHPILOT_WORKER_NAME=server-name</code>
         ? `${Number(ex.credited_days_coin).toFixed(8)} ${esc(ex.currency)}`
         : money(ex.credited_days_usd);
       const credited = m.monthly_gross == null || !(days >= 1)
-        ? 'CashPilot has not read what the pool credited yet.'
+        ? t('fleet.expected.not_read')
         : days >= 30
-          ? `The pool credited ${money(m.monthly_gross)} in the last 30 days, against about ${sameDays} expected.`
-          : `CashPilot has readings for ${days} day${days === 1 ? '' : 's'}: the pool credited ${money(m.monthly_gross)}, against about ${sameDays} expected for those days.`;
-      return `<div class="economics-summary econ-expected" title="Estimated from the network difficulty and the average reward of recent blocks (${esc(ex.source)}), before the pool's fee. A pool can credit more or less in any month.">Expected at the hashrate the pool last reported (${hashrate(ex.hashrate_hs)}): <strong>${Number(ex.monthly_coin).toFixed(8)} ${esc(ex.currency)}</strong>${usd} in 30 days, before the pool's fee. This is an estimate, not money owed. ${credited}</div>`;
+          ? t('fleet.expected.credited_30', { money: money(m.monthly_gross), expected: sameDays })
+          : t('fleet.expected.credited_days', { days, money: money(m.monthly_gross), expected: sameDays });
+      return `<div class="economics-summary econ-expected" title="${esc(t('fleet.expected.tip', { source: ex.source }))}">${t('fleet.expected.line_html', { rate: hashrate(ex.hashrate_hs), amount: Number(ex.monthly_coin).toFixed(8), currency: esc(ex.currency), usd, credited })}</div>`;
     };
 
     const hasMinerWatts = (economics.lan_miners || []).some(miner => miner.watts >= 1);
     const rows = machines.map(m => {
       const losing = m.verdict === 'losing_money';
       const device = m.kind === 'device';
-      const grossLabel = m.gross_basis === 'accrued' ? 'Accrued at the pool during this period' : 'Gross earnings per month';
+      const grossLabel = m.gross_basis === 'accrued' ? t('fleet.econ.accrued') : t('fleet.econ.gross');
       return `
         <div class="economics-row">
           <div>
-            <div class="economics-machine">${brk(m.machine)}${device ? ' <small class="muted">Device</small>' : ''}</div>
+            <div class="economics-machine">${brk(m.machine)}${device ? ` <small class="muted">${t('fleet.econ.device')}</small>` : ''}</div>
             <div class="economics-summary">${esc(m.summary)}</div>${breakEven(m)}${expectedLine(m)}${heatLine(m)}${heatForm(m)}
           </div>
           <div>
             <div class="economics-figures">
               <span title="${grossLabel}">${money(m.monthly_gross)}</span>${m.monthly_cost == null ? '' : `
               <span class="muted">−</span>
-              <span title="estimated electricity per month">${money(m.monthly_cost)}</span>${m.heat_credit == null ? '' : `
+              <span title="${t('fleet.econ.cost_tip')}">${money(m.monthly_cost)}</span>${m.heat_credit == null ? '' : `
               <span class="muted">+</span>
-              <span class="econ-heat-credit" title="heat credit per month">${money(m.heat_credit)}</span>`}
+              <span class="econ-heat-credit" title="${t('fleet.econ.heat_tip')}">${money(m.heat_credit)}</span>`}
               <span class="muted">=</span>
               <span class="${losing ? 'text-fail' : ''} econ-net"
-                    title="net per month">${money(m.monthly_net)}</span>`}
+                    title="${t('fleet.econ.net_tip')}">${money(m.monthly_net)}</span>`}
             </div>
             ${device && _isOwner ? `<form class="device-power-form">
-              <label>Wall draw (W)
+              <label>${t('fleet.econ.wall_draw')}
                 <input type="number" min="1" step="1" class="power-device-watts"
                        data-slug="${esc(m.slug)}" value="${esc(m.watts)}">
               </label>
-              <button class="btn btn-link" type="submit">Save</button>
+              <button class="btn btn-link" type="submit">${t('fleet.save')}</button>
             </form>${hasMinerWatts && m.gross_basis === 'accrued' ? `
-              <div class="economics-note">Use the miner readings above as a starting point. Enter the total wall draw for the miners that use this pool account.</div>` : ''}` : ''}
+              <div class="economics-note">${t('fleet.econ.miner_hint')}</div>` : ''}` : ''}
           </div>
         </div>`;
     }).join('');
@@ -469,27 +466,27 @@ CASHPILOT_WORKER_NAME=server-name</code>
       if (attributable.length) {
         services = `
           <div class="economics-services">
-            <div class="detail-label">Per service, where the cost can be attributed</div>
+            <div class="detail-label">${t('fleet.econ.per_service')}</div>
             ${attributable.map(s => `
               <div class="economics-service-row">
                 <span>${esc(s.platform)}</span>
-                <span class="num${s.negative ? ' text-fail' : ''}"${s.gross_basis === 'accrued' ? ' title="Accrued at the pool during this period"' : ''}>
+                <span class="num${s.negative ? ' text-fail' : ''}"${s.gross_basis === 'accrued' ? ` title="${t('fleet.econ.accrued')}"` : ''}>
                   ${money(s.gross)} − ${money(s.cost)} = ${money(s.net)}
                 </span>
               </div>`).join('')}
           </div>`;
       }
       if (attributable.length && machines.some(m => m.heat_credit > 0)) {
-        services += `<div class="economics-note">Per-service figures leave out the heat credit, which belongs to the whole machine.</div>`;
+        services += `<div class="economics-note">${t('fleet.econ.no_heat_per_service')}</div>`;
       }
       if (withheld > 0) {
-        services += `<div class="economics-note">${withheld} service(s) draw too little on a machine that is already on for their share of the bill to mean anything, so no per-service figure is shown for them. Their cost is still counted in the machine totals above.</div>`;
+        services += `<div class="economics-note">${t('fleet.econ.withheld', { n: withheld })}</div>`;
       }
       if (unmetered > 0) {
-        services += `<div class="economics-note">${unmetered} service(s) run on boxes with no per-kWh bill.</div>`;
+        services += `<div class="economics-note">${t('fleet.econ.unmetered', { n: unmetered })}</div>`;
       }
       if (unknown > 0 && net.price_per_kwh != null) {
-        services += `<div class="economics-note">Electricity cost is unknown for ${unknown} service(s).</div>`;
+        services += `<div class="economics-note">${t('fleet.econ.unknown', { n: unknown })}</div>`;
       }
     }
 
@@ -537,8 +534,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
     if (workers.length === 0) {
       container.innerHTML = `<div class="empty-state">
-        <div class="empty-state-title">No boxes yet</div>
-        <div class="empty-state-text">Run a CashPilot worker on a server and it appears here. The steps are under Add a box below.</div>
+        <div class="empty-state-title">${t('fleet.empty.title')}</div>
+        <div class="empty-state-text">${t('fleet.empty.text')}</div>
       </div>`;
       const add = document.getElementById('add-worker');
       if (add) add.open = true;
@@ -560,77 +557,75 @@ CASHPILOT_WORKER_NAME=server-name</code>
         isAndroid ? flag('plain', '', 'Android') : '',
         sysInfo.device_type === 'desktop'
           ? (w.url
-            ? flag('plain', 'CashPilot Desktop. You can deploy services to it and stop them from here. It runs the images its own catalog pins.', 'Desktop')
-            : flag('plain', 'CashPilot Desktop that only reports what runs on it: it sent no address to take commands at. To deploy to it from here, on its dashboard turn on &quot;can start and stop services on this computer&quot; and, on Windows, allow it through Windows Firewall. It also needs a private network or Tailscale address.', 'Desktop, reports only'))
+            ? flag('plain', esc(t('fleet.flag.desktop_tip')), t('fleet.flag.desktop'))
+            : flag('plain', esc(t('fleet.flag.desktop_report_tip')), t('fleet.flag.desktop_report')))
           : '',
         dockerLost
-          ? flag('warn', 'This worker reports in but cannot reach Docker, so CashPilot cannot start, stop or see its containers. '
-              + (sysInfo.docker_access === 'socket' ? 'Restart the worker container on that machine.'
-                : sysInfo.docker_access === 'proxy' ? 'Restart the socket proxy on that machine: docker restart cashpilot-socket-proxy.'
-                : 'Restart the socket proxy on that machine (docker restart cashpilot-socket-proxy), or the worker if it has no proxy.'),
-              'Docker unreachable')
+          ? flag('warn', esc(sysInfo.docker_access === 'socket' ? t('fleet.flag.docker_lost_socket')
+                : sysInfo.docker_access === 'proxy' ? t('fleet.flag.docker_lost_proxy')
+                : t('fleet.flag.docker_lost_other')),
+              t('fleet.flag.docker_lost'))
             // The fix as a link anyone can reach: a title shows to a mouse only.
-            + ' <a class="flag-link" href="https://geiserx.github.io/CashPilot/faq/#worker-lost-docker" target="_blank" rel="noopener noreferrer">How to fix</a>'
+            + ` <a class="flag-link" href="https://geiserx.github.io/CashPilot/faq/#worker-lost-docker" target="_blank" rel="noopener noreferrer">${t('fleet.flag.how_to_fix')}</a>`
           : '',
-        w.url_refused ? flag('warn', esc(w.url_refused), 'plain HTTP refused') : '',
-        nameCounts[String(w.name || '')] > 1 ? flag('warn', 'More than one worker is registered under this name. That usually means this host was redeployed with a new or empty /data, so it re-registered under a new id and the old row stayed behind. Compare the ids and the last-seen times before removing one.', 'duplicate name') : '',
+        w.url_refused ? flag('warn', esc(w.url_refused), t('fleet.flag.url_refused')) : '',
+        nameCounts[String(w.name || '')] > 1 ? flag('warn', esc(t('fleet.flag.duplicate_tip')), t('fleet.flag.duplicate')) : '',
         w.enrollment === 'incomplete'
-          ? flag('warn', 'This worker enrolled but never used its own key, so it is still authenticating with the shared CASHPILOT_API_KEY. The shared key is no longer accepted for it. It usually means the worker cannot persist /data/.worker_key: an old image, or a /data that is read-only or not a persistent volume. Upgrade it to 1.0.0+ with a writable persistent /data, then remove it here so it can enroll again.', 'enrollment incomplete')
+          ? flag('warn', esc(t('fleet.flag.enroll_incomplete_tip')), t('fleet.flag.enroll_incomplete'))
           : w.enrollment === 'pending'
-          ? flag('plain', 'This worker has been issued its own key but has not used it yet, so the shared key still works for it for a short while. It clears itself on the worker\'s next heartbeat.', 'enrolling')
+          ? flag('plain', esc(t('fleet.flag.enrolling_tip')), t('fleet.flag.enrolling'))
           : '',
       ].join('');
       let version;
       if (sysInfo.version) {
         const ref = w.reference_version || w.ui_version || '?';
-        const refLabel = `${isAndroid ? 'latest' : 'UI'} v${esc(String(ref).replace(/^v/i, ''))}`;
-        const why = isAndroid
-          ? `This phone is on an older CashPilot Android release than the newest published one (${esc(ref)}). Install the newer APK from the GitHub releases page.`
-          : `This worker is on a different release series from the UI (${esc(ref)}). Update whichever is behind. On Unraid the UI and the worker are two separate apps, so updating one leaves the other.`;
+        const refVersion = esc(String(ref).replace(/^v/i, ''));
+        const refLabel = isAndroid ? t('fleet.version.latest', { version: refVersion }) : t('fleet.version.ui', { version: refVersion });
+        const why = esc(isAndroid ? t('fleet.version.android_skew', { ref }) : t('fleet.version.worker_skew', { ref }));
         version = `<span class="num${w.version_skew ? ' text-warn' : ''}"${w.version_skew ? ` title="${why}"` : ''}>v${esc(sysInfo.version)}${w.version_skew ? ` ≠ ${refLabel}` : ''}</span>`;
       } else {
-        version = `<span class="muted" title="This worker predates version reporting, so CashPilot cannot tell which release it is. Update it to find out.">version unknown</span>`;
+        version = `<span class="muted" title="${t('fleet.version.unknown_tip')}">${t('fleet.version.unknown')}</span>`;
       }
       rows += `
         <tr class="worker-row${isOnline ? '' : ' worker-off'}">
           <td class="w-name">
-            <span class="cell cell-${isOnline ? 'ok' : 'fail'}" aria-label="${isOnline ? 'online' : 'not reporting'}"></span>
+            <span class="cell cell-${isOnline ? 'ok' : 'fail'}" aria-label="${isOnline ? t('fleet.row.online') : t('fleet.row.not_reporting')}"></span>
             <strong class="w-name-text">${brk(w.name)}</strong>${flags}
-            <div class="cell-sub"><code class="worker-id" title="This worker's client_id, the id CashPilot keys it on. Two rows with the same name always have different ids; this is how to tell which is which.">${brk(w.client_id || ('#' + w.id))}</code></div>
+            <div class="cell-sub"><code class="worker-id" title="${esc(t('fleet.row.id_tip'))}">${brk(w.client_id || ('#' + w.id))}</code></div>
             ${w.url_refused ? `<div class="cell-sub text-warn">${esc(w.url_refused)}</div>` : ''}
           </td>
-          <td class="w-sys" data-label="System">
+          <td class="w-sys" data-label="${t('fleet.col.system')}">
             <span>${brk(sysInfo.os || '-')}${sysInfo.os_version ? ' ' + brk(sysInfo.os_version) : ''}</span>
             <div class="cell-sub cell-mono"><span class="w-arch">${brk(sysInfo.arch || '-')}</span> <span>${brk(w.url || '-')}</span></div>
           </td>
           <td class="w-ver">${version}</td>
-          <td class="w-seen${isOnline ? '' : ' text-fail'}" data-label="Last seen" title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</td>
-          <td class="w-power" data-label="Power draw">
-            <label for="watts-${cid}" class="sr-only">Draw in watts</label>
+          <td class="w-seen${isOnline ? '' : ' text-fail'}" data-label="${t('fleet.col.last_seen')}" title="${esc(CP.fmtTimestamp(w.last_heartbeat).title)}">${esc(CP.fmtTimestamp(w.last_heartbeat).text)}</td>
+          <td class="w-power" data-label="${t('fleet.col.power')}">
+            <label for="watts-${cid}" class="sr-only">${t('fleet.row.watts_label')}</label>
             <span class="w-watts"><input id="watts-${cid}" class="power-watts form-input form-input-sm" type="number" min="0" step="1"
                    data-client-id="${cid}" value="${esc(w.watts ?? '')}"
                    ${_isOwner ? '' : 'disabled'}
                    placeholder="65"
-                   title="Wall power this machine draws, in watts. Without it CashPilot cannot say what the machine costs to run."><span class="unit">W</span></span>
+                   title="${t('fleet.row.watts_tip')}"><span class="unit">W</span></span>
             <label class="w-dedicated">
               <input type="checkbox" class="power-dedicated" data-client-id="${cid}" ${w.dedicated ? 'checked' : ''} ${_isOwner ? '' : 'disabled'}>
-              dedicated
+              ${t('fleet.row.dedicated')}
             </label>
             <label class="w-dedicated">
               <input type="checkbox" class="power-unmetered" data-client-id="${cid}" ${w.unmetered ? 'checked' : ''} ${_isOwner ? '' : 'disabled'}>
-              Not billed per kWh
+              ${t('fleet.row.unmetered')}
             </label>
-            <button class="btn btn-link power-save-worker" data-client-id="${cid}" ${_isOwner ? '' : 'disabled'}>save</button>
+            <button class="btn btn-link power-save-worker" data-client-id="${cid}" ${_isOwner ? '' : 'disabled'}>${t('fleet.row.save')}</button>
           </td>
-          <td class="w-ctr" data-label="${isAndroid ? 'Apps' : 'Containers'}">${items.length ? (isAndroid ? renderApps(items, isOnline, w.last_heartbeat) : renderContainers(w, isOnline)) : '<span class="muted">none</span>'}</td>
+          <td class="w-ctr" data-label="${isAndroid ? t('fleet.col.apps') : t('fleet.col.containers')}">${items.length ? (isAndroid ? renderApps(items, isOnline, w.last_heartbeat) : renderContainers(w, isOnline)) : `<span class="muted">${t('fleet.row.none')}</span>`}</td>
           <td class="w-act">
             ${_isOwner && isOnline && !isAndroid && (sysInfo.features || []).includes('isolation_check')
-              ? `<button class="btn btn-ghost btn-sm btn-isolation-check" data-worker-id="${w.id}" title="Start two short-lived probe containers on this host and show what an earner can reach: your LAN, this host, an overlay network such as Tailscale, cloud metadata. Changes no firewall rule.">${_isolation[w.id] === 'running' ? 'Checking…' : 'Check isolation'}</button>`
+              ? `<button class="btn btn-ghost btn-sm btn-isolation-check" data-worker-id="${w.id}" title="${t('fleet.row.isolation_tip')}">${_isolation[w.id] === 'running' ? t('fleet.row.checking') : t('fleet.row.check_isolation')}</button>`
               : ''}
             ${_isOwner && !isAndroid && (sysInfo.features || []).includes('activity')
-              ? `<a class="btn btn-ghost btn-sm" href="/activity" title="What each earner on this box does on the network: connections, ports, networks, LAN attempts. Off until you switch it on there.">Activity</a>`
+              ? `<a class="btn btn-ghost btn-sm" href="/activity" title="${t('fleet.row.activity_tip')}">${t('fleet.row.activity')}</a>`
               : ''}
-            ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}"${sysInfo.device_type === 'desktop' ? ' data-worker-desktop="1"' : ''} title="Remove worker">Remove</button>` : ''}
+            ${_isOwner ? `<button class="btn btn-danger btn-sm btn-remove-worker" data-worker-id="${w.id}" data-worker-name="${esc(w.name)}" data-worker-client="${esc(w.client_id || '')}"${sysInfo.device_type === 'desktop' ? ' data-worker-desktop="1"' : ''} title="${t('fleet.row.remove_tip')}">${t('fleet.row.remove')}</button>` : ''}
           </td>
         </tr>
         ${_isolation[w.id] && _isolation[w.id] !== 'running' ? `<tr class="worker-detail"><td colspan="7">${renderIsolation(_isolation[w.id])}</td></tr>` : ''}
@@ -640,8 +635,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
     container.innerHTML = `
       <table class="fleet-table">
         <thead><tr>
-          <th scope="col">Box</th><th scope="col">System</th><th scope="col">Version</th><th scope="col">Last seen</th>
-          <th scope="col">Power draw</th><th scope="col">Containers or apps</th><th scope="col"><span class="sr-only">Actions</span></th>
+          <th scope="col">${t('fleet.col.box')}</th><th scope="col">${t('fleet.col.system')}</th><th scope="col">${t('fleet.col.version')}</th><th scope="col">${t('fleet.col.last_seen')}</th>
+          <th scope="col">${t('fleet.col.power')}</th><th scope="col">${t('fleet.col.items')}</th><th scope="col"><span class="sr-only">${t('fleet.col.actions')}</span></th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
@@ -664,9 +659,9 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const ahead = elapsed < 0;
       const stale = worker.status !== 'online' || ahead || elapsed > 180;
       const state = stale ? 'unknown' : device.ok ? 'ok' : 'fail';
-      const status = stale ? 'Stale' : device.ok ? 'Reading' : 'Read failed';
-      const clock = ahead ? 'Reading time is ahead of this browser'
-        : `${stale ? 'Last read' : 'Read'} ${Math.floor(elapsed)} s ago`;
+      const status = stale ? t('fleet.miner.stale') : device.ok ? t('fleet.miner.reading') : t('fleet.miner.read_failed');
+      const clock = ahead ? t('fleet.miner.ahead')
+        : stale ? t('fleet.miner.last_read_ago', { s: Math.floor(elapsed) }) : t('fleet.miner.read_ago', { s: Math.floor(elapsed) });
       const when = `<span title="${esc(device.read_at)}">${esc(clock)}</span>`;
       const label = [device.target, device.model, device.firmware].filter(Boolean).map(brk).join(' · ');
       const values = [];
@@ -674,30 +669,30 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const ths = device.hashrate_ghs == null ? null : device.hashrate_ghs / 1000;
         if (ths != null) values.push(`${esc(number(ths))} TH/s`);
         if (device.hashrate_avg_ghs != null) {
-          values.push(`${esc(number(device.hashrate_avg_ghs / 1000))} TH/s avg`);
+          values.push(esc(t('fleet.miner.avg', { rate: number(device.hashrate_avg_ghs / 1000) })));
         }
         if (device.watts != null) {
           const powerNote = device.protocol === 'axeos'
-            ? 'Reported by the device: DC at the board, before power-supply loss.'
-            : 'Power reported by the device.';
+            ? t('fleet.miner.power_axeos')
+            : t('fleet.miner.power_device');
           values.push(`<span title="${powerNote}">${esc(number(device.watts))} W</span>`);
           const efficiency = device.watts / ths;
           if (ths > 0 && Number.isFinite(efficiency)) values.push(`${esc(number(efficiency))} J/TH`);
         }
         if (device.temp_c != null) values.push(`${esc(number(device.temp_c))} °C`);
-        if (device.vr_temp_c != null) values.push(`${esc(number(device.vr_temp_c))} °C regulator`);
+        if (device.vr_temp_c != null) values.push(esc(t('fleet.miner.regulator', { temp: number(device.vr_temp_c) })));
         if (device.best_diff != null) {
-          values.push(`Best ${esc(difficulty(device.best_diff))}`);
+          values.push(esc(t('fleet.miner.best', { diff: difficulty(device.best_diff) })));
         }
         const pool = device.pool_url && device.pool_url.split('://')[1];
-        if (pool) values.push(`Pool ${brk(pool)}`);
-        if (device.pool_user) values.push(`User ${brk(device.pool_user)}`);
+        if (pool) values.push(t('fleet.miner.pool', { pool: brk(pool) }));
+        if (device.pool_user) values.push(t('fleet.miner.user', { user: brk(device.pool_user) }));
         if (device.uptime_s != null) {
           const hours = Math.floor(device.uptime_s / 3600);
           const minutes = Math.floor(device.uptime_s % 3600 / 60);
           const seconds = device.uptime_s % 60;
           const uptime = hours ? `${hours} h ${minutes} m` : minutes ? `${minutes} m ${seconds} s` : `${seconds} s`;
-          values.push(`Up ${esc(uptime)}`);
+          values.push(esc(t('fleet.miner.up', { uptime })));
         }
       } else {
         values.push(esc(device.error));
@@ -709,8 +704,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
       </li>`;
     }).join('');
     return `<tr class="worker-detail"><td colspan="7">
-      <div class="detail-label">Miners this worker reads</div>
-      ${warnings}${devices ? `<ul class="worker-miner-list">${devices}</ul>` : snapshot.read_at ? '' : 'Waiting for the first reading'}
+      <div class="detail-label">${t('fleet.miner.title')}</div>
+      ${warnings}${devices ? `<ul class="worker-miner-list">${devices}</ul>` : snapshot.read_at ? '' : t('fleet.miner.waiting')}
     </td></tr>`;
   }
 
@@ -730,7 +725,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // A redeploy starts the container, so the switch leaves stopped earners
     // where they are; they move the next time they are deployed.
     const stoppedNote = stopped.length
-      ? ` <span class="muted">Stopped, so left alone: ${esc(stopped.join(', '))}. Each moves when you next deploy it; starting it as it is keeps it on the old network.</span>`
+      ? ` <span class="muted">${t('fleet.fence.stopped', { names: esc(stopped.join(', ')) })}</span>`
       : '';
     const canSwitch = _isOwner && (sysInfo.features || []).includes('isolation_default');
     const button = (text) => canSwitch && !(sw && sw.busy)
@@ -738,22 +733,22 @@ CASHPILOT_WORKER_NAME=server-name</code>
       : '';
     let line = '';
     if (iso.mode === 'unsupported') {
-      line = '<span class="text-warn">This worker runs on Podman, which CashPilot cannot fence yet, so its earners sit on Podman\'s default network and can reach your LAN and this host.</span>';
+      line = `<span class="text-warn">${t('fleet.fence.podman')}</span>`;
     } else if (iso.mode === 'legacy') {
-      line = `<span class="text-warn">Earners on this worker can reach your LAN and this host: ${esc(outside.join(', ') || 'none running')}.</span>${button('Turn on isolation')}${stoppedNote}`;
+      line = `<span class="text-warn">${t('fleet.fence.legacy', { names: esc(outside.join(', ') || t('fleet.fence.none_running')) })}</span>${button(t('fleet.fence.turn_on'))}${stoppedNote}`;
     } else if (iso.mode === 'on' && fence.state === 'failed') {
-      line = `<span class="text-fail">The LAN fence is not in place on this worker: ${esc(fence.error || 'unknown error')}. While it is missing, earners on its network can reach this host's own services, and they may still reach the internet if another masquerade rule on the host covers them. Deploys are refused until it is back. To run without the fence, set CASHPILOT_ISOLATION=off on the worker.</span>`;
+      line = `<span class="text-fail">${t('fleet.fence.failed', { error: esc(fence.error || t('fleet.fence.unknown_error')) })}</span>`;
     } else if (iso.mode === 'on' && outside.length) {
-      line = `<span class="text-warn">These earners are still outside the isolated network and can reach your LAN: ${esc(outside.join(', '))}.</span>${button('Move them')}${stoppedNote}`;
+      line = `<span class="text-warn">${t('fleet.fence.outside', { names: esc(outside.join(', ')) })}</span>${button(t('fleet.fence.move'))}${stoppedNote}`;
     } else if (iso.mode === 'on' && stopped.length) {
       line = stoppedNote.trim();
     } else if (iso.mode === 'off' && outside.length === 0 && fence.state === 'reduced') {
-      line = '<span class="muted">Isolation is off (CASHPILOT_ISOLATION=off). Earners still on the isolated network keep their internet; redeploy them to move them back to Docker\'s default bridge.</span>';
+      line = `<span class="muted">${t('fleet.fence.off')}</span>`;
     }
     // Fence-gated earners (Mysterium) the worker holds stopped, with why.
     const held = Object.entries(iso.guard || {});
     if (held.length) {
-      line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">Held stopped: ${held.map(([n, why]) => `${esc(n)} (${esc(why)})`).join('; ')}. A missing LAN fence clears by itself; any other reason needs a redeploy from the dashboard.</span>${line ? '</div>' : ''}`;
+      line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">${t('fleet.fence.held', { list: held.map(([n, why]) => `${esc(n)} (${esc(why)})`).join('; ') })}</span>${line ? '</div>' : ''}`;
     }
     // A Mysterium from 2.0.6 or earlier, still on the host's network: left
     // running until its owner redeploys it, which moves it behind the fence.
@@ -767,57 +762,49 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const fenced = iso.mode === 'on' || iso.mode === 'operator';
       const what = unfenced.map((u) => esc(u.service || u.slug)).join(', ');
       const order = fenced
-        ? 'It keeps running as it is until you redeploy it once, which moves it behind the fence and keeps its identity.'
+        ? t('fleet.unfenced.fenced')
         : iso.mode === 'unsupported'
-          ? 'It keeps running as it is. Podman cannot be fenced: run it on Docker with isolation on, or on your own network (CASHPILOT_CONTAINER_NETWORK).'
+          ? t('fleet.unfenced.podman')
           : iso.mode === 'off'
-            ? 'It keeps running as it is. Set CASHPILOT_ISOLATION=auto on this worker and restart it, then redeploy it once to move it behind the fence.'
-            : 'It keeps running as it is. Switch isolation on first, then redeploy it once to move it behind the fence.';
+            ? t('fleet.unfenced.off')
+            : t('fleet.unfenced.legacy');
       const redeploy = _isOwner && fenced && !(sw && sw.busy)
-        ? unfenced.map((u) => ` <button class="btn btn-primary btn-sm btn-unfenced-redeploy" data-worker-id="${w.id}" data-slug="${esc(u.slug)}" data-service="${esc(u.service || u.slug)}">Redeploy ${esc(u.service || u.slug)} to move behind the fence</button>`).join('')
+        ? unfenced.map((u) => ` <button class="btn btn-primary btn-sm btn-unfenced-redeploy" data-worker-id="${w.id}" data-slug="${esc(u.slug)}" data-service="${esc(u.service || u.slug)}">${t('fleet.unfenced.redeploy', { service: esc(u.service || u.slug) })}</button>`).join('')
         : '';
-      line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">${what} still shares this host's network, where its NET_ADMIN can rewrite the host's firewall. ${order}</span>${redeploy}${line ? '</div>' : ''}`;
+      line += `${line ? '<div class="iso-line">' : ''}<span class="text-fail">${t('fleet.unfenced.line', { what, order })}</span>${redeploy}${line ? '</div>' : ''}`;
     }
     if (sw) {
       const tone = sw.error ? 'text-fail' : sw.busy ? 'muted' : 'text-ok';
       line += `<div class="iso-line ${tone}">${esc(sw.error || sw.busy || sw.done)}</div>`;
     }
-    return line ? `<tr class="worker-detail"><td colspan="7"><div class="iso-report">${line} <a href="https://geiserx.github.io/CashPilot/isolation/#lan-isolation-by-default" target="_blank" rel="noopener noreferrer">How it works</a></div></td></tr>` : '';
+    return line ? `<tr class="worker-detail"><td colspan="7"><div class="iso-report">${line} <a href="https://geiserx.github.io/CashPilot/isolation/#lan-isolation-by-default" target="_blank" rel="noopener noreferrer">${t('fleet.how_it_works')}</a></div></td></tr>` : '';
   }
 
   async function moveBehindFence(workerId, slug, service) {
-    if (!confirm(`Redeploy ${service} to move it behind the LAN fence?\n\n`
-      + '- The worker reads the node\'s identity, replaces the container on the fenced network and checks the new one has the same identity.\n'
-      + '- The data volume is kept. If the identity differs, the node is held stopped and the volume is left as it is.\n'
-      + '- The node is down for under a minute.')) return;
-    _fenceSwitch[workerId] = { busy: `Moving ${service} behind the fence…` };
+    if (!confirm(t('fleet.unfenced.confirm', { service }))) return;
+    _fenceSwitch[workerId] = { busy: t('fleet.unfenced.moving', { service }) };
     loadFleet();
     try {
       // Redeploy from the recorded spec. A fence-gated service lands on the fenced bridge.
       await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: { replace_existing: true } });
       _movedBehindFence.add(`${workerId}:${slug}`);
-      _fenceSwitch[workerId] = { done: `${service} was redeployed behind the fence.` };
+      _fenceSwitch[workerId] = { done: t('fleet.unfenced.done', { service }) };
     } catch (err) {
-      _fenceSwitch[workerId] = { error: `${service} was not moved: ${err.message}` };
+      _fenceSwitch[workerId] = { error: t('fleet.unfenced.failed', { service, error: err.message }) };
     }
     loadFleet();
   }
 
   async function enableFence(workerId, name) {
-    if (!confirm(`Turn on LAN isolation on "${name}"?\n\n`
-      + '- The worker creates a Docker network (cashpilot-isolated) and one firewall table (ip cashpilot) on its host.\n'
-      + '- Each running earner on Docker\'s default bridge is redeployed once onto that network. Storj gets its full clean stop first, so it can take a few minutes.\n'
-      + '- Stopped earners stay stopped and move the next time you deploy them.\n'
-      + '- Identities and data are kept: the same volumes and settings are used.\n\n'
-      + 'To undo it, set CASHPILOT_ISOLATION=off on the worker and redeploy the earners.')) return;
-    _fenceSwitch[workerId] = { busy: 'Turning on isolation…' };
+    if (!confirm(t('fleet.fence.confirm', { name }))) return;
+    _fenceSwitch[workerId] = { busy: t('fleet.fence.turning_on') };
     loadFleet();
     let slugs;
     try {
       const r = await CP.api(`/api/workers/${workerId}/isolation`, { method: 'POST' });
       slugs = r.earners_outside || [];
     } catch (err) {
-      _fenceSwitch[workerId] = { error: `Isolation could not be turned on: ${err.message}` };
+      _fenceSwitch[workerId] = { error: t('fleet.fence.on_failed', { error: err.message }) };
       loadFleet();
       return;
     }
@@ -827,14 +814,14 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const failed = [];
     for (let i = 0; i < slugs.length; i++) {
       const slug = slugs[i];
-      _fenceSwitch[workerId] = { busy: `Moving ${slug} (${i + 1} of ${slugs.length})…` };
+      _fenceSwitch[workerId] = { busy: t('fleet.fence.moving', { slug, i: i + 1, n: slugs.length }) };
       loadFleet();
       try {
         // Redeploy from the recorded spec onto the new network.
         await CP.api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${workerId}`, { method: 'POST', body: { replace_existing: true } });
         moved.push(slug);
       } catch (err) {
-        failed.push(`${slug} (${err.message})`);
+        failed.push(t('fleet.fence.failed_item', { slug, error: err.message }));
       }
     }
     // A redeploy recreates the instances the UI has recorded. One left running
@@ -846,16 +833,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const left = new Set(again.earners_outside || []);
         for (const slug of moved.filter((s) => left.has(s))) {
           moved.splice(moved.indexOf(slug), 1);
-          failed.push(`${slug} (an instance is still running outside the isolated network)`);
+          failed.push(t('fleet.fence.still_outside', { slug }));
         }
       } catch (err) {
         // Not confirmed is not moved.
-        for (const slug of moved.splice(0)) failed.push(`${slug} (redeployed, but the worker could not confirm it moved: ${err.message})`);
+        for (const slug of moved.splice(0)) failed.push(t('fleet.fence.not_confirmed', { slug, error: err.message }));
       }
     }
-    const done = moved.length ? `Isolation is on. Moved ${moved.join(', ')}.` : 'Isolation is on.';
+    const done = moved.length ? t('fleet.fence.on_moved', { names: moved.join(', ') }) : t('fleet.fence.on');
     _fenceSwitch[workerId] = failed.length
-      ? { error: `${done} Could not move: ${failed.join('; ')}. Redeploy or remove each from its service page.` }
+      ? { error: t('fleet.fence.on_partial', { done, failed: failed.join('; ') }) }
       : { done };
     loadFleet();
   }
@@ -868,27 +855,27 @@ CASHPILOT_WORKER_NAME=server-name</code>
     let html = '<div class="iso-report">';
     const when = r.checked_at ? new Date(r.checked_at) : null;
     if (when && !Number.isNaN(when.getTime())) {
-      html += `<div class="iso-line muted" title="${esc(r.checked_at)}">Checked ${esc(when.toLocaleString())}</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.checked_at)}">${esc(t('fleet.iso.checked', { when: when.toLocaleString() }))}</div>`;
     }
     if (r.error) {
-      return html + `<div class="iso-line text-fail">Isolation check failed: ${esc(r.error)}</div></div>`;
+      return html + `<div class="iso-line text-fail">${esc(t('fleet.iso.failed', { error: r.error }))}</div></div>`;
     }
     // Isolated can still have reachable lines: the ones the report marks
     // expected (DNS through the Tailscale rewrite or a LAN DNS exception).
     const allowed = (r.groups || []).flatMap(g => g.targets).filter(target => target.reachable).map(target => target.address);
     const head = {
       isolated: ['text-ok', allowed.length
-        ? `Isolated over IPv4. An earner reached only the expected DNS ${allowed.length === 1 ? 'line' : 'lines'} ${allowed.join(', ')} and none of the other addresses below, and it reached the internet.`
-        : 'Isolated over IPv4. An earner reached none of the addresses below, and it reached the internet.'],
-      exposed: ['text-fail', 'Not isolated. See what to fix below.'],
-      could_not_test: ['text-warn', 'Could not test. ' + (r.reason || '')],
+        ? t('fleet.iso.isolated_dns', { n: allowed.length, list: allowed.join(', ') })
+        : t('fleet.iso.isolated')],
+      exposed: ['text-fail', t('fleet.iso.exposed')],
+      could_not_test: ['text-warn', t('fleet.iso.could_not_test', { reason: r.reason || '' })],
     }[r.status] || ['muted', String(r.status)];
     html += `<div class="iso-head ${head[0]}">${esc(head[1])}</div>`;
     if (r.status === 'exposed' && r.reason) {
-      html += `<div class="iso-line text-warn">The probe part could not run: ${esc(r.reason)}</div>`;
+      html += `<div class="iso-line text-warn">${esc(t('fleet.iso.probe_failed', { reason: r.reason }))}</div>`;
     }
     if (r.tested_from) {
-      html += `<div class="iso-line muted">Tested from ${esc(r.tested_from.earner || 'a probe')} on ${esc((r.tested_from.network || []).join(', ') || '?')}.</div>`;
+      html += `<div class="iso-line muted">${esc(t('fleet.iso.tested_from', { earner: r.tested_from.earner || t('fleet.iso.a_probe'), network: (r.tested_from.network || []).join(', ') || '?' }))}</div>`;
     }
     for (const g of r.groups || []) {
       html += `<div class="iso-group"><span class="iso-label">${esc(g.label)}</span><span class="iso-targets">`;
@@ -896,38 +883,38 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const bad = target.reachable && !target.expected;
         const tone = target.reachable ? (bad ? 'iso-fail' : 'iso-warn') : 'iso-ok';
         const tip = `${target.label}${target.note ? '. ' + target.note : ''}`;
-        html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(target.address)}</span> <span class="iso-state">${target.reachable ? 'reachable' : 'blocked'}</span></span>`;
+        html += `<span class="iso-target ${tone}" title="${esc(tip)}"><span class="mono">${esc(target.address)}</span> <span class="iso-state">${target.reachable ? t('fleet.iso.reachable') : t('fleet.iso.blocked')}</span></span>`;
       }
       html += '</span></div>';
     }
     // CashPilot's own fence: each range gets one connect to an unused address,
     // and the drop rule's packet counter shows whether the fence caught it.
     if (r.fence && (r.fence.ranges || []).length) {
-      html += `<div class="iso-group"><span class="iso-label" title="Each blocked range gets one test connection to an unused address; the fence's own packet counter shows it dropped it.">CashPilot's fence (${esc(r.fence.backend || '?')})</span><span class="iso-targets">`;
+      html += `<div class="iso-group"><span class="iso-label" title="${esc(t('fleet.iso.fence_tip'))}">${esc(t('fleet.iso.fence', { backend: r.fence.backend || '?' }))}</span><span class="iso-targets">`;
       for (const x of r.fence.ranges) {
-        html += `<span class="iso-target ${x.proven ? 'iso-ok' : 'iso-fail'}" title="${esc(x.rule + ', test address ' + x.address)}"><span class="mono">${esc(x.range)}</span> <span class="iso-state">${x.proven ? 'dropped' : 'not caught'}</span></span>`;
+        html += `<span class="iso-target ${x.proven ? 'iso-ok' : 'iso-fail'}" title="${esc(t('fleet.iso.rule_tip', { rule: x.rule, address: x.address }))}"><span class="mono">${esc(x.range)}</span> <span class="iso-state">${x.proven ? t('fleet.iso.dropped') : t('fleet.iso.not_caught')}</span></span>`;
       }
       html += '</span></div>';
     }
     if (r.internet) {
-      html += `<div class="iso-group"><span class="iso-label">Internet</span><span class="iso-target ${r.internet.reachable ? 'iso-ok' : 'iso-fail'}"><span class="mono">${esc(r.internet.address)}</span> <span class="iso-state">${r.internet.reachable ? 'works' : 'failed'}</span></span></div>`;
+      html += `<div class="iso-group"><span class="iso-label">${t('fleet.iso.internet')}</span><span class="iso-target ${r.internet.reachable ? 'iso-ok' : 'iso-fail'}"><span class="mono">${esc(r.internet.address)}</span> <span class="iso-state">${r.internet.reachable ? t('fleet.iso.works') : t('fleet.iso.internet_failed')}</span></span></div>`;
     }
     for (const f of r.findings || []) {
-      html += `<div class="iso-line ${f.exposure ? 'text-fail' : 'text-warn'}">${esc(f.detail)} <a href="${esc(f.docs)}" target="_blank" rel="noopener noreferrer">How to fix it</a></div>`;
+      html += `<div class="iso-line ${f.exposure ? 'text-fail' : 'text-warn'}">${esc(f.detail)} <a href="${esc(f.docs)}" target="_blank" rel="noopener noreferrer">${t('fleet.iso.how_to_fix')}</a></div>`;
     }
     const m = r.node_firewall;
     if (m) {
-      html += `<div class="iso-line muted">${esc(m.service || 'Node')} (${esc(m.container)}): ${m.readable ? 'blackholes ' + esc((m.blackholed || []).join(', ') || 'nothing') : esc(m.detail || '')}</div>`;
+      html += `<div class="iso-line muted">${esc(t('fleet.iso.node_line', { service: m.service || t('fleet.iso.node'), container: m.container, detail: m.readable ? t('fleet.iso.blackholes', { list: (m.blackholed || []).join(', ') || t('fleet.iso.nothing') }) : (m.detail || '') }))}</div>`;
     }
     if ((r.addresses_left_out || []).length) {
-      html += `<div class="iso-line muted" title="${esc(r.addresses_left_out.join(' '))}">${r.addresses_left_out.length} Docker bridge address(es) of this host were left out to keep the check short, so they were not tested.</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.addresses_left_out.join(' '))}">${t('fleet.iso.left_out', { n: r.addresses_left_out.length })}</div>`;
     }
     if ((r.leftover_probes || []).length) {
       const names = r.leftover_probes.join(' ');
-      html += `<div class="iso-line text-warn">Docker would not remove ${r.leftover_probes.length === 1 ? 'this probe container' : 'these probe containers'}, so ${r.leftover_probes.length === 1 ? 'it is' : 'they are'} still on the host: ${esc(r.leftover_probes.join(', '))}. Remove ${r.leftover_probes.length === 1 ? 'it' : 'them'} with <code>docker rm -fv ${esc(names)}</code>.</div>`;
+      html += `<div class="iso-line text-warn">${t('fleet.iso.leftover_html', { n: r.leftover_probes.length, list: esc(r.leftover_probes.join(', ')), names: esc(names) })}</div>`;
     }
     if ((r.not_answering_from_host || []).length) {
-      html += `<div class="iso-line muted" title="${esc(r.not_answering_from_host.join(' '))}">${r.not_answering_from_host.length} address(es) did not answer from the host itself, so they were not tested.</div>`;
+      html += `<div class="iso-line muted" title="${esc(r.not_answering_from_host.join(' '))}">${t('fleet.iso.not_answering', { n: r.not_answering_from_host.length })}</div>`;
     }
     return html + '</div>';
   }
@@ -946,8 +933,8 @@ CASHPILOT_WORKER_NAME=server-name</code>
     } catch (err) {
       result = {
         error: err.name === 'AbortError'
-          ? `no answer after ${deadlineMs / 1000} s. The worker may still be running the check; try again in a minute.`
-          : (err.message || 'error'),
+          ? t('fleet.iso.timeout', { s: deadlineMs / 1000 })
+          : (err.message || t('fleet.error_word')),
       };
     } finally {
       clearTimeout(timer);
@@ -966,7 +953,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
   function renderApps(apps, isOnline, lastSeen) {
     let html = '<div class="ctr-list">';
     if (isOnline === false) {
-      html += `<div class="ctr-stale">Last known state, not reachable</div>`;
+      html += `<div class="ctr-stale">${t('fleet.ctr.stale')}</div>`;
     }
     for (const a of apps) {
       // Same rule as the containers: an unreachable device cannot be reporting
@@ -990,19 +977,19 @@ CASHPILOT_WORKER_NAME=server-name</code>
   // signal. The state is still shown, because "what was running when we last
   // heard" is useful, but it is shown as a memory rather than a measurement.
   function staleNote(lastSeen) {
-    return `Last reported ${CP.fmtTimestamp(lastSeen).text}. This host is not reachable, so this is the last known state, not the current one.`;
+    return t('fleet.ctr.stale_tip', { when: CP.fmtTimestamp(lastSeen).text });
   }
 
   function renderContainers(worker, isOnline) {
     let html = '<div class="ctr-list">';
     if (!isOnline) {
-      html += `<div class="ctr-stale">Last known state, not reachable</div>`;
+      html += `<div class="ctr-stale">${t('fleet.ctr.stale')}</div>`;
     }
     for (const c of worker.containers) {
       const status = (c.status || 'stopped').toLowerCase();
       const state = !isOnline ? 'idle' : status === 'running' ? 'ok'
         : (status === 'exited' || status === 'stopped' || status === 'dead') ? 'fail' : 'warn';
-      const why = status === 'running' ? '' : `${status}${c.exit_code != null ? `, exit code ${c.exit_code}` : ''}`;
+      const why = status === 'running' ? '' : c.exit_code != null ? t('fleet.ctr.exit_code', { status, code: c.exit_code }) : status;
       const tip = isOnline ? (why ? ` title="${esc(why)}"` : '') : ` title="${esc(staleNote(worker.last_heartbeat))}"`;
       html += `<span class="ctr ctr-${state}${isOnline ? '' : ' ctr-stale-item'}"${tip}>${esc(c.slug || c.name)}${state === 'fail' ? ` <span class="ctr-why">${esc(why)}</span>` : ''}</span>`;
     }
@@ -1027,16 +1014,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const btn = document.getElementById('reveal-btn');
     if (_apiKeyRevealed) {
       el.textContent = '••••••••';
-      btn.textContent = 'Reveal API Key';
+      btn.textContent = t('fleet.add.reveal');
       _apiKeyRevealed = false;
     } else {
       btn.disabled = true;
       const prev = btn.textContent;
-      btn.textContent = 'Revealing…';
+      btn.textContent = t('fleet.add.revealing');
       await fetchApiKey();
       btn.disabled = false;
       el.textContent = _apiKey;
-      btn.textContent = 'Hide API Key';
+      btn.textContent = t('fleet.add.hide');
       _apiKeyRevealed = true;
     }
   };
@@ -1045,18 +1032,18 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // The id is in the prompt because two rows can share a display name — a
     // host redeployed with a new /data leaves its old row behind — and picking
     // the wrong one takes the LIVE host out of the fleet (CashPilot-3fr).
-    const which = clientId ? `\n\nId: ${clientId}` : '';
+    const which = clientId ? `\n\n${t('fleet.remove.id', { id: clientId })}` : '';
     // A Desktop never re-enrols by itself and has no /data/.worker_key.
     const after = desktop
-      ? 'It is removed from the fleet here and stops reporting. It does not join again by itself: on that computer, open Settings, pick Run everything here, then Join my CashPilot.'
-      : 'It is removed from the fleet here, but the worker itself keeps running. It will re-enrol on its own after a few minutes of rejected heartbeats. To bring it back immediately, delete /data/.worker_key on that host and restart the container.';
-    if (!confirm(`Remove worker "${name}"?${which}\n\n${after}`)) return;
+      ? t('fleet.remove.after_desktop')
+      : t('fleet.remove.after_worker');
+    if (!confirm(`${t('fleet.remove.confirm', { name })}${which}\n\n${after}`)) return;
     try {
       await CP.api(`/api/workers/${workerId}`, { method: 'DELETE' });
-      CP.toast(`Worker "${name}" removed`, 'success');
+      CP.toast(t('fleet.remove.done', { name }), 'success');
       loadFleet();
     } catch (err) {
-      CP.toast('Failed: ' + err.message, 'error');
+      CP.toast(t('fleet.failed', { error: err.message }), 'error');
     }
   }
 
@@ -1085,12 +1072,12 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const currency = document.getElementById('power-currency');
     const raw = (price.value || '').trim();
     if (raw === '') {
-      CP.toast('Enter your price per kWh first', 'warning');
+      CP.toast(t('fleet.costs.enter_price'), 'warning');
       return;
     }
     const value = Number(raw);
     if (!Number.isFinite(value) || value < 0) {
-      CP.toast('That is not a price per kWh', 'error');
+      CP.toast(t('fleet.costs.bad_price'), 'error');
       return;
     }
     const code = (currency.value || 'EUR').trim().toUpperCase();
@@ -1099,10 +1086,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
         power_price_per_kwh: String(value),
         power_currency: code,
       } } });
-      CP.toast('Electricity price saved', 'success');
+      CP.toast(t('fleet.costs.saved'), 'success');
       loadFleetEconomics();
     } catch (err) {
-      CP.toast('Could not save: ' + err.message, 'error');
+      CP.toast(t('fleet.save_failed', { error: err.message }), 'error');
     }
   }
 
@@ -1123,10 +1110,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
         [`power_device_${input.dataset.slug}_watts`]: watts,
       } } });
       input.defaultValue = watts;
-      CP.toast('Device power saved', 'success');
+      CP.toast(t('fleet.econ.device_saved'), 'success');
       await loadFleetEconomics(input.dataset.slug);
     } catch (err) {
-      CP.toast('Could not save: ' + err.message, 'error');
+      CP.toast(t('fleet.save_failed', { error: err.message }), 'error');
     } finally {
       save.disabled = false;
       input.readOnly = false;
@@ -1144,15 +1131,15 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const price = form.querySelector('.heat-price').value.trim();
     const months = Array.from(form.querySelectorAll('.heat-month')).filter(box => box.checked).map(box => box.value);
     if (source !== 'none' && !months.length) {
-      CP.toast('Pick the months you heat', 'warning');
+      CP.toast(t('fleet.heat.pick_months'), 'warning');
       return;
     }
     if (source === 'heat_pump' && !(Number(cop) >= 1 && Number(cop) <= 10)) {
-      CP.toast('A heat pump COP is between 1 and 10', 'error');
+      CP.toast(t('fleet.heat.bad_cop'), 'error');
       return;
     }
     if (source === 'fuel' && !(Number(price) > 0)) {
-      CP.toast('Enter what a kWh of heat from that fuel costs you', 'error');
+      CP.toast(t('fleet.heat.bad_price'), 'error');
       return;
     }
     const prefix = form.dataset.prefix;
@@ -1164,10 +1151,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
         [`${prefix}_heat_price`]: price,
         [`${prefix}_heat_months`]: months.join(','),
       } } });
-      CP.toast('Heat setting saved', 'success');
+      CP.toast(t('fleet.heat.saved'), 'success');
       await loadFleetEconomics(prefix);
     } catch (err) {
-      CP.toast('Could not save: ' + err.message, 'error');
+      CP.toast(t('fleet.save_failed', { error: err.message }), 'error');
     } finally {
       save.disabled = false;
     }
@@ -1195,7 +1182,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
       const raw = (watts?.value || '').trim();
       const value = Number(raw);
       if (raw !== '' && (!Number.isFinite(value) || value < 0)) {
-        CP.toast('That is not a wattage', 'error');
+        CP.toast(t('fleet.row.bad_watts'), 'error');
         return;
       }
       // Keep an unchanged billing choice out of a watts-only save. Another
@@ -1218,10 +1205,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
           unmetered.defaultChecked = billedAtFixedPrice;
           unmetered.checked = draft;
         }
-        CP.toast('Machine power saved', 'success');
+        CP.toast(t('fleet.row.saved'), 'success');
         loadFleetEconomics();
       } catch (err) {
-        CP.toast('Could not save: ' + err.message, 'error');
+        CP.toast(t('fleet.save_failed', { error: err.message }), 'error');
       } finally {
         pendingWorkerPowerSaves--;
         powerBtn.disabled = false;
@@ -1268,7 +1255,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     // CASHPILOT_API_KEY=(error) into their compose file and then debugged a
     // worker that could never enrol (CashPilot-0p4).
     if (!_apiKey || _apiKey.startsWith('(')) {
-      CP.toast(`Nothing to copy: the API key reads ${_apiKey || 'as unset'}. Reveal it first.`, 'error');
+      CP.toast(t('fleet.add.nothing_to_copy', { value: _apiKey || t('fleet.key.as_unset') }), 'error');
       return;
     }
     const text = `CASHPILOT_UI_URL=${uiUrl}\nCASHPILOT_API_KEY=${_apiKey}\nCASHPILOT_WORKER_NAME=server-name`;
@@ -1281,7 +1268,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     try {
       if (!navigator.clipboard) throw new Error('clipboard unavailable');
       await navigator.clipboard.writeText(text);
-      CP.toast('Copied', 'success');
+      CP.toast(t('fleet.add.copied'), 'success');
     } catch (err) {
       showWorkerEnvFallback(text);
     }
@@ -1292,13 +1279,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
   function showWorkerEnvFallback(text) {
     const box = document.getElementById('worker-env-fallback');
     if (!box) {
-      CP.toast('Copying needs a secure (https) page. Select the text above and copy it manually.', 'warning');
+      CP.toast(t('fleet.add.copy_needs_https'), 'warning');
       return;
     }
     box.style.display = '';
     box.querySelector('textarea').value = text;
     box.querySelector('textarea').select();
-    CP.toast('This page is not on https, so CashPilot cannot reach the clipboard. The text is selected, press Ctrl/Cmd+C.', 'warning');
+    CP.toast(t('fleet.add.copy_selected'), 'warning');
   }
 
   loadApiKeyStatus();
@@ -1316,16 +1303,16 @@ CASHPILOT_WORKER_NAME=server-name</code>
 
   function workerName(id) {
     const w = _workers.find((x) => x.id === id);
-    return w ? w.name : `box ${id}`;
+    return w ? w.name : t('fleet.proxy.box_n', { id });
   }
 
   function capLine(p) {
     const c = p.cap;
     // A stop that still holds is shown even with the cap now off, so it never hides.
-    if (c.capped_at) return `Stopped: ${c.cap_reason}`;
-    if (!c.enabled) return 'No cap';
-    const reset = c.reset_day ? `resets on day ${c.reset_day}` : 'resets by hand';
-    return `${gb(c.used_bytes)} of ${gb(c.cap_bytes)} GB, stops at ${c.threshold_pct}%, ${reset}`;
+    if (c.capped_at) return t('fleet.proxy.capped', { reason: c.cap_reason });
+    if (!c.enabled) return t('fleet.proxy.no_cap');
+    const reset = c.reset_day ? t('fleet.proxy.resets_day', { day: c.reset_day }) : t('fleet.proxy.resets_hand');
+    return t('fleet.proxy.cap_line', { used: gb(c.used_bytes), cap: gb(c.cap_bytes), pct: c.threshold_pct, reset });
   }
 
   function copyStatus(workerId, slug, proxyId) {
@@ -1333,48 +1320,48 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const entries = (w && w.system_info && w.system_info.proxied) || [];
     const e = entries.find((x) => x.slug === slug && x.proxy_id === proxyId);
     if (!e) return {status: 'unknown', via: ''};
-    const via = e.exit_ip ? `${e.exit_ip}${e.exit_country ? ' · ' + e.exit_country : ''}` : 'exit not seen yet';
+    const via = e.exit_ip ? `${e.exit_ip}${e.exit_country ? ' · ' + e.exit_country : ''}` : t('fleet.proxy.exit_unseen');
     return {status: e.status, via, recoverySkipped: e.recovery_skipped};
   }
 
   function render() {
     const box = document.getElementById('proxy-list');
     if (!_proxies.length) {
-      box.innerHTML = '<p class="muted">No proxies yet. Add one below.</p>';
+      box.innerHTML = `<p class="muted">${t('fleet.proxy.empty')}</p>`;
       return;
     }
-    box.innerHTML = '<table class="fleet-table"><thead><tr><th>Proxy</th><th>Exit</th><th>Traffic</th><th>Copies</th><th></th></tr></thead><tbody>' +
+    box.innerHTML = `<table class="fleet-table"><thead><tr><th>${t('fleet.proxy.col.proxy')}</th><th>${t('fleet.proxy.col.exit')}</th><th>${t('fleet.proxy.col.traffic')}</th><th>${t('fleet.proxy.col.copies')}</th><th></th></tr></thead><tbody>` +
       _proxies.map((p) => {
-        const target = p.kind === 'tailscale' ? `Tailscale exit ${esc(p.exit_node)}` : `${esc(p.kind)} ${esc(p.host)}:${esc(p.port)}`;
-        let exit = p.last_exit_ip ? `${esc(p.last_exit_ip)}${p.last_country ? ' · ' + esc(p.last_country) : ''}${p.rotating ? ' (rotating)' : ''}` : '<span class="muted">not tested</span>';
+        const target = p.kind === 'tailscale' ? esc(t('fleet.proxy.tailscale_exit', { node: p.exit_node })) : `${esc(p.kind)} ${esc(p.host)}:${esc(p.port)}`;
+        let exit = p.last_exit_ip ? `${esc(p.last_exit_ip)}${p.last_country ? ' · ' + esc(p.last_country) : ''}${p.rotating ? t('fleet.proxy.rotating_suffix') : ''}` : `<span class="muted">${t('fleet.proxy.not_tested')}</span>`;
         const lastTest = p.last_test;
-        if (lastTest && !lastTest.ok) exit += `<br><span class="muted">Last test failed on ${esc(lastTest.worker)} (${esc((lastTest.at || '').replace('T', ' ').slice(0, 16))}): ${esc(lastTest.error)}</span>`;
+        if (lastTest && !lastTest.ok) exit += `<br><span class="muted">${esc(t('fleet.proxy.test_failed', { worker: lastTest.worker, at: (lastTest.at || '').replace('T', ' ').slice(0, 16), error: lastTest.error }))}</span>`;
         const copies = p.copies.map((c) => {
           const st = copyStatus(c.worker_id, c.slug, p.id);
           // Asked to remove, worker not confirmed yet: no buttons, it goes once the worker confirms.
-          if (c.removing) return `<div>${esc(c.slug)} on ${esc(workerName(c.worker_id))}: <span class="muted">removing…</span></div>`;
-          const capped = c.stopped_by_cap ? ' <span class="muted">(stopped by the cap)</span>' : '';
-          return `<div>${esc(c.slug)} on ${esc(workerName(c.worker_id))}: ${esc(st.status)} via ${esc(st.via)}${capped}
-            <button class="btn btn-ghost btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="${st.status === 'running' ? 'stop' : 'start'}">${st.status === 'running' ? 'Stop' : 'Start'}</button>
-            <button class="btn btn-danger btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="remove">Remove</button>
+          if (c.removing) return `<div>${esc(t('fleet.proxy.copy_on', { slug: c.slug, box: workerName(c.worker_id) }))} <span class="muted">${t('fleet.proxy.removing')}</span></div>`;
+          const capped = c.stopped_by_cap ? ` <span class="muted">${t('fleet.proxy.stopped_by_cap')}</span>` : '';
+          return `<div>${esc(t('fleet.proxy.copy_on', { slug: c.slug, box: workerName(c.worker_id) }))} ${esc(t('fleet.proxy.copy_via', { status: st.status, via: st.via }))}${capped}
+            <button class="btn btn-ghost btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="${st.status === 'running' ? 'stop' : 'start'}">${st.status === 'running' ? t('fleet.proxy.stop') : t('fleet.proxy.start')}</button>
+            <button class="btn btn-danger btn-sm" data-copy="${p.id}:${c.worker_id}:${esc(c.slug)}" data-cmd="remove">${t('fleet.row.remove')}</button>
             ${st.recoverySkipped ? `<div class="text-warn">${esc(st.recoverySkipped)}</div>` : ''}</div>`;
-        }).join('') || '<span class="muted">none</span>';
+        }).join('') || `<span class="muted">${t('fleet.row.none')}</span>`;
         return `<tr><td><strong>${esc(p.name)}</strong><br><span class="muted">${target}</span></td><td>${exit}</td>
-          <td>${esc(capLine(p))}${p.cap.enabled || p.cap.capped_at ? ` <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="reset">Reset</button>` : ''}</td>
+          <td>${esc(capLine(p))}${p.cap.enabled || p.cap.capped_at ? ` <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="reset">${t('fleet.proxy.reset_usage')}</button>` : ''}</td>
           <td>${copies}</td>
-          <td><button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="test">Test</button>
-              <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="edit">Edit</button>
-              <button class="btn btn-danger btn-sm" data-proxy="${p.id}" data-act="delete">Delete</button></td></tr>`;
+          <td><button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="test">${t('fleet.proxy.test')}</button>
+              <button class="btn btn-ghost btn-sm" data-proxy="${p.id}" data-act="edit">${t('fleet.proxy.edit')}</button>
+              <button class="btn btn-danger btn-sm" data-proxy="${p.id}" data-act="delete">${t('fleet.proxy.delete')}</button></td></tr>`;
       }).join('') + '</tbody></table>';
   }
 
   function renderExits(exits) {
     const box = document.getElementById('proxy-exits');
     const known = exits.filter((g) => g.known);
-    const lines = known.map((g) => `<li>${esc(g.exit_ip)}: ${g.members.map((m) => `${esc(m.slug)} on ${esc(m.worker_name || m.worker_id)}`).join(', ')}${g.shared ? ' <strong>(shared)</strong>' : ''}</li>`);
-    exits.filter((g) => g.rotating).forEach((g) => lines.push(`<li>Rotating, not grouped: ${g.members.map((m) => esc(m.slug)).join(', ')}</li>`));
-    exits.filter((g) => !g.known && !g.rotating).forEach((g) => lines.push(`<li>Exit not seen yet: ${g.members.map((m) => esc(m.slug)).join(', ')}</li>`));
-    box.innerHTML = lines.length ? `<p class="block-meta">Proxied copies by the exit IP providers see</p><ul>${lines.join('')}</ul>` : '';
+    const lines = known.map((g) => `<li>${esc(g.exit_ip)}: ${g.members.map((m) => esc(t('fleet.proxy.member_on', { slug: m.slug, box: m.worker_name || m.worker_id }))).join(', ')}${g.shared ? ` <strong>${t('fleet.proxy.shared')}</strong>` : ''}</li>`);
+    exits.filter((g) => g.rotating).forEach((g) => lines.push(`<li>${t('fleet.proxy.rotating_group', { list: g.members.map((m) => esc(m.slug)).join(', ') })}</li>`));
+    exits.filter((g) => !g.known && !g.rotating).forEach((g) => lines.push(`<li>${t('fleet.proxy.unseen_group', { list: g.members.map((m) => esc(m.slug)).join(', ') })}</li>`));
+    box.innerHTML = lines.length ? `<p class="block-meta">${t('fleet.proxy.exits_title')}</p><ul>${lines.join('')}</ul>` : '';
   }
 
   function fillCopyForm() {
@@ -1382,7 +1369,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     const ps = document.getElementById('copy-proxy');
     const keep = ws.value;
     ws.innerHTML = _workers.filter((w) => (w.system_info && (w.system_info.features || []).includes('proxy_tunnel')))
-      .map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('') || '<option value="">No box can run proxied copies yet</option>';
+      .map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('') || `<option value="">${t('fleet.copy.no_box')}</option>`;
     if (keep) ws.value = keep;
     ps.innerHTML = _proxies.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
     fillSlugs();
@@ -1430,7 +1417,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     f('proxy-pct', p ? p.cap.threshold_pct : 90);
     f('proxy-reset', p && p.cap.reset_day ? p.cap.reset_day : '');
     document.getElementById('proxy-rotating').checked = !!(p && p.rotating);
-    document.getElementById('proxy-form-title').textContent = p ? `Edit ${p.name}` : 'Add a proxy';
+    document.getElementById('proxy-form-title').textContent = p ? t('fleet.proxy.edit_name', { name: p.name }) : t('fleet.proxy.add');
     document.getElementById('proxy-form-box').open = true;
     showKind();
   }
@@ -1453,7 +1440,7 @@ CASHPILOT_WORKER_NAME=server-name</code>
     };
     try {
       await CP.api(id ? `/api/proxies/${id}` : '/api/proxies', {method: id ? 'PATCH' : 'POST', body});
-      CP.toast('Proxy saved', 'success');
+      CP.toast(t('fleet.proxy.saved'), 'success');
       editForm(null);
       document.getElementById('proxy-form-box').open = false;
       load();
@@ -1464,15 +1451,15 @@ CASHPILOT_WORKER_NAME=server-name</code>
     ev.preventDefault();
     const proxyId = document.getElementById('copy-proxy').value;
     const body = {worker_id: Number(document.getElementById('copy-worker').value), slug: document.getElementById('copy-slug').value};
-    CP.toast('Starting the tunnel, this can take up to a minute', 'info');
+    CP.toast(t('fleet.copy.starting'), 'info');
     try {
       const out = await CP.api(`/api/proxies/${proxyId}/copies`, {method: 'POST', body});
-      CP.toast(`Running through ${out.exit_ip || 'the proxy'}${out.country ? ' · ' + out.country : ''}`, 'success');
+      CP.toast(t('fleet.copy.running', { exit: `${out.exit_ip || t('fleet.copy.the_proxy')}${out.country ? ' · ' + out.country : ''}` }), 'success');
       if (out.warning) CP.toast(out.warning, 'warning');
       // The copy is a new device: say so when it could not be added to the account.
       const link = out.device_link;
-      if (link && link.retrying) CP.toast(`New device ${link.id}: CashPilot keeps trying to add it to your account for a day and tells you if it cannot.`, 'info');
-      else if (link && !link.registered) CP.toast(`New device ${link.id}: ${link.steps}${link.url ? ' ' + link.url : ''}`, 'warning');
+      if (link && link.retrying) CP.toast(t('fleet.copy.device_retrying', { id: link.id }), 'info');
+      else if (link && !link.registered) CP.toast(t('fleet.copy.device_steps', { id: link.id, steps: `${link.steps}${link.url ? ' ' + link.url : ''}` }), 'warning');
       load();
     } catch (err) { CP.toast(err.message, 'error'); }
   });
@@ -1485,10 +1472,10 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const [pid, wid, slug] = btn.dataset.copy.split(':');
         const base = `/api/proxies/${pid}/copies/${wid}/${encodeURIComponent(slug)}`;
         if (btn.dataset.cmd === 'remove') {
-          if (!confirm(`Remove the proxied copy of ${slug}?`)) return;
+          if (!confirm(t('fleet.copy.remove_confirm', { slug }))) return;
           const out = await CP.api(base, {method: 'DELETE'});
           // 202: the worker is slow, not failing. The row shows "removing…" until it confirms.
-          if (out && out.status === 'removing') CP.toast(`Removing ${slug}… the worker has not confirmed yet; the copy disappears once it does.`, 'info');
+          if (out && out.status === 'removing') CP.toast(t('fleet.copy.removing', { slug }), 'info');
         } else {
           const path = `${base}/${btn.dataset.cmd}`;
           let out;
@@ -1505,13 +1492,13 @@ CASHPILOT_WORKER_NAME=server-name</code>
                 const offer = JSON.stringify(Object.entries(expected_containers).sort());
                 if (approved.has(offer)) throw err;
                 const copies = Object.entries(expected_containers).map(([service, id]) => `${service} (${id})`);
-                if (!confirm(`Start needs to replace these containers on ${workerName(Number(wid))}:\n\n${copies.join('\n')}\n\nReplace them and start ${slug}?`)) return;
+                if (!confirm(t('fleet.copy.replace_many', { box: workerName(Number(wid)), list: copies.join('\n'), slug }))) return;
                 approved.add(offer);
                 body = {expected_containers, group_approval};
               } else {
                 const current = err.refusal && err.refusal.current_container;
                 if (err.code !== 'deploy_target_changed' || !/^[a-f0-9]{64}$/.test(current) || approved.has(current)) throw err;
-                if (!confirm(`Start may need to replace container ${current.slice(0, 12)} for ${slug} on ${workerName(Number(wid))}. Allow CashPilot to replace it?`)) return;
+                if (!confirm(t('fleet.copy.replace_one', { id: current.slice(0, 12), slug, box: workerName(Number(wid)) }))) return;
                 approved.add(current);
                 body = {expected_container: current};
               }
@@ -1525,15 +1512,15 @@ CASHPILOT_WORKER_NAME=server-name</code>
         const p = _proxies.find((x) => String(x.id) === id);
         if (btn.dataset.act === 'edit') return editForm(p);
         if (btn.dataset.act === 'delete') {
-          if (!confirm(`Delete the proxy ${p.name}?`)) return;
+          if (!confirm(t('fleet.proxy.delete_confirm', { name: p.name }))) return;
           await CP.api(`/api/proxies/${id}`, {method: 'DELETE'});
         } else if (btn.dataset.act === 'reset') {
           await CP.api(`/api/proxies/${id}/reset-usage`, {method: 'POST'});
         } else if (btn.dataset.act === 'test') {
           const wid = document.getElementById('copy-worker').value;
-          CP.toast(`Testing on ${wid ? workerName(Number(wid)) : 'the default box'} through a throwaway tunnel`, 'info');
+          CP.toast(t('fleet.proxy.testing', { box: wid ? workerName(Number(wid)) : t('fleet.proxy.default_box') }), 'info');
           const out = await CP.api(`/api/proxies/${id}/test${wid ? `?worker_id=${wid}` : ''}`, {method: 'POST'});
-          CP.toast(`Exit ${out.exit_ip}${out.country ? ' · ' + out.country : ''} in ${out.ms} ms`, 'success');
+          CP.toast(t('fleet.proxy.tested', { exit: `${out.exit_ip}${out.country ? ' · ' + out.country : ''}`, ms: out.ms }), 'success');
         }
       }
       load();

@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 SERVICES = ROOT / "services"
@@ -152,7 +154,7 @@ class TestTheSettingsPageDoesNotClaimStoredValuesApply:
         assert "restart the container" in source
 
     def test_the_template_copy_matches(self):
-        html = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+        html = english_source("app/templates/settings.html")
         assert "saved to the database." not in html
         assert "does not take effect" in html
 

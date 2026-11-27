@@ -22,6 +22,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -154,5 +156,5 @@ class TestTheSettingsPromiseIsNowTrue:
 
         Kept as a test so the promise and the behaviour move together.
         """
-        html = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+        html = english_source("app/templates/settings.html")
         assert "just add your credentials" in html

@@ -35,6 +35,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 FLEET = ROOT / "app" / "templates" / "fleet.html"
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
@@ -60,12 +62,12 @@ class TestThereIsOneSharedTimestampFormatter:
         assert js.index("function fmtTimestamp(") < js.rindex("  return {")
 
     def test_no_raw_heartbeat_reaches_the_page(self):
-        html = FLEET.read_text(encoding="utf-8")
+        html = english_source(FLEET)
         assert "${w.last_heartbeat || 'never'}" not in html, "the stored UTC value is rendered verbatim again"
         assert "${lastSeen || 'never'}" not in html
 
     def test_both_render_sites_use_the_formatter(self):
-        html = FLEET.read_text(encoding="utf-8")
+        html = english_source(FLEET)
         assert html.count("CP.fmtTimestamp(") >= 3, "a timestamp site was left on the raw value"
 
     def test_the_original_utc_is_still_recoverable(self):
@@ -77,7 +79,7 @@ class TestThereIsOneSharedTimestampFormatter:
 
 class TestTheCopyButtonCannotClaimAnUnearnedSuccess:
     def _body(self):
-        html = FLEET.read_text(encoding="utf-8")
+        html = english_source(FLEET)
         start = html.index("window.copyWorkerEnv")
         return html[start : start + 1800]
 
@@ -100,14 +102,14 @@ class TestTheCopyButtonCannotClaimAnUnearnedSuccess:
         assert "!navigator.clipboard" in self._body()
 
     def test_there_is_something_to_fall_back_to(self):
-        html = FLEET.read_text(encoding="utf-8")
+        html = english_source(FLEET)
         assert 'id="worker-env-fallback"' in html, "the handler targets an element that does not exist"
         assert "<textarea" in html[html.index('id="worker-env-fallback"') :][:400]
 
 
 class TestTheFleetCardsSayWhatTheyCount:
     def test_the_online_only_cards_are_labelled(self):
-        html = FLEET.read_text(encoding="utf-8")
+        html = english_source(FLEET)
         for card in ("fleet-total-containers", "fleet-running-containers"):
             block = html[max(0, html.index(card) - 600) : html.index(card)]
             assert "(online)" in block, f"{card} still reads as a fleet-wide total"
@@ -120,7 +122,7 @@ class TestTheFleetCardsSayWhatTheyCount:
         Services label, so the first version of this test failed on correct
         markup.
         """
-        html = FLEET.read_text(encoding="utf-8")
+        html = english_source(FLEET)
         for card in ("fleet-total-workers", "fleet-online-workers"):
             start = html.rindex('<div class="stat-card">', 0, html.index(card))
             block = html[start : html.index(card)]
@@ -142,13 +144,13 @@ class TestTheFleetCardsSayWhatTheyCount:
         assert 'total_services += w["container_count"]' in body
 
     def test_the_page_renders_the_note(self):
-        html = FLEET.read_text(encoding="utf-8")
+        html = english_source(FLEET)
         assert 'id="fleet-unreachable-note"' in html
         assert "summary.unreachable_containers" in html
 
     def test_the_note_denies_the_wrong_conclusion_explicitly(self):
         """ "N not counted" alone still reads as "N lost"."""
-        html = FLEET.read_text(encoding="utf-8")
+        html = english_source(FLEET)
         idx = html.index("summary.unreachable_containers")
         block = html[idx : idx + 900]
         assert "keep running and earning" in block

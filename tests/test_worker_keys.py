@@ -8,6 +8,8 @@ os.environ.setdefault("CASHPILOT_API_KEY", "test-fleet-key")
 
 import pytest  # noqa: E402
 
+from tests.i18n_source import NODE_T, english_source
+
 try:
     import httpx  # noqa: E402
     from fastapi import HTTPException  # noqa: E402
@@ -686,7 +688,7 @@ class TestTheRecoveryIsDocumentedWhereItIsNeeded:
             "console.log(JSON.stringify(asked)); })();"
         )
         desktop, server = json.loads(
-            subprocess.run([node, "-e", harness], capture_output=True, text=True, check=True).stdout
+            subprocess.run([node, *NODE_T, "-e", harness], capture_output=True, text=True, check=True).stdout
         )
         assert "Join my CashPilot" in desktop
         assert "/data/.worker_key" not in desktop and "re-enrol on its own" not in desktop
@@ -694,8 +696,7 @@ class TestTheRecoveryIsDocumentedWhereItIsNeeded:
         assert 'data-worker-desktop="1"' in html and "btn.dataset.workerDesktop === '1'" in html
 
     def test_the_confirm_dialog_says_the_worker_keeps_running(self):
-        from pathlib import Path
 
-        text = Path(__file__).resolve().parents[1].joinpath("app/templates/fleet.html").read_text(encoding="utf-8")
+        text = english_source("app/templates/fleet.html")
         assert "This will unregister it from the fleet." not in text
         assert "re-enrol on its own" in text

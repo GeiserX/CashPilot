@@ -59,27 +59,27 @@
       {% endif %}
 
       {% if mode == "register" and is_first %}
-      <div class="gate-note">First account will be the owner with full admin access.</div>
+      <div class="gate-note">{{ t('auth.first_owner') }}</div>
       {% endif %}
 
       <form method="POST" action="{{ action }}">
         {% if mode == "register" and is_first %}
         <div class="form-group">
-          <label class="form-label" for="setup_token">Setup token</label>
-          <input class="form-input" type="text" id="setup_token" name="setup_token" value="{{ setup_token | default('') }}" required autocomplete="off" placeholder="Shown in the server logs on first start">
+          <label class="form-label" for="setup_token">{{ t('auth.setup_token') }}</label>
+          <input class="form-input" type="text" id="setup_token" name="setup_token" value="{{ setup_token | default('') }}" required autocomplete="off" placeholder="{{ t('auth.setup_token.ph') }}">
         </div>
         {% endif %}
         <div class="form-group">
-          <label class="form-label" for="username">Username</label>
+          <label class="form-label" for="username">{{ t('auth.username') }}</label>
           <input class="form-input" type="text" id="username" name="username" required autocomplete="username" autofocus>
         </div>
         <div class="form-group">
-          <label class="form-label" for="password">Password</label>
+          <label class="form-label" for="password">{{ t('auth.password') }}</label>
           <input class="form-input" type="password" id="password" name="password" required autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}">
         </div>
         {% if mode == "register" %}
         <div class="form-group">
-          <label class="form-label" for="password_confirm">Confirm password</label>
+          <label class="form-label" for="password_confirm">{{ t('auth.password_confirm') }}</label>
           <input class="form-input" type="password" id="password_confirm" name="password_confirm" required autocomplete="new-password">
         </div>
         {% endif %}
@@ -96,18 +96,18 @@
 
       {% if mode == "login" %}
       <details class="gate-foot-note">
-        <summary>Forgot your password or username?</summary>
-        <p>CashPilot has no e-mail reset. Whoever runs the server can do it from the console of the CashPilot UI container: <code>python -m app.users list</code> shows the accounts, then <code>python -m app.users reset-password USERNAME</code> sets a new password. Your services, earnings and saved credentials are not affected. Do not delete the data volume: that erases your saved credentials. Full steps: <a href="https://github.com/GeiserX/CashPilot/blob/main/docs/faq.md#forgot-password" target="_blank" rel="noopener">https://github.com/GeiserX/CashPilot/blob/main/docs/faq.md#forgot-password</a></p>
+        <summary>{{ t('auth.forgot') }}</summary>
+        <p>{{ t('auth.forgot.text_html') }}</p>
       </details>
       {% elif mode == "register" and not is_first %}
-      <p class="gate-foot-note">Already have an account? <a href="/login">Sign in</a></p>
+      <p class="gate-foot-note">{{ t('auth.have_account_html') }}</p>
       {% endif %}
     </div>
   </main>
 
   <footer class="gate-foot">
-    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">Source</a>
-    <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">Report a problem</a>
+    <a href="https://github.com/GeiserX/CashPilot" target="_blank" rel="noopener">{{ t('base.foot.source') }}</a>
+    <a href="https://github.com/GeiserX/CashPilot/issues" target="_blank" rel="noopener">{{ t('base.foot.report') }}</a>
   </footer>
   {% include "_i18n_scripts.html" %}
   <script src="/static/js/delegate.js"></script>

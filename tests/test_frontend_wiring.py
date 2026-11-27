@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 JS = sorted((ROOT / "app" / "static" / "js").glob("*.js"))
 TEMPLATES = sorted((ROOT / "app" / "templates").glob("*.html"))
@@ -426,7 +428,7 @@ class TestRunningCostsAreShownWithoutBeingInvented:
     """
 
     def _fleet(self) -> str:
-        return (ROOT / "app" / "templates" / "fleet.html").read_text(encoding="utf-8")
+        return english_source("app/templates/fleet.html")
 
     def test_the_fleet_page_has_somewhere_to_show_it(self):
         page = self._fleet()
