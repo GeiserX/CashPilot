@@ -84,7 +84,7 @@ File rules:
   - The log names the file and says to restore it or delete it. Deleting it means pairing again.
   - The stack never replaces the file by itself.
 - The leaf key:
-  - The TLS leaf key and its chain are made again whenever either file is missing, or when the chain's identity certificate does not carry the current identity key. So a new identity key always gets a new leaf.
+  - The TLS leaf key and its chain are made again, both together, whenever either file is missing or the pair does not match. The pair does not match when the chain's identity certificate lacks the current identity key, or its leaf certificate lacks the leaf key. So a new identity key always gets a new leaf, and a start that stopped between the two writes repairs itself.
   - The leaf is signed by the identity key, so a new leaf needs no new pairing.
 - Encryption at rest:
   - The UI and worker files are not encrypted at rest.
@@ -597,7 +597,7 @@ Each case must fail when its check is removed. Prove that once by breaking the c
   - On a Desktop hub, accept the enrolment heartbeat without a client certificate on `8085`, and refuse it on `8086`.
   - Refuse a reply whose `ui_identity_cert` is not `CASHPILOT_UI_KEY`.
 - The bearer: refuse box A's bearer on box B's certificate, and box A's certificate with box B's bearer. Refuse box A's leaf sent with box B's identity certificate.
-- Keys: a new identity key on a box that kept its TLS files gets a new leaf signed by it.
+- Keys: a new identity key on a box that kept its TLS files gets a new leaf signed by it. A new leaf key stored without its chain gets both files made again.
 - Removal: a removed box's next handshake fails without a restart.
 - Tickets: a server issues no session ticket.
 - iroh:
