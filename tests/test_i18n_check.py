@@ -518,3 +518,114 @@ def test_attribute_placeholders_keep_their_printf_order(tmp_path):
     en2 = write(tmp_path / "en2.json", json.dumps({"a": '<span title="%s">Hello</span> %d'}))
     es2 = write(tmp_path / "es2.json", json.dumps({"a": '%d <span title="%s">Hola</span>'}))
     assert run(en2, es2)[0] == 1
+
+
+# --- The second full review --------------------------------------------------
+
+
+def test_lone_surrogate_escape_is_a_parse_error(tmp_path):
+    en = write(tmp_path / "en.yml", 'a: "\\uD800"\n')
+    code, out = run(en, write(tmp_path / "es.yml", 'a: "x"\n'))
+    assert code == 2 and "surrogate" in out
+    assert ic.parse_yaml('a: "\\U0001F600"\n') == {"a": "\U0001f600"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "a: |\n  Hello",
+        "a: |\n  Hello\n",
+        "a: |+\n  Hello",
+        "a: |+\n  Hello\n\n",
+        "a: >\n  Hello\n  world",
+        "a: |-\n  Hi",
+    ],
+)
+def test_block_scalar_at_the_end_of_the_file_matches_pyyaml(text):
+    assert ic.parse_yaml(text) == yaml.safe_load(text)
+
+
+def test_locale_file_names_match_in_any_case(tmp_path):
+    en = write(tmp_path / "locales" / "en.yml", "en:\n  a: Hello\n")
+    pt = write(tmp_path / "locales" / "pt-br.yml", "pt-br:\n  a: Olá\n")
+    assert ic.locale_of(pt, "yaml") == "pt-br"
+    assert run(en, pt)[0] == 0
+
+
+def test_catalog_keys_stay_strings_for_pyyaml(tmp_path):
+    out = tmp_path / "es.yml"
+    ic.write_catalog(out, {"123": "uno", "True": "sí", "a.b": "x"}, {})
+    assert set(yaml.safe_load(out.read_text(encoding="utf-8"))) == {"123", "True", "a.b"}
+
+
+def test_i18next_family_with_mixed_hashes_is_stale_in_any_order(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"f_one": "{{count}} file", "f_other": "{{count}} files"}))
+    fam = ic.source_hash(
+        "\x1f".join(f"{q}\x1e{t}" for q, t in sorted({"one": "{{count}} file", "other": "{{count}} files"}.items()))
+    )
+    for order in (("f_one", "f_other"), ("f_other", "f_one")):
+        tree = {
+            "f_one": {"text": "{{count}} archivo", "source": fam},
+            "f_other": {"text": "{{count}} archivos", "source": "000000000000"},
+        }
+        es = write(tmp_path / "es.json", json.dumps({k: tree[k] for k in order}))
+        code, out = run(en, es, "--i18next-plurals", "--strict")
+        assert code == 1 and "stale" in out, order
+
+
+def test_only_the_real_href_is_compared(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "<a href='https://a.example'>Go</a>"}))
+    es = write(
+        tmp_path / "es.json", json.dumps({"a": "<a data-href='https://a.example' href='https://evil.example'>Ir</a>"})
+    )
+    assert run(en, es)[0] == 1
+
+
+def test_a_dropped_plural_number_is_a_mismatch(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "{n, plural, one {# box} other {# boxes}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "{n, plural, one {una caja} other {cajas}}"}))
+    assert run(en, es)[0] == 1
+    write(es, json.dumps({"a": "{n, plural, one {una caja} other {# cajas}}"}))
+    assert run(en, es)[0] == 0
+    write(es, json.dumps({"a": "{n, plural, other {'#' cajas}}"}))
+    assert run(en, es)[0] == 1
+
+
+def test_escaped_percent_is_not_a_named_conversion(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "100%%(name)s and %(user)s"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "100%%(nombre)s y %(user)s"}))
+    assert run(en, es)[0] == 0
+
+
+def test_root_level_inline_entry_is_refused(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hello"}))
+    es = write(tmp_path / "es.json", json.dumps({"text": "Hola", "source": ""}))
+    code, out = run(en, es, "--stamp")
+    assert code == 2 and "one {text, source} entry" in out
+
+
+def test_a_file_changed_between_check_and_stamp_is_not_written(tmp_path):
+    es = write(tmp_path / "es.json", json.dumps({"a": "Hola"}))
+    checked = ic.load_json(es)[0]
+    write(es, json.dumps({"a": "Adiós"}))
+    with pytest.raises(ic.ParseError):
+        ic.write_json_inline(es, {"a": ic.source_hash("Hello")}, checked)
+    assert json.loads(es.read_text()) == {"a": "Adiós"}
+
+
+def test_a_hash_file_that_is_an_input_is_refused(tmp_path):
+    d = tmp_path / "locales"
+    en = write(d / "en.json", json.dumps({"a": "Hello"}))
+    fr = write(d / "fr.json", json.dumps({"a": "Bonjour"}))
+    code, out = run(en, fr, "--hashes-dir", d, "--restamp", "*")
+    assert code == 2 and "also an input" in out
+    assert json.loads(fr.read_text()) == {"a": "Bonjour"}
+
+
+def test_catalog_plural_stamping_is_refused(tmp_path):
+    d = tmp_path / "services" / "_i18n"
+    en = write(d / "en.yml", 'f_one: "{{count}} file"\nf_other: "{{count}} files"\n')
+    es = write(d / "es.yml", 'f_one:\n  text: "{{count}} archivo"\nf_other:\n  text: "{{count}} archivos"\n')
+    before = es.read_text()
+    code, out = run(en, es, "--i18next-plurals", "--stamp")
+    assert code == 2 and es.read_text() == before

@@ -181,6 +181,8 @@ def _parse_double(s: str, lineno: int) -> tuple[str, str]:
                     raise ParseError(f"line {lineno}: bad \\{e} escape")
                 if int(code, 16) > 0x10FFFF:
                     raise ParseError(f"line {lineno}: \\{e}{code} is not a Unicode code point")
+                if 0xD800 <= int(code, 16) <= 0xDFFF:
+                    raise ParseError(f"line {lineno}: \\{e}{code} is a lone surrogate, not a character")
                 out.append(chr(int(code, 16)))
                 i += n
             else:
@@ -306,7 +308,9 @@ def parse_yaml(text: str) -> dict:
                     break
                 body.append(ln[block_indent:])
                 j += 1
-            parent[key] = _finish_block(body, style, chomp)
+            # A block that runs to the end of a file with no final newline
+            # has no line break after its last line.
+            parent[key] = _finish_block(body, style, chomp, j < len(lines) or text.endswith("\n"))
             i = j
             continue
         if rest_value == "":
@@ -320,7 +324,7 @@ def parse_yaml(text: str) -> dict:
     return root
 
 
-def _finish_block(body: list[str], style: str, chomp: str) -> str:
+def _finish_block(body: list[str], style: str, chomp: str, last_break: bool = True) -> str:
     content = list(body)
     trailing = 0
     while content and content[-1] == "":
@@ -349,8 +353,8 @@ def _finish_block(body: list[str], style: str, chomp: str) -> str:
     if chomp == "-":
         return text
     if chomp == "+":
-        return text + "\n" * (trailing + 1)
-    return text + "\n"
+        return text + "\n" * (trailing + int(last_break))
+    return text + "\n" if last_break or trailing else text
 
 
 def dump_yaml_string(value: str) -> str:
@@ -389,6 +393,8 @@ def _is_inline(node) -> bool:
 def _flatten(node, prefix: str, out: dict, path: pathlib.Path, hashes: dict | None = None) -> None:
     if prefix in out:
         raise ParseError(f"{path}: {prefix}: the same key is written twice (a dotted key and a nested one)")
+    if prefix == "" and _is_inline(node):
+        raise ParseError(f"{path}: the whole file is one {{text, source}} entry, not a locale file")
     if _is_inline(node) and hashes is not None:
         out[prefix] = node["text"]
         hashes[prefix] = node["source"]
@@ -405,7 +411,7 @@ def _flatten(node, prefix: str, out: dict, path: pathlib.Path, hashes: dict | No
         raise ParseError(f"{path}: {prefix}: lists are not supported in locale files")
 
 
-_BCP47 = re.compile(r"^[a-z]{2,3}(-[A-Z][a-z]{3})?(-([A-Z]{2}|[0-9]{3}))?$|^[a-z]{2,3}(_[A-Z]{2})?$")
+_BCP47 = re.compile(r"^[a-z]{2,3}(-[a-z]{4})?(-([a-z]{2}|[0-9]{3}))?$|^[a-z]{2,3}(_[a-z]{2})?$", re.IGNORECASE)
 
 
 # Android still names some languages by their pre-1989 ISO 639 codes.
@@ -484,7 +490,9 @@ def load_catalog(path: pathlib.Path) -> tuple[dict, dict]:
 def write_catalog(path: pathlib.Path, entries: dict, hashes: dict, header: str = "") -> None:
     lines = [header.rstrip("\n")] if header else []
     for key, text in entries.items():
-        plain = re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.\-]*", key) and key not in (
+        # A plain key must stay a string for every YAML reader: start with a
+        # letter or "_", and never spell a YAML 1.1 bool or null.
+        plain = re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.\-]*", key) and key.lower() not in (
             "null",
             "true",
             "false",
@@ -589,7 +597,10 @@ def load(path: pathlib.Path, fmt: str, i18next: bool) -> tuple[dict, dict | None
             for key in list(hashes):
                 base, _, suffix = key.rpartition("_")
                 if suffix in PLURAL_CATEGORIES and isinstance(entries.get(base), dict):
-                    hashes.setdefault(base, hashes[key])
+                    # Forms stamped against different English make the family
+                    # stale, whichever form comes first.
+                    if hashes.setdefault(base, hashes[key]) != hashes[key]:
+                        hashes[base] = "mixed"
                     del hashes[key]
     return entries, hashes
 
@@ -600,7 +611,7 @@ def load(path: pathlib.Path, fmt: str, i18next: bool) -> tuple[dict, dict | None
 _SHELL = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _MUSTACHE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 _TAG = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b([^<>]*?)/?>")
-_HREF = re.compile(r"""\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+_HREF = re.compile(r"""(?<![\w-])href\s*=\s*(?:"([^"]*)"|'([^']*)')""")
 _ATTR_VALUE = re.compile(r"""=\s*(?:"([^"]*)"|'([^']*)')""")
 _PRINTF = re.compile(r"%(?:(\d+)\$)?([-#+0,(]*)(\d+|\*)?(?:\.(\d+|\*))?([sdfiuxXeEgGoc@])")
 _PY_NAMED = re.compile(r"%\(([A-Za-z_][A-Za-z0-9_]*)\)[-#+0 ]*\d*(?:\.\d+)?([sdfiuxXeEgGoc])")
@@ -631,6 +642,8 @@ def _icu_scan(s: str, i: int, in_plural: bool, out: set, depth: int) -> int:
                 continue
             i += 1
             continue
+        if c == "#" and in_plural:
+            out.add(("plural-number",))  # the count shown in a plural branch
         if c == "{":
             i = _icu_argument(s, i + 1, out, depth)
             continue
@@ -725,10 +738,11 @@ def placeholders(text: str) -> frozenset:
         for m in _MUSTACHE.finditer(body):
             out.add(("mustache", m.group(1)))
         body = _MUSTACHE.sub("", body)
+    body = body.replace("%%", "")  # a literal percent sign, never a conversion
     for m in _PY_NAMED.finditer(body):
         conv = m.group(2)
         out.add(("py", m.group(1), "s" if conv == "s" else ("d" if conv in "diu" else conv)))
-    body = _PY_NAMED.sub("", body).replace("%%", "")
+    body = _PY_NAMED.sub("", body)
     # Unindexed conversions take the next argument in turn, and a "*" width or
     # precision takes one too (an integer); %2$s does not move that counter.
     implicit = 0
@@ -874,8 +888,13 @@ def _leading_comments(path: pathlib.Path) -> str:
     return "\n".join(head) + "\n" if head else ""
 
 
-def write_json_inline(path: pathlib.Path, hashes: dict) -> None:
-    """Rewrite a JSON locale file with every hashed leaf as {"text", "source"}."""
+def write_json_inline(path: pathlib.Path, hashes: dict, checked: dict) -> None:
+    """Rewrite a JSON locale file with every hashed leaf as {"text", "source"}.
+
+    `checked` is what the check read; a file that changed since is refused.
+    """
+    if load_json(path)[0] != checked:
+        raise ParseError(f"{path}: the file changed while it was being checked; run again")
     tree = json.loads(path.read_text(encoding="utf-8"))
     root = _drop_locale_root(tree, locale_of(path, "json"))
 
@@ -923,6 +942,7 @@ def main(argv: list[str] | None = None) -> int:
     errors = warnings = 0
     fail_kinds = {"missing", "placeholder"} | ({"extra", "stale", "unstamped"} if args.strict else set())
     targets = [t for t in args.targets if t.resolve() != args.source.resolve()]
+    inputs = {p.resolve() for p in (args.source, *targets)}
     for path in targets:
         fmt = args.format if args.format != "auto" else None
         try:
@@ -933,6 +953,11 @@ def main(argv: list[str] | None = None) -> int:
             # An explicit --hashes-dir wins over inline hashes; the catalog
             # format always keeps them inline.
             sidecar = _sidecar(args.hashes_dir, locale_of(path, fmt)) if fmt != "catalog" else None
+            if sidecar is not None and sidecar.resolve() in inputs:
+                print(
+                    f"error: {sidecar}: the hash file is also an input file; pick another --hashes-dir", file=sys.stderr
+                )
+                return 2
             hashes = _load_sidecar(sidecar) if sidecar is not None else inline
         except (ParseError, OSError, ValueError) as e:
             print(f"error: {e}", file=sys.stderr)
@@ -940,7 +965,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.stamp or args.restamp:
             inline_json = fmt == "json" and sidecar is None
-            if inline_json and args.i18next_plurals:
+            if args.i18next_plurals and (inline_json or fmt == "catalog"):
                 # A family's hash cannot be written back onto its _one/_other leaves.
                 print(f"error: {path}: stamping i18next plural families needs --hashes-dir", file=sys.stderr)
                 return 2
@@ -960,8 +985,8 @@ def main(argv: list[str] | None = None) -> int:
                             json.dumps(hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
                         )
                     else:
-                        write_json_inline(path, hashes)
-                except OSError as e:
+                        write_json_inline(path, hashes, whole)
+                except (OSError, ParseError) as e:
                     print(
                         f"error: writing the hashes for {path} failed: {e}. Earlier targets stay stamped.",
                         file=sys.stderr,
