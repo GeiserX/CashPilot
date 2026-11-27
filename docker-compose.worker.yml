@@ -6,6 +6,12 @@
 #
 #   Start / update:  docker compose -f docker-compose.worker.yml pull && docker compose -f docker-compose.worker.yml up -d
 #
+# ONE CashPilot per Docker host. The container names in this file are fixed,
+# and a worker manages every container on its Docker engine that carries
+# CashPilot's labels, whichever install made it. A second install on the same
+# host would list, stop and replace the first one's earners. Put it on another
+# host or VM. docs/getting-started.md has the details.
+#
 # Put CASHPILOT_API_KEY, CASHPILOT_UI_URL, CASHPILOT_WORKER_NAME and
 # CASHPILOT_WORKER_URL in a .env file next to this one. Pin the worker to the
 # same major.minor as the UI.

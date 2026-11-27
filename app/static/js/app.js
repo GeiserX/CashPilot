@@ -6093,7 +6093,7 @@ const CP = (() => {
         note = 'Installs the newest patch of your pinned series and recreates the CashPilot containers.';
       } else if (info.behind) {
         label = 'Pull newest patches';
-        note = `A newer series (${latest}) exists — moving to it means editing the image tags in your compose file. This button installs the newest patch of the series you currently pin.`;
+        note = `A newer series (${latest}) exists. Moving to it means editing the image tags in your compose file: read UPGRADING.md first, then update the UI host first and every worker after it. This button installs the newest patch of the series you currently pin.`;
       } else {
         label = 'Re-pull images';
         note = latest
@@ -6109,6 +6109,9 @@ const CP = (() => {
         <span id="update-run-status" class="form-hint"></span>
       </div>
       <div class="form-hint">${escapeHtml(note)}</div>`;
+      if (info.behind && !info.patch_available) {
+        action += `<div class="form-hint"><a href="https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md" target="_blank" rel="noopener noreferrer">Read UPGRADING.md</a></div>`;
+      }
     }
     container.innerHTML = html + action;
     const sel = container.querySelector('#update-worker-select');

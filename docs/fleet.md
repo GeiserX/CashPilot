@@ -2,6 +2,8 @@
 
 For power users running services across multiple servers, CashPilot supports a federated architecture where a single UI aggregates data from workers deployed on each server.
 
+Each Docker host runs one CashPilot worker, under one dashboard. A worker manages every container on its host that carries CashPilot's labels, so a second CashPilot install on the same host would see and control the first one's earners ([One CashPilot per Docker host](getting-started.md#prerequisites)).
+
 ## Topology
 
 ```mermaid

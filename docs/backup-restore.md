@@ -72,7 +72,9 @@ OUT="cashpilot-backup-$(date +%Y%m%d)"
 # and docker cp cannot read it. SQLite copies it consistently, without stopping
 # the container. Then THE key: without it the database is half a backup.
 # The session key is only present if CASHPILOT_SECRET_KEY is unset, so its
-# absence is fine.
+# absence is fine. umask 077 makes every file and the directory private to
+# you from the start. The subshell keeps that umask out of your shell.
+( umask 077 &&
 rm -rf "$OUT.part" && mkdir -p "$OUT.part" &&
 docker exec cashpilot-ui python -c \
   'import sqlite3,sys; s=sqlite3.connect("/data/cashpilot.db"); d=sqlite3.connect(":memory:"); s.backup(d); sys.stdout.buffer.write(d.serialize())' \
@@ -80,8 +82,8 @@ docker exec cashpilot-ui python -c \
 docker cp cashpilot-ui:/data/.fernet_key "$OUT.part/.fernet_key" &&
 { docker cp cashpilot-ui:/data/.secret_key "$OUT.part/.secret_key" 2>/dev/null \
   || echo "no .secret_key (CASHPILOT_SECRET_KEY is set in the environment), fine"; } &&
-rm -rf "$OUT" && mv "$OUT.part" "$OUT" &&
-chmod 600 "$OUT"/.*key &&
+rm -rf "$OUT" && mv "$OUT.part" "$OUT" ) &&
+chmod 700 "$OUT" && chmod 600 "$OUT"/cashpilot.db "$OUT"/.*key &&
 ls -la "$OUT"
 ```
 

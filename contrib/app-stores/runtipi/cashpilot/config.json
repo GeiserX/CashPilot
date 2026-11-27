@@ -6,7 +6,7 @@
   "exposable": false,
   "dynamic_config": true,
   "id": "cashpilot",
-  "tipi_version": 5,
+  "tipi_version": 6,
   "version": "3.0.0",
   "categories": ["finance", "automation"],
   "description": "CashPilot runs passive income services (bandwidth sharing, DePIN, storage and GPU compute) on your own server and shows what they earn in one web dashboard. A worker container starts the services that run in Docker; the dashboard reads the providers' balances into one earnings history.",
@@ -14,9 +14,28 @@
   "author": "GeiserX",
   "source": "https://github.com/GeiserX/CashPilot",
   "website": "https://geiserx.github.io/CashPilot/",
-  "form_fields": [],
+  "form_fields": [
+    {
+      "type": "password",
+      "label": "Read-only API key (optional, for Home Assistant, Grafana or cashpilot-mcp)",
+      "required": false,
+      "env_variable": "CASHPILOT_READONLY_API_KEY"
+    },
+    {
+      "type": "boolean",
+      "label": "Serve Prometheus metrics at /metrics",
+      "required": false,
+      "env_variable": "CASHPILOT_METRICS_ENABLED"
+    },
+    {
+      "type": "password",
+      "label": "Metrics token (optional, required as a Bearer token on /metrics)",
+      "required": false,
+      "env_variable": "CASHPILOT_METRICS_TOKEN"
+    }
+  ],
   "supported_architectures": ["arm64", "amd64"],
   "created_at": 1793750400000,
-  "updated_at": 1795707945625,
+  "updated_at": 1795785619000,
   "min_tipi_version": "4.8.0"
 }
