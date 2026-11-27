@@ -13594,6 +13594,18 @@ async def api_worker_isolation_check(request: Request, worker_id: int) -> dict[s
     return await _proxy_to_worker(worker_id, "POST", "/api/isolation-check", timeout=120)
 
 
+@app.post("/api/workers/{worker_id}/secure-vm/selftest")
+async def api_worker_secure_vm_selftest(request: Request, worker_id: int) -> dict[str, Any]:
+    """Ask a Secure VM's host to run its self-test (scripts/cashpilot-vm).
+
+    Owner only. The worker leaves the request for the host's guard, which runs
+    the probes within a minute; the result arrives with a later heartbeat in
+    system_info.secure_vm.selftest.
+    """
+    _require_owner(request)
+    return await _proxy_to_worker(worker_id, "POST", "/api/secure-vm/selftest", timeout=15)
+
+
 @app.post("/api/workers/{worker_id}/isolation")
 async def api_worker_isolation(request: Request, worker_id: int) -> dict[str, Any]:
     """Turn LAN isolation on for an upgraded worker (app/lan_fence.py).
