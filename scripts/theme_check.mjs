@@ -15,6 +15,7 @@
 //   node scripts/theme_check.mjs
 //
 // Exits non-zero on any mismatch.
+import './i18n_stub.mjs';
 import {readFileSync} from 'node:fs';
 
 const SPEC = JSON.parse(readFileSync('app/themes.json', 'utf8'));

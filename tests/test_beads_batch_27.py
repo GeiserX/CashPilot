@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
@@ -40,7 +42,7 @@ def without_comments(text: str) -> str:
 
 
 def js():
-    return without_comments(APP_JS.read_text(encoding="utf-8"))
+    return without_comments(english_source(APP_JS))
 
 
 class TestTheCheckerIsReachableFromTheUI:

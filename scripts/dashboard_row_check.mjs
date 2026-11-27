@@ -15,6 +15,7 @@
 //   node scripts/dashboard_row_check.mjs
 //
 // Exits non-zero on any mismatch.
+import './i18n_stub.mjs';
 import {readFileSync} from 'node:fs';
 
 const src = readFileSync('app/static/js/app.js', 'utf8');
@@ -48,6 +49,8 @@ const build = new Function(
   'SORT_UNKNOWN', '_isOwner', '_canWrite', 'ICON_RESTART', 'ICON_STOP', 'ICON_LOGS',
   `let _sortCol = 'payout'; let _sortAsc = false;
    ${src.includes('  function cashoutFor(') ? grab('cashoutFor') : ''}
+   const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+   ${grab('statusLabelOf')}
    ${grab('renderServiceRow')}
    ${grab('sortServices')}
    return {renderServiceRow, sortServices, setSort: (c, a) => { _sortCol = c; _sortAsc = a; }};`,
@@ -91,6 +94,8 @@ const routedRows = new Function(
   `${grab('instanceState')}
    ${grab('routeBadge')}
    ${src.includes('  function cashoutFor(') ? grab('cashoutFor') : ''}
+   const capFirst = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+   ${grab('statusLabelOf')}
    ${grab('renderServiceRow')}
    return renderServiceRow;`,
 )(escapeHtml, formatCurrency, () => '', () => '', () => '', () => '', () => '', () => [], () => '', true, true, '', '', '');

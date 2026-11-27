@@ -5,6 +5,7 @@
 // lifted out of app.js and run against stubs, as in setup_preselect_check.mjs.
 //
 //   node scripts/route_choice_check.mjs
+import './i18n_stub.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

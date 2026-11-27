@@ -22,6 +22,7 @@ import pytest
 
 from app import catalog
 from app.constants import UNDEPLOYABLE_STATUSES
+from tests.i18n_source import NODE_T
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_JS = ROOT / "app/static/js/app.js"
@@ -51,7 +52,7 @@ def _groups(services: list[dict], category: str = "all") -> dict[str, list[str]]
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(APP_JS), json.dumps({"services": services, "category": category})],
+        [node, *NODE_T, "-e", _HARNESS, str(APP_JS), json.dumps({"services": services, "category": category})],
         capture_output=True,
         text=True,
         check=True,

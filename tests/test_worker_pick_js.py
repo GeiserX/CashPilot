@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.i18n_source import NODE_T
+
 APP_JS = Path(__file__).resolve().parent.parent / "app/static/js/app.js"
 
 _HARNESS = r"""
@@ -41,7 +43,7 @@ def _boxes(workers: list[dict]) -> list[dict]:
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(APP_JS), json.dumps({"svc": {"slug": "mysterium"}, "workers": workers})],
+        [node, *NODE_T, "-e", _HARNESS, str(APP_JS), json.dumps({"svc": {"slug": "mysterium"}, "workers": workers})],
         capture_output=True,
         text=True,
         check=True,

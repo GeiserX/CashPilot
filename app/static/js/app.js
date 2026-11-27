@@ -1566,7 +1566,7 @@ const CP = (() => {
           </div>`
           : `
           <div class="empty-state">
-            <div class="empty-state-title">${unreachable > 0 ? t('app.services.unreachable_n', { n: unreachable }) : t('app.services.unreachable_all')}</div>
+            <div class="empty-state-title">${unreachable > 0 ? t('app.services.unreachable_n', { n: escapeHtml(String(unreachable)) }) : t('app.services.unreachable_all')}</div>
             <div class="empty-state-text">${t('app.services.unreachable_text', { n: unreachable === 1 ? 1 : 2 })}</div>
             <a href="/fleet" class="btn btn-ghost">${t('app.services.check_fleet')}</a>
           </div>`;
@@ -2541,7 +2541,7 @@ const CP = (() => {
       const unmanaged = inst.unmanaged || svc.unmanaged;
       const disabledAttr = unmanaged
         ? ` disabled title="${t('app.row.outside_title')}"`
-        : (noDocker ? (inst.desktop_report_only ? ` disabled title="${t('app.row.report_only_title')}"` : ` disabled title="${t('app.row.no_docker')}"`) : '');
+        : (noDocker ? (inst.desktop_report_only ? ` disabled title="${t('app.row.report_only_title')}"` : t('app.row.no_docker_attr_html')) : '');
       actionBtns = `<div class="action-btns">
           ${claimBtn}
           ${settingsBtn}
@@ -2598,7 +2598,7 @@ const CP = (() => {
         const iUnmanaged = inst.unmanaged || svc.unmanaged;
         const disabledAttr = iUnmanaged
           ? ` disabled title="${t('app.row.outside_title')}"`
-          : (iNoDocker ? (inst.desktop_report_only ? ` disabled title="${t('app.row.report_only_title')}"` : ` disabled title="${t('app.row.no_docker')}"`) : '');
+          : (iNoDocker ? (inst.desktop_report_only ? ` disabled title="${t('app.row.report_only_title')}"` : t('app.row.no_docker_attr_html')) : '');
         const subLabel = inst.is_android ? '' : escapeHtml(inst.container_name);
         // `|| '0'` would render an unmeasurable container as a confident 0%.
         // The endpoint sends null when the Docker stats call failed, and an em
@@ -4934,20 +4934,20 @@ const CP = (() => {
         ok++;
       } catch (err) {
         fail++;
-        toast(`Redeploy on ${w.name} failed: ${err.message}`, 'error');
+        toast(t('app.image.redeploy_failed', { box: w.name, error: err.message }), 'error');
       }
     }
     input.dataset.initial = image;
     if (statusEl) {
-      statusEl.textContent = fail === 0 ? `Redeployed on ${ok} node(s)` : `${ok} ok, ${fail} failed`;
+      statusEl.textContent = fail === 0 ? t('app.image.redeployed', { n: ok }) : t('app.dep.ok_failed', { ok, fail });
       statusEl.style.color = fail === 0 ? 'var(--success)' : 'var(--error)';
     }
   }
 
   function renderServiceDetail(svc, workers) {
     const earning = svc.earnings
-      ? `$${svc.earnings.monthly_low}-$${svc.earnings.monthly_high} per ${svc.earnings.per || 'month'}`
-      : 'Varies';
+      ? t('app.detail.estimate', { low: svc.earnings.monthly_low, high: svc.earnings.monthly_high, per: svc.earnings.per || t('app.cat.month') })
+      : t('app.detail.varies');
 
     const isDeployed = svc.deployed || false;
     const dashboardUrl = (svc.cashout && svc.cashout.dashboard_url) || svc.website || '';
@@ -4963,7 +4963,7 @@ const CP = (() => {
          service that has never been collected is worse than no heading. -->
     <div id="payout-progress-card" data-slug="${escapeHtml(svc.slug || '')}"
          data-currency="${escapeHtml(svc.cashout?.currency || '')}" class="sd-block" style="display:none;">
-      <h4 class="sd-h">Payout progress</h4>
+      <h4 class="sd-h">${t('app.detail.payout_progress')}</h4>
       <div id="payout-progress-body"></div>
     </div>
     <!-- What running this actually does with the machine and the connection.
@@ -4976,16 +4976,16 @@ const CP = (() => {
     ${svc.custom ? '' : ratingBlock(svc)}
     <div class="detail-grid sd-facts">
       <div class="detail-item">
-        <div class="detail-label">Category</div>
+        <div class="detail-label">${t('app.detail.category')}</div>
         <div class="detail-value">${escapeHtml(categoryLabel(svc.category))}</div>
       </div>
       <div class="detail-item">
-        <div class="detail-label">Estimated earnings</div>
+        <div class="detail-label">${t('app.detail.estimated')}</div>
         <div class="detail-value num">${earning}</div>
       </div>
       <div class="detail-item">
-        <div class="detail-label">Payout</div>
-        <div class="detail-value">${escapeHtml((svc.payment?.methods || []).join(', ') || 'N/A')} (min ${escapeHtml(svc.payment?.minimum_payout || 'N/A')})</div>
+        <div class="detail-label">${t('app.detail.payout')}</div>
+        <div class="detail-value">${t('app.detail.payout_value', { methods: escapeHtml((svc.payment?.methods || []).join(', ') || t('app.detail.na')), min: escapeHtml(svc.payment?.minimum_payout || t('app.detail.na')) })}</div>
       </div>
     </div>`;
 
@@ -4994,7 +4994,7 @@ const CP = (() => {
     html += `
     <div class="sd-links">
       <a href="${guideUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-        Setup guide
+        ${t('app.wiz.setup_guide')}
       </a>`;
 
     // --- Provider dashboard for deployed services, and Sign Up always ---
@@ -5003,12 +5003,12 @@ const CP = (() => {
     if (isDeployed && dashboardUrl) {
       html += `
         <a href="${escapeHtml(dashboardUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-          Provider dashboard
+          ${t('app.detail.provider_dashboard')}
         </a>`;
     }
     html += `
         <a href="${escapeHtml(signupUrl)}" target="_blank" rel="noopener" class="btn ${isDeployed ? 'btn-ghost' : 'btn-primary'} btn-sm">
-          ${!hasAccount(svc) ? `Visit ${escapeHtml(svc.name)}` : isDeployed ? `New to ${escapeHtml(svc.name)}? Sign up` : `Sign up or log in to ${escapeHtml(svc.name)}`}
+          ${!hasAccount(svc) ? t('app.wiz.visit_name', { name: escapeHtml(svc.name) }) : isDeployed ? t('app.detail.new_sign_up', { name: escapeHtml(svc.name) }) : t('app.detail.sign_up_or_in', { name: escapeHtml(svc.name) })}
         </a>
         ${referralNote(svc)}`;
     html += `</div>`;
@@ -5031,10 +5031,10 @@ const CP = (() => {
       ({ rows: workerRows, allDeployed } = workerCheckboxList(svc, onlineWorkers, 'deploy-worker-cb'));
 
       if (onlineWorkers.length === 0) {
-        workerRows = '<p class="muted">No online workers can receive deploys.</p>';
+        workerRows = `<p class="muted">${t('app.wiz.no_workers')}</p>`;
       }
 
-      html += isDeployed ? '' : `<h4 class="sd-h">Deploy</h4>`;
+      html += isDeployed ? '' : `<h4 class="sd-h">${t('app.detail.deploy')}</h4>`;
       html += envFields;
       // A custom service's image is edited in its definition, not per deploy.
       if (!svc.custom) html += imageChoiceSection(svc, workers);
@@ -5049,17 +5049,17 @@ const CP = (() => {
       // A service that can run more than once keeps its node list on screen
       // when every node has it, since the Instances boxes are how it scales.
       if (allDeployed && onlineWorkers.length > 0 && !(svc.max_instances > 1)) {
-        html += `<p class="sd-note">Already on every available worker.</p>`;
+        html += `<p class="sd-note">${t('app.detail.everywhere')}</p>`;
       } else {
         html += `
         <div class="sd-targets">
-          <div class="form-label">Deploy to</div>
+          <div class="form-label">${t('app.wiz.deploy_to')}</div>
           <div id="deploy-worker-list">${workerRows}</div>
           ${instancesHint(svc)}
           ${svc.custom ? '' : routeChoiceSection(svc)}
         </div>
         <div class="sd-actions">
-          <button class="btn btn-primary" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ' disabled title="Owner access required"'}>Deploy</button>
+          <button class="btn btn-primary" data-action="deployServiceToWorkers" data-a1="${svc.slug}"${_isOwner ? '' : ` disabled title="${t('app.owner_required')}"`}>${t('app.detail.deploy')}</button>
           <span id="deploy-status-${svc.slug}" class="sd-status"></span>
         </div>`;
       }
@@ -5082,7 +5082,7 @@ const CP = (() => {
       const boxCount = new Set(instances.map(i => i.worker.id)).size;
       html += `
       <div class="sd-block sd-instances">
-        <h4 class="sd-h">Deployed on ${boxCount} ${boxCount === 1 ? 'box' : 'boxes'}</h4>
+        <h4 class="sd-h">${t('app.detail.deployed_on', { n: boxCount })}</h4>
         ${_isOwner && !svc.unmanaged ? `<!-- Filled by loadDeviceRenames when a box still has the old shared device name. -->
         <div class="sd-note device-rename" id="device-rename-${escapeHtml(svc.slug)}" style="display:none;"></div>` : ''}`;
       for (const inst of instances) {
@@ -5094,13 +5094,13 @@ const CP = (() => {
           <strong class="sd-inst-box">${escapeHtml(inst.worker.name)}${inst.several ? ` #${inst.container.instance || 1}` : ''}</strong>
           <span class="state state-${st}">${escapeHtml(s)}</span>
           ${routeBadge(inst.container)}
-          ${(svc.custom_images || {})[String(inst.worker.id)] ? `<span class="muted" title="${escapeHtml(svc.custom_images[String(inst.worker.id)])}">custom image</span>` : ''}
+          ${(svc.custom_images || {})[String(inst.worker.id)] ? `<span class="muted" title="${escapeHtml(svc.custom_images[String(inst.worker.id)])}">${t('app.detail.custom_image')}</span>` : ''}
           ${_canWrite ? `<div class="sd-inst-actions">
-            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Restart</button>
-            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">Stop</button>
-            <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">Logs</button>
-            ${_isOwner && (inst.container.instance || 1) === 1 && ((svc.docker && svc.docker.env) || []).some(e => e.seed_file) ? `<button class="btn btn-ghost btn-sm" data-action="revealWalletSeed" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Show seed phrase</button>` : ''}
-            ${(inst.container.instance || 1) === 1 ? `<button class="btn btn-danger btn-sm" data-action="${svc.custom ? 'removeCustomFromBox' : 'removeService'}" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">Remove from this box</button>` : ''}
+            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="restart" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">${t('app.row.restart')}</button>
+            <button class="btn btn-secondary btn-sm" data-action="workerAction" data-a1="${svc.slug}" data-a2="stop" data-a3="${inst.worker.id}" data-a4="${inst.container.instance || 1}">${t('app.row.stop')}</button>
+            <button class="btn btn-ghost btn-sm" data-action="loadWorkerLogs" data-a1="${svc.slug}" data-a2="${inst.worker.id}" data-a3="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" data-a4="${inst.container.instance || 1}">${t('app.logs')}</button>
+            ${_isOwner && (inst.container.instance || 1) === 1 && ((svc.docker && svc.docker.env) || []).some(e => e.seed_file) ? `<button class="btn btn-ghost btn-sm" data-action="revealWalletSeed" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">${t('app.detail.show_seed')}</button>` : ''}
+            ${(inst.container.instance || 1) === 1 ? `<button class="btn btn-danger btn-sm" data-action="${svc.custom ? 'removeCustomFromBox' : 'removeService'}" data-a1="${escapeHtml(svc.slug)}" data-a2="${inst.worker.id}" data-a3="${escapeHtml(inst.worker.name)}">${t('app.detail.remove_box')}</button>` : ''}
           </div>` : ''}
         </div>
         <div class="log-viewer log-viewer-inline" id="logs-${svc.slug}-${inst.worker.id}-${inst.container.instance || 1}" style="display:none;"></div>`;
@@ -5112,7 +5112,7 @@ const CP = (() => {
     const instancesHtml = html;
     if (isDeployed && instancesHtml) {
       return infoHtml.replace('<p class="sd-desc">', instancesHtml + '<p class="sd-desc">')
-        + (deployHtml ? `<details class="sd-more"><summary>${svc.custom ? 'Deploy to more boxes' : 'Deploy to more boxes, or change the image'}</summary>${deployHtml}</details>` : '');
+        + (deployHtml ? `<details class="sd-more"><summary>${svc.custom ? t('app.detail.more_boxes') : t('app.detail.more_boxes_image')}</summary>${deployHtml}</details>` : '');
     }
     return infoHtml + deployHtml + instancesHtml;
   }
@@ -5130,13 +5130,13 @@ const CP = (() => {
     if (!boxes.length) return '';
     return `
       <div class="sd-block sd-instances">
-        <h4 class="sd-h">A restore did not finish</h4>${boxes.map(w => `
+        <h4 class="sd-h">${t('app.detail.restore_unfinished')}</h4>${boxes.map(w => `
         <div class="sd-inst">
           <span class="cell cell-warn"></span>
           <strong class="sd-inst-box">${escapeHtml(w.name)}</strong>
-          <span class="state state-warn">partial restore, no container</span>
+          <span class="state state-warn">${t('app.detail.partial_restore')}</span>
           ${_canWrite ? `<div class="sd-inst-actions">
-            <button class="btn btn-danger btn-sm" data-action="removeService" data-a1="${escapeHtml(svc.slug)}" data-a2="${w.id}" data-a3="${escapeHtml(w.name)}" data-a4="leftover">Remove from this box</button>
+            <button class="btn btn-danger btn-sm" data-action="removeService" data-a1="${escapeHtml(svc.slug)}" data-a2="${w.id}" data-a3="${escapeHtml(w.name)}" data-a4="leftover">${t('app.detail.remove_box')}</button>
           </div>` : ''}
         </div>`).join('')}
       </div>`;
@@ -5146,28 +5146,23 @@ const CP = (() => {
   // Custom services: the user's own image, deployed with the catalog's
   // restrictions and no earnings collector (app/custom_services.py).
   // -----------------------------------------------------------
-  const CUSTOM_SERVICE_TITLE = 'User-supplied image, not reviewed by CashPilot';
+  const CUSTOM_SERVICE_TITLE = t('app.custom.title');
 
   function customServiceBanner(svc) {
     const def = svc.definition || {};
     const docker = svc.docker || {};
     const mem = (docker.resources && docker.resources.mem_limit) || def.mem_limit || '';
-    const data = def.data_path
-      ? `keeps data only in its own volume, mounted at <code>${escapeHtml(def.data_path)}</code>`
-      : 'keeps no data between redeploys';
     const warnings = (svc.warnings || []).map(w => `<p class="form-hint text-warn">${escapeHtml(w)}</p>`).join('');
     const actions = _isOwner ? `
         <div class="sd-actions">
-          <button class="btn btn-secondary btn-sm" data-action="openCustomServiceEditor" data-a1="${escapeHtml(svc.slug)}">Edit</button>
-          <button class="btn btn-danger btn-sm" data-action="deleteCustomService" data-a1="${escapeHtml(svc.slug)}">Delete</button>
+          <button class="btn btn-secondary btn-sm" data-action="openCustomServiceEditor" data-a1="${escapeHtml(svc.slug)}">${t('app.custom.edit')}</button>
+          <button class="btn btn-danger btn-sm" data-action="deleteCustomService" data-a1="${escapeHtml(svc.slug)}">${t('app.custom.delete')}</button>
         </div>` : '';
     return `
     <div class="inline-note inline-note-warn sd-block custom-service-banner">
-      <strong>${CUSTOM_SERVICE_TITLE}.</strong>
-      You added <code>${escapeHtml(docker.image || def.image || '')}</code> yourself. It receives the variables you set
-      for it and runs with no added capabilities, no devices, no host network and no published ports, under a
-      ${escapeHtml(mem)} memory limit, and ${data}. CashPilot cannot read its earnings, so the dashboard shows no
-      balance for it. Only run images you trust.
+      ${def.data_path
+        ? t('app.custom.banner_data_html', { title: CUSTOM_SERVICE_TITLE, image: escapeHtml(docker.image || def.image || ''), mem: escapeHtml(mem), path: escapeHtml(def.data_path) })
+        : t('app.custom.banner_html', { title: CUSTOM_SERVICE_TITLE, image: escapeHtml(docker.image || def.image || ''), mem: escapeHtml(mem) })}
       ${warnings}${actions}
     </div>
     <p class="sd-desc">${escapeHtml(svc.description || '')}</p>`;
@@ -5191,30 +5186,30 @@ const CP = (() => {
       <tr class="service-card cat-row" data-slug="${escapeHtml(svc.slug)}">
         <td class="cat-svc">
           <span class="service-name">${escapeHtml(svc.name)}</span>
-          <span class="badge badge-category" title="${CUSTOM_SERVICE_TITLE}">Custom</span>
+          <span class="badge badge-category" title="${CUSTOM_SERVICE_TITLE}">${t('app.row.custom')}</span>
           <span class="service-desc"><code>${escapeHtml((svc.docker && svc.docker.image) || '')}</code></span>
         </td>
-        <td class="cat-act"><button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">Manage</button></td>
+        <td class="cat-act"><button class="btn btn-secondary btn-sm" data-action="openServiceDetail" data-a1="${escapeHtml(svc.slug)}">${t('app.cat.manage')}</button></td>
       </tr>`).join('');
     box.innerHTML = `
       <div class="custom-services-head">
-        <h3 class="sd-h">Your custom services</h3>
-        ${_isOwner ? '<button class="btn btn-secondary btn-sm" data-action="openCustomServiceEditor">Add custom service</button>' : ''}
+        <h3 class="sd-h">${t('app.custom.yours')}</h3>
+        ${_isOwner ? `<button class="btn btn-secondary btn-sm" data-action="openCustomServiceEditor">${t('app.custom.add')}</button>` : ''}
       </div>
       ${rows
         ? `<table class="catalog-table"><tbody>${rows}</tbody></table>`
-        : '<p class="sd-note">Run an image the catalog does not list, from Docker Hub or any registry. CashPilot deploys it with the same restrictions as every catalog service, but cannot read its earnings.</p>'}`;
+        : `<p class="sd-note">${t('app.custom.empty')}</p>`}`;
   }
 
   function _customEnvRow(env) {
     const e = env || { key: '', value: '', secret: false, is_set: false };
-    const placeholder = e.secret && e.is_set ? 'unchanged' : 'value';
+    const placeholder = e.secret && e.is_set ? t('app.custom.unchanged') : t('app.custom.value');
     return `
       <div class="custom-env-row">
-        <input class="form-input" type="text" data-env="key" value="${escapeHtml(e.key || '')}" placeholder="NAME" spellcheck="false" autocomplete="off" aria-label="Variable name">
-        <input class="form-input" type="${e.secret ? 'password' : 'text'}" data-env="value" value="${escapeHtml(e.secret ? '' : (e.value || ''))}" placeholder="${placeholder}" spellcheck="false" autocomplete="off" aria-label="Value">
-        <label class="custom-env-secret"><input type="checkbox" data-env="secret"${e.secret ? ' checked' : ''}> Secret</label>
-        <button class="btn btn-ghost btn-sm" data-action="removeCustomEnvRow" data-a1="event">Remove</button>
+        <input class="form-input" type="text" data-env="key" value="${escapeHtml(e.key || '')}" placeholder="${t('app.custom.name_placeholder')}" spellcheck="false" autocomplete="off" aria-label="${t('app.custom.var_name')}">
+        <input class="form-input" type="${e.secret ? 'password' : 'text'}" data-env="value" value="${escapeHtml(e.secret ? '' : (e.value || ''))}" placeholder="${placeholder}" spellcheck="false" autocomplete="off" aria-label="${t('app.custom.value_label')}">
+        <label class="custom-env-secret"><input type="checkbox" data-env="secret"${e.secret ? ' checked' : ''}> ${t('app.custom.secret')}</label>
+        <button class="btn btn-ghost btn-sm" data-action="removeCustomEnvRow" data-a1="event">${t('app.cashout.remove')}</button>
       </div>`;
   }
 
@@ -5232,7 +5227,7 @@ const CP = (() => {
       try {
         def = (await api(`/api/services/${encodeURIComponent(slug)}`)).definition || def;
       } catch (err) {
-        toast(`Could not load ${slug}: ${err.message}`, 'error');
+        toast(t('app.custom.load_failed', { slug, error: err.message }), 'error');
         return;
       }
     }
@@ -5240,45 +5235,43 @@ const CP = (() => {
     const title = document.getElementById('custom-service-title');
     const body = document.getElementById('custom-service-body');
     if (!body) return;
-    if (title) title.textContent = slug ? `Edit ${def.name}` : 'Add custom service';
+    if (title) title.textContent = slug ? t('app.custom.edit_name', { name: def.name }) : t('app.custom.add');
     body.innerHTML = `
       <div class="inline-note inline-note-warn">
-        CashPilot has not reviewed the image you add here. It gets the variables you set and runs with the same
-        restrictions as every catalog service: no added capabilities, no devices, no host network, no published ports.
-        CashPilot cannot read its earnings.
+        ${t('app.custom.editor_warning')}
       </div>
       <div class="form-group">
-        <label class="form-label" for="custom-name">Name</label>
+        <label class="form-label" for="custom-name">${t('app.custom.name')}</label>
         <input class="form-input" type="text" id="custom-name" maxlength="60" value="${escapeHtml(def.name)}" autocomplete="off">
       </div>
       <div class="form-group">
-        <label class="form-label" for="custom-image">Image</label>
+        <label class="form-label" for="custom-image">${t('app.image.label')}</label>
         <input class="form-input" type="text" id="custom-image" value="${escapeHtml(def.image)}" placeholder="publisher/image:1.2.3" spellcheck="false" autocomplete="off">
-        <div class="form-hint">A Docker Hub name or a full registry path, with a version tag or digest.</div>
+        <div class="form-hint">${t('app.custom.image_hint')}</div>
       </div>
       <div class="form-group">
-        <div class="form-label">Environment variables</div>
+        <div class="form-label">${t('app.custom.env')}</div>
         <div id="custom-env-rows">${(def.env || []).map(_customEnvRow).join('')}</div>
-        <button class="btn btn-ghost btn-sm" data-action="addCustomEnvRow">Add variable</button>
-        <div class="form-hint">Every value is stored encrypted. A secret one is never shown again; leave it blank to keep it.</div>
+        <button class="btn btn-ghost btn-sm" data-action="addCustomEnvRow">${t('app.custom.add_var')}</button>
+        <div class="form-hint">${t('app.custom.env_hint')}</div>
       </div>
       <div class="form-group">
-        <label class="form-label" for="custom-command">Command (optional)</label>
+        <label class="form-label" for="custom-command">${t('app.custom.command')}</label>
         <input class="form-input" type="text" id="custom-command" value="${escapeHtml(def.command || '')}" spellcheck="false" autocomplete="off">
       </div>
       <div class="form-group">
-        <label class="form-label" for="custom-data-path">Data path in the container (optional)</label>
+        <label class="form-label" for="custom-data-path">${t('app.custom.data_path')}</label>
         <input class="form-input" type="text" id="custom-data-path" value="${escapeHtml(def.data_path || '')}" placeholder="/data" spellcheck="false" autocomplete="off">
-        <div class="form-hint">Kept in a Docker volume of its own across redeploys. Blank means nothing is kept.</div>
+        <div class="form-hint">${t('app.custom.data_hint')}</div>
       </div>
       <div class="form-group">
-        <label class="form-label" for="custom-mem">Memory limit</label>
+        <label class="form-label" for="custom-mem">${t('app.custom.mem')}</label>
         <input class="form-input" type="text" id="custom-mem" value="${escapeHtml(def.mem_limit || '512m')}" placeholder="512m" spellcheck="false" autocomplete="off">
       </div>
       <div id="custom-service-notes"></div>
       <div class="sd-actions">
-        <button class="btn btn-primary" data-action="saveCustomService" data-a1="${escapeHtml(slug || '')}">Save</button>
-        <button class="btn btn-ghost" data-action="closeModal" data-a1="custom-service-modal">Cancel</button>
+        <button class="btn btn-primary" data-action="saveCustomService" data-a1="${escapeHtml(slug || '')}">${t('app.save')}</button>
+        <button class="btn btn-ghost" data-action="closeModal" data-a1="custom-service-modal">${t('app.cancel')}</button>
         <span id="custom-service-status" class="sd-status"></span>
       </div>`;
     openModal('custom-service-modal');
@@ -5301,7 +5294,7 @@ const CP = (() => {
     };
     const statusEl = document.getElementById('custom-service-status');
     const notes = document.getElementById('custom-service-notes');
-    if (statusEl) statusEl.textContent = 'Saving...';
+    if (statusEl) statusEl.textContent = t('app.custom.saving');
     let res;
     try {
       res = slug
@@ -5317,48 +5310,48 @@ const CP = (() => {
     loadCustomServices();
     if (slug && res.deployed) {
       // The running containers keep the old definition until they are redeployed.
-      if (statusEl) statusEl.textContent = 'Saved.';
+      if (statusEl) statusEl.textContent = t('app.custom.saved_status');
       if (notes) {
         notes.innerHTML = `${warnings}
-          <div class="inline-note">Running instances still use the previous settings.
-            <button class="btn btn-secondary btn-sm" data-action="redeployCustomService" data-a1="${escapeHtml(target)}">Redeploy running instances</button>
+          <div class="inline-note">${t('app.custom.old_settings')}
+            <button class="btn btn-secondary btn-sm" data-action="redeployCustomService" data-a1="${escapeHtml(target)}">${t('app.custom.redeploy_running')}</button>
           </div>`;
       }
       return;
     }
     (res.warnings || []).forEach(w => toast(w, 'warning'));
-    toast(slug ? 'Custom service saved' : 'Custom service added', 'success');
+    toast(slug ? t('app.custom.saved') : t('app.custom.added'), 'success');
     closeModal('custom-service-modal');
     openServiceDetail(target);
   }
 
   async function redeployCustomService(slug) {
     const workers = (await api('/api/workers')).filter(w => w.status === 'online' && (w.containers || []).some(c => c.slug === slug));
-    if (!workers.length) { toast('No running instances to redeploy', 'warning'); return; }
-    if (!window.confirm(`Redeploy ${slug} on ${workers.map(w => w.name).join(', ')} with its saved settings?`)) return;
+    if (!workers.length) { toast(t('app.image.none_running'), 'warning'); return; }
+    if (!window.confirm(t('app.custom.redeploy_confirm', { slug, boxes: workers.map(w => w.name).join(', ') }))) return;
     let ok = 0;
     for (const w of workers) {
       try {
         await api(`/api/deploy/${encodeURIComponent(slug)}?worker_id=${w.id}`, { method: 'POST', body: { env: {}, replace_existing: true } });
         ok++;
       } catch (err) {
-        toast(`Redeploy on ${w.name} failed: ${err.message}`, 'error');
+        toast(t('app.image.redeploy_failed', { box: w.name, error: err.message }), 'error');
       }
     }
-    if (ok) toast(`${slug} redeployed on ${ok} box(es)`, 'success');
+    if (ok) toast(t('app.custom.redeployed', { slug, n: ok }), 'success');
     closeModal('custom-service-modal');
     loadServicesTable();
   }
 
   async function deleteCustomService(slug) {
-    if (!window.confirm(`Delete the custom service ${slug}? CashPilot forgets its definition and its saved variables.`)) return;
+    if (!window.confirm(t('app.custom.delete_confirm', { slug }))) return;
     try {
       await api(`/api/custom-services/${encodeURIComponent(slug)}`, { method: 'DELETE' });
     } catch (err) {
       toast(err.message, 'error');
       return;
     }
-    toast(`${slug} deleted`, 'success');
+    toast(t('app.custom.deleted', { slug }), 'success');
     closeModal('service-detail-modal');
     loadCustomServices();
   }
@@ -5370,9 +5363,9 @@ const CP = (() => {
   // owner-only on the server too and asks for the owner's password (api()
   // shows the prompt) after the owner reviewed that set.
   async function removeCustomFromBox(slug, workerId, boxName) {
-    if (!window.confirm(`Remove ${slug} from ${boxName}? Its container is stopped and deleted.`)) return;
+    if (!window.confirm(t('app.custom.remove_confirm', { slug, box: boxName }))) return;
     let query = `?worker_id=${encodeURIComponent(workerId)}`;
-    const withData = _isOwner && window.confirm(`Also delete its data volume on ${boxName}? This cannot be undone. Cancel keeps the data for a later deploy.`);
+    const withData = _isOwner && window.confirm(t('app.custom.remove_data_confirm', { box: boxName }));
     if (withData) query += '&delete_volumes=true';
     const path = `/api/services/${encodeURIComponent(slug)}${query}`;
     try {
@@ -5388,9 +5381,9 @@ const CP = (() => {
         if (!reviewed) return;
         result = await api(`${path}&allow_delete_critical=true&${reviewed}`, { method: 'DELETE', body: {} });
       }
-      _removeToast(`${slug} removed from ${boxName}`, result, boxName);
+      _removeToast(t('app.svc.removed_from', { slug, box: boxName }), result, boxName);
     } catch (err) {
-      toast(`Remove failed: ${err.message}`, 'error');
+      toast(t('app.custom.remove_failed', { error: err.message }), 'error');
     }
     openServiceDetail(slug);
   }
@@ -5404,9 +5397,7 @@ const CP = (() => {
     // never through a changed Instances count (route 0 would go with it).
     const switchable = _selectedWorkerIds(`.deploy-worker-cb[data-slug="${slug}"][data-routed]:not(:disabled)`);
     const rescaled = _rescaledWorkerIds(slug).filter((id) => !fresh.includes(id) && !switchable.includes(id));
-    if (rescaled.length && !window.confirm(
-      `Change the instance count for ${slug}? CashPilot will replace its existing containers on the boxes where you changed the count.`,
-    )) return;
+    if (rescaled.length && !window.confirm(t('app.dep.rescale_confirm', { slug }))) return;
     const again = [...switching, ...rescaled];
     // Only nodes that already run the service: their recorded credentials are
     // reused, so the empty credential boxes are not missing.
@@ -5431,7 +5422,7 @@ const CP = (() => {
       // Refresh the modal
       openServiceDetail(slug);
     } catch (err) {
-      toast(`${action} failed: ${err.message}`, 'error');
+      toast(t('app.svc.action_failed', { action, error: err.message }), 'error');
     }
   }
 
@@ -5477,10 +5468,10 @@ const CP = (() => {
   //
   // Worst first, because the only rows that need acting on are the bad ones.
   const CREDENTIAL_STATUS = {
-    likely_expired: {rank: 0, label: 'Likely expired', tone: 'text-fail'},
-    expiring_soon: {rank: 1, label: 'Expiring soon', tone: 'text-warn'},
-    no_known_expiry: {rank: 2, label: 'No known expiry', tone: 'muted'},
-    fresh: {rank: 3, label: 'Fresh', tone: 'text-ok'},
+    likely_expired: {rank: 0, label: t('app.credh.likely_expired'), tone: 'text-fail'},
+    expiring_soon: {rank: 1, label: t('app.credh.expiring_soon'), tone: 'text-warn'},
+    no_known_expiry: {rank: 2, label: t('app.credh.no_known_expiry'), tone: 'muted'},
+    fresh: {rank: 3, label: t('app.credh.fresh'), tone: 'text-ok'},
   };
 
   async function loadCredentialHealth() {
@@ -5512,21 +5503,21 @@ const CP = (() => {
     body.innerHTML = rows.map(row => {
       const info = meta(row.status);
       const age = row.age_hours >= 48
-        ? `${Math.round(row.age_hours / 24)} days old`
-        : `${Math.round(row.age_hours)} hours old`;
+        ? t('app.credh.days_old', { n: Math.round(row.age_hours / 24) })
+        : t('app.credh.hours_old', { n: Math.round(row.age_hours) });
       const lifetime = row.expected_lifetime_hours
-        ? ` · expected to last about ${row.expected_lifetime_hours >= 48
-            ? `${Math.round(row.expected_lifetime_hours / 24)} days`
-            : `${row.expected_lifetime_hours} hours`}`
+        ? (row.expected_lifetime_hours >= 48
+          ? t('app.credh.lasts_days', { n: Math.round(row.expected_lifetime_hours / 24) })
+          : t('app.credh.lasts_hours', { n: row.expected_lifetime_hours }))
         : '';
       // A JWT states its own expiry; that date is the fact, the lifetime a guess.
       const expires = row.expires_at
-        ? ` · expires ${new Date(row.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+        ? t('app.credh.expires', { date: new Date(row.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) })
         : '';
       // The durable alternative is the actual fix, not a nag: swapping to it
       // ends the expiry cycle instead of restarting it.
       const durable = (row.durable_alternative_missing || []).length
-        ? `<div class="credential-health-hint">A longer-lived credential exists for this service (${escapeHtml(row.durable_alternative_missing.join(', '))}) — setting it means not having to do this again.</div>`
+        ? `<div class="credential-health-hint">${t('app.credh.durable', { fields: escapeHtml(row.durable_alternative_missing.join(', ')) })}</div>`
         : '';
       const why = row.why ? `<div class="credential-health-hint">${escapeHtml(row.why)}</div>` : '';
       const needsAction = row.status === 'likely_expired' || row.status === 'expiring_soon';
@@ -5539,7 +5530,7 @@ const CP = (() => {
           </div>
           <div class="credential-health-actions">
             <span class="credential-health-status ${info.tone}">${escapeHtml(info.label)}</span>
-            ${needsAction && _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(row.service)}">Update</button>` : ''}
+            ${needsAction && _isOwner ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-a1="${escapeHtml(row.service)}">${t('app.credh.update')}</button>` : ''}
           </div>
         </div>
       `;
@@ -5584,38 +5575,37 @@ const CP = (() => {
   // arrives masked, and the full one only ever comes from the reveal route.
   function identityRowsHtml(rows) {
     if (!Array.isArray(rows) || !rows.length) {
-      return '<p class="muted">No device ids yet. They appear here once you deploy a service that has one, or add one below.</p>';
+      return `<p class="muted">${t('app.ids.empty')}</p>`;
     }
     return rows.map(r => {
       const where = [r.worker, r.copy].filter(Boolean).join(', ');
       const backup = r.kind === 'backup';
-      const state = backup ? ({ restore: 'Restored here', pending: 'Restore sent here, no answer yet' }[r.source]
-          || 'Downloaded from here')
-        : (r.kind === 'manual' ? 'Entered by you' : (r.status === 'active' ? 'In use' : 'Removed'));
+      const state = backup
+        ? (r.source === 'restore' ? t('app.ids.restored_here') : r.source === 'pending' ? t('app.ids.restore_sent') : t('app.ids.downloaded'))
+        : (r.kind === 'manual' ? t('app.ids.entered') : (r.status === 'active' ? t('app.ids.in_use') : t('app.ids.removed')));
       // The ledger's times are UTC, "YYYY-MM-DD HH:MM:SS"; minutes are enough here.
-      const when = stamp => (stamp ? `${escapeHtml(String(stamp).slice(0, 16))} UTC` : 'unknown');
-      const seen = `<div class="credential-health-hint">First seen ${when(r.first_seen)} · last seen ${when(r.last_seen)}</div>`;
+      const when = stamp => (stamp ? t('app.ids.utc', { time: escapeHtml(String(stamp).slice(0, 16)) }) : t('app.place.status_unknown'));
+      const seen = `<div class="credential-health-hint">${t('app.ids.seen', { first: when(r.first_seen), last: when(r.last_seen) })}</div>`;
       const reported = r.source === 'node'
-        ? '<div class="credential-health-hint">Reported by the node itself, not checked by CashPilot.</div>'
-        : (backup ? '<div class="credential-health-hint">A backup file this CashPilot made or restored. '
-          + 'Restoring it again needs no typed confirmation.</div>' : '');
+        ? `<div class="credential-health-hint">${t('app.ids.by_node')}</div>`
+        : (backup ? `<div class="credential-health-hint">${t('app.ids.backup')}</div>` : '');
       const id = escapeHtml(String(r.id));
       const buttons = r.readable
-        ? `<button class="btn btn-ghost btn-sm" data-action="revealIdentity" data-a1="${id}">Show</button>
-           <button class="btn btn-ghost btn-sm" data-action="copyIdentity" data-a1="${id}">Copy</button>`
-        : '<span class="muted">Unreadable: the encryption key changed</span>';
+        ? `<button class="btn btn-ghost btn-sm" data-action="revealIdentity" data-a1="${id}">${t('app.ids.show')}</button>
+           <button class="btn btn-ghost btn-sm" data-action="copyIdentity" data-a1="${id}">${t('app.ref.copy')}</button>`
+        : `<span class="muted">${t('app.ids.unreadable')}</span>`;
       // An unconfirmed deploy's hold only once the server says its deploy can
       // no longer land (r.forgettable): before that the box may still start it.
       const held = r.pending && r.status !== 'retired';
       const forget = r.forgettable
-        ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}"${held ? ' data-a2="pending"' : ''}>Forget</button>` : '';
+        ? `<button class="btn btn-ghost btn-sm" data-action="forgetIdentity" data-a1="${id}"${held ? ' data-a2="pending"' : ''}>${t('app.attn.forget')}</button>` : '';
       // An id a deploy set that the box runs now: the server decides (r.changeable).
       const change = r.changeable
-        ? `<button class="btn btn-ghost btn-sm" data-action="openIdentityChange" data-a1="${id}">Change</button>` : '';
+        ? `<button class="btn btn-ghost btn-sm" data-action="openIdentityChange" data-a1="${id}">${t('app.ids.change')}</button>` : '';
       const unconfirmed = held && !r.forgettable
-        ? '<div class="credential-health-hint">The worker did not confirm this deploy, so the box may still start with this id. You can forget it 6 h after the deploy.</div>'
+        ? `<div class="credential-health-hint">${t('app.ids.unconfirmed_deploy')}</div>`
         : (backup && r.source === 'pending' && !r.forgettable
-          ? '<div class="credential-health-hint">The worker did not answer this restore, so it may still finish and start this node there. You can forget it 6 h after the restore.</div>' : '');
+          ? `<div class="credential-health-hint">${t('app.ids.unconfirmed_restore')}</div>` : '');
       return `
         <div class="credential-health-item identity-row" data-identity="${id}">
           <div>
@@ -5638,18 +5628,15 @@ const CP = (() => {
     const slug = escapeHtml(r.slug);
     const key = escapeHtml(r.key);
     return `
-      <label class="form-label" for="identity-change-value-${id}">New ${escapeHtml(r.label)}</label>
-      <button type="button" class="btn btn-link btn-sm" data-action="pickPreviousIdentity" data-a1="${slug}" data-a2="${key}" data-a3="${escapeHtml(String(r.worker_id))}">Use one this service had before</button>
+      <label class="form-label" for="identity-change-value-${id}">${t('app.ids.new_label', { label: escapeHtml(r.label) })}</label>
+      <button type="button" class="btn btn-link btn-sm" data-action="pickPreviousIdentity" data-a1="${slug}" data-a2="${key}" data-a3="${escapeHtml(String(r.worker_id))}">${t('app.dep.pick_identity')}</button>
       <input type="text" class="form-input" id="identity-change-value-${id}" data-slug="${slug}" data-key="${key}"
         maxlength="256" autocomplete="off" spellcheck="false">
       <div class="identity-pick" data-pick-slug="${slug}" data-pick-key="${key}"></div>
-      <p class="form-hint">CashPilot makes the ${escapeHtml(r.service)} container on ${escapeHtml(r.worker)} again with
-        the new id, and changes nothing else. To the provider it is a new device. Its extra copies and its
-        proxied copies on this box take ids made from the new one: running ones change now, and a stopped
-        proxied copy keeps its old id until you add it to its proxy again.</p>
+      <p class="form-hint">${t('app.ids.change_hint', { service: escapeHtml(r.service), box: escapeHtml(r.worker) })}</p>
       <div class="credential-health-actions">
-        <button type="button" class="btn btn-primary btn-sm" data-action="changeIdentity" data-a1="${id}">Change</button>
-        <button type="button" class="btn btn-ghost btn-sm" data-action="closeIdentityChange">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" data-action="changeIdentity" data-a1="${id}">${t('app.ids.change')}</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="closeIdentityChange">${t('app.cancel')}</button>
       </div>`;
   }
 
@@ -5665,30 +5652,29 @@ const CP = (() => {
       .sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
     const boxes = (Array.isArray(workers) ? workers : []).filter(w => w && w.id !== undefined);
     if (!svcs.length || !boxes.length) {
-      return '<p class="form-hint">Add a box and a service to CashPilot first.</p>';
+      return `<p class="form-hint">${t('app.ids.add_first')}</p>`;
     }
     const svcOptions = svcs.map(s =>
       `<option value="${escapeHtml(s.slug)}">${escapeHtml(s.name || s.slug)}</option>`).join('');
     const boxOptions = boxes.map(w =>
-      `<option value="${escapeHtml(String(w.id))}">${escapeHtml(w.name || `worker ${w.id}`)}</option>`).join('');
+      `<option value="${escapeHtml(String(w.id))}">${escapeHtml(w.name || t('app.dep.worker_id', { id: w.id }))}</option>`).join('');
     return `
-      <p class="form-hint">An id CashPilot did not deploy with, such as one from before you used CashPilot. It is
-        kept here and offered when you deploy this service again. CashPilot does not treat it as running on the box.</p>
-      <label class="form-label" for="identity-add-service">Service</label>
+      <p class="form-hint">${t('app.ids.add_hint')}</p>
+      <label class="form-label" for="identity-add-service">${t('app.ids.service')}</label>
       <select class="form-input" id="identity-add-service">${svcOptions}</select>
-      <label class="form-label" for="identity-add-worker">Box</label>
+      <label class="form-label" for="identity-add-worker">${t('app.ids.box')}</label>
       <select class="form-input" id="identity-add-worker">${boxOptions}</select>
-      <label class="form-label" for="identity-add-copy">Copy</label>
+      <label class="form-label" for="identity-add-copy">${t('app.ids.copy')}</label>
       <input type="number" class="form-input" id="identity-add-copy" min="1" max="32" value="1">
-      <label class="form-label" for="identity-add-label">Field</label>
+      <label class="form-label" for="identity-add-label">${t('app.ids.field')}</label>
       <input type="text" class="form-input" id="identity-add-label" list="identity-add-fields" maxlength="64"
-        autocomplete="off" placeholder="Pick one, or type a name">
+        autocomplete="off" placeholder="${t('app.ids.field_placeholder')}">
       <datalist id="identity-add-fields">${identityFieldOptions(svcs[0])}</datalist>
-      <label class="form-label" for="identity-add-value">Id</label>
+      <label class="form-label" for="identity-add-value">${t('app.ids.id')}</label>
       <input type="text" class="form-input" id="identity-add-value" maxlength="256" autocomplete="off" spellcheck="false">
       <div class="credential-health-actions">
-        <button type="button" class="btn btn-primary btn-sm" data-action="addIdentity">Save</button>
-        <button type="button" class="btn btn-ghost btn-sm" data-action="closeIdentityForm">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" data-action="addIdentity">${t('app.save')}</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="closeIdentityForm">${t('app.cancel')}</button>
       </div>`;
   }
 
@@ -5713,10 +5699,10 @@ const CP = (() => {
     } catch (err) {
       // A list already drawn stays, with any Change form open on it.
       if (Object.keys(_identityRows).length) {
-        toast(`Could not reload device ids: ${err.message}`, 'error');
+        toast(t('app.ids.reload_failed', { error: err.message }), 'error');
         return;
       }
-      body.innerHTML = `<p class="text-fail">Could not load device ids: ${escapeHtml(err.message)}</p>`;
+      body.innerHTML = `<p class="text-fail">${t('app.ids.load_failed', { error: escapeHtml(err.message) })}</p>`;
     }
   }
 
@@ -5728,7 +5714,7 @@ const CP = (() => {
     try {
       [services, workers] = await Promise.all([api('/api/services/available'), api('/api/workers')]);
     } catch (err) {
-      toast(`Could not load the services and boxes: ${err.message}`, 'error');
+      toast(t('app.ids.form_failed', { error: err.message }), 'error');
       return;
     }
     box.innerHTML = identityFormHtml(services, workers);
@@ -5760,11 +5746,11 @@ const CP = (() => {
     };
     try {
       await api('/api/identities', { method: 'POST', body });
-      toast('Device id saved', 'success');
+      toast(t('app.ids.saved'), 'success');
       if (field && field.isConnected) closeIdentityForm();
       loadIdentities();
     } catch (err) {
-      toast(`Could not save the id: ${err.message}`, 'error');
+      toast(t('app.ids.save_failed', { error: err.message }), 'error');
     }
   }
 
@@ -5794,23 +5780,22 @@ const CP = (() => {
     const row = _identityRows[String(id)];
     const input = document.getElementById(`identity-change-value-${id}`);
     const value = input ? input.value.trim() : '';
-    if (!row || !value) { toast('Type the new id first', 'warning'); return; }
-    if (!window.confirm(`Change the ${row.label} of ${row.service} on ${row.worker}? CashPilot rebuilds `
-      + 'this service’s instances on this worker and its running proxied copies. The provider may see new devices.')) return;
+    if (!row || !value) { toast(t('app.ids.type_first'), 'warning'); return; }
+    if (!window.confirm(t('app.ids.change_confirm', { label: row.label, service: row.service, box: row.worker }))) return;
     try {
       const res = await api(`/api/identities/${encodeURIComponent(id)}/change`, { method: 'POST', body: { value, replace_existing: true } });
       // The notes a redeploy shows: what it kept, a proxied copy left on its old
       // id, and a device the provider still needs linked, or it earns for nobody.
       const kept = res && res.kept_from_previous_deployment;
-      if (Array.isArray(kept) && kept.length) toast(`${row.service}: change notes: ${kept.join('; ')}`, 'warning');
+      if (Array.isArray(kept) && kept.length) toast(t('app.ids.change_notes', { service: row.service, notes: kept.join('; ') }), 'warning');
       const link = res && res.device_link;
-      if (link && link.id && !link.registered) toast(`${row.service}: link device ${link.id} to your account. ${link.steps || ''}`, 'warning');
-      toast(`${row.service} on ${row.worker} now runs with the new ${row.label}`, 'success');
+      if (link && link.id && !link.registered) toast(t('app.redeploy.link_device', { slug: row.service, id: link.id, steps: link.steps || '' }), 'warning');
+      toast(t('app.ids.changed', { service: row.service, box: row.worker, label: row.label }), 'success');
       // This row's form is done; another one opened meanwhile stays open.
       if (_identityChangeOpen === String(id)) closeIdentityChange();
       loadIdentities();
     } catch (err) {
-      toast(`Could not change the id: ${err.message}`, 'error');
+      toast(t('app.ids.change_failed', { error: err.message }), 'error');
     }
   }
 
@@ -5821,7 +5806,7 @@ const CP = (() => {
     try {
       data = await api('/api/identities/export', { method: 'POST', body: {} });
     } catch (err) {
-      toast(`Could not download the ids: ${err.message}`, 'error');
+      toast(t('app.ids.export_failed', { error: err.message }), 'error');
       return;
     }
     const name = `cashpilot-device-ids-${new Date().toISOString().slice(0, 10)}.json`;
@@ -5833,7 +5818,7 @@ const CP = (() => {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast(`Downloaded ${name}. It holds every id in full: keep it somewhere safe.`, 'success');
+    toast(t('app.ids.exported', { name }), 'success');
   }
 
   // Every reveal is written to the audit log by the server before it answers.
@@ -5848,7 +5833,7 @@ const CP = (() => {
       const value = await _revealIdentity(id);
       if (el && value) el.textContent = value;
     } catch (err) {
-      toast(`Could not show the id: ${err.message}`, 'error');
+      toast(t('app.ids.show_failed', { error: err.message }), 'error');
     }
   }
 
@@ -5857,21 +5842,20 @@ const CP = (() => {
       const value = await _revealIdentity(id);
       if (value) await copyText(value);
     } catch (err) {
-      toast(`Could not copy the id: ${err.message}`, 'error');
+      toast(t('app.ids.copy_failed', { error: err.message }), 'error');
     }
   }
 
   async function forgetIdentity(id, kind) {
     const text = kind === 'pending'
-      ? 'Forget this device id? The worker never confirmed this deploy, so the box may still start with it. '
-        + 'CashPilot will then not warn you before another box uses the same id.'
-      : 'Forget this device id? CashPilot will not be able to show it or offer it again.';
+      ? t('app.ids.forget_pending')
+      : t('app.ids.forget');
     if (!window.confirm(text)) return;
     try {
       await api(`/api/identities/${encodeURIComponent(id)}`, { method: 'DELETE' });
       loadIdentities();
     } catch (err) {
-      toast(`Could not forget the id: ${err.message}`, 'error');
+      toast(t('app.ids.forget_failed', { error: err.message }), 'error');
     }
   }
 
@@ -5880,15 +5864,15 @@ const CP = (() => {
   // one id without the owner seeing it first.
   function identityOffersHtml(slug, key, offers) {
     if (!Array.isArray(offers) || !offers.length) {
-      return '<p class="form-hint">CashPilot has no earlier id kept for this field.</p>';
+      return `<p class="form-hint">${t('app.ids.no_offers')}</p>`;
     }
     return offers.map(o => {
       const busy = (o.in_use_on || []).length
-        ? ` <span class="text-warn">In use on ${escapeHtml(o.in_use_on.join(', '))}</span>` : '';
+        ? ` <span class="text-warn">${t('app.ids.in_use_on', { boxes: escapeHtml(o.in_use_on.join(', ')) })}</span>` : '';
       return `<div class="form-hint">
-        <code>${escapeHtml(o.masked)}</code> · last on ${escapeHtml([o.worker, o.copy].filter(Boolean).join(', '))}${busy}
+        <code>${escapeHtml(o.masked)}</code> · ${t('app.ids.last_on', { where: escapeHtml([o.worker, o.copy].filter(Boolean).join(', ')) })}${busy}
         <button type="button" class="btn btn-ghost btn-sm" data-action="useIdentity" data-a1="${escapeHtml(slug)}"
-          data-a2="${escapeHtml(key)}" data-a3="${escapeHtml(String(o.id))}" data-a4="${escapeHtml((o.in_use_on || []).join(', '))}">Use</button>
+          data-a2="${escapeHtml(key)}" data-a3="${escapeHtml(String(o.id))}" data-a4="${escapeHtml((o.in_use_on || []).join(', '))}">${t('app.ids.use')}</button>
       </div>`;
     }).join('');
   }
@@ -5908,7 +5892,7 @@ const CP = (() => {
     try {
       offers = await api(`/api/identities/reuse/${encodeURIComponent(slug)}${query}`);
     } catch (err) {
-      toast(`Could not read earlier ids: ${err.message}`, 'error');
+      toast(t('app.ids.offers_failed', { error: err.message }), 'error');
       return;
     }
     const html = identityOffersHtml(slug, key, offers);
@@ -5926,9 +5910,7 @@ const CP = (() => {
   const _identityChoice = {};
 
   async function useIdentity(slug, key, id, inUseOn) {
-    if (inUseOn && !window.confirm(
-      `This id still runs on ${inUseOn}. Two boxes on one id look like one device to the provider, `
-      + 'which may merge or ban them. Use it anyway?')) return;
+    if (inUseOn && !window.confirm(t('app.ids.use_confirm', { boxes: inUseOn }))) return;
     const field = `${slug}\n${key}`;
     const turn = (_identityChoice[field] || 0) + 1;
     _identityChoice[field] = turn;
@@ -5941,7 +5923,7 @@ const CP = (() => {
     try {
       value = await _revealIdentity(id);
     } catch (err) {
-      if (_identityChoice[field] === turn) toast(`Could not read the id: ${err.message}`, 'error');
+      if (_identityChoice[field] === turn) toast(t('app.ids.read_failed', { error: err.message }), 'error');
       return;
     }
     if (!value || _identityChoice[field] !== turn) return;
@@ -5959,48 +5941,41 @@ const CP = (() => {
   // this CashPilot's own ledger, never from the file.
   function restorePreviewHtml(p) {
     const creates = (p.creates || []).map(c =>
-      `<li>volume <code>${escapeHtml(c.volume)}</code> at <code>${escapeHtml(c.target)}</code></li>`).join('');
+      `<li>${t('app.restore.volume_html', { volume: escapeHtml(c.volume), target: escapeHtml(c.target) })}</li>`).join('');
     const history = (p.history || []).map(h =>
-      `<li>${escapeHtml(h.what)} on ${escapeHtml(h.worker)}, ${escapeHtml(fmtTimestamp(h.when).text)}</li>`).join('');
+      `<li>${t('app.restore.history', { what: escapeHtml(h.what), box: escapeHtml(h.worker), when: escapeHtml(fmtTimestamp(h.when).text) })}</li>`).join('');
     const origin = p.known
-      ? `<p>This CashPilot knows this file:</p><ul>${history}</ul>`
-      : `<p class="text-warn">This CashPilot did not make this file, so it cannot tell whose identity or wallet is
-          inside. Restore only a file you made yourself. To go on, type <strong>${escapeHtml(p.service)}</strong>:</p>
+      ? `<p>${t('app.restore.known')}</p><ul>${history}</ul>`
+      : `<p class="text-warn">${t('app.restore.unknown_html', { service: escapeHtml(p.service) })}</p>
          <input type="text" class="form-input" id="restore-confirm" autocomplete="off" spellcheck="false">`;
     const live = (p.live_on || []).length
-      ? `<p class="text-fail">This identity runs, or may be starting, on ${escapeHtml(p.live_on.join(', '))}. Two
-          boxes on one identity look like one node to the provider, which may merge or ban them. Remove it there
-          first.</p>` : '';
+      ? `<p class="text-fail">${t('app.restore.live', { boxes: escapeHtml(p.live_on.join(', ')) })}</p>` : '';
     // A file from before CashPilot recorded its backups is unknown too: it may
     // be a backup of a node that runs now.
     const elsewhere = !p.known && !(p.live_on || []).length && (p.runs_on || []).length
-      ? `<p class="text-warn">${escapeHtml(p.service)} runs now on ${escapeHtml(p.runs_on.join(', '))}. If this
-          file is a backup of that node, restoring it puts one identity on two boxes: remove it there first.</p>` : '';
+      ? `<p class="text-warn">${t('app.restore.elsewhere', { service: escapeHtml(p.service), boxes: escapeHtml(p.runs_on.join(', ')) })}</p>` : '';
     const plain = (p.workers || []).some(w => w.ok && w.plain_http)
-      ? `<label class="form-hint"><input type="checkbox" id="restore-plain-http"> Send the passphrase to a box
-          on plain HTTP anyway: anyone on the network between can read it.</label>` : '';
+      ? `<label class="form-hint"><input type="checkbox" id="restore-plain-http"> ${t('app.restore.plain_http')}</label>` : '';
     const options = (p.workers || []).map(w =>
       `<option value="${escapeHtml(String(w.id))}"${w.ok ? '' : ' disabled'}>${escapeHtml(w.name)}${
-        w.ok ? (w.plain_http ? ' (plain HTTP: the passphrase crosses your network unencrypted)' : '')
+        w.ok ? (w.plain_http ? t('app.restore.plain_option') : '')
           : ` (${escapeHtml(w.why)})`}</option>`).join('');
     // A box the identity may already be on is disabled with its reason; the one
     // a restore was sent to with no answer may take it again.
     const usable = (p.workers || []).some(w => w.ok);
     return `
-      <p>Restoring <strong>${escapeHtml(p.service)}</strong> creates a new container
-        <code>${escapeHtml(p.container)}</code> with:</p>
+      <p>${t('app.restore.creates_html', { service: escapeHtml(p.service), container: escapeHtml(p.container) })}</p>
       <ul>${creates}</ul>
-      <p class="form-hint">It never writes over anything: the box must not run ${escapeHtml(p.service)} and these
-        volumes must not exist. The backup is written and read back before the container first starts.</p>
+      <p class="form-hint">${t('app.restore.never_overwrites', { service: escapeHtml(p.service) })}</p>
       ${origin}${live}${elsewhere}
-      <label class="form-label" for="restore-worker">Box</label>
-      <select class="form-input" id="restore-worker">${options || '<option disabled>No box</option>'}</select>
-      <label class="form-label" for="restore-passphrase">Passphrase of the backup</label>
+      <label class="form-label" for="restore-worker">${t('app.ids.box')}</label>
+      <select class="form-input" id="restore-worker">${options || `<option disabled>${t('app.restore.no_box')}</option>`}</select>
+      <label class="form-label" for="restore-passphrase">${t('app.restore.passphrase')}</label>
       <input type="password" class="form-input" id="restore-passphrase" autocomplete="off">
       ${plain}
       <div class="credential-health-actions">
         <button type="button" class="btn btn-primary btn-sm" data-action="submitRestore"
-          data-a1="${escapeHtml(p.upload_id)}"${usable ? '' : ' disabled'}>Restore</button>
+          data-a1="${escapeHtml(p.upload_id)}"${usable ? '' : ' disabled'}>${t('app.restore.restore')}</button>
       </div>`;
   }
 
@@ -6029,7 +6004,7 @@ const CP = (() => {
     if (!file || !out) return;
     const seq = ++restoreCheckSeq;
     previewedFile = null;
-    out.innerHTML = '<p class="loading-line">Checking the file...</p>';
+    out.innerHTML = `<p class="loading-line">${t('app.restore.checking')}</p>`;
     let html;
     let checked = null;
     try {
@@ -6041,7 +6016,7 @@ const CP = (() => {
       if (!res.ok) {
         let detail = data && data.detail;
         if (detail && typeof detail === 'object') detail = detail.message;
-        throw new Error(detail || `Error ${res.status}`);
+        throw new Error(detail || t('app.api.error_status', { status: res.status }));
       }
       html = restorePreviewHtml(data);
       checked = file;
@@ -6058,7 +6033,7 @@ const CP = (() => {
     const picker = document.getElementById('restore-file');
     const sent = picker && picker.files && picker.files[0];
     if (!previewedFile || sent !== previewedFile) {
-      toast('The file chosen now is not the one checked. Press Check file again before you restore.', 'error');
+      toast(t('app.restore.not_checked'), 'error');
       return;
     }
     const pass = document.getElementById('restore-passphrase');
@@ -6085,8 +6060,9 @@ const CP = (() => {
     try {
       // api() asks for the owner's password when the server answers step_up_required.
       const res = await api('/api/restore', { method: 'POST', body });
-      toast(`${res.service} restored on ${res.worker}: ${res.files} files checked`
-        + (res.started ? ', started.' : '. It starts once the LAN fence is confirmed.'), 'success');
+      toast(res.started
+        ? t('app.restore.done_started', { service: res.service, box: res.worker, n: res.files })
+        : t('app.restore.done_fenced', { service: res.service, box: res.worker, n: res.files }), 'success');
       // Only while the picker still holds the file sent and nothing was
       // checked or picked since: a newer choice keeps its file and preview.
       const input = document.getElementById('restore-file');
@@ -6107,8 +6083,7 @@ const CP = (() => {
   // has to be reachable without a browser.
   function settingsLoadFailureMessage(err) {
     const detail = (err && err.message) ? String(err.message) : '';
-    return `Could not load settings${detail ? `: ${detail}` : ''}. Your session may have expired — `
-      + `reload the page, and sign in again if you are asked to.`;
+    return detail ? t('app.settings.load_failed_detail', { error: detail }) : t('app.settings.load_failed');
   }
 
   function settingsPanelsFailed(err) {
@@ -6135,7 +6110,7 @@ const CP = (() => {
       // Only Docker workers answer /api/update-info; a Desktop updates itself and a phone has no URL.
       const online = onlineDeployWorkers(workers).filter(w => !isDesktopWorker(w));
       if (!online.length) {
-        container.innerHTML = `<p class="block-empty">No Docker worker is online, so the install cannot be inspected or updated right now.</p>`;
+        container.innerHTML = `<p class="block-empty">${t('app.update.no_worker')}</p>`;
         return;
       }
       if (!online.some(w => w.id === updateCardWorkerId)) updateCardWorkerId = online[0].id;
@@ -6144,8 +6119,8 @@ const CP = (() => {
     } catch (err) {
       // The card must render something honest even with the worker down — the
       // rest of the settings page is still usable.
-      const detail = (err && err.message) ? `: ${err.message}` : '';
-      container.innerHTML = `<p class="block-empty">${escapeHtml(`Could not read update state${detail}. The local worker may be unreachable.`)}</p>`;
+      const detail = (err && err.message) ? err.message : '';
+      container.innerHTML = `<p class="block-empty">${escapeHtml(detail ? t('app.update.read_failed_detail', { error: detail }) : t('app.update.read_failed'))}</p>`;
     }
   }
 
@@ -6177,49 +6152,49 @@ const CP = (() => {
     let html = '';
     if ((onlineWorkers || []).length > 1) {
       const options = onlineWorkers.map(w =>
-        `<option value="${escapeHtml(String(w.id))}" ${w.id === updateCardWorkerId ? 'selected' : ''}>${escapeHtml(w.name || `worker ${w.id}`)}</option>`
+        `<option value="${escapeHtml(String(w.id))}" ${w.id === updateCardWorkerId ? 'selected' : ''}>${escapeHtml(w.name || t('app.dep.worker_id', { id: w.id }))}</option>`
       ).join('');
       html += `
       <div class="kv-row">
-        <div class="kv-key">Server</div>
+        <div class="kv-key">${t('app.update.server')}</div>
         <div><select id="update-worker-select" class="form-input form-input-select">${options}</select></div>
       </div>`;
     }
-    html += line('Running', current);
-    if (info.worker_image) html += line('Worker image', info.worker_image);
-    if (info.ui_image) html += line('Dashboard image', info.ui_image);
-    html += line('Latest release', latest || 'unknown — check disabled, not yet run, or GitHub unreachable');
+    html += line(t('app.update.running'), current);
+    if (info.worker_image) html += line(t('app.update.worker_image'), info.worker_image);
+    if (info.ui_image) html += line(t('app.update.ui_image'), info.ui_image);
+    html += line(t('app.update.latest'), latest || t('app.update.latest_unknown'));
     // The proxy's policy lives in the compose file, which no image update
     // changes; the worker says which release's policy it needs and how to take it.
     const fix = info.proxy_policy_fix;
     if (fix) {
       html += `
-      <p class="form-hint text-warn">${escapeHtml(`The socket proxy's policy is older than this worker (${fix.release}) needs, so some Docker calls may be refused. An image update never changes it: it lives in your compose file. Run this next to your compose file, check the diff, use the new file in place of yours, then run the second command (with your -f if you use one):`)}</p>
+      <p class="form-hint text-warn">${escapeHtml(t('app.update.proxy_policy', { release: fix.release }))}</p>
       <pre class="mono">${escapeHtml(fix.command)}\n${escapeHtml(fix.recreate)}</pre>
-      <p class="form-hint">${escapeHtml('Or copy the lines from "# BEGIN socket proxy policy" to "# END socket proxy policy", and the CASHPILOT_PROXY_POLICY lines, from')} ${proxyPolicyLink(fix.url)}</p>`;
+      <p class="form-hint">${escapeHtml(t('app.update.proxy_copy'))} ${proxyPolicyLink(fix.url)}</p>`;
     }
 
     let action;
     if (info.updater_running) {
-      action = `<p class="kv-note">An update is already running — the dashboard may restart at any moment. Reload this page in a minute.</p>`;
+      action = `<p class="kv-note">${t('app.update.already_running')}</p>`;
     } else if (!info.compose_managed) {
-      action = `<p class="kv-note muted">This install is not managed by Docker Compose, so CashPilot cannot update itself. Update manually: pull the new images, then recreate the <code>cashpilot-ui</code> and <code>cashpilot-worker</code> containers the way you created them.</p>`;
+      action = `<p class="kv-note muted">${t('app.update.not_compose_html')}</p>`;
     } else {
       let label; let note;
       if (info.patch_available) {
-        label = `Update to ${latest}`;
-        note = 'Installs the newest patch of your pinned series and recreates the CashPilot containers.';
+        label = t('app.update.update_to', { version: latest });
+        note = t('app.update.patch_note');
       } else if (info.behind) {
-        label = 'Pull newest patches';
-        note = `A newer series (${latest}) exists. Moving to it means editing the image tags in your compose file: read UPGRADING.md first, then update the UI host first and every worker after it. This button installs the newest patch of the series you currently pin.`;
+        label = t('app.update.pull_patches');
+        note = t('app.update.behind_note', { version: latest });
       } else {
-        label = 'Re-pull images';
+        label = t('app.update.repull');
         note = latest
-          ? 'You are on the newest known release. The button re-runs the documented pull anyway.'
-          : 'The newest release is unknown; the button still runs the documented pull for your pinned series.';
+          ? t('app.update.newest_note')
+          : t('app.update.unknown_note');
       }
       if (info.ui_by_hand) {
-        note += ' It updates the worker only: the worker may not touch the dashboard\'s container on this server, so update the dashboard there with docker compose pull && docker compose up -d.';
+        note += ' ' + t('app.update.worker_only_note');
       }
       action = `
       <div class="kv-actions">
@@ -6228,7 +6203,7 @@ const CP = (() => {
       </div>
       <div class="form-hint">${escapeHtml(note)}</div>`;
       if (info.behind && !info.patch_available) {
-        action += `<div class="form-hint"><a href="https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md" target="_blank" rel="noopener noreferrer">Read UPGRADING.md</a></div>`;
+        action += `<div class="form-hint"><a href="https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md" target="_blank" rel="noopener noreferrer">${t('app.update.read_upgrading')}</a></div>`;
       }
     }
     container.innerHTML = html + action;
@@ -6238,24 +6213,24 @@ const CP = (() => {
 
   async function runSelfUpdate() {
     const question = updateCardWorkerOnly
-      ? 'Update the worker now? This pulls the newest worker image of your pinned series and recreates the worker. The dashboard stays as it is; update it with docker compose pull && docker compose up -d.'
-      : 'Update CashPilot now? This pulls the newest images of your pinned series and recreates the CashPilot containers — the dashboard will briefly go away.';
+      ? t('app.update.confirm_worker')
+      : t('app.update.confirm');
     if (!confirm(question)) return;
     const status = document.getElementById('update-run-status');
-    if (status) status.textContent = 'Starting update…';
+    if (status) status.textContent = t('app.update.starting');
     try {
       // Same worker the card inspected — info and action must not diverge.
       const q = updateCardWorkerId != null ? `?worker_id=${updateCardWorkerId}` : '';
       await api(`/api/update${q}`, { method: 'POST' });
       if (status) {
         status.textContent = updateCardWorkerOnly
-          ? 'Update started — the worker will restart. Reload this page in a minute.'
-          : 'Update started — the dashboard will restart. Reload this page in a minute.';
+          ? t('app.update.started_worker')
+          : t('app.update.started');
       }
     } catch (err) {
       // A 409 carries the worker's honest refusal (e.g. not compose-managed,
       // or an update already running) — show it verbatim, it IS the answer.
-      if (status) status.textContent = (err && err.message) ? err.message : 'Update failed to start.';
+      if (status) status.textContent = (err && err.message) ? err.message : t('app.update.failed');
     }
   }
 
@@ -6263,7 +6238,7 @@ const CP = (() => {
     const container = document.getElementById('env-vars-container');
     if (!container) return;
     if (!envInfo.length) {
-      container.innerHTML = '<p class="block-empty">No environment variable info available.</p>';
+      container.innerHTML = `<p class="block-empty">${t('app.env.none')}</p>`;
       return;
     }
     const rows = envInfo.map(v => {
@@ -6276,22 +6251,22 @@ const CP = (() => {
       const displayVal = v.secret ? '' : (dbVal || v.value);
       const inputType = v.secret ? 'password' : 'text';
       const lockIcon = locked
-        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="kv-lock" aria-label="Locked"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>'
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="kv-lock" aria-label="${t('app.env.locked')}"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`
         : '';
       let badge;
-      if (fromEnv) badge = '<span class="badge badge-deployed kv-badge">From env</span>';
-      else if (v.read_only) badge = '<span class="badge kv-badge">Read-only</span>';
+      if (fromEnv) badge = `<span class="badge badge-deployed kv-badge">${t('app.env.from_env')}</span>`;
+      else if (v.read_only) badge = `<span class="badge kv-badge">${t('app.env.read_only')}</span>`;
       // No "DB" badge. It asserted that a stored value was in force, and
       // nothing reads these from the database: every one is resolved once from
       // the environment at import (main.py:639-640, auth.py, fleet_key.py), so
       // a saved value could never take effect. A stored-but-inert value is
       // worth flagging as exactly that.
-      else if (dbVal) badge = '<span class="badge badge-warning kv-badge" title="Stored in the database but NOT in use — these are read from the environment at startup">Stored, not applied</span>';
-      else if (isSet) badge = '<span class="badge kv-badge muted">Default</span>';
-      else badge = '<span class="badge kv-badge muted">Not set</span>';
+      else if (dbVal) badge = `<span class="badge badge-warning kv-badge" title="${t('app.env.stored_title')}">${t('app.env.stored')}</span>`;
+      else if (isSet) badge = `<span class="badge kv-badge muted">${t('app.env.default')}</span>`;
+      else badge = `<span class="badge kv-badge muted">${t('app.env.not_set')}</span>`;
       // Secret fields render empty; placeholder communicates whether a value is stored.
       const placeholder = v.secret
-        ? (isSet ? '•••••••• (set — leave blank to keep)' : 'Not set')
+        ? (isSet ? t('app.cred.set_keep') : t('app.env.not_set'))
         : v.description;
       return `
       <div class="kv-row">
@@ -6314,14 +6289,10 @@ const CP = (() => {
     }).join('');
     container.innerHTML = rows + `
     <div class="form-hint kv-note">
-      These are read from the environment when CashPilot starts, so changing one
-      here does not take effect. Set it in your <code>docker-compose.yml</code>
-      (or Unraid template) and restart the container. Saving stores the value but
-      nothing reads it back — the field is kept so an existing stored value stays
-      visible rather than disappearing.
+      ${t('app.env.note_html')}
     </div>
     <div class="kv-actions kv-actions-end">
-      <button class="btn btn-ghost" data-action="saveEnvSettings" title="Stores the value; it will not take effect until it is set in the environment and the container restarts">Save anyway</button>
+      <button class="btn btn-ghost" data-action="saveEnvSettings" title="${t('app.env.save_title')}">${t('app.env.save_anyway')}</button>
     </div>`;
   }
 
@@ -6330,7 +6301,7 @@ const CP = (() => {
     if (!input) return;
     const showing = input.type === 'text';
     input.type = showing ? 'password' : 'text';
-    btn.title = showing ? 'Show' : 'Hide';
+    btn.title = showing ? t('app.ids.show') : t('app.env.hide');
     btn.innerHTML = showing
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
@@ -6346,14 +6317,14 @@ const CP = (() => {
       }
     });
     if (Object.keys(data).length === 0) {
-      toast('No changes to save', 'info');
+      toast(t('app.env.no_changes'), 'info');
       return;
     }
     try {
       await api('/api/config', { method: 'POST', body: { data } });
-      toast('Variables saved', 'success');
+      toast(t('app.env.saved'), 'success');
     } catch (err) {
-      toast(`Save failed: ${err.message}`, 'error');
+      toast(t('app.save_failed', { error: err.message }), 'error');
     }
   }
 
@@ -6361,7 +6332,7 @@ const CP = (() => {
     const container = document.getElementById('collectors-container');
     if (!container) return;
     if (!meta.length) {
-      container.innerHTML = '<p class="block-empty">No collectors available.</p>';
+      container.innerHTML = `<p class="block-empty">${t('app.coll.none')}</p>`;
       return;
     }
     const secrets = config._secrets || {};
@@ -6380,10 +6351,10 @@ const CP = (() => {
       const configured = required.length > 0 && setCount === required.length;
       const partial = setCount > 0 && setCount < required.length;
       const statusBadge = partial
-        ? '<span class="badge badge-warning" title="Some required credentials are missing, so this service is not being collected">Incomplete</span>'
+        ? `<span class="badge badge-warning" title="${t('app.coll.incomplete_title')}">${t('app.coll.incomplete')}</span>`
         : configured
-        ? '<span class="badge badge-deployed">Configured</span>'
-        : '<span class="badge badge-category">Not configured</span>';
+        ? `<span class="badge badge-deployed">${t('app.coll.configured')}</span>`
+        : `<span class="badge badge-category">${t('app.coll.not_configured')}</span>`;
       const fields = col.fields.map(f => {
         // Secret fields never receive a plaintext value from /api/config — render
         // them empty (write-only). Submitting blank preserves the stored secret.
@@ -6392,11 +6363,11 @@ const CP = (() => {
         const inputType = f.secret ? 'password' : 'text';
         const inputId = `cred-${f.key}`;
         const placeholder = f.secret
-          ? (isSecretSet ? '•••••••• (set — leave blank to keep)' : 'Not set')
+          ? (isSecretSet ? t('app.cred.set_keep') : t('app.env.not_set'))
           : f.label;
         return `
         <div class="form-group">
-          <label class="form-label">${escapeHtml(f.label)}${f.required ? '' : ' <span class="optional">(optional)</span>'}</label>
+          <label class="form-label">${escapeHtml(f.label)}${f.required ? '' : ` <span class="optional">${t('app.cred.optional')}</span>`}</label>
           <div class="inline-field">
             <input class="form-input collector-input" type="${inputType}" id="${inputId}"
                    data-config="${escapeHtml(f.key)}"
@@ -6407,7 +6378,7 @@ const CP = (() => {
         </div>`;
       }).join('');
       const clearBtn = configured && _isOwner
-        ? `<div class="kv-actions kv-actions-end"><button class="btn btn-danger btn-sm" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">Clear credentials</button></div>`
+        ? `<div class="kv-actions kv-actions-end"><button class="btn btn-danger btn-sm" data-action="clearServiceCredentials" data-a1="${escapeHtml(col.slug)}" data-a2="${escapeHtml(col.name)}">${t('app.coll.clear')}</button></div>`
         : '';
       return `
       <details class="collector-section" id="collector-${col.slug}" style="order:${i}">
@@ -6451,42 +6422,42 @@ const CP = (() => {
     });
 
     if (Object.keys(data).length === 0) {
-      toast('No credentials to save', 'warning');
+      toast(t('app.coll.nothing'), 'warning');
       return;
     }
 
     try {
       await api('/api/config', { method: 'POST', body: { data } });
-      toast('Credentials saved', 'success');
+      toast(t('app.coll.saved'), 'success');
       loadSettings();
     } catch (err) {
-      toast(`Save failed: ${err.message}`, 'error');
+      toast(t('app.save_failed', { error: err.message }), 'error');
     }
   }
 
   async function clearServiceCredentials(slug, name) {
-    if (!confirm(`Remove all credentials for ${name}? This will stop earnings collection for this service.`)) return;
+    if (!confirm(t('app.coll.clear_confirm', { name }))) return;
     try {
       await api(`/api/config/${encodeURIComponent(slug)}`, { method: 'DELETE' });
-      toast(`${name} credentials cleared`, 'success');
+      toast(t('app.coll.cleared', { name }), 'success');
       // The caller used to close the modal in a second inline call; folded in
       // here so the button declares one action rather than two.
       closeModal('cred-modal');
       loadSettings();
     } catch (err) {
-      toast(`Clear failed: ${err.message}`, 'error');
+      toast(t('app.coll.clear_failed', { error: err.message }), 'error');
     }
   }
 
   async function testCollectors() {
     const statusEl = document.getElementById('collector-save-status');
-    if (statusEl) statusEl.textContent = 'Running collection...';
+    if (statusEl) statusEl.textContent = t('app.coll.running');
     try {
       await api('/api/collect', { method: 'POST' });
-      toast('Collection started. Check dashboard in a moment.', 'success');
-      if (statusEl) statusEl.textContent = 'Collection triggered';
+      toast(t('app.coll.started'), 'success');
+      if (statusEl) statusEl.textContent = t('app.coll.triggered');
     } catch (err) {
-      toast(`Collection failed: ${err.message}`, 'error');
+      toast(t('app.coll.failed', { error: err.message }), 'error');
       if (statusEl) statusEl.textContent = '';
     }
   }
@@ -6679,7 +6650,7 @@ const CP = (() => {
     const text = document.getElementById('update-banner-text');
     const link = document.getElementById('update-banner-link');
     if (text) {
-      text.textContent = `CashPilot ${state.latest} is available \u2014 you are running ${state.current}.`;
+      text.textContent = t('app.banner.update', { latest: state.latest, current: state.current });
     }
     if (link) {
       link.href = `https://github.com/GeiserX/CashPilot/releases/tag/${encodeURIComponent(state.latest)}`;
@@ -6707,7 +6678,7 @@ const CP = (() => {
     const rows = a.devices.map(d => {
       const url = typeof d.url === 'string' && /^https:\/\//i.test(d.url) ? d.url : '';
       const link = url
-        ? ` <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Add to account</a>`
+        ? ` <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${t('app.bell.add_to_account')}</a>`
         : '';
       return `<li><code>${escapeHtml(d.id)}</code>${link}</li>`;
     }).join('');
@@ -6746,8 +6717,8 @@ const CP = (() => {
           category: 'expiring',
           platform: row.service,
           error: row.status === 'likely_expired'
-            ? `Credential is past its usual lifetime — renew it (${row.field || 'credential'})`
-            : `Credential likely expires soon — renew it before collection stops (${row.field || 'credential'})`,
+            ? t('app.bell.cred_expired', { field: row.field || t('app.bell.credential') })
+            : t('app.bell.cred_expiring', { field: row.field || t('app.bell.credential') }),
         });
       }
       // Clear any muted "alerts unavailable" styling left over from a prior
@@ -6768,12 +6739,12 @@ const CP = (() => {
         // collection that stopped happening. The server decides staleness.
         if (payload.collected && payload.collection_stale) {
           const mins = Math.floor((payload.last_run_age_seconds || 0) / 60);
-          list.innerHTML = `<div class="notify-empty">No collection in ${mins} minutes — status unknown. Check the server.</div>`;
+          list.innerHTML = `<div class="notify-empty">${t('app.bell.stale', { mins })}</div>`;
           return;
         }
         list.innerHTML = payload.collected
-          ? '<div class="notify-empty">All collectors healthy</div>'
-          : '<div class="notify-empty">No collection has run yet — nothing has been checked.</div>';
+          ? `<div class="notify-empty">${t('app.bell.healthy')}</div>`
+          : `<div class="notify-empty">${t('app.bell.never_ran')}</div>`;
         return;
       }
 
@@ -6829,21 +6800,21 @@ const CP = (() => {
         const isAuth = category === 'auth';
         const isExpiring = category === 'expiring';
         const icon = isPayout ? PAYOUT_ICON : (isNotice || isTransient) ? NOTICE_ICON : WARNING_ICON;
-        const suffix = isPayout ? ' — payout?'
-          : isActivity ? (a.kind === 'activity_spike' ? ' — unusual hour' : ' — network activity')
-          : isContainer ? ' — not running'
-          : isProxyCap ? ' — traffic cap'
-          : isProxied ? ' — proxied copy down'
-          : isDocker ? ' — Docker unreachable'
-          : isStall ? ' — almost no traffic'
-          : isDisabled ? ' — account disabled'
-          : isMissing ? (a.everywhere === false ? ' — gone from a box' : a.everywhere ? ' — runs nowhere' : ' — missing')
-          : isQuiet ? ' — gone quiet'
-          : isNotice ? ' — note'
-          : isAuth ? ' — credential expired'
-          : isExpiring ? ' — credential expiring'
-          : isTransient ? ' — provider unreachable'
-          : isShape ? ' — page changed (our bug)'
+        const suffix = isPayout ? t('app.bell.s.payout')
+          : isActivity ? (a.kind === 'activity_spike' ? t('app.bell.s.unusual_hour') : t('app.bell.s.network'))
+          : isContainer ? t('app.bell.s.not_running')
+          : isProxyCap ? t('app.bell.s.traffic_cap')
+          : isProxied ? t('app.bell.s.proxied_down')
+          : isDocker ? t('app.bell.s.docker')
+          : isStall ? t('app.bell.s.stall')
+          : isDisabled ? t('app.bell.s.disabled')
+          : isMissing ? (a.everywhere === false ? t('app.bell.s.gone_from_box') : a.everywhere ? t('app.bell.s.runs_nowhere') : t('app.bell.s.missing'))
+          : isQuiet ? t('app.bell.s.quiet')
+          : isNotice ? t('app.bell.s.note')
+          : isAuth ? t('app.bell.s.auth')
+          : isExpiring ? t('app.bell.s.expiring')
+          : isTransient ? t('app.bell.s.transient')
+          : isShape ? t('app.bell.s.shape')
           : '';
         const muted = isNotice || isTransient;
         const showFix = !isPayout && !isNotice && !isTransient && !isShape && _isOwner && !isContainer && !isMissing && !isDisabled && !isActivity && !isProxyCap && !isStall && !isProxied && !isDocker;
@@ -6857,8 +6828,8 @@ const CP = (() => {
             <div class="notify-item-msg" title="${escapeHtml(a.error)}">${escapeHtml(a.error)}</div>
             ${notifyDevicesHtml(a)}
           </div>
-          ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}">${isAuth ? 'Fix credential' : 'Update'}</button>` : ''}
-          ${isDocker ? `<a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">How to fix</a>` : ''}
+          ${showFix ? `<button class="btn btn-ghost btn-sm" data-action="openCredentialModal" data-stop="1" data-a1="${escapeHtml(a.platform)}">${isAuth ? t('app.bell.fix_credential') : t('app.credh.update')}</button>` : ''}
+          ${isDocker ? `<a class="btn btn-ghost btn-sm" href="${DOCKER_LOST_DOC}" target="_blank" rel="noopener">${t('app.how_to_fix')}</a>` : ''}
         </div>
       `;
       }).join('');
@@ -6869,8 +6840,8 @@ const CP = (() => {
       badge.style.display = '';
       badge.style.background = 'var(--text-muted)';
       badge.textContent = '?';
-      badge.title = 'Alerts unavailable';
-      list.innerHTML = '<div class="notify-empty">Alerts unavailable — could not reach the server</div>';
+      badge.title = t('app.bell.unavailable');
+      list.innerHTML = `<div class="notify-empty">${t('app.bell.unavailable_text')}</div>`;
     }
   }
 
@@ -6915,7 +6886,7 @@ const CP = (() => {
     select.addEventListener('change', () => {
       _displayCurrency = select.value;
       localStorage.setItem('cp-display-currency', select.value);
-      toast(`Display currency set to ${select.value}`, 'success');
+      toast(t('app.currency.set', { code: select.value }), 'success');
       // The fiat half of the staleness notice depends on which currency is being
       // read, so it has to be recomputed when that changes.
       renderStaleRateNotice();
@@ -6959,7 +6930,7 @@ const CP = (() => {
   function chooseTheme(theme) {
     applyTheme(theme);
     api('/api/preferences', { method: 'POST', body: { theme } })
-      .catch(err => toast(`Theme not saved: ${err.message}`, 'error'));
+      .catch(err => toast(t('app.theme.not_saved', { error: err.message }), 'error'));
   }
 
   function initThemePicker() {
@@ -7089,16 +7060,16 @@ const CP = (() => {
   // heartbeated five minutes ago as two hours stale, right next to the words
   // "This host is not reachable" and one click from Remove (CashPilot-2dh).
   function fmtTimestamp(value) {
-    if (!value) return { text: 'never', title: '' };
+    if (!value) return { text: t('app.time.never'), title: '' };
     // SQLite's "YYYY-MM-DD HH:MM:SS" carries no zone designator, so Date.parse
     // treats it as LOCAL time and silently shifts it. Say UTC explicitly.
     const iso = String(value).trim().replace(' ', 'T');
     const parsed = new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`);
     if (Number.isNaN(parsed.getTime())) {
       // Unparseable is not a licence to invent a time. Show what we were given.
-      return { text: String(value), title: 'CashPilot could not read this timestamp' };
+      return { text: String(value), title: t('app.time.unreadable') };
     }
-    return { text: parsed.toLocaleString(), title: `${value} UTC` };
+    return { text: parsed.toLocaleString(), title: t('app.ids.utc', { time: value }) };
   }
 
   return {

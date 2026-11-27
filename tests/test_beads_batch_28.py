@@ -27,6 +27,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.i18n_source import english_source
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "app" / "static" / "js" / "app.js"
 
@@ -147,7 +149,7 @@ class TestTheEndpointReportsIt:
 
 class TestTheUIStopsOfferingButtonsThatCannotWork:
     def _js(self):
-        return without_comments(APP_JS.read_text(encoding="utf-8"))
+        return without_comments(english_source(APP_JS))
 
     def test_the_row_reads_the_flag(self):
         assert "inst.unmanaged || svc.unmanaged" in self._js()
@@ -198,7 +200,7 @@ class TestTheMixedServiceSubRowsHonourTheFlag:
     """
 
     def _js(self):
-        return without_comments(APP_JS.read_text(encoding="utf-8"))
+        return without_comments(english_source(APP_JS))
 
     def test_the_sub_row_reads_the_per_instance_flag(self):
         """Declared AND used — declaring it alone changes no behaviour."""

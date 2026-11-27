@@ -32,6 +32,7 @@ from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import auth, database, main, proxies  # noqa: E402
+from tests.i18n_source import NODE_T
 
 ROOT = Path(__file__).resolve().parent.parent
 UUID_A = "sdk-node-" + "a" * 32
@@ -680,7 +681,7 @@ def _render(fn, arg):
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps([fn, arg])],
+        [node, *NODE_T, "-e", _HARNESS, str(ROOT / "app/static/js/app.js"), json.dumps([fn, arg])],
         capture_output=True,
         text=True,
         check=True,
@@ -817,7 +818,7 @@ def _refresh(scenario):
     if not node:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, "-e", _REFRESH_HARNESS, str(ROOT / "app/static/js/app.js"), scenario],
+        [node, *NODE_T, "-e", _REFRESH_HARNESS, str(ROOT / "app/static/js/app.js"), scenario],
         capture_output=True,
         text=True,
         check=True,

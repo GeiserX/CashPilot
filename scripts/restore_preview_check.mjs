@@ -10,6 +10,7 @@
 //   node scripts/restore_preview_check.mjs
 //
 // Exits non-zero on any mismatch.
+import {englishSource} from './i18n_stub.mjs';
 import {readFileSync} from 'node:fs';
 
 const src = readFileSync('app/static/js/app.js', 'utf8');
@@ -299,14 +300,14 @@ run = await runCustomRemove({answers: [true, false], password: 'pw'});
 check('control: a custom removal that keeps the data asks no password', run.prompted.length === 0
   && run.sent.join() === 'DELETE /api/services/mine?worker_id=3', run);
 
-const settingsHtml = readFileSync('app/templates/settings.html', 'utf8');
+const settingsHtml = englishSource('app/templates/settings.html');
 const guide = readFileSync('docs/backup.md', 'utf8');
 check('the settings page points at that question', /say yes when it asks to delete its data/.test(settingsHtml));
 check('and so does the backup guide', /say yes when it asks to delete its data/.test(guide.replace(/\s+/g, ' ')));
 
 // A catalog service has a Remove on each box's row of its panel, as a custom
 // one does, so a fleet with several boxes online can reach it.
-const rowLine = src.split('\n').find((l) => l.includes('>Remove from this box</button>'));
+const rowLine = englishSource('app/static/js/app.js').split('\n').find((l) => l.includes('>Remove from this box</button>'));
 check('every box row of a service panel offers Remove from this box',
   !!rowLine && /svc\.custom \? 'removeCustomFromBox' : 'removeService'/.test(rowLine)
   && !/\$\{svc\.custom &&/.test(rowLine), rowLine);
