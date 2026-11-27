@@ -179,13 +179,16 @@ class TestDesktopWalletDeploys:
             yield
 
     @pytest.fixture
-    def worker_target(self):
+    def worker_target(self, request, monkeypatch):
         worker = {
             **_online_worker(2, url="http://192.168.1.30:8086"),
             "client_id": "desk",
             "system_info": json.dumps({"device_type": "desktop"}),
         }
         post = AsyncMock(return_value=_mock_httpx_resp(200, {"container_id": "c1"}))
+        if not request.node.get_closest_marker("real_worker_deploy_inventory"):
+            # A Desktop's lookup is always the checked one.
+            monkeypatch.setattr("app.main._worker_deploy_target", AsyncMock(return_value=("none", True)))
         with (
             _auth_owner(),
             patch("app.main.database.get_worker", new_callable=AsyncMock, return_value=worker),
@@ -552,11 +555,17 @@ class TestDesktopWalletDeploys:
         response = client.post("/api/workers/2/command", json={"command": "deploy", "slug": "honeygain", "spec": spec})
         assert response.status_code == 200
         post.assert_awaited_once()
-        assert post.await_args.kwargs["json"] == spec
+        assert post.await_args.kwargs["json"] == {**spec, "expected_container": "none"}
 
     @pytest.mark.real_worker_deploy_inventory
     @pytest.mark.parametrize("raw", [False, True], ids=["canonical", "raw-command"])
-    def test_desktop_deploy_uses_legacy_route_and_requires_replacement_approval(self, client, worker_target, raw):
+    def test_desktop_deploy_uses_the_checked_route_and_asks_before_a_replacement(self, client, worker_target, raw):
+        """A container no CashPilot made under the Desktop's name is never replaced unasked.
+
+        The Desktop's container list holds only what it labelled, so the old
+        route saw no container there and replaced it. The checked lookup names
+        it, and the checked deploy replaces only the container the owner approved.
+        """
         worker, post = worker_target
         slug = "honeygain"
         env = {**self._HONEYGAIN_ENV, "HONEYGAIN_DEVICE_NAME": "test-desktop"}
@@ -569,46 +578,95 @@ class TestDesktopWalletDeploys:
         else:
             path = f"/api/deploy/{slug}?worker_id=2"
             body = {"env": env}
-        first = "a" * 12
-        second = "b" * 12
-        other_copy = {"slug": slug, "instance": 2, "container_id": "c" * 12}
+        unlabelled = "a" * 64
+        holder = [unlabelled]
 
-        async def inventory(url, **kwargs):
-            assert url == f"{worker['url']}/api/containers"
-            rows = [other_copy]
-            if post.await_count:
-                rows.append({"slug": slug, "instance": 1, "container_id": first if post.await_count == 1 else second})
-            return _mock_httpx_resp(200, rows)
+        async def lookup(url, **kwargs):
+            assert url == f"{worker['url']}/api/containers/{slug}/deploy-checked"
+            return _mock_httpx_resp(200, {"exists": True, "expected_container": holder[0]})
 
-        with patch("httpx.AsyncClient.get", side_effect=inventory) as get:
-            response = client.post(path, json=body)
-            assert response.status_code == 200, response.text
-            assert post.await_count == 1
+        async def desktop_deploy(url, **kwargs):
+            # The Desktop compares the expectation with the live container under its deploy lock.
+            assert url == f"{worker['url']}/api/containers/{slug}/deploy-checked"
+            if kwargs["json"]["expected_container"] != holder[0]:
+                refusal = {"error": "deploy_target_changed", "message": "changed", "current_container": holder[0]}
+                return _mock_httpx_resp(409, {"detail": refusal})
+            holder[0] = "c" * 64
+            return _mock_httpx_resp(200, {"status": "deployed", "container_id": holder[0]})
 
+        post.side_effect = desktop_deploy
+        with patch("httpx.AsyncClient.get", side_effect=lookup):
+            # A deploy that expects no container leaves the unlabelled one alone.
             response = client.post(path, json=body)
             assert response.status_code == 409, response.text
-            detail = response.json()["detail"]
-            assert detail["error"] == "confirm_deploy_targets"
-            assert "Update CashPilot-Desktop" in detail["message"]
-            assert detail["expected_containers"] == {"1": first}
-            assert post.await_count == 1
+            assert response.json()["detail"]["current_container"] == unlabelled
+            assert holder[0] == unlabelled
 
             if raw:
-                approved = {**body, "spec": {**spec, "expected_container": first}}
+                approved = {**body, "spec": {**spec, "expected_container": unlabelled}}
             else:
-                approved = {**body, "expected_containers": detail["expected_containers"]}
+                response = client.post(path, json={**body, "replace_existing": True})
+                assert response.status_code == 409, response.text
+                detail = response.json()["detail"]
+                assert detail["error"] == "confirm_deploy_targets"
+                assert detail["expected_containers"] == {"1": unlabelled}
+                assert unlabelled[:12] in detail["message"] and "Update" not in detail["message"]
+                approved = {**body, "replace_existing": True, "expected_containers": detail["expected_containers"]}
             response = client.post(path, json=approved)
             assert response.status_code == 200, response.text
 
-            response = client.post(path, json=approved)
-            assert response.status_code == 409, response.text
-            assert response.json()["detail"]["current_container"] == second
-
-        assert get.await_count == 4
-        assert post.await_count == 2
+        sent = [call.kwargs["json"]["expected_container"] for call in post.await_args_list]
+        assert sent == ["none", unlabelled]
         for call in post.await_args_list:
-            assert call.args == (f"{worker['url']}/api/containers/{slug}/deploy",)
-            assert call.kwargs["json"] == spec
+            assert {k: v for k, v in call.kwargs["json"].items() if k != "expected_container"} == spec
+
+    @pytest.mark.real_worker_deploy_inventory
+    @pytest.mark.parametrize("status", [404, 405])
+    @pytest.mark.parametrize(
+        ("reported", "words"),
+        [("1.7.0", "runs CashPilot Desktop 1.7.0 that"), (None, "runs a CashPilot Desktop that"), ("<b>", "runs a")],
+    )
+    def test_desktop_without_the_checked_route_gets_nothing_and_is_asked_to_update(
+        self, client, worker_target, status, reported, words
+    ):
+        """No silent fall back to the old route, which replaces whatever holds the name."""
+        worker, post = worker_target
+        info = {"device_type": "desktop"} | ({"version": reported} if reported else {})
+        worker["system_info"] = json.dumps(info)
+        worker["name"] = "office-mac"
+        listed = AsyncMock(return_value=_mock_httpx_resp(200, []))
+
+        async def get(url, **kwargs):
+            if url.endswith("/deploy-checked"):
+                return _mock_httpx_resp(status, {"detail": "Not Found"})
+            return await listed(url, **kwargs)
+
+        with patch("httpx.AsyncClient.get", side_effect=get):
+            response = client.post("/api/deploy/honeygain?worker_id=2", json={"env": self._HONEYGAIN_ENV})
+        assert response.status_code == 409, response.text
+        detail = response.json()["detail"]
+        assert detail.startswith(f"office-mac {words}")
+        assert "nothing was deployed" in detail and "2.0.0 or newer" in detail
+        assert "<b>" not in detail
+        post.assert_not_awaited()
+        listed.assert_not_awaited()
+
+    @pytest.mark.parametrize("route", ["deploy", "deploy-checked"])
+    def test_desktop_body_never_goes_out_on_the_old_route_or_without_an_expectation(self, route):
+        from fastapi import HTTPException
+
+        from app import main
+
+        spec = {"image": "img", "env": {}}
+        with pytest.raises(HTTPException) as refused:
+            asyncio.run(main._desktop_deploy_body(f"/api/containers/honeygain/{route}", spec, None))
+        assert refused.value.status_code in (409, 422)
+        body = asyncio.run(
+            main._desktop_deploy_body(
+                "/api/containers/honeygain/deploy-checked", {**spec, "expected_container": "none"}, spec
+            )
+        )
+        assert body == {**spec, "expected_container": "none"}
 
     def test_fleet_copy_gets_the_wallet_refusal(self, client, worker_target):
         _, post = worker_target
@@ -723,14 +781,15 @@ class TestApiDeploy:
             patch("app.main.database.get_saved_wallet_phrases", new_callable=AsyncMock, return_value=set()),
             patch("app.main.database.save_deployment", new_callable=AsyncMock),
             patch("app.main.database.record_health_event", new_callable=AsyncMock),
+            patch("app.main._worker_deploy_target", AsyncMock(return_value=("none", True))),
             patch("httpx.AsyncClient.post", post),
         ):
             resp = client.post("/api/deploy/honeygain?worker_id=2", json={})
 
         assert resp.status_code == 200, resp.text
-        assert sent["url"] == "http://192.168.1.30:8086/api/containers/honeygain/deploy"
+        assert sent["url"] == "http://192.168.1.30:8086/api/containers/honeygain/deploy-checked"
         assert sent["headers"]["Authorization"] == "Bearer desk-key"
-        assert sent["json"] == {"image": "test", "env": {}}
+        assert sent["json"] == {"image": "test", "env": {}, "expected_container": "none"}
 
     def test_deploy_success(self, client):
         svc = {
