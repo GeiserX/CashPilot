@@ -30,13 +30,55 @@ def test_step_two_keeps_the_old_file_and_names_the_new_one():
     assert "cp docker-compose.yml docker-compose.2.10.yml" in UPGRADE
     assert re.search(r"curl -fsSLO https://raw\.githubusercontent\.com/GeiserX/CashPilot/v3\.0\.\d+/", UPGRADE)
     for name in ("docker-compose.yml", "docker-compose.fleet.yml", "docker-compose.worker.yml"):
-        assert f"`{name}`" in UPGRADE, name
+        assert name in UPGRADE, name
     assert "keep your `.env`" in UPGRADE
 
 
 def test_the_rollback_restores_the_kept_file_or_fetches_it():
     assert "cp docker-compose.2.10.yml docker-compose.yml" in ROLLBACK
     assert "https://raw.githubusercontent.com/GeiserX/CashPilot/v2.10.2/docker-compose.yml" in ROLLBACK
+
+
+# Each compose file a host may run, the copy step 2 or 3 keeps of it, and the
+# command that recreates its containers. A rollback that writes
+# docker-compose.yml on a worker host leaves docker-compose.worker.yml on 3.0.
+FILES = {
+    "docker-compose.yml": ("docker-compose.2.10.yml", "docker compose up -d --force-recreate"),
+    "docker-compose.fleet.yml": (
+        "docker-compose.fleet.2.10.yml",
+        "docker compose -f docker-compose.fleet.yml up -d --force-recreate",
+    ),
+    "docker-compose.worker.yml": (
+        "docker-compose.worker.2.10.yml",
+        "docker compose -f docker-compose.worker.yml up -d --force-recreate",
+    ),
+}
+
+
+def test_every_compose_file_is_kept_and_restored_under_its_own_name():
+    for name, (copy, recreate) in FILES.items():
+        assert f"cp {name} {copy}" in UPGRADE, f"no copy of {name} before the upgrade"
+        assert recreate in UPGRADE, f"no recreate command for {name} in the upgrade"
+        assert f"cp {copy} {name}" in ROLLBACK, f"the rollback does not restore {name}"
+        assert recreate in ROLLBACK, f"no recreate command for {name} in the rollback"
+
+
+def test_the_rollback_names_where_the_proxy_policy_command_is():
+    assert "status page" not in ROLLBACK
+    assert "**Settings**, **About and updates**" in ROLLBACK
+    page = (ROOT / "app" / "templates" / "settings.html").read_text(encoding="utf-8")
+    assert "About and updates" in page
+
+
+def test_the_env_fix_is_its_own_section_with_the_lines_to_add():
+    text = (ROOT / "UPGRADING.md").read_text(encoding="utf-8")
+    title = "## After 3.0.1: the read-only key and metrics work from `.env`"
+    assert text.index(title) < text.index("## 3.0: upgrade the UI first")
+    section = _section(title, "\n---")
+    for var in ("CASHPILOT_READONLY_API_KEY", "CASHPILOT_METRICS_ENABLED", "CASHPILOT_METRICS_TOKEN"):
+        assert f"- {var}=${{{var}:-" in section, var
+    assert "curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/" in section
+    assert "#after-301-the-read-only-key-and-metrics-work-from-env" in UPGRADE
 
 
 def test_the_rollback_covers_unraid():
@@ -49,6 +91,13 @@ def test_the_409_example_wraps_its_fields_in_detail():
     assert '"detail": {' in API
     assert "detail.expected_containers" in API
     assert "detail.current_container" in API
+
+
+def test_the_expected_containers_keys_cover_proxied_copies_and_none():
+    assert "`p<proxy id>` for a proxied copy" in API
+    assert "or `none`" in API
+    source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    assert 'keys = [f"p{route}"]' in source
 
 
 def test_the_refusal_quote_matches_any_3_0_worker():

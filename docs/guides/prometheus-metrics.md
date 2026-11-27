@@ -12,9 +12,19 @@ CASHPILOT_METRICS_ENABLED=true
 ```
 
 The shipped compose files pass the setting to the UI container, so you do not
-edit the compose file. A compose file from 3.0.1 or older does not pass it: take
-the current one, or add `- CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}`
-to the `environment` list of `cashpilot-ui`.
+edit the compose file. A compose file from 3.0.1 or older does not pass it. Add
+`- CASHPILOT_METRICS_ENABLED=${CASHPILOT_METRICS_ENABLED:-false}` and
+`- CASHPILOT_METRICS_TOKEN=${CASHPILOT_METRICS_TOKEN:-}` to the `environment`
+list of `cashpilot-ui`. Or take the current file, keep your own changes, and
+keep the image tags of the series you run:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/GeiserX/CashPilot/main/docker-compose.yml
+```
+
+Use your own file name in place of `docker-compose.yml`. The
+[upgrade note](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md#after-301-the-read-only-key-and-metrics-work-from-env)
+has the details.
 
 Metrics are served at `GET /metrics`. Without a token, anyone who can reach the
 port can read them.
