@@ -20,7 +20,7 @@ CashPilot is a self-hosted dashboard for the software that earns from your spare
 
 - Starts an earner with one click from the catalog, on x86-64 or ARM: bandwidth sharing, DePIN and storage nodes, and CPU and GPU miners (mining is in beta).
 - Fences earners off your LAN, the host, your tailnet and cloud metadata with its own nftables table, by default on new installs ([network isolation](https://geiserx.github.io/CashPilot/isolation/)).
-- Drops every container's capabilities and caps its processes; the compose install uses Docker only via a socket proxy ([security defaults](https://geiserx.github.io/CashPilot/security-defaults/)).
+- Drops every capability a service does not declare, and caps processes. Compose installs reach Docker only via a socket proxy ([details](https://geiserx.github.io/CashPilot/security-defaults/)).
 - Shows every box in one fleet view (Docker workers, CashPilot Desktop, Android phones), with every figure per box and per service ([fleet](https://geiserx.github.io/CashPilot/fleet/)).
 - Keeps every balance as history in the currency you pick, and counts a balance drop as a payout only after you confirm it.
 - Reminds you before money waiting at a provider expires or a claim window closes, with a push before each deadline ([reminders](https://geiserx.github.io/CashPilot/reminders/)).
