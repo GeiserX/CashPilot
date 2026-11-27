@@ -296,7 +296,7 @@ Per-status and per-category counts come from `services/*/*.yml`; `scripts/genera
 |---------|------|-------|
 | Grass | Browser extension | OTP-only login. WebSocket approach using `user_id` UUID bypasses login |
 | Gradient | Browser extension | `?referralCode=` param (camelCase) |
-| Teneo | Browser extension | WebSocket-based |
+| Teneo | Beacon app (Android, iOS, macOS, Windows, Linux) | No collector yet; Points and Fragments show in the Expedition Hub |
 | Dawn | Chrome extension / hardware | Community Python bots (HTTP API) exist, containerizable |
 | Nodepay | Browser extension | Behind Cloudflare |
 | Wipter | Desktop/mobile only | No web login/dashboard |

@@ -19,10 +19,10 @@ Never sign up for an account on the person's behalf without asking them first. N
 
 ## Where the links are
 
-The same links appear in four places. All of them come from the catalog.
+The same links appear in four places. The README and the app read them from the catalog, and each guide copies its link from the catalog entry.
 
 - **The catalog.** Each service has one YAML file under [`services/`](https://github.com/GeiserX/CashPilot/tree/main/services) in the repository, for example `services/bandwidth/honeygain.yml`. The link is the `referral.signup_url` field.
-- **The service guides.** Each [service guide](guides/index.md) links the signup page. A referral link has the note "Referral link: the CashPilot maintainer may earn a commission from it." next to it. When the catalog records a bonus, the guide has a **Referral bonus** section.
+- **The service guides.** Each [service guide](guides/index.md) links the signup page. A referral link has the note "Referral link: the CashPilot maintainer may earn a commission from it." next to it. Some guides also have a **Referral bonus** section, but the catalog's `bonus.referee` is the only source for a bonus claim.
 - **The README.** The service lists in the [README](https://github.com/GeiserX/CashPilot#supported-services) link each service to its `signup_url`.
 - **The app.** In CashPilot, the **Catalog** page has **Visit** and **Sign Up** links. A service's detail page shows a **Referral Program** card with the new user bonus and the referrer bonus, when the catalog records them.
 

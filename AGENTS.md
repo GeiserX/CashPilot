@@ -228,7 +228,7 @@ the code **is** captured — the link works.
 
 ### Catalog signup links keep the project's referral codes
 
-A catalog `referral.signup_url` must keep the project's referral code (`referral.code`): never replace it with a bare URL or another code, and run `python scripts/referral_check.py` after you change one.
+A catalog `referral.signup_url` must keep the project's referral code (`referral.code`): never replace it with a bare URL or with a code that is not the project's. When a provider moves us to a new code of ours, update `referral.code` too, and add the old README URL with its replacement to `REPLACED_REFERRAL_URLS` in `tests/test_readme_generation.py`. Run `python scripts/referral_check.py` after you change one.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker
