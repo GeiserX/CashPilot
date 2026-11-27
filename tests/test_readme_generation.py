@@ -189,6 +189,23 @@ class TestGeneratedCounts:
         assert c["active"] + c["beta"] + c["retired"] == c["catalogued"]
         assert c["docker"] + c["tracked"] == c["live"]
         assert c["bandwidth"] + c["depin"] + c["compute"] + c["storage"] + c["mining"] == c["live"]
+        assert c["pinned"] + c["floating"] == c["docker"]
+        assert 0 <= c["noproxy"] <= c["docker"]
+
+    @pytest.mark.parametrize(
+        ("image", "pinned"),
+        [
+            ("honeygain/honeygain", False),
+            ("bringyour/community-provider:g4-latest", False),
+            ("repocket/repocket:latest", False),
+            ("drumsergio/cashpilot-earnapp:1.665.73-r3", True),
+            ("ghcr.io/proxybaseorg/peer-cli@sha256:" + "b" * 64, True),
+            ("registry.local:5000/team/app", False),
+            ("registry.local:5000/team/app:2.1", True),
+        ],
+    )
+    def test_an_image_is_pinned_only_by_a_version_or_a_digest(self, image, pinned):
+        assert gen._is_pinned(image) is pinned
 
     def test_every_counted_doc_uses_markers_and_is_current(self):
         values = gen.counts()
