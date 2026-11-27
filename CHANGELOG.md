@@ -10,6 +10,12 @@ Every release, grouped by what changed. Generated from commit history.
 Releases before `1.0.0` were recorded by hand and are kept verbatim in
 [docs/changelog-0.x-handwritten.md](docs/changelog-0.x-handwritten.md).
 
+## [3.0.1] - 2026-11-27
+
+### Fixes
+
+- Send no request to a worker whose hostname does not resolve (#862)
+
 ## [3.0.0] - 2026-11-27
 
 ### CI
