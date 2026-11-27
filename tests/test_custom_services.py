@@ -398,6 +398,26 @@ class TestTheRoutes:
         assert done == {"status": "deleted"}
         assert stored is None
 
+    def test_delete_is_allowed_right_after_a_remove_succeeds(self, db):
+        """The box that confirmed the removal stopped counting before its next heartbeat."""
+
+        async def go():
+            slug = (await _create())["slug"]
+            containers = json.dumps([{"slug": slug, "status": "running"}, {"slug": "honeygain", "status": "running"}])
+            wid = await database.upsert_worker("cid-a", "box-a", "http://box-a:8081", containers=containers)
+            await database.save_deployment(slug=slug, container_id="c1", spec={"image": "x"}, worker_id=wid)
+            with (
+                patch.object(main, "_require_writer", lambda r: None),
+                patch.object(main, "_proxy_worker_command", AsyncMock(return_value={"status": "removed"})),
+            ):
+                await main._svc_remove(MagicMock(), slug, wid, False)
+            done = await main.api_delete_custom_service(MagicMock(), slug, {})
+            return done, json.loads((await database.get_worker(wid))["containers"])
+
+        done, left = _run(go)
+        assert done == {"status": "deleted"}
+        assert left == [{"slug": "honeygain", "status": "running"}], "the other service must stay listed"
+
     def test_delete_is_refused_while_a_box_has_a_record_of_it(self, db):
         async def go():
             slug = (await _create())["slug"]

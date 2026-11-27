@@ -7350,6 +7350,12 @@ async def _svc_remove(
         )
     await _record_removed_copies(slug, worker_id, result)
     await _forget_removed_deployment(slug, worker_id, keep_wallet_seed=keep_wallet_seed)
+    try:
+        # The worker said it removed every copy, so it no longer counts as running
+        # them; its next heartbeat would say the same a minute from now.
+        await database.forget_reported_service(worker_id, slug)
+    except Exception as exc:  # noqa: BLE001 - the removal itself happened
+        logger.warning("Removed %s, but could not update worker %s's container list: %s", slug, worker_id, exc)
     # The worker removed the service's proxied copies with it (worker_api
     # remove_all), so their records go too. The removal itself already
     # happened; a failure here must not report it as failed.
