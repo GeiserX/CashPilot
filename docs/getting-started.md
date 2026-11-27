@@ -4,8 +4,17 @@
 
 - **Docker** with the **Compose v2 plugin, version 2.23.1 or newer**. Check
   with `docker compose version`. Older versions cannot read the inline config
-  in the compose file. On a bare Docker Engine, or on macOS with Colima
-  instead of Docker Desktop, install the Compose plugin first.
+  in the compose file. Docker Desktop includes the plugin. On a bare Docker
+  Engine on Linux, install it from Docker's package repository
+  (https://docs.docker.com/compose/install/linux/). On macOS with Colima,
+  install it with Homebrew and link it as a Docker plugin:
+
+    ```sh
+    brew install docker-compose
+    mkdir -p ~/.docker/cli-plugins
+    ln -sfn "$(brew --prefix)/opt/docker-compose/bin/docker-compose" ~/.docker/cli-plugins/docker-compose
+    ```
+
 - A Linux, macOS, or Windows host (amd64 or arm64)
 - At least 1 GB of RAM available for CashPilot + managed services
 - **One CashPilot per Docker host.** See the warning below.

@@ -62,3 +62,11 @@ def test_moving_series_sends_the_reader_to_upgrading_ui_first():
     section = text[text.index("### Pinning a specific version") : text.index("### Automating updates")]
     assert "UPGRADING.md" in section
     assert "UI host first" in section
+
+
+def test_the_prerequisites_say_how_to_install_the_compose_plugin():
+    prereqs = _page().split("## Quick Start", 1)[0]
+    assert "https://docs.docker.com/compose/install/linux/" in prereqs
+    assert "brew install docker-compose" in prereqs
+    assert "~/.docker/cli-plugins/docker-compose" in prereqs
+
