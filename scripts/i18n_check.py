@@ -122,6 +122,7 @@ import json
 import os
 import pathlib
 import re
+import stat
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -456,7 +457,8 @@ def _no_duplicates(pairs: list) -> dict:
     return out
 
 
-def load_json(path: pathlib.Path) -> tuple[dict, dict]:
+def _parse_json(path: pathlib.Path) -> tuple[dict, dict, dict]:
+    """Read path once: (the whole tree, its flat texts, its inline hashes)."""
     try:
         tree = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_no_duplicates)
     except (json.JSONDecodeError, ParseError) as e:
@@ -466,6 +468,11 @@ def load_json(path: pathlib.Path) -> tuple[dict, dict]:
     out: dict = {}
     hashes: dict = {}
     _flatten(_drop_locale_root(tree, locale_of(path, "json")), "", out, path, hashes)
+    return tree, out, hashes
+
+
+def load_json(path: pathlib.Path) -> tuple[dict, dict]:
+    _, out, hashes = _parse_json(path)
     return out, hashes
 
 
@@ -505,6 +512,15 @@ def _write_atomic(path: pathlib.Path, text: str) -> None:
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     tmp = pathlib.Path(name)
     try:
+        # mkstemp makes the file 0600; keep the mode the file had, or for a
+        # new file the mode open() would give it.
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except FileNotFoundError:
+            umask = os.umask(0)
+            os.umask(umask)
+            mode = 0o666 & ~umask
+        os.chmod(name, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
         os.replace(tmp, path)
@@ -726,7 +742,15 @@ def _icu_argument(s: str, i: int, out: set, depth: int) -> int:
             if s[j : j + 1] != "{":
                 raise IcuError(f"{kind} option {o.group(1)!r} needs a {{message}}")
             keys.append(o.group(1))
-            j = _icu_scan(s, j + 1, kind != "select", out, depth + 1) + 1
+            if kind == "select":
+                # Each select keyword must keep its own placeholders: {name}
+                # moved from one keyword to another is a different message.
+                inner: set = set()
+                j = _icu_scan(s, j + 1, False, inner, depth + 1) + 1
+                out.update(inner)
+                out.add(("select-branch", name, o.group(1), frozenset(inner)))
+            else:
+                j = _icu_scan(s, j + 1, True, out, depth + 1) + 1
         if kind == "select":
             out.add(("select", name, tuple(sorted(keys))))
         else:
@@ -752,16 +776,17 @@ def placeholders(text: str) -> frozenset:
     out: set = set()
 
     links: dict = {}
-    # In an ICU plural or select each branch may repeat a link, and other
-    # languages have more branches, so a link inside braces is not counted.
+    # In an ICU plural or select each branch may repeat a link, other
+    # languages have more branches, and a translation may move a link out of
+    # the branches. So an ICU message checks links only by destination, which
+    # the "tag" entries already do, and counts none.
     icu = bool(_ICU_COMPLEX.search(text))
 
     def tag(m: re.Match) -> str:
         href = _HREF.search(m.group(3))
         dest = (href.group(1) or href.group(2)) if href else ""
         out.add(("tag", m.group(1) + m.group(2).lower(), dest))
-        before = text[: m.start()]
-        if href and not (icu and before.count("{") > before.count("}")):
+        if href and not icu:
             # links to A, A, B differ from links to A, B, B
             links[dest] = links.get(dest, 0) + 1
             out.add(("link", dest, links[dest]))
@@ -843,6 +868,12 @@ def _describe(sig: frozenset) -> str:
             return f"<{t[1]}" + (f" href={t[2]}" if t[2] else "") + ">"
         if kind == "broken-braces":
             return "(unbalanced braces)"
+        if kind == "select-branch":
+            return f"({t[1]} = {t[2]}: " + (_describe(t[3]) if t[3] else "no placeholder") + ")"
+        if kind == "link":
+            return f"(link {t[1]} #{t[2]})"
+        if kind == "plural-number":
+            return "(# in a plural)"
         return str(t)
 
     return ", ".join(sorted(one(t) for t in sig)) or "none"
@@ -878,6 +909,10 @@ def check_target(source: dict, target: dict, hashes: dict | None) -> dict:
             empty = sorted(q for q, v in tgt.items() if not (v or "").strip())
             found["placeholder"].append((key, f"empty plural form {', '.join(empty)}"))
         s_sig, t_sig = signature(src), signature(tgt)
+        if ("broken-braces",) in t_sig:
+            # Reported even when the English is broken the same way.
+            found["placeholder"].append((key, "unbalanced or malformed braces"))
+            continue
         no_other = sorted(t[1] for t in t_sig if t[0] == "no-other")
         if no_other:
             # Reported even when the English lacks it too: ICU needs "other".
@@ -935,14 +970,16 @@ def _leading_comments(path: pathlib.Path) -> str:
     return "\n".join(head) + "\n" if head else ""
 
 
-def write_json_inline(path: pathlib.Path, hashes: dict, checked: dict) -> None:
+def write_json_inline(path: pathlib.Path, hashes: dict, checked: tuple[dict, dict]) -> None:
     """Rewrite a JSON locale file with every hashed leaf as {"text", "source"}.
 
-    `checked` is what the check read; a file that changed since is refused.
+    `checked` is (texts, inline hashes) as the check read them; a file that
+    changed since, in either, is refused. The file is read once, and the tree
+    that passed this comparison is the tree that gets stamped.
     """
-    if load_json(path)[0] != checked:
+    tree, texts, inline = _parse_json(path)
+    if (texts, inline) != checked:
         raise ParseError(f"{path}: the file changed while it was being checked; run again")
-    tree = json.loads(path.read_text(encoding="utf-8"))
     root = _drop_locale_root(tree, locale_of(path, "json"))
 
     def walk(node: dict, prefix: str) -> None:
@@ -995,6 +1032,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             fmt = fmt or detect_format(path)
             whole, inline = load(path, fmt, args.i18next_plurals)
+            snapshot = (dict(whole), dict(inline or {}))
             # Ignored keys leave the comparison, never the file a stamp rewrites.
             target = _drop_ignored(whole, args.ignore)
             # An explicit --hashes-dir wins over inline hashes; the catalog
@@ -1022,7 +1060,11 @@ def main(argv: list[str] | None = None) -> int:
             if hashes is None or (sidecar is None and fmt not in ("catalog", "json")):
                 print(f"error: {path}: stamping the {fmt} format needs --hashes-dir", file=sys.stderr)
                 return 2
-            n = stamp(source, target, hashes, args.restamp, args.stamp)
+            # A key that fails the check keeps its old hash, so a stale
+            # translation that is still wrong stays marked stale.
+            failing = check_target(source, target, None)
+            bad = {k for kind in ("missing", "placeholder") for k, _ in failing[kind]}
+            n = stamp(source, {k: v for k, v in target.items() if k not in bad}, hashes, args.restamp, args.stamp)
             if n:
                 try:
                     if fmt == "catalog":
@@ -1031,7 +1073,7 @@ def main(argv: list[str] | None = None) -> int:
                         sidecar.parent.mkdir(parents=True, exist_ok=True)
                         _write_atomic(sidecar, json.dumps(hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
                     else:
-                        write_json_inline(path, hashes, whole)
+                        write_json_inline(path, hashes, snapshot)
                 except (OSError, ParseError) as e:
                     print(
                         f"error: writing the hashes for {path} failed: {e}. Earlier targets stay stamped.",

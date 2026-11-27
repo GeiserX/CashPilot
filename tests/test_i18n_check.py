@@ -751,10 +751,17 @@ def test_the_temporary_file_never_overwrites_another_file(tmp_path):
     assert sorted(p.name for p in tmp_path.iterdir()) == [".es.yml.tmp", "es.yml"]
 
 
-def test_links_outside_a_plural_are_still_counted(tmp_path):
+def test_an_icu_message_checks_links_by_destination(tmp_path):
     link = "<a href='/help'>help</a>"
-    en = write(tmp_path / "en.json", json.dumps({"x": f"{link} {link} {{n, plural, other {{#}}}}"}))
-    es = write(tmp_path / "es.json", json.dumps({"x": f"{link} {{n, plural, other {{#}}}}"}))
+    en = write(
+        tmp_path / "en.json", json.dumps({"x": f"{{n, plural, one {{# box, {link}}} other {{# boxes, {link}}}}}"})
+    )
+    # The link moved out of the branches: the same message.
+    es = write(tmp_path / "es.json", json.dumps({"x": f"{link}: {{n, plural, one {{# caja}} other {{# cajas}}}}"}))
+    assert run(en, es)[0] == 0
+    write(es, json.dumps({"x": "<a href='/ayuda'>ayuda</a>: {n, plural, one {# caja} other {# cajas}}"}))
+    assert run(en, es)[0] == 1
+    write(es, json.dumps({"x": "{n, plural, one {# caja} other {# cajas}}"}))
     assert run(en, es)[0] == 1
 
 
@@ -765,3 +772,80 @@ def test_an_empty_plural_form_fails(tmp_path):
     assert code == 1 and "empty plural form one" in out
     write(es, json.dumps({"f_other": "{{count}} archivos"}))
     assert run(en, es, "--i18next-plurals")[0] == 0
+
+
+# --- The Desktop copy's review -----------------------------------------------
+
+
+def test_a_placeholder_moved_between_select_keywords_fails(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "{g, select, male {He, {name}} other {They}}"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "{g, select, male {Él} other {Ellos, {name}}}"}))
+    code, out = run(en, es)
+    assert code == 1 and "male" in out
+    write(es, json.dumps({"a": "{g, select, other {Ellos} male {Él, {name}}}"}))
+    assert run(en, es)[0] == 0
+
+
+def test_broken_braces_fail_even_when_the_english_is_broken_too(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hello {name"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "Hola {name"}))
+    code, out = run(en, es)
+    assert code == 1 and "braces" in out
+
+
+def _edit_after_read(monkeypatch, path, n, text):
+    """Rewrite path right after its n-th read, as another editor would."""
+    real = pathlib.Path.read_text
+    reads = []
+
+    def read_text(self, *a, **k):
+        out = real(self, *a, **k)
+        if self == path:
+            reads.append(1)
+            if len(reads) == n:
+                path.write_text(text, encoding="utf-8")
+        return out
+
+    monkeypatch.setattr(pathlib.Path, "read_text", read_text)
+
+
+def test_a_source_hash_changed_after_the_check_is_not_overwritten(tmp_path, monkeypatch):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hi", "b": "Bye"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": {"text": "Hola", "source": "111111111111"}, "b": "Adiós"}))
+    edited = json.dumps({"a": {"text": "Hola", "source": "222222222222"}, "b": "Adiós"})
+    _edit_after_read(monkeypatch, es, 1, edited)
+    assert ic.main([str(en), str(es), "--stamp"]) != 0
+    assert json.loads(es.read_text(encoding="utf-8"))["a"]["source"] == "222222222222"
+
+
+def test_text_edited_during_the_stamp_is_never_stamped_current(tmp_path, monkeypatch):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hi"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "Hola"}))
+    # The second read is the stamp's own check; the edit lands just after it.
+    _edit_after_read(monkeypatch, es, 2, json.dumps({"a": "Hola {name}"}))
+    ic.main([str(en), str(es), "--stamp"])
+    entry = json.loads(es.read_text(encoding="utf-8"))["a"]
+    assert not (isinstance(entry, dict) and entry["text"] == "Hola {name}" and entry["source"] == ic.source_hash("Hi"))
+
+
+def test_a_stamp_keeps_the_file_mode(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hi"}))
+    es = write(tmp_path / "es.json", json.dumps({"a": "Hola"}))
+    es.chmod(0o644)
+    assert run(en, es, "--stamp")[0] == 0
+    assert "source" in es.read_text(encoding="utf-8")
+    assert es.stat().st_mode & 0o777 == 0o644
+
+
+def test_restamp_leaves_a_still_broken_translation_stale(tmp_path):
+    d, en = catalog(tmp_path)
+    es = write(
+        d / "es.yml",
+        'iproyal.description:\n  text: "Comparte"\n  source: "000000000000"\n'
+        'iproyal.notes:\n  text: "Paga el día"\n  source: "000000000000"\n',
+    )
+    code, out = run(en, es, "--restamp", "*")
+    assert code == 1 and "stamped 1" in out
+    data = yaml.safe_load(es.read_text(encoding="utf-8"))
+    assert data["iproyal.notes"]["source"] == "000000000000"
+    assert data["iproyal.description"]["source"] == ic.source_hash("Share bandwidth")
