@@ -82,11 +82,18 @@ def test_volume_refusal_reaches_the_dashboard_as_written(command):
     assert resp.json()["detail"] == reason
 
 
-@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 503])
+@pytest.mark.parametrize("status", [400, 403, 404, 409, 503])
 def test_each_vetted_status_forwards_the_worker_text(status):
     resp = _send("deploy", answer=_resp(status, {"detail": "the worker's own reason"}))
     assert resp.status_code == status
     assert resp.json()["detail"] == "the worker's own reason"
+
+
+def test_a_worker_refusing_our_key_is_not_the_callers_401():
+    """An API client read the worker's 401 as its own key being wrong."""
+    resp = _send("deploy", answer=_resp(401, {"detail": "Invalid API key"}))
+    assert resp.status_code == 503
+    assert "worker refused the key this server uses" in resp.json()["detail"]
 
 
 def test_control_characters_are_dropped():

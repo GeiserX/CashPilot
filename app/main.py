@@ -7623,7 +7623,7 @@ def _safe_worker_detail(resp: Any) -> dict[str, Any] | None:
 # image) and the daemon it cannot reach (503). A 500 is an unhandled failure
 # whose text nobody vetted, and a 422 is FastAPI echoing the request body
 # (env values included), so both stay generic.
-_FORWARDABLE_WORKER_TEXT_STATUSES = {400, 401, 403, 404, 409, 503}
+_FORWARDABLE_WORKER_TEXT_STATUSES = {400, 403, 404, 409, 503}
 _WORKER_TEXT_MAX = 400
 # Env values shorter than this are not masked: a PUID of 1000 or a mode of
 # "host" would otherwise garble the worker's own numbers and words, and no
@@ -7672,6 +7672,12 @@ def _worker_failure_text(status: int) -> str:
     if status == 404:
         return "The worker does not know this request (HTTP 404); it may be older than the UI, so update it"
     return f"Worker request failed (HTTP {status}); the worker's log has the reason"
+
+
+_WORKER_REFUSED_OUR_KEY = (
+    "The worker refused the key this server uses for it. Nothing was done there. "
+    "If it joined in the last minute, try again shortly; otherwise its log says why."
+)
 
 
 async def _confirmed_worker_key(cid: str) -> str | None:
@@ -7900,6 +7906,10 @@ async def _proxy_to_worker(
                 # something on the box) tells a gateway's error from its own, so
                 # an unmarked 503 there is a gateway's too, and the worker may
                 # still finish it. Elsewhere _outcome_unknown reads the status.
+                if resp.status_code == 401:
+                    # The worker refused the key this server signs with for it. Passed on
+                    # as a 401, an API client reads it as its own key being wrong.
+                    raise HTTPException(status_code=503, detail=_WORKER_REFUSED_OUR_KEY)
                 gateway = resp.status_code in _GATEWAY_NO_ANSWER or resp.status_code == 503
                 unknown = marked and ((gateway and not _worker_restored_nothing(resp)) or _worker_left_restore(resp))
                 raise (_WorkerNoAnswer if unknown else HTTPException)(
