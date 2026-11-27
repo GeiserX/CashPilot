@@ -1,0 +1,13 @@
+# Site strings for the ru docs build (.github/scripts/docs-i18n.py).
+
+[notices]
+# On an English page shown in this locale because it has no translation yet.
+untranslated = "Эта страница ещё не переведена. Вы читаете английскую версию."
+# On a page that stays English on purpose (docs/i18n/config.toml).
+english_only = "Эта страница доступна только на английском."
+# On a translation made from an older English page. {url} is the English page.
+stale = "Английская версия этой страницы новее. [Читать английскую версию]({url})."
+
+# Navigation labels: English label = label in this language. A label not listed
+# here stays in English (provider names do).
+[nav]

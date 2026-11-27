@@ -1,0 +1,13 @@
+# Site strings for the ko docs build (.github/scripts/docs-i18n.py).
+
+[notices]
+# On an English page shown in this locale because it has no translation yet.
+untranslated = "이 페이지는 아직 번역되지 않았습니다. 영어 버전을 읽고 있습니다."
+# On a page that stays English on purpose (docs/i18n/config.toml).
+english_only = "이 페이지는 영어로만 제공됩니다."
+# On a translation made from an older English page. {url} is the English page.
+stale = "이 페이지의 영어 버전이 더 최신입니다. [영어 버전 읽기]({url})."
+
+# Navigation labels: English label = label in this language. A label not listed
+# here stays in English (provider names do).
+[nav]

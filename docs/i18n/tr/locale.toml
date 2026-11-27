@@ -1,0 +1,13 @@
+# Site strings for the tr docs build (.github/scripts/docs-i18n.py).
+
+[notices]
+# On an English page shown in this locale because it has no translation yet.
+untranslated = "Bu sayfa henüz çevrilmedi. İngilizce sürümünü okuyorsunuz."
+# On a page that stays English on purpose (docs/i18n/config.toml).
+english_only = "Bu sayfa yalnızca İngilizce olarak mevcut."
+# On a translation made from an older English page. {url} is the English page.
+stale = "Bu sayfanın İngilizce sürümü daha yeni. [İngilizce sürümü okuyun]({url})."
+
+# Navigation labels: English label = label in this language. A label not listed
+# here stays in English (provider names do).
+[nav]

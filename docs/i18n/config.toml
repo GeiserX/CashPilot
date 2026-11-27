@@ -1,0 +1,16 @@
+# Pages that stay in English in every locale. They still build in each locale, as the
+# English page with a note that says so, so every link works in every language.
+english_only = [
+  # Generated from the catalog by scripts/generate_ratings_page.py: it changes with
+  # every catalog edit, and the catalog's own translations live in services/_i18n/.
+  "ratings.md",
+  # Read by AI agents, which read English (MCP tool text stays English for the same reason).
+  "for-ai-agents.md",
+  # For people who work on CashPilot, not for people who run it.
+  "development.md",
+  "roadmap.md",
+  "research/fleet-upgrades-and-onboarding.md",
+  "research/earnings-benchmarks.md",
+  "research/shared-proxy-tunnel.md",
+  "research/ux-plan.md",
+]
