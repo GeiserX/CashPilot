@@ -18,7 +18,7 @@ hide:
 
 ---
 
-**CashPilot** runs passive income services on your own servers and shows what they earn in one dashboard. It is a UI that holds the catalog, the credentials and the earnings history, and on each server a worker that starts and watches the service containers through a Docker socket proxy. Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
+**Every earner, every box, one view.** CashPilot is a self-hosted dashboard for the software that earns from your spare bandwidth, compute and disk: bandwidth sharing, DePIN nodes, crypto mining, GPU compute and storage. A worker on each server starts the earners in Docker, through a socket proxy, and on a new install fences them off your LAN and the host. The dashboard holds the catalog, the credentials and the earnings history, and shows every box: Docker workers, [CashPilot Desktop](https://github.com/GeiserX/CashPilot-Desktop) and [Android phones](https://github.com/GeiserX/CashPilot-android). Start with [Getting started](getting-started.md), then pick services in the [Service guides](guides/index.md).
 
 Upgrading from 2.x? Upgrade the UI first, then every worker: [UPGRADING.md](https://github.com/GeiserX/CashPilot/blob/main/UPGRADING.md) has the steps.
 
@@ -137,7 +137,7 @@ graph LR
 - It does not collect in real time. Collectors run every 60 minutes by default (`CASHPILOT_COLLECT_INTERVAL`).
 - It does not count a balance drop as a payout on its own. The dashboard asks you to confirm each one, because a drop can also be a provider correction.
 - It does not fence every earner off your LAN. New installs fence them by default, but an upgraded install whose earners sit on Docker's default bridge stays unfenced until you press **Turn on isolation**, a network you name in `CASHPILOT_CONTAINER_NETWORK` gets your own rules only, and host-networked Mysterium is never fenced ([Network isolation](isolation.md#modes)).
-- It cannot promise earnings. As a rough guide, one home server running 10 to 15 services makes about $30 to $100 a month, and it can make less, down to zero; see the [FAQ](faq.md).
+- It cannot promise earnings. What a setup makes depends on your country, your connection, your hardware and the services you run, and it can be zero; see the [FAQ](faq.md).
 
 ## Security
 
