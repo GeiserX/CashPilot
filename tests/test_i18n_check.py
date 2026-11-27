@@ -629,3 +629,99 @@ def test_catalog_plural_stamping_is_refused(tmp_path):
     before = es.read_text()
     code, out = run(en, es, "--i18next-plurals", "--stamp")
     assert code == 2 and es.read_text() == before
+
+
+# --- The third full review ---------------------------------------------------
+
+
+@pytest.mark.parametrize("text", ["a: |2-\n  Hi\n    \n  Bye\n", "a: |\n  Hi\n    \n", "a: >\n  Hi\n    \n  Bye\n"])
+def test_spaces_on_a_blank_block_line_are_content(text):
+    assert ic.parse_yaml(text) == yaml.safe_load(text)
+
+
+def test_an_inline_entry_named_like_the_locale_is_not_a_root(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"es": "Hello"}))
+    es = write(tmp_path / "es.json", json.dumps({"es": "Hola"}))
+    assert run(en, es, "--stamp")[0] == 0
+    code, out = run(en, es, "--strict")
+    assert code == 0, out
+
+
+def test_duplicate_json_members_are_refused(tmp_path):
+    en = write(tmp_path / "en.json", json.dumps({"a": "Hello"}))
+    es = write(tmp_path / "es.json", '{"a": "Hola", "a": "Buenas"}')
+    before = es.read_text()
+    code, out = run(en, es, "--stamp")
+    assert code == 2 and "duplicate key" in out and es.read_text() == before
+
+
+def _family_hash(forms: dict) -> str:
+    return ic.source_hash("\x1f".join(f"{q}\x1e{t}" for q, t in sorted(forms.items())))
+
+
+def test_a_plural_form_without_a_hash_makes_the_family_stale(tmp_path):
+    en_forms = {"one": "{{count}} file", "other": "{{count}} files"}
+    en = write(tmp_path / "en.json", json.dumps({f"f_{q}": t for q, t in en_forms.items()}))
+    fam = _family_hash(en_forms)
+    es = write(
+        tmp_path / "es.json",
+        json.dumps({"f_one": {"text": "{{count}} archivo", "source": fam}, "f_other": "{{count}} archivos"}),
+    )
+    assert run(en, es, "--i18next-plurals", "--strict")[0] == 1
+    write(
+        es,
+        json.dumps(
+            {
+                "f_one": {"text": "{{count}} archivo", "source": fam},
+                "f_other": {"text": "{{count}} archivos", "source": fam},
+            }
+        ),
+    )
+    assert run(en, es, "--i18next-plurals", "--strict")[0] == 0
+
+
+def test_overlapping_plural_families_do_not_borrow_hashes(tmp_path):
+    a = {"one": "{{count}} a", "other": "{{count}} as"}
+    en = write(
+        tmp_path / "en.json", json.dumps({"f_one_other": "{{count}} b", "f_one": a["one"], "f_other": a["other"]})
+    )
+    good_a = _family_hash(a)
+    for order in (("f_one_other", "f_one", "f_other"), ("f_one", "f_other", "f_one_other")):
+        tree = {
+            "f_one_other": {"text": "{{count}} be", "source": "000000000000"},
+            "f_one": {"text": "{{count}} a", "source": good_a},
+            "f_other": {"text": "{{count}} as", "source": good_a},
+        }
+        es = write(tmp_path / "es.json", json.dumps({k: tree[k] for k in order}))
+        code, out = run(en, es, "--i18next-plurals", "--strict")
+        assert code == 1 and "stale       f_one:" in out and "  f:" not in out, (order, out)
+
+
+def test_link_destinations_are_counted(tmp_path):
+    a, b = "https://a.example", "https://b.example"
+    en = write(tmp_path / "en.json", json.dumps({"x": f"<a href='{a}'>1</a> <a href='{a}'>2</a> <a href='{b}'>3</a>"}))
+    es = write(tmp_path / "es.json", json.dumps({"x": f"<a href='{a}'>1</a> <a href='{b}'>2</a> <a href='{b}'>3</a>"}))
+    assert run(en, es)[0] == 1
+    write(es, json.dumps({"x": f"<a href='{b}'>3</a> <a href='{a}'>1</a> <a href='{a}'>2</a>"}))
+    assert run(en, es)[0] == 0
+
+
+def test_catalog_plural_refusal_says_it_is_unsupported(tmp_path):
+    d = tmp_path / "services" / "_i18n"
+    en = write(d / "en.yml", 'f_one: "{{count}} file"\nf_other: "{{count}} files"\n')
+    es = write(d / "es.yml", 'f_one:\n  text: "{{count}} archivo"\nf_other:\n  text: "{{count}} archivos"\n')
+    code, out = run(en, es, "--i18next-plurals", "--stamp")
+    assert code == 2 and "not supported" in out and "--hashes-dir" not in out
+
+
+def test_a_failed_write_keeps_the_old_file(tmp_path, monkeypatch):
+    out = write(tmp_path / "es.yml", 'a:\n  text: "Hola"\n')
+
+    def boom(*_a, **_k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(ic.os, "replace", boom)
+    with pytest.raises(OSError):
+        ic.write_catalog(out, {"a": "Adiós"}, {})
+    assert out.read_text() == 'a:\n  text: "Hola"\n'
+    assert list(tmp_path.iterdir()) == [out]
