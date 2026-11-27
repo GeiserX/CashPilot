@@ -167,6 +167,51 @@ class TestMoney4bandEnv:
         assert not any("Proxy settings" in n for n in preview["notices"])
 
 
+def _m4b5_encrypted(content: str) -> str:
+    """``content`` as money4band 5.0 writes user-config.json to disk.
+
+    The whole file becomes ``M4B_ENCRYPTED:`` plus one Fernet token of the
+    JSON dumped with indent=4 (money4band/core/crypto.py ``encrypt_dict`` at
+    tag 5.0.0). The key is thrown away: only the layout matters here.
+    """
+    from cryptography.fernet import Fernet
+
+    token = Fernet(Fernet.generate_key()).encrypt(json.dumps(json.loads(content), indent=4).encode("utf-8"))
+    return "M4B_ENCRYPTED:" + token.decode("ascii")
+
+
+M4B5_REFUSAL = (
+    "user-config.json is an encrypted money4band 5.0 file. Run `m4b config edit`, "
+    "copy the decrypted JSON it opens, and paste it here."
+)
+
+
+class TestMoney4bandEncrypted:
+    @pytest.mark.parametrize("source", ["auto", "money4band", "cashfactory"])
+    def test_an_encrypted_5_0_file_is_refused_with_how_to_decrypt(self, source):
+        content = _m4b5_encrypted((FIX / "money4band/user-config.json").read_text(encoding="utf-8"))
+        with pytest.raises(parse.ImportRefused) as err:
+            _preview([{"name": "user-config.json", "content": content}], source)
+        assert str(err.value) == M4B5_REFUSAL
+        assert err.value.status == 400
+
+    def test_a_big_encrypted_file_gets_the_same_message_not_the_line_cap(self):
+        # One token on one line: a filled-in config passes the 8 KiB line cap.
+        data = json.loads((FIX / "money4band/user-config.json").read_text(encoding="utf-8"))
+        data["padding"] = "x" * 9000
+        content = _m4b5_encrypted(json.dumps(data))
+        assert len(content) > parse.MAX_LINE_BYTES
+        with pytest.raises(parse.ImportRefused) as err:
+            parse.read_files([{"name": "user-config.json", "content": content}])
+        assert str(err.value) == M4B5_REFUSAL
+
+    def test_an_encrypted_file_beside_a_plain_env_is_still_refused(self):
+        content = _m4b5_encrypted((FIX / "money4band/user-config.json").read_text(encoding="utf-8"))
+        files = [{"name": "user-config.json", "content": content + "\n"}, *_files("money4band/generated.env")]
+        with pytest.raises(parse.ImportRefused, match="m4b config edit"):
+            _preview(files)
+
+
 class TestCashFactory:
     def test_the_env_maps_with_its_own_key_names(self):
         rows = _rows(_preview(_files("cashfactory/.env.sample")))

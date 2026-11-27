@@ -165,6 +165,14 @@ class TestPreview:
         assert res.status_code == 400
         _assert_no_secret(res.text)
 
+    def test_an_encrypted_money4band_5_file_says_how_to_decrypt_it(self, owner):
+        # money4band 5.0's on-disk user-config.json: the prefix, then one Fernet token.
+        token = "M4B_ENCRYPTED:gAAAAAB" + "A" * 200 + "=="
+        res = owner.post("/api/import/preview", json={"files": [{"name": "user-config.json", "content": token}]})
+        assert res.status_code == 400
+        assert "m4b config edit" in res.json()["detail"]
+        assert "gAAAAAB" not in res.text
+
 
 # ---------------------------------------------------------------------------
 # Who may call it
