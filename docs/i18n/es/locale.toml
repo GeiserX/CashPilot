@@ -1,0 +1,13 @@
+# Site strings for the es docs build (.github/scripts/docs-i18n.py).
+
+[notices]
+# On an English page shown in this locale because it has no translation yet.
+untranslated = "Esta página aún no está traducida. Estás leyendo la versión en inglés."
+# On a page that stays English on purpose (docs/i18n/config.toml).
+english_only = "Esta página solo está disponible en inglés."
+# On a translation made from an older English page. {url} is the English page.
+stale = "La versión en inglés de esta página es más reciente. [Lee la versión en inglés]({url})."
+
+# Navigation labels: English label = label in this language. A label not listed
+# here stays in English (provider names do).
+[nav]

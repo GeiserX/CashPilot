@@ -1,0 +1,13 @@
+# Site strings for the nl docs build (.github/scripts/docs-i18n.py).
+
+[notices]
+# On an English page shown in this locale because it has no translation yet.
+untranslated = "Deze pagina is nog niet vertaald. Je leest de Engelse versie."
+# On a page that stays English on purpose (docs/i18n/config.toml).
+english_only = "Deze pagina is alleen in het Engels beschikbaar."
+# On a translation made from an older English page. {url} is the English page.
+stale = "De Engelse versie van deze pagina is nieuwer. [Lees de Engelse versie]({url})."
+
+# Navigation labels: English label = label in this language. A label not listed
+# here stays in English (provider names do).
+[nav]
