@@ -127,6 +127,9 @@ docker compose -f docker-compose.worker.yml up -d
 ```
 
 `CASHPILOT_UI_URL` is the UI's published host port (`CASHPILOT_UI_PORT`).
+The worker must reach the UI, and the default UI listens only on 127.0.0.1.
+On the main server, set `CASHPILOT_BIND_ADDR` to its LAN or Tailscale
+address ([configuration](configuration.md#compose-level)).
 `CASHPILOT_WORKER_BIND_ADDR` is this server's private or VPN address, never
 `0.0.0.0` or a public IP. To use the in-app update, also add
 `CASHPILOT_COMPOSE_DIR=$PWD`. It is opt-in because it lets containers bind the
