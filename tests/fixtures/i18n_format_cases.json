@@ -1,0 +1,248 @@
+[
+ {
+  "locale": "en",
+  "message": "Hello {name}",
+  "params": {
+   "name": "Ana"
+  },
+  "expected": "Hello Ana"
+ },
+ {
+  "locale": "en",
+  "message": "{name} has {other}",
+  "params": {
+   "name": "A"
+  },
+  "expected": "A has {other}"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, =0 {no boxes} one {# box} other {# boxes}}",
+  "params": {
+   "n": 0
+  },
+  "expected": "no boxes"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, =0 {no boxes} one {# box} other {# boxes}}",
+  "params": {
+   "n": 1
+  },
+  "expected": "1 box"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, =0 {no boxes} one {# box} other {# boxes}}",
+  "params": {
+   "n": 5
+  },
+  "expected": "5 boxes"
+ },
+ {
+  "locale": "pl",
+  "message": "{n, plural, one {# skrzynka} few {# skrzynki} many {# skrzynek} other {# skrzynki}}",
+  "params": {
+   "n": 1
+  },
+  "expected": "1 skrzynka"
+ },
+ {
+  "locale": "pl",
+  "message": "{n, plural, one {# skrzynka} few {# skrzynki} many {# skrzynek} other {# skrzynki}}",
+  "params": {
+   "n": 3
+  },
+  "expected": "3 skrzynki"
+ },
+ {
+  "locale": "pl",
+  "message": "{n, plural, one {# skrzynka} few {# skrzynki} many {# skrzynek} other {# skrzynki}}",
+  "params": {
+   "n": 5
+  },
+  "expected": "5 skrzynek"
+ },
+ {
+  "locale": "pl",
+  "message": "{n, plural, one {# skrzynka} few {# skrzynki} many {# skrzynek} other {# skrzynki}}",
+  "params": {
+   "n": 12
+  },
+  "expected": "12 skrzynek"
+ },
+ {
+  "locale": "pl",
+  "message": "{n, plural, one {# skrzynka} few {# skrzynki} many {# skrzynek} other {# skrzynki}}",
+  "params": {
+   "n": 22
+  },
+  "expected": "22 skrzynki"
+ },
+ {
+  "locale": "pl",
+  "message": "{n, plural, one {# skrzynka} few {# skrzynki} many {# skrzynek} other {# skrzynki}}",
+  "params": {
+   "n": 25
+  },
+  "expected": "25 skrzynek"
+ },
+ {
+  "locale": "ru",
+  "message": "{n, plural, one {# ящик} few {# ящика} many {# ящиков} other {# ящика}}",
+  "params": {
+   "n": 1
+  },
+  "expected": "1 ящик"
+ },
+ {
+  "locale": "ru",
+  "message": "{n, plural, one {# ящик} few {# ящика} many {# ящиков} other {# ящика}}",
+  "params": {
+   "n": 21
+  },
+  "expected": "21 ящик"
+ },
+ {
+  "locale": "ru",
+  "message": "{n, plural, one {# ящик} few {# ящика} many {# ящиков} other {# ящика}}",
+  "params": {
+   "n": 3
+  },
+  "expected": "3 ящика"
+ },
+ {
+  "locale": "ru",
+  "message": "{n, plural, one {# ящик} few {# ящика} many {# ящиков} other {# ящика}}",
+  "params": {
+   "n": 11
+  },
+  "expected": "11 ящиков"
+ },
+ {
+  "locale": "ru",
+  "message": "{n, plural, one {# ящик} few {# ящика} many {# ящиков} other {# ящика}}",
+  "params": {
+   "n": 5
+  },
+  "expected": "5 ящиков"
+ },
+ {
+  "locale": "ar",
+  "message": "{n, plural, zero {لا صناديق} one {صندوق واحد} two {صندوقان} few {# صناديق} many {# صندوقًا} other {# صندوق}}",
+  "params": {
+   "n": 0
+  },
+  "expected": "لا صناديق"
+ },
+ {
+  "locale": "ar",
+  "message": "{n, plural, zero {لا صناديق} one {صندوق واحد} two {صندوقان} few {# صناديق} many {# صندوقًا} other {# صندوق}}",
+  "params": {
+   "n": 1
+  },
+  "expected": "صندوق واحد"
+ },
+ {
+  "locale": "ar",
+  "message": "{n, plural, zero {لا صناديق} one {صندوق واحد} two {صندوقان} few {# صناديق} many {# صندوقًا} other {# صندوق}}",
+  "params": {
+   "n": 2
+  },
+  "expected": "صندوقان"
+ },
+ {
+  "locale": "ar",
+  "message": "{n, plural, zero {لا صناديق} one {صندوق واحد} two {صندوقان} few {# صناديق} many {# صندوقًا} other {# صندوق}}",
+  "params": {
+   "n": 3
+  },
+  "expected": "3 صناديق"
+ },
+ {
+  "locale": "ar",
+  "message": "{n, plural, zero {لا صناديق} one {صندوق واحد} two {صندوقان} few {# صناديق} many {# صندوقًا} other {# صندوق}}",
+  "params": {
+   "n": 11
+  },
+  "expected": "11 صندوقًا"
+ },
+ {
+  "locale": "ar",
+  "message": "{n, plural, zero {لا صناديق} one {صندوق واحد} two {صندوقان} few {# صناديق} many {# صندوقًا} other {# صندوق}}",
+  "params": {
+   "n": 100
+  },
+  "expected": "100 صندوق"
+ },
+ {
+  "locale": "ja",
+  "message": "{n, plural, one {# 台 (one)} other {# 台}}",
+  "params": {
+   "n": 1
+  },
+  "expected": "1 台"
+ },
+ {
+  "locale": "fr",
+  "message": "{n, plural, one {# boîte} other {# boîtes}}",
+  "params": {
+   "n": 0
+  },
+  "expected": "0 boîte"
+ },
+ {
+  "locale": "en",
+  "message": "{kind, select, fleet {The fleet} other {Something else}}",
+  "params": {
+   "kind": "fleet"
+  },
+  "expected": "The fleet"
+ },
+ {
+  "locale": "en",
+  "message": "{kind, select, fleet {The fleet} other {Something else}}",
+  "params": {
+   "kind": "box"
+  },
+  "expected": "Something else"
+ },
+ {
+  "locale": "en",
+  "message": "{kind, select, box {{n, plural, one {# box} other {# boxes}}} other {#}}",
+  "params": {
+   "kind": "box",
+   "n": 2
+  },
+  "expected": "2 boxes"
+ },
+ {
+  "locale": "en",
+  "message": "You don't need to deploy",
+  "params": {},
+  "expected": "You don't need to deploy"
+ },
+ {
+  "locale": "en",
+  "message": "Use '{name}' literally, and '' once",
+  "params": {
+   "name": "x"
+  },
+  "expected": "Use {name} literally, and ' once"
+ },
+ {
+  "locale": "en",
+  "message": "Item #1",
+  "params": {},
+  "expected": "Item #1"
+ },
+ {
+  "locale": "en",
+  "message": "{n, plural, other {# left}} of {total}",
+  "params": {
+   "n": 3,
+   "total": 9
+  },
+  "expected": "3 left of 9"
+ }
+]

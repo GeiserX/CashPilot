@@ -181,6 +181,7 @@ class TestAViewerCannotTriggerAFleetCollection:
                 body.timezone = None
                 body.setup_mode = None
                 body.theme = None
+                body.language = None
                 await main.api_set_preferences(request, body, {"uid": 1, "u": "x", "r": role})
             return spawned
 

@@ -9,31 +9,45 @@ Handlers reach shared state through ``app.deps``, ``app.auth`` and
 
 from __future__ import annotations
 
+import contextlib
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import auth as auth_module
-from app import database, deps, themes
+from app import database, deps, i18n, themes
 
 router = APIRouter()
 
 
 async def _page(request: Request, template: str, user: dict) -> HTMLResponse:
-    """Render a signed-in page with the user's saved theme on <html>.
+    """Render a signed-in page with the user's saved theme and language.
 
     The server decides the theme of a signed-in page, so it paints right from the
     first frame on any browser, and a theme left in localStorage by whoever used
     this browser before never applies. Never chosen, or a value that is no
     longer a theme, means the default (app/themes.json).
+
+    The saved language works the same way (app/i18n): it wins over the cookie
+    and the browser's Accept-Language, and is copied into the cookie so the
+    sign-in page and the API's messages match it. Never chosen means the cookie
+    or the browser decides.
     """
-    saved = None
-    try:
+    prefs = None
+    with contextlib.suppress(Exception):  # a preference read must never break a page
         prefs = await database.get_user_preferences(user["uid"])
-        saved = prefs and prefs.get("theme")
-    except Exception:  # noqa: BLE001 - a theme read must never break a page
-        pass
-    theme = themes.resolve(saved)
-    return deps.templates.TemplateResponse(request, template, {"user": user, "saved_theme": theme})
+    theme = themes.resolve(prefs and prefs.get("theme"))
+    saved_language = prefs.get("language") if prefs else None
+    locale = i18n.from_request(request, saved_language)
+    i18n.use(locale)
+    response = deps.templates.TemplateResponse(
+        request,
+        template,
+        {"user": user, "saved_theme": theme, "saved_language": saved_language if saved_language == locale else None},
+    )
+    if saved_language == locale and request.cookies.get(i18n.COOKIE) != locale:
+        response.set_cookie(i18n.COOKIE, locale, max_age=i18n.COOKIE_MAX_AGE, samesite="lax", path="/")
+    return response
 
 
 @router.get("/", response_class=HTMLResponse)

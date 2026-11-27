@@ -47,6 +47,12 @@ jobs:
       - name: Currency formatting behaviour
         run: node scripts/currency_check.mjs
 
+      # The browser's message formatter (app/static/js/i18n.js) on the cases
+      # tests/test_i18n.py runs through the server's (app/i18n), so a plural or
+      # a quoted brace cannot read differently on the two sides.
+      - name: Message formatting behaviour (i18n)
+        run: node scripts/i18n_format_check.mjs
+
       - name: Catalog patterns reach the deploy form
         run: node scripts/deploy_field_check.mjs
 

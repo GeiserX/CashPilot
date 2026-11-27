@@ -1,0 +1,5 @@
+{
+  "lang.label": "Language",
+  "lang.auto": "Automatic (browser language)",
+  "lang.not_saved": "Language not saved: {error}"
+}
