@@ -209,7 +209,7 @@ How each stack runs the check:
 - **Python (UI and worker), with the standard library `ssl` module only.**
   - The trust store holds only the pinned identity certificates, loaded with `load_verify_locations(cadata=...)`. The context never calls `load_default_certs()`.
   - Settings: `check_hostname = False`, `VERIFY_X509_STRICT` on, minimum version TLS 1.3. A client uses `CERT_REQUIRED`. A server uses `CERT_OPTIONAL`, so a box that is enrolling can connect with no certificate.
-  - OpenSSL then runs checks 2, 4 and 6: it matches the leaf's issuer to a pinned identity certificate and checks the leaf's signature with that key. The stack runs checks 1, 3 and 5 itself on the verified chain (`get_verified_chain()`, Python 3.13 and newer).
+  - OpenSSL then runs checks 2, 4 and 6: it matches the leaf's issuer to a pinned identity certificate and checks the leaf's signature with that key. The stack runs checks 3 and 5 itself on the verified chain (`get_verified_chain()`, Python 3.13 and newer). It runs check 1 on the chain the peer sent (`get_unverified_chain()`). OpenSSL can complete a verified chain from its trust store, so a peer that sends only its leaf still gets a verified chain of two.
   - When the pinned set changes, the UI builds a new server context. An `sni_callback` on the listening context sets `sslobj.context` to the current one for each new handshake, so adding or removing a box takes effect without a restart. We tested both directions in section 11 with blocking sockets. The Python lane must test it once more under uvicorn's asyncio transport, which hands the callback an `SSLObject`.
   - The servers run on uvicorn with `ssl_context_factory` (uvicorn 0.54).
 - **Kotlin (Android).**
@@ -298,13 +298,14 @@ CASHPILOT_WORKER_NAME=server-name
 2. The box connects to `CASHPILOT_UI_URL` over TLS **with no client certificate** and checks the UI's chain against `CASHPILOT_UI_KEY`. It sends nothing until that check passes.
    - Python has no verify callback, and it holds no UI certificate yet. So the first connection uses `CERT_NONE` and reads `get_unverified_chain()`. It runs the six checks of section 5.2 in code with `cryptography`, writes the UI's identity certificate to `/data/.ui_identity.pem` and closes. Every later connection loads that file as `cadata`.
    - At each start, the box checks that the key in `/data/.ui_identity.pem` equals `CASHPILOT_UI_KEY`. If it does not, the box deletes the file and repeats this first connection against the new pin. So a changed `CASHPILOT_UI_KEY` (section 8.3) takes effect at the next start.
+   - With `CASHPILOT_IROH=on`, steps 2 and 3 can run over iroh instead, so a UI with no reachable fleet port can still pair boxes. The box dials `CASHPILOT_UI_KEY`, and iroh's handshake proves that the UI holds that key. The box writes the `ui_identity_cert` of the reply (step 4) to `/data/.ui_identity.pem` after it checks that certificate's key. It tries TLS first only when `CASHPILOT_UI_URL` is set.
 3. The box sends `POST /api/workers/heartbeat` with `Authorization: Bearer <shared key>`. The body holds the usual fields plus `identity_cert`, the PEM of the box's identity certificate.
 4. The UI accepts the enrolment only when all of these hold:
    - The shared key is right.
    - One of these admits the `client_id`:
      - It is new.
-     - Its pin is unconfirmed and equals the presented key. This is a retry, described below.
-     - The owner opened a re-pair window for it and for this exact endpoint id (section 8).
+     - Its pin is unconfirmed and equals the presented key, and the box proves it holds that key. This is a retry, described below.
+     - The owner opened a re-pair window for it and for this exact endpoint id (section 8), and that pin is not confirmed yet.
    - `identity_cert` passes checks 2 and 3 of section 5.2 against its own key.
    - Its CN is the hex of that key.
    
@@ -313,7 +314,12 @@ CASHPILOT_WORKER_NAME=server-name
 6. The box's next heartbeat presents its certificate and its own key. The UI checks that the peer id equals the pin for that `client_id`, then marks the pin confirmed. This is the existing `key_confirmed` step, extended to the pin.
 7. From then on, the UI sends commands to the box's `https://` URL. It presents its own certificate and checks the box against the pin. The box checks the UI against its pin.
 
-A lost reply does not strand the box. If the reply of step 4 never arrives, the box retries with the same identity. While the pin is unconfirmed and equals the presented key, the UI runs step 4 again and returns a new reply. The new `worker_key` replaces the one the lost reply carried. This is safe: `identity_cert` is public, but a `worker_key` is useless without the private key, because step 6 and every later request need the pinned client certificate. A different identity, or any identity once the pin is confirmed, gets the `409` below. Inside a re-pair window the same rule holds: a retry with the approved id completes, and any other id is refused.
+A lost reply does not strand the box. If the reply of step 4 never arrives, the box retries with the same identity. While the pin is unconfirmed and equals the presented key, the UI runs step 4 again and returns a new reply. The new `worker_key` replaces the one the lost reply carried.
+
+- The retry must prove that the box holds the identity key, because `identity_cert` is public. Over TLS, the box presents its client certificate: after step 5 the UI's listener already trusts the unconfirmed pin, so the handshake checks it. Over iroh, the connection's remote id is the proof.
+- A retry without that proof gets `409`. So a holder of the shared key who copies the public certificate cannot replace the box's `worker_key`.
+- A different identity, or any identity once the pin is confirmed, gets the `409` below.
+- Inside a re-pair window the same rules hold: a retry with the approved id and its proof completes, and any other id is refused.
 
 The UI refuses these, each with a message the box logs and shows:
 
@@ -331,7 +337,7 @@ What the user sees on the UI:
 
 - Every box row keeps its history and earnings, which are keyed on `client_id`. It shows a **Pair again** flag, and the box reads as offline until it is paired again. Its containers keep running and earning.
 - The owner pastes the new block (Fleet page, Add a box) on the updated box. The box's first attempt gets `409`. The UI records the endpoint id it presented, and the row shows "This box presented a key: `<short id>`" next to **Pair again**.
-- The owner compares the short id with the one the box shows (section 3.3), then presses **Pair again**. That opens a 30-minute window for that `client_id` **and that endpoint id only**. The box's next attempt enrols and keeps its row, because `/data/.worker_id` keeps its `client_id`. Its old bearer key is discarded and a new one is issued.
+- The owner compares the short id with the one the box shows (section 3.3), then presses **Pair again**. That opens a window for that `client_id` **and that endpoint id only**. It closes when that pin is confirmed (section 7.2, step 6), or after 30 minutes. The box's next attempt enrols and keeps its row, because `/data/.worker_id` keeps its `client_id`. Its old bearer key is discarded and a new one is issued.
 - Inside the window, the UI refuses any other endpoint id for that `client_id` with `409` and records it, so the row shows the conflict.
 - A new box needs no window. A new `client_id` enrols with the shared key, as it does today.
 
@@ -423,9 +429,9 @@ An endpoint that is up but stalled is the failure we hit ourselves: hours with t
   - A failed request on an open connection. Opening the stream, writing the request or reading the response raises. Or the response does not end within the timeout that the TLS path uses for that request, which is 15 seconds for a heartbeat.
   - After a failed request, the dialer closes that connection, so the next request dials again.
 - A failed request is never replayed. Its caller sees a failure, as it does today when an HTTP request times out. A command whose result is unknown stays unknown, and the existing deploy deadline settles it.
-- Each endpoint counts failures in a row. A completed request resets the count, and so does any accepted connection from a pinned peer.
-- On the UI, the heartbeats coming in from other boxes reset it every minute. So one dead worker cannot make the UI recycle its endpoint.
-- At 5 failures in a row, the supervisor closes the endpoint (`ep.close()`, at most 10 seconds) and binds a new one with the same key.
+- A box or a Desktop counts failures in a row. A completed request resets the count, and so does any accepted connection from the pinned UI.
+- The UI counts failures in a row for each box. A completed request to that box, or a heartbeat from it, resets that box's count. Traffic with other boxes does not.
+- At 5 failures in a row, the supervisor closes the endpoint (`ep.close()`, at most 10 seconds) and binds a new one with the same key. On the UI, one box's count reaching 5 recycles the endpoint at most once every 30 minutes. So a dead box costs the others one short reconnect each half hour, and a stalled path to a live box is retried with a fresh endpoint.
 - If that close does not return, the process exits with status 75. Docker's restart policy restarts the container, and on Desktop the app restarts its sidecar.
 - The same recycle happens when `ep.addr().relay_url()` stays `None` for 5 minutes. An unreachable relay raises no error, so this field is the only sign.
 
@@ -459,17 +465,21 @@ The official wheel works on Debian, so the worker and UI images move from Alpine
 
 Go has no official iroh binding, so Desktop ships a small Rust sidecar, `cashpilot-iroh`. It is built on the iroh crate at the iroh core version that iroh-ffi 1.2.0 builds against, read from that release's `Cargo.lock`.
 
+- There are two listeners. The sidecar listens on the dial socket, for outbound requests. Desktop listens on the inbound socket, for streams the sidecar accepts.
 - Start:
-  - Desktop starts the sidecar and writes the 32-byte seed to its stdin.
-  - Arguments: `--alpn cashpilot/fleet/1`, `--relay <url>` (absent means n0) and `--socket <path>`.
-  - On Windows, `--socket 127.0.0.1:0`. The sidecar then prints the port it bound and a 32-byte hex token, and Desktop sends `TOKEN <hex>\n` first on every connection.
-  - On macOS and Linux, the socket is a Unix socket of mode 0600 in AppDir.
+  - Desktop opens its inbound socket first, then starts the sidecar and writes the 32-byte seed to its stdin.
+  - Arguments: `--alpn cashpilot/fleet/1`, `--relay <url>` (absent means n0), `--dial-socket <path>` and `--inbound-socket <path>`.
+  - On macOS and Linux, both are Unix sockets of mode 0600 in AppDir. Only the user can connect, so no token is needed.
+  - On Windows, both are TCP on 127.0.0.1, so each direction needs a token:
+    - Desktop binds its inbound port and passes `--inbound-socket 127.0.0.1:<port>`. After the seed, it writes its own 32-byte hex token as one line on stdin.
+    - The sidecar binds `--dial-socket 127.0.0.1:0`, then prints the port it bound and its own 32-byte hex token on stdout.
+    - Each side sends `TOKEN <the other side's hex>\n` first on every connection it opens, and closes any connection whose first line is not its own token.
 - Inbound:
-  - For each stream the sidecar accepts, it connects to Desktop's socket and writes `PEER <64 hex>\n`. Then it pipes bytes both ways.
+  - For each stream the sidecar accepts, it connects to Desktop's inbound socket and writes `PEER <64 hex>\n`. Then it pipes bytes both ways.
   - Desktop reads that line as the peer's endpoint id and serves HTTP on the rest of the stream.
   - Desktop applies the accept rule of section 9.4 and closes a stream from a peer it does not accept.
 - Outbound:
-  - Desktop connects to the sidecar and writes `DIAL <64 hex>\n`.
+  - Desktop connects to the sidecar's dial socket and writes `DIAL <64 hex>\n`.
   - The sidecar answers `OK\n` and then pipes, or answers `ERR <reason>\n` and closes.
 - Recovery: the sidecar runs the rule of section 9.7 and exits with status 75. Desktop restarts it whenever it exits.
 
@@ -572,13 +582,14 @@ Each case must fail when its check is removed. Prove that once by breaking the c
   - an unpinned identity
   - a leaf signed by another key
   - a leaf with an Ed25519 or RSA key
-  - a chain of one or three certificates
+  - a chain of one or three certificates, as the peer sent it
   - an identity certificate whose self-signature is broken
   - an endpoint id of 63 or 65 characters, or one that is not hex
 - Enrolment:
   - Refuse a second enrolment of a pinned `client_id` outside the window, and accept it inside the window.
   - Inside the window, refuse every endpoint id but the approved one.
-  - Complete a retry with the same unconfirmed identity, and refuse it once the pin is confirmed.
+  - Complete a retry with the same unconfirmed identity and its client certificate. Refuse it without the certificate, and once the pin is confirmed.
+  - Close the re-pair window when its pin is confirmed.
   - On the box, drop a cached `/data/.ui_identity.pem` whose key is not `CASHPILOT_UI_KEY`.
   - Refuse an `identity_cert` whose CN is not its key.
   - Refuse a reply whose `ui_identity_cert` is not `CASHPILOT_UI_KEY`.
