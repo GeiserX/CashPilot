@@ -297,10 +297,14 @@ CASHPILOT_WORKER_NAME=server-name
 1. The box loads its identity and leaf, or makes them (section 3).
 2. The box connects to `CASHPILOT_UI_URL` over TLS **with no client certificate** and checks the UI's chain against `CASHPILOT_UI_KEY`. It sends nothing until that check passes.
    - Python has no verify callback, and it holds no UI certificate yet. So the first connection uses `CERT_NONE` and reads `get_unverified_chain()`. It runs the six checks of section 5.2 in code with `cryptography`, writes the UI's identity certificate to `/data/.ui_identity.pem` and closes. Every later connection loads that file as `cadata`.
+   - At each start, the box checks that the key in `/data/.ui_identity.pem` equals `CASHPILOT_UI_KEY`. If it does not, the box deletes the file and repeats this first connection against the new pin. So a changed `CASHPILOT_UI_KEY` (section 8.3) takes effect at the next start.
 3. The box sends `POST /api/workers/heartbeat` with `Authorization: Bearer <shared key>`. The body holds the usual fields plus `identity_cert`, the PEM of the box's identity certificate.
 4. The UI accepts the enrolment only when all of these hold:
    - The shared key is right.
-   - The `client_id` is new, or the owner opened a re-pair window for it (section 8).
+   - One of these admits the `client_id`:
+     - It is new.
+     - Its pin is unconfirmed and equals the presented key. This is a retry, described below.
+     - The owner opened a re-pair window for it and for this exact endpoint id (section 8).
    - `identity_cert` passes checks 2 and 3 of section 5.2 against its own key.
    - Its CN is the hex of that key.
    
@@ -309,9 +313,11 @@ CASHPILOT_WORKER_NAME=server-name
 6. The box's next heartbeat presents its certificate and its own key. The UI checks that the peer id equals the pin for that `client_id`, then marks the pin confirmed. This is the existing `key_confirmed` step, extended to the pin.
 7. From then on, the UI sends commands to the box's `https://` URL. It presents its own certificate and checks the box against the pin. The box checks the UI against its pin.
 
+A lost reply does not strand the box. If the reply of step 4 never arrives, the box retries with the same identity. While the pin is unconfirmed and equals the presented key, the UI runs step 4 again and returns a new reply. The new `worker_key` replaces the one the lost reply carried. This is safe: `identity_cert` is public, but a `worker_key` is useless without the private key, because step 6 and every later request need the pinned client certificate. A different identity, or any identity once the pin is confirmed, gets the `409` below. Inside a re-pair window the same rule holds: a retry with the approved id completes, and any other id is refused.
+
 The UI refuses these, each with a message the box logs and shows:
 
-- The shared key with `identity_cert` for a `client_id` that is already pinned, outside a re-pair window: `409`, "This box is already paired. On the Fleet page, press Pair again on it."
+- The shared key with `identity_cert` for a `client_id` that is already pinned, when no rule of step 4 admits it: `409`, "This box is already paired. On the Fleet page, press Pair again on it."
 - The shared key with no `identity_cert`: `426`, "This box runs a CashPilot that cannot pair. Update it."
 - A heartbeat with no client certificate for a confirmed box: `401`.
 
@@ -324,7 +330,9 @@ There is no silent migration. Every box is paired again once, when step 2 ships,
 What the user sees on the UI:
 
 - Every box row keeps its history and earnings, which are keyed on `client_id`. It shows a **Pair again** flag, and the box reads as offline until it is paired again. Its containers keep running and earning.
-- **Pair again** opens a 30-minute window for that `client_id` and shows the new paste block. A box that enrols in that window keeps its row, because `/data/.worker_id` keeps its `client_id`. Its old bearer key is discarded and a new one is issued.
+- The owner pastes the new block (Fleet page, Add a box) on the updated box. The box's first attempt gets `409`. The UI records the endpoint id it presented, and the row shows "This box presented a key: `<short id>`" next to **Pair again**.
+- The owner compares the short id with the one the box shows (section 3.3), then presses **Pair again**. That opens a 30-minute window for that `client_id` **and that endpoint id only**. The box's next attempt enrols and keeps its row, because `/data/.worker_id` keeps its `client_id`. Its old bearer key is discarded and a new one is issued.
+- Inside the window, the UI refuses any other endpoint id for that `client_id` with `409` and records it, so the row shows the conflict.
 - A new box needs no window. A new `client_id` enrols with the shared key, as it does today.
 
 What the user sees on the box:
@@ -334,7 +342,7 @@ What the user sees on the box:
   "CASHPILOT_UI_KEY is not set, so this worker does not know which UI to trust and sends it nothing. Copy the block from the Fleet page, Add a box."
 - Desktop and Android show the same message on their status screen.
 
-The window guards the moment a row has no pin. Without it, anyone holding the shared key could claim an existing row before its real box re-enrols.
+The window guards the moment a row has no pin. Without it, anyone holding the shared key could claim an existing row before its real box re-enrols. The window names one endpoint id, so the holder of the shared key cannot use it either. Any other id is refused, and the approved id is useless to them without its private key.
 
 ### 8.2 A box that lost its key
 
@@ -342,7 +350,7 @@ A box that lost its `/data` or its key file makes a new identity.
 
 - If it also lost `/data/.worker_id`, it enrols as a new box. The owner removes the old row.
 - If it kept its `client_id`, the UI refuses it with `409`. The UI records the endpoint id it presented, and the row shows "This box presented a new key: `<short id>`" next to **Pair again**.
-- The owner compares the short id with the one the box shows (section 3.3), then presses **Pair again**. The box's next attempt enrols.
+- The owner compares the short id with the one the box shows (section 3.3), then presses **Pair again**. That opens the window of section 8.1 for that endpoint id only. The box's next attempt enrols.
 - The box logs: "The UI refused this box's key, because it was paired with another one. On the Fleet page, press Pair again on `<name>`."
 
 ### 8.3 A UI that lost its key
@@ -398,7 +406,7 @@ The accept rule is checked at `accept`, before any stream is read:
 
 - A box dials the UI by `CASHPILOT_UI_KEY`, and the UI dials a box by its pin. Neither needs an IP address.
 - With n0's relays, the dialer passes `EndpointAddr(id, None, [])` and lets n0's discovery find the peer. With the user's own relay, it passes `EndpointAddr(id, relay_url, [])`. Both forms are tested.
-- When iroh is on and a box also has a pinned-TLS URL, a request whose iroh dial fails goes over TLS, and the failed dial counts (section 9.7). With iroh off, nothing changes from step 2.
+- When iroh is on and a box also has a pinned-TLS URL, a request whose iroh dial fails goes over TLS, and the failure counts (section 9.7). A request that failed after it was sent is not sent again over TLS. With iroh off, nothing changes from step 2.
 
 ### 9.6 Relays
 
@@ -410,18 +418,20 @@ The accept rule is checked at `accept`, before any stream is read:
 
 An endpoint that is up but stalled is the failure we hit ourselves: hours with the process alive and nothing getting through. So every long-lived endpoint supervises itself.
 
-- A failed dial:
-  - It is a `connect` that raises, or that does not finish within 30 seconds.
-  - Each endpoint counts failed dials in a row.
-  - Any successful dial resets the count, and so does any accepted connection from a pinned peer.
-  - On the UI, the heartbeats coming in from other boxes reset it every minute. So one dead worker cannot make the UI recycle its endpoint.
-- At 5 failed dials in a row, the supervisor closes the endpoint (`ep.close()`, at most 10 seconds) and binds a new one with the same key.
+- A failure is either of these:
+  - A failed dial: a `connect` that raises, or that does not finish within 30 seconds.
+  - A failed request on an open connection. Opening the stream, writing the request or reading the response raises. Or the response does not end within the timeout that the TLS path uses for that request, which is 15 seconds for a heartbeat.
+  - After a failed request, the dialer closes that connection, so the next request dials again.
+- A failed request is never replayed. Its caller sees a failure, as it does today when an HTTP request times out. A command whose result is unknown stays unknown, and the existing deploy deadline settles it.
+- Each endpoint counts failures in a row. A completed request resets the count, and so does any accepted connection from a pinned peer.
+- On the UI, the heartbeats coming in from other boxes reset it every minute. So one dead worker cannot make the UI recycle its endpoint.
+- At 5 failures in a row, the supervisor closes the endpoint (`ep.close()`, at most 10 seconds) and binds a new one with the same key.
 - If that close does not return, the process exits with status 75. Docker's restart policy restarts the container, and on Desktop the app restarts its sidecar.
 - The same recycle happens when `ep.addr().relay_url()` stays `None` for 5 minutes. An unreachable relay raises no error, so this field is the only sign.
 
 Why 5:
 
-- A box dials once a minute (the heartbeat), so 5 failed dials take about 5 minutes.
+- A box sends a heartbeat once a minute, and each failed one fails within 30 seconds at most. So 5 failures take about 5 minutes, whether the dial or the request stalls.
 - A UI update or restart takes one or two heartbeats. 5 is above that, so a routine restart does not recycle every box's endpoint.
 - The worker reports itself unhealthy after 12 missed heartbeats. 5 is below that, so the endpoint is recycled before the container is flagged.
 - The stalls we saw lasted hours. 5 minutes is the most any one of them can now last.
@@ -567,6 +577,9 @@ Each case must fail when its check is removed. Prove that once by breaking the c
   - an endpoint id of 63 or 65 characters, or one that is not hex
 - Enrolment:
   - Refuse a second enrolment of a pinned `client_id` outside the window, and accept it inside the window.
+  - Inside the window, refuse every endpoint id but the approved one.
+  - Complete a retry with the same unconfirmed identity, and refuse it once the pin is confirmed.
+  - On the box, drop a cached `/data/.ui_identity.pem` whose key is not `CASHPILOT_UI_KEY`.
   - Refuse an `identity_cert` whose CN is not its key.
   - Refuse a reply whose `ui_identity_cert` is not `CASHPILOT_UI_KEY`.
 - The bearer: refuse box A's bearer on box B's certificate, and box A's certificate with box B's bearer.
@@ -574,4 +587,5 @@ Each case must fail when its check is removed. Prove that once by breaking the c
 - Tickets: a server issues no session ticket.
 - iroh:
   - Refuse an unpinned id at accept, except for the one enrolment request.
-  - After 5 failed dials in a row, recycle the endpoint. Fewer failures, or one success in between, keep it.
+  - After 5 failures in a row, recycle the endpoint. Count a request that stalls on an open connection as a failure. Fewer failures, or one completed request in between, keep it.
+  - Never replay a request that failed after it was sent.
