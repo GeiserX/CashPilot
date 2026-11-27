@@ -60,6 +60,12 @@ def test_the_release_body_is_the_line_the_script_writes():
     release = next(i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("softprops/action-gh-release"))
     assert names.index("notes") < release, "the notes step must run before the release step"
     assert "scripts/release_upgrade_link.py" in notes["run"]
+    # A command substitution inside echo's argument hides the script's failure
+    # from bash -e, so the release would publish with an empty body.
+    lines = [ln.strip() for ln in notes["run"].strip().splitlines()]
+    assert lines[0].startswith("line=$(python3 scripts/release_upgrade_link.py"), lines
+    assert '[ -n "$line" ]' in lines, "an empty line must fail the step"
+    assert not any(ln.startswith("echo") and "$(" in ln for ln in lines), "the script runs inside echo"
     assert notes["env"]["TAG"] == "${{ needs.release.outputs.new_tag }}"
 
 

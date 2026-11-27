@@ -416,7 +416,12 @@ jobs:
         id: notes
         env:
           TAG: ${{ needs.release.outputs.new_tag }}
-        run: echo "body=$(python3 scripts/release_upgrade_link.py "$TAG")" >> "$GITHUB_OUTPUT"
+        # Assign first: inside echo's argument a failed script would not stop the
+        # step, and the release would go out with no UPGRADING.md line.
+        run: |
+          line=$(python3 scripts/release_upgrade_link.py "$TAG")
+          [ -n "$line" ]
+          echo "body=$line" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
