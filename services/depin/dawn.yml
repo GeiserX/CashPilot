@@ -2,17 +2,19 @@ name: Dawn Internet
 slug: dawn
 category: depin
 status: active
-website: https://dawninternet.com
+website: https://infrastructure.finance/validator-extension
 description: >
-  Dawn Internet is a decentralized wireless network that rewards users for sharing
-  their internet connection. Available as a browser extension and a dedicated
-  hardware box (Dawn Node). The extension passively earns Dawn Points while you
-  browse. The network aims to build a decentralized ISP layer for underserved areas.
-short_description: DePIN wireless network - browser extension and hardware box
+  DAWN runs a validator network that checks bandwidth and coverage for the AI
+  infrastructure financed through the DAWN protocol. The DAWN Validator browser
+  extension takes part in these proof-of-bandwidth and coverage checks and earns
+  DAWN rewards while it runs. The rewards have no settled cash value yet. Create the
+  account in the extension and enter referral code 2QLQV97F when it asks.
+short_description: DePIN validator - browser extension earns DAWN points
 
 referral:
-  signup_url: "https://dawninternet.com/?code=2QLQV97F"
+  signup_url: "https://infrastructure.finance/validator-extension?code=2QLQV97F"
   code: "2QLQV97F"
+  code_entry: "2QLQV97F"
 
 docker:
   image: ""

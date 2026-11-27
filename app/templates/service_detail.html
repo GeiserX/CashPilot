@@ -135,6 +135,9 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         </a>
         {% if service.referral and service.referral.code and service.referral.signup_url %}
+        {% if service.referral.code_entry %}
+        <p class="referral-code">When {{ service.name }} asks for a referral code, type <code>{{ service.referral.code_entry }}</code>. The link does not fill it in. <button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="{{ service.referral.code_entry }}" aria-label="Copy {{ service.name }}'s referral code {{ service.referral.code_entry }}" title="Copy {{ service.name }}'s referral code {{ service.referral.code_entry }}">Copy</button></p>
+        {% endif %}
         <p class="referral-note">{% if service.referral.bonus and service.referral.bonus.referee %}<strong>New-user bonus with this link:</strong> {{ service.referral.bonus.referee }}. {% endif %}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>
         {% endif %}
       </div>

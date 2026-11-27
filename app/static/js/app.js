@@ -3740,12 +3740,29 @@ const CP = (() => {
   // signup_url (no programme, or none found yet) is not a referral link.
   // The new user's bonus goes first when the catalog records one: it is the
   // reason to use this link at all, and it used to sit only on the detail page.
+  // Some signups never read the code from the link (Dawn's extension asks for
+  // it, Gradient's form ignores the URL): referral.code_entry is then the code
+  // to type, shown with a Copy button so a user who signs up here still
+  // credits the referral.
   function referralNote(svc) {
     const ref = svc.referral || {};
     if (!ref.code || !ref.signup_url) return '';
     const referee = ref.bonus && ref.bonus.referee;
     const bonus = referee ? `<strong>New-user bonus with this link:</strong> ${escapeHtml(referee)}. ` : '';
-    return `<p class="referral-note">${bonus}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>`;
+    const typed = ref.code_entry
+      ? `<p class="referral-code">When ${escapeHtml(svc.name)} asks for a referral code, type <code>${escapeHtml(ref.code_entry)}</code>. The link does not fill it in. ${codeEntryCopy(svc, 'Copy')}</p>`
+      : '';
+    return `${typed}<p class="referral-note">${bonus}Referral link: the CashPilot maintainer may earn a commission from it, which helps keep CashPilot free and maintained.</p>`;
+  }
+
+  // The Copy button for a code typed by hand (referral.code_entry), or '' when the
+  // link carries the code. Its accessible name says what it copies.
+  function codeEntryCopy(svc, label) {
+    const ref = svc.referral || {};
+    if (!ref.code || !ref.signup_url || !ref.code_entry) return '';
+    const code = escapeHtml(ref.code_entry);
+    const name = escapeHtml(`Copy ${svc.name}'s referral code ${ref.code_entry}`);
+    return `<button class="btn btn-ghost btn-sm" data-action="copyText" data-a1="${code}" aria-label="${name}" title="${name}">${label}</button>`;
   }
 
   function collectorCredentialsNotice(slug) {
@@ -4416,10 +4433,17 @@ const CP = (() => {
       return;
     }
 
-    // What you run, then what you could add. Within each, by name.
-    const byName = (x, y) => String(x.name).localeCompare(String(y.name));
-    const running = filtered.filter(x => x.deployed).sort(byName);
-    const rest = filtered.filter(x => !x.deployed).sort(byName);
+    // What you run, then what you could add. Within each, the catalog's
+    // priority first (1 first, the services that pay the project best), then
+    // the rest by category and name. Priority first matches the API, the
+    // wizard, the README and Desktop. The tail sorts by category like Desktop,
+    // but compares names without case, so "io.net" sorts among the i's.
+    const rank = x => (Number.isInteger(x.priority) ? x.priority : Infinity);
+    const byPriority = (x, y) => (rank(x) - rank(y))
+      || String(x.category).localeCompare(String(y.category))
+      || String(x.name).toLowerCase().localeCompare(String(y.name).toLowerCase());
+    const running = filtered.filter(x => x.deployed).sort(byPriority);
+    const rest = filtered.filter(x => !x.deployed).sort(byPriority);
     const group = (label, rows) => rows.length
       ? `<tbody class="cat-group"><tr class="cat-group-row"><th colspan="7" scope="colgroup">${label} <span class="count">${rows.length}</span></th></tr>${rows.map(renderCatalogCard).join('')}</tbody>`
       : '';
@@ -4462,7 +4486,16 @@ const CP = (() => {
       actionBtn = [addLink(`Add ${svc.name}`), detailsBtn].filter(Boolean).join(' ');
     } else {
       const url = (svc.referral && svc.referral.signup_url) || svc.website || '#';
-      actionBtn = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`;
+      // Visit opens the signup page. Where the signup never reads the code from
+      // the link (Dawn's extension), the code sits right beside it, or a user
+      // who signs up from this row credits nobody.
+      const code = svc.referral && svc.referral.code_entry;
+      actionBtn = [
+        `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit</a>`,
+        // On its own line: the action cell does not wrap, and both buttons on one
+        // line push a phone-width table past the screen edge.
+        code ? `<span class="cat-act-code">${codeEntryCopy(svc, `Code ${escapeHtml(code)}`)}</span>` : '',
+      ].filter(Boolean).join(' ');
     }
 
     // Platform list — add Docker if service has a Docker image

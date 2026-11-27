@@ -2,15 +2,15 @@
 
 > **Category:** DePIN | **Status:** Active
 >
-> **Website:** [dawninternet.com](https://dawninternet.com/?code=2QLQV97F)
+> **Website:** [infrastructure.finance/validator-extension](https://infrastructure.finance/validator-extension?code=2QLQV97F)
 >
 > <small>Referral link: the CashPilot maintainer may earn a commission from it.</small>
 >
-> The website does not pass the code on. Create the account in the DAWN extension and enter referral code `2QLQV97F` when it asks.
+> The website does not pass the code on. Create the account in the DAWN Validator extension and enter referral code `2QLQV97F` when it asks.
 
 ## Description
 
-Dawn Internet is a decentralized wireless network that rewards users for sharing their internet connection. Available as a browser extension and a dedicated hardware box (Dawn Node). The extension passively earns Dawn Points while you browse. The network aims to build a decentralized ISP layer for underserved areas.
+DAWN runs a validator network that checks bandwidth and coverage for the AI infrastructure financed through the DAWN protocol. The DAWN Validator browser extension takes part in these proof-of-bandwidth and coverage checks and earns DAWN rewards while it runs. The rewards have no settled cash value yet. Create the account in the extension and enter referral code 2QLQV97F when it asks.
 
 ## Earning Estimates
 
@@ -38,7 +38,7 @@ Dawn Internet is a decentralized wireless network that rewards users for sharing
 
 ### 1. Install the extension and create an account
 
-Install the [DAWN Validator extension](https://chromewebstore.google.com/detail/dawn-validator-chrome-ext/fpdkjdnhkakefebpekbdhillbhonfjjp) and create your account in it. When it asks **Do you have any referral code?**, enter `2QLQV97F`. The [Dawn Internet](https://dawninternet.com/?code=2QLQV97F) website does not pass the code on, so type it in the extension.
+Install the [DAWN Validator extension](https://chromewebstore.google.com/detail/dawn-validator-chrome-ext/fpdkjdnhkakefebpekbdhillbhonfjjp) and create your account in it. When it asks **Do you have any referral code?**, enter `2QLQV97F`. The [DAWN website](https://infrastructure.finance/validator-extension?code=2QLQV97F) does not pass the code on, so type it in the extension.
 
 <small>Referral code and link: the CashPilot maintainer may earn a commission from it.</small>
 

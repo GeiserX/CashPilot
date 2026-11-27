@@ -8,17 +8,19 @@ support_url: https://pawns.app/contact-us/
 description: >
   IPRoyal Pawns lets you earn by sharing your unused bandwidth. IPRoyal is a
   well-established proxy provider, and Pawns is their residential bandwidth-sharing
-  arm. The CLI Docker image accepts credentials via command-line flags. Offers a
-  generous 10% lifetime referral commission and a $3 bonus for new users who sign
-  up through a referral link.
-short_description: Bandwidth sharing - 10% lifetime referral, $3 signup bonus
+  arm. The CLI Docker image accepts credentials via command-line flags. A new
+  user who signs up through a referral link gets $1 on each of their first three
+  payouts, up to $3. Each payout must come within a time window of one to three
+  weeks, set by location. The window starts at sign-up and starts again after
+  each payout. If a window closes first, the remaining bonuses are lost.
+short_description: Bandwidth sharing - up to $3 bonus on your first payouts
 
 referral:
   signup_url: "https://pawns.app?r=19266874"
   code: "19266874"
   bonus:
-    referrer: "10% of their payouts for life, plus $1 on each of their first three payouts"
-    referee: "$3: $1 on joining, then $1 on each of the first two payouts"
+    referrer: "$1 on each of their first three payouts, up to $3, if each comes within its 1-3 week window"
+    referee: "$1 on each of your first three payouts, up to $3; miss a 1-3 week window and the rest expire"
 
 docker:
   image: iproyal/pawns-cli
