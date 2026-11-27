@@ -8931,6 +8931,16 @@ COPY_REMOVE_TIMEOUT = 90
 #: own, and final.
 _COPY_REMOVE_PENDING = (503, 504)
 
+
+def _copy_removal_pending(exc: HTTPException) -> bool:
+    """Whether a failed copy removal may still happen on the worker.
+
+    A refused key comes back as a 503 (_proxy_to_worker), but the worker
+    refused before it acted, so that removal is not pending: it failed.
+    """
+    return exc.status_code in _COPY_REMOVE_PENDING and exc.detail != _WORKER_REFUSED_OUR_KEY
+
+
 #: Copies whose pending removal a heartbeat is finishing right now, so the
 #: next heartbeat does not send a second request while the first runs.
 _copy_removals_running: set[tuple[int, int, str]] = set()
@@ -9023,7 +9033,7 @@ async def _remove_copy(proxy_id: int, worker_id: int, slug: str) -> Any:
                 worker_id, "DELETE", f"/api/proxied/{slug}/{proxy_id}", proxy["definition"], timeout=COPY_REMOVE_TIMEOUT
             )
         except HTTPException as exc:
-            if exc.status_code in _COPY_REMOVE_PENDING:
+            if _copy_removal_pending(exc):
                 return JSONResponse(
                     status_code=202,
                     content={
@@ -9069,7 +9079,7 @@ async def _resume_copy_removals(copies: list[tuple[int, int, str]]) -> None:
                         timeout=COPY_REMOVE_TIMEOUT,
                     )
                 except HTTPException as exc:
-                    if exc.status_code in _COPY_REMOVE_PENDING:
+                    if _copy_removal_pending(exc):
                         continue
                     # The worker answered and could not remove it: the copy is
                     # still there, so it is listed again with its buttons.
