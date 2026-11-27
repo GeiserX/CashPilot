@@ -43,7 +43,7 @@ earnings:
   monthly_low: 0
   monthly_high: 100
   currency: USD
-  per: "GPU-hour"
+  per: "GPU"
   notes: "Earnings depend on GPU model and availability of work. RTX 3060 ~$1-3/day. Windows only. Native app, no Docker support. Redeemable for gift cards, games, or PayPal."
 
 cashout:

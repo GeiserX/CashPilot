@@ -15,7 +15,7 @@ Clore.ai is a peer-to-peer GPU marketplace. You list a Linux machine with NVIDIA
 | Metric | Value |
 |--------|-------|
 | Monthly range | $0 - $490 (estimate) |
-| Per | GPU-hour |
+| Per | GPU |
 | Minimum payout | 200 CLORE (or 0.0001 BTC, or 10 USDT/USDC) |
 | Payout frequency | On request |
 | Payment methods | Crypto (CLORE, BTC, USDT, USDC) |
